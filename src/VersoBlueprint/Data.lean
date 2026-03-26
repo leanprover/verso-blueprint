@@ -154,7 +154,7 @@ def ConstantInfo.blueprintNodeKind? : ConstantInfo → Option NodeKind
   | .axiomInfo _ => none
   | .opaqueInfo _ => none
   | .quotInfo _ => none
-  | .inductInfo _ => none
+  | .inductInfo _ => some .definition
   | .ctorInfo _ => none
   | .recInfo _ => none
 

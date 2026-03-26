@@ -18,22 +18,11 @@ open Lean
 
 syntax (name := blueprint) "blueprint" ppSpace str : attr
 
-private def constantInfoKind : ConstantInfo → String
-  | .axiomInfo _ => "axiom"
-  | .defnInfo _ => "definition"
-  | .thmInfo _ => "theorem"
-  | .opaqueInfo _ => "opaque"
-  | .quotInfo _ => "quot primitive"
-  | .inductInfo _ => "inductive"
-  | .ctorInfo _ => "constructor"
-  | .recInfo _ => "recursor"
-
 private def classifyDeclKind (decl : Name) (info : ConstantInfo) : CoreM Data.NodeKind :=
-  match info with
-  | .defnInfo _ => pure .definition
-  | .thmInfo _ => pure .theorem
-  | _ =>
-    throwError "invalid '[blueprint]' target '{decl}': expected a definition or theorem, got {constantInfoKind info}"
+  match Informal.Data.ConstantInfo.blueprintNodeKind? info with
+  | some kind => pure kind
+  | none =>
+    throwError "invalid '[blueprint]' target '{decl}': expected a definition-like declaration or theorem, got {Informal.Data.ConstantInfo.blueprintKindText info}"
 
 mutual
 

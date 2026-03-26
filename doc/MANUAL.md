@@ -228,7 +228,7 @@ work in the same project.
 
 ### Compiled code tagged with `@[blueprint "addition_assoc_compiled"]`
 
-Use the `@[blueprint "label"]` attribute when a compiled definition or theorem
+Use the `@[blueprint "label"]` attribute when a compiled definition-like declaration or theorem
 should appear as a Lean-owned Blueprint node:
 
 ```lean

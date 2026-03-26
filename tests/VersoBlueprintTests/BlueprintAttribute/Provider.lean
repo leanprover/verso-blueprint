@@ -17,6 +17,12 @@ theorem exportedTheorem : True := by
 @[blueprint "attr.exported.definition"]
 def exportedDefinition : Nat := 7
 
+/-- Exported inductive used to verify `@[blueprint]` accepts definition-like targets. -/
+@[blueprint "attr.exported.inductive"]
+inductive exportedInductive where
+  /-- Constructor used to verify imported inductive blueprint attributes. -/
+  | mk
+
 @[blueprint "attr.exported.undocumented"]
 def exportedUndocumentedDefinition : Nat := 11
 

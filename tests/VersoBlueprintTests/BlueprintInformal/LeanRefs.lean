@@ -13,6 +13,10 @@ open Verso.VersoBlueprintTests.BlueprintInformal.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs
 
+inductive AttachedInductive where
+  /-- Constructor used to exercise inductive external references. -/
+  | mk
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -85,6 +89,30 @@ def conflictInlineThenExternalValue : Nat := Nat.succ 1
 Simple body.
 :::
 :::::::
+
+#docs (Manual) inductiveLeanRefAccepted "Inductive Lean Ref Accepted" :=
+:::::::
+:::definition "inductive.external" (lean := "AttachedInductive")
+Simple body.
+:::
+:::::::
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let state ← currentState
+    let some node := state.data.get? (Name.mkSimple "inductive.external")
+      | pure false
+    pure <|
+      node.kind == .definition &&
+      match node.code with
+      | some (.external #[ref]) =>
+        ref.present &&
+        ref.kind == .definition &&
+        ref.canonical == `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.AttachedInductive &&
+        ref.render.isOk
+      | _ => false
 
 set_option verso.blueprint.trimTeXLabelPrefix true
 
