@@ -13,9 +13,32 @@ open Verso.VersoBlueprintTests.BlueprintInformal.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs
 
+private def attachedInductiveName : Name :=
+  `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.AttachedInductive
+
 inductive AttachedInductive where
   /-- Constructor used to exercise inductive external references. -/
   | mk
+
+private def attachedInductiveCtorAndRecursor? : CoreM (Option (Name × Name)) := do
+  let env ← getEnv
+  match env.find? attachedInductiveName with
+  | some (.inductInfo info) =>
+    pure <| info.ctors.head?.map fun ctorName =>
+      (ctorName, Lean.mkRecName info.name)
+  | _ =>
+    pure none
+
+private def externalRefRejectedWithKind (decl : Name) (expectedKind : String) : CoreM Bool := do
+  let opts ← getOptions
+  try
+    let _ ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName decl)
+    pure false
+  catch ex =>
+    let msg ← liftM <| ex.toMessageData.toString
+    pure <|
+      msg.contains s!"with kind '{expectedKind}'" &&
+      msg.contains "Only definition-like declarations, theorems, and axiom-like placeholders are currently supported."
 
 /-- info: true -/
 #guard_msgs in
@@ -113,6 +136,19 @@ Simple body.
         ref.canonical == `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.AttachedInductive &&
         ref.render.isOk
       | _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval!
+  show CoreM Bool from do
+    let some (ctorName, recursorName) ← attachedInductiveCtorAndRecursor?
+      | pure false
+    let env ← getEnv
+    let ctorPresent := (env.find? ctorName).isSome
+    let recursorPresent := (env.find? recursorName).isSome
+    let ctorRejected ← externalRefRejectedWithKind ctorName "constructor"
+    let recursorRejected ← externalRefRejectedWithKind recursorName "recursor"
+    pure (ctorPresent && recursorPresent && ctorRejected && recursorRejected)
 
 set_option verso.blueprint.trimTeXLabelPrefix true
 
