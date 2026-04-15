@@ -109,6 +109,33 @@ private def kindClassOfDeclType : Verso.Genre.Manual.Block.Docstring.DeclType �
   | .quotPrim _ => "primitive"
   | .other => "def"
 
+private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : String) : String :=
+  match safety with
+  | .unsafe => s!"unsafe {base}"
+  | .partial => s!"partial {base}"
+  | .safe => base
+
+private def externalDeclKindClass
+    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) : String :=
+  let kindClass := kindClassOfDeclType declType
+  match cinfo with
+  | .defnInfo defn =>
+    if defn.hints.isAbbrev then
+      s!"{kindClass} abbrev"
+    else
+      kindClass
+  | _ => kindClass
+
+private def externalDeclKeywordText
+    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) : String :=
+  match cinfo with
+  | .defnInfo defn =>
+    if defn.hints.isAbbrev then
+      keywordTextOfDefinitionSafety defn.safety "abbrev"
+    else
+      kindClassOfDeclType declType
+  | _ => kindClassOfDeclType declType
+
 private def renderExternalDeclWrapper
     (decl : Name) (kindClass : String) (keywordText : String)
     (signature : DocGenHtml) (body : DocGenHtml) : DocGenHtml :=
@@ -176,7 +203,7 @@ private def renderParentsSection
     }}
 
 private def renderDeclHtmlDocstringFromInfoE
-    (decl : Name) (_cinfo : ConstantInfo) : MetaM DocGenRender :=
+    (decl : Name) (cinfo : ConstantInfo) : MetaM DocGenRender :=
   open Verso.Output.Html in do
   let env ← getEnv
   let declType ←
@@ -238,8 +265,8 @@ private def renderDeclHtmlDocstringFromInfoE
   if let some s := inductiveCtorsSection? then
     sections := sections.push s
 
-  let kindClass := kindClassOfDeclType declType
-  let keywordText := kindClassOfDeclType declType
+  let kindClass := externalDeclKindClass declType cinfo
+  let keywordText := externalDeclKeywordText declType cinfo
   let signatureHtml := signatureToHtml keywordText signature
 
   let body : DocGenHtml :=

@@ -26,7 +26,8 @@ structure DeclHtmlInput where
 
 private def kindClass (kind : String) : String :=
   match kind with
-  | "def" | "abbrev" => "def"
+  | "def" => "def"
+  | "abbrev" => "def abbrev"
   | "theorem" => "theorem"
   | "axiom" => "axiom"
   | "opaque" => "opaque"

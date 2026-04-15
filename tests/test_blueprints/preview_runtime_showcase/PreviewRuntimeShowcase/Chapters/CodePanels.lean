@@ -10,6 +10,8 @@ namespace PreviewRuntimeShowcase.CodePanelDecls
 
 def previewExternalDefinition : Nat := 0
 
+abbrev previewExternalAbbrev : Nat := previewExternalDefinition
+
 theorem previewExternalTheorem : True := by
   trivial
 
@@ -24,6 +26,10 @@ end PreviewRuntimeShowcase.CodePanelDecls
 
 :::definition "panel_external_definition" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition")
 In-module external definition panel sample.
+:::
+
+:::definition "panel_external_abbrev" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalAbbrev")
+In-module external Lean `abbrev` panel sample. Status summaries stay definition-like, while the rendered declaration preserves the `abbrev` keyword.
 :::
 
 :::theorem "panel_external_theorem" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalTheorem")
