@@ -86,8 +86,8 @@ def main() -> int:
 
     panel_re = re.compile(r'<details class="bp_code_block bp_code_panel"[^>]*>.*?</details>', re.S)
     external_panels = [p for p in panel_re.findall(code_panels) if "bp_external_status_badge_summary" in p]
-    if len(external_panels) < 7:
-        fail("expected at least seven external code panels in local showcase")
+    if len(external_panels) < 8:
+        fail("expected at least eight external code panels in local showcase")
 
     for i, panel in enumerate(external_panels, start=1):
         if "bp_code_progress" in panel:
@@ -110,12 +110,28 @@ def main() -> int:
         fail("missing missing-declaration row styling")
     if "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition" not in code_panels:
         fail("missing in-module external definition showcase declaration")
+    if "PreviewRuntimeShowcase.CodePanelDecls.previewExternalAbbrev" not in code_panels:
+        fail("missing in-module external abbrev showcase declaration")
     if "PreviewRuntimeShowcase.CodePanelDecls.previewExternalTheorem" not in code_panels:
         fail("missing in-module external theorem showcase declaration")
     if "Nat.add" not in code_panels:
         fail("missing out-of-module external definition showcase declaration")
     if "Nat.add_assoc" not in code_panels:
         fail("missing out-of-module external theorem showcase declaration")
+    abbrev_panel = next(
+        (p for p in external_panels if "PreviewRuntimeShowcase.CodePanelDecls.previewExternalAbbrev" in p),
+        None,
+    )
+    if abbrev_panel is None:
+        fail("missing external abbrev code panel")
+    if 'class="declaration decl def abbrev"' not in abbrev_panel:
+        fail("external abbrev panel missing definition-compatible abbrev styling classes")
+    if 'data-kind="abbrev"' not in abbrev_panel:
+        fail("external abbrev panel missing abbrev kind marker")
+    if '<span class="keyword token">abbrev</span>' not in abbrev_panel:
+        fail("external abbrev panel missing abbrev signature keyword")
+    if 'data-kind="def"' in abbrev_panel:
+        fail("external abbrev panel still exposes def kind")
 
     literate_panels = [p for p in panel_re.findall(code_panels) if "data-bp-proof-fold=" in p]
     if len(literate_panels) < 3:
