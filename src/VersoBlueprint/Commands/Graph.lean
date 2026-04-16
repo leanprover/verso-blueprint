@@ -60,6 +60,7 @@ def graphDotHeader (rankdir : String) : String :=
   "strict digraph \"\" {\n" ++
   s!"    rankdir={rankdir};\n" ++
   "    bgcolor=\"white\";\n" ++
+  "    pack=true;\n" ++
   "    splines=true;\n" ++
   "    nodesep=0.35;\n" ++
   "    ranksep=0.45;\n" ++

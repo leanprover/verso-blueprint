@@ -98,4 +98,9 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
     variant.dot.contains s!"label=\"{expectedLabel}\"" &&
     !variant.dot.contains "label=\"group_alpha\""
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  Informal.Commands.graphDotHeader "TB" |>.contains "pack=true;"
+
 end Verso.VersoBlueprintTests.BlueprintGraph.Groups

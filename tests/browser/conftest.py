@@ -155,7 +155,7 @@ def server(request):
         port = int(port)
 
     proc = subprocess.Popen(
-        ["python", "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
         cwd=site_dir,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

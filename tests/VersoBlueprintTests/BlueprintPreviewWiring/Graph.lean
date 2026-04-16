@@ -57,7 +57,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
         hasSubstr graphJs "graphviz: null," &&
+        hasSubstr graphJs "renderedVariantKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
+        hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
         hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
         hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
