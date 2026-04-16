@@ -11,6 +11,32 @@ def wait_for_graph(page: Page):
     )
 
 
+def graph_visibility_metrics(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            if (!canvas || !svg || !graph) return null;
+            const canvasRect = canvas.getBoundingClientRect();
+            const graphRect = graph.getBoundingClientRect();
+            return {
+                canvasTop: canvasRect.top,
+                canvasHeight: canvasRect.height,
+                graphTop: graphRect.top,
+                graphBottom: graphRect.bottom,
+            };
+        }"""
+    )
+
+
+def assert_graph_is_well_placed(page: Page):
+    metrics = graph_visibility_metrics(page)
+    assert metrics is not None
+    assert metrics["graphTop"] < metrics["canvasTop"] + 0.35 * metrics["canvasHeight"]
+    assert metrics["graphBottom"] > metrics["canvasTop"] + 0.5 * metrics["canvasHeight"]
+
+
 class TestGraphLayoutRuntime:
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
@@ -108,26 +134,29 @@ class TestGraphLayoutRuntime:
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
-        metrics = page.evaluate(
-            """() => {
-                const canvas = document.querySelector(".bp_graph_canvas");
-                const svg = canvas ? canvas.querySelector("svg") : null;
-                const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
-                if (!canvas || !svg || !graph) return null;
-                const canvasRect = canvas.getBoundingClientRect();
-                const graphRect = graph.getBoundingClientRect();
-                return {
-                    canvasTop: canvasRect.top,
-                    canvasHeight: canvasRect.height,
-                    graphTop: graphRect.top,
-                    graphBottom: graphRect.bottom,
-                };
-            }"""
-        )
+        assert_graph_is_well_placed(page)
 
-        assert metrics is not None
-        assert metrics["graphTop"] < metrics["canvasTop"] + 0.35 * metrics["canvasHeight"]
-        assert metrics["graphBottom"] > metrics["canvasTop"] + 0.5 * metrics["canvasHeight"]
+    def test_graph_remains_well_placed_after_variant_switch(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        selector = page.locator(".bp_graph_view_select").first
+
+        assert_graph_is_well_placed(page)
+
+        for variant in ["group", "parent:preview_core", "parent:preview_group", "full"]:
+            selector.select_option(variant)
+            page.wait_for_function(
+                """(expectedValue) => {
+                    const select = document.querySelector(".bp_graph_view_select");
+                    const canvas = document.querySelector(".bp_graph_canvas");
+                    const svg = canvas ? canvas.querySelector("svg") : null;
+                    return !!select && !!svg && select.value === expectedValue;
+                }""",
+                arg=variant,
+            )
+            assert_graph_is_well_placed(page)
 
     def test_graph_width_is_css_driven_without_inline_offsets(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})

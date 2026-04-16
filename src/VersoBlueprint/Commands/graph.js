@@ -148,6 +148,7 @@
       groupHoverShownKey: "",
       groupHoverShownNodeId: "",
       graphviz: null,
+      renderedVariantKey: "",
       canvasAutoHeight: null,
       canvasUserResized: false,
       renderToken: 0,
@@ -191,6 +192,21 @@
       graphState.lastCanvasHeight = nextHeight;
     }
     return true;
+  }
+
+  function resetGraphvizForVariant(graphRoot, graphState) {
+    if (graphRoot instanceof Element) {
+      graphRoot.querySelectorAll("svg").forEach(function (svg) {
+        svg.remove();
+      });
+    }
+    if (graphState && typeof graphState === "object") {
+      graphState.graphviz = null;
+      graphState.renderFinalizedToken = 0;
+      graphState.lastCanvasWidth = 0;
+      graphState.lastCanvasHeight = 0;
+      graphState.renderedVariantKey = "";
+    }
   }
 
   function parsePreviewEntry(entry) {
@@ -902,8 +918,15 @@
             );
           };
 
+          if (
+            graphState.renderedVariantKey &&
+            graphState.renderedVariantKey !== activeVariant.key
+          ) {
+            resetGraphvizForVariant(graphRoot, graphState);
+          }
           const gv = graphState.graphviz || graphContainer.graphviz();
           graphState.graphviz = gv;
+          graphState.renderedVariantKey = activeVariant.key;
           gv
             .zoom(true)
             .width(width)
