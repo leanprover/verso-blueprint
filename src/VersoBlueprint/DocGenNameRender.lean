@@ -96,7 +96,7 @@ private def plainDocstringHtml (docs? : Option String) : DocGenHtml :=
   | some docs =>
     {{<pre class="docstring">{{.text true docs}}</pre>}}
 
-private def kindClassOfDeclType : Verso.Genre.Manual.Block.Docstring.DeclType → String
+private def kindMarkerOfDeclType : Verso.Genre.Manual.Block.Docstring.DeclType → String
   | .theorem => "theorem"
   | .axiom _ => "axiom"
   | .opaque _ => "opaque"
@@ -109,39 +109,48 @@ private def kindClassOfDeclType : Verso.Genre.Manual.Block.Docstring.DeclType �
   | .quotPrim _ => "primitive"
   | .other => "def"
 
+private structure ExternalDeclPresentation where
+  kindClass : String
+  kindMarker : String
+  keywordText : String
+
 private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : String) : String :=
   match safety with
   | .unsafe => s!"unsafe {base}"
   | .partial => s!"partial {base}"
   | .safe => base
 
-private def externalDeclKindClass
-    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) : String :=
-  let kindClass := kindClassOfDeclType declType
+private def externalDeclPresentation
+    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) :
+    ExternalDeclPresentation :=
+  let kindMarker := kindMarkerOfDeclType declType
   match cinfo with
   | .defnInfo defn =>
     if defn.hints.isAbbrev then
-      s!"{kindClass} abbrev"
+      {
+        kindClass := s!"{kindMarker} abbrev"
+        kindMarker := "abbrev"
+        keywordText := keywordTextOfDefinitionSafety defn.safety "abbrev"
+      }
     else
-      kindClass
-  | _ => kindClass
-
-private def externalDeclKeywordText
-    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) : String :=
-  match cinfo with
-  | .defnInfo defn =>
-    if defn.hints.isAbbrev then
-      keywordTextOfDefinitionSafety defn.safety "abbrev"
-    else
-      kindClassOfDeclType declType
-  | _ => kindClassOfDeclType declType
+      {
+        kindClass := kindMarker
+        kindMarker
+        keywordText := keywordTextOfDefinitionSafety defn.safety "def"
+      }
+  | _ =>
+      {
+        kindClass := kindMarker
+        kindMarker
+        keywordText := kindMarker
+      }
 
 private def renderExternalDeclWrapper
-    (decl : Name) (kindClass : String) (keywordText : String)
+    (decl : Name) (kindClass : String) (kindMarker : String)
     (signature : DocGenHtml) (body : DocGenHtml) : DocGenHtml :=
   open Verso.Output.Html in
   {{
-    <div class={{s!"declaration decl {kindClass}"}} data-decl={{decl.toString}} data-kind={{keywordText}}>
+    <div class={{s!"declaration decl {kindClass}"}} data-decl={{decl.toString}} data-kind={{kindMarker}}>
       {{signature}}
       <div class="bp_external_decl_body">{{body}}</div>
     </div>
@@ -265,16 +274,16 @@ private def renderDeclHtmlDocstringFromInfoE
   if let some s := inductiveCtorsSection? then
     sections := sections.push s
 
-  let kindClass := externalDeclKindClass declType cinfo
-  let keywordText := externalDeclKeywordText declType cinfo
-  let signatureHtml := signatureToHtml keywordText signature
+  let presentation := externalDeclPresentation declType cinfo
+  let signatureHtml := signatureToHtml presentation.keywordText signature
 
   let body : DocGenHtml :=
     if sections.isEmpty then
       plainDocstringHtml docs?
     else
       {{ {{plainDocstringHtml docs?}} {{sections}} }}
-  pure <| .ok <| renderExternalDeclWrapper decl kindClass keywordText signatureHtml body
+  pure <| .ok <| renderExternalDeclWrapper
+    decl presentation.kindClass presentation.kindMarker signatureHtml body
 
 /--
 Render one declaration directly from known declaration facts.

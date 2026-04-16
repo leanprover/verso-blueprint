@@ -14,6 +14,10 @@ def sameModuleRenderDef : Nat := 0
 
 abbrev sameModuleRenderAbbrev : Nat := sameModuleRenderDef
 
+unsafe def sameModuleRenderUnsafeDef : Nat := sameModuleRenderDef + 1
+
+unsafe abbrev sameModuleRenderUnsafeAbbrev : Nat := sameModuleRenderUnsafeDef
+
 theorem sameModuleRenderThm : True := by
   trivial
 
@@ -25,6 +29,8 @@ theorem sameModuleRenderThm : True := by
     let prod? ← (Informal.renderDeclHtmlNodeDirect? `Prod).run'
     let sameDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderDef).run'
     let sameAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderAbbrev).run'
+    let sameUnsafeDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeDef).run'
+    let sameUnsafeAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeAbbrev).run'
     let sameThm? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderThm).run'
     let missing? ← (Informal.renderDeclHtmlNodeDirect? `No.Such.Declaration).run'
     let natAddHasPayload :=
@@ -38,16 +44,20 @@ theorem sameModuleRenderThm : True := by
         out.contains "class=\"hover-info\"" && !out.contains "data-verso-hover="
       | none => false
     let externalWrapperHtmlOk :=
-      match natAdd?, sameDef?, sameAbbrev?, sameThm? with
-      | some natAdd, some sameDef, some sameAbbrev, some sameThm =>
+      match natAdd?, sameDef?, sameAbbrev?, sameUnsafeDef?, sameUnsafeAbbrev?, sameThm? with
+      | some natAdd, some sameDef, some sameAbbrev, some sameUnsafeDef, some sameUnsafeAbbrev, some sameThm =>
         let badWide := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">def</span> <div class=\"wide-only\">"
         let badAbbrev := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">abbrev</span> <div class=\"wide-only\">"
+        let badUnsafeDef := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">unsafe def</span> <div class=\"wide-only\">"
+        let badUnsafeAbbrev := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">unsafe abbrev</span> <div class=\"wide-only\">"
         let badTheorem := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">theorem</span> <div class=\"wide-only\">"
         !natAdd.asString.contains badWide &&
         !sameDef.asString.contains badWide &&
         !sameAbbrev.asString.contains badAbbrev &&
+        !sameUnsafeDef.asString.contains badUnsafeDef &&
+        !sameUnsafeAbbrev.asString.contains badUnsafeAbbrev &&
         !sameThm.asString.contains badTheorem
-      | _, _, _, _ => false
+      | _, _, _, _, _, _ => false
     let abbrevUsesAbbrevRendering :=
       match sameAbbrev? with
       | some sameAbbrev =>
@@ -58,14 +68,37 @@ theorem sameModuleRenderThm : True := by
           out.contains "<span class=\"keyword token\">abbrev</span>" &&
           !out.contains "data-kind=\"def\""
       | none => false
+    let unsafeDefUsesUniformDefinitionRendering :=
+      match sameUnsafeDef? with
+      | some sameUnsafeDef =>
+        let out := sameUnsafeDef.asString
+        out.contains "sameModuleRenderUnsafeDef" &&
+          out.contains "class=\"declaration decl def\"" &&
+          out.contains "data-kind=\"def\"" &&
+          out.contains "<span class=\"keyword token\">unsafe def</span>"
+      | none => false
+    let unsafeAbbrevUsesUniformAbbrevRendering :=
+      match sameUnsafeAbbrev? with
+      | some sameUnsafeAbbrev =>
+        let out := sameUnsafeAbbrev.asString
+        out.contains "sameModuleRenderUnsafeAbbrev" &&
+          out.contains "class=\"declaration decl def abbrev\"" &&
+          out.contains "data-kind=\"abbrev\"" &&
+          out.contains "<span class=\"keyword token\">unsafe abbrev</span>" &&
+          !out.contains "data-kind=\"unsafe abbrev\""
+      | none => false
     pure
       (natAddHasPayload &&
         natAddHasLocalHover &&
         externalWrapperHtmlOk &&
         abbrevUsesAbbrevRendering &&
+        unsafeDefUsesUniformDefinitionRendering &&
+        unsafeAbbrevUsesUniformAbbrevRendering &&
         prod?.isSome &&
         sameDef?.isSome &&
         sameAbbrev?.isSome &&
+        sameUnsafeDef?.isSome &&
+        sameUnsafeAbbrev?.isSome &&
         sameThm?.isSome &&
         missing?.isNone)
 
@@ -78,6 +111,10 @@ theorem sameModuleRenderThm : True := by
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderDef)
     let sameAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderAbbrev)
+    let sameUnsafeDef ← Informal.externalRefSnapshotAtCurrentDir opts
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeDef)
+    let sameUnsafeAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeAbbrev)
     let importedDef ← Informal.externalRefSnapshotAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Nat.add)
     let importedThm ← Informal.externalRefSnapshotAtCurrentDir opts
@@ -90,6 +127,12 @@ theorem sameModuleRenderThm : True := by
       sameAbbrev.present &&
       sameAbbrev.kind == .definition &&
       sameAbbrev.render.isOk &&
+      sameUnsafeDef.present &&
+      sameUnsafeDef.kind == .definition &&
+      sameUnsafeDef.render.isOk &&
+      sameUnsafeAbbrev.present &&
+      sameUnsafeAbbrev.kind == .definition &&
+      sameUnsafeAbbrev.render.isOk &&
       importedDef.present &&
       importedDef.render.isOk &&
       importedThm.present &&
