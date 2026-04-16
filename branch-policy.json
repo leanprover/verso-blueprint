@@ -1,4 +1,5 @@
 {
   "version": 1,
-  "default_dev_branch": "v4.29.0"
+  "default_dev_branch": "v4.29.0",
+  "required_backport_branches": ["v4.28.0"]
 }

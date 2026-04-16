@@ -20,6 +20,7 @@ NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(?:[-.A-Za-z0-9]+)?$
 class BranchPolicy:
     version: int
     default_dev_branch: str
+    required_backport_branches: tuple[str, ...]
     source_path: Path
 
 
@@ -48,7 +49,12 @@ def branch_policy_path(checkout_root: Path) -> Path:
 def load_branch_policy(checkout_root: Path) -> BranchPolicy:
     path = branch_policy_path(checkout_root)
     if not path.exists():
-        return BranchPolicy(version=1, default_dev_branch=active_release_branch(checkout_root), source_path=path)
+        return BranchPolicy(
+            version=1,
+            default_dev_branch=active_release_branch(checkout_root),
+            required_backport_branches=(),
+            source_path=path,
+        )
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -62,6 +68,13 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
     if not isinstance(raw_default, str):
         raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: missing string `default_dev_branch`")
 
+    raw_backports = data.get("required_backport_branches", [])
+    if not isinstance(raw_backports, list) or not all(isinstance(item, str) for item in raw_backports):
+        raise SystemExit(
+            f"[blueprint-harness] invalid branch policy file `{path}`: "
+            "`required_backport_branches` must be a list of strings"
+        )
+
     raw_version = data.get("version", 1)
     if not isinstance(raw_version, int):
         raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: `version` must be an integer")
@@ -69,6 +82,7 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
     return BranchPolicy(
         version=raw_version,
         default_dev_branch=normalize_lean_release_ref(raw_default),
+        required_backport_branches=tuple(normalize_lean_release_ref(item) for item in raw_backports),
         source_path=path,
     )
 
