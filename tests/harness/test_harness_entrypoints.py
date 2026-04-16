@@ -89,6 +89,11 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("fresh consumer Blueprint projects", result.stdout)
 
+    def test_backport_pr_check_help(self) -> None:
+        result = self.run_command([sys.executable, "scripts/check_backport_pr.py", "--help"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("paired backport", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,14 @@ What was wrong, missing, or confusing before this change?
 - Manual checks performed
 - External projects or worktrees exercised
 
+## Backports
+
+Draft `v4.29.0` PRs skip the paired-backport gate. Once a `v4.29.0` PR is
+ready for review, add one line per required backport target:
+
+- `Backport v4.28.0: #123`
+- `Backport v4.28.0: exempt: <reason>`
+
 ## Risks and Follow-Ups
 
 - Known limitations

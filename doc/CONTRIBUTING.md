@@ -52,6 +52,16 @@ subjects such as `Update files` or `misc cleanup`.
   - notable risks or follow-up
 - When the work came from a local worktree, include the worktree name and write
   scope in the PR body or draft notes.
+- Non-draft PRs targeting `v4.29.0` must include paired backport metadata for
+  each required backport release branch listed in `branch-policy.json`, unless
+  the PR explicitly records an exemption with a reason.
+- The expected workflow is:
+  - keep the `v4.29.0` PR in draft while the change is still converging
+  - once it is ready for review, open the paired `v4.28.0` PR
+  - wait for CI on both PRs before merging the `v4.29.0` PR
+- Record the pairing in the PR body using lines like:
+  - `Backport v4.28.0: #123`
+  - `Backport v4.28.0: exempt: docs-only change`
 
 See the repository PR template for the preferred structure.
 

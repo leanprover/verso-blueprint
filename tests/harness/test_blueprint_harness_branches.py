@@ -21,7 +21,20 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
 
             self.assertEqual(policy.version, 1)
             self.assertEqual(policy.default_dev_branch, "v4.29.0")
+            self.assertEqual(policy.required_backport_branches, ())
             self.assertEqual(policy.source_path, root / "branch-policy.json")
+
+    def test_load_branch_policy_reads_required_backport_branches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(
+                root / "branch-policy.json",
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["4.28.0"]\n}\n',
+            )
+
+            policy = branches_mod.load_branch_policy(root)
+
+            self.assertEqual(policy.required_backport_branches, ("v4.28.0",))
 
     def test_load_branch_policy_falls_back_to_active_release_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
