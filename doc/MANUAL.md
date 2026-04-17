@@ -441,6 +441,30 @@ shows an associated Rust code panel below the statement body.
 `blueprint_graph` renders a dependency-oriented view of the current Blueprint
 document.
 
+Use it as either:
+
+```lean
+{blueprint_graph}
+```
+
+or with an explicit direction:
+
+```lean
+{blueprint_graph (direction := LR)}
+```
+
+Supported directions are `LR`, `RL`, `TB`, and `BT`. When `(direction := ...)`
+is omitted, the command falls back to the
+`verso.blueprint.graph.defaultDirection` option.
+
+The rendered graph page is interactive:
+
+- a `View` selector switches between the full graph and any derived grouped
+  views
+- a `Legend` button opens the current graph legend in a popover
+- when grouped metadata produces multiple children for the same parent, the
+  selector includes a synthetic group overview plus one subgraph view per group
+
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
 
