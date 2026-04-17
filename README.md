@@ -154,6 +154,10 @@ Blueprint can render:
 - math-enabled previews and cross-links
 - associated Rust code panels for labeled inline Rust blocks
 
+The graph page is interactive rather than static: it can expose a view switcher
+for grouped graphs, a legend popover, and the usual Blueprint hover/link
+previews.
+
 Progress is computed automatically from the status of the associated Lean code
 and declarations, so the HTML summary and graph views stay aligned with the
 formal side. In particular, incomplete Lean declarations such as `sorry`

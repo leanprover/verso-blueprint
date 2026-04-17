@@ -111,7 +111,9 @@ The starter template includes:
 - a dependency graph with `{blueprint_graph}`
 - a progress summary with `{blueprint_summary}`
 
-That is the core HTML surface most projects want first.
+That is the core HTML surface most projects want first. The dependency graph can
+also take `(direction := LR | RL | TB | BT)`, and grouped projects expose the
+current graph views through the rendered page's `View` and `Legend` controls.
 
 ## Read the generator entry point
 
