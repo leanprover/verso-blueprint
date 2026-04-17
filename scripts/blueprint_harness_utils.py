@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+import shutil
 
 
 EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
@@ -49,9 +50,15 @@ def rebuild_embedded_asset_owners(package_root: Path) -> list[str]:
         owner = package_root / owner_rel
         if not asset.exists() or not owner.exists():
             continue
-        if asset.stat().st_mtime_ns <= owner.stat().st_mtime_ns:
-            continue
         os.utime(owner, None)
+        rel_target_stem = Path(*target.split("."))
+        for build_root in (package_root / ".lake" / "build" / "lib" / "lean", package_root / ".lake" / "build" / "ir"):
+            base = build_root / rel_target_stem
+            for artifact in base.parent.glob(base.name + "*"):
+                if artifact.is_dir():
+                    shutil.rmtree(artifact)
+                else:
+                    artifact.unlink()
         if target not in seen_targets:
             touched_targets.append(target)
             seen_targets.add(target)
