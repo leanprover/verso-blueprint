@@ -97,6 +97,13 @@ From a linked worktree, do not treat `lake build` or `lake test` as the
 default next step. Ordinary `generate` and `validate` runs reuse the current
 worktree `.lake/`; they do not automatically resync it from the root checkout.
 
+The harness now also detects embedded package assets such as `graph.css`,
+`graph.js`, `summary.css`, `bibliography.css`, and `static-web/math.js`
+becoming newer than their owning Lean modules before generator builds run. When
+that happens, it refreshes the owner module mtimes and runs a targeted root
+`lake build` for those owning modules so downstream generated sites do not
+silently serve stale embedded assets.
+
 If you want to refresh the worktree from the root checkout and shared reference
 cache, prefer:
 

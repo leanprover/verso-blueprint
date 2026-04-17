@@ -182,8 +182,8 @@
 }
 
 .bp_graph_controls_primary {
-  flex: 1 1 22rem;
-  min-width: min(100%, 22rem);
+  flex: 1 1 auto;
+  min-width: min(100%, 20rem);
 }
 
 .bp_graph_controls_label {
@@ -194,8 +194,7 @@
 }
 
 .bp_graph_controls_select {
-  flex: 1 1 18rem;
-  min-width: min(28rem, 88vw);
+  min-width: 0;
   max-width: 100%;
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-md);
@@ -204,6 +203,20 @@
   padding: 0.35rem 0.55rem;
   font-size: 0.87rem;
   line-height: 1.2;
+}
+
+.bp_graph_view_select {
+  flex: 1 1 clamp(15rem, 30vw, 22rem);
+  width: clamp(15rem, 30vw, 22rem);
+  min-width: min(100%, 15rem);
+}
+
+.bp_graph_direction_select {
+  display: inline-block;
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  justify-self: start;
 }
 
 .bp_graph_controls_select:focus-visible {
@@ -264,8 +277,9 @@
   top: 0;
   right: 0;
   z-index: 26;
-  width: min(18rem, calc(100% - 1.8rem));
-  max-width: 100%;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(18rem, calc(100% - 1.8rem));
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-xl);
   background: rgba(255, 255, 255, 0.98);
@@ -352,6 +366,9 @@
   display: grid;
   gap: 0.45rem;
   padding: 0.55rem 0.7rem 0.7rem;
+  justify-items: start;
+  width: max-content;
+  min-width: 0;
 }
 
 .bp_graph_legend_group {

@@ -102,6 +102,12 @@
 - The Python harness is maintainer tooling for this repository's in-repo
   own tests plus ephemeral checkout validations, not the preferred end-user
   interface.
+- Harnessed artifact-generation flows now detect embedded package assets such
+  as `graph.css`, `graph.js`, `summary.css`, `bibliography.css`, and
+  `static-web/math.js` becoming newer than their owning Lean modules before
+  build steps run. When that happens, the harness refreshes the owner-module
+  mtimes and runs a targeted root `lake build` for those owner modules so
+  downstream generator projects do not silently serve stale embedded assets.
 - Keep the two generated artifact families distinct:
   - Reference blueprints are the release-facing validation catalog built by
     `./scripts/generate-reference-blueprints.sh`,
