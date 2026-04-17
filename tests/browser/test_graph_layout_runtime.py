@@ -30,6 +30,23 @@ def graph_visibility_metrics(page: Page):
     )
 
 
+def graph_dimensions(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            if (!canvas || !svg || !graph) return null;
+            const graphRect = graph.getBoundingClientRect();
+            return {
+                width: graphRect.width,
+                height: graphRect.height,
+                activeDirection: canvas.getAttribute("data-bp-active-direction") || "",
+            };
+        }"""
+    )
+
+
 def assert_graph_is_well_placed(page: Page):
     metrics = graph_visibility_metrics(page)
     assert metrics is not None
@@ -83,6 +100,59 @@ class TestGraphLayoutRuntime:
                 );
             }"""
         )
+
+    def test_graph_options_popover_switches_direction(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        options_button = page.locator(".bp_graph_options_button").first
+        options_panel = page.locator(".bp_graph_options_popover").first
+        direction_selector = page.locator(".bp_graph_direction_select").first
+
+        initial = graph_dimensions(page)
+        assert initial is not None
+        assert initial["activeDirection"] == "TB"
+
+        options_button.click()
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector(".bp_graph_options_button");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                const select = document.querySelector(".bp_graph_direction_select");
+                return (
+                    !!button &&
+                    !!panel &&
+                    !!select &&
+                    button.getAttribute("aria-expanded") === "true" &&
+                    !panel.hidden &&
+                    select.value === "TB"
+                );
+            }"""
+        )
+
+        direction_selector.select_option("LR")
+        page.wait_for_function(
+            """() => {
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const select = document.querySelector(".bp_graph_direction_select");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                return (
+                    !!canvas &&
+                    !!select &&
+                    !!panel &&
+                    select.value === "LR" &&
+                    canvas.getAttribute("data-bp-active-direction") === "LR" &&
+                    panel.hidden
+                );
+            }"""
+        )
+
+        switched = graph_dimensions(page)
+        assert switched is not None
+        assert switched["activeDirection"] == "LR"
+        assert switched["width"] > switched["height"]
+        assert_graph_is_well_placed(page)
 
     def test_graph_page_does_not_force_extra_vertical_scroll(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})

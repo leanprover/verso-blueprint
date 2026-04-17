@@ -113,7 +113,8 @@ The starter template includes:
 
 That is the core HTML surface most projects want first. The dependency graph can
 also take `(direction := LR | RL | TB | BT)`, and grouped projects expose the
-current graph views through the rendered page's `View` and `Legend` controls.
+current graph views through the rendered page's `View`, `Legend`, and `Graph
+options` controls.
 
 ## Read the generator entry point
 

@@ -81,11 +81,20 @@ structure GraphRenderVariant where
   key : String
   label : String
   dot : String
+  dotByDirection : Array (String × String) := #[]
   direction : GraphDirection := .TB
   selectOnNodeId : Array (String × String) := #[]
   hoverOnNodeId : Array (String × String) := #[]
   previewKeyByNodeId : Array (String × String) := #[]
 deriving Inhabited, ToJson
+
+def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
+
+def dotsForAllDirections (graph : Graph)
+    (resolveHref : Name → Option String) (resolveGroupTitle : Name → Option String) :
+    Array (String × String) :=
+  allGraphDirections.map fun direction =>
+    (direction.rankdir, graphToDot graph direction resolveHref resolveGroupTitle)
 
 -- Keep this module rebuilt when the embedded graph assets change.
 -- This module owns the embedded graph CSS/JS boundary, so adjacent edits here
@@ -329,6 +338,7 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       key := "full"
       label := "Full Graph"
       dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
+      dotByDirection := dotsForAllDirections graphData.graph resolveHref resolveGroupTitle
       direction := graphData.direction
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
@@ -341,6 +351,9 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       label := "Group View"
       dot := graphToDot (mkParentOverviewGraph graphData.graph parents groupTitles)
         graphData.direction (fun _ => none) (fun _ => none)
+      dotByDirection := dotsForAllDirections
+        (mkParentOverviewGraph graphData.graph parents groupTitles)
+        (fun _ => none) (fun _ => none)
       direction := graphData.direction
       selectOnNodeId := parentVariantRefs
       hoverOnNodeId := parentVariantRefs
@@ -350,6 +363,7 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       key := "full"
       label := "Full Graph"
       dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
+      dotByDirection := dotsForAllDirections graphData.graph resolveHref resolveGroupTitle
       direction := graphData.direction
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
@@ -363,6 +377,7 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
         label := title
         dot := graphToDot parentSubgraph
           graphData.direction resolveHref resolveGroupTitle
+        dotByDirection := dotsForAllDirections parentSubgraph resolveHref resolveGroupTitle
         direction := graphData.direction
         selectOnNodeId := #[]
         hoverOnNodeId := #[]
@@ -489,6 +504,13 @@ block_extension Block.graph (graphData : GraphBlockData) where
             | _ => Option.none with
         | some value => value
         | Option.none => fallbackGraphControlId id "--view"
+      let graphDirectionSelectId : String :=
+        let attrs := s.htmlId id
+        match attrs.findSome? fun
+            | ("id", value) => some s!"{value}--direction"
+            | _ => Option.none with
+        | some value => value
+        | Option.none => fallbackGraphControlId id "--direction"
       let graphLegendPanelId : String :=
         let attrs := s.htmlId id
         match attrs.findSome? fun
@@ -496,6 +518,17 @@ block_extension Block.graph (graphData : GraphBlockData) where
             | _ => Option.none with
         | some value => value
         | Option.none => fallbackGraphControlId id "--legend"
+      let graphOptionsPanelId : String :=
+        let attrs := s.htmlId id
+        match attrs.findSome? fun
+            | ("id", value) => some s!"{value}--options"
+            | _ => Option.none with
+        | some value => value
+        | Option.none => fallbackGraphControlId id "--options"
+      let graphDirectionOptions : Array Output.Html :=
+        allGraphDirections.map fun direction => {{
+          <option value={{direction.rankdir}}>{{direction.rankdir}}</option>
+        }}
       let fallbackDot : String :=
         match graphVariants[0]? with
         | some variant => variant.dot
@@ -520,6 +553,17 @@ block_extension Block.graph (graphData : GraphBlockData) where
                 {{graphVariantOptions}}
               </select>
             </div>
+            <div class="bp_graph_controls_actions">
+              <button
+                type="button"
+                class="bp_graph_controls_button bp_graph_options_button"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-controls={{graphOptionsPanelId}}
+              >
+                "Graph options"
+              </button>
+            </div>
           </div>
           <div id={{graphLegendPanelId}} class="bp_graph_legend_popover" hidden>
             <div class="bp_graph_legend_popover_header">
@@ -529,6 +573,22 @@ block_extension Block.graph (graphData : GraphBlockData) where
             <div class="bp_graph_legend_popover_body">
               {{fullLegendHtml}}
               {{groupLegendHtml}}
+            </div>
+          </div>
+          <div id={{graphOptionsPanelId}} class="bp_graph_options_popover" hidden>
+            <div class="bp_graph_options_popover_header">
+              <span class="bp_graph_options_popover_title">"Graph options"</span>
+              <button type="button" class="bp_graph_options_popover_close" aria-label="Close graph options">"Close"</button>
+            </div>
+            <div class="bp_graph_options_popover_body">
+              <label class="bp_graph_controls_label" for={{graphDirectionSelectId}}>"Direction"</label>
+              <select
+                id={{graphDirectionSelectId}}
+                class="bp_graph_controls_select bp_graph_direction_select"
+                data-bp-graph-default-direction={{graphData.direction.rankdir}}
+              >
+                {{graphDirectionOptions}}
+              </select>
             </div>
           </div>
           <div class="bp_graph_canvas" "data-bp-graph-direction"={{graphData.direction.rankdir}}>

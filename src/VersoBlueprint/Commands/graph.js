@@ -111,10 +111,42 @@
       key: "full",
       label: "Full Graph",
       dot: dotTxt,
+      dotByDirection: [[fallbackDirection, dotTxt]],
       direction: fallbackDirection,
       selectOnNodeId: [],
       hoverOnNodeId: []
     }];
+  }
+
+  function dotByDirectionMap(dotByDirection, fallbackDirection, fallbackDot) {
+    const map = new Map();
+    if (Array.isArray(dotByDirection)) {
+      dotByDirection.forEach(function (entry) {
+        if (!Array.isArray(entry) || entry.length < 2) return;
+        const direction = normalizeGraphDirection(entry[0]);
+        const dot = String(entry[1] || "").trim();
+        if (!dot) return;
+        map.set(direction, dot);
+      });
+    }
+    if (fallbackDot) {
+      const normalizedFallback = normalizeGraphDirection(fallbackDirection);
+      if (!map.has(normalizedFallback)) {
+        map.set(normalizedFallback, fallbackDot);
+      }
+    }
+    return map;
+  }
+
+  function dotForVariantDirection(variant, direction) {
+    if (!variant || typeof variant !== "object") return "";
+    const desired = normalizeGraphDirection(direction);
+    const dotMap = variant.dotByDirection instanceof Map ? variant.dotByDirection : null;
+    if (dotMap) {
+      const matched = dotMap.get(desired);
+      if (matched) return matched;
+    }
+    return String(variant.dot || "").trim();
   }
 
   function graphNodeLabel(node) {
@@ -149,6 +181,7 @@
       groupHoverShownNodeId: "",
       graphviz: null,
       renderedVariantKey: "",
+      renderedDirectionKey: "",
       canvasAutoHeight: null,
       canvasUserResized: false,
       renderToken: 0,
@@ -206,6 +239,7 @@
       graphState.lastCanvasWidth = 0;
       graphState.lastCanvasHeight = 0;
       graphState.renderedVariantKey = "";
+      graphState.renderedDirectionKey = "";
     }
   }
 
@@ -608,49 +642,49 @@
     if (groupLegend) groupLegend.hidden = !showGroupLegend;
   }
 
-  function bindLegendPopover(graphBlock) {
-    const legendButton = graphBlock.querySelector(".bp_graph_legend_button");
-    const legendPanel = graphBlock.querySelector(".bp_graph_legend_popover");
-    const legendClose = legendPanel
-      ? legendPanel.querySelector(".bp_graph_legend_popover_close")
+  function bindAnchoredPopover(graphBlock, buttonSelector, panelSelector, closeSelector, boundAttr) {
+    const triggerButton = graphBlock.querySelector(buttonSelector);
+    const popoverPanel = graphBlock.querySelector(panelSelector);
+    const popoverClose = popoverPanel
+      ? popoverPanel.querySelector(closeSelector)
       : null;
-    if (!legendButton || !legendPanel) return null;
+    if (!triggerButton || !popoverPanel) return null;
 
     const position = function () {
       const blockRect = graphBlock.getBoundingClientRect();
-      const buttonRect = legendButton.getBoundingClientRect();
+      const buttonRect = triggerButton.getBoundingClientRect();
       const top = Math.max(0, Math.round(buttonRect.bottom - blockRect.top + 8));
       const right = Math.max(0, Math.round(blockRect.right - buttonRect.right));
-      legendPanel.style.top = top + "px";
-      legendPanel.style.right = right + "px";
+      popoverPanel.style.top = top + "px";
+      popoverPanel.style.right = right + "px";
     };
 
     const setOpen = function (isOpen) {
       if (isOpen) position();
-      legendPanel.hidden = !isOpen;
-      legendButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      popoverPanel.hidden = !isOpen;
+      triggerButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
     };
 
     setOpen(false);
-    if (legendButton.getAttribute("data-bp-legend-bound") === "1") {
+    if (triggerButton.getAttribute(boundAttr) === "1") {
       return {
         open: function () { setOpen(true); },
         close: function () { setOpen(false); },
         position: position
       };
     }
-    legendButton.setAttribute("data-bp-legend-bound", "1");
+    triggerButton.setAttribute(boundAttr, "1");
 
-    legendButton.addEventListener("click", function () {
-      setOpen(legendPanel.hidden);
+    triggerButton.addEventListener("click", function () {
+      setOpen(popoverPanel.hidden);
     });
-    if (legendClose) {
-      legendClose.addEventListener("click", function () {
+    if (popoverClose) {
+      popoverClose.addEventListener("click", function () {
         setOpen(false);
       });
     }
     document.addEventListener("pointerdown", function (ev) {
-      if (legendPanel.hidden) return;
+      if (popoverPanel.hidden) return;
       const target = ev.target;
       if (!(target instanceof Node)) return;
       if (graphBlock.contains(target)) return;
@@ -662,6 +696,26 @@
       close: function () { setOpen(false); },
       position: position
     };
+  }
+
+  function bindLegendPopover(graphBlock) {
+    return bindAnchoredPopover(
+      graphBlock,
+      ".bp_graph_legend_button",
+      ".bp_graph_legend_popover",
+      ".bp_graph_legend_popover_close",
+      "data-bp-legend-bound"
+    );
+  }
+
+  function bindOptionsPopover(graphBlock) {
+    return bindAnchoredPopover(
+      graphBlock,
+      ".bp_graph_options_button",
+      ".bp_graph_options_popover",
+      ".bp_graph_options_popover_close",
+      "data-bp-options-bound"
+    );
   }
 
   Promise.resolve()
@@ -679,6 +733,7 @@
         if (graphContainer.empty()) return;
         const graphState = ensureGraphBlockState(graphBlock);
         const selector = graphBlock.querySelector(".bp_graph_view_select");
+        const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
         const previewMap = collectPreviewTemplates(graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
         const previewClose = previewPanelNode
@@ -724,6 +779,7 @@
           const label = String(variant.label || key).trim();
           const dot = String(variant.dot || "").trim();
           const direction = normalizeGraphDirection(variant.direction);
+          const dotByDirection = dotByDirectionMap(variant.dotByDirection, direction, dot);
           const selectOnNodeId = Array.isArray(variant.selectOnNodeId) ? variant.selectOnNodeId : [];
           const hoverOnNodeId = Array.isArray(variant.hoverOnNodeId) ? variant.hoverOnNodeId : [];
           const previewKeyByNodeId = Array.isArray(variant.previewKeyByNodeId) ? variant.previewKeyByNodeId : [];
@@ -732,6 +788,7 @@
             key: key,
             label: label || key,
             dot: dot,
+            dotByDirection: dotByDirection,
             direction: direction,
             selectOnNodeId: selectOnNodeId,
             hoverOnNodeId: hoverOnNodeId,
@@ -755,12 +812,23 @@
           activeKey = selector.value;
         }
         if (selector) selector.value = activeKey;
+        let activeDirection = normalizeGraphDirection(
+          directionSelector && directionSelector.value
+            ? directionSelector.value
+            : (directionSelector && directionSelector.getAttribute("data-bp-graph-default-direction"))
+        );
+        if (directionSelector) directionSelector.value = activeDirection;
         syncLegend(graphBlock, activeKey);
         const legendPopover = bindLegendPopover(graphBlock);
+        const optionsPopover = bindOptionsPopover(graphBlock);
 
         const getActiveVariant = function () {
           const fallback = variantsByKey.get("full") || variants[0];
           return variantsByKey.get(activeKey) || fallback;
+        };
+
+        const getActiveDirection = function () {
+          return normalizeGraphDirection(activeDirection);
         };
 
         const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
@@ -789,7 +857,7 @@
               groupHoverGraphviz
                 .width(width)
                 .height(height)
-                .renderDot(variant.dot);
+                .renderDot(dotForVariantDirection(variant, getActiveDirection()));
             },
             positionPanel: makeGroupPanelPositioner(graphBlock, groupHoverBehavior),
             onHide: function () {
@@ -816,6 +884,9 @@
             if (legendPopover && !graphBlock.querySelector(".bp_graph_legend_popover").hidden) {
               legendPopover.position();
             }
+            if (optionsPopover && !graphBlock.querySelector(".bp_graph_options_popover").hidden) {
+              optionsPopover.position();
+            }
             if (
               graphState.previewController &&
               graphState.previewController.behavior &&
@@ -838,6 +909,7 @@
           window.addEventListener("keydown", function (ev) {
             if (ev.key !== "Escape") return;
             if (legendPopover) legendPopover.close();
+            if (optionsPopover) optionsPopover.close();
             if (graphState.groupHoverController) graphState.groupHoverController.hide();
             if (graphState.previewController) graphState.previewController.hide();
           });
@@ -879,13 +951,23 @@
           renderGraph();
         };
 
+        const switchDirection = function (nextDirection) {
+          const normalized = normalizeGraphDirection(nextDirection);
+          if (normalized === activeDirection) return;
+          activeDirection = normalized;
+          if (directionSelector) directionSelector.value = normalized;
+          renderGraph();
+        };
+
         const scheduleRender = debounce(function () {
           renderGraph();
         }, 180);
 
         function renderGraph() {
           const activeVariant = getActiveVariant();
-          if (!activeVariant || !activeVariant.dot) return;
+          const direction = getActiveDirection();
+          const dot = dotForVariantDirection(activeVariant, direction);
+          if (!activeVariant || !dot) return;
           graphState.renderToken += 1;
           const renderToken = graphState.renderToken;
           syncLegend(graphBlock, activeVariant.key);
@@ -919,14 +1001,18 @@
           };
 
           if (
-            graphState.renderedVariantKey &&
-            graphState.renderedVariantKey !== activeVariant.key
+            (graphState.renderedVariantKey &&
+              graphState.renderedVariantKey !== activeVariant.key) ||
+            (graphState.renderedDirectionKey &&
+              graphState.renderedDirectionKey !== direction)
           ) {
             resetGraphvizForVariant(graphRoot, graphState);
           }
           const gv = graphState.graphviz || graphContainer.graphviz();
           graphState.graphviz = gv;
           graphState.renderedVariantKey = activeVariant.key;
+          graphState.renderedDirectionKey = direction;
+          graphRoot.setAttribute("data-bp-active-direction", direction);
           gv
             .zoom(true)
             .width(width)
@@ -935,7 +1021,7 @@
             .on("end", function () {
               finalizeRender();
             });
-          gv.renderDot(activeVariant.dot);
+          gv.renderDot(dot);
           setTimeout(function () {
             finalizeRender();
           }, 120);
@@ -944,6 +1030,12 @@
         if (selector) {
           selector.addEventListener("change", function () {
             switchVariant(selector.value);
+          });
+        }
+        if (directionSelector) {
+          directionSelector.addEventListener("change", function () {
+            switchDirection(directionSelector.value);
+            if (optionsPopover) optionsPopover.close();
           });
         }
 
