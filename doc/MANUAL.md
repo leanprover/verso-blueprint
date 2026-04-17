@@ -462,8 +462,16 @@ The rendered graph page is interactive:
 - a `View` selector switches between the full graph and any derived grouped
   views
 - a `Legend` button opens the current graph legend in a popover
+- a `Graph options` button exposes runtime graph options such as direction
 - when grouped metadata produces multiple children for the same parent, the
   selector includes a synthetic group overview plus one subgraph view per group
+
+The command-side direction and the runtime direction control are compatible:
+
+- `(direction := ...)` chooses the initial graph direction when the page first
+  loads
+- the rendered `Graph options` control lets readers switch among the supported
+  directions without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.

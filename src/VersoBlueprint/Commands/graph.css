@@ -240,6 +240,10 @@
   background: var(--bp-color-surface-subtle);
 }
 
+.bp_graph_options_button[aria-expanded="true"] {
+  background: var(--bp-color-surface-subtle);
+}
+
 .bp_graph_legend_popover {
   position: absolute;
   top: 0;
@@ -255,11 +259,43 @@
   backdrop-filter: blur(3px);
 }
 
+.bp_graph_options_popover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 26;
+  width: min(18rem, calc(100% - 1.8rem));
+  max-width: 100%;
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-xl);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--bp-shadow-lg);
+  overflow: auto;
+  backdrop-filter: blur(3px);
+}
+
 .bp_graph_legend_popover[hidden] {
   display: none;
 }
 
+.bp_graph_options_popover[hidden] {
+  display: none;
+}
+
 .bp_graph_legend_popover_header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.7rem 0.5rem;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  background: inherit;
+}
+
+.bp_graph_options_popover_header {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -278,6 +314,12 @@
   color: var(--bp-color-text-strong);
 }
 
+.bp_graph_options_popover_title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
 .bp_graph_legend_popover_close {
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-sm);
@@ -290,7 +332,25 @@
   cursor: pointer;
 }
 
+.bp_graph_options_popover_close {
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  background: var(--bp-color-surface);
+  color: var(--bp-color-text-strong);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.25rem 0.45rem;
+  cursor: pointer;
+}
+
 .bp_graph_legend_popover_body {
+  padding: 0.55rem 0.7rem 0.7rem;
+}
+
+.bp_graph_options_popover_body {
+  display: grid;
+  gap: 0.45rem;
   padding: 0.55rem 0.7rem 0.7rem;
 }
 

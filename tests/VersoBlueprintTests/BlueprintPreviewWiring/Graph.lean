@@ -33,6 +33,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_group_hover_preview_graph bp_preview_panel_body\"" &&
       hasSubstr out "aria-label=\"Close group preview\"" &&
       hasSubstr out "class=\"bp-graph-variants\"" &&
+      hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
+      hasSubstr out "class=\"bp_graph_options_popover\"" &&
+      hasSubstr out "class=\"bp_graph_direction_select\"" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
       hasSubstr out "\"direction\":\"TB\"" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
@@ -56,13 +59,21 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, previewClose" &&
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
+        hasSubstr graphJs "dotByDirection: dotByDirectionMap(variant.dotByDirection, direction, dot)" &&
         hasSubstr graphJs "graphviz: null," &&
         hasSubstr graphJs "renderedVariantKey: \"\"," &&
+        hasSubstr graphJs "renderedDirectionKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
+        hasSubstr graphJs "function dotByDirectionMap(dotByDirection, fallbackDirection, fallbackDot)" &&
+        hasSubstr graphJs "function dotForVariantDirection(variant, direction)" &&
         hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
+        hasSubstr graphJs "function bindOptionsPopover(graphBlock)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
         hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
         hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
+        hasSubstr graphJs "const directionSelector = graphBlock.querySelector(\".bp_graph_direction_select\");" &&
+        hasSubstr graphJs "let activeDirection = normalizeGraphDirection(" &&
+        hasSubstr graphJs "switchDirection(directionSelector.value);" &&
         hasSubstr graphJs ".zoom(true)" &&
         hasSubstr graphJs "function normalizeGraphDirection(rawDirection)" &&
         hasSubstr graphJs "layoutGraphCanvas(graphRoot, graphState)" &&
