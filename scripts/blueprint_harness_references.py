@@ -9,7 +9,7 @@ from pathlib import Path
 import tomllib
 
 from scripts.blueprint_harness_projects import HarnessProject
-from scripts.blueprint_harness_utils import lean_low_priority_command, run
+from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners, run
 
 
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
@@ -647,6 +647,9 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
 
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
+    rebuilt = rebuild_embedded_asset_owners(layout.package_root)
+    for target in rebuilt:
+        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
     discard_untracked_project_manifest(project_dir)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, layout.package_root)
@@ -694,6 +697,9 @@ def generate_git_project(layout, output_root: Path, project: HarnessProject, *, 
     # validations must skip them here and build only after rewriting the local
     # checkout dependency to `layout.package_root`.
     cache_warm_build = (not skip_build) and use_shared_reference_checkout()
+    rebuilt = rebuild_embedded_asset_owners(layout.package_root)
+    for target in rebuilt:
+        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
     cache_dir = sync_reference_cache_checkout(layout, project, warm_build=cache_warm_build)
     checkout_root = cache_dir if use_shared_reference_checkout() else sync_reference_local_checkout(layout, project, cache_dir)
     project_dir = checkout_root / project.project_root

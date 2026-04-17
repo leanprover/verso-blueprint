@@ -13,7 +13,7 @@ from scripts.blueprint_harness_references import (
     restore_tracked_project_manifest,
     snapshot_tracked_project_manifest,
 )
-from scripts.blueprint_harness_utils import lean_low_priority_command, run
+from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners, run
 
 
 TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -197,6 +197,9 @@ def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTe
     if not project_dir.exists():
         raise SystemExit(f"[blueprint-test-blueprints] missing project root for `{fixture.slug}`: {project_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    rebuilt = rebuild_embedded_asset_owners(package_root)
+    for target in rebuilt:
+        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, package_root)
     try:
