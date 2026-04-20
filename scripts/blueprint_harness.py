@@ -15,6 +15,7 @@ from scripts.blueprint_harness_branches import (
     checkout_branch_role,
     default_dev_branch,
     checkout_is_backport_only,
+    load_branch_policy,
     local_release_ref,
     preferred_release_ref,
     require_checkout_role,
@@ -230,6 +231,17 @@ def ref_merged_into_main(repo_root: Path, ref: str) -> bool:
     return is_ancestor(repo_root, ref, preferred_main_ref(repo_root))
 
 
+def preferred_worktree_base_ref(path: Path) -> str:
+    return preferred_release_ref(path)
+
+
+def ref_merged_into_worktree_base(repo_root: Path, ref: str, worktree_path: Path) -> bool:
+    base_ref = preferred_worktree_base_ref(worktree_path)
+    if ref_oid(repo_root, ref) is None or ref_oid(repo_root, base_ref) is None:
+        return False
+    return is_ancestor(repo_root, ref, base_ref)
+
+
 def merged_clean_worktree_candidates(repo_root: Path, current_path: Path) -> list[tuple[str, Path, str]]:
     candidates: list[tuple[str, Path, str]] = []
     records, _registry = worktree_record_map(repo_root)
@@ -414,6 +426,50 @@ def command_main_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_prepare_backports_exemptions(values: list[str] | None) -> dict[str, str]:
+    exemptions: dict[str, str] = {}
+    for value in values or []:
+        branch, separator, reason = value.partition("=")
+        branch = branch.strip()
+        reason = reason.strip()
+        if not separator or not branch or not reason:
+            raise SystemExit(
+                "[blueprint-harness] expected `--exempt <branch>=<reason>` with both a branch and a reason"
+            )
+        exemptions[branch] = reason
+    return exemptions
+
+
+def command_prepare_backports(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    policy = load_branch_policy(layout.package_root)
+    exemptions = parse_prepare_backports_exemptions(args.exempt)
+    unknown = sorted(branch for branch in exemptions if branch not in policy.required_backport_branches)
+    if unknown:
+        raise SystemExit(
+            "[blueprint-harness] unknown required backport branch(es): "
+            + ", ".join(unknown)
+            + ". Update `branch-policy.json` or remove the extra `--exempt` entries."
+        )
+
+    print(f"default_dev_branch={policy.default_dev_branch}")
+    print(f"required_backports={','.join(policy.required_backport_branches)}")
+    if not policy.required_backport_branches:
+        print("[blueprint-harness] no required backports are configured for this checkout")
+        return 0
+
+    print()
+    for branch in policy.required_backport_branches:
+        if branch in exemptions:
+            print(f"Backport {branch}: exempt: {exemptions[branch]}")
+        else:
+            print(f"Backport {branch}: pending")
+    print()
+    print("[blueprint-harness] paste these lines into the default-dev PR body while it is draft")
+    print("[blueprint-harness] replace each `pending` entry with `#<pr>` or `exempt: <reason>` before ready for review")
+    return 0
+
+
 def command_require_branch_role(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     print_branch_policy_status(layout)
@@ -579,13 +635,14 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
     if branch == release_branch:
         raise SystemExit(f"[blueprint-harness] cannot retire a linked worktree attached to `{release_branch}`")
     merge_subject = branch or worktree.head
-    if not ref_merged_into_main(layout.repo_root, merge_subject):
+    base_ref = preferred_worktree_base_ref(path)
+    if not ref_merged_into_worktree_base(layout.repo_root, merge_subject, path):
         if branch is None:
             raise SystemExit(
                 f"[blueprint-harness] detached worktree `{name}` is at `{worktree.head}` "
-                "which is not merged into the preferred release ref"
+                f"which is not merged into `{base_ref}`"
             )
-        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into the preferred release ref")
+        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into `{base_ref}`")
     if not worktree_is_clean(path):
         raise SystemExit(f"[blueprint-harness] worktree `{name}` has local modifications")
 
@@ -650,6 +707,7 @@ def command_worktree_status(args: argparse.Namespace) -> int:
     print(f"dirty={bool_or_blank(record.dirty)}")
     print(f"tracked_changes={text_or_blank(record.tracked_changes)}")
     print(f"untracked_changes={text_or_blank(record.untracked_changes)}")
+    print(f"base_ref={record.base_ref or ''}")
     print(f"merged_into_base={bool_or_blank(record.merged_into_main)}")
     print(f"base_ahead={text_or_blank(record.main_ahead)}")
     print(f"base_behind={text_or_blank(record.main_behind)}")
@@ -748,6 +806,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit nonzero when the active local release branch is not in sync with its preferred upstream ref.",
     )
     main_status.set_defaults(func=command_main_status)
+
+    prepare_backports = subparsers.add_parser(
+        "prepare-backports",
+        help="Print PR-body lines for the required backport plan on the current default-dev release line.",
+    )
+    prepare_backports.add_argument(
+        "--exempt",
+        action="append",
+        default=None,
+        help="Pre-fill one required branch as `exempt: <reason>` using `--exempt <branch>=<reason>`. Repeat as needed.",
+    )
+    prepare_backports.set_defaults(func=command_prepare_backports)
 
     require_role = subparsers.add_parser(
         "require-branch-role",

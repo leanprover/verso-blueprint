@@ -29,6 +29,8 @@ class BackportEntry:
     branch: str
     pr_number: int | None = None
     exempt_reason: str | None = None
+    pending: bool = False
+    pending_note: str | None = None
 
 
 class BackportCheckError(RuntimeError):
@@ -77,7 +79,7 @@ class GitHubApi:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Enforce paired backport PR metadata for ready non-draft default-dev PRs."
+        description="Enforce paired backport planning for draft default-dev PRs and paired backport readiness for ready PRs."
     )
     parser.add_argument(
         "--event-path",
@@ -118,13 +120,49 @@ def parse_backport_entries(body: str) -> dict[str, BackportEntry]:
                 raise BackportCheckError(f"Backport {branch}: exemption must include a reason")
             entries[branch] = BackportEntry(branch=branch, exempt_reason=reason)
             continue
+        if lower.startswith("pending"):
+            note = value[len("pending") :].lstrip(" :-()")
+            entries[branch] = BackportEntry(branch=branch, pending=True, pending_note=note or None)
+            continue
 
         pr_match = BACKPORT_PR_RE.search(value)
         if pr_match is None:
             raise BackportCheckError(
-                f"Backport {branch}: expected `#<pr>` or `exempt: <reason>`, got `{value}`"
+                f"Backport {branch}: expected `#<pr>`, `pending`, or `exempt: <reason>`, got `{value}`"
             )
         entries[branch] = BackportEntry(branch=branch, pr_number=int(pr_match.group(1)))
+    return entries
+
+
+def validate_backport_entries(
+    body: str,
+    required_backports: tuple[str, ...],
+    *,
+    allow_pending: bool,
+) -> dict[str, BackportEntry]:
+    entries = parse_backport_entries(body)
+    missing = [branch for branch in required_backports if branch not in entries]
+    if missing:
+        if allow_pending:
+            example = "`Backport v4.28.0: pending`"
+        else:
+            example = "`Backport v4.28.0: #123`"
+        raise BackportCheckError(
+            "missing paired backport metadata for "
+            + ", ".join(missing)
+            + f". Add lines like {example} or `Backport v4.28.0: exempt: <reason>`"
+        )
+
+    if allow_pending:
+        return entries
+
+    pending = [branch for branch in required_backports if entries[branch].pending]
+    if pending:
+        raise BackportCheckError(
+            "pending backport entries are not allowed once the default-dev PR is ready for review: "
+            + ", ".join(pending)
+            + ". Replace each `pending` entry with `#<pr>` or `exempt: <reason>`"
+        )
     return entries
 
 
@@ -211,9 +249,6 @@ def should_enforce(pull_request: dict[str, Any], default_dev_branch: str, requir
             f"`{pull_request.get('base', {}).get('ref', '')}`, not default dev `{default_dev_branch}`; skipping"
         )
         return False
-    if bool(pull_request.get("draft")):
-        print("[backport-check] draft PR; skipping paired backport gate until ready for review")
-        return False
     return True
 
 
@@ -225,29 +260,40 @@ def run(event_path: str | None, token: str | None) -> int:
     if not should_enforce(pull_request, policy.default_dev_branch, policy.required_backport_branches):
         return 0
 
-    if not token:
-        raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
-
+    draft = bool(pull_request.get("draft"))
     body = str(pull_request.get("body") or "")
-    entries = parse_backport_entries(body)
-    missing = [branch for branch in policy.required_backport_branches if branch not in entries]
-    if missing:
-        raise BackportCheckError(
-            "missing paired backport metadata for "
-            + ", ".join(missing)
-            + ". Add lines like `Backport v4.28.0: #123` or `Backport v4.28.0: exempt: <reason>`"
-        )
+    entries = validate_backport_entries(body, policy.required_backport_branches, allow_pending=draft)
+    if draft:
+        print("[backport-check] draft PR; enforcing declared backport plan only")
+        for branch in policy.required_backport_branches:
+            entry = entries[branch]
+            if entry.exempt_reason is not None:
+                print(f"[backport-check] {branch}: exempt ({entry.exempt_reason})")
+            elif entry.pending:
+                note_suffix = f" ({entry.pending_note})" if entry.pending_note else ""
+                print(f"[backport-check] {branch}: pending{note_suffix}")
+            else:
+                print(
+                    f"[backport-check] {branch}: paired PR #{entry.pr_number} recorded; "
+                    "ready-state checks will run after ready for review"
+                )
+        return 0
 
     repository = event.get("repository")
     if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
         raise BackportCheckError("event payload is missing repository.full_name")
-    api = GitHubApi(repository["full_name"], token)
+    entries_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].pr_number is not None]
+    if entries_to_verify and not token:
+        raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
+    api = GitHubApi(repository["full_name"], token) if entries_to_verify else None
 
     for branch in policy.required_backport_branches:
         entry = entries[branch]
         if entry.exempt_reason is not None:
             print(f"[backport-check] {branch}: exempt ({entry.exempt_reason})")
             continue
+        if api is None:
+            raise BackportCheckError(f"Backport {branch}: internal error; paired PR verification is unavailable")
         verify_backport_pr(api, branch, entry)
         print(f"[backport-check] {branch}: paired PR #{entry.pr_number} is ready")
     return 0
