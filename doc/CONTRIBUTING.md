@@ -52,14 +52,20 @@ subjects such as `Update files` or `misc cleanup`.
   - notable risks or follow-up
 - When the work came from a local worktree, include the worktree name and write
   scope in the PR body or draft notes.
-- Non-draft PRs targeting `v4.29.0` must include paired backport metadata for
-  each required backport release branch listed in `branch-policy.json`, unless
-  the PR explicitly records an exemption with a reason.
+- Draft PRs targeting `v4.29.0` must declare one backport plan line for each
+  required backport release branch listed in `branch-policy.json`.
+- Non-draft PRs targeting `v4.29.0` must replace each `pending` entry with a
+  paired backport PR number or an explicit exemption reason.
 - The expected workflow is:
   - keep the `v4.29.0` PR in draft while the change is still converging
+  - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the
+    emitted lines into the draft PR body
   - once it is ready for review, open the paired `v4.28.0` PR
+  - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
+    `Backport ...: exempt: <reason>`
   - wait for CI on both PRs before merging the `v4.29.0` PR
 - Record the pairing in the PR body using lines like:
+  - `Backport v4.28.0: pending`
   - `Backport v4.28.0: #123`
   - `Backport v4.28.0: exempt: docs-only change`
 

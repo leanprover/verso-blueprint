@@ -51,11 +51,17 @@ with the preferred release ref before branching or landing, use:
 ```bash
 python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness release-status --require-sync
+python3 -m scripts.blueprint_harness prepare-backports
 python3 -m scripts.blueprint_harness require-branch-role default_dev
 ```
 
 `require-branch-role default_dev` is the explicit machine check for
 automation that must refuse non-backport work on backport-only release lines.
+
+`prepare-backports` prints the `Backport ...` lines that should be pasted into a
+draft default-dev PR body. Draft PRs may keep those lines as `pending`; before
+ready for review, replace each `pending` entry with `#<pr>` or
+`exempt: <reason>`.
 
 To land one reviewed branch onto the active release branch from the root
 checkout, use:

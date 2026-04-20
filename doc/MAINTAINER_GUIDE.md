@@ -423,15 +423,30 @@ python3 -m scripts.blueprint_harness require-branch-role default_dev
 Use `require-branch-role default_dev` when a script or agent should refuse to
 do non-backport work from a backport-only checkout.
 
-Ready non-draft PRs that target the default development branch also follow a
-paired-backport gate. In this repository that means `v4.29.0` PRs stay draft
-while the change is converging; once they are ready for review they must either:
+Default-development PRs also follow a paired-backport gate. In this repository
+that means draft `v4.29.0` PRs must still declare one line per required
+backport target, usually by running:
+
+```bash
+python3 -m scripts.blueprint_harness prepare-backports
+```
+
+Paste the emitted lines into the draft PR body. While the PR is still draft,
+each required line may remain:
+
+- `Backport v4.28.0: pending`
+- or `Backport v4.28.0: exempt: <reason>`
+
+Once the `v4.29.0` PR is ready for review it must replace each `pending` line
+with either:
 
 - link the paired `v4.28.0` PR in the PR body with `Backport v4.28.0: #<pr>`
 - or record `Backport v4.28.0: exempt: <reason>`
 
-CI checks that the paired PR targets the required backport branch and that its
-checks are green before the `v4.29.0` PR can merge.
+CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
+is part of PR health, and once the PR is ready it additionally checks that the
+paired PR targets the required backport branch and that its checks are green
+before the `v4.29.0` PR can merge.
 
 To land one reviewed branch onto the active release branch safely from the root
 checkout, use:
@@ -502,7 +517,7 @@ The local coordination layer is now machine-readable and untracked.
 - `worktree-retire` removes one merged clean linked worktree, deletes its local
   branch when one exists, and prunes its stale reference clones
 - detached linked worktrees are also retireable once their `HEAD` commit is
-  reachable from the preferred active release ref
+  reachable from that worktree's preferred release ref
 - by default, each session should only retire or delete worktrees and branches
   it created or landed itself; broader cleanup should be explicit
 

@@ -19,8 +19,13 @@ What was wrong, missing, or confusing before this change?
 
 ## Backports
 
-Draft `v4.29.0` PRs skip the paired-backport gate. Once a `v4.29.0` PR is
-ready for review, add one line per required backport target:
+Draft `v4.29.0` PRs should declare one line per required backport target as
+soon as the draft exists. While the PR is still draft, `pending` is allowed:
+
+- `Backport v4.28.0: pending`
+- `Backport v4.28.0: exempt: <reason>`
+
+Once a `v4.29.0` PR is ready for review, replace each `pending` line with:
 
 - `Backport v4.28.0: #123`
 - `Backport v4.28.0: exempt: <reason>`

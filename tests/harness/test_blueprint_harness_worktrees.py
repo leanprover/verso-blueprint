@@ -75,6 +75,7 @@ branch refs/heads/feat/demo
                     "dirty": git_wt.name == ROOT_WORKTREE_NAME,
                     "tracked_changes": 1 if git_wt.name == ROOT_WORKTREE_NAME else 0,
                     "untracked_changes": 0,
+                    "base_ref": "origin/v4.29.0",
                     "merged_into_main": git_wt.name == ROOT_WORKTREE_NAME,
                     "main_ahead": 0 if git_wt.name == ROOT_WORKTREE_NAME else 1,
                     "main_behind": 0 if git_wt.name == ROOT_WORKTREE_NAME else 2,
@@ -165,6 +166,7 @@ branch refs/heads/feat/demo
                                 "dirty": True,
                                 "tracked_changes": 9,
                                 "untracked_changes": 9,
+                                "base_ref": "origin/v4.29.0",
                                 "merged_into_main": False,
                                 "main_ahead": 9,
                                 "main_behind": 9,
@@ -204,6 +206,7 @@ branch refs/heads/feat/demo
                     "dirty": git_wt.name == "demo",
                     "tracked_changes": 5 if git_wt.name == "demo" else 0,
                     "untracked_changes": 1 if git_wt.name == "demo" else 0,
+                    "base_ref": "origin/v4.29.0",
                     "merged_into_main": git_wt.name == ROOT_WORKTREE_NAME,
                     "main_ahead": 2 if git_wt.name == "demo" else 0,
                     "main_behind": 7 if git_wt.name == "demo" else 0,
@@ -272,6 +275,7 @@ branch refs/heads/feat/demo
                                 "dirty": True,
                                 "tracked_changes": 9,
                                 "untracked_changes": 9,
+                                "base_ref": "origin/v4.29.0",
                                 "merged_into_main": False,
                                 "main_ahead": 9,
                                 "main_behind": 9,
@@ -311,6 +315,7 @@ branch refs/heads/feat/demo
                     "dirty": False,
                     "tracked_changes": 0,
                     "untracked_changes": 0,
+                    "base_ref": "origin/v4.29.0",
                     "merged_into_main": False,
                     "main_ahead": 0,
                     "main_behind": 0,
@@ -374,6 +379,7 @@ branch refs/heads/feat/demo
                     "dirty": False,
                     "tracked_changes": 0,
                     "untracked_changes": 0,
+                    "base_ref": "origin/v4.29.0",
                     "merged_into_main": False,
                     "main_ahead": 0,
                     "main_behind": 0,
@@ -427,6 +433,7 @@ branch refs/heads/feat/demo
             self.assertFalse(facts["dirty"])
             self.assertEqual(facts["tracked_changes"], 0)
             self.assertEqual(facts["untracked_changes"], 0)
+            self.assertEqual(facts["base_ref"], "v4.29.0")
             self.assertFalse(facts["merged_into_main"])
             self.assertEqual((facts["main_ahead"], facts["main_behind"]), (1, 0))
             self.assertIsNone(facts["upstream"])

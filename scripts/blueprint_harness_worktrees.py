@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, local_release_ref, preferred_release_ref
+from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, preferred_release_ref
 
 
 ROOT_METADATA_FILENAME = "_root.json"
@@ -55,6 +55,7 @@ class WorktreeRecord:
     dirty: bool | None = None
     tracked_changes: int | None = None
     untracked_changes: int | None = None
+    base_ref: str | None = None
     merged_into_main: bool | None = None
     main_ahead: int | None = None
     main_behind: int | None = None
@@ -231,10 +232,6 @@ def ref_oid(repo_root: Path, ref: str) -> str | None:
     return oid or None
 
 
-def preferred_main_ref(repo_root: Path) -> str:
-    return preferred_release_ref(repo_root)
-
-
 def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     return (
         subprocess.run(
@@ -246,11 +243,10 @@ def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     )
 
 
-def ref_merged_into_main(repo_root: Path, ref: str) -> bool:
-    upstream = preferred_main_ref(repo_root)
-    if ref_oid(repo_root, ref) is None or ref_oid(repo_root, upstream) is None:
+def ref_merged_into_base(repo_root: Path, ref: str, base_ref: str) -> bool:
+    if ref_oid(repo_root, ref) is None or ref_oid(repo_root, base_ref) is None:
         return False
-    return is_ancestor(repo_root, ref, upstream)
+    return is_ancestor(repo_root, ref, base_ref)
 
 
 def rev_list_counts(repo_root: Path, ref: str, base_ref: str) -> tuple[int | None, int | None]:
@@ -310,7 +306,8 @@ def worktree_last_commit(path: Path) -> tuple[str | None, str | None, str | None
 def collect_worktree_facts(repo_root: Path, git_wt: GitWorktree) -> dict[str, object]:
     ref = git_wt.branch or git_wt.head
     dirty, tracked_changes, untracked_changes = worktree_status_counts(git_wt.path)
-    main_ahead, main_behind = rev_list_counts(repo_root, ref, local_release_ref(repo_root))
+    base_ref = preferred_release_ref(git_wt.path)
+    main_ahead, main_behind = rev_list_counts(repo_root, ref, base_ref)
     upstream = branch_upstream(repo_root, git_wt.branch) if git_wt.branch is not None else None
     upstream_ahead, upstream_behind = (
         rev_list_counts(repo_root, ref, upstream) if upstream is not None else (None, None)
@@ -320,7 +317,8 @@ def collect_worktree_facts(repo_root: Path, git_wt: GitWorktree) -> dict[str, ob
         "dirty": dirty,
         "tracked_changes": tracked_changes,
         "untracked_changes": untracked_changes,
-        "merged_into_main": ref_merged_into_main(repo_root, ref),
+        "base_ref": base_ref,
+        "merged_into_main": ref_merged_into_base(repo_root, ref, base_ref),
         "main_ahead": main_ahead,
         "main_behind": main_behind,
         "upstream": upstream,
@@ -370,6 +368,7 @@ def sync_worktree_registry(repo_root: Path) -> tuple[list[WorktreeRecord], Path]
             dirty=facts["dirty"],
             tracked_changes=facts["tracked_changes"],
             untracked_changes=facts["untracked_changes"],
+            base_ref=facts["base_ref"],
             merged_into_main=facts["merged_into_main"],
             main_ahead=facts["main_ahead"],
             main_behind=facts["main_behind"],
