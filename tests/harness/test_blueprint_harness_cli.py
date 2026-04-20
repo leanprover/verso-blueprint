@@ -78,6 +78,14 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(["prepare-backports", "--exempt", "v4.28.0=docs-only"])
         self.assertEqual(args.exempt, ["v4.28.0=docs-only"])
 
+    def test_prepare_backport_pr_parses_required_fields(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["prepare-backport-pr", "v4.28.0", "--main-pr", "11"])
+        self.assertEqual(args.release, "v4.28.0")
+        self.assertEqual(args.main_pr, 11)
+        self.assertIsNone(args.main_title)
+        self.assertIsNone(args.source_branch)
+
     def test_bump_toolchain_parses_optional_flags(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["bump-toolchain", "4.29.0", "--verso-ref", "v4.29.0", "--skip-validation"])
@@ -321,6 +329,36 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         finally:
             for name, value in originals.items():
                 setattr(harness_mod, name, value)
+
+    def test_prepare_backport_pr_prints_standardized_scaffold(self) -> None:
+        args = argparse.Namespace(
+            release="v4.28.0",
+            main_pr=11,
+            main_title="fix(backports): require draft plans and base-aware retire",
+            source_branch="fix/backport-discipline",
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "default_dev_branch": harness_mod.default_dev_branch,
+        }
+        out = io.StringIO()
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.default_dev_branch = lambda _checkout_root: "v4.29.0"
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        output = out.getvalue()
+        self.assertIn("default_dev_branch=v4.29.0", output)
+        self.assertIn("backport_release=v4.28.0", output)
+        self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
+        self.assertIn("paired_title=[backport v4.28.0] fix(backports): require draft plans and base-aware retire", output)
+        self.assertIn("Primary review: #11", output)
+        self.assertIn("Keep review comments on #11 unless this backport diverges materially.", output)
 
     def test_land_main_rejects_unsynced_main(self) -> None:
         args = argparse.Namespace(source="feat/demo", no_push=False, cleanup=False, keep_remote=False)

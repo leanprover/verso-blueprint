@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from scripts.blueprint_harness_branches import (
     checkout_is_backport_only,
     load_branch_policy,
     local_release_ref,
+    normalize_lean_release_ref,
     preferred_release_ref,
     require_checkout_role,
     root_checkout_namespace,
@@ -138,6 +140,19 @@ def current_branch_name(repo_root: Path) -> str | None:
         capture_output=True,
     ).stdout.strip()
     return branch or None
+
+
+def current_commit_subject(repo_root: Path) -> str:
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    if not subject:
+        raise SystemExit("[blueprint-harness] unable to derive a PR title from the current commit subject")
+    return subject
 
 
 def ref_oid(repo_root: Path, ref: str) -> str | None:
@@ -440,6 +455,28 @@ def parse_prepare_backports_exemptions(values: list[str] | None) -> dict[str, st
     return exemptions
 
 
+def release_marker(release_ref: str) -> str:
+    normalized = normalize_lean_release_ref(release_ref)
+    match = re.match(r"^v(\d+)\.(\d+)", normalized)
+    if match is not None:
+        return f"v{match.group(1)}{match.group(2)}"
+    return "v" + re.sub(r"[^A-Za-z0-9]+", "", normalized.removeprefix("v"))
+
+
+def slugify_backport_fragment(text: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", text.strip())
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-")
+    return cleaned or "change"
+
+
+def default_backport_branch_name(source_branch: str, release_ref: str) -> str:
+    marker = release_marker(release_ref)
+    if "/" in source_branch:
+        prefix, slug = source_branch.split("/", 1)
+        return f"{prefix}/backport-{marker}-{slugify_backport_fragment(slug)}"
+    return f"backport-{marker}-{slugify_backport_fragment(source_branch)}"
+
+
 def command_prepare_backports(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     policy = load_branch_policy(layout.package_root)
@@ -467,6 +504,47 @@ def command_prepare_backports(args: argparse.Namespace) -> int:
     print()
     print("[blueprint-harness] paste these lines into the default-dev PR body while it is draft")
     print("[blueprint-harness] replace each `pending` entry with `#<pr>` or `exempt: <reason>` before ready for review")
+    return 0
+
+
+def command_prepare_backport_pr(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    backport_release = normalize_lean_release_ref(args.release)
+    source_branch = args.source_branch or current_branch_name(layout.package_root)
+    if not source_branch:
+        raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
+
+    main_title = args.main_title or current_commit_subject(layout.package_root)
+    paired_branch = default_backport_branch_name(source_branch, backport_release)
+    paired_title = f"[backport {backport_release}] {main_title}"
+
+    print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
+    print(f"backport_release={backport_release}")
+    print(f"source_branch={source_branch}")
+    print(f"paired_branch={paired_branch}")
+    print(f"paired_title={paired_title}")
+    print()
+    print("## Summary")
+    print(f"Backport #{args.main_pr} to `{backport_release}`.")
+    print()
+    print("## Primary Review")
+    print(f"- Primary review: #{args.main_pr}")
+    print(f"- Keep review comments on #{args.main_pr} unless this backport diverges materially.")
+    print()
+    print("## Scope")
+    print(f"- Backport the already-reviewed default-development change onto `{backport_release}`.")
+    print("- Keep this PR limited to release-line-specific conflict resolution.")
+    print()
+    print("## Backport Delta")
+    print("- No intentional release-specific changes.")
+    print("- If conflict resolution requires deviations from the default-development PR, describe them here.")
+    print()
+    print("## Validation")
+    print(f"- Describe the validation run on `{backport_release}`.")
+    print()
+    print("## Coordination")
+    print(f"- Default-dev PR: #{args.main_pr}")
+    print(f"- Default-dev branch: `{source_branch}`")
     return 0
 
 
@@ -818,6 +896,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pre-fill one required branch as `exempt: <reason>` using `--exempt <branch>=<reason>`. Repeat as needed.",
     )
     prepare_backports.set_defaults(func=command_prepare_backports)
+
+    prepare_backport_pr = subparsers.add_parser(
+        "prepare-backport-pr",
+        help="Print a standardized paired backport branch name, PR title, and PR body scaffold.",
+    )
+    prepare_backport_pr.add_argument("release", help="Backport release branch such as `v4.28.0`.")
+    prepare_backport_pr.add_argument(
+        "--main-pr",
+        type=int,
+        required=True,
+        help="Default-development PR number that remains the primary review surface.",
+    )
+    prepare_backport_pr.add_argument(
+        "--main-title",
+        default=None,
+        help="Override the default-development PR title. Defaults to the current commit subject.",
+    )
+    prepare_backport_pr.add_argument(
+        "--source-branch",
+        default=None,
+        help="Override the default-development branch name. Defaults to the current branch.",
+    )
+    prepare_backport_pr.set_defaults(func=command_prepare_backport_pr)
 
     require_role = subparsers.add_parser(
         "require-branch-role",
