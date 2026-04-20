@@ -22,6 +22,13 @@ This repository keeps local parallel work simple:
 - Use `chore/<slug>` for maintenance and cleanup.
 - Use `wip/<slug>` only for local-only exploratory branches that are not ready
   for review.
+- For paired backport branches, keep the same top-level prefix and reuse the
+  default-dev slug with a release marker in front of it.
+  Examples:
+  - default-dev branch: `fix/backport-discipline`
+  - paired `v4.28.0` backport branch: `fix/backport-v428-backport-discipline`
+  - default-dev docs branch: `docs/manual-cleanup`
+  - paired `v4.28.0` docs backport branch: `docs/backport-v428-manual-cleanup`
 
 Prefer short, descriptive slugs over opaque branch names.
 
@@ -56,6 +63,8 @@ subjects such as `Update files` or `misc cleanup`.
   required backport release branch listed in `branch-policy.json`.
 - Non-draft PRs targeting `v4.29.0` must replace each `pending` entry with a
   paired backport PR number or an explicit exemption reason.
+- The default-development PR is the primary review surface. Paired backport PRs
+  exist mainly so CI and merge state are visible on the maintenance line.
 - The expected workflow is:
   - keep the `v4.29.0` PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the
@@ -64,6 +73,9 @@ subjects such as `Update files` or `misc cleanup`.
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
     `Backport ...: exempt: <reason>`
   - wait for CI on both PRs before merging the `v4.29.0` PR
+- Keep review comments and design discussion on the default-dev PR unless the
+  backport itself diverges materially, for example because of a conflict or a
+  release-line-specific adaptation.
 - Record the pairing in the PR body using lines like:
   - `Backport v4.28.0: pending`
   - `Backport v4.28.0: #123`
