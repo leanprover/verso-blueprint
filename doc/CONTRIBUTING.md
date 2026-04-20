@@ -70,6 +70,7 @@ subjects such as `Update files` or `misc cleanup`.
   - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the
     emitted lines into the draft PR body
   - once it is ready for review, open the paired `v4.28.0` PR
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
     `Backport ...: exempt: <reason>`
   - wait for CI on both PRs before merging the `v4.29.0` PR

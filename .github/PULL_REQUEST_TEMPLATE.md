@@ -17,6 +17,13 @@ What was wrong, missing, or confusing before this change?
 - Manual checks performed
 - External projects or worktrees exercised
 
+## Primary Review
+
+For paired backport PRs:
+
+- Primary review: #<default-dev-pr>
+- Keep discussion there unless this backport diverges materially.
+
 ## Backports
 
 Draft `v4.29.0` PRs should declare one line per required backport target as
@@ -29,6 +36,13 @@ Once a `v4.29.0` PR is ready for review, replace each `pending` line with:
 
 - `Backport v4.28.0: #123`
 - `Backport v4.28.0: exempt: <reason>`
+
+## Backport Delta
+
+For paired backport PRs:
+
+- No intentional release-specific changes
+- Or describe the release-line-specific adaptation
 
 ## Risks and Follow-Ups
 

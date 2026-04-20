@@ -455,6 +455,16 @@ example:
 - default-development branch: `fix/backport-discipline`
 - paired `v4.28.0` branch: `fix/backport-v428-backport-discipline`
 
+To keep paired backport PRs consistent, scaffold them with:
+
+```bash
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
+```
+
+That helper prints a standardized paired branch name, a title of the form
+`[backport v4.28.0] ...`, and a PR body that points back to the primary
+default-development review.
+
 CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
 is part of PR health, and once the PR is ready it additionally checks that the
 paired PR targets the required backport branch and that its checks are green
