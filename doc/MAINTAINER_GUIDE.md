@@ -443,6 +443,18 @@ with either:
 - link the paired `v4.28.0` PR in the PR body with `Backport v4.28.0: #<pr>`
 - or record `Backport v4.28.0: exempt: <reason>`
 
+Use the default-development PR as the main review surface. The paired backport
+PR is primarily a maintenance-line artifact for CI, merge state, and any
+release-specific conflict resolution. Unless the backport diverges materially,
+keep review comments and substantive discussion on the default-development PR.
+
+When you do open the paired backport branch, keep the same top-level branch
+prefix and reuse the default-development slug with a release marker. For
+example:
+
+- default-development branch: `fix/backport-discipline`
+- paired `v4.28.0` branch: `fix/backport-v428-backport-discipline`
+
 CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
 is part of PR health, and once the PR is ready it additionally checks that the
 paired PR targets the required backport branch and that its checks are green
