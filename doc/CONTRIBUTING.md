@@ -76,6 +76,7 @@ subjects such as `Update files` or `misc cleanup`.
     emitted lines into the draft PR body
   - once it is ready for review, open the paired `v4.28.0` PR
   - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
+  - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
     `Backport ...: exempt: <reason>`
   - wait for CI on both PRs before merging the `v4.29.0` PR

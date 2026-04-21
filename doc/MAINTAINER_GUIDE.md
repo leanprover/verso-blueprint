@@ -465,6 +465,17 @@ That helper prints a standardized paired branch name, a title of the form
 `[backport v4.28.0] ...`, and a PR body that points back to the primary
 default-development review.
 
+When several backport releases are required, use:
+
+```bash
+python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
+```
+
+That batch mode emits one scaffold block per required release, including the
+paired worktree name, branch name, and the exact `git cherry-pick -x ...`
+series to apply. An agent can then create each worktree, apply the series, and
+resolve conflicts release by release.
+
 When populating the paired backport branch itself, use `git cherry-pick -x` so
 each backport commit records `(cherry picked from commit <sha>)`. The
 paired-backport check verifies those recorded source SHAs and also compares the

@@ -53,6 +53,7 @@ python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness release-status --require-sync
 python3 -m scripts.blueprint_harness prepare-backports
 python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 python3 -m scripts.blueprint_harness require-branch-role default_dev
 ```
 
@@ -67,6 +68,10 @@ ready for review, replace each `pending` entry with `#<pr>` or
 `prepare-backport-pr` prints a standardized paired backport branch name, PR
 title, and PR body scaffold that points review back to the default-dev PR and
 limits the paired PR to release-line-specific deltas.
+
+With `--all-required`, it emits one scaffold block per required release plus
+the exact `git cherry-pick -x ...` commit series an agent should apply while
+resolving conflicts release by release.
 
 Paired backport branches themselves should be created with `git cherry-pick -x`.
 The paired-backport check validates both the recorded source SHAs and the patch
