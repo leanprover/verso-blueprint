@@ -82,9 +82,17 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["prepare-backport-pr", "v4.28.0", "--main-pr", "11"])
         self.assertEqual(args.release, "v4.28.0")
+        self.assertFalse(args.all_required)
         self.assertEqual(args.main_pr, 11)
         self.assertIsNone(args.main_title)
         self.assertIsNone(args.source_branch)
+
+    def test_prepare_backport_pr_parses_all_required_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["prepare-backport-pr", "--all-required", "--main-pr", "11"])
+        self.assertIsNone(args.release)
+        self.assertTrue(args.all_required)
+        self.assertEqual(args.main_pr, 11)
 
     def test_bump_toolchain_parses_optional_flags(self) -> None:
         parser = build_parser()
@@ -333,6 +341,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
     def test_prepare_backport_pr_prints_standardized_scaffold(self) -> None:
         args = argparse.Namespace(
             release="v4.28.0",
+            all_required=False,
             main_pr=11,
             main_title="fix(backports): require draft plans and base-aware retire",
             source_branch="fix/backport-discipline",
@@ -340,12 +349,21 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
         originals = {
             "detect_harness_layout": harness_mod.detect_harness_layout,
+            "load_branch_policy": harness_mod.load_branch_policy,
             "default_dev_branch": harness_mod.default_dev_branch,
+            "require_checkout_role": harness_mod.require_checkout_role,
+            "source_commit_series": harness_mod.source_commit_series,
         }
         out = io.StringIO()
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.load_branch_policy = lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            )
             harness_mod.default_dev_branch = lambda _checkout_root: "v4.29.0"
+            harness_mod.require_checkout_role = lambda *_args, **_kwargs: None
+            harness_mod.source_commit_series = lambda _repo_root, _source_branch: ["abc123", "def456"]
             with redirect_stdout(out):
                 self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
         finally:
@@ -355,10 +373,52 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         output = out.getvalue()
         self.assertIn("default_dev_branch=v4.29.0", output)
         self.assertIn("backport_release=v4.28.0", output)
+        self.assertIn("paired_worktree=backport-v428-backport-discipline", output)
         self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
         self.assertIn("paired_title=[backport v4.28.0] fix(backports): require draft plans and base-aware retire", output)
+        self.assertIn("source_commits=abc123,def456", output)
+        self.assertIn("git cherry-pick -x abc123 def456", output)
         self.assertIn("Primary review: #11", output)
         self.assertIn("Keep review comments on #11 unless this backport diverges materially.", output)
+
+    def test_prepare_backport_pr_all_required_prints_multiple_scaffolds(self) -> None:
+        args = argparse.Namespace(
+            release=None,
+            all_required=True,
+            main_pr=11,
+            main_title="fix(backports): require draft plans and base-aware retire",
+            source_branch="fix/backport-discipline",
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "load_branch_policy": harness_mod.load_branch_policy,
+            "default_dev_branch": harness_mod.default_dev_branch,
+            "require_checkout_role": harness_mod.require_checkout_role,
+            "source_commit_series": harness_mod.source_commit_series,
+        }
+        out = io.StringIO()
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.load_branch_policy = lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0", "v4.27.0"),
+            )
+            harness_mod.default_dev_branch = lambda _checkout_root: "v4.29.0"
+            harness_mod.require_checkout_role = lambda *_args, **_kwargs: None
+            harness_mod.source_commit_series = lambda _repo_root, _source_branch: ["abc123"]
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        output = out.getvalue()
+        self.assertIn("backport_release=v4.28.0", output)
+        self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
+        self.assertIn("backport_release=v4.27.0", output)
+        self.assertIn("paired_branch=fix/backport-v427-backport-discipline", output)
+        self.assertIn("\n---\n", output)
 
     def test_land_main_rejects_unsynced_main(self) -> None:
         args = argparse.Namespace(source="feat/demo", no_push=False, cleanup=False, keep_remote=False)

@@ -155,6 +155,17 @@ def current_commit_subject(repo_root: Path) -> str:
     return subject
 
 
+def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "rev-list", "--reverse", f"{preferred_main_ref(repo_root)}..{source_branch}"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def ref_oid(repo_root: Path, ref: str) -> str | None:
     result = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", ref],
@@ -477,6 +488,80 @@ def default_backport_branch_name(source_branch: str, release_ref: str) -> str:
     return f"backport-{marker}-{slugify_backport_fragment(source_branch)}"
 
 
+def default_backport_worktree_name(source_branch: str, release_ref: str) -> str:
+    branch_name = default_backport_branch_name(source_branch, release_ref)
+    return branch_name.split("/", 1)[1] if "/" in branch_name else branch_name
+
+
+def prepare_backport_targets(layout, args: argparse.Namespace) -> tuple[str, ...]:
+    policy = load_branch_policy(layout.package_root)
+    if args.all_required:
+        if args.release is not None:
+            raise SystemExit("[blueprint-harness] pass either one <release> or `--all-required`, not both")
+        return policy.required_backport_branches
+    if args.release is None:
+        raise SystemExit("[blueprint-harness] expected one <release> or `--all-required`")
+    return (normalize_lean_release_ref(args.release),)
+
+
+def print_prepare_backport_pr_scaffold(
+    *,
+    default_dev: str,
+    backport_release: str,
+    source_branch: str,
+    main_pr: int,
+    main_title: str,
+    source_commits: list[str],
+) -> None:
+    paired_branch = default_backport_branch_name(source_branch, backport_release)
+    paired_worktree = default_backport_worktree_name(source_branch, backport_release)
+    paired_title = f"[backport {backport_release}] {main_title}"
+
+    print(f"default_dev_branch={default_dev}")
+    print(f"backport_release={backport_release}")
+    print(f"source_branch={source_branch}")
+    print(f"paired_worktree={paired_worktree}")
+    print(f"paired_branch={paired_branch}")
+    print(f"paired_title={paired_title}")
+    print(f"source_commits={','.join(source_commits)}")
+    print(f"base_ref=origin/{backport_release}")
+    print()
+    print("## Batch Apply")
+    print(
+        f"- Create the linked worktree on `origin/{backport_release}` and attach it to `{paired_branch}`."
+    )
+    if source_commits:
+        print(f"- Cherry-pick the default-development series with `git cherry-pick -x {' '.join(source_commits)}`.")
+    else:
+        print("- No source commits were detected beyond the default-development base.")
+    print("- Let the agent resolve any cherry-pick conflicts in the backport worktree.")
+    print("- Run validation on the backport branch before opening the paired PR.")
+    print()
+    print("## Summary")
+    print(f"Backport #{main_pr} to `{backport_release}`.")
+    print()
+    print("## Primary Review")
+    print(f"- Primary review: #{main_pr}")
+    print(f"- Keep review comments on #{main_pr} unless this backport diverges materially.")
+    print()
+    print("## Scope")
+    print(f"- Backport the already-reviewed default-development change onto `{backport_release}`.")
+    print("- Keep this PR limited to release-line-specific conflict resolution.")
+    print("- Preserve one-to-one commit provenance with `cherry-pick -x`.")
+    print()
+    print("## Backport Delta")
+    print("- No intentional release-specific changes.")
+    print("- If conflict resolution requires deviations from the default-development PR, describe them here.")
+    print()
+    print("## Validation")
+    print(f"- Describe the validation run on `{backport_release}`.")
+    print()
+    print("## Coordination")
+    print(f"- Default-dev PR: #{main_pr}")
+    print(f"- Default-dev branch: `{source_branch}`")
+    print(f"- Backport branch: `{paired_branch}`")
+
+
 def command_prepare_backports(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     policy = load_branch_policy(layout.package_root)
@@ -509,42 +594,27 @@ def command_prepare_backports(args: argparse.Namespace) -> int:
 
 def command_prepare_backport_pr(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    backport_release = normalize_lean_release_ref(args.release)
+    require_checkout_role(layout.package_root, required_role="default_dev", operation="prepare-backport-pr")
+    targets = prepare_backport_targets(layout, args)
     source_branch = args.source_branch or current_branch_name(layout.package_root)
     if not source_branch:
         raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
 
     main_title = args.main_title or current_commit_subject(layout.package_root)
-    paired_branch = default_backport_branch_name(source_branch, backport_release)
-    paired_title = f"[backport {backport_release}] {main_title}"
+    source_commits = source_commit_series(layout.package_root, source_branch)
+    default_dev = default_dev_branch(layout.package_root)
 
-    print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
-    print(f"backport_release={backport_release}")
-    print(f"source_branch={source_branch}")
-    print(f"paired_branch={paired_branch}")
-    print(f"paired_title={paired_title}")
-    print()
-    print("## Summary")
-    print(f"Backport #{args.main_pr} to `{backport_release}`.")
-    print()
-    print("## Primary Review")
-    print(f"- Primary review: #{args.main_pr}")
-    print(f"- Keep review comments on #{args.main_pr} unless this backport diverges materially.")
-    print()
-    print("## Scope")
-    print(f"- Backport the already-reviewed default-development change onto `{backport_release}`.")
-    print("- Keep this PR limited to release-line-specific conflict resolution.")
-    print()
-    print("## Backport Delta")
-    print("- No intentional release-specific changes.")
-    print("- If conflict resolution requires deviations from the default-development PR, describe them here.")
-    print()
-    print("## Validation")
-    print(f"- Describe the validation run on `{backport_release}`.")
-    print()
-    print("## Coordination")
-    print(f"- Default-dev PR: #{args.main_pr}")
-    print(f"- Default-dev branch: `{source_branch}`")
+    for index, backport_release in enumerate(targets):
+        if index:
+            print("\n---\n")
+        print_prepare_backport_pr_scaffold(
+            default_dev=default_dev,
+            backport_release=backport_release,
+            source_branch=source_branch,
+            main_pr=args.main_pr,
+            main_title=main_title,
+            source_commits=source_commits,
+        )
     return 0
 
 
@@ -901,7 +971,16 @@ def build_parser() -> argparse.ArgumentParser:
         "prepare-backport-pr",
         help="Print a standardized paired backport branch name, PR title, and PR body scaffold.",
     )
-    prepare_backport_pr.add_argument("release", help="Backport release branch such as `v4.28.0`.")
+    prepare_backport_pr.add_argument(
+        "release",
+        nargs="?",
+        help="Backport release branch such as `v4.28.0`. Omit with `--all-required`.",
+    )
+    prepare_backport_pr.add_argument(
+        "--all-required",
+        action="store_true",
+        help="Print one scaffold block for every required backport release in `branch-policy.json`.",
+    )
     prepare_backport_pr.add_argument(
         "--main-pr",
         type=int,
