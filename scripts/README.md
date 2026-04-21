@@ -68,6 +68,10 @@ ready for review, replace each `pending` entry with `#<pr>` or
 title, and PR body scaffold that points review back to the default-dev PR and
 limits the paired PR to release-line-specific deltas.
 
+Paired backport branches themselves should be created with `git cherry-pick -x`.
+The paired-backport check validates both the recorded source SHAs and the patch
+IDs of the resulting commit series.
+
 To land one reviewed branch onto the active release branch from the root
 checkout, use:
 

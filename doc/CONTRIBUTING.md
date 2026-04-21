@@ -65,6 +65,11 @@ subjects such as `Update files` or `misc cleanup`.
   paired backport PR number or an explicit exemption reason.
 - The default-development PR is the primary review surface. Paired backport PRs
   exist mainly so CI and merge state are visible on the maintenance line.
+- Paired backport branches should be built with `git cherry-pick -x` so every
+  backport commit records the source commit SHA from the default-development PR.
+- The paired-backport check now verifies both the recorded source SHAs and the
+  patch IDs for the commit series, so a paired backport PR should remain a
+  one-to-one cherry-pick of the default-development series.
 - The expected workflow is:
   - keep the `v4.29.0` PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the

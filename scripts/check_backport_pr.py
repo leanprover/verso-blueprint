@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any
 from urllib.error import HTTPError
@@ -22,6 +23,7 @@ API_BASE = "https://api.github.com"
 API_VERSION = "2022-11-28"
 BACKPORT_LINE_RE = re.compile(r"(?mi)^Backport\s+([^\s:]+)\s*:\s*(.+)\s*$")
 BACKPORT_PR_RE = re.compile(r"(?:#|/pull/)(\d+)\b")
+CHERRY_PICK_SOURCE_RE = re.compile(r"(?mi)^\(cherry picked from commit ([0-9a-f]{40})\)\s*$")
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,12 @@ class BackportEntry:
     exempt_reason: str | None = None
     pending: bool = False
     pending_note: str | None = None
+
+
+@dataclass(frozen=True)
+class PullRequestCommit:
+    sha: str
+    message: str
 
 
 class BackportCheckError(RuntimeError):
@@ -58,6 +66,22 @@ class GitHubApi:
             detail = err.read().decode("utf-8", errors="replace").strip()
             raise BackportCheckError(f"GitHub API request failed for {path}: {err.code} {detail}") from err
 
+    def get_text(self, path: str, *, accept: str) -> str:
+        request = Request(
+            f"{API_BASE}{path}",
+            headers={
+                "Accept": accept,
+                "Authorization": f"Bearer {self.token}",
+                "X-GitHub-Api-Version": API_VERSION,
+            },
+        )
+        try:
+            with urlopen(request) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except HTTPError as err:
+            detail = err.read().decode("utf-8", errors="replace").strip()
+            raise BackportCheckError(f"GitHub API request failed for {path}: {err.code} {detail}") from err
+
     def pull_request(self, number: int) -> dict[str, Any]:
         data = self.get_json(f"/repos/{self.repo_full_name}/pulls/{number}")
         if not isinstance(data, dict):
@@ -75,6 +99,30 @@ class GitHubApi:
         if not isinstance(data, dict):
             raise BackportCheckError(f"Unexpected combined status payload for {sha}")
         return data
+
+    def pull_request_commits(self, number: int) -> list[PullRequestCommit]:
+        commits: list[PullRequestCommit] = []
+        page = 1
+        while True:
+            data = self.get_json(f"/repos/{self.repo_full_name}/pulls/{number}/commits?per_page=100&page={page}")
+            if not isinstance(data, list):
+                raise BackportCheckError(f"Unexpected commit payload for PR #{number}")
+            if not data:
+                return commits
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                sha = str(item.get("sha") or "")
+                message = str(item.get("commit", {}).get("message") or "")
+                if not sha or not message:
+                    raise BackportCheckError(f"Unexpected commit payload shape for PR #{number}")
+                commits.append(PullRequestCommit(sha=sha, message=message))
+            if len(data) < 100:
+                return commits
+            page += 1
+
+    def commit_diff(self, sha: str) -> str:
+        return self.get_text(f"/repos/{self.repo_full_name}/commits/{sha}", accept="application/vnd.github.diff")
 
 
 def parse_args() -> argparse.Namespace:
@@ -166,6 +214,81 @@ def validate_backport_entries(
     return entries
 
 
+def parse_cherry_pick_source(message: str) -> str | None:
+    match = CHERRY_PICK_SOURCE_RE.search(message)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def git_patch_id(diff_text: str) -> str:
+    result = subprocess.run(
+        ["git", "patch-id", "--stable"],
+        input=diff_text,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise BackportCheckError(f"failed to compute patch-id: {result.stderr.strip() or result.stdout.strip()}")
+    line = result.stdout.strip()
+    if not line:
+        raise BackportCheckError("failed to compute patch-id: commit diff was empty")
+    return line.split()[0]
+
+
+def verify_backport_commit_series(api: GitHubApi, source_pr_number: int, backport_pr_number: int) -> None:
+    source_commits = api.pull_request_commits(source_pr_number)
+    backport_commits = api.pull_request_commits(backport_pr_number)
+    if len(backport_commits) != len(source_commits):
+        raise BackportCheckError(
+            f"paired backport PR #{backport_pr_number} has {len(backport_commits)} commits, "
+            f"expected {len(source_commits)} from PR #{source_pr_number}"
+        )
+
+    source_shas = [commit.sha for commit in source_commits]
+    mapped_shas: list[str] = []
+    for commit in backport_commits:
+        source_sha = parse_cherry_pick_source(commit.message)
+        if source_sha is None:
+            raise BackportCheckError(
+                f"paired backport PR #{backport_pr_number} commit `{commit.sha}` is missing "
+                "`(cherry picked from commit <sha>)` provenance"
+            )
+        mapped_shas.append(source_sha)
+
+    unexpected = [sha for sha in mapped_shas if sha not in source_shas]
+    if unexpected:
+        raise BackportCheckError(
+            f"paired backport PR #{backport_pr_number} references source commit(s) not present in PR #{source_pr_number}: "
+            + ", ".join(unexpected)
+        )
+
+    if len(set(mapped_shas)) != len(mapped_shas):
+        raise BackportCheckError(f"paired backport PR #{backport_pr_number} repeats at least one source commit")
+
+    if mapped_shas != source_shas:
+        raise BackportCheckError(
+            f"paired backport PR #{backport_pr_number} does not preserve the commit order from PR #{source_pr_number}"
+        )
+
+    patch_id_cache: dict[str, str] = {}
+
+    def commit_patch_id(sha: str) -> str:
+        cached = patch_id_cache.get(sha)
+        if cached is not None:
+            return cached
+        patch_id_cache[sha] = git_patch_id(api.commit_diff(sha))
+        return patch_id_cache[sha]
+
+    for source_commit, backport_commit in zip(source_commits, backport_commits):
+        if commit_patch_id(source_commit.sha) != commit_patch_id(backport_commit.sha):
+            raise BackportCheckError(
+                f"paired backport PR #{backport_pr_number} commit `{backport_commit.sha}` does not match "
+                f"the patch from source commit `{source_commit.sha}`"
+            )
+
+
 def check_runs_state(check_runs: dict[str, Any], combined_status: dict[str, Any]) -> None:
     failures: list[str] = []
     pending: list[str] = []
@@ -203,6 +326,7 @@ def check_runs_state(check_runs: dict[str, Any], combined_status: dict[str, Any]
 
 def verify_backport_pr(
     api: GitHubApi,
+    source_pr_number: int,
     branch: str,
     entry: BackportEntry,
 ) -> None:
@@ -221,6 +345,8 @@ def verify_backport_pr(
     state = str(pr.get("state") or "")
     if state == "closed" and not bool(pr.get("merged")):
         raise BackportCheckError(f"paired backport PR #{entry.pr_number} is closed without merge")
+
+    verify_backport_commit_series(api, source_pr_number, entry.pr_number)
 
     if bool(pr.get("merged")):
         return
@@ -283,6 +409,14 @@ def run(event_path: str | None, token: str | None) -> int:
     if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
         raise BackportCheckError("event payload is missing repository.full_name")
     entries_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].pr_number is not None]
+    if entries_to_verify:
+        source_pr_number_raw = pull_request.get("number", event.get("number"))
+        try:
+            source_pr_number = int(source_pr_number_raw)
+        except (TypeError, ValueError) as err:
+            raise BackportCheckError("event payload is missing the default-development PR number") from err
+    else:
+        source_pr_number = 0
     if entries_to_verify and not token:
         raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
     api = GitHubApi(repository["full_name"], token) if entries_to_verify else None
@@ -294,7 +428,7 @@ def run(event_path: str | None, token: str | None) -> int:
             continue
         if api is None:
             raise BackportCheckError(f"Backport {branch}: internal error; paired PR verification is unavailable")
-        verify_backport_pr(api, branch, entry)
+        verify_backport_pr(api, source_pr_number, branch, entry)
         print(f"[backport-check] {branch}: paired PR #{entry.pr_number} is ready")
     return 0
 

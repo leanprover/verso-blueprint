@@ -465,6 +465,11 @@ That helper prints a standardized paired branch name, a title of the form
 `[backport v4.28.0] ...`, and a PR body that points back to the primary
 default-development review.
 
+When populating the paired backport branch itself, use `git cherry-pick -x` so
+each backport commit records `(cherry picked from commit <sha>)`. The
+paired-backport check verifies those recorded source SHAs and also compares the
+patch IDs of the default-development and backport commit series.
+
 CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
 is part of PR health, and once the PR is ready it additionally checks that the
 paired PR targets the required backport branch and that its checks are green
