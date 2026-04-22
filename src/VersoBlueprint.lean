@@ -33,6 +33,7 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.Author
 import VersoBlueprint.Informal.Uses
@@ -43,6 +44,7 @@ import VersoBlueprint.LeanNameParsing
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 import VersoBlueprint.StyleSwitcher
 import VersoBlueprint.Profiling
 

@@ -16,6 +16,7 @@ import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.Lean
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -48,7 +49,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
     let .ok cdata@{ label, definedDefs := _, definedTheorems := _, foldProofs := _ } := fromJson? (α := InlineCodeData) data
       | logError s!"Malformed data: {data}"
         pure none
-    if let .some _d := (← get).getDomainObject? informalCodeDomain label.toString then
+    if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
       pure none
     else
       let previewBlocks := previewCodeBlocks _contents
@@ -57,16 +58,16 @@ block_extension Block.informalCode (data : InlineCodeData) where
       for target in previewTargets do
         let previewKey := LeanCodePreview.lookupKey target
         let previewData := toJson (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks)
-        let existingPreview? := (← get).getDomainObject? LeanCodePreview.domainName previewKey
-        modify fun s => s.saveDomainObjectData LeanCodePreview.domainName previewKey previewData
+        let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
+        modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
         if existingPreview?.isNone then
           let path ← (·.path) <$> read
           let _ ← Verso.Genre.Manual.externalTag id path s!"--lean-code-preview-{previewKey}"
-          modify fun s => s.saveDomainObject LeanCodePreview.domainName previewKey id
+          modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveId s previewKey id
       let path ← (·.path) <$> read
       let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-code-{label}"
-      modify λ s => s.saveDomainObject informalCodeDomain label.toString id
-      modify λ s => s.saveDomainObjectData informalCodeDomain label.toString (toJson cdata)
+      modify λ s => Informal.TraversalIndex.InlineCode.saveId s label id
+      modify λ s => Informal.TraversalIndex.InlineCode.saveData s label (toJson cdata)
       pure none
   toTeX := none
   extraCss := Informal.Block.Assets.codeCssAssets
@@ -82,13 +83,10 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match s.getDomainObject? informalDomain label.toString with
-        | some obj =>
-          match fromJson? (α := BlockData) obj.data with
-          | .ok b =>
-            let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
-            codePanelHeader b (b.displayNumber s)
-          | .error _ => fallbackCodePanelHeader
+        match Informal.TraversalIndex.Nodes.data? s label with
+        | some b =>
+          let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
+          codePanelHeader b (b.displayNumber s)
         | none => fallbackCodePanelHeader
       let getDeclHref (decl : Name) : Option String :=
         Resolve.resolveInlineLeanDeclHref? s decl

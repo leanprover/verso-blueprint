@@ -227,7 +227,7 @@ private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
   match item.decl.render with
   | .ok renderedHtml =>
     {{
-      <div class="bp_external_decl_rendered">{{renderedHtml}}</div>
+      <div class="bp_external_decl_rendered">{{.text false renderedHtml}}</div>
     }}
   | .error err =>
     {{

@@ -139,14 +139,17 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       | some moduleName => liftM <| sourcePathForModule? moduleName
       | none => pure none
     let provenance := mkProvenance workspaceRoot moduleName? sourcePath?
-    let selectionRange? := ranges?.map (·.selectionRange)
+    let selectionRange? := ranges?.map (fun r => r.selectionRange)
     let sourceHref? := sourceLinkHref? opts workspaceRoot moduleName? sourcePath? selectionRange?
-    let render : Data.ExternalDeclRender ←
-      (renderDeclHtmlDirectFromInfoE canonical cinfo).run'
+    let renderResult ← (renderDeclHtmlDirectFromInfoE canonical cinfo).run'
+    let render : Data.ExternalDeclRender :=
+      match renderResult with
+      | .ok html => .ok html.asString
+      | .error err => .error err
     pure {
       ref with
       provenance
-      range? := ranges?.map (·.range)
+      range? := ranges?.map (fun r => r.range)
       selectionRange?
       sourceHref?
       render

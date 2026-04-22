@@ -266,6 +266,47 @@ That convergence is not complete yet. Manifest construction still decodes
 `PreviewCache` and `Informal.LeanCodePreview` entries directly because it
 enumerates stored preview domains to emit the shared browser manifest.
 
+### Traversal Storage Roles
+
+Blueprint currently uses multiple storage channels during elaboration and
+rendering:
+
+- `Informal.Environment.State` for canonical semantic data authored in Lean
+  modules
+- `TraverseState.contents` for tiny traversal-local scalar state
+- `TraverseState.domains` for link-oriented indexes plus some legacy local
+  caches
+
+That mix is intentional, but the roles should stay explicit:
+
+- semantic domains:
+  stable linkable objects such as Blueprint node anchors or bibliography entry
+  anchors
+- internal indexes:
+  traversal-local lookup tables that support rendering but are not themselves
+  semantic document objects
+- runtime caches:
+  stored preview payloads used to build shared browser manifests or local hover
+  content
+- accumulators:
+  traversal-time backlink or ownership tables that are updated incrementally as
+  blocks and inlines are traversed
+
+`TraversalIndex` is the local module that names and classifies those stores.
+Callers should prefer its typed APIs over reaching into raw domain names and
+ad hoc JSON payloads directly.
+
+In particular, the main Blueprint node index is now intentionally slimmer than
+the full `BlockData` payload used by block rendering. Code-specific
+render/runtime data such as `codeData` belongs to dedicated traversal indexes
+and block-local rendering inputs, not to the semantic node index itself.
+
+This does not mean every internal store has already moved off traversal
+domains. Under current upstream Verso APIs, domains are still operationally
+better than `TraverseState.set/get?` for hot per-entry updates, while
+`TraverseState.set/get?` remains a good fit for tiny scalar state such as the
+global numbering counter.
+
 ### Self-Contained Snippet Rendering
 
 Some previews are rendered inside a full page, while others are rendered in

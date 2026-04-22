@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.TraversalIndex
 
 namespace Informal
 
@@ -31,12 +32,7 @@ def numberedPartPrefix? (ctxt : TraverseContext) : Option String := Id.run do
   none
 
 def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  match st.getDomainObject? Resolve.informalDomainName label.toString with
-  | some obj =>
-    match fromJson? (α := BlockData) obj.data with
-    | .ok data => some data
-    | .error _ => none
-  | none => none
+  Informal.TraversalIndex.Nodes.data? st label
 
 private def mergeLabelArrays (xs ys : Array Data.Label) : Array Data.Label :=
   ys.foldl (init := xs) fun acc label =>
@@ -83,13 +79,16 @@ private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
       (aNum == bNum && a.label.toString < b.label.toString)
 
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=
-  match state.domains.get? Resolve.informalDomainName with
+  match Informal.TraversalIndex.Nodes.domain? state with
   | none => #[]
   | some domain =>
     sortStoredBlocks <| domain.objects.foldl (init := #[]) fun acc _canonical obj =>
-      match fromJson? (α := BlockData) obj.data with
-      | .ok block => acc.push block
-      | .error _ => acc
+      match fromJson? (α := StoredBlockData) obj.data with
+      | .ok block => acc.push block.toBlockData
+      | .error _ =>
+        match fromJson? (α := BlockData) obj.data with
+        | .ok block => acc.push block
+        | .error _ => acc
 
 def BlockData.withResolvedNumbering
     (data : BlockData) (st : TraverseState) (fallbackPrefix? : Option String := none) : BlockData :=

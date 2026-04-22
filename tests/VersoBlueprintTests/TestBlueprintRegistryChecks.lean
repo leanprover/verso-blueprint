@@ -8,7 +8,7 @@ import VersoBlueprintTests.TestBlueprintRegistryMeta
 
 namespace Verso.VersoBlueprintTests.TestBlueprintRegistryChecks
 
-open Verso.VersoBlueprintTests.TestBlueprintRegistry
+open Verso.VersoBlueprintTests.TestBlueprintRegistryMeta
 
 /-- info: true -/
 #guard_msgs in

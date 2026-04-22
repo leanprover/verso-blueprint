@@ -14,6 +14,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
 
@@ -398,7 +399,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
             pure { graph := #[], direction := .TB }
       let s ← HtmlT.state
       let resolveHref : Name → Option String := fun ref =>
-        Resolve.resolveDomainHref? s Resolve.informalDomainName ref.toString
+        Informal.TraversalIndex.Nodes.href? s ref
       let groupTitles : Lean.NameMap String :=
         graphData.groupTitles.foldl (init := ({} : Lean.NameMap String)) fun acc (group, title) =>
           acc.insert group title

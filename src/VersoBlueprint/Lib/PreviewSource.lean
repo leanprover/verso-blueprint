@@ -12,6 +12,7 @@ import VersoBlueprint.Environment
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewSource
 
@@ -76,9 +77,8 @@ private def firstNonEmptyEntry?
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
   let traversalFacetEntry? (facet : PreviewCache.Facet) : Option PreviewCache.Entry := do
-    let key := PreviewCache.key label facet
-    let obj ← s.getDomainObject? Resolve.informalPreviewDomainName key
-    (fromJson? (α := PreviewCache.Entry) obj.data).toOption
+    let key := Informal.TraversalIndex.TraversalPreviews.key label facet
+    Informal.TraversalIndex.TraversalPreviews.entry? s key
   firstNonEmptyEntry? traversalFacetEntry?
 
 def traversalLookupKey?

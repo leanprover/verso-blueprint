@@ -185,7 +185,20 @@ def defaultTexSourceSlot : String := "default"
 inductive ExternalOrigin where
   | directiveLean
   | blueprintAttr
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+deriving Repr, Inhabited, DecidableEq
+
+instance : Lean.ToJson ExternalOrigin where
+  toJson
+    | .directiveLean => .str "d"
+    | .blueprintAttr => .str "a"
+
+instance : Lean.FromJson ExternalOrigin where
+  fromJson?
+    | .str "d" => return .directiveLean
+    | .str "a" => return .blueprintAttr
+    | .str "directiveLean" => return .directiveLean
+    | .str "blueprintAttr" => return .blueprintAttr
+    | other => throw s!"expected ExternalOrigin, got {other.compress}"
 
 open Syntax in
 instance : Quote ExternalOrigin where
@@ -197,7 +210,40 @@ inductive ExternalDeclProvenance where
   | inWorkspace (moduleName : Name) (sourcePath : String)
   | outWorkspace (moduleName : Name) (sourcePath? : Option String := none)
   | unknown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+deriving Repr, Inhabited, DecidableEq
+
+instance : Lean.ToJson ExternalDeclProvenance where
+  toJson
+    | .inWorkspace moduleName sourcePath =>
+      .arr #[.str "iw", Lean.ToJson.toJson moduleName, Lean.ToJson.toJson sourcePath]
+    | .outWorkspace moduleName sourcePath? =>
+      .arr #[.str "ow", Lean.ToJson.toJson moduleName, Lean.ToJson.toJson sourcePath?]
+    | .unknown =>
+      .arr #[.str "u"]
+
+instance : Lean.FromJson ExternalDeclProvenance where
+  fromJson?
+    | .arr arr => do
+      let some tag := arr[0]? | throw "expected external provenance tag"
+      match (← Lean.FromJson.fromJson? tag : String) with
+      | "iw" =>
+        let some moduleName := arr[1]? | throw "expected in-workspace module"
+        let some sourcePath := arr[2]? | throw "expected in-workspace source path"
+        return .inWorkspace (← Lean.FromJson.fromJson? moduleName) (← Lean.FromJson.fromJson? sourcePath)
+      | "ow" =>
+        let some moduleName := arr[1]? | throw "expected out-workspace module"
+        let some sourcePath := arr[2]? | throw "expected out-workspace source path"
+        return .outWorkspace (← Lean.FromJson.fromJson? moduleName) (← Lean.FromJson.fromJson? sourcePath)
+      | "u" => return .unknown
+      | other => throw s!"unknown external provenance tag {other}"
+    | v@(.obj _) => do
+      if let .ok moduleName := v.getObjValAs? Name "inWorkspace" then
+        return .inWorkspace moduleName (← v.getObjValAs? String "sourcePath")
+      else if let .ok moduleName := v.getObjValAs? Name "outWorkspace" then
+        return .outWorkspace moduleName (← v.getObjValAs? (Option String) "sourcePath")
+      else
+        return .unknown
+    | other => throw s!"expected ExternalDeclProvenance, got {other.compress}"
 
 open Syntax in
 instance : Quote ExternalDeclProvenance where
@@ -227,7 +273,20 @@ def ExternalDeclProvenance.label : ExternalDeclProvenance → String
 inductive ExternalDeclLookupError where
   | notPresentAtRegistration
   | notFoundInEnvironment
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+deriving Repr, Inhabited, DecidableEq
+
+instance : Lean.ToJson ExternalDeclLookupError where
+  toJson
+    | .notPresentAtRegistration => .str "npr"
+    | .notFoundInEnvironment => .str "nfe"
+
+instance : Lean.FromJson ExternalDeclLookupError where
+  fromJson?
+    | .str "npr" => return .notPresentAtRegistration
+    | .str "nfe" => return .notFoundInEnvironment
+    | .str "notPresentAtRegistration" => return .notPresentAtRegistration
+    | .str "notFoundInEnvironment" => return .notFoundInEnvironment
+    | other => throw s!"expected ExternalDeclLookupError, got {other.compress}"
 
 open Syntax in
 instance : Quote ExternalDeclLookupError where
@@ -241,15 +300,22 @@ def ExternalDeclLookupError.message : ExternalDeclLookupError → String
   | .notPresentAtRegistration => "name was not present during directive/code-block registration"
   | .notFoundInEnvironment => "name is not present in current environment"
 
-abbrev ExternalDeclRender := Informal.DocGenRender
+abbrev ExternalDeclRender := Except Informal.DocGenRenderError String
 
 instance : ToJson ExternalDeclRender where
   toJson
-    | .ok html => Json.mkObj [("ok", toJson html)]
-    | .error error => Json.mkObj [("error", toJson error)]
+    | .ok html => .arr #[.str "ok", Lean.ToJson.toJson html]
+    | .error error => .arr #[.str "err", Lean.ToJson.toJson error]
 
 instance : FromJson ExternalDeclRender where
   fromJson?
+    | .arr arr => do
+      let some tag := arr[0]? | throw "expected external render tag"
+      let some payload := arr[1]? | throw "expected external render payload"
+      match (← Lean.FromJson.fromJson? tag : String) with
+      | "ok" => return .ok (← Lean.FromJson.fromJson? payload)
+      | "err" => return .error (← Lean.FromJson.fromJson? payload)
+      | other => throw s!"unknown external render tag {other}"
     | .obj obj =>
       match obj.get? "ok", obj.get? "error" with
       | some ok, none => return .ok (← fromJson? ok)
@@ -298,7 +364,65 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
-deriving Repr, Inhabited, ToJson, FromJson
+deriving Repr, Inhabited
+
+instance : Lean.ToJson ExternalRef where
+  toJson ref := .arr #[
+    Lean.ToJson.toJson ref.written,
+    Lean.ToJson.toJson ref.canonical,
+    Lean.ToJson.toJson ref.origin,
+    Lean.ToJson.toJson ref.present,
+    Lean.ToJson.toJson ref.provedStatus,
+    Lean.ToJson.toJson ref.provenance,
+    Lean.ToJson.toJson ref.range?,
+    Lean.ToJson.toJson ref.selectionRange?,
+    Lean.ToJson.toJson ref.kind,
+    Lean.ToJson.toJson ref.sourceHref?,
+    Lean.ToJson.toJson ref.render
+  ]
+
+instance : Lean.FromJson ExternalRef where
+  fromJson? v := do
+  match v with
+    | .arr arr => do
+      let some written := arr[0]? | throw "expected written name"
+      let some canonical := arr[1]? | throw "expected canonical name"
+      let some origin := arr[2]? | throw "expected origin"
+      let some present := arr[3]? | throw "expected presence flag"
+      let some provedStatus := arr[4]? | throw "expected proved status"
+      let some provenance := arr[5]? | throw "expected provenance"
+      let some range? := arr[6]? | throw "expected declaration range"
+      let some selectionRange? := arr[7]? | throw "expected selection range"
+      let some kind := arr[8]? | throw "expected node kind"
+      let some sourceHref? := arr[9]? | throw "expected source href"
+      let some render := arr[10]? | throw "expected render payload"
+      return {
+        written := ← Lean.FromJson.fromJson? written
+        canonical := ← Lean.FromJson.fromJson? canonical
+        origin := ← Lean.FromJson.fromJson? origin
+        present := ← Lean.FromJson.fromJson? present
+        provedStatus := ← Lean.FromJson.fromJson? provedStatus
+        provenance := ← Lean.FromJson.fromJson? provenance
+        range? := ← Lean.FromJson.fromJson? range?
+        selectionRange? := ← Lean.FromJson.fromJson? selectionRange?
+        kind := ← Lean.FromJson.fromJson? kind
+        sourceHref? := ← Lean.FromJson.fromJson? sourceHref?
+        render := ← Lean.FromJson.fromJson? render
+      }
+    | _ =>
+      return {
+        written := ← v.getObjValAs? Name "written"
+        canonical := ← v.getObjValAs? Name "canonical"
+        origin := ← v.getObjValAs? ExternalOrigin "origin"
+        present := ← v.getObjValAs? Bool "present"
+        provedStatus := ← v.getObjValAs? ProvedStatus "provedStatus"
+        provenance := ← v.getObjValAs? ExternalDeclProvenance "provenance"
+        range? := ← v.getObjValAs? (Option Lean.DeclarationRange) "range?"
+        selectionRange? := ← v.getObjValAs? (Option Lean.DeclarationRange) "selectionRange?"
+        kind := ← v.getObjValAs? NodeKind "kind"
+        sourceHref? := ← v.getObjValAs? (Option String) "sourceHref?"
+        render := ← v.getObjValAs? ExternalDeclRender "render"
+      }
 
 open Syntax in
 instance : Quote ExternalRef where

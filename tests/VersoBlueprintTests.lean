@@ -3,3 +3,4 @@ import VersoBlueprintTests.BlueprintMainWrapper
 import VersoBlueprintTests.DocGenNameRender
 import VersoBlueprintTests.TestBlueprintRegistry
 import VersoBlueprintTests.TestBlueprintRegistryChecks
+import VersoBlueprintTests.TestBlueprintRegistryCoverage

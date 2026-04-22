@@ -11,6 +11,7 @@ import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
 
@@ -39,7 +40,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
     let _ ← Verso.Genre.Manual.externalTag id path s!"--bp-bibliography"
     for entry in biblio.entries do
       modify fun st =>
-        st.saveDomainObject Resolve.bibliographyDomainName entry.label id
+        Informal.TraversalIndex.Bibliography.saveId st entry.label id
     return none
   toTeX := none
   toHtml :=
@@ -54,9 +55,9 @@ block_extension Block.bibliography (biblio : BibliographyData) where
       let rows ← entries.mapM fun entry => do
         let rendered ← entry.citation.bibHtml goI
         let itemId := s!"bp-bib-{Informal.Cite.citationAnchorId entry.label}"
-        let usageHrefs := Resolve.resolveDomainHrefs st Resolve.citationUsageDomainName entry.label
+        let usageHrefs := Informal.TraversalIndex.CitationUsages.hrefs st entry.label
         let usageData : Informal.Cite.CitationUsageData :=
-          match st.getDomainObject? Resolve.citationUsageDomainName entry.label with
+          match Informal.TraversalIndex.CitationUsages.object? st entry.label with
           | some obj =>
             match fromJson? (α := Informal.Cite.CitationUsageData) obj.data with
             | .ok data => data

@@ -21,6 +21,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
 
@@ -1204,7 +1205,7 @@ block_extension Block.summary (summary : Summary) where
           pure .empty
       let s ← HtmlT.state
       let getEntryHref (label : Name) : Option String :=
-        Resolve.resolveDomainHref? s Resolve.informalDomainName label.toString
+        Informal.TraversalIndex.Nodes.href? s label
       let getDeclHref (label : Name) (decl : Name) : Option String :=
         match Resolve.resolveRenderedExternalDeclHref? s label decl with
         | Option.some href => Option.some href

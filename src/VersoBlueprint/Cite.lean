@@ -12,6 +12,7 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 open Lean Elab Command
 open Verso Doc Elab
@@ -228,7 +229,20 @@ numbering can be numeric or alphabetic (for example appendices).
 structure HeaderLocation where
   title : String
   number : Option String := none
-deriving Inhabited, FromJson, ToJson
+deriving Inhabited
+
+instance : Lean.ToJson HeaderLocation where
+  toJson loc := .arr #[toJson loc.title, toJson loc.number]
+
+instance : Lean.FromJson HeaderLocation where
+  fromJson? v := do
+    let arr ← v.getArr?
+    let some title := arr[0]? | throw "expected header location title"
+    let some number := arr[1]? | throw "expected header location number"
+    return {
+      title := ← fromJson? title
+      number := ← fromJson? number
+    }
 
 /--
 Reference to the informal block surrounding a bibliography citation use site.
@@ -241,7 +255,22 @@ structure TheoremContext where
   label : Informal.Data.Label
   kind : Informal.Data.InProgressKind
   localCount : Nat
-deriving Inhabited, FromJson, ToJson
+deriving Inhabited
+
+instance : Lean.ToJson TheoremContext where
+  toJson ctxt := .arr #[toJson ctxt.label, toJson ctxt.kind, toJson ctxt.localCount]
+
+instance : Lean.FromJson TheoremContext where
+  fromJson? v := do
+    let arr ← v.getArr?
+    let some label := arr[0]? | throw "expected theorem context label"
+    let some kind := arr[1]? | throw "expected theorem context kind"
+    let some localCount := arr[2]? | throw "expected theorem context local count"
+    return {
+      label := ← fromJson? label
+      kind := ← fromJson? kind
+      localCount := ← fromJson? localCount
+    }
 
 /--
 Structured location summary for a bibliography citation use.
@@ -255,7 +284,29 @@ structure CitationSummary where
   sectionLoc : Option HeaderLocation := none
   theoremCtx : Option TheoremContext := none
   documentName : Option String := none
-deriving Inhabited, FromJson, ToJson
+deriving Inhabited
+
+instance : Lean.ToJson CitationSummary where
+  toJson summary := .arr #[
+    toJson summary.chapter,
+    toJson summary.sectionLoc,
+    toJson summary.theoremCtx,
+    toJson summary.documentName
+  ]
+
+instance : Lean.FromJson CitationSummary where
+  fromJson? v := do
+    let arr ← v.getArr?
+    let some chapter := arr[0]? | throw "expected citation chapter"
+    let some sectionLoc := arr[1]? | throw "expected citation section"
+    let some theoremCtx := arr[2]? | throw "expected citation theorem context"
+    let some documentName := arr[3]? | throw "expected citation document name"
+    return {
+      chapter := ← fromJson? chapter
+      sectionLoc := ← fromJson? sectionLoc
+      theoremCtx := ← fromJson? theoremCtx
+      documentName := ← fromJson? documentName
+    }
 
 /--
 One backlink from a bibliography entry to a concrete citation use site in the document.
@@ -268,7 +319,29 @@ structure CitationUse where
   summary : CitationSummary := {}
   kind : Option CitePartKind := none
   index : Option String := none
-deriving Inhabited, FromJson, ToJson
+deriving Inhabited
+
+instance : Lean.ToJson CitationUse where
+  toJson use := .arr #[
+    toJson use.href,
+    toJson use.summary,
+    toJson use.kind,
+    toJson use.index
+  ]
+
+instance : Lean.FromJson CitationUse where
+  fromJson? v := do
+    let arr ← v.getArr?
+    let some href := arr[0]? | throw "expected citation href"
+    let some summary := arr[1]? | throw "expected citation summary"
+    let some kind := arr[2]? | throw "expected citation part kind"
+    let some index := arr[3]? | throw "expected citation locator index"
+    return {
+      href := ← fromJson? href
+      summary := ← fromJson? summary
+      kind := ← fromJson? kind
+      index := ← fromJson? index
+    }
 
 /--
 Accumulated citation-use backlinks for one bibliography label.
@@ -278,7 +351,15 @@ list and deduplicates entries with `insertUnique`.
 -/
 structure CitationUsageData where
   uses : List CitationUse := []
-deriving Inhabited, FromJson, ToJson
+deriving Inhabited
+
+instance : Lean.ToJson CitationUsageData where
+  toJson data := toJson data.uses
+
+instance : Lean.FromJson CitationUsageData where
+  fromJson? v := do
+    let uses : List CitationUse ← fromJson? v
+    return { uses }
 
 private def CitationUsageData.insertUnique (d : CitationUsageData) (u : CitationUse) : CitationUsageData :=
   if d.uses.any (fun e =>
@@ -465,11 +546,11 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
       let previewId := citationPreviewId item cfg.style cfg.kind cfg.index
       modify fun st =>
         let st := Informal.HoverRender.registerInlinePreviewOwner st path previewId id
-        let st := st.saveDomainObject Resolve.citationUsageDomainName item.label id
+        let st := Informal.TraversalIndex.CitationUsages.saveId st item.label id
         match href? with
         | some href =>
-          st.modifyDomainObjectData
-            Resolve.citationUsageDomainName
+          Informal.TraversalIndex.CitationUsages.modifyData
+            st
             item.label
             (updateCitationUsageData {
               href,
@@ -532,7 +613,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
           match Resolve.resolveDomainHref? st Verso.Genre.Manual.sectionDomain "Contents--Blueprint-Bibliography" with
           | some href => some href
           | Option.none =>
-            Resolve.resolveDomainHref? st Resolve.bibliographyDomainName item.label
+            Informal.TraversalIndex.Bibliography.href? st item.label
         let href? := base?.map (fun href =>
           let cleanBase :=
             match href.splitOn "#" with
