@@ -8,9 +8,11 @@ import VersoManual
 
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
+import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -24,11 +26,6 @@ structure GroupConfig where
   label : Data.Label
   labelSyntax : Syntax := Syntax.missing
 deriving Inhabited
-
-structure GroupBlockData where
-  label : Data.Label
-  header : String := ""
-deriving Inhabited, FromJson, ToJson, Quote
 
 section
 variable [Monad m] [MonadError m]
@@ -53,7 +50,7 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
       | logError "Malformed data in Block.groupMetadata.traverse"
         return none
     modify fun st =>
-      st.saveDomainObjectData Resolve.informalGroupDomainName groupData.label.toString (toJson groupData)
+      Informal.TraversalIndex.Groups.saveData st groupData.label (toJson groupData)
     return none
   toTeX := some <| fun _ _ _ _ _ => pure .empty
   toHtml :=

@@ -13,6 +13,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Profiling
+import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -64,11 +65,8 @@ inline_extension Inline.informal (data : InlineData) where
         Informal.HoverRender.registerInlinePreviewOwner st path (usePreviewId label block) id
       pure none
     else
-      let some obj := (← get).getDomainObject? informalDomain label.toString
+      let some bdata := Informal.TraversalIndex.Nodes.data? (← get) label
         | pure none
-      let .ok bdata := fromJson? (α := BlockData) obj.data
-        | logError s!"Malformed informal domain data for {label}: {obj.data}"
-          pure none
       modify fun st =>
         Informal.HoverRender.registerInlinePreviewOwner st path (usePreviewId label bdata) id
       pure none
@@ -97,9 +95,7 @@ inline_extension Inline.informal (data : InlineData) where
         | some b, none => some b
         | none, none => none
       let href : Option String :=
-        match st.resolveDomainObject informalDomain label.toString with
-        | .ok dest => some dest.relativeLink
-        | .error _ => none
+        Informal.TraversalIndex.Nodes.href? st label
       let preview? ←
         if inPreviewRender then
           pure Option.none

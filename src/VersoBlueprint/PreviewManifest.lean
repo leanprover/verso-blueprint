@@ -16,6 +16,7 @@ import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewManifest
 
@@ -211,12 +212,9 @@ private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : Syst
   cfg.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
 
 private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  match state.getDomainObject? Resolve.informalDomainName label.toString with
+  match Informal.TraversalIndex.Nodes.data? state label with
+  | some blockData => some (blockData.withResolvedNumbering state)
   | none => none
-  | some obj =>
-    match fromJson? (α := Informal.BlockData) obj.data with
-    | .ok blockData => some (blockData.withResolvedNumbering state)
-    | .error _ => none
 
 private def blockTitle (state : TraverseState) (label : Name) (blockData? : Option Informal.BlockData := none) : String :=
   match blockData? <|> blockInfo? state label with
@@ -224,7 +222,7 @@ private def blockTitle (state : TraverseState) (label : Name) (blockData? : Opti
   | none => label.toString
 
 private def blockHref (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state Resolve.informalDomainName label.toString
+  Informal.TraversalIndex.Nodes.href? state label
 
 private def blockKind? (blockData? : Option Informal.BlockData) : Option Informal.Data.NodeKind :=
   match blockData? with
@@ -235,14 +233,11 @@ private def blockKind? (blockData? : Option Informal.BlockData) : Option Informa
   | none => none
 
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
-  match state.getDomainObject? Resolve.informalGroupDomainName parent.toString with
+  match Informal.TraversalIndex.Groups.data? state parent with
+  | some groupData =>
+      let header := groupData.header.trimAscii.toString
+      if header.isEmpty then none else some header
   | none => none
-  | some obj =>
-    match fromJson? (α := Informal.GroupBlockData) obj.data with
-    | .ok groupData =>
-        let header := groupData.header.trimAscii.toString
-        if header.isEmpty then none else some header
-    | .error _ => none
 
 private def blockParentTitle? (state : TraverseState) (blockData? : Option Informal.BlockData) : Option String :=
   blockData?.bind fun blockData =>
@@ -253,7 +248,7 @@ private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO (Array Entry) := do
-  let some domain := state.domains.get? Resolve.informalPreviewDomainName
+  let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
     | return #[]
   let mut entries := #[]
   for (_key, obj) in domain.objects.toArray do
@@ -293,7 +288,7 @@ private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO (Array Entry) := do
-  let some domain := state.domains.get? Informal.LeanCodePreview.domainName
+  let some domain := Informal.TraversalIndex.LeanCodePreviews.domain? state
     | return #[]
   let mut entries := #[]
   for (_key, obj) in domain.objects.toArray do

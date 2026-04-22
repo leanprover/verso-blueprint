@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.HoverRender
 
@@ -75,8 +76,6 @@ def previewKey (s : String) : String :=
     else
       acc ++ s!"-{toHex c.toNat}"
 
-def inlinePreviewStoreDomain : Name := Name.mkSimple "Informal.inlinePreview.store"
-
 def inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
 
 def inlinePreviewMarkerBlock : Verso.Genre.Manual.Block := {
@@ -106,29 +105,20 @@ def withInlinePreviewRenderContext {m α}
     act
 
 def inlinePreviewStoreKey (path : Array String) (previewId : String) : String :=
-  s!"{String.intercalate "/" path.toList}::{previewId}"
+  Informal.TraversalIndex.InlinePreviewOwners.key path previewId
 
 def registerInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
     (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) :
     Verso.Genre.Manual.TraverseState :=
-  let key := inlinePreviewStoreKey path previewId
-  if (state.getDomainObject? inlinePreviewStoreDomain key).isSome then
-    state
-  else
-    state.saveDomainObject inlinePreviewStoreDomain key id
+  Informal.TraversalIndex.InlinePreviewOwners.registerOwner state path previewId id
 
 def inlinePreviewOwnerId? (state : Verso.Genre.Manual.TraverseState)
     (path : Array String) (previewId : String) : Option Verso.Genre.Manual.InternalId :=
-  let key := inlinePreviewStoreKey path previewId
-  match state.getDomainObject? inlinePreviewStoreDomain key with
-  | some obj => obj.ids.toArray[0]?
-  | Option.none => Option.none
+  Informal.TraversalIndex.InlinePreviewOwners.ownerId? state path previewId
 
 def isInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
     (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) : Bool :=
-  match inlinePreviewOwnerId? state path previewId with
-  | some owner => owner == id
-  | Option.none => true
+  Informal.TraversalIndex.InlinePreviewOwners.isOwner state path previewId id
 
 private def previewPanel
     (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)

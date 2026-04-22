@@ -44,8 +44,10 @@ private def emptyState : TraverseState :=
     globalCount := some 11
   }
   let state :=
-    (TraverseState.initialize default)
-      |>.saveDomainObjectData Informal.Resolve.informalDomainName stored.label.toString (toJson stored)
+    Informal.TraversalIndex.Nodes.saveData
+      (TraverseState.initialize default)
+      stored.label
+      (toJson stored.toStoredData)
   let proofRef : BlockData := {
     kind := .proof
     label := stored.label

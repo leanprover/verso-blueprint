@@ -5,6 +5,7 @@ import VersoBlueprintTests.TestBlueprintRegistryMeta
 import Lean
 
 open Verso.VersoBlueprintTests.TestBlueprintRegistry
+open Verso.VersoBlueprintTests.TestBlueprintRegistryMeta
 open Lean
 
 private def usage : IO UInt32 := do
@@ -16,17 +17,17 @@ private def usage : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--list"] =>
-    for doc in curatedTestBlueprints do
+    for doc in curatedTestBlueprintMetas do
       IO.println doc.slug
     pure 0
   | ["--list-json"] =>
     IO.println <| Json.compress <| toJson curatedTestBlueprintMetas
     pure 0
   | slug :: rest =>
-    match findCuratedTestBlueprint? slug with
+    match findCuratedTestBlueprintDoc? slug with
     | some doc =>
       Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest
-        doc.doc.toPart
+        doc.toPart
         rest
         manualImpls
     | none =>

@@ -6,9 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 
-namespace Verso.VersoBlueprintTests.TestBlueprintRegistry
-
-open Lean
+namespace Verso.VersoBlueprintTests.TestBlueprintRegistryMeta
 
 structure CuratedTestBlueprintMeta where
   slug : String
@@ -17,7 +15,7 @@ structure CuratedTestBlueprintMeta where
   summary : String
   tags : Array String
   kind : String
-deriving ToJson
+deriving Lean.ToJson
 
 def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
   {
@@ -193,4 +191,4 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
 def findCuratedTestBlueprintMeta? (slug : String) : Option CuratedTestBlueprintMeta :=
   curatedTestBlueprintMetas.find? (·.slug == slug)
 
-end Verso.VersoBlueprintTests.TestBlueprintRegistry
+end Verso.VersoBlueprintTests.TestBlueprintRegistryMeta

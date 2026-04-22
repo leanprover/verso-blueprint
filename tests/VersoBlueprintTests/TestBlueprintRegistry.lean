@@ -13,14 +13,15 @@ import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 import VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase
 import VersoBlueprintTests.BlueprintRustCode
 import VersoBlueprintTests.BlueprintSummaryLinks.Shared
-import VersoBlueprintTests.TestBlueprintRegistryMeta
 import VersoBlueprintTests.BlueprintTexMacros
+import VersoBlueprintTests.TestBlueprintRegistryMeta
 
 namespace Verso.VersoBlueprintTests.TestBlueprintRegistry
 
 open Verso
 open Verso.Genre.Manual
 open Lean
+open Verso.VersoBlueprintTests.TestBlueprintRegistryMeta
 
 structure CuratedTestBlueprint where
   slug : String
@@ -73,8 +74,11 @@ def curatedTestBlueprints : Array CuratedTestBlueprint :=
     | none =>
         panic! s!"missing curated test blueprint doc for slug `{entry.slug}`")
 
-def findCuratedTestBlueprint? (slug : String) : Option CuratedTestBlueprint :=
-  curatedTestBlueprints.find? (·.slug == slug)
+def curatedTestBlueprintDocSlugs : Array String :=
+  curatedTestBlueprints.map (·.slug)
+
+def findCuratedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genre.Manual) :=
+  (curatedTestBlueprints.find? fun entry => entry.slug == slug).map (·.doc)
 
 def CuratedTestBlueprint.meta (doc : CuratedTestBlueprint) : CuratedTestBlueprintMeta :=
   {

@@ -29,6 +29,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
 set_option doc.verso true
@@ -53,19 +54,6 @@ open CodeSummary
 Elaboration, traversal, and rendering are standard, using {ref VersoManual} helpers for custom blocks and inlines.
 
 -/
-
-/-- Domain for informal-like objects; each informal object is
-  characterized by its canonical name declared by the user. -/
-def informalDomain : Name := Resolve.informalDomainName
-
-/-- Name used in {name}`TraverseState.domains` for informal Lean code blocks. -/
-def informalCodeDomain : Name := Resolve.informalCodeDomainName
-
-/-- Name used in {name}`TraverseState.domains` for informal preview payloads. -/
-def informalPreviewDomain : Name := Resolve.informalPreviewDomainName
-
-/-- Name used in {name}`TraverseState.domains` for rendered external declaration anchors. -/
-def informalExternalDeclDomain : Name := Resolve.externalRenderedDeclDomainName
 
 /-- Configuration for directives / code-blocks. Q: should we allow non-labelled informal objects? -/
 structure Config where
@@ -138,12 +126,7 @@ private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id :
 
 private def resolveStoredGroupData?
     (state : Verso.Genre.Manual.TraverseState) (label : Data.Label) : Option GroupBlockData :=
-  match state.getDomainObject? Resolve.informalGroupDomainName label.toString with
-  | none => none
-  | some obj =>
-    match fromJson? (α := GroupBlockData) obj.data with
-    | .ok groupData => some groupData
-    | .error _ => none
+  Informal.TraversalIndex.Groups.data? state label
 
 private structure GroupRenderInfo where
   label : Data.Label
@@ -282,7 +265,7 @@ private def mkRelatedPanelEntry {m}
     (metaHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m RelatedPanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
-  let href := Resolve.resolveDomainHref? ctx.state Resolve.informalDomainName source.label.toString
+  let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
   pure {
     source
     previewId
@@ -709,13 +692,13 @@ private def registerBlockPreviewData
   let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
   let previewKey := PreviewCache.key blockData.label previewFacet
   let previewData := toJson (PreviewCache.Entry.ofBlocks blockData.label previewFacet contents)
-  let existingPreview? := (← get).getDomainObject? informalPreviewDomain previewKey
+  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
   if shouldWritePreviewData existingPreview? id then
-    modify λ s => s.saveDomainObjectData informalPreviewDomain previewKey previewData
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
   if existingPreview?.isNone then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-preview-{previewKey}"
-    modify λ s => s.saveDomainObject informalPreviewDomain previewKey id
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveId s previewKey id
 
 private def registerExternalCodePreview
     {m}
@@ -728,13 +711,13 @@ private def registerExternalCodePreview
     m Unit := do
   let codePreviewKey := LeanCodePreview.lookupKey decl.canonical
   let codePreviewData := toJson (LeanCodePreview.Entry.ofExternalDecl decl.canonical decl)
-  let existingCodePreview? := (← get).getDomainObject? LeanCodePreview.domainName codePreviewKey
+  let existingCodePreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) codePreviewKey
   if shouldWritePreviewData existingCodePreview? id then
-    modify λ s => s.saveDomainObjectData LeanCodePreview.domainName codePreviewKey codePreviewData
+    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveData s codePreviewKey codePreviewData
   if existingCodePreview?.isNone then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--lean-code-preview-{codePreviewKey}"
-    modify λ s => s.saveDomainObject LeanCodePreview.domainName codePreviewKey id
+    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveId s codePreviewKey id
 
 private def registerExternalCodePreviews
     {m}
@@ -758,12 +741,12 @@ private def registerExternalDeclAnchor
     (decl : Data.ExternalRef) :
     m Unit := do
   let key := Resolve.externalRenderedDeclTargetKey label decl.canonical
-  if ((← get).getDomainObject? informalExternalDeclDomain key).isNone then
+  if (Informal.TraversalIndex.ExternalDeclAnchors.object? (← get) key).isNone then
     let declId ← Verso.Genre.Manual.freshId
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag declId path
       s!"--informal-external-decl-{label}-{decl.canonical}"
-    modify λ s => s.saveDomainObject informalExternalDeclDomain key declId
+    modify λ s => Informal.TraversalIndex.ExternalDeclAnchors.saveId s key declId
 
 private def registerExternalDeclAnchors
     {m}
@@ -787,13 +770,10 @@ private def storeTraversedBlockData
     (blockData : BlockData) :
     m Unit := do
   let label := blockData.label
-  match (← get).getDomainObject? informalDomain label.toString with
-  | some obj =>
-    let mergedData :=
-      match fromJson? (α := BlockData) obj.data with
-      | .ok existing => mergeStoredBlockData existing blockData
-      | .error _ => blockData
-    modify λ s => s.saveDomainObjectData informalDomain label.toString (toJson mergedData)
+  match Informal.TraversalIndex.Nodes.data? (← get) label with
+  | some existing =>
+    let mergedData := mergeStoredBlockData existing blockData
+    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData.toStoredData)
   | none =>
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
@@ -801,8 +781,8 @@ private def storeTraversedBlockData
       let (globalCount, s) := reserveGlobalBlockNumber s
       let blockData := { blockData with globalCount := blockData.globalCount <|> some globalCount }
       s
-        |> (·.saveDomainObject informalDomain label.toString id)
-        |> (·.saveDomainObjectData informalDomain label.toString (toJson blockData))
+        |> (fun s => Informal.TraversalIndex.Nodes.saveId s label id)
+        |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData.toStoredData))
 
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where
@@ -842,18 +822,14 @@ block_extension Block.informal (data : BlockData) where
         let relatedPanelContext := mkRelatedPanelContext s
         let attrs := s.htmlId id
         let codeHref : Option String :=
-          match s.resolveDomainObject informalCodeDomain data.label.toString with
-          | .ok dest => some dest.relativeLink
-          | .error _ => none
-        let codeData? : Option InlineCodeData ←
-          match s.getDomainObject? informalCodeDomain data.label.toString with
-          | none => pure none
+          match Informal.TraversalIndex.InlineCode.object? s data.label with
           | some obj =>
-            match fromJson? (α := InlineCodeData) obj.data with
-            | .ok cdata => pure (some cdata)
-            | .error err =>
-                HtmlT.logError s!"Malformed informal code data for {data.label}: {err}"
-                pure none
+            match obj.ids.toArray[0]? with
+            | some codeId => s.externalTags[codeId]? |>.map (·.relativeLink)
+            | none => none
+          | none => none
+        let codeData? : Option InlineCodeData ←
+          pure <| Informal.TraversalIndex.InlineCode.data? s data.label
         let codeHint? :=
           match data.kind with
           | .proof => none
@@ -866,7 +842,7 @@ block_extension Block.informal (data : BlockData) where
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
           let attrsFor (declName : Name) : Array (String × String) :=
             let key := Resolve.externalRenderedDeclTargetKey data.label declName
-            match s.getDomainObject? informalExternalDeclDomain key with
+            match Informal.TraversalIndex.ExternalDeclAnchors.object? s key with
             | none => #[]
             | some obj =>
               match obj.ids.toArray[0]? with
