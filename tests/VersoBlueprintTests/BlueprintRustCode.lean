@@ -75,6 +75,7 @@ pub fn broken( -> i32 { 1 }
   pure <|
     hasSubstr out "Inline Rust attachment." &&
     hasSubstr out "Rust code for rust_inline" &&
+    hasSubstr out "Rust code for Definition" &&
     hasSubstr out "inline_add" &&
     hasSubstr out "bp_rust_kw"
 

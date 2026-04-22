@@ -65,7 +65,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
     let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
-    let previewKey := Informal.LeanCodePreview.lookupKey `Nat.add
+    let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 1 &&
       !hasSubstr out s!"data-bp-preview-key=\"{previewKey}\" data-bp-preview-fallback-label=" &&

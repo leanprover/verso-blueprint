@@ -709,7 +709,7 @@ private def registerExternalCodePreview
     (id : Verso.Multi.InternalId)
     (decl : Data.ExternalRef) :
     m Unit := do
-  let codePreviewKey := LeanCodePreview.lookupKey decl.canonical
+  let codePreviewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
   let codePreviewData := toJson (LeanCodePreview.Entry.ofExternalDecl decl.canonical decl)
   let existingCodePreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) codePreviewKey
   if shouldWritePreviewData existingCodePreview? id then
@@ -770,19 +770,20 @@ private def storeTraversedBlockData
     (blockData : BlockData) :
     m Unit := do
   let label := blockData.label
-  match Informal.TraversalIndex.Nodes.data? (← get) label with
+  let storedBlockData := blockData.toStoredData
+  match Informal.TraversalIndex.Nodes.storedData? (← get) label with
   | some existing =>
-    let mergedData := mergeStoredBlockData existing blockData
-    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData.toStoredData)
+    let mergedData := mergeStoredBlockData existing storedBlockData
+    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
   | none =>
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
     modify fun s =>
       let (globalCount, s) := reserveGlobalBlockNumber s
-      let blockData := { blockData with globalCount := blockData.globalCount <|> some globalCount }
+      let blockData := { storedBlockData with globalCount := storedBlockData.globalCount <|> some globalCount }
       s
         |> (fun s => Informal.TraversalIndex.Nodes.saveId s label id)
-        |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData.toStoredData))
+        |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData))
 
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where

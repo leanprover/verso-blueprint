@@ -27,7 +27,7 @@ private def previewLookupKey (decl : Name) : String :=
   Informal.LeanDeclPreviewKey.lookupKey decl
 
 private def previewId (decl : Name) : String :=
-  Informal.LeanDeclPreviewKey.previewId decl
+  s!"bp-lean-code-{Informal.HoverRender.previewKey (previewLookupKey decl)}"
 
 private def renderLinkNode
     (node : Verso.Output.Html) (href? : Option String)

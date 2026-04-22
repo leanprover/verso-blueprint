@@ -56,7 +56,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let previewTargets :=
         (cdata.definedDefs.map (·.name)) ++ (cdata.definedTheorems.map (·.name))
       for target in previewTargets do
-        let previewKey := LeanCodePreview.lookupKey target
+        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey target
         let previewData := toJson (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks)
         let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
         modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
