@@ -5,7 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.ProvedStatus
 
 namespace Informal.Graph

@@ -244,19 +244,24 @@ That split is deliberate:
 
 The UI can converge while the identity schemes remain distinct.
 
-### One Retrieval Surface for Callers
+### Shared Retrieval Namespace for Callers
 
 Call sites that only need "give me the preview for this label" behavior should
-prefer one shared retrieval surface (`PreviewSource`) rather than decode
+prefer the shared `PreviewSource` namespace rather than decode
 multiple storage formats directly.
 
-That contract is intentionally narrow:
+That contract is intentionally narrow and phase-specific:
 
-- `PreviewSource` is the read-side API for preview consumers
-- it hides traversal-domain lookup, facet fallback, and environment-side
-  preview selection behind one entry point
+- traversal-time callers use its traversal helpers when they need cached
+  preview blocks or manifest lookup keys
+- environment-time callers use its environment helpers when they need semantic
+  preview content from `Informal.Environment.State`
 - renderers that only need one label at a time should prefer it over direct
   `PreviewCache.Entry` decoding
+
+`PreviewSource` does not yet expose one top-level "best available preview"
+selector. That is acceptable for now because current callers are still split
+cleanly by phase and output needs.
 
 The remaining direct `PreviewCache` decoding is in manifest construction, where
 the code is intentionally enumerating all stored preview entries to emit the

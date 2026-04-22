@@ -12,7 +12,7 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Code
 import VersoBlueprint.Profiling
 import VersoBlueprint.Rust
-import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -48,17 +48,14 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match s.getDomainObject? Resolve.informalDomainName cdata.label.toString with
-        | some obj =>
-          match fromJson? (α := BlockData) obj.data with
-          | .ok b =>
-            let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
-            let caption :=
-              match b.kind with
-              | .proof => "Rust code for proof"
-              | .statement nodeKind => s!"Rust code for {nodeKind}"
-            { (codePanelHeader b (b.displayNumber s)) with caption }
-          | .error _ => { fallbackCodePanelHeader with caption := "Rust code" }
+        match Informal.TraversalIndex.Nodes.data? s cdata.label with
+        | some b =>
+          let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
+          let caption :=
+            match b.kind with
+            | .proof => "Rust code for proof"
+            | .statement nodeKind => s!"Rust code for {nodeKind}"
+          { (codePanelHeader b (b.displayNumber s)) with caption }
         | none => { fallbackCodePanelHeader with caption := "Rust code" }
       let body := Informal.Rust.highlightHtml cdata.raw
       pure <| mkCodePanel panelHeader s!"Rust code for {cdata.label}" .empty body attrs

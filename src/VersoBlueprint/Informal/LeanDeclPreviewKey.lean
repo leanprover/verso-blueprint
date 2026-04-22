@@ -5,11 +5,12 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprint.Lib.HoverRender
 
 namespace Informal.LeanDeclPreviewKey
 
 open Lean
+
+def domainName : Name := Name.mkSimple "Informal.LeanCodePreview"
 
 private def namespaceRoot : Name :=
   Name.str (Name.str .anonymous "Informal") "LeanCodePreview"
@@ -25,8 +26,5 @@ def targetName (decl : Name) : Name :=
 
 def lookupKey (decl : Name) : String :=
   (targetName decl).toString
-
-def previewId (decl : Name) : String :=
-  s!"bp-lean-code-{Informal.HoverRender.previewKey (lookupKey decl)}"
 
 end Informal.LeanDeclPreviewKey

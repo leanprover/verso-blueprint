@@ -24,8 +24,7 @@ Dedicated traversal domain for manifest-backed Lean declaration previews.
 Unlike `PreviewCache`, this domain is only for previews attached to links that
 target Lean declarations/definitions.
 -/
-def domainName : Name := Name.mkSimple "Informal.LeanCodePreview"
-
+def domainName : Name := Informal.LeanDeclPreviewKey.domainName
 /--
 Canonical internal preview target for one Lean declaration.
 

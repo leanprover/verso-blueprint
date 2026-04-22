@@ -301,7 +301,7 @@ private def buildLeanCodeEntries
       if html.trimAscii.isEmpty then
         continue
       let manifestEntry : Entry := {
-        key := Informal.LeanCodePreview.lookupKey entry.target
+        key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target

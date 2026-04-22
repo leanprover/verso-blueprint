@@ -1,4 +1,4 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
@@ -6,8 +6,9 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual
-import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.GroupData
+import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 
@@ -70,16 +71,20 @@ def domainName : Name := spec.name
 def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName label.toString
 
+def storedObjectData? (obj : Verso.Multi.Object) : Option Informal.StoredBlockData :=
+  match fromJson? (α := Informal.StoredBlockData) obj.data with
+  | .ok data => some data
+  | .error _ =>
+      match fromJson? (α := Informal.BlockData) obj.data with
+      | .ok data => some data.toStoredData
+      | .error _ => none
+
+def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData := do
+  let obj ← object? state label
+  storedObjectData? obj
+
 def data? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  match object? state label with
-  | some obj =>
-      match fromJson? (α := Informal.StoredBlockData) obj.data with
-      | .ok data => some data.toBlockData
-      | .error _ =>
-          match fromJson? (α := Informal.BlockData) obj.data with
-          | .ok data => some data
-          | .error _ => none
-  | none => none
+  (storedData? state label).map (·.toBlockData)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
   Resolve.resolveDomainHref? state domainName label.toString
@@ -171,24 +176,15 @@ end TraversalPreviews
 namespace LeanCodePreviews
 
 def spec : StoreSpec := {
-  name := Name.mkSimple "Informal.LeanCodePreview"
+  name := Informal.LeanDeclPreviewKey.domainName
   kind := .runtimeCache
   summary := "Traversal-cached Lean declaration preview payloads keyed by declaration name."
 }
 
 def domainName : Name := spec.name
 
-private def namespaceRoot : Name :=
-  Name.str (Name.str .anonymous "Informal") "LeanCodePreview"
-
-private partial def appendName (rootName : Name) (suffixName : Name) : Name :=
-  match suffixName with
-  | .anonymous => rootName
-  | .str parent component => .str (appendName rootName parent) component
-  | .num parent component => .num (appendName rootName parent) component
-
 def lookupKey (decl : Name) : String :=
-  (appendName namespaceRoot decl.eraseMacroScopes).toString
+  Informal.LeanDeclPreviewKey.lookupKey decl
 
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey

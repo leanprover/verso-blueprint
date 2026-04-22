@@ -8,7 +8,7 @@ import Lean
 import VersoManual.Bibliography
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
-import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Resolve
