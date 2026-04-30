@@ -301,6 +301,22 @@ That mix is intentional, but the roles should stay explicit:
 Callers should prefer its typed APIs over reaching into raw domain names and
 ad hoc JSON payloads directly.
 
+Functionally, the traversal indexes used by Blueprint have this shape. The
+code-side inventory is `Informal.TraversalIndex.allSpecs`; the table below adds
+the operational detail that is easier to read in prose.
+
+| Index | Role | Functional map | Value description |
+| --- | --- | --- | --- |
+| `Nodes` | semantic domain | informal label -> `StoredBlockData` plus node anchor ids | Lightweight semantic node metadata: kind, parent/group, numbering caches, declared dependencies, ownership, tags, effort, priority, and PR URL. It deliberately excludes code/render payloads. |
+| `InlineCode` | internal index | informal label -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof-folding setting, and the code panel destination. |
+| `Groups` | internal index | group label -> `GroupBlockData` | Declared group metadata currently used to recover display headers for grouped previews and manifests. |
+| `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and the shared preview manifest. |
+| `LeanCodePreviews` | runtime cache | Lean declaration name -> `LeanCodePreview.Entry` plus declaration-preview anchor ids | Preview payloads for Lean declaration links, either from inline code blocks or external declaration snapshots. |
+| `ExternalDeclAnchors` | internal index | `(informal label, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
+| `InlinePreviewOwners` | internal index | `(render path, preview id)` -> first template-owner internal id | Ownership table that deduplicates inline preview template emission within one rendered page/path. |
+| `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
+| `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
+
 In particular, the main Blueprint node index is now intentionally slimmer than
 the full `BlockData` payload used by block rendering. Code-specific
 render/runtime data such as `codeData` belongs to dedicated traversal indexes
