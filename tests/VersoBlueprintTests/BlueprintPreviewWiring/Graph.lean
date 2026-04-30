@@ -8,8 +8,22 @@ import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph
 
+open Verso
+open Verso.Genre.Manual
+open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
+
+set_option doc.verso true
+
+#docs (Genre.Manual) lrDirectionGraphDoc "Blueprint LR Direction Graph" :=
+:::::::
+:::definition "def:graph.lr.base"
+Base statement for an explicit left-to-right graph.
+:::
+
+{blueprint_graph (direction := LR)}
+:::::::
 
 /-- info: true -/
 #guard_msgs in
@@ -35,7 +49,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp-graph-variants\"" &&
       hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
       hasSubstr out "class=\"bp_graph_options_popover\"" &&
-      hasSubstr out "class=\"bp_graph_direction_select\"" &&
+      hasSubstr out "class=\"bp_graph_controls_select bp_graph_direction_select\"" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
       hasSubstr out "\"direction\":\"TB\"" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
@@ -59,13 +73,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, previewClose" &&
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
-        hasSubstr graphJs "dotByDirection: dotByDirectionMap(variant.dotByDirection, direction, dot)" &&
         hasSubstr graphJs "graphviz: null," &&
         hasSubstr graphJs "renderedVariantKey: \"\"," &&
         hasSubstr graphJs "renderedDirectionKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
-        hasSubstr graphJs "function dotByDirectionMap(dotByDirection, fallbackDirection, fallbackDot)" &&
+        hasSubstr graphJs "function dotWithGraphDirection(dot, direction)" &&
         hasSubstr graphJs "function dotForVariantDirection(variant, direction)" &&
+        hasSubstr graphJs "return dotWithGraphDirection(variant.dot, direction);" &&
         hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
         hasSubstr graphJs "function bindOptionsPopover(graphBlock)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
@@ -81,6 +95,20 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr graphJs ".fit(true)" &&
         hasSubstr graphJs "syncLegend(graphBlock, activeKey)"
       | none => false
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (out, _) ← renderManualDocHtmlStringAndState manualImpls lrDirectionGraphDoc
+    pure (
+      hasSubstr out "data-bp-graph-direction=\"LR\"" &&
+      hasSubstr out "data-bp-graph-default-direction=\"LR\"" &&
+      (hasSubstr out "selected value=\"LR\"" || hasSubstr out "value=\"LR\" selected") &&
+      hasSubstr out "\"direction\":\"LR\"" &&
+      hasSubstr out "rankdir=LR;" &&
+      !hasSubstr out "dotByDirection"
     )
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph

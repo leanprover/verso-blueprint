@@ -92,17 +92,10 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
   | some variant =>
     let expectedId := graphNodeSvgId `group_alpha
     let expectedLabel := escapeDotString (Informal.Commands.graphParentDisplayLabel groupedGraphTitleMap `group_alpha)
-    let hasDirection (rankdir : String) : Bool :=
-      variant.dotByDirection.any fun (direction, dot) =>
-        direction == rankdir && dot.contains s!"rankdir={rankdir};"
     variant.selectOnNodeId.contains (expectedId, Informal.Commands.parentVariantKey `group_alpha) &&
     variant.hoverOnNodeId.contains (expectedId, Informal.Commands.parentVariantKey `group_alpha) &&
     variant.dot.contains s!"id=\"{expectedId}\"" &&
     variant.dot.contains s!"label=\"{expectedLabel}\"" &&
-    hasDirection "TB" &&
-    hasDirection "LR" &&
-    hasDirection "RL" &&
-    hasDirection "BT" &&
     !variant.dot.contains "label=\"group_alpha\""
 
 /-- info: true -/
