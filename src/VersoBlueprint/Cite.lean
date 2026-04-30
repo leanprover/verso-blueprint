@@ -236,13 +236,19 @@ instance : Lean.ToJson HeaderLocation where
 
 instance : Lean.FromJson HeaderLocation where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some title := arr[0]? | throw "expected header location title"
-    let some number := arr[1]? | throw "expected header location number"
-    return {
-      title := ← fromJson? title
-      number := ← fromJson? number
-    }
+    match v with
+    | .arr arr =>
+      let some title := arr[0]? | throw "expected header location title"
+      let some number := arr[1]? | throw "expected header location number"
+      return {
+        title := ← fromJson? title
+        number := ← fromJson? number
+      }
+    | _ =>
+      return {
+        title := ← v.getObjValAs? String "title"
+        number := ← v.getObjValAs? (Option String) "number"
+      }
 
 /--
 Reference to the informal block surrounding a bibliography citation use site.
@@ -262,15 +268,22 @@ instance : Lean.ToJson TheoremContext where
 
 instance : Lean.FromJson TheoremContext where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some label := arr[0]? | throw "expected theorem context label"
-    let some kind := arr[1]? | throw "expected theorem context kind"
-    let some localCount := arr[2]? | throw "expected theorem context local count"
-    return {
-      label := ← fromJson? label
-      kind := ← fromJson? kind
-      localCount := ← fromJson? localCount
-    }
+    match v with
+    | .arr arr =>
+      let some label := arr[0]? | throw "expected theorem context label"
+      let some kind := arr[1]? | throw "expected theorem context kind"
+      let some localCount := arr[2]? | throw "expected theorem context local count"
+      return {
+        label := ← fromJson? label
+        kind := ← fromJson? kind
+        localCount := ← fromJson? localCount
+      }
+    | _ =>
+      return {
+        label := ← v.getObjValAs? Informal.Data.Label "label"
+        kind := ← v.getObjValAs? Informal.Data.InProgressKind "kind"
+        localCount := ← v.getObjValAs? Nat "localCount"
+      }
 
 /--
 Structured location summary for a bibliography citation use.
@@ -296,17 +309,25 @@ instance : Lean.ToJson CitationSummary where
 
 instance : Lean.FromJson CitationSummary where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some chapter := arr[0]? | throw "expected citation chapter"
-    let some sectionLoc := arr[1]? | throw "expected citation section"
-    let some theoremCtx := arr[2]? | throw "expected citation theorem context"
-    let some documentName := arr[3]? | throw "expected citation document name"
-    return {
-      chapter := ← fromJson? chapter
-      sectionLoc := ← fromJson? sectionLoc
-      theoremCtx := ← fromJson? theoremCtx
-      documentName := ← fromJson? documentName
-    }
+    match v with
+    | .arr arr =>
+      let some chapter := arr[0]? | throw "expected citation chapter"
+      let some sectionLoc := arr[1]? | throw "expected citation section"
+      let some theoremCtx := arr[2]? | throw "expected citation theorem context"
+      let some documentName := arr[3]? | throw "expected citation document name"
+      return {
+        chapter := ← fromJson? chapter
+        sectionLoc := ← fromJson? sectionLoc
+        theoremCtx := ← fromJson? theoremCtx
+        documentName := ← fromJson? documentName
+      }
+    | _ =>
+      return {
+        chapter := ← v.getObjValAs? (Option HeaderLocation) "chapter"
+        sectionLoc := ← v.getObjValAs? (Option HeaderLocation) "sectionLoc"
+        theoremCtx := ← v.getObjValAs? (Option TheoremContext) "theoremCtx"
+        documentName := ← v.getObjValAs? (Option String) "documentName"
+      }
 
 /--
 One backlink from a bibliography entry to a concrete citation use site in the document.
@@ -331,17 +352,25 @@ instance : Lean.ToJson CitationUse where
 
 instance : Lean.FromJson CitationUse where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some href := arr[0]? | throw "expected citation href"
-    let some summary := arr[1]? | throw "expected citation summary"
-    let some kind := arr[2]? | throw "expected citation part kind"
-    let some index := arr[3]? | throw "expected citation locator index"
-    return {
-      href := ← fromJson? href
-      summary := ← fromJson? summary
-      kind := ← fromJson? kind
-      index := ← fromJson? index
-    }
+    match v with
+    | .arr arr =>
+      let some href := arr[0]? | throw "expected citation href"
+      let some summary := arr[1]? | throw "expected citation summary"
+      let some kind := arr[2]? | throw "expected citation part kind"
+      let some index := arr[3]? | throw "expected citation locator index"
+      return {
+        href := ← fromJson? href
+        summary := ← fromJson? summary
+        kind := ← fromJson? kind
+        index := ← fromJson? index
+      }
+    | _ =>
+      return {
+        href := ← v.getObjValAs? String "href"
+        summary := ← v.getObjValAs? CitationSummary "summary"
+        kind := ← v.getObjValAs? (Option CitePartKind) "kind"
+        index := ← v.getObjValAs? (Option String) "index"
+      }
 
 /--
 Accumulated citation-use backlinks for one bibliography label.
@@ -358,8 +387,10 @@ instance : Lean.ToJson CitationUsageData where
 
 instance : Lean.FromJson CitationUsageData where
   fromJson? v := do
-    let uses : List CitationUse ← fromJson? v
-    return { uses }
+    match fromJson? (α := List CitationUse) v with
+    | .ok uses => return { uses }
+    | .error _ =>
+      return { uses := ← v.getObjValAs? (List CitationUse) "uses" }
 
 private def CitationUsageData.insertUnique (d : CitationUsageData) (u : CitationUse) : CitationUsageData :=
   if d.uses.any (fun e =>

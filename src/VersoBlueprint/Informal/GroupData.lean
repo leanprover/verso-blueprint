@@ -21,12 +21,18 @@ instance : Lean.ToJson GroupBlockData where
 
 instance : Lean.FromJson GroupBlockData where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some label := arr[0]? | throw "expected group label"
-    let some header := arr[1]? | throw "expected group header"
-    return {
-      label := ← Lean.FromJson.fromJson? label
-      header := ← Lean.FromJson.fromJson? header
-    }
+    match v with
+    | .arr arr =>
+      let some label := arr[0]? | throw "expected group label"
+      let some header := arr[1]? | throw "expected group header"
+      return {
+        label := ← Lean.FromJson.fromJson? label
+        header := ← Lean.FromJson.fromJson? header
+      }
+    | _ =>
+      return {
+        label := ← v.getObjValAs? Data.Label "label"
+        header := ← v.getObjValAs? String "header"
+      }
 
 end Informal

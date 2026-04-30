@@ -156,8 +156,14 @@ instance : Lean.FromJson BlockCodeData where
       | other => throw s!"unknown block code-data tag {other}"
     | .obj obj =>
       match obj.get? "inline", obj.get? "external" with
-      | some code, none => .inline <$> Lean.FromJson.fromJson? code
-      | none, some decls => .external <$> Lean.FromJson.fromJson? decls
+      | some code, none =>
+        match Lean.FromJson.fromJson? (α := InlineCodeData) code with
+        | .ok data => return .inline data
+        | .error _ => .inline <$> code.getObjValAs? InlineCodeData "code"
+      | none, some decls =>
+        match Lean.FromJson.fromJson? (α := Array Data.ExternalRef) decls with
+        | .ok refs => return .external refs
+        | .error _ => .external <$> decls.getObjValAs? (Array Data.ExternalRef) "decls"
       | _, _ => throw "expected object with exactly one of fields 'inline' or 'external'"
     | _ => throw "expected block code-data payload"
 
