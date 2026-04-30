@@ -34,8 +34,15 @@ inductive StoreKind where
 deriving Inhabited, Repr, BEq
 
 structure StoreSpec where
+  /-- Concrete Verso traversal-domain name used as the current backend key. -/
   name : Name
+  /-- Architectural role of this store. -/
   kind : StoreKind
+  /-- Functional key shape, written as documentation rather than encoded behavior. -/
+  key : String
+  /-- Functional value shape, including whether the value is object data or only anchor IDs. -/
+  value : String
+  /-- One-line purpose for human readers. -/
   summary : String
 deriving Repr
 
@@ -63,6 +70,8 @@ namespace Nodes
 def spec : StoreSpec := {
   name := Resolve.informalDomainName
   kind := .semanticDomain
+  key := "informal label"
+  value := "StoredBlockData plus node anchor ids"
   summary := "Canonical traversal index for Blueprint node anchors and lightweight node metadata."
 }
 
@@ -75,6 +84,8 @@ def storedObjectData? (obj : Verso.Multi.Object) : Option Informal.StoredBlockDa
   match fromJson? (α := Informal.StoredBlockData) obj.data with
   | .ok data => some data
   | .error _ =>
+      -- Transitional reader: older traversal states stored full `BlockData`.
+      -- The semantic node index now intentionally drops render-facing code data.
       match fromJson? (α := Informal.BlockData) obj.data with
       | .ok data => some data.toStoredData
       | .error _ => none
@@ -105,6 +116,8 @@ namespace InlineCode
 def spec : StoreSpec := {
   name := Resolve.informalCodeDomainName
   kind := .internalIndex
+  key := "informal label"
+  value := "InlineCodeData plus code-panel anchor ids"
   summary := "Traversal-local index for Blueprint code-panel sources keyed by informal label."
 }
 
@@ -129,6 +142,8 @@ namespace Groups
 def spec : StoreSpec := {
   name := Resolve.informalGroupDomainName
   kind := .internalIndex
+  key := "group label"
+  value := "GroupBlockData"
   summary := "Traversal-local metadata lookup for declared Blueprint groups."
 }
 
@@ -147,6 +162,8 @@ namespace TraversalPreviews
 def spec : StoreSpec := {
   name := Resolve.informalPreviewDomainName
   kind := .runtimeCache
+  key := "(informal label, preview facet)"
+  value := "PreviewCache.Entry plus preview anchor ids"
   summary := "Traversal-cached statement/proof preview payloads keyed by `(label, facet)`."
 }
 
@@ -178,6 +195,8 @@ namespace LeanCodePreviews
 def spec : StoreSpec := {
   name := Informal.LeanDeclPreviewKey.domainName
   kind := .runtimeCache
+  key := "Lean declaration name"
+  value := "LeanCodePreview.Entry plus declaration-preview anchor ids"
   summary := "Traversal-cached Lean declaration preview payloads keyed by declaration name."
 }
 
@@ -206,6 +225,8 @@ namespace ExternalDeclAnchors
 def spec : StoreSpec := {
   name := Resolve.externalRenderedDeclDomainName
   kind := .internalIndex
+  key := "(informal label, canonical external declaration)"
+  value := "rendered declaration row anchor ids"
   summary := "Traversal-local anchor index for rendered external declaration rows."
 }
 
@@ -231,6 +252,8 @@ namespace InlinePreviewOwners
 def spec : StoreSpec := {
   name := Name.mkSimple "Informal.inlinePreview.store"
   kind := .internalIndex
+  key := "(render path, preview id)"
+  value := "first template-owner internal id"
   summary := "Traversal-local ownership index used to deduplicate inline preview template emission."
 }
 
@@ -243,6 +266,7 @@ def registerOwner
     (state : TraverseState) (path : Array String) (previewId : String)
     (id : Verso.Multi.InternalId) : TraverseState :=
   let ownerKey := key path previewId
+  -- First writer owns the shared inline-preview template for this render path.
   if (state.getDomainObject? domainName ownerKey).isSome then
     state
   else
@@ -270,6 +294,8 @@ namespace Bibliography
 def spec : StoreSpec := {
   name := Resolve.bibliographyDomainName
   kind := .semanticDomain
+  key := "citation label"
+  value := "bibliography entry anchor ids"
   summary := "Semantic index for bibliography entry anchors keyed by citation label."
 }
 
@@ -288,6 +314,8 @@ namespace CitationUsages
 def spec : StoreSpec := {
   name := Resolve.citationUsageDomainName
   kind := .accumulator
+  key := "citation label"
+  value := "CitationUsageData plus citation use-site ids"
   summary := "Traversal-local backlink accumulator for bibliography usage details."
 }
 
@@ -306,5 +334,24 @@ def hrefs (state : TraverseState) (label : String) : Array String :=
   Resolve.resolveDomainHrefs state domainName label
 
 end CitationUsages
+
+/--
+Code-side inventory of the traversal indexes owned by Blueprint.
+
+This is documentation-oriented metadata: callers should still use the typed
+namespaces above. The list exists so reviews of the design-rationale schema can
+compare against one source location instead of rediscovering each domain name.
+-/
+def allSpecs : Array StoreSpec := #[
+  Nodes.spec,
+  InlineCode.spec,
+  Groups.spec,
+  TraversalPreviews.spec,
+  LeanCodePreviews.spec,
+  ExternalDeclAnchors.spec,
+  InlinePreviewOwners.spec,
+  Bibliography.spec,
+  CitationUsages.spec
+]
 
 end Informal.TraversalIndex
