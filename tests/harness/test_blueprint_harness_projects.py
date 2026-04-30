@@ -345,7 +345,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             project_dir = Path(tmp)
             lakefile = project_dir / "lakefile.lean"
             lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git"@"v1.2.3"\n',
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"v1.2.3"\n',
                 encoding="utf-8",
             )
 
@@ -353,7 +353,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
             text = lakefile.read_text(encoding="utf-8")
             self.assertIn('require VersoBlueprint from "', text)
-            self.assertNotIn('from git "https://github.com/ejgallego/verso-blueprint.git"', text)
+            self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
+
+    def test_rewrite_local_blueprint_dependency_rejects_unofficial_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                'require VersoBlueprint from git "https://github.com/example/verso-blueprint.git"@"v1.2.3"\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, "approved `VersoBlueprint` Git source"):
+                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
 
     def test_rewrite_local_blueprint_dependency_rejects_unexpected_require_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -372,7 +384,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             project_dir = Path(tmp)
             lakefile = project_dir / "lakefile.lean"
             lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git"@"old-ref"\n',
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"old-ref"\n',
                 encoding="utf-8",
             )
 
@@ -382,7 +394,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(previous_ref, "old-ref")
             self.assertEqual(
                 lakefile.read_text(encoding="utf-8").strip(),
-                'require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git"@"v1.2.3"',
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"v1.2.3"',
             )
 
     def test_default_reference_bump_branch_shortens_commit_hash(self) -> None:
@@ -865,7 +877,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(result.committed)
         self.assertTrue(result.pushed)
         self.assertEqual(seen["pathspec"], ".")
-        self.assertEqual(seen["message"], "chore(deps): bump VersoBlueprint to v1.2.3")
+        self.assertEqual(seen["message"], "chore: bump VersoBlueprint to v1.2.3")
         self.assertEqual(seen["branch"], "chore/bump-verso-blueprint-v1-2-3")
 
     def test_bump_reference_project_can_generate_review_output(self) -> None:

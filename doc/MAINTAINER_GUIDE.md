@@ -425,13 +425,25 @@ do non-backport work from a backport-only checkout.
 
 Default-development PRs also follow a paired-backport gate. In this repository
 that means draft `v4.29.0` PRs must still declare one line per required
-backport target, usually by running:
+backport target. For a new public PR, generate the public-facing scaffold with:
+
+```bash
+python3 -m scripts.blueprint_harness prepare-pr
+```
+
+That helper prints the public repository, base branch, PR title, and PR body.
+It keeps local worktree and write-scope notes out of the body unless they
+materially help review. The generated body is intentionally reviewer-oriented:
+start with a short `This PR ...` paragraph that is suitable as the squash-merge
+commit body, keep implementation inventory out of the opening summary, and do
+not include routine validation transcripts that CI already records. For an
+existing PR where only the backport lines need a refresh, run:
 
 ```bash
 python3 -m scripts.blueprint_harness prepare-backports
 ```
 
-Paste the emitted lines into the draft PR body. While the PR is still draft,
+Paste the emitted backport lines into the draft PR body. While the PR is still draft,
 each required line may remain:
 
 - `Backport v4.28.0: pending`
@@ -721,10 +733,9 @@ The harness is now project-driven rather than example-hardcoded.
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
 - the current local override injection expects a `lakefile.lean` project that
-  declares `VersoBlueprint` from either the official
-  `leanprover/verso-blueprint` Git repository or the temporary
-  `ejgallego/verso-blueprint` mirror, and it tolerates different Git refs and
-  URL spellings for either source
+  declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
+  repository, and it tolerates different Git refs and URL spellings for that
+  source
 - local worktree bookkeeping is intentionally not tracked in the repository
 
 Minimal external catalog entry shape:

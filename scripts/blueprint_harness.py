@@ -46,6 +46,9 @@ from scripts.blueprint_harness_worktrees import (
     worktree_record_map,
 )
 
+PUBLIC_REPOSITORY = "leanprover/verso-blueprint"
+
+
 @dataclass(frozen=True)
 class RefSyncStatus:
     local_ref: str
@@ -466,6 +469,54 @@ def parse_prepare_backports_exemptions(values: list[str] | None) -> dict[str, st
     return exemptions
 
 
+def backport_plan_lines(required_backports: tuple[str, ...], exemptions: dict[str, str]) -> list[str]:
+    lines: list[str] = []
+    for branch in required_backports:
+        if branch in exemptions:
+            lines.append(f"Backport {branch}: exempt: {exemptions[branch]}")
+        else:
+            lines.append(f"Backport {branch}: pending")
+    return lines
+
+
+def print_public_pr_message_scaffold(
+    *,
+    default_dev: str,
+    source_branch: str,
+    title: str,
+    backport_lines: list[str],
+    summary: str | None,
+    changes: list[str] | None,
+) -> None:
+    print(f"repository={PUBLIC_REPOSITORY}")
+    print(f"base={default_dev}")
+    print(f"head={source_branch}")
+    print("draft=true")
+    print(f"pr_title={title}")
+    print()
+    print("## Submission")
+    print(f"- Push `{source_branch}` to a branch visible to `{PUBLIC_REPOSITORY}`.")
+    print(f"- Open a draft PR against `{PUBLIC_REPOSITORY}:{default_dev}` using the title and body below.")
+    print("- Keep local worktree and write-scope notes out of the public body unless they materially help review.")
+    print()
+    print("## PR Title")
+    print(title)
+    print()
+    print("## PR Body")
+    print(
+        summary
+        or "This PR <short summary of the problem solved and useful outcome>."
+    )
+    if changes:
+        print()
+        for item in changes:
+            print(f"- {item}")
+    if backport_lines:
+        print()
+        for line in backport_lines:
+            print(line)
+
+
 def release_marker(release_ref: str) -> str:
     normalized = normalize_lean_release_ref(release_ref)
     match = re.match(r"^v(\d+)\.(\d+)", normalized)
@@ -517,6 +568,9 @@ def print_prepare_backport_pr_scaffold(
     paired_worktree = default_backport_worktree_name(source_branch, backport_release)
     paired_title = f"[backport {backport_release}] {main_title}"
 
+    print("## Local Backport Plan")
+    print()
+    print(f"repository={PUBLIC_REPOSITORY}")
     print(f"default_dev_branch={default_dev}")
     print(f"backport_release={backport_release}")
     print(f"source_branch={source_branch}")
@@ -526,7 +580,7 @@ def print_prepare_backport_pr_scaffold(
     print(f"source_commits={','.join(source_commits)}")
     print(f"base_ref=origin/{backport_release}")
     print()
-    print("## Batch Apply")
+    print("### Batch Apply")
     print(
         f"- Create the linked worktree on `origin/{backport_release}` and attach it to `{paired_branch}`."
     )
@@ -537,6 +591,10 @@ def print_prepare_backport_pr_scaffold(
     print("- Let the agent resolve any cherry-pick conflicts in the backport worktree.")
     print("- Run validation on the backport branch before opening the paired PR.")
     print()
+    print("## PR Title")
+    print(paired_title)
+    print()
+    print("## PR Body")
     print("## Summary")
     print(f"Backport #{main_pr} to `{backport_release}`.")
     print()
@@ -552,14 +610,6 @@ def print_prepare_backport_pr_scaffold(
     print("## Backport Delta")
     print("- No intentional release-specific changes.")
     print("- If conflict resolution requires deviations from the default-development PR, describe them here.")
-    print()
-    print("## Validation")
-    print(f"- Describe the validation run on `{backport_release}`.")
-    print()
-    print("## Coordination")
-    print(f"- Default-dev PR: #{main_pr}")
-    print(f"- Default-dev branch: `{source_branch}`")
-    print(f"- Backport branch: `{paired_branch}`")
 
 
 def command_prepare_backports(args: argparse.Namespace) -> int:
@@ -581,14 +631,40 @@ def command_prepare_backports(args: argparse.Namespace) -> int:
         return 0
 
     print()
-    for branch in policy.required_backport_branches:
-        if branch in exemptions:
-            print(f"Backport {branch}: exempt: {exemptions[branch]}")
-        else:
-            print(f"Backport {branch}: pending")
+    for line in backport_plan_lines(policy.required_backport_branches, exemptions):
+        print(line)
     print()
     print("[blueprint-harness] paste these lines into the default-dev PR body while it is draft")
     print("[blueprint-harness] replace each `pending` entry with `#<pr>` or `exempt: <reason>` before ready for review")
+    return 0
+
+
+def command_prepare_pr(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    require_checkout_role(layout.package_root, required_role="default_dev", operation="prepare-pr")
+    policy = load_branch_policy(layout.package_root)
+    exemptions = parse_prepare_backports_exemptions(args.exempt)
+    unknown = sorted(branch for branch in exemptions if branch not in policy.required_backport_branches)
+    if unknown:
+        raise SystemExit(
+            "[blueprint-harness] unknown required backport branch(es): "
+            + ", ".join(unknown)
+            + ". Update `branch-policy.json` or remove the extra `--exempt` entries."
+        )
+
+    source_branch = args.source_branch or current_branch_name(layout.package_root)
+    if not source_branch:
+        raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
+
+    title = args.title or current_commit_subject(layout.package_root)
+    print_public_pr_message_scaffold(
+        default_dev=policy.default_dev_branch,
+        source_branch=source_branch,
+        title=title,
+        backport_lines=backport_plan_lines(policy.required_backport_branches, exemptions),
+        summary=args.summary,
+        changes=args.change,
+    )
     return 0
 
 
@@ -966,6 +1042,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pre-fill one required branch as `exempt: <reason>` using `--exempt <branch>=<reason>`. Repeat as needed.",
     )
     prepare_backports.set_defaults(func=command_prepare_backports)
+
+    prepare_pr = subparsers.add_parser(
+        "prepare-pr",
+        help="Print a public draft PR title and body scaffold for the current default-dev branch.",
+    )
+    prepare_pr.add_argument(
+        "--title",
+        default=None,
+        help="Override the PR title. Defaults to the current commit subject.",
+    )
+    prepare_pr.add_argument(
+        "--summary",
+        default=None,
+        help="Pre-fill the opening PR body paragraph. It should usually start with `This PR`.",
+    )
+    prepare_pr.add_argument(
+        "--change",
+        action="append",
+        default=None,
+        help="Add one Changes bullet. Repeat as needed.",
+    )
+    prepare_pr.add_argument(
+        "--source-branch",
+        default=None,
+        help="Override the PR head branch. Defaults to the current branch.",
+    )
+    prepare_pr.add_argument(
+        "--exempt",
+        action="append",
+        default=None,
+        help="Pre-fill one required backport branch as `exempt: <reason>`. Repeat as needed.",
+    )
+    prepare_pr.set_defaults(func=command_prepare_pr)
 
     prepare_backport_pr = subparsers.add_parser(
         "prepare-backport-pr",
