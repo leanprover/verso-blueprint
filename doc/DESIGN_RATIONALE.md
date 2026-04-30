@@ -285,8 +285,8 @@ rendering:
 That mix is intentional, but the roles should stay explicit:
 
 - semantic domains:
-  stable linkable objects such as Blueprint node anchors or bibliography entry
-  anchors
+  stable document-level objects or declarations, whether or not the current
+  renderer gives each one its own public anchor
 - internal indexes:
   traversal-local lookup tables that support rendering but are not themselves
   semantic document objects
@@ -309,13 +309,25 @@ the operational detail that is easier to read in prose.
 | --- | --- | --- | --- |
 | `Nodes` | semantic domain | informal label -> `StoredBlockData` plus node anchor ids | Lightweight semantic node metadata: kind, parent/group, numbering caches, declared dependencies, ownership, tags, effort, priority, and PR URL. It deliberately excludes code/render payloads. |
 | `InlineCode` | internal index | informal label -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof-folding setting, and the code panel destination. |
-| `Groups` | internal index | group label -> `GroupBlockData` | Declared group metadata currently used to recover display headers for grouped previews and manifests. |
+| `Groups` | semantic domain | group label -> `GroupBlockData` | Declared group metadata for a parent/group label, currently its display header. Group membership itself is stored on `Nodes` through each node's `parent`. |
 | `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and the shared preview manifest. |
 | `LeanCodePreviews` | runtime cache | Lean declaration name -> `LeanCodePreview.Entry` plus declaration-preview anchor ids | Preview payloads for Lean declaration links, either from inline code blocks or external declaration snapshots. |
 | `ExternalDeclAnchors` | internal index | `(informal label, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
 | `InlinePreviewOwners` | internal index | `(render path, preview id)` -> first template-owner internal id | Ownership table that deduplicates inline preview template emission within one rendered page/path. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
 | `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
+
+The auxiliary indexes above are normalized out of `Nodes` for different
+reasons:
+
+| Index | Main writers | Main readers | Normalization rule |
+| --- | --- | --- | --- |
+| `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store at most one inline Lean code payload per informal label. The rendered statement then resolves inline code separately from the semantic node metadata, and inline code takes precedence over external declaration hints when both are available. |
+| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?` and preview-manifest construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. This keeps hover/manifest consumers from embedding preview bodies into every link or node entry. |
+| `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | Lean-code preview-manifest construction and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
+| `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
+| `InlinePreviewOwners` | Inline informal references and Blueprint citations during traversal | Inline reference/citation renderers deciding whether to emit a local `<template>` | Store the first owner of `(render path, preview id)`. Multiple inline references on the same page can point at one preview template instead of emitting duplicate templates. |
+| `CitationUsages` | Citation inline traversal | Bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
 
 In particular, the main Blueprint node index is now intentionally slimmer than
 the full `BlockData` payload used by block rendering. Code-specific

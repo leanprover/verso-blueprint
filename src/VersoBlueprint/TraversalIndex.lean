@@ -23,8 +23,8 @@ Classification for traversal-time Blueprint stores.
 
 This is intentionally architectural metadata rather than behavior: the current
 storage backend still uses Verso traversal domains in several places, but these
-roles clarify whether the stored data is meant to be semantic document state or
-just local render-time indexing/caching.
+roles clarify whether the stored data is meant to be semantic document state,
+a render-time index, a cache, or an accumulator.
 -/
 inductive StoreKind where
   | semanticDomain
@@ -141,10 +141,10 @@ namespace Groups
 
 def spec : StoreSpec := {
   name := Resolve.informalGroupDomainName
-  kind := .internalIndex
+  kind := .semanticDomain
   key := "group label"
-  value := "GroupBlockData"
-  summary := "Traversal-local metadata lookup for declared Blueprint groups."
+  value := "GroupBlockData declaration metadata"
+  summary := "Semantic declaration index for Blueprint parent/group labels."
 }
 
 def domainName : Name := spec.name
