@@ -51,6 +51,7 @@ with the preferred release ref before branching or landing, use:
 ```bash
 python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness release-status --require-sync
+python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
 python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
@@ -60,14 +61,21 @@ python3 -m scripts.blueprint_harness require-branch-role default_dev
 `require-branch-role default_dev` is the explicit machine check for
 automation that must refuse non-backport work on backport-only release lines.
 
-`prepare-backports` prints the `Backport ...` lines that should be pasted into a
-draft default-dev PR body. Draft PRs may keep those lines as `pending`; before
-ready for review, replace each `pending` entry with `#<pr>` or
-`exempt: <reason>`.
+`prepare-pr` prints a public draft PR title/body scaffold for the current
+default-dev work. It includes the public `leanprover/verso-blueprint`
+repository, base/head branches, and required backport lines while keeping local
+worktree bookkeeping out of the public body. The scaffold is reviewer-oriented:
+start with a short `This PR ...` paragraph suitable as the squash-merge commit
+body, then list only the main changes needed for review and avoid routine
+validation transcripts that CI already records.
+
+`prepare-backports` prints only the `Backport ...` lines for an existing draft
+default-dev PR body. Draft PRs may keep those lines as `pending`; before ready
+for review, replace each `pending` entry with `#<pr>` or `exempt: <reason>`.
 
 `prepare-backport-pr` prints a standardized paired backport branch name, PR
-title, and PR body scaffold that points review back to the default-dev PR and
-limits the paired PR to release-line-specific deltas.
+title, local apply plan, and public PR body scaffold that points review back to
+the default-dev PR and limits the paired PR to release-line-specific deltas.
 
 With `--all-required`, it emits one scaffold block per required release plus
 the exact `git cherry-pick -x ...` commit series an agent should apply while

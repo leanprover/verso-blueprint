@@ -47,6 +47,13 @@ def diff_for(line: str) -> str:
 
 
 class BackportPrCheckTests(unittest.TestCase):
+    def test_pr_template_backport_placeholder_is_safe_for_drafts(self) -> None:
+        template = Path(__file__).resolve().parents[2] / ".github" / "PULL_REQUEST_TEMPLATE.md"
+        entries = backport_mod.parse_backport_entries(template.read_text(encoding="utf-8"))
+
+        self.assertEqual(set(entries), {"v4.28.0"})
+        self.assertTrue(entries["v4.28.0"].pending)
+
     def test_parse_backport_entries_accepts_pr_pending_and_exemption(self) -> None:
         body = """
 Backport v4.28.0: #42

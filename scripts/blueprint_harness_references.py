@@ -12,23 +12,16 @@ from scripts.blueprint_harness_projects import HarnessProject
 from scripts.blueprint_harness_utils import lean_low_priority_command, run
 
 
-OFFICIAL_BLUEPRINT_REPOSITORIES = (
-    "leanprover/verso-blueprint",
-    "ejgallego/verso-blueprint",
-)
+OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
 OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORIES[0]}"@"main"'
+    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"main"'
 )
-OFFICIAL_BLUEPRINT_URL_PATTERNS = tuple(
-    pattern
-    for repository in OFFICIAL_BLUEPRINT_REPOSITORIES
-    for pattern in (
-        rf"https://github\.com/{repository}(?:\.git)?",
-        rf"git@github\.com:{repository}\.git",
-        rf"ssh://git@github\.com/{repository}\.git",
-    )
+OFFICIAL_BLUEPRINT_URL_PATTERNS = (
+    rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
+    rf"git@github\.com:{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
+    rf"ssh://git@github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
 )
-OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = " or ".join(f"`{repository}`" for repository in OFFICIAL_BLUEPRINT_REPOSITORIES)
+OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = f"`{OFFICIAL_BLUEPRINT_REPOSITORY}`"
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "-c",
@@ -562,7 +555,7 @@ def bump_reference_project(
     pushed = False
 
     if commit or push:
-        message = commit_message or f"chore(deps): bump VersoBlueprint to {short_git_ref(ref)}"
+        message = commit_message or f"chore: bump VersoBlueprint to {short_git_ref(ref)}"
         committed = commit_project_tracked_changes(edit_dir, pathspec, message)
         if push and committed:
             push_reference_edit_branch(edit_dir, target_branch)

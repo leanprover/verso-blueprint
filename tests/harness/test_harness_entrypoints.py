@@ -24,6 +24,7 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("create-worktree", result.stdout)
         self.assertIn("prepare-backports", result.stdout)
+        self.assertIn("prepare-pr", result.stdout)
         self.assertIn("prepare-backport-pr", result.stdout)
         self.assertIn("bump-toolchain", result.stdout)
         self.assertIn("land-release", result.stdout)

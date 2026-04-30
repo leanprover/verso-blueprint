@@ -37,14 +37,14 @@ Prefer short, descriptive slugs over opaque branch names.
 Prefer concise imperative subjects in the form:
 
 ```text
-type(scope): summary
+type: summary
 ```
 
 Examples:
 
-- `feat(harness): add local worktree registry commands`
-- `fix(preview): preserve inline proof-gap precision`
-- `docs(maintainer): document worktree claim workflow`
+- `feat: add local worktree registry commands`
+- `fix: preserve inline proof-gap precision`
+- `docs: document worktree claim workflow`
 
 Keep the subject line tight enough for `git log --oneline`. Avoid generic
 subjects such as `Update files` or `misc cleanup`.
@@ -52,13 +52,27 @@ subjects such as `Update files` or `misc cleanup`.
 ## Pull Request Conventions
 
 - PR titles should usually match the intended squash-merge commit title.
-- PR bodies should state:
-  - the problem
-  - the scope of the change
-  - validation performed
-  - notable risks or follow-up
+- Avoid generator/tool prefixes such as `[codex]`; the title should describe
+  the change, not who or what drafted it.
+- For a draft default-development PR, generate the public-facing title/body
+  scaffold with `python3 -m scripts.blueprint_harness prepare-pr`.
+- PR title and body are used as the squash-merge commit message, following the
+  upstream Lean convention. Keep the body suitable for permanent history.
+- Start the PR body with a short paragraph beginning `This PR ...`; include the
+  motivation and contrast with previous behavior there.
+- Use extra paragraphs or bullets only when they help explain the main
+  user-visible or maintainer-visible change. Do not make the body a
+  module-by-module implementation inventory.
+- If the PR includes measurements, explain what changed and why the numbers
+  matter before listing the raw before/after values.
+- Do not add a routine validation transcript. CI is the default validation
+  record. Mention manual checks only when they add information CI cannot show,
+  or mention skipped checks when that changes the review risk.
+- Put questions, local notes, and extra review coordination in comments rather
+  than the PR description.
 - When the work came from a local worktree, include the worktree name and write
-  scope in the PR body or draft notes.
+  scope in local draft notes only when it helps coordination; do not require
+  public reviewers to understand local worktree bookkeeping.
 - Draft PRs targeting `v4.29.0` must declare one backport plan line for each
   required backport release branch listed in `branch-policy.json`.
 - Non-draft PRs targeting `v4.29.0` must replace each `pending` entry with a
@@ -72,8 +86,10 @@ subjects such as `Update files` or `misc cleanup`.
   one-to-one cherry-pick of the default-development series.
 - The expected workflow is:
   - keep the `v4.29.0` PR in draft while the change is still converging
-  - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the
-    emitted lines into the draft PR body
+  - run `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted
+    public title/body scaffold
+  - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
+    need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired `v4.28.0` PR
   - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
@@ -83,10 +99,13 @@ subjects such as `Update files` or `misc cleanup`.
 - Keep review comments and design discussion on the default-dev PR unless the
   backport itself diverges materially, for example because of a conflict or a
   release-line-specific adaptation.
-- Record the pairing in the PR body using lines like:
-  - `Backport v4.28.0: pending`
-  - `Backport v4.28.0: #123`
-  - `Backport v4.28.0: exempt: docs-only change`
+- Record the pairing in the PR body using plain lines like:
+
+```text
+Backport v4.28.0: pending
+Backport v4.28.0: #123
+Backport v4.28.0: exempt: docs-only change
+```
 
 See the repository PR template for the preferred structure.
 

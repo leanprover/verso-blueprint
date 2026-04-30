@@ -1,56 +1,21 @@
-## Summary
+# Read this section before submitting
 
-Describe the user-visible or maintainer-visible outcome in 1-3 sentences.
+- Keep the PR title and body suitable as the squash-merge commit message.
+- Start the body with a short paragraph beginning `This PR ...`.
+- Summarize the problem and useful outcome in the body itself; links to issues
+  or discussions are not a substitute for the summary.
+- Put questions, local notes, and extra review coordination in comments rather
+  than the PR description.
+- Keep the required `Backport ...` line below. Draft PRs may use `pending`;
+  ready PRs must use `#<pr>` or `exempt: <reason>`.
+- Remove this instruction block, up to and including the `---`, before
+  submitting.
 
-## Problem
+---
 
-What was wrong, missing, or confusing before this change?
+This PR <short summary of the problem solved and useful outcome>.
 
-## Scope
+<Optional: one short paragraph or a few bullets with the main behavior or
+maintainer-visible changes. Avoid module-by-module implementation inventory.>
 
-- What changed
-- What intentionally did not change
-
-## Validation
-
-- Commands run
-- Manual checks performed
-- External projects or worktrees exercised
-
-## Primary Review
-
-For paired backport PRs:
-
-- Primary review: #<default-dev-pr>
-- Keep discussion there unless this backport diverges materially.
-
-## Backports
-
-Draft `v4.29.0` PRs should declare one line per required backport target as
-soon as the draft exists. While the PR is still draft, `pending` is allowed:
-
-- `Backport v4.28.0: pending`
-- `Backport v4.28.0: exempt: <reason>`
-
-Once a `v4.29.0` PR is ready for review, replace each `pending` line with:
-
-- `Backport v4.28.0: #123`
-- `Backport v4.28.0: exempt: <reason>`
-
-## Backport Delta
-
-For paired backport PRs:
-
-- No intentional release-specific changes
-- Or describe the release-line-specific adaptation
-
-## Risks and Follow-Ups
-
-- Known limitations
-- Cleanup that should happen in a later PR
-
-## Coordination
-
-- Issue:
-- Worktree:
-- Write scope:
+Backport v4.28.0: pending

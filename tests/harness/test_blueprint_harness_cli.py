@@ -78,6 +78,29 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(["prepare-backports", "--exempt", "v4.28.0=docs-only"])
         self.assertEqual(args.exempt, ["v4.28.0=docs-only"])
 
+    def test_prepare_pr_parses_public_message_fields(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "prepare-pr",
+                "--title",
+                "fix: tighten PR scaffolds",
+                "--summary",
+                "Update the public PR scaffold.",
+                "--change",
+                "Add a public PR message helper",
+                "--source-branch",
+                "fix/public-pr-scaffold",
+                "--exempt",
+                "v4.28.0=docs-only",
+            ]
+        )
+        self.assertEqual(args.title, "fix: tighten PR scaffolds")
+        self.assertEqual(args.summary, "Update the public PR scaffold.")
+        self.assertEqual(args.change, ["Add a public PR message helper"])
+        self.assertEqual(args.source_branch, "fix/public-pr-scaffold")
+        self.assertEqual(args.exempt, ["v4.28.0=docs-only"])
+
     def test_prepare_backport_pr_parses_required_fields(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["prepare-backport-pr", "v4.28.0", "--main-pr", "11"])
@@ -148,7 +171,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             {
               "name": "VersoBlueprint",
               "type": "git",
-              "url": "https://github.com/ejgallego/verso-blueprint.git",
+              "url": "https://github.com/leanprover/verso-blueprint.git",
               "inputRev": "main",
               "rev": "deadbeef"
             }
@@ -163,12 +186,31 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(pin.input_ref, "main")
         self.assertEqual(pin.resolved_ref, "deadbeef")
 
+    def test_parse_blueprint_manifest_pin_ignores_unofficial_source(self) -> None:
+        text = """
+        {
+          "packages": [
+            {
+              "name": "VersoBlueprint",
+              "type": "git",
+              "url": "https://github.com/example/verso-blueprint.git",
+              "inputRev": "main",
+              "rev": "deadbeef"
+            }
+          ]
+        }
+        """
+
+        pin = reference_harness_mod.parse_blueprint_manifest_pin(text, source_path="lake-manifest.json")
+
+        self.assertIsNone(pin)
+
     def test_parse_blueprint_lakefile_pin_handles_split_ref(self) -> None:
         text = """
         import Lake
         open Lake DSL
 
-        require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git" @
+        require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git" @
           "7e15d20e6a03859de535a359bca3760c039858b2"
         """
 
@@ -178,6 +220,19 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(pin.source_path, "lakefile.lean")
         self.assertEqual(pin.input_ref, "7e15d20e6a03859de535a359bca3760c039858b2")
         self.assertEqual(pin.resolved_ref, "7e15d20e6a03859de535a359bca3760c039858b2")
+
+    def test_parse_blueprint_lakefile_pin_ignores_unofficial_source(self) -> None:
+        text = """
+        import Lake
+        open Lake DSL
+
+        require VersoBlueprint from git "https://github.com/example/verso-blueprint.git" @
+          "7e15d20e6a03859de535a359bca3760c039858b2"
+        """
+
+        pin = reference_harness_mod.parse_blueprint_lakefile_pin(text, source_path="lakefile.lean")
+
+        self.assertIsNone(pin)
 
     def test_create_worktree_uses_preferred_main_ref_by_default(self) -> None:
         layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
@@ -338,12 +393,61 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             for name, value in originals.items():
                 setattr(harness_mod, name, value)
 
+    def test_prepare_pr_prints_public_scaffold(self) -> None:
+        args = argparse.Namespace(
+            title=None,
+            summary="This PR removes private mirror assumptions from the maintainer harness.",
+            change=["Accept only the public upstream package repo"],
+            source_branch=None,
+            exempt=None,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "load_branch_policy": harness_mod.load_branch_policy,
+            "require_checkout_role": harness_mod.require_checkout_role,
+            "current_branch_name": harness_mod.current_branch_name,
+            "current_commit_subject": harness_mod.current_commit_subject,
+        }
+        out = io.StringIO()
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.load_branch_policy = lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            )
+            harness_mod.require_checkout_role = lambda *_args, **_kwargs: None
+            harness_mod.current_branch_name = lambda _checkout_root: "fix/public-pr-scaffold"
+            harness_mod.current_commit_subject = lambda _checkout_root: "fix: tighten public PR scaffolds"
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        output = out.getvalue()
+        self.assertIn("repository=leanprover/verso-blueprint", output)
+        self.assertIn("base=v4.29.0", output)
+        self.assertIn("head=fix/public-pr-scaffold", output)
+        self.assertIn("draft=true", output)
+        self.assertIn("## PR Title\nfix: tighten public PR scaffolds", output)
+        self.assertIn("## PR Body", output)
+        self.assertIn("This PR removes private mirror assumptions from the maintainer harness.", output)
+        self.assertIn("- Accept only the public upstream package repo", output)
+        self.assertIn("Backport v4.28.0: pending", output)
+        self.assertNotIn("## Backports", output)
+        self.assertNotIn("## Validation", output)
+        self.assertNotIn("## Coordination", output)
+        self.assertNotIn("## Risks", output)
+        self.assertNotIn("Worktree:", output)
+        self.assertNotIn("Write scope:", output)
+
     def test_prepare_backport_pr_prints_standardized_scaffold(self) -> None:
         args = argparse.Namespace(
             release="v4.28.0",
             all_required=False,
             main_pr=11,
-            main_title="fix(backports): require draft plans and base-aware retire",
+            main_title="fix: require draft plans and base-aware retire",
             source_branch="fix/backport-discipline",
         )
         layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
@@ -371,13 +475,17 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 setattr(harness_mod, name, value)
 
         output = out.getvalue()
+        self.assertIn("## Local Backport Plan", output)
+        self.assertIn("repository=leanprover/verso-blueprint", output)
         self.assertIn("default_dev_branch=v4.29.0", output)
         self.assertIn("backport_release=v4.28.0", output)
         self.assertIn("paired_worktree=backport-v428-backport-discipline", output)
         self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
-        self.assertIn("paired_title=[backport v4.28.0] fix(backports): require draft plans and base-aware retire", output)
+        self.assertIn("paired_title=[backport v4.28.0] fix: require draft plans and base-aware retire", output)
         self.assertIn("source_commits=abc123,def456", output)
         self.assertIn("git cherry-pick -x abc123 def456", output)
+        self.assertIn("## PR Title\n[backport v4.28.0] fix: require draft plans and base-aware retire", output)
+        self.assertIn("## PR Body", output)
         self.assertIn("Primary review: #11", output)
         self.assertIn("Keep review comments on #11 unless this backport diverges materially.", output)
 
@@ -386,7 +494,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             release=None,
             all_required=True,
             main_pr=11,
-            main_title="fix(backports): require draft plans and base-aware retire",
+            main_title="fix: require draft plans and base-aware retire",
             source_branch="fix/backport-discipline",
         )
         layout = SimpleNamespace(package_root=Path("/tmp/worktree"))

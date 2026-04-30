@@ -1269,7 +1269,7 @@ def build_parser() -> argparse.ArgumentParser:
     bump.add_argument(
         "--commit-message",
         default=None,
-        help="Commit message to use with `--commit`. Defaults to `chore(deps): bump VersoBlueprint to <ref>`.",
+        help="Commit message to use with `--commit`. Defaults to `chore: bump VersoBlueprint to <ref>`.",
     )
     bump.set_defaults(func=command_reference_bump_blueprint)
 
