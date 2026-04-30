@@ -81,7 +81,6 @@ structure GraphRenderVariant where
   key : String
   label : String
   dot : String
-  dotByDirection : Array (String × String) := #[]
   direction : GraphDirection := .TB
   selectOnNodeId : Array (String × String) := #[]
   hoverOnNodeId : Array (String × String) := #[]
@@ -89,12 +88,6 @@ structure GraphRenderVariant where
 deriving Inhabited, ToJson
 
 def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
-
-def dotsForAllDirections (graph : Graph)
-    (resolveHref : Name → Option String) (resolveGroupTitle : Name → Option String) :
-    Array (String × String) :=
-  allGraphDirections.map fun direction =>
-    (direction.rankdir, graphToDot graph direction resolveHref resolveGroupTitle)
 
 -- Keep this module rebuilt when the embedded graph assets change.
 -- This module owns the embedded graph CSS/JS boundary, so adjacent edits here
@@ -338,7 +331,6 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       key := "full"
       label := "Full Graph"
       dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
-      dotByDirection := dotsForAllDirections graphData.graph resolveHref resolveGroupTitle
       direction := graphData.direction
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
@@ -351,9 +343,6 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       label := "Group View"
       dot := graphToDot (mkParentOverviewGraph graphData.graph parents groupTitles)
         graphData.direction (fun _ => none) (fun _ => none)
-      dotByDirection := dotsForAllDirections
-        (mkParentOverviewGraph graphData.graph parents groupTitles)
-        (fun _ => none) (fun _ => none)
       direction := graphData.direction
       selectOnNodeId := parentVariantRefs
       hoverOnNodeId := parentVariantRefs
@@ -363,7 +352,6 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       key := "full"
       label := "Full Graph"
       dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
-      dotByDirection := dotsForAllDirections graphData.graph resolveHref resolveGroupTitle
       direction := graphData.direction
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
@@ -377,7 +365,6 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
         label := title
         dot := graphToDot parentSubgraph
           graphData.direction resolveHref resolveGroupTitle
-        dotByDirection := dotsForAllDirections parentSubgraph resolveHref resolveGroupTitle
         direction := graphData.direction
         selectOnNodeId := #[]
         hoverOnNodeId := #[]
@@ -526,9 +513,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
         | some value => value
         | Option.none => fallbackGraphControlId id "--options"
       let graphDirectionOptions : Array Output.Html :=
-        allGraphDirections.map fun direction => {{
-          <option value={{direction.rankdir}}>{{direction.rankdir}}</option>
-        }}
+        allGraphDirections.map fun direction =>
+          if direction == graphData.direction then
+            {{ <option value={{direction.rankdir}} selected>{{direction.rankdir}}</option> }}
+          else
+            {{ <option value={{direction.rankdir}}>{{direction.rankdir}}</option> }}
       let fallbackDot : String :=
         match graphVariants[0]? with
         | some variant => variant.dot

@@ -430,13 +430,15 @@ html[data-bp-style="modern"] .bp_graph_controls_button {
   border-color: var(--bp-color-modern-border);
 }
 
-html[data-bp-style="modern"] .bp_graph_legend_popover {
+html[data-bp-style="modern"] .bp_graph_legend_popover,
+html[data-bp-style="modern"] .bp_graph_options_popover {
   background: var(--bp-color-surface-modern);
   border: 1px solid var(--bp-color-modern-border);
   border-radius: var(--bp-radius-2xl);
 }
 
-html[data-bp-style="modern"] .bp_graph_legend_popover_header {
+html[data-bp-style="modern"] .bp_graph_legend_popover_header,
+html[data-bp-style="modern"] .bp_graph_options_popover_header {
   border-bottom-color: var(--bp-color-modern-border);
 }
 
@@ -450,7 +452,8 @@ html[data-bp-style="bold"] .bp_graph_controls_button {
   box-shadow: 0 3px 0 rgba(15, 23, 42, 0.14);
 }
 
-html[data-bp-style="bold"] .bp_graph_legend_popover {
+html[data-bp-style="bold"] .bp_graph_legend_popover,
+html[data-bp-style="bold"] .bp_graph_options_popover {
   background:
     radial-gradient(circle at 100% 0%, var(--bp-color-bold-surface-glow-1), transparent 36%),
     radial-gradient(circle at 0% 100%, var(--bp-color-bold-surface-glow-2), transparent 32%),
@@ -460,7 +463,8 @@ html[data-bp-style="bold"] .bp_graph_legend_popover {
   box-shadow: var(--bp-shadow-bold);
 }
 
-html[data-bp-style="bold"] .bp_graph_legend_popover_header {
+html[data-bp-style="bold"] .bp_graph_legend_popover_header,
+html[data-bp-style="bold"] .bp_graph_options_popover_header {
   border-bottom-color: rgba(15, 23, 42, 0.2);
 }
 
@@ -481,6 +485,12 @@ html[data-bp-style="bold"] .bp_graph_legend_swatch {
 
 @media (max-width: 720px) {
   .bp_graph_legend_popover {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .bp_graph_options_popover {
     left: 0;
     right: 0;
     width: auto;

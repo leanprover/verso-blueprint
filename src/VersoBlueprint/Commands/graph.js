@@ -111,42 +111,28 @@
       key: "full",
       label: "Full Graph",
       dot: dotTxt,
-      dotByDirection: [[fallbackDirection, dotTxt]],
       direction: fallbackDirection,
       selectOnNodeId: [],
       hoverOnNodeId: []
     }];
   }
 
-  function dotByDirectionMap(dotByDirection, fallbackDirection, fallbackDot) {
-    const map = new Map();
-    if (Array.isArray(dotByDirection)) {
-      dotByDirection.forEach(function (entry) {
-        if (!Array.isArray(entry) || entry.length < 2) return;
-        const direction = normalizeGraphDirection(entry[0]);
-        const dot = String(entry[1] || "").trim();
-        if (!dot) return;
-        map.set(direction, dot);
-      });
+  function dotWithGraphDirection(dot, direction) {
+    const source = String(dot || "").trim();
+    if (!source) return "";
+    const desired = normalizeGraphDirection(direction);
+    const rankdirPattern = /(^\s*rankdir\s*=\s*)(LR|RL|TB|BT)(\s*;)/m;
+    if (rankdirPattern.test(source)) {
+      return source.replace(rankdirPattern, "$1" + desired + "$3");
     }
-    if (fallbackDot) {
-      const normalizedFallback = normalizeGraphDirection(fallbackDirection);
-      if (!map.has(normalizedFallback)) {
-        map.set(normalizedFallback, fallbackDot);
-      }
-    }
-    return map;
+    const openBrace = source.indexOf("{");
+    if (openBrace < 0) return source;
+    return source.slice(0, openBrace + 1) + "\n    rankdir=" + desired + ";" + source.slice(openBrace + 1);
   }
 
   function dotForVariantDirection(variant, direction) {
     if (!variant || typeof variant !== "object") return "";
-    const desired = normalizeGraphDirection(direction);
-    const dotMap = variant.dotByDirection instanceof Map ? variant.dotByDirection : null;
-    if (dotMap) {
-      const matched = dotMap.get(desired);
-      if (matched) return matched;
-    }
-    return String(variant.dot || "").trim();
+    return dotWithGraphDirection(variant.dot, direction);
   }
 
   function graphNodeLabel(node) {
@@ -779,7 +765,6 @@
           const label = String(variant.label || key).trim();
           const dot = String(variant.dot || "").trim();
           const direction = normalizeGraphDirection(variant.direction);
-          const dotByDirection = dotByDirectionMap(variant.dotByDirection, direction, dot);
           const selectOnNodeId = Array.isArray(variant.selectOnNodeId) ? variant.selectOnNodeId : [];
           const hoverOnNodeId = Array.isArray(variant.hoverOnNodeId) ? variant.hoverOnNodeId : [];
           const previewKeyByNodeId = Array.isArray(variant.previewKeyByNodeId) ? variant.previewKeyByNodeId : [];
@@ -788,7 +773,6 @@
             key: key,
             label: label || key,
             dot: dot,
-            dotByDirection: dotByDirection,
             direction: direction,
             selectOnNodeId: selectOnNodeId,
             hoverOnNodeId: hoverOnNodeId,
@@ -813,9 +797,9 @@
         }
         if (selector) selector.value = activeKey;
         let activeDirection = normalizeGraphDirection(
-          directionSelector && directionSelector.value
-            ? directionSelector.value
-            : (directionSelector && directionSelector.getAttribute("data-bp-graph-default-direction"))
+          directionSelector
+            ? directionSelector.getAttribute("data-bp-graph-default-direction")
+            : graphContainer.attr("data-bp-graph-direction")
         );
         if (directionSelector) directionSelector.value = activeDirection;
         syncLegend(graphBlock, activeKey);
