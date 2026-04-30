@@ -236,13 +236,29 @@ instance : Lean.FromJson ExternalDeclProvenance where
         return .outWorkspace (← Lean.FromJson.fromJson? moduleName) (← Lean.FromJson.fromJson? sourcePath)
       | "u" => return .unknown
       | other => throw s!"unknown external provenance tag {other}"
+    | .str "unknown" => return .unknown
     | v@(.obj _) => do
       if let .ok moduleName := v.getObjValAs? Name "inWorkspace" then
         return .inWorkspace moduleName (← v.getObjValAs? String "sourcePath")
       else if let .ok moduleName := v.getObjValAs? Name "outWorkspace" then
         return .outWorkspace moduleName (← v.getObjValAs? (Option String) "sourcePath")
       else
-        return .unknown
+        let obj ← v.getObj?
+        match obj.get? "inWorkspace", obj.get? "outWorkspace" with
+        | some payload, none =>
+          return .inWorkspace
+            (← payload.getObjValAs? Name "moduleName")
+            (← payload.getObjValAs? String "sourcePath")
+        | none, some payload =>
+          let sourcePath? :=
+            match payload.getObjValAs? (Option String) "sourcePath?" with
+            | .ok value => pure value
+            | .error _ => payload.getObjValAs? (Option String) "sourcePath"
+          return .outWorkspace
+            (← payload.getObjValAs? Name "moduleName")
+            (← sourcePath?)
+        | none, none => return .unknown
+        | _, _ => throw "expected exactly one external provenance constructor"
     | other => throw s!"expected ExternalDeclProvenance, got {other.compress}"
 
 open Syntax in

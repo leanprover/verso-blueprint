@@ -49,13 +49,26 @@ instance : Lean.ToJson Source where
 
 instance : Lean.FromJson Source where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some tag := arr[0]? | throw "expected Lean-code preview source tag"
-    let some payload := arr[1]? | throw "expected Lean-code preview source payload"
-    match ← fromJson? tag with
-    | "i" => .inlineBlocks <$> fromJson? payload
-    | "e" => .externalDecl <$> fromJson? payload
-    | other => throw s!"unknown Lean-code preview source tag {other}"
+    match v with
+    | .arr arr =>
+      let some tag := arr[0]? | throw "expected Lean-code preview source tag"
+      let some payload := arr[1]? | throw "expected Lean-code preview source payload"
+      match ← fromJson? tag with
+      | "i" => .inlineBlocks <$> fromJson? payload
+      | "e" => .externalDecl <$> fromJson? payload
+      | other => throw s!"unknown Lean-code preview source tag {other}"
+    | .obj obj =>
+      match obj.get? "inlineBlocks", obj.get? "externalDecl" with
+      | some blocks, none =>
+        match fromJson? (α := Array ManualBlock) blocks with
+        | .ok data => return .inlineBlocks data
+        | .error _ => .inlineBlocks <$> blocks.getObjValAs? (Array ManualBlock) "blocks"
+      | none, some decl =>
+        match fromJson? (α := Informal.Data.ExternalRef) decl with
+        | .ok data => return .externalDecl data
+        | .error _ => .externalDecl <$> decl.getObjValAs? Informal.Data.ExternalRef "decl"
+      | _, _ => throw "expected object with exactly one Lean-code preview source constructor"
+    | _ => throw "expected Lean-code preview source"
 
 /--
 Canonical declaration-preview payload.
@@ -73,13 +86,19 @@ instance : Lean.ToJson Entry where
 
 instance : Lean.FromJson Entry where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some target := arr[0]? | throw "expected Lean-code preview target"
-    let some source := arr[1]? | throw "expected Lean-code preview source"
-    return {
-      target := ← fromJson? target
-      source := ← fromJson? source
-    }
+    match v with
+    | .arr arr =>
+      let some target := arr[0]? | throw "expected Lean-code preview target"
+      let some source := arr[1]? | throw "expected Lean-code preview source"
+      return {
+        target := ← fromJson? target
+        source := ← fromJson? source
+      }
+    | _ =>
+      return {
+        target := ← v.getObjValAs? Name "target"
+        source := ← v.getObjValAs? Source "source"
+      }
 
 def Entry.ofInlineBlocks (target : Name) (blocks : Array ManualBlock) : Entry :=
   { target := target.eraseMacroScopes, source := .inlineBlocks blocks }

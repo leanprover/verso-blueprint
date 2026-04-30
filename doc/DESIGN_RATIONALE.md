@@ -306,11 +306,24 @@ the full `BlockData` payload used by block rendering. Code-specific
 render/runtime data such as `codeData` belongs to dedicated traversal indexes
 and block-local rendering inputs, not to the semantic node index itself.
 
+Most traversal payloads use compact internal JSON to keep repeated preview and
+cross-reference data small. That JSON is not a public interchange schema:
+callers should go through `TraversalIndex` or the relevant typed model module.
+Where a payload replaced a previously derived object encoding, readers keep
+legacy object support so existing cached traversal/domain data can still be
+understood during the transition.
+
 This does not mean every internal store has already moved off traversal
 domains. Under current upstream Verso APIs, domains are still operationally
 better than `TraverseState.set/get?` for hot per-entry updates, while
 `TraverseState.set/get?` remains a good fit for tiny scalar state such as the
 global numbering counter.
+
+If Verso later grows a typed traversal-store API with linkable entries,
+Blueprint should be able to migrate behind `TraversalIndex`: semantic domains
+would remain the public link surface, while internal indexes, runtime caches,
+and accumulators could move to the new backend without changing rendering
+callers.
 
 ### Self-Contained Snippet Rendering
 

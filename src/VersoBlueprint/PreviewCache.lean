@@ -45,15 +45,22 @@ instance : Lean.ToJson Entry where
 
 instance : Lean.FromJson Entry where
   fromJson? v := do
-    let arr ← v.getArr?
-    let some label := arr[0]? | throw "expected preview label"
-    let some facet := arr[1]? | throw "expected preview facet"
-    let some blocks := arr[2]? | throw "expected preview blocks"
-    return {
-      label := ← fromJson? label
-      facet := ← fromJson? facet
-      blocks := ← fromJson? blocks
-    }
+    match v with
+    | .arr arr =>
+      let some label := arr[0]? | throw "expected preview label"
+      let some facet := arr[1]? | throw "expected preview facet"
+      let some blocks := arr[2]? | throw "expected preview blocks"
+      return {
+        label := ← fromJson? label
+        facet := ← fromJson? facet
+        blocks := ← fromJson? blocks
+      }
+    | _ =>
+      return {
+        label := ← v.getObjValAs? Name "label"
+        facet := ← v.getObjValAs? Facet "facet"
+        blocks := ← v.getObjValAs? (Array (Verso.Doc.Block Verso.Genre.Manual)) "blocks"
+      }
 
 def Entry.ofBlocks (label : Name) (facet : Facet)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : Entry :=
