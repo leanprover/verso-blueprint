@@ -11,6 +11,70 @@ def wait_for_graph(page: Page):
     )
 
 
+def wait_for_rendered_variant(page: Page, variant: str):
+    page.wait_for_function(
+        """(expectedVariant) => {
+            const block = document.querySelector(".bp_graph_fullwidth");
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const select = document.querySelector(".bp_graph_view_select");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const state = block ? block.__bpGraphState : null;
+            return (
+                !!select &&
+                !!svg &&
+                !!state &&
+                select.value === expectedVariant &&
+                state.renderedVariantKey === expectedVariant &&
+                state.renderFinalizedToken === state.renderToken
+            );
+        }""",
+        arg=variant,
+    )
+
+
+def graph_transform(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            return graph ? graph.getAttribute("transform") : null;
+        }"""
+    )
+
+
+def assert_graph_has_zoom_handlers(page: Page):
+    assert page.evaluate(
+        """() => {
+            const svg = document.querySelector(".bp_graph_canvas svg");
+            if (!svg || !Array.isArray(svg.__on) || !svg.__zoom) return false;
+            return svg.__on.some((entry) => entry.type === "mousedown" && entry.name === "zoom");
+        }"""
+    )
+
+
+def assert_graph_can_be_dragged(page: Page):
+    before = graph_transform(page)
+    assert before is not None
+    canvas_box = page.locator(".bp_graph_canvas").first.bounding_box()
+    assert canvas_box is not None
+    center_x = canvas_box["x"] + canvas_box["width"] / 2
+    center_y = canvas_box["y"] + canvas_box["height"] / 2
+    page.mouse.move(center_x, center_y)
+    page.mouse.down()
+    page.mouse.move(center_x + 90, center_y + 36, steps=6)
+    page.mouse.up()
+    page.wait_for_function(
+        """(previousTransform) => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            return !!graph && graph.getAttribute("transform") !== previousTransform;
+        }""",
+        arg=before,
+    )
+
+
 def graph_visibility_metrics(page: Page):
     return page.evaluate(
         """() => {
@@ -227,6 +291,22 @@ class TestGraphLayoutRuntime:
                 arg=variant,
             )
             assert_graph_is_well_placed(page)
+
+    def test_graph_remains_interactive_after_variant_switch(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        selector = page.locator(".bp_graph_view_select").first
+
+        assert_graph_has_zoom_handlers(page)
+        assert_graph_can_be_dragged(page)
+
+        for variant in ["group", "parent:preview_core", "full"]:
+            selector.select_option(variant)
+            wait_for_rendered_variant(page, variant)
+            assert_graph_has_zoom_handlers(page)
+            assert_graph_can_be_dragged(page)
 
     def test_graph_width_is_css_driven_without_inline_offsets(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
