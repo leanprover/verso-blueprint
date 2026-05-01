@@ -293,7 +293,7 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     Informal.HoverRender.inlinePreviewNode
-      false chipNode .empty entry.previewId entry.previewTitle
+      chipNode entry.previewId entry.previewTitle
       (previewLookupKey? := some entry.previewKey)
       (previewFallbackLabel? := some s!"{entry.source.label}")
   else

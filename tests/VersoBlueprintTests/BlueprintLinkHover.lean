@@ -26,6 +26,15 @@ def hover.cite : Verso.Genre.Manual.Bibliography.Citable := .arXiv
   , id := "hover.cite"
   }
 
+private def hoverCiteItem : Informal.Cite.CiteItem :=
+  { label := "hover.cite", citation := hover.cite }
+
+private def hoverCitePreviewKey : String :=
+  Informal.Cite.citationPreviewKey hoverCiteItem
+    Informal.Cite.CitationStyle.textual
+    (some Informal.Cite.CitePartKind.lemma)
+    (some "3")
+
 #docs (Genre.Manual) hoverLinkDoc "Hover Link Doc" :=
 :::::::
 :::lemma_ "lem:hover.link"
@@ -61,12 +70,13 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
     let out ← renderManualDocHtmlString manualImpls hoverLinkDoc
     pure (
       countSubstr out "class=\"bp_inline_preview_ref\"" >= 3 &&
-      hasSubstr out "class=\"bp_inline_preview_tpl\"" &&
+      !hasSubstr out "class=\"bp_inline_preview_tpl\"" &&
       hasSubstr out "Bibliography: hover.cite" &&
       hasSubstr out "#bp-bib-hover-cite" &&
       hasSubstr out "class=\"bp_bibliography_use_line\"" &&
       hasSubstr out "data-bp-preview-key=\"«lem:hover.link»--statement\"" &&
-      hasSubstr out "data-bp-preview-fallback-label=\"«lem:hover.link»\""
+      hasSubstr out "data-bp-preview-fallback-label=\"«lem:hover.link»\"" &&
+      hasSubstr out s!"data-bp-preview-key=\"{hoverCitePreviewKey}\""
     )
 
 /-- info: true -/
@@ -80,8 +90,7 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
           "data-bp-preview-key=\"«lem:hover.base»--statement\"" >= 2 &&
       countSubstr out
           "data-bp-preview-fallback-label=\"«lem:hover.base»\"" >= 2 &&
-      countSubstr out
-          "class=\"bp_inline_preview_tpl\" data-bp-preview-id=\"bp-uses--00ABlem-003Ahover-002Ebase-00BB-statement\"" == 1
+      !hasSubstr out "class=\"bp_inline_preview_tpl\""
     )
 
 /-- info: true -/
@@ -91,7 +100,8 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls hoverCiteOnlyDoc
     pure (
       countSubstr out "class=\"bp_inline_preview_ref\"" == 2 &&
-      countSubstr out "class=\"bp_inline_preview_tpl\"" == 1 &&
+      !hasSubstr out "class=\"bp_inline_preview_tpl\"" &&
+      countSubstr out s!"data-bp-preview-key=\"{hoverCitePreviewKey}\"" == 2 &&
       hasExtraJs st "bindInlinePreview" &&
       hasExtraCss st ".bp_inline_preview_panel"
     )

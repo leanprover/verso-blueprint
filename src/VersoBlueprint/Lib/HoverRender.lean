@@ -104,22 +104,6 @@ def withInlinePreviewRenderContext {m α}
       })
     act
 
-def inlinePreviewStoreKey (path : Array String) (previewId : String) : String :=
-  Informal.TraversalIndex.InlinePreviewOwners.key path previewId
-
-def registerInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) :
-    Verso.Genre.Manual.TraverseState :=
-  Informal.TraversalIndex.InlinePreviewOwners.registerOwner state path previewId id
-
-def inlinePreviewOwnerId? (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) : Option Verso.Genre.Manual.InternalId :=
-  Informal.TraversalIndex.InlinePreviewOwners.ownerId? state path previewId
-
-def isInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) : Bool :=
-  Informal.TraversalIndex.InlinePreviewOwners.isOwner state path previewId id
-
 private def previewPanel
     (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
     (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html := {{
@@ -215,12 +199,6 @@ def summaryPreviewWrap
       </span>
     }}
 
-def inlinePreviewTemplate (previewId : String) (body : Verso.Output.Html) : Verso.Output.Html := {{
-  <template class="bp_inline_preview_tpl" "data-bp-preview-id"={{previewId}}>
-    {{body}}
-  </template>
-}}
-
 private def inlinePreviewRefAttrs
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
@@ -251,23 +229,18 @@ def inlinePreviewRef
     (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?)
     node
 
-def inlinePreviewEntry (node body : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none) : Verso.Output.Html := {{
-  {{inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?}}
-  {{inlinePreviewTemplate previewId body}}
-}}
+/--
+Render one inline preview trigger.
 
-def inlinePreviewNode (emitTemplate : Bool) (node body : Verso.Output.Html)
+`previewId` is the local UI identifier used to keep panel state stable, while
+`previewLookupKey?` is the shared-manifest key used to load the preview body.
+Blueprint no longer emits page-local inline preview templates.
+-/
+def inlinePreviewNode (node : Verso.Output.Html)
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
     (previewFallbackLabel? : Option String := none)
     (previewFallbackDetail? : Option String := none) : Verso.Output.Html :=
-  if emitTemplate then
-    inlinePreviewEntry node body previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
-  else
-    inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
+  inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
 
 end Informal.HoverRender

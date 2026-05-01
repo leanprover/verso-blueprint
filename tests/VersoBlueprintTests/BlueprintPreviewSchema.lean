@@ -34,10 +34,11 @@ open Informal.PreviewManifest
         let labelJson ← entryProps.get? "label"
         labelJson.getObjValAs? String "description" |>.toOption
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
-        defs.size == 4 &&
+        defs.size == 5 &&
         !fileProps.contains "version" &&
         fileProps.contains "previews" &&
         entryProps.contains "key" &&
+        entryProps.contains "targetKind" &&
         entryProps.contains "label" &&
         entryProps.contains "facet" &&
         entryProps.contains "kind" &&
@@ -52,10 +53,11 @@ open Informal.PreviewManifest
         entryProps.contains "priority" &&
         entryProps.contains "effort" &&
         entryProps.contains "html" &&
-        labelDesc? == some "Canonical informal node label." &&
+        labelDesc? == some "Canonical target label: informal label, Lean declaration name, or citation label." &&
         proofDepsDesc? == some "Informal nodes used by the proof." &&
         kindDesc? == some "Kind (definition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
+        defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 

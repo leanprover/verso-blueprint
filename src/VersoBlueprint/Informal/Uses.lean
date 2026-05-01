@@ -10,7 +10,6 @@ import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Profiling
 import VersoBlueprint.TraversalIndex
@@ -38,50 +37,35 @@ def usePreviewId (label : Data.Label) (block : BlockData) : String :=
 def usePreviewLookupKey (label : Data.Label) (block : BlockData) : String :=
   PreviewCache.key label (PreviewCache.Facet.ofInProgressKind block.kind)
 
-private def useLinkPreviewFallbackBody (label : Data.Label) : Verso.Output.Html :=
-  codeHoverSection "Blueprint label" #[codeHoverCodeItem s!"{label}"]
-
-private def wrapUseLinkPreview (node previewBody : Verso.Output.Html)
+private def wrapUseLinkPreview (node : Verso.Output.Html)
     (state : Verso.Genre.Manual.TraverseState)
-    (label : Data.Label) (block : BlockData) (emitTemplate : Bool) :
+    (label : Data.Label) (block : BlockData) :
     Verso.Output.Html :=
   let pid := usePreviewId label block
   let pkey := usePreviewLookupKey label block
   let ptitle := blockHoverTitle state block
   Informal.HoverRender.inlinePreviewNode
-    emitTemplate node previewBody pid ptitle
+    node pid ptitle
     (previewLookupKey? := some pkey)
     (previewFallbackLabel? := some s!"{label}")
 
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data
-  traverse id data _contents := do
-    let .ok { label, block } := fromJson? (α := InlineData) data
+  traverse _id data _contents := do
+    let .ok _ := fromJson? (α := InlineData) data
       | logError s!"Malformed data in Inline.informal traversal: {data}"
         pure none
-    let path := (← read).path
-    if let some block := block then
-      modify fun st =>
-        Informal.HoverRender.registerInlinePreviewOwner st path (usePreviewId label block) id
-      pure none
-    else
-      let some bdata := Informal.TraversalIndex.Nodes.data? (← get) label
-        | pure none
-      modify fun st =>
-        Informal.HoverRender.registerInlinePreviewOwner st path (usePreviewId label bdata) id
-      pure none
+    pure none
   extraCss := Informal.Commands.withInlinePreviewCssAssets
   extraJs := Informal.Commands.withInlinePreviewJsAssets [] []
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in
-    some <| fun goI id data inlines => do
+    some <| fun goI _id data inlines => do
       let .ok { label, block } := fromJson? (α := InlineData) data
         | HtmlT.logError "Malformed data in Inline.informal traversal"
           pure .empty
       let st ← HtmlT.state
-      let ctxt ← HtmlT.context
-      let inPreviewRender ← Informal.HoverRender.inInlinePreviewRender
       let storedBlock? := resolveStoredBlockData? st label
       let resolvedBlock : Option BlockData :=
         match block, storedBlock? with
@@ -96,15 +80,6 @@ inline_extension Inline.informal (data : InlineData) where
         | none, none => none
       let href : Option String :=
         Informal.TraversalIndex.Nodes.href? st label
-      let preview? ←
-        if inPreviewRender then
-          pure Option.none
-        else
-          Informal.PreviewSource.renderTraversalPreview? st
-            (fun b =>
-              Informal.HoverRender.withInlinePreviewRenderContext
-                (Verso.Doc.Html.ToHtml.toHtml (genre := Verso.Genre.Manual) b))
-            label
       let renderedInlines ← inlines.mapM goI
       match resolvedBlock with
       | none =>
@@ -126,22 +101,7 @@ inline_extension Inline.informal (data : InlineData) where
             {{<a href={{href}} title={{labelText}}>{{renderedInlines}}</a>}}
           else
             renderedInlines
-        let previewId := usePreviewId label block
-        let previewKey := usePreviewLookupKey label block
-        let emitTemplate :=
-          !inPreviewRender && Informal.HoverRender.isInlinePreviewOwner st ctxt.path previewId id
-        let previewBody :=
-          match preview? with
-          | some rendered => Verso.Output.Html.seq rendered
-          | Option.none => useLinkPreviewFallbackBody label
-        let hovered :=
-          if inPreviewRender then
-            Informal.HoverRender.inlinePreviewNode
-              false plainContent .empty previewId (blockHoverTitle st block)
-              (previewLookupKey? := some previewKey)
-              (previewFallbackLabel? := some s!"{label}")
-          else
-            wrapUseLinkPreview plainContent previewBody st label block emitTemplate
+        let hovered := wrapUseLinkPreview plainContent st label block
         return {{<span>{{hovered}}</span>}}
   toTeX := none
 

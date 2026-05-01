@@ -1044,7 +1044,6 @@ def openTargetDetailsJs : String := r##"(function () {
 })();"##
 
 def inlineLinkPreviewJs : String := r##"(function () {
-  const templateSelector = "template.bp_inline_preview_tpl[data-bp-preview-id]";
   const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
   function escapeHtml(text) {
@@ -1080,45 +1079,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
     return html;
   }
 
-  function ensureInlinePreviewStore() {
-    const existing = document.getElementById("bp-inline-preview-store");
-    if (existing instanceof Element) return existing;
-    const store = document.createElement("div");
-    store.id = "bp-inline-preview-store";
-    store.className = "bp_inline_preview_store";
-    store.hidden = true;
-    document.body.appendChild(store);
-    return store;
-  }
-
-  function syncInlinePreviewStore(root, store) {
-    if (!(root instanceof Element || root instanceof Document)) return false;
-    const seen = new Set();
-    store.querySelectorAll(templateSelector).forEach(function (tpl) {
-      if (!(tpl instanceof HTMLTemplateElement)) return;
-      const key = (tpl.getAttribute("data-bp-preview-id") || "").trim();
-      if (key) seen.add(key);
-    });
-    let changed = false;
-    root.querySelectorAll(templateSelector).forEach(function (tpl) {
-      if (!(tpl instanceof HTMLTemplateElement)) return;
-      const key = (tpl.getAttribute("data-bp-preview-id") || "").trim();
-      if (!key) return;
-      if (store.contains(tpl)) {
-        seen.add(key);
-        return;
-      }
-      if (seen.has(key)) {
-        tpl.remove();
-        return;
-      }
-      seen.add(key);
-      store.appendChild(tpl);
-      changed = true;
-    });
-    return changed;
-  }
-
   function makePanel(id, extraClass) {
     const panel = document.createElement("aside");
     panel.id = id;
@@ -1151,7 +1111,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
     const previewUtils = window.bpPreviewUtils;
     if (
       !previewUtils ||
-      typeof previewUtils.collectPreviewTemplates !== "function" ||
       typeof previewUtils.readPreviewTemplate !== "function" ||
       typeof previewUtils.readPanelBehavior !== "function" ||
       typeof previewUtils.showPanelContent !== "function" ||
@@ -1171,7 +1130,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
         ? previewUtils.previewDebugLabel
         : function (node) { return String(node); };
 
-    const store = ensureInlinePreviewStore();
     const panel = getPanel("bp-inline-preview-panel", "");
     const title = panel.querySelector(".bp_inline_preview_panel_title");
     const body = panel.querySelector(".bp_inline_preview_panel_body");
@@ -1192,7 +1150,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
     }
 
     let behavior = makeBehavior("hover", "anchored");
-    let previewMap = new Map();
     let activeTrigger = null;
     let activeHost = null;
     let activePreviewKey = "";
@@ -1230,10 +1187,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
         clearTimeout(childHideTimer);
         childHideTimer = null;
       }
-    }
-
-    function rebuildPreviewMap() {
-      previewMap = previewUtils.collectPreviewTemplates(store, templateSelector, "data-bp-preview-id");
     }
 
     function readInlinePreviewHost(trigger) {
@@ -1373,9 +1326,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
 
     function refresh(root) {
       const scope = root instanceof Element || root instanceof Document ? root : document;
-      if (syncInlinePreviewStore(scope, store)) {
-        rebuildPreviewMap();
-      }
       bindInlinePreviewTriggers(scope);
     }
 
@@ -1434,15 +1384,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
     }
 
     async function resolvePreviewHtml(key, trigger) {
-      if (!previewMap.has(key)) {
-        const localRoot = trigger instanceof Element ? (trigger.parentElement || document) : document;
-        refresh(localRoot);
-        if (!previewMap.has(key)) {
-          refresh(document);
-        }
-      }
-      const html = previewUtils.readPreviewTemplate(previewMap.get(key));
-      if (html) return html;
       const previewLookupKey =
         trigger instanceof Element
           ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
@@ -1652,7 +1593,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
     previewUtils.registerPreviewHydrator("inline", refresh);
 
     refresh(document);
-    rebuildPreviewMap();
   }
 
   if (document.readyState === "loading") {

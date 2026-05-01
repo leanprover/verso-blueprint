@@ -55,7 +55,7 @@ def renderResolved
     (previewDetail? : Option String := none) : Verso.Output.Html :=
   let linkNode := renderLinkNode node href? className linkTitle?
   Informal.HoverRender.inlinePreviewNode
-    false linkNode .empty
+    linkNode
     (previewId decl)
     previewTitle
     (previewLookupKey? := some (previewLookupKey decl))
