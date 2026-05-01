@@ -178,7 +178,7 @@ class TestPreviewRuntimeRegressions:
 
         wrap = page.locator('.bp_wrapper[title="used_target"] .bp_used_by_wrap').first
         expect(wrap).to_have_count(1)
-        assert "bp_used_by_preview_tpl" not in page.content()
+        assert "bp_used_by_preview_fallback_tpl" not in page.content()
 
         chip = wrap.locator(".bp_used_by_chip").first
         chip.hover()

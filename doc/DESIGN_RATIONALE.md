@@ -182,11 +182,19 @@ rather than page-local template bodies:
 2. `PreviewManifest.lean` renders the shared preview manifest consumed by the
    generated site.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
-   manifest loading, fallback handling, hydration, math rendering, and anchored
-   panel behavior.
+   manifest loading, missing-manifest diagnostics, hydration, math rendering,
+   and anchored panel behavior.
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
+
+Inline Blueprint references, citation references, and the `used by`/group
+relationship panels are now manifest callers: the rendered page carries the
+stable lookup key, while the preview body comes from the shared manifest. Those
+surfaces deliberately avoid page-local fallback templates so preview content has
+one generated source of truth. If the manifest is unavailable or missing an
+entry, the browser renders a local diagnostic message instead of silently using
+stale local preview HTML.
 
 ### Current diagnostic policy
 

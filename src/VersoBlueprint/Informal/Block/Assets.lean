@@ -746,24 +746,35 @@ span[class$="_thmlabel"]::after {
   background: var(--bp-color-surface);
 }
 
-.bp_used_by_preview_empty {
-  color: var(--bp-color-text-faint);
-  font-size: 0.76rem;
-  font-style: italic;
-}
-
-.bp_used_by_preview_notice {
-  margin-bottom: 0.62rem;
-  padding: 0.48rem 0.58rem;
-  border: 1px solid var(--bp-color-status-note-border);
+.bp_used_by_preview_message {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.56rem 0.62rem;
+  border: 1px solid var(--bp-color-border-soft);
   border-radius: 0.45rem;
-  background: var(--bp-color-surface-note);
-  color: var(--bp-color-status-note-text);
-  font-size: 0.74rem;
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.38;
 }
 
-.bp_used_by_preview_store {
-  display: none;
+.bp_used_by_preview_message[data-bp-preview-message="loading"] {
+  color: var(--bp-color-text-faint);
+}
+
+.bp_used_by_preview_message[data-bp-preview-message="error"] {
+  border-color: var(--bp-color-status-error-border-soft);
+  background: var(--bp-color-surface-warn);
+  color: var(--bp-color-status-error-text);
+}
+
+.bp_used_by_preview_message_title {
+  font-weight: 700;
+  color: inherit;
+}
+
+.bp_used_by_preview_message_detail {
+  color: inherit;
 }
 
 @media (max-width: 900px) {
@@ -1244,19 +1255,89 @@ def codeSummaryPreviewJs : String := r##"(function () {
 })();"##
 
 def usedByPanelJs : String := r##"(function () {
-  function collectPanelFallbackTemplates(panel) {
-    const map = new Map();
-    if (!(panel instanceof Element)) return map;
-    panel.querySelectorAll("template.bp_used_by_preview_fallback_tpl[data-bp-used-preview-id]").forEach(function (tpl) {
-      if (!(tpl instanceof HTMLTemplateElement)) return;
-      const key = (tpl.getAttribute("data-bp-used-preview-id") || "").trim();
-      if (!key) return;
-      const wrapper = document.createElement("div");
-      wrapper.appendChild(tpl.content.cloneNode(true));
-      const html = (wrapper.innerHTML || "").trim();
-      if (html) map.set(key, html);
-    });
-    return map;
+  function escapeHtml(text) {
+    return String(text || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function previewMessageHtml(kind, title, detail) {
+    const safeKind = String(kind || "info").trim() || "info";
+    let html =
+      '<div class="bp_used_by_preview_message" data-bp-preview-message="' +
+      escapeHtml(safeKind) +
+      '">';
+    html +=
+      '<div class="bp_used_by_preview_message_title">' +
+      escapeHtml(title || "Preview unavailable") +
+      "</div>";
+    if (detail) {
+      html +=
+        '<div class="bp_used_by_preview_message_detail">' +
+        escapeHtml(detail) +
+        "</div>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  function loadingPreviewHtml() {
+    return previewMessageHtml(
+      "loading",
+      "Loading preview",
+      "Reading this preview from the shared Blueprint manifest."
+    );
+  }
+
+  function readManifestStatus(previewUtils) {
+    if (previewUtils && typeof previewUtils.readSharedPreviewManifestStatus === "function") {
+      return previewUtils.readSharedPreviewManifestStatus();
+    }
+    return null;
+  }
+
+  function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail) {
+    const status = readManifestStatus(previewUtils);
+    if (!previewKey) {
+      return previewMessageHtml(
+        "error",
+        "Preview unavailable",
+        "This entry did not provide a shared preview key."
+      );
+    }
+    if (
+      !previewUtils ||
+      typeof previewUtils.loadSharedPreviewEntry !== "function" ||
+      typeof previewUtils.readPreviewTemplate !== "function"
+    ) {
+      return previewMessageHtml(
+        "error",
+        "Preview unavailable",
+        "The page preview runtime is not available. Rebuild this page with the Blueprint JavaScript assets enabled."
+      );
+    }
+    if (status && status.state === "error") {
+      return previewMessageHtml(
+        "error",
+        "Preview manifest unavailable",
+        "Rebuild the site or refresh after the current build finishes."
+      );
+    }
+    if (status && status.state === "ready") {
+      return previewMessageHtml(
+        "error",
+        "Preview entry not found",
+        "The shared preview manifest loaded, but it does not contain this entry yet. Rebuild the Blueprint output to resync generated data."
+      );
+    }
+    return previewMessageHtml(
+      "error",
+      "Preview unavailable",
+      fallbackDetail || "The shared preview content could not be loaded."
+    );
   }
 
   function bindUsedByPanel(panel) {
@@ -1272,8 +1353,6 @@ def usedByPanelJs : String := r##"(function () {
     if (!(title instanceof Element) || !(body instanceof Element)) return;
 
     const defaultTitle = (title.textContent || "").trim() || "Hover a use site";
-    const defaultBody = body.innerHTML;
-    const fallbackTemplates = collectPanelFallbackTemplates(panel);
     const items = Array.from(panel.querySelectorAll(".bp_used_by_item[data-bp-used-preview-id]"));
     let closeTimer = null;
     let activateRequestToken = 0;
@@ -1321,10 +1400,8 @@ def usedByPanelJs : String := r##"(function () {
     async function activate(item, options) {
       if (!(item instanceof Element)) return;
       const opts = options && typeof options === "object" ? options : {};
-      const key = (item.getAttribute("data-bp-used-preview-id") || "").trim();
       const previewKey = (item.getAttribute("data-bp-used-preview-key") || "").trim();
       const itemTitle = (item.getAttribute("data-bp-used-preview-title") || "").trim() || defaultTitle;
-      const fallbackHtml = key ? (fallbackTemplates.get(key) || "") : "";
       const requestToken = ++activateRequestToken;
       if (opts.openWrap !== false) {
         openWrap();
@@ -1335,26 +1412,38 @@ def usedByPanelJs : String := r##"(function () {
         }
       });
       title.textContent = itemTitle;
-      body.innerHTML = fallbackHtml || defaultBody;
-      if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
-        previewUtils.hydratePreviewSubtree(body);
-      }
-      if (previewUtils && typeof previewUtils.renderMath === "function") {
-        previewUtils.renderMath(body);
-      }
-      if (!previewKey || !previewUtils || typeof previewUtils.loadSharedPreviewEntry !== "function") {
+      body.innerHTML = loadingPreviewHtml();
+      if (
+        !previewKey ||
+        !previewUtils ||
+        typeof previewUtils.loadSharedPreviewEntry !== "function" ||
+        typeof previewUtils.readPreviewTemplate !== "function"
+      ) {
+        body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
         return;
       }
-      const sharedEntry = await previewUtils.loadSharedPreviewEntry(previewKey);
-      if (requestToken !== activateRequestToken) return;
-      const html = previewUtils.readPreviewTemplate(sharedEntry);
-      if (!html) return;
-      body.innerHTML = html;
-      if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
-        previewUtils.hydratePreviewSubtree(body);
-      }
-      if (previewUtils && typeof previewUtils.renderMath === "function") {
-        previewUtils.renderMath(body);
+      try {
+        const sharedEntry = await previewUtils.loadSharedPreviewEntry(previewKey);
+        if (requestToken !== activateRequestToken) return;
+        const html = previewUtils.readPreviewTemplate(sharedEntry);
+        if (!html) {
+          body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
+          return;
+        }
+        body.innerHTML = html;
+        if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
+          previewUtils.hydratePreviewSubtree(body);
+        }
+        if (previewUtils && typeof previewUtils.renderMath === "function") {
+          previewUtils.renderMath(body);
+        }
+      } catch (_err) {
+        if (requestToken !== activateRequestToken) return;
+        body.innerHTML = previewUnavailableHtml(
+          previewUtils,
+          previewKey,
+          "The shared preview content could not be loaded. Refresh the page, or rebuild the site if this persists."
+        );
       }
     }
 
