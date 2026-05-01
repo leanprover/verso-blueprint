@@ -214,6 +214,19 @@
   }
 
   function resetGraphvizForVariant(graphRoot, graphState) {
+    let cachedGraphviz = null;
+    if (graphState && typeof graphState === "object" && graphState.graphviz) {
+      cachedGraphviz = graphState.graphviz;
+    } else if (graphRoot instanceof Element && graphRoot.__graphviz__) {
+      cachedGraphviz = graphRoot.__graphviz__;
+    }
+    // d3-graphviz caches zoom state on the canvas. Destroy the renderer first
+    // so the replacement SVG gets fresh D3 zoom handlers.
+    if (cachedGraphviz && typeof cachedGraphviz.destroy === "function") {
+      cachedGraphviz.destroy();
+    } else if (graphRoot instanceof Element && graphRoot.__graphviz__) {
+      delete graphRoot.__graphviz__;
+    }
     if (graphRoot instanceof Element) {
       graphRoot.querySelectorAll("svg").forEach(function (svg) {
         svg.remove();
