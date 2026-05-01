@@ -735,7 +735,9 @@ The harness is now project-driven rather than example-hardcoded.
 - the current local override injection expects a `lakefile.lean` project that
   declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
   repository, and it tolerates different Git refs and URL spellings for that
-  source
+  source; for the v4.28 reference catalog only, local override injection also
+  accepts legacy `v4.28.0` pins to `ejgallego/verso-blueprint` so those
+  historical downstream checkouts can still exercise the local package
 - local worktree bookkeeping is intentionally not tracked in the repository
 
 Minimal external catalog entry shape:

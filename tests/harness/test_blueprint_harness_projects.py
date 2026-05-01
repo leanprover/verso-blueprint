@@ -355,6 +355,33 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertIn('require VersoBlueprint from "', text)
             self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
 
+    def test_rewrite_local_blueprint_dependency_accepts_legacy_v428_mirror_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                'require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git" @ "v4.28.0"\n',
+                encoding="utf-8",
+            )
+
+            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
+            text = lakefile.read_text(encoding="utf-8")
+            self.assertIn('require VersoBlueprint from "', text)
+            self.assertNotIn('from git "https://github.com/ejgallego/verso-blueprint.git"', text)
+
+    def test_rewrite_local_blueprint_dependency_rejects_non_v428_legacy_mirror_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                'require VersoBlueprint from git "https://github.com/ejgallego/verso-blueprint.git" @ "v4.29.0"\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, "approved `VersoBlueprint` Git source"):
+                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
     def test_rewrite_local_blueprint_dependency_rejects_unofficial_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)

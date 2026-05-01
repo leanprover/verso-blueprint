@@ -13,6 +13,7 @@ from scripts.blueprint_harness_utils import lean_low_priority_command, run
 
 
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
+LEGACY_V428_BLUEPRINT_MIRROR_REPOSITORY = "ejgallego/verso-blueprint"
 OFFICIAL_BLUEPRINT_REQUIRE = (
     f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"main"'
 )
@@ -21,7 +22,13 @@ OFFICIAL_BLUEPRINT_URL_PATTERNS = (
     rf"git@github\.com:{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
     rf"ssh://git@github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
 )
+LEGACY_V428_BLUEPRINT_MIRROR_URL_PATTERNS = (
+    rf"https://github\.com/{LEGACY_V428_BLUEPRINT_MIRROR_REPOSITORY}(?:\.git)?",
+)
 OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = f"`{OFFICIAL_BLUEPRINT_REPOSITORY}`"
+LEGACY_V428_BLUEPRINT_MIRROR_SOURCE_DESCRIPTION = (
+    f"legacy `v4.28.0` pins to `{LEGACY_V428_BLUEPRINT_MIRROR_REPOSITORY}`"
+)
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "-c",
@@ -299,7 +306,22 @@ def prepare_reference_edit_checkout(
     return edit_dir, target_branch, target_base_ref
 
 
-def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
+def _matches_official_blueprint_source(match: re.Match[str]) -> bool:
+    return any(re.fullmatch(pattern, match.group("url")) for pattern in OFFICIAL_BLUEPRINT_URL_PATTERNS)
+
+
+def _matches_legacy_v428_blueprint_mirror(match: re.Match[str]) -> bool:
+    if match.group("ref") != "v4.28.0":
+        return False
+    return any(re.fullmatch(pattern, match.group("url")) for pattern in LEGACY_V428_BLUEPRINT_MIRROR_URL_PATTERNS)
+
+
+def _require_official_blueprint_git_dependency(
+    project_dir: Path,
+    *,
+    action: str,
+    allow_legacy_v428_mirror: bool = False,
+) -> tuple[Path, str, re.Match[str]]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
         raise SystemExit(f"[blueprint-harness] missing lakefile for cloned project: {lakefile}")
@@ -309,15 +331,19 @@ def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str
         (
             candidate
             for candidate in OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text)
-            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in OFFICIAL_BLUEPRINT_URL_PATTERNS)
+            if _matches_official_blueprint_source(candidate)
+            or (allow_legacy_v428_mirror and _matches_legacy_v428_blueprint_mirror(candidate))
         ),
         None,
     )
     if match is None:
+        source_description = OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION
+        if allow_legacy_v428_mirror:
+            source_description += f" or {LEGACY_V428_BLUEPRINT_MIRROR_SOURCE_DESCRIPTION}"
         raise SystemExit(
             "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
             "`lakefile.lean` from an approved `VersoBlueprint` Git source "
-            f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}); cannot {action}."
+            f"({source_description}); cannot {action}."
         )
     return lakefile, text, match
 
@@ -326,6 +352,7 @@ def rewrite_local_blueprint_dependency(project_dir: Path, package_root: Path) ->
     lakefile, text, match = _require_official_blueprint_git_dependency(
         project_dir,
         action="inject the local path override automatically",
+        allow_legacy_v428_mirror=True,
     )
     relative_path = os.path.relpath(package_root, start=project_dir)
     replacement = f'{match.group("indent")}require VersoBlueprint from "{relative_path}"'
