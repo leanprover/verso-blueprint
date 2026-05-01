@@ -106,6 +106,7 @@ def graph_dimensions(page: Page):
                 width: graphRect.width,
                 height: graphRect.height,
                 activeDirection: canvas.getAttribute("data-bp-active-direction") || "",
+                activePack: canvas.getAttribute("data-bp-active-pack") || "",
             };
         }"""
     )
@@ -173,10 +174,12 @@ class TestGraphLayoutRuntime:
         options_button = page.locator(".bp_graph_options_button").first
         options_panel = page.locator(".bp_graph_options_popover").first
         direction_selector = page.locator(".bp_graph_direction_select").first
+        pack_input = page.locator(".bp_graph_pack_input").first
 
         initial = graph_dimensions(page)
         assert initial is not None
         assert initial["activeDirection"] == "TB"
+        assert initial["activePack"] == "true"
 
         options_button.click()
         page.wait_for_function(
@@ -184,13 +187,16 @@ class TestGraphLayoutRuntime:
                 const button = document.querySelector(".bp_graph_options_button");
                 const panel = document.querySelector(".bp_graph_options_popover");
                 const select = document.querySelector(".bp_graph_direction_select");
+                const pack = document.querySelector(".bp_graph_pack_input");
                 return (
                     !!button &&
                     !!panel &&
                     !!select &&
+                    !!pack &&
                     button.getAttribute("aria-expanded") === "true" &&
                     !panel.hidden &&
-                    select.value === "TB"
+                    select.value === "TB" &&
+                    pack.checked
                 );
             }"""
         )
@@ -212,9 +218,53 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
+        options_button.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_options_popover");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                return !!panel && !!pack && !panel.hidden && pack.checked;
+            }"""
+        )
+        pack_input.uncheck()
+        page.wait_for_function(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                const state = block ? block.__bpGraphState : null;
+                return (
+                    !!canvas &&
+                    !!pack &&
+                    !!state &&
+                    !pack.checked &&
+                    canvas.getAttribute("data-bp-active-pack") === "false" &&
+                    state.renderFinalizedToken === state.renderToken
+                );
+            }"""
+        )
+        pack_input.check()
+        page.wait_for_function(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                const state = block ? block.__bpGraphState : null;
+                return (
+                    !!canvas &&
+                    !!pack &&
+                    !!state &&
+                    pack.checked &&
+                    canvas.getAttribute("data-bp-active-pack") === "true" &&
+                    state.renderFinalizedToken === state.renderToken
+                );
+            }"""
+        )
+
         switched = graph_dimensions(page)
         assert switched is not None
         assert switched["activeDirection"] == "LR"
+        assert switched["activePack"] == "true"
         assert switched["width"] > switched["height"]
         assert_graph_is_well_placed(page)
 

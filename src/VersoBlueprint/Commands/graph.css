@@ -219,6 +219,28 @@
   justify-self: start;
 }
 
+.bp_graph_option_toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--bp-color-text-strong);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.bp_graph_pack_input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--bp-color-accent, #0f766e);
+}
+
+.bp_graph_pack_input:focus-visible {
+  outline: 2px solid var(--bp-color-accent, #0f766e);
+  outline-offset: 2px;
+}
+
 .bp_graph_controls_select:focus-visible {
   outline: 2px solid var(--bp-color-accent, #0f766e);
   outline-offset: 2px;
