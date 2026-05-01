@@ -41,8 +41,10 @@ def traverseManualBlocks
     st := st'
   return (cur, st)
 
-def renderManualBlocksHtmlWithState
-    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
+def renderManualHtmlWithState
+    (htmlState : Verso.Doc.Html.HtmlT Verso.Genre.Manual
+      (ReaderT Verso.Multi.AllRemotes (ReaderT Verso.Genre.Manual.ExtensionImpls IO))
+      Verso.Output.Html)
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (st : Verso.Genre.Manual.TraverseState)
     (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
@@ -61,7 +63,6 @@ def renderManualBlocksHtmlWithState
   let definitionIds : Lean.NameMap String := {}
   let codeOptions : Verso.Code.HighlightHtmlM.Options := {}
   let remotes : Verso.Multi.AllRemotes := {}
-  let block := Verso.Doc.Block.concat blocks
   let htmlContext : Verso.Doc.Html.HtmlT.Context Verso.Genre.Manual (ReaderT Verso.Multi.AllRemotes (ReaderT Verso.Genre.Manual.ExtensionImpls IO)) := {
     options := opts
     traverseContext := ctxt
@@ -70,11 +71,21 @@ def renderManualBlocksHtmlWithState
     linkTargets := linkTargets
     codeOptions := codeOptions
   }
-  let htmlState :=
-    Informal.HoverRender.withInlinePreviewRenderContext <|
-      Verso.Doc.Html.ToHtml.toHtml (genre := Verso.Genre.Manual) block
+  let htmlState := Informal.HoverRender.withInlinePreviewRenderContext htmlState
   let (html, _hover) ← ((htmlState htmlContext).run {}).run remotes |>.run impls
   pure html
+
+def renderManualBlocksHtmlWithState
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
+    (impls : Verso.Genre.Manual.ExtensionImpls)
+    (st : Verso.Genre.Manual.TraverseState)
+    (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
+    (logError : String → IO Unit := discardRenderError) :
+    IO Verso.Output.Html := do
+  let block := Verso.Doc.Block.concat blocks
+  renderManualHtmlWithState
+    (Verso.Doc.Html.ToHtml.toHtml (genre := Verso.Genre.Manual) block)
+    impls st linkTargets (logError := logError)
 
 private def renderManualBlocksHtml
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))

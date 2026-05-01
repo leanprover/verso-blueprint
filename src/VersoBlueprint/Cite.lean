@@ -221,6 +221,20 @@ structure CiteInlineData where
 deriving Inhabited, FromJson, ToJson
 
 /--
+Manifest payload for one citation hover preview.
+
+The preview is keyed by the rendered citation form and locator, not by the
+inline occurrence that requested it, so repeated citations can share one
+manifest entry without page-local template ownership.
+-/
+structure CitationPreviewData where
+  item : CiteItem
+  style : CitationStyle := .parenthetical
+  kind : Option CitePartKind := none
+  index : Option String := none
+deriving FromJson, ToJson
+
+/--
 One numbered document location extracted from the current part-header stack.
 
 `number` is already normalized to display text because the underlying Manual
@@ -499,7 +513,7 @@ private def joinHtml (sep : Verso.Output.Html) (xs : List Verso.Output.Html) : V
   | [] => .empty
   | x :: rest => rest.foldl (init := x) fun acc y => acc ++ sep ++ y
 
-private def normalizedLocatorIndex (index : Option String) : Option String :=
+def normalizedLocatorIndex (index : Option String) : Option String :=
   match index.map (·.trimAscii.toString) with
   | some i =>
     if i.isEmpty then Option.none else some i
@@ -521,7 +535,7 @@ private def pieceText (style : CitationStyle) (c : Citable) : String :=
   | .textual => s!"{who} ({year})"
   | .parenthetical | .here => s!"{who}, {year}"
 
-private def citationPreviewId (item : CiteItem) (style : CitationStyle)
+def citationPreviewKey (item : CiteItem) (style : CitationStyle)
     (kind : Option CitePartKind) (index : Option String) : String :=
   let styleKey :=
     match style with
@@ -532,10 +546,13 @@ private def citationPreviewId (item : CiteItem) (style : CitationStyle)
   let indexKey := (normalizedLocatorIndex index).map Informal.HoverRender.previewKey |>.getD "none"
   s!"bp-cite-{citationAnchorId item.label}-{styleKey}-{kindKey}-{indexKey}"
 
-private def citationPreviewTitle (item : CiteItem) : String :=
+def CitationPreviewData.key (data : CitationPreviewData) : String :=
+  citationPreviewKey data.item data.style data.kind data.index
+
+def citationPreviewTitle (item : CiteItem) : String :=
   s!"Bibliography: {item.label}"
 
-private def citationPreviewBody (entryHtml : Verso.Output.Html)
+def citationPreviewBody (entryHtml : Verso.Output.Html)
     (kind : Option CitePartKind) (index : Option String) :
     Verso.Output.Html :=
   open Verso.Output.Html in
@@ -574,9 +591,15 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     let summary := usageSummary ctxt
     let locatorIndex := normalizedLocatorIndex cfg.index
     for item in cfg.citations do
-      let previewId := citationPreviewId item cfg.style cfg.kind cfg.index
+      let previewData : CitationPreviewData := {
+        item
+        style := cfg.style
+        kind := cfg.kind
+        index := locatorIndex
+      }
+      let previewKey := previewData.key
       modify fun st =>
-        let st := Informal.HoverRender.registerInlinePreviewOwner st path previewId id
+        let st := Informal.TraversalIndex.CitationPreviews.saveData st previewKey (toJson previewData)
         let st := Informal.TraversalIndex.CitationUsages.saveId st item.label id
         match href? with
         | some href =>
@@ -632,7 +655,6 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
         | HtmlT.logError "Malformed data in Inline.bpCite.toHtml"
           pure .empty
       let st ← HtmlT.state
-      let ctxt ← HtmlT.context
       let inPreviewRender ← Informal.HoverRender.inInlinePreviewRender
       let citeAnchorId? := st.externalTags[id]? |>.map (·.htmlId.toString)
       let wrapTarget (h : Output.Html) : Output.Html :=
@@ -659,12 +681,11 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
         if inPreviewRender then
           pure linkNode
         else
-          let previewId := citationPreviewId item cfg.style cfg.kind cfg.index
-          let emitTemplate := Informal.HoverRender.isInlinePreviewOwner st ctxt.path previewId id
-          let entryHtml ← item.citation.bibHtml goI
-          let tooltip := citationPreviewBody entryHtml cfg.kind cfg.index
+          let previewKey := citationPreviewKey item cfg.style cfg.kind cfg.index
           pure <| Informal.HoverRender.inlinePreviewNode
-            emitTemplate linkNode tooltip previewId (citationPreviewTitle item)
+            linkNode previewKey (citationPreviewTitle item)
+            (previewLookupKey? := some previewKey)
+            (previewFallbackDetail? := locatorText cfg.kind cfg.index)
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links
       let locatorHtml? := (locatorText cfg.kind cfg.index).map (fun loc => {{<span>{{.text true loc}}</span>}})

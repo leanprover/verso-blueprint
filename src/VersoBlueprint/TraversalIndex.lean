@@ -247,47 +247,28 @@ def saveId
 
 end ExternalDeclAnchors
 
-namespace InlinePreviewOwners
+namespace CitationPreviews
 
 def spec : StoreSpec := {
-  name := Name.mkSimple "Informal.inlinePreview.store"
-  kind := .internalIndex
-  key := "(render path, preview id)"
-  value := "first template-owner internal id"
-  summary := "Traversal-local ownership index used to deduplicate inline preview template emission."
+  name := Resolve.citationPreviewDomainName
+  kind := .runtimeCache
+  key := "(citation label, citation style, locator kind, locator index)"
+  value := "citation preview payload"
+  summary := "Manifest-backed bibliography hover previews keyed by citation target and locator."
 }
 
 def domainName : Name := spec.name
 
-def key (path : Array String) (previewId : String) : String :=
-  s!"{String.intercalate "/" path.toList}::{previewId}"
+def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName previewKey
 
-def registerOwner
-    (state : TraverseState) (path : Array String) (previewId : String)
-    (id : Verso.Multi.InternalId) : TraverseState :=
-  let ownerKey := key path previewId
-  -- First writer owns the shared inline-preview template for this render path.
-  if (state.getDomainObject? domainName ownerKey).isSome then
-    state
-  else
-    saveObjectId state domainName ownerKey id
+def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
+  saveObjectData state domainName previewKey data
 
-def ownerId?
-    (state : TraverseState) (path : Array String) (previewId : String) :
-    Option Verso.Multi.InternalId :=
-  let ownerKey := key path previewId
-  match state.getDomainObject? domainName ownerKey with
-  | some obj => obj.ids.toArray[0]?
-  | none => none
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
 
-def isOwner
-    (state : TraverseState) (path : Array String) (previewId : String)
-    (id : Verso.Multi.InternalId) : Bool :=
-  match ownerId? state path previewId with
-  | some owner => owner == id
-  | none => true
-
-end InlinePreviewOwners
+end CitationPreviews
 
 namespace Bibliography
 
@@ -349,7 +330,7 @@ def allSpecs : Array StoreSpec := #[
   TraversalPreviews.spec,
   LeanCodePreviews.spec,
   ExternalDeclAnchors.spec,
-  InlinePreviewOwners.spec,
+  CitationPreviews.spec,
   Bibliography.spec,
   CitationUsages.spec
 ]

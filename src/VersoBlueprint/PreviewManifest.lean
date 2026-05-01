@@ -9,6 +9,7 @@ import Lean.Elab.Command
 import Std.Data.HashSet
 import VersoManual
 import VersoManual.HighlightedCode
+import VersoBlueprint.Cite
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -36,12 +37,20 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
 
 def manifestFilename : String := "blueprint-preview-manifest.json"
 
+inductive EntryKind where
+  | block
+  | leanDecl
+  | citation
+deriving Inhabited, Repr, ToJson, FromJson
+
 structure Entry where
-  /-- Composite preview lookup key, currently `{label}--{facet}`. -/
+  /-- Composite preview lookup key for this target family. -/
   key : String
-  /-- Canonical informal node label. -/
+  /-- Preview target family. -/
+  targetKind : EntryKind
+  /-- Canonical target label: informal label, Lean declaration name, or citation label. -/
   label : Name
-  /-- Which preview variant this entry contains: statement or proof. -/
+  /-- Which preview variant this entry contains; non-block previews use `statement`. -/
   facet : PreviewCache.Facet
   /-- Kind (definition, lemma, theorem, corollary). -/
   kind : Option Informal.Data.NodeKind := none
@@ -266,6 +275,7 @@ private def buildTraversalEntries
       let key := PreviewCache.key entry.label entry.facet
       let manifestEntry : Entry := {
         key
+        targetKind := .block
         label := entry.label
         facet := entry.facet
         kind := blockKind? blockData?
@@ -302,9 +312,48 @@ private def buildLeanCodeEntries
         continue
       let manifestEntry : Entry := {
         key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
+        targetKind := .leanDecl
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target
+        html
+      }
+      entries := entries.push manifestEntry
+  pure entries
+
+private def renderCitationEntryHtml
+    (impls : ExtensionImpls)
+    (logError : String → IO Unit)
+    (state : TraverseState)
+    (entry : Informal.Cite.CitationPreviewData) : IO String := do
+  let citationHtml ← Informal.renderManualHtmlWithState
+    (entry.item.citation.bibHtml (Verso.Doc.Html.ToHtml.toHtml (genre := Verso.Genre.Manual)))
+    impls state (logError := logError)
+  let body := Informal.Cite.citationPreviewBody citationHtml entry.kind entry.index
+  pure <| Output.Html.asString body
+
+private def buildCitationEntries
+    (impls : ExtensionImpls)
+    (logError : String → IO Unit)
+    (state : TraverseState) : IO (Array Entry) := do
+  let some domain := Informal.TraversalIndex.CitationPreviews.domain? state
+    | return #[]
+  let mut entries := #[]
+  for (_key, obj) in domain.objects.toArray do
+    match fromJson? (α := Informal.Cite.CitationPreviewData) obj.data with
+    | .error err =>
+      logError s!"Preview manifest: malformed citation preview entry {obj.canonicalName}: {err}"
+    | .ok citation =>
+      let html ← renderCitationEntryHtml impls logError state citation
+      if html.trimAscii.isEmpty then
+        continue
+      let manifestEntry : Entry := {
+        key := citation.key
+        targetKind := .citation
+        label := citation.item.label.toName
+        facet := .statement
+        title := Informal.Cite.citationPreviewTitle citation.item
+        href := Informal.TraversalIndex.Bibliography.href? state citation.item.label
         html
       }
       entries := entries.push manifestEntry
@@ -316,7 +365,8 @@ private def buildManifestFile
     (state : TraverseState) : IO File := do
   let traversalPreviews ← buildTraversalEntries impls logError state
   let leanCodePreviews ← buildLeanCodeEntries impls logError state
-  let previews := (traversalPreviews ++ leanCodePreviews).qsort (fun a b => a.key < b.key)
+  let citationPreviews ← buildCitationEntries impls logError state
+  let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   pure { previews }
 
 private def parseRenderConfigOptions (config : RenderConfig := {}) :
@@ -381,9 +431,10 @@ private def dumpManifest
 /--
 Emit the canonical shared blueprint preview manifest file.
 
-The shared manifest contains both:
+The shared manifest contains:
 - traversal-cached statement/proof previews keyed by `PreviewCache`,
 - dedicated Lean-code previews keyed by `Informal.LeanCodePreview`.
+- citation previews keyed by citation label, style, and locator.
 -/
 def emitSharedPreviewManifest (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
   let file ← buildManifestFile extensionImpls logError state

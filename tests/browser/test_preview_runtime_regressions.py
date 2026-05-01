@@ -204,12 +204,15 @@ class TestPreviewRuntimeRegressions:
             '.bp_inline_preview_ref[data-bp-preview-title="Bibliography: preview.showcase.cite"]'
         ).first
         expect(trigger).to_have_count(1)
+        assert "bp_inline_preview_tpl" not in page.content()
 
         trigger.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text("preview.showcase.cite")
+        body = panel.locator(".bp_inline_preview_panel_body")
+        expect(body).to_contain_text("Preview showcase citation")
+        expect(body).to_contain_text("Locator")
 
         assert_no_runtime_errors(errors)
 

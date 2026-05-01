@@ -55,7 +55,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
-        !appearsBefore inlineJs "previewUtils.loadSharedPreviewManifest();" "const store = ensureInlinePreviewStore();"
+        !hasSubstr inlineJs "ensureInlinePreviewStore" &&
+        !hasSubstr inlineJs "template.bp_inline_preview_tpl"
       | _, _, _, _ => false
     )
 
