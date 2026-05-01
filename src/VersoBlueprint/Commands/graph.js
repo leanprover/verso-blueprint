@@ -27,6 +27,33 @@
     return "TB";
   }
 
+  function normalizeGraphPack(rawPack) {
+    if (rawPack === false) return false;
+    if (rawPack === true) return true;
+    const pack = rawPack === null || typeof rawPack === "undefined" ? "" : String(rawPack).trim().toLowerCase();
+    if (pack === "false" || pack === "0" || pack === "no" || pack === "off") {
+      return false;
+    }
+    return true;
+  }
+
+  function normalizeGraphOptions(rawOptions) {
+    const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
+    return {
+      direction: normalizeGraphDirection(options.direction),
+      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : true)
+    };
+  }
+
+  function graphPackAttr(pack) {
+    return normalizeGraphPack(pack) ? "true" : "false";
+  }
+
+  function graphOptionsKey(options) {
+    const normalized = normalizeGraphOptions(options);
+    return normalized.direction + "|" + graphPackAttr(normalized.pack);
+  }
+
   function readGraphCanvasFlowBottom(graphRoot) {
     if (!(graphRoot instanceof Element)) return 0;
     const flowContainer = graphRoot.closest(".content-wrapper") || graphRoot.closest("main");
@@ -107,32 +134,41 @@
     const dotTxt = graphContainer.select("script.dot-source").text().trim();
     if (!dotTxt) return [];
     const fallbackDirection = normalizeGraphDirection(graphContainer.attr("data-bp-graph-direction"));
+    const fallbackPack = normalizeGraphPack(graphContainer.attr("data-bp-graph-pack"));
     return [{
       key: "full",
       label: "Full Graph",
       dot: dotTxt,
-      direction: fallbackDirection,
+      options: { direction: fallbackDirection, pack: fallbackPack },
       selectOnNodeId: [],
       hoverOnNodeId: []
     }];
   }
 
-  function dotWithGraphDirection(dot, direction) {
-    const source = String(dot || "").trim();
+  function dotWithGraphAttribute(dot, name, value) {
+    const source = String(dot || "");
     if (!source) return "";
-    const desired = normalizeGraphDirection(direction);
-    const rankdirPattern = /(^\s*rankdir\s*=\s*)(LR|RL|TB|BT)(\s*;)/m;
-    if (rankdirPattern.test(source)) {
-      return source.replace(rankdirPattern, "$1" + desired + "$3");
+    const attrPattern = new RegExp("(^\\s*" + name + "\\s*=\\s*)([^;]+)(\\s*;)", "mi");
+    if (attrPattern.test(source)) {
+      return source.replace(attrPattern, "$1" + value + "$3");
     }
     const openBrace = source.indexOf("{");
     if (openBrace < 0) return source;
-    return source.slice(0, openBrace + 1) + "\n    rankdir=" + desired + ";" + source.slice(openBrace + 1);
+    return source.slice(0, openBrace + 1) + "\n    " + name + "=" + value + ";" + source.slice(openBrace + 1);
   }
 
-  function dotForVariantDirection(variant, direction) {
+  function dotWithGraphOptions(dot, options) {
+    const source = String(dot || "").trim();
+    if (!source) return "";
+    const normalized = normalizeGraphOptions(options);
+    let updated = dotWithGraphAttribute(source, "rankdir", normalized.direction);
+    updated = dotWithGraphAttribute(updated, "pack", graphPackAttr(normalized.pack));
+    return updated;
+  }
+
+  function dotForVariantOptions(variant, options) {
     if (!variant || typeof variant !== "object") return "";
-    return dotWithGraphDirection(variant.dot, direction);
+    return dotWithGraphOptions(variant.dot, options);
   }
 
   function graphNodeLabel(node) {
@@ -167,7 +203,7 @@
       groupHoverShownNodeId: "",
       graphviz: null,
       renderedVariantKey: "",
-      renderedDirectionKey: "",
+      renderedOptionsKey: "",
       canvasAutoHeight: null,
       canvasUserResized: false,
       renderToken: 0,
@@ -238,7 +274,7 @@
       graphState.lastCanvasWidth = 0;
       graphState.lastCanvasHeight = 0;
       graphState.renderedVariantKey = "";
-      graphState.renderedDirectionKey = "";
+      graphState.renderedOptionsKey = "";
     }
   }
 
@@ -733,6 +769,7 @@
         const graphState = ensureGraphBlockState(graphBlock);
         const selector = graphBlock.querySelector(".bp_graph_view_select");
         const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
+        const packInput = graphBlock.querySelector(".bp_graph_pack_input");
         const previewMap = collectPreviewTemplates(graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
         const previewClose = previewPanelNode
@@ -777,7 +814,11 @@
           const key = String(variant.key || "").trim();
           const label = String(variant.label || key).trim();
           const dot = String(variant.dot || "").trim();
-          const direction = normalizeGraphDirection(variant.direction);
+          const options = normalizeGraphOptions(
+            variant.options && typeof variant.options === "object"
+              ? variant.options
+              : { direction: variant.direction, pack: variant.pack }
+          );
           const selectOnNodeId = Array.isArray(variant.selectOnNodeId) ? variant.selectOnNodeId : [];
           const hoverOnNodeId = Array.isArray(variant.hoverOnNodeId) ? variant.hoverOnNodeId : [];
           const previewKeyByNodeId = Array.isArray(variant.previewKeyByNodeId) ? variant.previewKeyByNodeId : [];
@@ -786,7 +827,7 @@
             key: key,
             label: label || key,
             dot: dot,
-            direction: direction,
+            options: options,
             selectOnNodeId: selectOnNodeId,
             hoverOnNodeId: hoverOnNodeId,
             previewKeyByNodeId: new Map(previewKeyByNodeId)
@@ -809,12 +850,16 @@
           activeKey = selector.value;
         }
         if (selector) selector.value = activeKey;
-        let activeDirection = normalizeGraphDirection(
-          directionSelector
+        let activeOptions = normalizeGraphOptions({
+          direction: directionSelector
             ? directionSelector.getAttribute("data-bp-graph-default-direction")
-            : graphContainer.attr("data-bp-graph-direction")
-        );
-        if (directionSelector) directionSelector.value = activeDirection;
+            : graphContainer.attr("data-bp-graph-direction"),
+          pack: packInput
+            ? packInput.getAttribute("data-bp-graph-default-pack")
+            : graphContainer.attr("data-bp-graph-pack")
+        });
+        if (directionSelector) directionSelector.value = activeOptions.direction;
+        if (packInput) packInput.checked = activeOptions.pack;
         syncLegend(graphBlock, activeKey);
         const legendPopover = bindLegendPopover(graphBlock);
         const optionsPopover = bindOptionsPopover(graphBlock);
@@ -824,8 +869,8 @@
           return variantsByKey.get(activeKey) || fallback;
         };
 
-        const getActiveDirection = function () {
-          return normalizeGraphDirection(activeDirection);
+        const getActiveOptions = function () {
+          return normalizeGraphOptions(activeOptions);
         };
 
         const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
@@ -854,7 +899,7 @@
               groupHoverGraphviz
                 .width(width)
                 .height(height)
-                .renderDot(dotForVariantDirection(variant, getActiveDirection()));
+                .renderDot(dotForVariantOptions(variant, getActiveOptions()));
             },
             positionPanel: makeGroupPanelPositioner(graphBlock, groupHoverBehavior),
             onHide: function () {
@@ -948,12 +993,29 @@
           renderGraph();
         };
 
-        const switchDirection = function (nextDirection) {
-          const normalized = normalizeGraphDirection(nextDirection);
-          if (normalized === activeDirection) return;
-          activeDirection = normalized;
-          if (directionSelector) directionSelector.value = normalized;
+        const switchGraphOptions = function (nextOptions) {
+          const rawNextOptions = nextOptions && typeof nextOptions === "object" ? nextOptions : {};
+          const normalized = normalizeGraphOptions({
+            direction: Object.prototype.hasOwnProperty.call(rawNextOptions, "direction")
+              ? rawNextOptions.direction
+              : activeOptions.direction,
+            pack: Object.prototype.hasOwnProperty.call(rawNextOptions, "pack")
+              ? rawNextOptions.pack
+              : activeOptions.pack
+          });
+          if (graphOptionsKey(normalized) === graphOptionsKey(activeOptions)) return;
+          activeOptions = normalized;
+          if (directionSelector) directionSelector.value = normalized.direction;
+          if (packInput) packInput.checked = normalized.pack;
           renderGraph();
+        };
+
+        const switchDirection = function (nextDirection) {
+          switchGraphOptions({ direction: nextDirection });
+        };
+
+        const switchPack = function (nextPack) {
+          switchGraphOptions({ pack: nextPack });
         };
 
         const scheduleRender = debounce(function () {
@@ -962,8 +1024,9 @@
 
         function renderGraph() {
           const activeVariant = getActiveVariant();
-          const direction = getActiveDirection();
-          const dot = dotForVariantDirection(activeVariant, direction);
+          const options = getActiveOptions();
+          const optionsKey = graphOptionsKey(options);
+          const dot = dotForVariantOptions(activeVariant, options);
           if (!activeVariant || !dot) return;
           graphState.renderToken += 1;
           const renderToken = graphState.renderToken;
@@ -1000,16 +1063,17 @@
           if (
             (graphState.renderedVariantKey &&
               graphState.renderedVariantKey !== activeVariant.key) ||
-            (graphState.renderedDirectionKey &&
-              graphState.renderedDirectionKey !== direction)
+            (graphState.renderedOptionsKey &&
+              graphState.renderedOptionsKey !== optionsKey)
           ) {
             resetGraphvizForVariant(graphRoot, graphState);
           }
           const gv = graphState.graphviz || graphContainer.graphviz();
           graphState.graphviz = gv;
           graphState.renderedVariantKey = activeVariant.key;
-          graphState.renderedDirectionKey = direction;
-          graphRoot.setAttribute("data-bp-active-direction", direction);
+          graphState.renderedOptionsKey = optionsKey;
+          graphRoot.setAttribute("data-bp-active-direction", options.direction);
+          graphRoot.setAttribute("data-bp-active-pack", graphPackAttr(options.pack));
           gv
             .zoom(true)
             .width(width)
@@ -1033,6 +1097,11 @@
           directionSelector.addEventListener("change", function () {
             switchDirection(directionSelector.value);
             if (optionsPopover) optionsPopover.close();
+          });
+        }
+        if (packInput) {
+          packInput.addEventListener("change", function () {
+            switchPack(packInput.checked);
           });
         }
 

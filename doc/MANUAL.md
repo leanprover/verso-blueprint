@@ -447,31 +447,36 @@ Use it as either:
 {blueprint_graph}
 ```
 
-or with an explicit direction:
+or with explicit graph layout options:
 
 ```lean
 {blueprint_graph (direction := LR)}
+{blueprint_graph (direction := LR) (pack := false)}
 ```
 
 Supported directions are `LR`, `RL`, `TB`, and `BT`. When `(direction := ...)`
 is omitted, the command falls back to the
 `verso.blueprint.graph.defaultDirection` option.
+The `(pack := true | false)` option controls Graphviz component packing for
+disconnected graph components. It defaults to
+`verso.blueprint.graph.defaultPack`, which is `true`.
 
 The rendered graph page is interactive:
 
 - a `View` selector switches between the full graph and any derived grouped
   views
 - a `Legend` button opens the current graph legend in a popover
-- a `Graph options` button exposes runtime graph options such as direction
+- a `Graph options` button exposes runtime graph options such as direction and
+  component packing
 - when grouped metadata produces multiple children for the same parent, the
   selector includes a synthetic group overview plus one subgraph view per group
 
-The command-side direction and the runtime direction control are compatible:
+The command-side options and the runtime graph controls are compatible:
 
 - `(direction := ...)` chooses the initial graph direction when the page first
   loads
 - the rendered `Graph options` control lets readers switch among the supported
-  directions without regenerating the site
+  directions and toggle component packing without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
@@ -640,6 +645,10 @@ Current options:
   - default: `TB`
   - sets the fallback graph direction for `blueprint_graph` when
     `(direction := ...)` is omitted
+- `verso.blueprint.graph.defaultPack`
+  - default: `true`
+  - sets the fallback Graphviz component packing behavior for
+    `blueprint_graph` when `(pack := ...)` is omitted
 - `verso.blueprint.debug.commands`
   - default: `false`
   - emits debug info logs while elaborating Blueprint graph, summary, and

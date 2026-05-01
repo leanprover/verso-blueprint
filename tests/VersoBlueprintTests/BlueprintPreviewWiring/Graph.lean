@@ -22,7 +22,7 @@ set_option doc.verso true
 Base statement for an explicit left-to-right graph.
 :::
 
-{blueprint_graph (direction := LR)}
+{blueprint_graph (direction := LR) (pack := false)}
 :::::::
 
 /-- info: true -/
@@ -50,8 +50,11 @@ Base statement for an explicit left-to-right graph.
       hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
       hasSubstr out "class=\"bp_graph_options_popover\"" &&
       hasSubstr out "class=\"bp_graph_controls_select bp_graph_direction_select\"" &&
+      hasSubstr out "class=\"bp_graph_pack_input\"" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
-      hasSubstr out "\"direction\":\"TB\"" &&
+      hasSubstr out "data-bp-graph-pack=\"true\"" &&
+      hasSubstr out "data-bp-graph-default-pack=\"true\"" &&
+      hasSubstr out "\"options\":{\"direction\":\"TB\",\"pack\":true}" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
@@ -75,21 +78,24 @@ Base statement for an explicit left-to-right graph.
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
         hasSubstr graphJs "graphviz: null," &&
         hasSubstr graphJs "renderedVariantKey: \"\"," &&
-        hasSubstr graphJs "renderedDirectionKey: \"\"," &&
+        hasSubstr graphJs "renderedOptionsKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
-        hasSubstr graphJs "function dotWithGraphDirection(dot, direction)" &&
-        hasSubstr graphJs "function dotForVariantDirection(variant, direction)" &&
-        hasSubstr graphJs "return dotWithGraphDirection(variant.dot, direction);" &&
+        hasSubstr graphJs "function dotWithGraphOptions(dot, options)" &&
+        hasSubstr graphJs "function dotForVariantOptions(variant, options)" &&
+        hasSubstr graphJs "return dotWithGraphOptions(variant.dot, options);" &&
         hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
         hasSubstr graphJs "function bindOptionsPopover(graphBlock)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
         hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
         hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
         hasSubstr graphJs "const directionSelector = graphBlock.querySelector(\".bp_graph_direction_select\");" &&
-        hasSubstr graphJs "let activeDirection = normalizeGraphDirection(" &&
+        hasSubstr graphJs "const packInput = graphBlock.querySelector(\".bp_graph_pack_input\");" &&
+        hasSubstr graphJs "let activeOptions = normalizeGraphOptions({" &&
         hasSubstr graphJs "switchDirection(directionSelector.value);" &&
+        hasSubstr graphJs "switchPack(packInput.checked);" &&
         hasSubstr graphJs ".zoom(true)" &&
         hasSubstr graphJs "function normalizeGraphDirection(rawDirection)" &&
+        hasSubstr graphJs "function normalizeGraphPack(rawPack)" &&
         hasSubstr graphJs "layoutGraphCanvas(graphRoot, graphState)" &&
         hasSubstr graphJs "if (typeof ResizeObserver === \"function\")" &&
         hasSubstr graphJs ".fit(true)" &&
@@ -104,10 +110,13 @@ Base statement for an explicit left-to-right graph.
     let (out, _) ← renderManualDocHtmlStringAndState manualImpls lrDirectionGraphDoc
     pure (
       hasSubstr out "data-bp-graph-direction=\"LR\"" &&
+      hasSubstr out "data-bp-graph-pack=\"false\"" &&
       hasSubstr out "data-bp-graph-default-direction=\"LR\"" &&
+      hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
       (hasSubstr out "selected value=\"LR\"" || hasSubstr out "value=\"LR\" selected") &&
-      hasSubstr out "\"direction\":\"LR\"" &&
+      hasSubstr out "\"options\":{\"direction\":\"LR\",\"pack\":false}" &&
       hasSubstr out "rankdir=LR;" &&
+      hasSubstr out "pack=false;" &&
       !hasSubstr out "dotByDirection"
     )
 

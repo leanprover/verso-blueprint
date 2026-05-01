@@ -50,17 +50,58 @@ register_option verso.blueprint.graph.defaultDirection : String := {
   descr := "Default direction for `blueprint_graph` when `(direction := ...)` is omitted (LR, RL, TB, BT)"
 }
 
+register_option verso.blueprint.graph.defaultPack : Bool := {
+  defValue := true
+  descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
+}
+
+structure GraphOptions where
+  direction : GraphDirection := .TB
+  /--
+  Ask Graphviz to compact disconnected graph components before d3-graphviz fits
+  the SVG into the canvas.
+  -/
+  pack : Bool := true
+deriving Inhabited, BEq, FromJson, ToJson, Quote
+
 structure GraphBlockData where
   graph : Graph
-  direction : GraphDirection := .TB
+  options : GraphOptions := {}
   groupTitles : Array (Name × String) := #[]
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, ToJson, Quote
 
-def graphDotHeader (rankdir : String) : String :=
+instance : FromJson GraphBlockData where
+  fromJson? v := do
+    let graph ← v.getObjVal? "graph" >>= fromJson?
+    let options ←
+      match v.getObjVal? "options" with
+      | .ok optionsJson => fromJson? optionsJson
+      | .error _ =>
+        let direction ←
+          match v.getObjVal? "direction" with
+          | .ok directionJson => fromJson? directionJson
+          | .error _ => pure .TB
+        pure { direction, pack := true }
+    let groupTitles ←
+      match v.getObjVal? "groupTitles" with
+      | .ok groupTitlesJson => fromJson? groupTitlesJson
+      | .error _ => pure #[]
+    pure { graph, options, groupTitles }
+
+def graphPackAttr (pack : Bool) : String :=
+  if pack then "true" else "false"
+
+/-- Common DOT header for rendered Blueprint graphs.
+
+`pack=true` keeps disconnected graph components compact before d3-graphviz fits
+the SVG into the canvas. Without it, sparse multi-component graphs can be
+placed far from the top of the viewport after variant or direction switches.
+-/
+def graphDotHeader (options : GraphOptions := {}) : String :=
   "strict digraph \"\" {\n" ++
-  s!"    rankdir={rankdir};\n" ++
+  s!"    rankdir={options.direction.rankdir};\n" ++
   "    bgcolor=\"white\";\n" ++
-  "    pack=true;\n" ++
+  s!"    pack={graphPackAttr options.pack};\n" ++
   "    splines=true;\n" ++
   "    nodesep=0.35;\n" ++
   "    ranksep=0.45;\n" ++
@@ -69,10 +110,10 @@ def graphDotHeader (rankdir : String) : String :=
   "    graph [fontname=\"Helvetica\"];\n" ++
   "  "
 
-def graphToDot (g : Graph) (direction : GraphDirection := .TB)
+def graphToDot (g : Graph) (options : GraphOptions := {})
     (resolveHref : Name → Option String := fun _ => none)
     (resolveGroupTitle : Name → Option String := fun _ => none) : String :=
-  Informal.Graph.Graph.toDot g (graphDotHeader direction.rankdir)
+  Informal.Graph.Graph.toDot g (graphDotHeader options)
     (groupLabel? := some resolveGroupTitle)
     (refAttrs? := some fun ref =>
     (resolveHref ref).map (fun href => s!"URL=\"{href}\", target=\"_self\""))
@@ -81,7 +122,7 @@ structure GraphRenderVariant where
   key : String
   label : String
   dot : String
-  direction : GraphDirection := .TB
+  options : GraphOptions := {}
   selectOnNodeId : Array (String × String) := #[]
   hoverOnNodeId : Array (String × String) := #[]
   previewKeyByNodeId : Array (String × String) := #[]
@@ -330,8 +371,8 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
     #[{
       key := "full"
       label := "Full Graph"
-      dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
-      direction := graphData.direction
+      dot := graphToDot graphData.graph graphData.options resolveHref resolveGroupTitle
+      options := graphData.options
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
       previewKeyByNodeId := previewKeyByNodeId graphData.graph
@@ -342,8 +383,8 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
       key := groupVariantKey
       label := "Group View"
       dot := graphToDot (mkParentOverviewGraph graphData.graph parents groupTitles)
-        graphData.direction (fun _ => none) (fun _ => none)
-      direction := graphData.direction
+        graphData.options (fun _ => none) (fun _ => none)
+      options := graphData.options
       selectOnNodeId := parentVariantRefs
       hoverOnNodeId := parentVariantRefs
       previewKeyByNodeId := #[]
@@ -351,8 +392,8 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
     let fullVariant : GraphRenderVariant := {
       key := "full"
       label := "Full Graph"
-      dot := graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
-      direction := graphData.direction
+      dot := graphToDot graphData.graph graphData.options resolveHref resolveGroupTitle
+      options := graphData.options
       selectOnNodeId := #[]
       hoverOnNodeId := #[]
       previewKeyByNodeId := previewKeyByNodeId graphData.graph
@@ -364,8 +405,8 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
         key := parentVariantKey parent
         label := title
         dot := graphToDot parentSubgraph
-          graphData.direction resolveHref resolveGroupTitle
-        direction := graphData.direction
+          graphData.options resolveHref resolveGroupTitle
+        options := graphData.options
         selectOnNodeId := #[]
         hoverOnNodeId := #[]
         previewKeyByNodeId := previewKeyByNodeId parentSubgraph
@@ -396,10 +437,10 @@ block_extension Block.graph (graphData : GraphBlockData) where
         | .ok gd => pure gd
         | .error _ =>
           match fromJson? (α := Graph) data with
-          | .ok graph => pure { graph, direction := .TB }
+          | .ok graph => pure { graph, options := {}, groupTitles := #[] }
           | .error _ =>
             HtmlT.logError "Malformed data in Block.graph.toHtml"
-            pure { graph := #[], direction := .TB }
+            pure { graph := #[], options := {}, groupTitles := #[] }
       let s ← HtmlT.state
       let resolveHref : Name → Option String := fun ref =>
         Informal.TraversalIndex.Nodes.href? s ref
@@ -498,6 +539,13 @@ block_extension Block.graph (graphData : GraphBlockData) where
             | _ => Option.none with
         | some value => value
         | Option.none => fallbackGraphControlId id "--direction"
+      let graphPackInputId : String :=
+        let attrs := s.htmlId id
+        match attrs.findSome? fun
+            | ("id", value) => some s!"{value}--pack"
+            | _ => Option.none with
+        | some value => value
+        | Option.none => fallbackGraphControlId id "--pack"
       let graphLegendPanelId : String :=
         let attrs := s.htmlId id
         match attrs.findSome? fun
@@ -514,14 +562,17 @@ block_extension Block.graph (graphData : GraphBlockData) where
         | Option.none => fallbackGraphControlId id "--options"
       let graphDirectionOptions : Array Output.Html :=
         allGraphDirections.map fun direction =>
-          if direction == graphData.direction then
+          if direction == graphData.options.direction then
             {{ <option value={{direction.rankdir}} selected>{{direction.rankdir}}</option> }}
           else
             {{ <option value={{direction.rankdir}}>{{direction.rankdir}}</option> }}
+      let graphPackChecked : Array (String × String) :=
+        if graphData.options.pack then #[("checked", "checked")] else #[]
+      let graphPackDefault : String := graphPackAttr graphData.options.pack
       let fallbackDot : String :=
         match graphVariants[0]? with
         | some variant => variant.dot
-        | Option.none => graphToDot graphData.graph graphData.direction resolveHref resolveGroupTitle
+        | Option.none => graphToDot graphData.graph graphData.options resolveHref resolveGroupTitle
       let previewUi := Informal.HoverRender.graphPreviewUi
       let groupHoverUi := Informal.HoverRender.graphGroupPreviewUi
       return {{
@@ -574,13 +625,26 @@ block_extension Block.graph (graphData : GraphBlockData) where
               <select
                 id={{graphDirectionSelectId}}
                 class="bp_graph_controls_select bp_graph_direction_select"
-                data-bp-graph-default-direction={{graphData.direction.rankdir}}
+                data-bp-graph-default-direction={{graphData.options.direction.rankdir}}
               >
                 {{graphDirectionOptions}}
               </select>
+              <label class="bp_graph_option_toggle" for={{graphPackInputId}}>
+                <input
+                  id={{graphPackInputId}}
+                  type="checkbox"
+                  class="bp_graph_pack_input"
+                  data-bp-graph-default-pack={{graphPackDefault}}
+                  {{graphPackChecked}}/>
+                <span>"Pack disconnected components"</span>
+              </label>
             </div>
           </div>
-          <div class="bp_graph_canvas" "data-bp-graph-direction"={{graphData.direction.rankdir}}>
+          <div
+            class="bp_graph_canvas"
+            "data-bp-graph-direction"={{graphData.options.direction.rankdir}}
+            "data-bp-graph-pack"={{graphPackDefault}}
+          >
             <script type="application/json" class="bp-graph-variants">
               {{.text false s!"{graphVariantJson}"}}
             </script>
@@ -625,9 +689,13 @@ instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
 
 structure BlueprintGraphConfig where
   direction : Option GraphDirection := none
+  pack : Option Bool := none
 
 instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
-  fromArgs := BlueprintGraphConfig.mk <$> .named' `direction true
+  fromArgs :=
+    BlueprintGraphConfig.mk <$>
+      .named' `direction true <*>
+      .named' `pack true
 
 def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphDirection := do
   match cfg.direction with
@@ -643,8 +711,17 @@ def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM 
       pure .TB
   | some direction => pure direction
 
+def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphOptions := do
+  let direction ← parseGraphDirection cfg
+  let pack :=
+    cfg.pack.getD <|
+      (← getOptions).get
+        verso.blueprint.graph.defaultPack.name
+        verso.blueprint.graph.defaultPack.defValue
+  pure { direction, pack }
+
 open Verso Doc Elab Syntax in
-def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (direction : GraphDirection := .TB) :
+def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {}) :
     PartElabM FinishedPart := do
   let titlePreview := "Dependency Graph"
   let titleInlines ← `(inline | "Dependency Graph")
@@ -653,7 +730,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (direction : GraphDirec
   let (graph, groupTitles) ← buildAll
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {graph.size} nodes"
-  let graphData : GraphBlockData := { graph, direction, groupTitles }
+  let graphData : GraphBlockData := { graph, options, groupTitles }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx expandedTitle titlePreview metadata #[block] subParts endPos
@@ -663,10 +740,10 @@ open Verso Doc Elab Syntax PartElabM in
 public meta def depGraph : PartCommand
   | stx@`(block|command{blueprint_graph $args*}) => do
     let cfg ← Verso.ArgParse.parseThe BlueprintGraphConfig (← parseArgs args)
-    let direction ← parseGraphDirection cfg
+    let options ← parseGraphOptions cfg
     let endPos := stx.getTailPos?.get!
     closePartsUntil 1 endPos
-    addPart (← mkGraphPart stx endPos direction)
+    addPart (← mkGraphPart stx endPos options)
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
 end Informal.Commands
