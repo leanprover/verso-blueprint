@@ -24,7 +24,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_used_by_wrap\"" &&
       hasSubstr out "class=\"bp_used_by_panel\"" &&
       hasSubstr out "class=\"bp_used_by_item bp_used_by_item_active\"" &&
-      hasSubstr out "class=\"bp_used_by_preview_fallback_tpl\"" &&
+      !hasSubstr out "class=\"bp_used_by_preview_fallback_tpl\"" &&
+      hasSubstr out "class=\"bp_used_by_preview_message\"" &&
+      hasSubstr out "Loading preview" &&
       !hasSubstr out "class=\"bp_used_by_preview_empty\"" &&
       hasSubstr out "data-bp-used-preview-id" &&
       hasSubstr out "data-bp-used-preview-key" &&
@@ -34,8 +36,10 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match usedByJs? with
       | some usedByJs =>
         hasSubstr usedByJs "function bindUsedByPanel(panel)" &&
+        hasSubstr usedByJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
+        hasSubstr usedByJs "body.innerHTML = loadingPreviewHtml();" &&
         hasSubstr usedByJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
-        hasSubstr usedByJs "const fallbackTemplates = collectPanelFallbackTemplates(panel);" &&
+        !hasSubstr usedByJs "fallbackTemplates" &&
         hasSubstr usedByJs "const initialItem = items.find(function (item) {" &&
         hasSubstr usedByJs "item.classList.contains(\"bp_used_by_item_active\")" &&
         hasSubstr usedByJs "activate(initialItem, { openWrap: false })" &&
@@ -76,6 +80,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_group\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       hasSubstr out "Hover another entry in this group to preview it." &&
       hasSubstr out "class=\"bp_used_by_item bp_used_by_item_active\"" &&
+      hasSubstr out "class=\"bp_used_by_preview_message\"" &&
+      hasSubstr out "Loading preview" &&
+      !hasSubstr out "class=\"bp_used_by_preview_fallback_tpl\"" &&
       !hasSubstr out "class=\"bp_used_by_preview_empty\"" &&
       hasSubstr out "data-bp-used-preview-id=\"bp-group-" &&
       hasSubstr out "Preview group title." &&

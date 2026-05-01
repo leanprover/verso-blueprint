@@ -158,7 +158,6 @@ private structure RelatedPanelEntry where
   previewKey : String
   previewTitle : String
   href : Option String := none
-  previewFallbackBody : Output.Html := .empty
   metaHtml : Output.Html := .empty
 
 private structure RelatedPanelConfig where
@@ -234,34 +233,10 @@ private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
       #[]
   .seq (statementBadge ++ proofBadge)
 
-private def usedByPreviewFallbackBody (entry : UsedByEntry) : Output.Html :=
-  let useSiteItems : Array Output.Html :=
-    (if entry.inStatement then #[codeHoverTextItem "statement"] else #[]) ++
-    (if entry.inProof then #[codeHoverTextItem "proof"] else #[])
-  .seq #[
-    codeHoverSection "Blueprint label" #[codeHoverCodeItem s!"{entry.source.label}"],
-    codeHoverSection "Uses target in" useSiteItems
-  ]
-
-private def groupPreviewFallbackBody (group : GroupRenderInfo) (entry : BlockData) : Output.Html :=
-  .seq #[
-    codeHoverSection "Blueprint label" #[codeHoverCodeItem s!"{entry.label}"],
-    codeHoverSection "Group" #[codeHoverTextItem group.title]
-  ]
-
-private def groupMissingNotice (group : GroupRenderInfo) : Output.Html :=
-  open Verso.Output.Html in
-  {{
-    <div class="bp_used_by_preview_notice">
-      "No matching " <code>":::group"</code> " declaration was found for parent "
-      <code>s!"{group.label}"</code> "."
-    </div>
-  }}
-
 private def mkRelatedPanelEntry {m}
     [Monad m]
     (ctx : RelatedPanelContext)
-    (source : BlockData) (previewId : String) (fallbackBody : Output.Html)
+    (source : BlockData) (previewId : String)
     (metaHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m RelatedPanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
@@ -272,9 +247,17 @@ private def mkRelatedPanelEntry {m}
     previewKey := usedByPreviewLookupKey source
     previewTitle
     href
-    previewFallbackBody := fallbackBody
     metaHtml
   }
+
+private def relatedPanelLoadingBody (detail : String) : Output.Html :=
+  open Verso.Output.Html in
+  {{
+    <div class="bp_used_by_preview_message" "data-bp-preview-message"="loading">
+      <div class="bp_used_by_preview_message_title">"Loading preview"</div>
+      <div class="bp_used_by_preview_message_detail">{{.text true detail}}</div>
+    </div>
+  }}
 
 private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array RelatedPanelEntry) :
     Output.Html :=
@@ -315,9 +298,6 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
             "data-bp-used-preview-key"={{entry.previewKey}}
             "data-bp-used-preview-title"={{entry.previewTitle}}>
           {{rowNode}}
-          <template class="bp_used_by_preview_fallback_tpl" "data-bp-used-preview-id"={{entry.previewId}}>
-            {{entry.previewFallbackBody}}
-          </template>
         </li>
       }}
     let (selectedEntry?, rows) :=
@@ -332,9 +312,7 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
       | some entry => entry.previewTitle
       | none => cfg.previewDefaultTitle
     let previewBody : Output.Html :=
-      match selectedEntry? with
-      | some entry => entry.previewFallbackBody
-      | none => {{<div class="bp_used_by_preview_empty">{{.text true cfg.previewEmptyText}}</div>}}
+      relatedPanelLoadingBody cfg.previewEmptyText
     {{
       <div class="bp_used_by_wrap">
         <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
@@ -375,7 +353,6 @@ private def renderUsedByEntry {m}
     let panelEntries ← entries.mapM fun entry =>
       mkRelatedPanelEntry ctx entry.source
         (usedByPreviewId data.label entry.source.label)
-        (usedByPreviewFallbackBody entry)
         (metaHtml := {{
           <code>s!"{entry.source.label}"</code>
           {{renderUsedByAxisBadges entry}}
@@ -408,14 +385,8 @@ private def renderGroupEntry {m}
     if group.declared && siblings.isEmpty then
       return none
     let panelEntries ← siblings.mapM fun source =>
-      let fallbackBody :=
-        if group.declared then
-          groupPreviewFallbackBody group source
-        else
-          .seq #[groupMissingNotice group, groupPreviewFallbackBody group source]
       mkRelatedPanelEntry ctx source
         (s!"bp-group-{Informal.HoverRender.previewKey (toString data.label)}-{Informal.HoverRender.previewKey (toString source.label)}")
-        fallbackBody
         (metaHtml := {{<code>s!"{source.label}"</code>}})
     let chipClass :=
       if group.declared then
