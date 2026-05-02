@@ -51,7 +51,7 @@ register_option verso.blueprint.graph.defaultDirection : String := {
 }
 
 register_option verso.blueprint.graph.defaultPack : Bool := {
-  defValue := true
+  defValue := false
   descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
 }
 
@@ -61,7 +61,7 @@ structure GraphOptions where
   Ask Graphviz to compact disconnected graph components before d3-graphviz fits
   the SVG into the canvas.
   -/
-  pack : Bool := true
+  pack : Bool := false
 deriving Inhabited, BEq, FromJson, ToJson, Quote
 
 structure GraphBlockData where
@@ -81,7 +81,7 @@ instance : FromJson GraphBlockData where
           match v.getObjVal? "direction" with
           | .ok directionJson => fromJson? directionJson
           | .error _ => pure .TB
-        pure { direction, pack := true }
+        pure { direction, pack := false }
     let groupTitles ←
       match v.getObjVal? "groupTitles" with
       | .ok groupTitlesJson => fromJson? groupTitlesJson

@@ -70,7 +70,7 @@ def groupedOverview : Informal.Commands.Graph :=
 
 def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
   Informal.Commands.mkGraphVariants
-    { graph := groupedGraphInput, options := { direction := .TB }, groupTitles := groupedGraphTitles }
+    { graph := groupedGraphInput, options := { direction := .TB, pack := true }, groupTitles := groupedGraphTitles }
     (fun _ => none)
     groupedGraphTitleMap
 
@@ -101,11 +101,11 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.graphDotHeader { direction := .TB, pack := true } |>.contains "pack=true;"
+  Informal.Commands.graphDotHeader |>.contains "pack=false;"
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.graphDotHeader { direction := .TB, pack := false } |>.contains "pack=false;"
+  Informal.Commands.graphDotHeader { direction := .TB, pack := true } |>.contains "pack=true;"
 
 end Verso.VersoBlueprintTests.BlueprintGraph.Groups

@@ -31,6 +31,7 @@
     if (rawPack === false) return false;
     if (rawPack === true) return true;
     const pack = rawPack === null || typeof rawPack === "undefined" ? "" : String(rawPack).trim().toLowerCase();
+    if (pack === "") return false;
     if (pack === "false" || pack === "0" || pack === "no" || pack === "off") {
       return false;
     }
@@ -41,7 +42,7 @@
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
       direction: normalizeGraphDirection(options.direction),
-      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : true)
+      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : false)
     };
   }
 

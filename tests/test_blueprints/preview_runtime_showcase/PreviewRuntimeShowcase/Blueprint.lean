@@ -25,5 +25,5 @@ generator checks can run against a focused, synthetic site.
 {include 0 PreviewRuntimeShowcase.Chapters.PreviewRelationships}
 {include 0 PreviewRuntimeShowcase.Chapters.InlineHoverPreviews}
 
-{blueprint_graph}
+{blueprint_graph (pack := true)}
 {blueprint_summary}
