@@ -451,7 +451,7 @@ or with explicit graph layout options:
 
 ```lean
 {blueprint_graph (direction := LR)}
-{blueprint_graph (direction := LR) (pack := false)}
+{blueprint_graph (direction := LR) (pack := true)}
 ```
 
 Supported directions are `LR`, `RL`, `TB`, and `BT`. When `(direction := ...)`
@@ -459,7 +459,7 @@ is omitted, the command falls back to the
 `verso.blueprint.graph.defaultDirection` option.
 The `(pack := true | false)` option controls Graphviz component packing for
 disconnected graph components. It defaults to
-`verso.blueprint.graph.defaultPack`, which is `true`.
+`verso.blueprint.graph.defaultPack`, which is `false`.
 
 The rendered graph page is interactive:
 
@@ -646,7 +646,7 @@ Current options:
   - sets the fallback graph direction for `blueprint_graph` when
     `(direction := ...)` is omitted
 - `verso.blueprint.graph.defaultPack`
-  - default: `true`
+  - default: `false`
   - sets the fallback Graphviz component packing behavior for
     `blueprint_graph` when `(pack := ...)` is omitted
 - `verso.blueprint.debug.commands`
