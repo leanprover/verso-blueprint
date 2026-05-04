@@ -220,13 +220,9 @@ python3 -m scripts.blueprint_reference_harness release-status --outdated-only
 
 `release-status` is the summary/drift view for the release-target catalog. It
 shows which reference blueprints belong to each release line and can narrow to
-stale entries with `--outdated-only`.
-
-Current release map:
-
-- `v4.29.0`: `project-template`, `noperthedron`
-- `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
-  `algebraic-combinatorics`
+stale entries with `--outdated-only`. Treat that command and
+`tests/harness/projects.json` as the canonical project/release map instead of
+copying the current list into docs.
 
 Reference blueprint deployment is release-sliced:
 
@@ -245,8 +241,9 @@ If you want to make manual changes in one external reference blueprint repo,
 use a separate editable clone instead of the disposable validation clones:
 
 ```bash
-python3 -m scripts.blueprint_reference_harness edit noperthedron
-python3 -m scripts.blueprint_reference_harness edit spherepackingblueprint --branch feat/update-figures
+python3 -m scripts.blueprint_reference_harness projects
+python3 -m scripts.blueprint_reference_harness edit <project-id>
+python3 -m scripts.blueprint_reference_harness edit <project-id> --branch feat/update-figures
 ```
 
 If you want to bump the pinned `VersoBlueprint` ref in those downstream repos
@@ -254,8 +251,8 @@ from this checkout, use the dedicated editable-clone workflow:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref v1.2.3
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project noperthedron --ref v1.2.3 --generate --commit
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project spherepackingblueprint --ref v1.2.3 --commit --push
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --generate --commit
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --commit --push
 ```
 
 That command:

@@ -71,9 +71,9 @@ Rule of thumb:
   reference projects, use `blueprint_reference_harness`
 
 The default reference project catalog lives at `tests/harness/projects.json`.
-It currently includes the in-repo `project-template` plus four external
-reference blueprint repositories, and it is the extension point for future
-ephemeral GitHub checkout validations.
+It is the source of truth for the in-repo starter example, external reference
+blueprint repositories, release compatibility, and future ephemeral GitHub
+checkout validations.
 
 That manifest is now release-aware. It declares top-level `release_targets`
 for supported Lean / `verso` lines and per-project `targets` keyed by release
@@ -99,13 +99,12 @@ fixtures both attach optional tags for cross-cutting coverage.
 ./scripts/generate-reference-blueprints.sh
 ```
 
-This builds and renders the current generation catalog:
+This builds and renders the reference projects selected by the current
+checkout's release line. Inspect the active selection with:
 
-- `project-template`
-- `noperthedron`
-- `spherepackingblueprint`
-- `verso-flt`
-- `algebraic-combinatorics`
+```bash
+python3 -m scripts.blueprint_reference_harness projects
+```
 
 ### Generate the Test Blueprints
 
@@ -297,11 +296,12 @@ current checkout's release line. `projects`, `status`, and `release-status` may
 inspect any declared release target with `--release ...`, but `generate`,
 `validate`, and `sync` require a matching checkout release line.
 
-Current catalog summary:
+Use `release-status` when you need the current catalog summary instead of
+copying project lists into this document:
 
-- `v4.29.0`: `project-template`, `noperthedron`
-- `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
-  `algebraic-combinatorics`
+```bash
+python3 -m scripts.blueprint_reference_harness release-status
+```
 
 To warm the shared reference blueprint cache and prepare local clones for the
 current checkout:
@@ -337,8 +337,8 @@ reference clones from this checkout:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref v1.2.3
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project noperthedron --ref v1.2.3 --generate --commit
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project spherepackingblueprint --ref v1.2.3 --commit --push
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --generate --commit
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --commit --push
 ```
 
 That command uses the editable-clone path rather than the disposable
@@ -352,24 +352,14 @@ default, optionally renders review output under
 
 In the root checkout, generated artifacts go under:
 
-- `_out/reference-blueprints/project-template/`
-- `_out/reference-blueprints/noperthedron/`
-- `_out/reference-blueprints/spherepackingblueprint/`
-- `_out/reference-blueprints/verso-flt/`
+- `_out/reference-blueprints/<project-id>/`
 - `_out/test-blueprints/<slug>/`
-- `_out/test-blueprints/preview_runtime_showcase/`
-- `_out/test-blueprints/state-showcase/`
 
 In a linked worktree, generated artifacts go under the shared repo-root preview
 area:
 
-- `_out/<worktree>/reference-blueprints/project-template/`
-- `_out/<worktree>/reference-blueprints/noperthedron/`
-- `_out/<worktree>/reference-blueprints/spherepackingblueprint/`
-- `_out/<worktree>/reference-blueprints/verso-flt/`
+- `_out/<worktree>/reference-blueprints/<project-id>/`
 - `_out/<worktree>/test-blueprints/<slug>/`
-- `_out/<worktree>/test-blueprints/preview_runtime_showcase/`
-- `_out/<worktree>/test-blueprints/state-showcase/`
 
 To print the resolved paths for the current checkout, run:
 
@@ -627,8 +617,9 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --dry-run
 To prepare one editable external reference checkout for manual changes, use:
 
 ```bash
-python3 -m scripts.blueprint_reference_harness edit noperthedron
-python3 -m scripts.blueprint_reference_harness edit spherepackingblueprint --branch feat/update-figures
+python3 -m scripts.blueprint_reference_harness projects
+python3 -m scripts.blueprint_reference_harness edit <project-id>
+python3 -m scripts.blueprint_reference_harness edit <project-id> --branch feat/update-figures
 ```
 
 Those editable clones are ordinary developer checkouts intended for local
@@ -640,7 +631,7 @@ instead of editing `lakefile.lean` by hand:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref v1.2.3
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project verso-flt --ref v1.2.3 --commit --push
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --commit --push
 ```
 
 ## CI and Pages
@@ -722,9 +713,7 @@ The staging helper is:
 
 The harness is now project-driven rather than example-hardcoded.
 
-- the default catalog points at `ejgallego/verso-noperthedron`,
-  `ejgallego/verso-sphere-packing`, `ejgallego/verso-flt`, and
-  `ejgallego/verso-algebraic-combinatorics`
+- the default catalog is declared in `tests/harness/projects.json`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
 - external entries should declare release-specific refs under `targets` plus
