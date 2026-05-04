@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_references import (
@@ -15,10 +16,19 @@ from scripts.blueprint_harness_references import (
     restore_tracked_project_manifest,
     snapshot_tracked_project_manifest,
 )
-from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners, run
+from scripts.blueprint_harness_utils import (
+    StepFailure,
+    format_command,
+    lean_low_priority_command,
+    print_failure_summary,
+    rebuild_embedded_asset_owners,
+    run,
+    run_capturing_failure,
+)
 
 
 TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+TEST_BLUEPRINT_HARNESS_PREFIX = "[blueprint-test-blueprints]"
 
 
 @dataclass(frozen=True)
@@ -501,6 +511,121 @@ def generate_test_blueprint_outputs(
     )
 
 
+def test_blueprint_site_dir(output_root: Path, fixture: StandaloneTestBlueprint) -> Path:
+    return output_root / fixture.slug / "html-multi"
+
+
+def _package_relative_path(package_root: Path, path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path
+    return package_root / path
+
+
+def panel_regression_command(package_root: Path, fixture: StandaloneTestBlueprint, site_dir: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(_package_relative_path(package_root, fixture.panel_regression_script or "")),
+        "--site-dir",
+        str(site_dir),
+    ]
+
+
+def browser_test_command(
+    package_root: Path,
+    fixture: StandaloneTestBlueprint,
+    site_dir: Path,
+    pytest_args: list[str],
+) -> list[str]:
+    tests_path = _package_relative_path(package_root, fixture.browser_tests_path or "")
+    if shutil.which("uv") is not None:
+        command = [
+            "env",
+            "UV_CACHE_DIR=/tmp/verso-blueprint-uv-cache",
+            "uv",
+            "run",
+            "--project",
+            str(tests_path),
+            "--extra",
+            "test",
+            "python",
+            "-m",
+            "pytest",
+        ]
+    else:
+        command = [sys.executable, "-m", "pytest"]
+    return [
+        *command,
+        str(tests_path),
+        "-q",
+        "--browser",
+        "chromium",
+        "--site-dir",
+        str(site_dir),
+        *pytest_args,
+    ]
+
+
+def _subprocess_failure(step: str, err: subprocess.CalledProcessError) -> StepFailure:
+    command = err.cmd
+    if isinstance(command, (list, tuple)):
+        detail_command = format_command([str(part) for part in command])
+    else:
+        detail_command = str(command)
+    return StepFailure(step=step, detail=f"exit code {err.returncode}: {detail_command}")
+
+
+def validate_test_blueprint_outputs(
+    package_root: Path,
+    category_order: tuple[str, ...],
+    fixtures: list[StandaloneTestBlueprint],
+    output_root: Path,
+    pytest_args: list[str],
+    *,
+    skip_generate: bool = False,
+    skip_panel_regression: bool = False,
+    skip_browser_tests: bool = False,
+    stop_on_first_failure: bool = False,
+) -> int:
+    failures: list[StepFailure] = []
+
+    if not skip_generate:
+        try:
+            generate_test_blueprint_outputs(package_root, category_order, fixtures, output_root, [])
+        except subprocess.CalledProcessError as err:
+            failures.append(_subprocess_failure("generate test blueprints", err))
+            return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+        except SystemExit as err:
+            failures.append(StepFailure("generate test blueprints", str(err)))
+            return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+
+    for fixture in fixtures:
+        site_dir = test_blueprint_site_dir(output_root, fixture)
+        if fixture.panel_regression_script is not None and not skip_panel_regression:
+            failure = run_capturing_failure(
+                f"{fixture.slug} panel regression",
+                panel_regression_command(package_root, fixture, site_dir),
+                cwd=package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+
+        if fixture.browser_tests_path is not None and not skip_browser_tests:
+            failure = run_capturing_failure(
+                f"{fixture.slug} browser tests",
+                browser_test_command(package_root, fixture, site_dir, pytest_args),
+                cwd=package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+
+    return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+
+
 def find_test_blueprint(fixtures: list[StandaloneTestBlueprint], slug: str) -> StandaloneTestBlueprint:
     for fixture in fixtures:
         if fixture.slug == slug:
@@ -583,12 +708,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output root. Defaults to the current checkout's worktree-aware `_out/.../test-blueprints` root.",
     )
     gen_all.add_argument("slug", nargs="*", help="Optional curated doc or standalone fixture slug to generate.")
+
+    validate = sub.add_parser(
+        "validate",
+        help="Generate test blueprints and run configured regressions.",
+        description=(
+            "Generate the in-repo test blueprint outputs, then run any configured standalone panel checks "
+            "and browser regression suites. Extra unknown arguments are forwarded to pytest."
+        ),
+    )
+    validate.add_argument(
+        "--output-root",
+        default=None,
+        help="Output root. Defaults to the current checkout's worktree-aware `_out/.../test-blueprints` root.",
+    )
+    validate.add_argument(
+        "--skip-generate",
+        action="store_true",
+        help="Skip artifact generation and validate existing test-blueprint output.",
+    )
+    validate.add_argument(
+        "--skip-panel-regression",
+        action="store_true",
+        help="Skip configured static panel regression checks.",
+    )
+    validate.add_argument(
+        "--skip-browser-tests",
+        action="store_true",
+        help="Skip configured Playwright browser regression suites.",
+    )
+    validate.add_argument(
+        "--stop-on-first-failure",
+        action="store_true",
+        help="Stop validation as soon as one phase fails instead of collecting later failures.",
+    )
     return parser
+
+
+def _pytest_passthrough_args(args: list[str]) -> list[str]:
+    if args and args[0] == "--":
+        return args[1:]
+    return args
 
 
 def main() -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
+    if args.cmd != "validate" and unknown_args:
+        parser.error(f"unrecognized arguments: {' '.join(unknown_args)}")
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_test_blueprint_manifest(args.manifest, layout.package_root)
     category_order, fixtures = load_test_blueprint_catalog(manifest_path)
@@ -608,6 +775,19 @@ def main() -> int:
         output_root = Path(args.output_root).resolve() if args.output_root else layout.test_blueprint_output_root
         generate_test_blueprint_outputs(layout.package_root, category_order, fixtures, output_root, args.slug)
         return 0
+    if args.cmd == "validate":
+        output_root = Path(args.output_root).resolve() if args.output_root else layout.test_blueprint_output_root
+        return validate_test_blueprint_outputs(
+            layout.package_root,
+            category_order,
+            fixtures,
+            output_root,
+            _pytest_passthrough_args(unknown_args),
+            skip_generate=args.skip_generate,
+            skip_panel_regression=args.skip_panel_regression,
+            skip_browser_tests=args.skip_browser_tests,
+            stop_on_first_failure=args.stop_on_first_failure,
+        )
     raise SystemExit("unreachable")
 
 

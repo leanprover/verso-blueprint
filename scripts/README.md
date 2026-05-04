@@ -142,7 +142,9 @@ uv run --project tests/browser --extra test python -m pytest tests/browser -q --
 ```
 
 Use `./scripts/validate-test-blueprints.sh` when you want the local panel and
-browser regressions against `_out/test-blueprints/preview_runtime_showcase/`.
+browser regressions against generated test-blueprint output. Run
+`python3 -m scripts.blueprint_test_blueprints validate --help` for the canonical
+local validation flag surface.
 
 The generated `_out/test-blueprints/` tree has a directory page and individual
 sites:
@@ -285,7 +287,7 @@ as the full command reference.
 - `generate-test-blueprints.sh`
   Thin wrapper for the local test-blueprint generator.
 - `validate-test-blueprints.sh`
-  Generate and validate the local test blueprint fixtures.
+  Thin wrapper for `python3 -m scripts.blueprint_test_blueprints validate`.
 - `validate-branch.sh`
   Full pre-merge validation entry point: all tests plus both artifact families.
 - `validate-reference-blueprints.sh`
