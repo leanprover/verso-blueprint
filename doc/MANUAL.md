@@ -593,10 +593,11 @@ def main (args : List String) : IO UInt32 :=
     (extensionImpls := by exact extension_impls%)
 ```
 
-This Blueprint-provided main wrapper also injects the frontend assets required
-by Blueprint-specific rendered surfaces such as external Lean declaration
-panels, so downstream projects do not need to remember those dependencies
-manually.
+This Blueprint-provided main wrapper owns the Blueprint-specific generation
+layer around Verso's renderer. It injects the frontend assets required by
+Blueprint-specific rendered surfaces, applies Blueprint's shared preview and
+public-xref emission policy, and keeps downstream projects from needing to
+remember those dependencies manually.
 
 Typical usage:
 

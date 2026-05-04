@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-03-20
+Last updated: 2026-05-04
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -179,8 +179,8 @@ rather than page-local template bodies:
 1. `PreviewSource.lean` and `PreviewCache.lean` store statement/proof preview
    identities and blocks during traversal; citation traversal stores citation
    preview payloads under their own manifest keys.
-2. `PreviewManifest.lean` renders the shared preview manifest consumed by the
-   generated site.
+2. `PreviewManifest.lean` owns the Blueprint generator entry point and renders
+   the shared preview manifest consumed by the generated site.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
    manifest loading, missing-manifest diagnostics, hydration, math rendering,
    and anchored panel behavior.
@@ -195,6 +195,33 @@ surfaces deliberately avoid page-local fallback templates so preview content has
 one generated source of truth. If the manifest is unavailable or missing an
 entry, the browser renders a local diagnostic message instead of silently using
 stale local preview HTML.
+
+### Blueprint render entry point
+
+Blueprint generators call
+`Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest`, not Verso's
+`manualMain` directly. That wrapper is intentionally a thin orchestration
+layer:
+
+- Blueprint owns its extra CLI flags, Blueprint asset injection, post-traversal
+  asset normalization, shared preview-manifest emission, and public xref
+  filtering.
+- Verso still owns document traversal, TeX emission, word counts, saved
+  traversal-state serialization, search generation, the page shell, and the
+  single-page/multi-page HTML emitters.
+
+The important boundary is that Blueprint may adapt `TraverseState` and
+`HtmlAssets` after traversal and before HTML emission, but it should not fork
+Verso's HTML emitters unless upstream APIs leave no alternative. This keeps
+local compatibility workarounds, such as the highlighted-code docstring
+`textContent` asset rewrite, on structured assets rather than on generated HTML
+files.
+
+The current public-xref filter still has a post-emit component: upstream Verso's
+find-page writer embeds the full xref payload while emitting HTML, so Blueprint
+rewrites `xref.json` and the find page after the Verso emitter runs. A future
+upstream xref-emission hook would let this move into the same structured
+pre-emit boundary as the asset normalization.
 
 ### Current diagnostic policy
 
