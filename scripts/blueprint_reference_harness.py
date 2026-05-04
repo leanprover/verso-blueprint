@@ -41,14 +41,15 @@ from scripts.blueprint_harness_references import (
     site_dir_for,
     sync_reference_blueprints,
 )
-from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run
+from scripts.blueprint_harness_utils import (
+    StepFailure,
+    format_command,
+    lean_low_priority_command,
+    print_failure_summary,
+    run,
+    run_capturing_failure,
+)
 from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts
-
-
-@dataclass(frozen=True)
-class StepFailure:
-    step: str
-    detail: str
 
 
 @dataclass(frozen=True)
@@ -88,14 +89,7 @@ BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?',
     re.MULTILINE | re.DOTALL,
 )
-
-
-def run_capturing_failure(step: str, command: list[str], *, cwd: Path) -> StepFailure | None:
-    try:
-        run(command, cwd=cwd)
-        return None
-    except subprocess.CalledProcessError as err:
-        return StepFailure(step=step, detail=f"exit code {err.returncode}: {format_command(command)}")
+REFERENCE_HARNESS_PREFIX = "[blueprint-reference-harness]"
 
 
 def text_or_blank(value: object | None) -> str:
@@ -484,17 +478,6 @@ def require_safe_root_main(layout, *, allow_unsafe: bool, command_name: str) -> 
     )
 
 
-def print_failure_summary(failures: list[StepFailure]) -> int:
-    if not failures:
-        print("[blueprint-reference-harness] validation summary: all requested steps passed")
-        return 0
-
-    print("[blueprint-reference-harness] validation summary: failures detected", file=sys.stderr)
-    for failure in failures:
-        print(f"[blueprint-reference-harness]   {failure.step}: {failure.detail}", file=sys.stderr)
-    return 1
-
-
 def executable_path(package_root: Path, exe_name: str) -> Path:
     return package_root / ".lake" / "build" / "bin" / exe_name
 
@@ -725,7 +708,7 @@ def command_validate(args: argparse.Namespace) -> int:
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
         else:
             test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
             if test_artifact is None:
@@ -738,7 +721,7 @@ def command_validate(args: argparse.Namespace) -> int:
                     )
                 )
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
             else:
                 print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
 
@@ -753,7 +736,7 @@ def command_validate(args: argparse.Namespace) -> int:
         )
     except SystemExit as err:
         failures.append(StepFailure("generate projects", str(err)))
-        return print_failure_summary(failures)
+        return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
     for project in projects:
         site_dir = site_dir_for(project, output_root)
@@ -766,7 +749,7 @@ def command_validate(args: argparse.Namespace) -> int:
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
         if project.browser_tests_path is not None and not args.skip_browser_tests:
             failure = run_capturing_failure(
@@ -777,9 +760,9 @@ def command_validate(args: argparse.Namespace) -> int:
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
-    return print_failure_summary(failures)
+    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
 
 def command_projects(args: argparse.Namespace) -> int:
@@ -1031,7 +1014,7 @@ def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
         if result.pushed:
             print("[blueprint-reference-harness] pushed editable branch to origin")
 
-    return print_failure_summary(failures)
+    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
 
 def command_reference_prune(args: argparse.Namespace) -> int:
