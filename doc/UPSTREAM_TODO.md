@@ -4,9 +4,21 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 
 ## Highest Priority
 
-- [ ] Upstream the `VersoManual` manual-rendering extension hook used by
-  `VersoBlueprint.PreviewManifest`, so downstream executables no longer need a
-  blueprint-local workaround for shared preview-manifest emission.
+- [ ] Upstream the `VersoManual` rendering hooks needed by
+  `VersoBlueprint.PreviewManifest`, so downstream executables no longer need to
+  own a local `manualMain`-style orchestration layer.
+  - current Blueprint workaround:
+    `PreviewManifest.blueprintMain` mirrors only Verso's top-level mode
+    dispatcher, still calls Verso's `traverseHtmlSingle`/`traverseHtmlMulti`
+    and `emitHtmlSingle`/`emitHtmlMulti`, and applies Blueprint adaptations
+    around those calls
+  - needed hook shape:
+    a post-traversal/pre-HTML-emission transform for `TraverseState` /
+    `HtmlAssets`, plus a way to customize the xref payload used for both
+    `xref.json` and the find page
+  - still-useful lower-priority hook:
+    a post-emit extra step for downstream files such as Blueprint's shared
+    preview manifest
   - preserved branch: `ejgallego/verso-manual-extra-step-upstream-20260313`
   - PR shortcut:
     `https://github.com/ejgallego/verso/pull/new/verso-manual-extra-step-upstream-20260313`
