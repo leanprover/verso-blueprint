@@ -81,14 +81,7 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
   state.getDomainObject? domainName label.toString
 
 def storedObjectData? (obj : Verso.Multi.Object) : Option Informal.StoredBlockData :=
-  match fromJson? (α := Informal.StoredBlockData) obj.data with
-  | .ok data => some data
-  | .error _ =>
-      -- Transitional reader: older traversal states stored full `BlockData`.
-      -- The semantic node index now intentionally drops render-facing code data.
-      match fromJson? (α := Informal.BlockData) obj.data with
-      | .ok data => some data.toStoredData
-      | .error _ => none
+  (fromJson? (α := Informal.StoredBlockData) obj.data).toOption
 
 def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData := do
   let obj ← object? state label

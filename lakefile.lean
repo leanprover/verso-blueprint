@@ -48,7 +48,6 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintTexMacros,
     `VersoBlueprintTests.BlueprintTexSource,
     `VersoBlueprintTests.DocGenNameRender,
-    `VersoBlueprintTests.StorageSchemaCompat,
     `VersoBlueprintTests.TestBlueprintRegistryMeta,
     `VersoBlueprintTests.TestBlueprintRegistryChecks,
     `VersoBlueprintTests.TestBlueprintRegistryCoverage

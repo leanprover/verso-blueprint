@@ -243,26 +243,7 @@ numbering can be numeric or alphabetic (for example appendices).
 structure HeaderLocation where
   title : String
   number : Option String := none
-deriving Inhabited
-
-instance : Lean.ToJson HeaderLocation where
-  toJson loc := .arr #[toJson loc.title, toJson loc.number]
-
-instance : Lean.FromJson HeaderLocation where
-  fromJson? v := do
-    match v with
-    | .arr arr =>
-      let some title := arr[0]? | throw "expected header location title"
-      let some number := arr[1]? | throw "expected header location number"
-      return {
-        title := ← fromJson? title
-        number := ← fromJson? number
-      }
-    | _ =>
-      return {
-        title := ← v.getObjValAs? String "title"
-        number := ← v.getObjValAs? (Option String) "number"
-      }
+deriving Inhabited, FromJson, ToJson
 
 /--
 Reference to the informal block surrounding a bibliography citation use site.
@@ -275,29 +256,7 @@ structure TheoremContext where
   label : Informal.Data.Label
   kind : Informal.Data.InProgressKind
   localCount : Nat
-deriving Inhabited
-
-instance : Lean.ToJson TheoremContext where
-  toJson ctxt := .arr #[toJson ctxt.label, toJson ctxt.kind, toJson ctxt.localCount]
-
-instance : Lean.FromJson TheoremContext where
-  fromJson? v := do
-    match v with
-    | .arr arr =>
-      let some label := arr[0]? | throw "expected theorem context label"
-      let some kind := arr[1]? | throw "expected theorem context kind"
-      let some localCount := arr[2]? | throw "expected theorem context local count"
-      return {
-        label := ← fromJson? label
-        kind := ← fromJson? kind
-        localCount := ← fromJson? localCount
-      }
-    | _ =>
-      return {
-        label := ← v.getObjValAs? Informal.Data.Label "label"
-        kind := ← v.getObjValAs? Informal.Data.InProgressKind "kind"
-        localCount := ← v.getObjValAs? Nat "localCount"
-      }
+deriving Inhabited, FromJson, ToJson
 
 /--
 Structured location summary for a bibliography citation use.
@@ -311,37 +270,7 @@ structure CitationSummary where
   sectionLoc : Option HeaderLocation := none
   theoremCtx : Option TheoremContext := none
   documentName : Option String := none
-deriving Inhabited
-
-instance : Lean.ToJson CitationSummary where
-  toJson summary := .arr #[
-    toJson summary.chapter,
-    toJson summary.sectionLoc,
-    toJson summary.theoremCtx,
-    toJson summary.documentName
-  ]
-
-instance : Lean.FromJson CitationSummary where
-  fromJson? v := do
-    match v with
-    | .arr arr =>
-      let some chapter := arr[0]? | throw "expected citation chapter"
-      let some sectionLoc := arr[1]? | throw "expected citation section"
-      let some theoremCtx := arr[2]? | throw "expected citation theorem context"
-      let some documentName := arr[3]? | throw "expected citation document name"
-      return {
-        chapter := ← fromJson? chapter
-        sectionLoc := ← fromJson? sectionLoc
-        theoremCtx := ← fromJson? theoremCtx
-        documentName := ← fromJson? documentName
-      }
-    | _ =>
-      return {
-        chapter := ← v.getObjValAs? (Option HeaderLocation) "chapter"
-        sectionLoc := ← v.getObjValAs? (Option HeaderLocation) "sectionLoc"
-        theoremCtx := ← v.getObjValAs? (Option TheoremContext) "theoremCtx"
-        documentName := ← v.getObjValAs? (Option String) "documentName"
-      }
+deriving Inhabited, FromJson, ToJson
 
 /--
 One backlink from a bibliography entry to a concrete citation use site in the document.
@@ -354,37 +283,7 @@ structure CitationUse where
   summary : CitationSummary := {}
   kind : Option CitePartKind := none
   index : Option String := none
-deriving Inhabited
-
-instance : Lean.ToJson CitationUse where
-  toJson use := .arr #[
-    toJson use.href,
-    toJson use.summary,
-    toJson use.kind,
-    toJson use.index
-  ]
-
-instance : Lean.FromJson CitationUse where
-  fromJson? v := do
-    match v with
-    | .arr arr =>
-      let some href := arr[0]? | throw "expected citation href"
-      let some summary := arr[1]? | throw "expected citation summary"
-      let some kind := arr[2]? | throw "expected citation part kind"
-      let some index := arr[3]? | throw "expected citation locator index"
-      return {
-        href := ← fromJson? href
-        summary := ← fromJson? summary
-        kind := ← fromJson? kind
-        index := ← fromJson? index
-      }
-    | _ =>
-      return {
-        href := ← v.getObjValAs? String "href"
-        summary := ← v.getObjValAs? CitationSummary "summary"
-        kind := ← v.getObjValAs? (Option CitePartKind) "kind"
-        index := ← v.getObjValAs? (Option String) "index"
-      }
+deriving Inhabited, FromJson, ToJson
 
 /--
 Accumulated citation-use backlinks for one bibliography label.
@@ -394,17 +293,7 @@ list and deduplicates entries with `insertUnique`.
 -/
 structure CitationUsageData where
   uses : List CitationUse := []
-deriving Inhabited
-
-instance : Lean.ToJson CitationUsageData where
-  toJson data := toJson data.uses
-
-instance : Lean.FromJson CitationUsageData where
-  fromJson? v := do
-    match fromJson? (α := List CitationUse) v with
-    | .ok uses => return { uses }
-    | .error _ =>
-      return { uses := ← v.getObjValAs? (List CitationUse) "uses" }
+deriving Inhabited, FromJson, ToJson
 
 private def CitationUsageData.insertUnique (d : CitationUsageData) (u : CitationUse) : CitationUsageData :=
   if d.uses.any (fun e =>

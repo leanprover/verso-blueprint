@@ -68,25 +68,7 @@ structure GraphBlockData where
   graph : Graph
   options : GraphOptions := {}
   groupTitles : Array (Name × String) := #[]
-deriving Inhabited, ToJson, Quote
-
-instance : FromJson GraphBlockData where
-  fromJson? v := do
-    let graph ← v.getObjVal? "graph" >>= fromJson?
-    let options ←
-      match v.getObjVal? "options" with
-      | .ok optionsJson => fromJson? optionsJson
-      | .error _ =>
-        let direction ←
-          match v.getObjVal? "direction" with
-          | .ok directionJson => fromJson? directionJson
-          | .error _ => pure .TB
-        pure { direction, pack := false }
-    let groupTitles ←
-      match v.getObjVal? "groupTitles" with
-      | .ok groupTitlesJson => fromJson? groupTitlesJson
-      | .error _ => pure #[]
-    pure { graph, options, groupTitles }
+deriving Inhabited, FromJson, ToJson, Quote
 
 def graphPackAttr (pack : Bool) : String :=
   if pack then "true" else "false"
@@ -435,12 +417,9 @@ block_extension Block.graph (graphData : GraphBlockData) where
       let graphData : GraphBlockData ←
         match fromJson? (α := GraphBlockData) data with
         | .ok gd => pure gd
-        | .error _ =>
-          match fromJson? (α := Graph) data with
-          | .ok graph => pure { graph, options := {}, groupTitles := #[] }
-          | .error _ =>
-            HtmlT.logError "Malformed data in Block.graph.toHtml"
-            pure { graph := #[], options := {}, groupTitles := #[] }
+        | .error err =>
+          HtmlT.logError s!"Malformed data in Block.graph.toHtml ({err})"
+          pure { graph := #[], options := {}, groupTitles := #[] }
       let s ← HtmlT.state
       let resolveHref : Name → Option String := fun ref =>
         Informal.TraversalIndex.Nodes.href? s ref
