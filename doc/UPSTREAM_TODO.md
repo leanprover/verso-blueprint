@@ -46,7 +46,7 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 ## Hover and Rendering Follow-Ups
 
 - [ ] Upstream the `Verso.Code.Highlighted` docstring rerender performance fix,
-  then drop Blueprint's generated-HTML compatibility rewrite.
+  then drop Blueprint's local highlighted-code asset compatibility rewrite.
   - current Verso pressure points:
     `src/verso/Verso/Code/Highlighted.lean` reads
     `code.docstring, pre.docstring` with `innerText` in both the page-wide
@@ -62,7 +62,7 @@ Items to upstream to `verso` once the blueprint split is stabilized.
   - observed local impact:
     the Noperthedron `The-Local-Theorem` reference page dropped from a roughly
     14 second highlighted-code startup task to under 0.5 seconds after the
-    generated `innerText` reads were rewritten
+    generated highlighted-code asset's `innerText` reads were rewritten
   - upstream code points at Verso commit
     `7ae82ac2ae54ae5dcc9948a701669e9b596e5cae`:
     - `src/verso/Verso/Code/Highlighted.lean#L1377-L1384`
