@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 from scripts.blueprint_harness_paths import detect_harness_layout
@@ -430,6 +431,76 @@ def write_test_blueprint_index(output_root: Path, category_order: tuple[str, ...
     )
 
 
+def split_generation_targets(
+    package_root: Path,
+    fixtures: list[StandaloneTestBlueprint],
+    requested_slugs: list[str],
+) -> tuple[list[str], list[StandaloneTestBlueprint]]:
+    if not requested_slugs:
+        return list_curated_test_doc_slugs(package_root), fixtures
+
+    fixture_by_slug = {fixture.slug: fixture for fixture in fixtures}
+    doc_slugs: list[str] = []
+    standalone_fixtures: list[StandaloneTestBlueprint] = []
+    for target in requested_slugs:
+        fixture = fixture_by_slug.get(target)
+        if fixture is None:
+            doc_slugs.append(target)
+        else:
+            standalone_fixtures.append(fixture)
+    return doc_slugs, standalone_fixtures
+
+
+def prune_stale_test_blueprint_outputs(output_root: Path, expected_slugs: set[str]) -> None:
+    if not output_root.exists():
+        return
+    for child in output_root.iterdir():
+        if child.is_dir() and child.name not in expected_slugs:
+            shutil.rmtree(child)
+
+
+def generate_curated_test_doc(package_root: Path, slug: str, output_dir: Path) -> None:
+    run(
+        lean_low_priority_command(
+            package_root,
+            "lake",
+            "exe",
+            "blueprint-test-docs",
+            slug,
+            "--output",
+            str(output_dir),
+        ),
+        cwd=package_root,
+    )
+
+
+def generate_test_blueprint_outputs(
+    package_root: Path,
+    category_order: tuple[str, ...],
+    fixtures: list[StandaloneTestBlueprint],
+    output_root: Path,
+    requested_slugs: list[str],
+) -> None:
+    doc_slugs, standalone_fixtures = split_generation_targets(package_root, fixtures, requested_slugs)
+    standalone_slugs = [fixture.slug for fixture in standalone_fixtures]
+
+    if not requested_slugs:
+        prune_stale_test_blueprint_outputs(output_root, {*doc_slugs, *standalone_slugs})
+
+    for slug in doc_slugs:
+        generate_curated_test_doc(package_root, slug, output_root / slug)
+
+    for fixture in standalone_fixtures:
+        generate_standalone_test_blueprint(package_root, fixture, output_root / fixture.slug)
+
+    selected_slugs = [*doc_slugs, *standalone_slugs]
+    write_test_blueprint_index(
+        output_root,
+        category_order,
+        test_blueprint_index_entries(package_root, fixtures, selected_slugs),
+    )
+
+
 def find_test_blueprint(fixtures: list[StandaloneTestBlueprint], slug: str) -> StandaloneTestBlueprint:
     for fixture in fixtures:
         if fixture.slug == slug:
@@ -504,6 +575,14 @@ def build_parser() -> argparse.ArgumentParser:
     gen = sub.add_parser("generate")
     gen.add_argument("slug")
     gen.add_argument("output_dir")
+
+    gen_all = sub.add_parser("generate-all")
+    gen_all.add_argument(
+        "--output-root",
+        default=None,
+        help="Output root. Defaults to the current checkout's worktree-aware `_out/.../test-blueprints` root.",
+    )
+    gen_all.add_argument("slug", nargs="*", help="Optional curated doc or standalone fixture slug to generate.")
     return parser
 
 
@@ -512,7 +591,7 @@ def main() -> int:
     args = parser.parse_args()
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_test_blueprint_manifest(args.manifest, layout.package_root)
-    fixtures = load_test_blueprints_manifest(manifest_path)
+    category_order, fixtures = load_test_blueprint_catalog(manifest_path)
 
     if args.cmd == "list":
         for fixture in fixtures:
@@ -524,6 +603,10 @@ def main() -> int:
     if args.cmd == "generate":
         fixture = find_test_blueprint(fixtures, args.slug)
         generate_standalone_test_blueprint(layout.package_root, fixture, Path(args.output_dir).resolve())
+        return 0
+    if args.cmd == "generate-all":
+        output_root = Path(args.output_root).resolve() if args.output_root else layout.test_blueprint_output_root
+        generate_test_blueprint_outputs(layout.package_root, category_order, fixtures, output_root, args.slug)
         return 0
     raise SystemExit("unreachable")
 

@@ -11,11 +11,14 @@ from scripts.blueprint_test_blueprints import (
     StandaloneTestBlueprint,
     default_test_blueprint_manifest,
     find_test_blueprint,
+    generate_test_blueprint_outputs,
     load_test_blueprint_categories,
     load_test_blueprints_manifest,
     render_test_blueprint_index_html,
+    split_generation_targets,
     write_test_blueprint_index,
 )
+import scripts.blueprint_test_blueprints as test_blueprints_mod
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -234,6 +237,88 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             html = (output_root / "index.html").read_text(encoding="utf-8")
             self.assertIn("Test Blueprint Artifacts", html)
             self.assertIn("./runtime-showcase/html-multi/", html)
+
+    def test_split_generation_targets_classifies_standalone_slugs(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="runtime-showcase",
+            title="Runtime Showcase",
+            category="Runtime",
+            summary="Runtime summary",
+            tags=(),
+            project_root="tests/test_blueprints/runtime-showcase",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script=None,
+            browser_tests_path=None,
+        )
+        doc_slugs, fixtures = split_generation_targets(
+            PACKAGE_ROOT,
+            [fixture],
+            ["summary-doc", "runtime-showcase"],
+        )
+
+        self.assertEqual(doc_slugs, ["summary-doc"])
+        self.assertEqual([entry.slug for entry in fixtures], ["runtime-showcase"])
+
+    def test_generate_test_blueprint_outputs_prunes_only_full_generation(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="runtime-showcase",
+            title="Runtime Showcase",
+            category="Runtime",
+            summary="Runtime summary",
+            tags=(),
+            project_root="tests/test_blueprints/runtime-showcase",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script=None,
+            browser_tests_path=None,
+        )
+        originals = {
+            "list_curated_test_doc_slugs": test_blueprints_mod.list_curated_test_doc_slugs,
+            "generate_curated_test_doc": test_blueprints_mod.generate_curated_test_doc,
+            "generate_standalone_test_blueprint": test_blueprints_mod.generate_standalone_test_blueprint,
+            "test_blueprint_index_entries": test_blueprints_mod.test_blueprint_index_entries,
+        }
+        generated: list[tuple[str, str]] = []
+        try:
+            test_blueprints_mod.list_curated_test_doc_slugs = lambda _package_root: ["summary-doc"]
+            test_blueprints_mod.generate_curated_test_doc = (
+                lambda _package_root, slug, _output_dir: generated.append(("doc", slug))
+            )
+            test_blueprints_mod.generate_standalone_test_blueprint = (
+                lambda _package_root, standalone, _output_dir: generated.append(("standalone", standalone.slug))
+            )
+            test_blueprints_mod.test_blueprint_index_entries = lambda _package_root, _fixtures, selected: [
+                {
+                    "slug": slug,
+                    "title": slug,
+                    "category": "Runtime",
+                    "summary": "summary",
+                    "tags": [],
+                    "kind": "curated_doc",
+                }
+                for slug in selected
+            ]
+
+            with tempfile.TemporaryDirectory() as tmp:
+                output_root = Path(tmp) / "test-blueprints"
+                (output_root / "stale-fixture").mkdir(parents=True)
+                generate_test_blueprint_outputs(
+                    PACKAGE_ROOT,
+                    ("Runtime",),
+                    [fixture],
+                    output_root,
+                    [],
+                )
+
+                self.assertFalse((output_root / "stale-fixture").exists())
+                self.assertEqual(generated, [("doc", "summary-doc"), ("standalone", "runtime-showcase")])
+                html = (output_root / "index.html").read_text(encoding="utf-8")
+                self.assertIn("./summary-doc/html-multi/", html)
+                self.assertIn("./runtime-showcase/html-multi/", html)
+        finally:
+            for name, value in originals.items():
+                setattr(test_blueprints_mod, name, value)
 
 
 if __name__ == "__main__":
