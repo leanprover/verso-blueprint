@@ -7,8 +7,7 @@ from pathlib import Path
 from scripts.blueprint_harness_branches import active_release_branch, normalize_lean_release_ref
 
 
-# Historical manifest spelling; keep it as the serialized value for existing catalogs.
-IN_REPO_PROJECT_SOURCE_KIND = "in_repo_example"
+IN_REPO_PROJECT_SOURCE_KIND = "in_repo_project"
 GIT_CHECKOUT_SOURCE_KIND = "git_checkout"
 
 

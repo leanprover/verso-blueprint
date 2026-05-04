@@ -21,7 +21,7 @@
       "id": "project-template",
       "description": "In-repo starter Blueprint template rendered as a small reference site.",
       "source": {
-        "kind": "in_repo_example",
+        "kind": "in_repo_project",
         "project_root": "project_template"
       },
       "targets": [
@@ -56,7 +56,7 @@
     },
     {
       "id": "spherepackingblueprint",
-      "description": "External blueprint example without project-specific browser regressions.",
+      "description": "External blueprint project without project-specific browser regressions.",
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-sphere-packing.git",
@@ -92,7 +92,7 @@
     },
     {
       "id": "algebraic-combinatorics",
-      "description": "External algebraic combinatorics blueprint example currently maintained on the v4.28.0 line.",
+      "description": "External algebraic combinatorics blueprint project currently maintained on the v4.28.0 line.",
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-algebraic-combinatorics.git",
