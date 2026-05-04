@@ -29,7 +29,14 @@ from scripts.blueprint_harness_paths import (
     canonical_test_blueprint_site_dir,
     detect_harness_layout,
 )
-from scripts.blueprint_harness_projects import HarnessProject, load_projects_manifest, resolve_manifest_path
+from scripts.blueprint_harness_projects import (
+    HarnessProject,
+    load_project_catalog as load_project_catalog_manifest,
+    load_projects_manifest,
+    resolve_manifest_path,
+    resolve_projects_for_release,
+    resolve_release_target,
+)
 from scripts.blueprint_harness_references import (
     reference_prune_plan,
     sync_reference_blueprints,
@@ -809,16 +816,23 @@ def command_land_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_paths(_: argparse.Namespace) -> int:
+def command_paths(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(None, layout.package_root)
-    projects = load_project_catalog(manifest_path)
+    catalog = load_project_catalog_manifest(manifest_path)
+    release_target = resolve_release_target(catalog, None, layout.package_root)
+    if args.all_projects:
+        projects = list(catalog.projects)
+    else:
+        projects = resolve_projects_for_release(catalog, release_target.release_id, None)
     release_branch = active_release_branch(layout.repo_root)
     print(f"package_root={layout.package_root}")
     print(f"repo_root={layout.repo_root}")
     print(f"worktree_name={layout.worktree_name or ''}")
     print(f"artifact_root={layout.artifact_root}")
-    print(f"project_manifest={resolve_manifest_path(None, layout.package_root)}")
+    print(f"project_manifest={manifest_path}")
+    print(f"selected_release_target={release_target.release_id}")
+    print(f"project_path_scope={'all' if args.all_projects else 'selected_release'}")
     print("local_override_strategy=ephemeral_lakefile_rewrite")
     print(f"active_release_branch={release_branch}")
     print(f"preferred_release_ref={preferred_main_ref(layout.repo_root)}")
@@ -1256,6 +1270,11 @@ def build_parser() -> argparse.ArgumentParser:
     paths = subparsers.add_parser(
         "paths",
         help="Print canonical and resolved worktree-aware harness paths.",
+    )
+    paths.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Print site paths for every manifest project instead of only the current release selection.",
     )
     paths.set_defaults(func=command_paths)
     return parser
