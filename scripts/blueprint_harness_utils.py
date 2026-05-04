@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import subprocess
+import sys
 from pathlib import Path
 import shutil
 
@@ -15,6 +17,12 @@ EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+@dataclass(frozen=True)
+class StepFailure:
+    step: str
+    detail: str
+
+
 def format_command(command: list[str]) -> str:
     return " ".join(command)
 
@@ -22,6 +30,25 @@ def format_command(command: list[str]) -> str:
 def run(command: list[str], *, cwd: Path) -> None:
     print(f"[blueprint-harness] $ {format_command(command)}")
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def run_capturing_failure(step: str, command: list[str], *, cwd: Path) -> StepFailure | None:
+    try:
+        run(command, cwd=cwd)
+        return None
+    except subprocess.CalledProcessError as err:
+        return StepFailure(step=step, detail=f"exit code {err.returncode}: {format_command(command)}")
+
+
+def print_failure_summary(failures: list[StepFailure], *, prefix: str) -> int:
+    if not failures:
+        print(f"{prefix} validation summary: all requested steps passed")
+        return 0
+
+    print(f"{prefix} validation summary: failures detected", file=sys.stderr)
+    for failure in failures:
+        print(f"{prefix}   {failure.step}: {failure.detail}", file=sys.stderr)
+    return 1
 
 
 def lean_low_priority_command(package_root: Path, *args: str) -> list[str]:
