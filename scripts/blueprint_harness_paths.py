@@ -22,10 +22,6 @@ class HarnessLayout:
         return self.artifact_root / "reference-blueprints"
 
     @property
-    def example_output_root(self) -> Path:
-        return self.reference_output_root
-
-    @property
     def test_blueprint_output_root(self) -> Path:
         return self.artifact_root / "test-blueprints"
 
@@ -94,13 +90,10 @@ def resolve_output_root(path_text: str | None, start: Path | None = None) -> Pat
     return detect_harness_layout(start).reference_output_root
 
 
-def canonical_example_site_dir(example: str, start: Path | None = None) -> Path:
+def canonical_reference_project_site_dir(project_id: str, start: Path | None = None) -> Path:
     layout = detect_harness_layout(start)
-    return layout.reference_output_root / example / "html-multi"
+    return layout.reference_output_root / project_id / "html-multi"
 
-
-def default_example_site_dir(example: str, start: Path | None = None) -> Path:
-    return canonical_example_site_dir(example, start)
 
 def canonical_test_blueprint_package_dir(name: str, start: Path | None = None) -> Path:
     layout = detect_harness_layout(start)

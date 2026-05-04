@@ -7,6 +7,11 @@ from pathlib import Path
 from scripts.blueprint_harness_branches import active_release_branch, normalize_lean_release_ref
 
 
+# Historical manifest spelling; keep it as the serialized value for existing catalogs.
+IN_REPO_PROJECT_SOURCE_KIND = "in_repo_example"
+GIT_CHECKOUT_SOURCE_KIND = "git_checkout"
+
+
 @dataclass(frozen=True)
 class HarnessReleaseTarget:
     release_id: str
@@ -54,20 +59,20 @@ class HarnessProject:
     selected_release: str | None = None
 
     @property
-    def in_repo_example(self) -> bool:
-        return self.source_kind == "in_repo_example"
+    def in_repo_project(self) -> bool:
+        return self.source_kind == IN_REPO_PROJECT_SOURCE_KIND
 
     @property
     def git_checkout(self) -> bool:
-        return self.source_kind == "git_checkout"
+        return self.source_kind == GIT_CHECKOUT_SOURCE_KIND
 
     @property
     def in_repo_target_project(self) -> bool:
-        return self.in_repo_example and self.build_target is not None and self.generator is not None
+        return self.in_repo_project and self.build_target is not None and self.generator is not None
 
     @property
     def in_repo_command_project(self) -> bool:
-        return self.in_repo_example and self.generate_command is not None
+        return self.in_repo_project and self.generate_command is not None
 
     def target_for_release(self, release: str) -> HarnessProjectTarget | None:
         for target in self.targets:
@@ -177,10 +182,10 @@ def _load_project_targets(
             raise ValueError(f"{target_context}: duplicate release target `{release}`")
         seen_releases.add(release)
         ref = _optional_string(raw_target, "ref")
-        if source_kind == "git_checkout" and ref is None:
+        if source_kind == GIT_CHECKOUT_SOURCE_KIND and ref is None:
             raise ValueError(f"{target_context}: git checkout targets must declare `ref`")
-        if source_kind == "in_repo_example" and ref is not None:
-            raise ValueError(f"{target_context}: in-repo example targets must not declare `ref`")
+        if source_kind == IN_REPO_PROJECT_SOURCE_KIND and ref is not None:
+            raise ValueError(f"{target_context}: in-repo project targets must not declare `ref`")
         targets.append(
             HarnessProjectTarget(
                 release=release,
@@ -235,42 +240,42 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
         site_subdir = _optional_string(entry, "site_subdir") or "html-multi"
         targets = _load_project_targets(entry, context=context, release_ids=release_ids, source_kind=source_kind)
 
-        if source_kind == "in_repo_example":
+        if source_kind == IN_REPO_PROJECT_SOURCE_KIND:
             target_mode = build_target is not None or generator is not None
             command_mode = build_command is not None or generate_command is not None
             if target_mode and command_mode:
                 raise ValueError(
-                    f"{context}: in-repo examples must use either `build_target`/`generator` or "
+                    f"{context}: in-repo projects must use either `build_target`/`generator` or "
                     "`build_command`/`generate_command`, not both"
                 )
             if target_mode:
                 if build_target is None or generator is None:
                     raise ValueError(
-                        f"{context}: in-repo examples using root-package targets must declare both "
+                        f"{context}: in-repo projects using root-package targets must declare both "
                         "`build_target` and `generator`"
                     )
                 if repository is not None or build_command is not None or generate_command is not None:
                     raise ValueError(
-                        f"{context}: in-repo examples using root-package targets must not declare "
+                        f"{context}: in-repo projects using root-package targets must not declare "
                         "`repository`, `build_command`, or `generate_command`"
                     )
             elif command_mode:
                 if generate_command is None:
                     raise ValueError(
-                        f"{context}: in-repo examples using nested project commands must declare "
+                        f"{context}: in-repo projects using nested project commands must declare "
                         "`generate_command`"
                     )
                 if repository is not None or build_target is not None or generator is not None:
                     raise ValueError(
-                        f"{context}: in-repo examples using nested project commands must not declare "
+                        f"{context}: in-repo projects using nested project commands must not declare "
                         "`repository`, `build_target`, or `generator`"
                     )
             else:
                 raise ValueError(
-                    f"{context}: in-repo examples must declare either `build_target`/`generator` "
+                    f"{context}: in-repo projects must declare either `build_target`/`generator` "
                     "or `generate_command`"
                 )
-        elif source_kind == "git_checkout":
+        elif source_kind == GIT_CHECKOUT_SOURCE_KIND:
             if repository is None:
                 raise ValueError(f"{context}: git checkout projects must declare `source.repository`")
             if generate_command is None:

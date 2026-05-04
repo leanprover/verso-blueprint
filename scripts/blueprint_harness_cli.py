@@ -27,11 +27,9 @@ def add_project_selection_argument(
     command_parser: argparse.ArgumentParser,
     *,
     help_text: str,
-    include_example_alias: bool = True,
 ) -> None:
     command_parser.add_argument(
         "--project",
-        *(("--example",) if include_example_alias else ()),
         dest="project",
         action="append",
         help=help_text,

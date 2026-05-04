@@ -25,7 +25,7 @@ from scripts.blueprint_harness_branches import (
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
 from scripts.blueprint_harness_paths import (
-    canonical_example_site_dir,
+    canonical_reference_project_site_dir,
     canonical_test_blueprint_site_dir,
     detect_harness_layout,
 )
@@ -844,7 +844,7 @@ def command_paths(args: argparse.Namespace) -> int:
     print(f"reference_checkout_root={layout.reference_project_checkout_root}")
     print(f"reference_edit_root={layout.reference_project_edit_root}")
     for project in projects:
-        canonical_site = canonical_example_site_dir(project.project_id, Path(__file__))
+        canonical_site = canonical_reference_project_site_dir(project.project_id, Path(__file__))
         print(f"{project.project_id}_site={canonical_site}")
     return 0
 

@@ -38,7 +38,7 @@
     },
     {
       "id": "noperthedron",
-      "description": "Mathlib-heavy external blueprint example kept for generation coverage.",
+      "description": "Mathlib-heavy external blueprint project kept for generation coverage.",
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-noperthedron.git",
