@@ -79,6 +79,7 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("standalone", result.stdout)
         self.assertIn("--skip-browser-tests", result.stdout)
+        self.assertIn("--pytest-arg", result.stdout)
 
     def test_validate_branch_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/validate-branch.sh", "--help"])

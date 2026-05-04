@@ -10,6 +10,7 @@ import unittest
 import scripts.blueprint_harness as harness_mod
 import scripts.blueprint_reference_harness as reference_harness_mod
 from scripts.blueprint_harness import build_parser, create_worktree_sync_policy
+from scripts.blueprint_harness_cli import selected_output_root
 from scripts.blueprint_reference_harness import generate_projects
 from scripts.blueprint_harness_projects import (
     HarnessProject,
@@ -44,6 +45,20 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(["generate", "--allow-unsafe-root-release", "--release", "v4.29.0"])
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
+
+    def test_reference_generate_accepts_named_output_root(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["generate", "--output-root", "/tmp/out"])
+        self.assertIsNone(args.output_root)
+        self.assertEqual(args.output_root_option, "/tmp/out")
+        self.assertEqual(selected_output_root(args), "/tmp/out")
+
+    def test_reference_validate_named_output_root_overrides_positional_root(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["validate", "/tmp/old", "--output-root", "/tmp/new"])
+        self.assertEqual(args.output_root, "/tmp/old")
+        self.assertEqual(args.output_root_option, "/tmp/new")
+        self.assertEqual(selected_output_root(args), "/tmp/new")
 
     def test_reference_validate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
