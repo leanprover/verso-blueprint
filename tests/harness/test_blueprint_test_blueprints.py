@@ -9,15 +9,19 @@ import unittest
 from scripts.blueprint_test_blueprints import (
     TAG_PATTERN,
     StandaloneTestBlueprint,
+    browser_test_command,
     default_test_blueprint_manifest,
     find_test_blueprint,
     generate_test_blueprint_outputs,
     load_test_blueprint_categories,
     load_test_blueprints_manifest,
+    panel_regression_command,
     render_test_blueprint_index_html,
     split_generation_targets,
+    validate_test_blueprint_outputs,
     write_test_blueprint_index,
 )
+from scripts.blueprint_harness_utils import StepFailure
 import scripts.blueprint_test_blueprints as test_blueprints_mod
 
 
@@ -319,6 +323,144 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
         finally:
             for name, value in originals.items():
                 setattr(test_blueprints_mod, name, value)
+
+    def test_validation_commands_target_fixture_site_dir(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="runtime-showcase",
+            title="Runtime Showcase",
+            category="Runtime",
+            summary="Runtime summary",
+            tags=(),
+            project_root="tests/test_blueprints/runtime-showcase",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script="tests/harness/runtime/check.py",
+            browser_tests_path="tests/browser",
+        )
+        site_dir = Path("/tmp/out/test-blueprints/runtime-showcase/html-multi")
+        original_which = test_blueprints_mod.shutil.which
+        try:
+            test_blueprints_mod.shutil.which = lambda _name: None
+            self.assertEqual(
+                panel_regression_command(PACKAGE_ROOT, fixture, site_dir),
+                [
+                    test_blueprints_mod.sys.executable,
+                    str(PACKAGE_ROOT / "tests/harness/runtime/check.py"),
+                    "--site-dir",
+                    str(site_dir),
+                ],
+            )
+            self.assertEqual(
+                browser_test_command(PACKAGE_ROOT, fixture, site_dir, ["-k", "preview"]),
+                [
+                    test_blueprints_mod.sys.executable,
+                    "-m",
+                    "pytest",
+                    str(PACKAGE_ROOT / "tests/browser"),
+                    "-q",
+                    "--browser",
+                    "chromium",
+                    "--site-dir",
+                    str(site_dir),
+                    "-k",
+                    "preview",
+                ],
+            )
+        finally:
+            test_blueprints_mod.shutil.which = original_which
+
+    def test_validate_test_blueprint_outputs_runs_generation_and_regressions(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="runtime-showcase",
+            title="Runtime Showcase",
+            category="Runtime",
+            summary="Runtime summary",
+            tags=(),
+            project_root="tests/test_blueprints/runtime-showcase",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script="tests/harness/runtime/check.py",
+            browser_tests_path="tests/browser",
+        )
+        originals = {
+            "generate_test_blueprint_outputs": test_blueprints_mod.generate_test_blueprint_outputs,
+            "run_capturing_failure": test_blueprints_mod.run_capturing_failure,
+            "shutil.which": test_blueprints_mod.shutil.which,
+        }
+        calls: list[tuple[str, object]] = []
+        try:
+            test_blueprints_mod.generate_test_blueprint_outputs = (
+                lambda _package_root, _categories, _fixtures, output_root, requested: calls.append(
+                    ("generate", (output_root, requested))
+                )
+            )
+            test_blueprints_mod.run_capturing_failure = (
+                lambda step, command, cwd: calls.append(("run", (step, command, cwd))) or None
+            )
+            test_blueprints_mod.shutil.which = lambda _name: None
+
+            with tempfile.TemporaryDirectory() as tmp:
+                output_root = Path(tmp) / "test-blueprints"
+                result = validate_test_blueprint_outputs(
+                    PACKAGE_ROOT,
+                    ("Runtime",),
+                    [fixture],
+                    output_root,
+                    ["-k", "preview"],
+                )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(calls[0], ("generate", (output_root, [])))
+            self.assertEqual(calls[1][0], "run")
+            self.assertEqual(calls[1][1][0], "runtime-showcase panel regression")
+            self.assertEqual(calls[2][0], "run")
+            self.assertEqual(calls[2][1][0], "runtime-showcase browser tests")
+            self.assertIn("-k", calls[2][1][1])
+            self.assertIn("preview", calls[2][1][1])
+        finally:
+            test_blueprints_mod.generate_test_blueprint_outputs = originals["generate_test_blueprint_outputs"]
+            test_blueprints_mod.run_capturing_failure = originals["run_capturing_failure"]
+            test_blueprints_mod.shutil.which = originals["shutil.which"]
+
+    def test_validate_test_blueprint_outputs_stops_on_first_failure(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="runtime-showcase",
+            title="Runtime Showcase",
+            category="Runtime",
+            summary="Runtime summary",
+            tags=(),
+            project_root="tests/test_blueprints/runtime-showcase",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script="tests/harness/runtime/check.py",
+            browser_tests_path="tests/browser",
+        )
+        originals = {
+            "generate_test_blueprint_outputs": test_blueprints_mod.generate_test_blueprint_outputs,
+            "run_capturing_failure": test_blueprints_mod.run_capturing_failure,
+        }
+        calls: list[str] = []
+        try:
+            test_blueprints_mod.generate_test_blueprint_outputs = lambda *_args: None
+            test_blueprints_mod.run_capturing_failure = (
+                lambda step, _command, cwd: calls.append(step) or StepFailure(step, "failed")
+            )
+
+            with tempfile.TemporaryDirectory() as tmp:
+                result = validate_test_blueprint_outputs(
+                    PACKAGE_ROOT,
+                    ("Runtime",),
+                    [fixture],
+                    Path(tmp) / "test-blueprints",
+                    [],
+                    stop_on_first_failure=True,
+                )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(calls, ["runtime-showcase panel regression"])
+        finally:
+            test_blueprints_mod.generate_test_blueprint_outputs = originals["generate_test_blueprint_outputs"]
+            test_blueprints_mod.run_capturing_failure = originals["run_capturing_failure"]
 
 
 if __name__ == "__main__":

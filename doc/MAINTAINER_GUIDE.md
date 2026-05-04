@@ -264,7 +264,9 @@ For local fixture/browser filtering, pass pytest args through
 ./scripts/validate-branch.sh -k preview
 ```
 
-Run `python3 -m scripts.blueprint_reference_harness --help` for the full flag surface.
+Run `python3 -m scripts.blueprint_reference_harness --help` and
+`python3 -m scripts.blueprint_test_blueprints validate --help` for the canonical
+flag surfaces.
 
 When you run the reference CLI from the root checkout while it is on the active
 release branch, it expects that checkout to stay clean and in sync with the
