@@ -286,7 +286,7 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
             blueprint_relationship=None,
             blueprint_ahead=None,
             blueprint_behind=None,
-            skipped="in_repo_example",
+            skipped="in_repo_project",
         )
 
     checkout_root = ensure_reference_status_checkout(layout, project)
@@ -319,7 +319,7 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
 
 def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_example else f"git:{project.repository}@{project.ref}"
+    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         project.project_id,
         f"source={source}",
@@ -379,7 +379,7 @@ def print_release_target_summary(status: ReleaseTargetStatus) -> None:
 
 def print_release_target_project_status(release_id: str, status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_example else f"git:{project.repository}@{project.ref}"
+    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         f"release={release_id}",
         f"project={project.project_id}",
@@ -565,7 +565,7 @@ def generate_projects(
     serial: bool,
     allow_local_build: bool,
 ) -> None:
-    in_repo_projects = [project for project in projects if project.in_repo_example]
+    in_repo_projects = [project for project in projects if project.in_repo_project]
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
     in_repo_command_projects = [project for project in in_repo_projects if project.in_repo_command_project]
     git_projects = [project for project in projects if project.git_checkout]
@@ -734,7 +734,7 @@ def command_projects(args: argparse.Namespace) -> int:
     print(f"project_manifest={manifest_path}")
     print(f"release_target={release_id}")
     for project in projects:
-        if project.in_repo_example:
+        if project.in_repo_project:
             source = f"in_repo:{project.project_root}"
         else:
             source = f"git:{project.repository}@{project.ref}"
@@ -1078,7 +1078,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         projects,
         help_text="Restrict output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     projects.add_argument("--release", default=None, help="Release target to list. Defaults to the current checkout release line.")
     projects.set_defaults(func=command_projects)
@@ -1091,7 +1090,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         status,
         help_text="Restrict status output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     status.add_argument("--release", default=None, help="Release target to inspect. Defaults to the current checkout release line.")
     status.set_defaults(func=command_status)
@@ -1104,7 +1102,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         release_status,
         help_text="Restrict output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     release_status.add_argument(
         "--release",
@@ -1126,7 +1123,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         sync,
         help_text="Restrict sync to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     sync.add_argument("--release", default=None, help="Release target to sync. Defaults to the current checkout release line.")
     sync.add_argument(
@@ -1168,7 +1164,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         bump,
         help_text="Restrict the bump to the selected external project. Repeat to select more.",
-        include_example_alias=False,
     )
     bump.add_argument(
         "--ref",

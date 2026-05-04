@@ -71,7 +71,7 @@ Rule of thumb:
   reference projects, use `blueprint_reference_harness`
 
 The default reference project catalog lives at `tests/harness/projects.json`.
-It is the source of truth for the in-repo starter example, external reference
+It is the source of truth for the in-repo starter project, external reference
 blueprint repositories, release compatibility, and future ephemeral GitHub
 checkout validations.
 
@@ -713,7 +713,7 @@ The staging helper is:
 
 ## External Project Validation Direction
 
-The harness is now project-driven rather than example-hardcoded.
+The harness is now project-driven rather than hardcoded to one project.
 
 - the default catalog is declared in `tests/harness/projects.json`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
@@ -770,7 +770,7 @@ inspection flags.
 Repository-level Blueprint reference material lives in the main doc set. Project
 specific option policy should stay with the project that owns it.
 
-Current example-specific reference:
+Current project-specific reference:
 
 - [`ejgallego/verso-noperthedron/OPTIONS.md`](https://github.com/ejgallego/verso-noperthedron/blob/main/OPTIONS.md)
 

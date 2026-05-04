@@ -11,6 +11,7 @@ import unittest
 from scripts.blueprint_harness_projects import (
     deploy_project_matrix,
     HarnessProject,
+    IN_REPO_PROJECT_SOURCE_KIND,
     default_project_manifest,
     load_project_catalog,
     load_projects_manifest,
@@ -72,7 +73,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
         self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0"])
-        self.assertTrue(projects[0].in_repo_example)
+        self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
         self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
@@ -229,7 +230,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 {
                     "id": "project-template",
                     "source": {
-                        "kind": "in_repo_example",
+                        "kind": IN_REPO_PROJECT_SOURCE_KIND,
                         "project_root": "project_template",
                     },
                     "targets": [
@@ -250,7 +251,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects = load_projects_manifest(manifest)
 
         self.assertEqual(len(projects), 1)
-        self.assertTrue(projects[0].in_repo_example)
+        self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
         self.assertEqual(projects[0].build_command, ("lake", "build"))
@@ -296,14 +297,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "projects": [
                 {
                     "id": "dup",
-                    "source": {"kind": "in_repo_example"},
+                    "source": {"kind": IN_REPO_PROJECT_SOURCE_KIND},
                     "targets": [{"release": "v4.29.0"}],
                     "build_target": "a",
                     "generator": "a"
                 },
                 {
                     "id": "dup",
-                    "source": {"kind": "in_repo_example"},
+                    "source": {"kind": IN_REPO_PROJECT_SOURCE_KIND},
                     "targets": [{"release": "v4.29.0"}],
                     "build_target": "b",
                     "generator": "b"
