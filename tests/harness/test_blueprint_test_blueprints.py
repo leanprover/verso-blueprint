@@ -13,6 +13,8 @@ from scripts.blueprint_test_blueprints import (
     find_test_blueprint,
     load_test_blueprint_categories,
     load_test_blueprints_manifest,
+    render_test_blueprint_index_html,
+    write_test_blueprint_index,
 )
 
 
@@ -180,6 +182,58 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                 "kind": "standalone_project",
             },
         )
+
+    def test_render_test_blueprint_index_groups_entries_by_category(self) -> None:
+        html = render_test_blueprint_index_html(
+            ("Preview", "Runtime"),
+            [
+                {
+                    "slug": "preview-doc",
+                    "title": "Preview Doc",
+                    "category": "Preview",
+                    "summary": "Preview summary",
+                    "tags": ["preview"],
+                    "kind": "curated_doc",
+                },
+                {
+                    "slug": "runtime-showcase",
+                    "title": "Runtime Showcase",
+                    "category": "Runtime",
+                    "summary": "Runtime summary",
+                    "tags": ["runtime", "browser"],
+                    "kind": "standalone_project",
+                },
+            ],
+        )
+
+        self.assertIn('<a class="chip" href="#preview">Preview</a>', html)
+        self.assertIn('<a class="chip" href="#runtime">Runtime</a>', html)
+        self.assertIn('<a href="./preview-doc/html-multi/">Preview Doc</a>', html)
+        self.assertIn('<a href="./runtime-showcase/html-multi/">Runtime Showcase</a>', html)
+        self.assertIn("<li>runtime</li><li>browser</li>", html)
+        self.assertIn("<p>1 site</p>", html)
+
+    def test_write_test_blueprint_index_writes_index_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "test-blueprints"
+            write_test_blueprint_index(
+                output_root,
+                ("Runtime",),
+                [
+                    {
+                        "slug": "runtime-showcase",
+                        "title": "Runtime Showcase",
+                        "category": "Runtime",
+                        "summary": "Runtime summary",
+                        "tags": [],
+                        "kind": "standalone_project",
+                    }
+                ],
+            )
+
+            html = (output_root / "index.html").read_text(encoding="utf-8")
+            self.assertIn("Test Blueprint Artifacts", html)
+            self.assertIn("./runtime-showcase/html-multi/", html)
 
 
 if __name__ == "__main__":
