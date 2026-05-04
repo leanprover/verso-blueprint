@@ -53,9 +53,9 @@ def main() -> int:
         fail("missing external summary badge for missing external declarations")
     if "External Lean for " in code_panels:
         fail("stale external panel caption still present")
-    if "Code for Definition" not in code_panels:
+    if "Lean code for Definition" not in code_panels:
         fail("definition code panel caption missing")
-    if "Code for Theorem" not in code_panels:
+    if "Lean code for Theorem" not in code_panels:
         fail("theorem code panel caption missing")
     if "bp_code_link_status_proved" not in code_panels:
         fail("missing proved code-status chip")
