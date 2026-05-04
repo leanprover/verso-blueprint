@@ -35,6 +35,25 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := { htmlConfig with toHtmlAssets := htmlAssets }
   }
 
+private def highlightedDocstringInnerTextRead : String :=
+  "const str = d.innerText;"
+
+private def highlightedDocstringTextContentRead : String :=
+  "const str = d.textContent || \"\";"
+
+private def patchHighlightedDocstringStartupJs (js : JS) : JS :=
+  { js with js := js.js.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead }
+
+private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
+  { assets with
+    extraJs :=
+      Std.HashSet.ofArray <|
+        assets.extraJs.toArray.map patchHighlightedDocstringStartupJs
+  }
+
+private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
+  state.modifyHtmlAssets patchBlueprintHtmlAssets
+
 def manifestFilename : String := "blueprint-preview-manifest.json"
 
 inductive EntryKind where
@@ -217,8 +236,12 @@ def schemaJson : Json :=
 private def jsonPretty (json : Json) : String :=
   json.render.pretty 80
 
+private def outputDirNameForMode : Mode → String
+  | .single => "html-single"
+  | .multi => "html-multi"
+
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
-  cfg.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
+  cfg.destination / outputDirNameForMode mode
 
 private def xrefExcludedDomainNames : Array Name :=
   Informal.TraversalIndex.allSpecs.filterMap fun spec =>
@@ -253,21 +276,6 @@ private def replaceFindPageXref (html xrefJson : String) : Option String :=
             String.intercalate Verso.Genre.Manual.find.js (afterFindJsPart :: afterFindJsParts)
       | _ => none
   | _ => none
-
-private def highlightedDocstringInnerTextRead : String :=
-  "const str = d.innerText;"
-
-private def highlightedDocstringTextContentRead : String :=
-  "const str = d.textContent || \"\";"
-
-private def patchHighlightedDocstringStartupJs (js : JS) : JS :=
-  { js with js := js.js.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead }
-
-private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
-  { assets with extraJs := Std.HashSet.ofArray <| assets.extraJs.toArray.map patchHighlightedDocstringStartupJs }
-
-private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
-  state.modifyHtmlAssets patchBlueprintHtmlAssets
 
 def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
     (state : TraverseState) : IO Unit := do
@@ -553,6 +561,46 @@ def handleCliFlags
   else
     handleDumpSchemaFlag options
 
+private abbrev HtmlTraverse :=
+  (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState)
+
+private abbrev HtmlEmitter :=
+  (String → IO Unit) → RenderConfig → Part Manual → TraverseState → ReaderT ExtensionImpls IO Unit
+
+private def emitBlueprintHtml
+    (extraSteps : List ExtraStep)
+    (how : EmitHtml)
+    (mode : Mode)
+    (logError : String → IO Unit)
+    (cfg : RenderConfig)
+    (text : Part Manual)
+    (traverse : HtmlTraverse)
+    (emit : HtmlEmitter) :
+    ReaderT ExtensionImpls IO Unit := do
+  let outDir := outputDirNameForMode mode
+  match how with
+  | .no => pure ()
+  | .immediately =>
+      if cfg.verbose then
+        IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
+      let (text', traverseState) ← traverse logError cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      emit logError cfg text' traverseState
+      for step in extraSteps do
+        step mode logError cfg.toConfig traverseState text'
+  | .delay f =>
+      let (text', traverseState) ← traverse logError cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      SavedState.mk text' traverseState |>.save f
+  | .resumeFrom f =>
+      let { text, traverseState } ← SavedState.load f
+      let traverseState := patchBlueprintTraverseState traverseState
+      emit logError cfg text traverseState
+      for step in extraSteps do
+        step mode logError cfg.toConfig traverseState text
+
 def blueprintMain (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
     (options : List String)
@@ -560,10 +608,6 @@ def blueprintMain (text : Part Manual)
     (extraSteps : List ExtraStep := []) : IO UInt32 :=
   ReaderT.run go extensionImpls
 where
-  modeOutputDir : Mode → String
-    | .single => "html-single"
-    | .multi => "html-multi"
-
   go : ReaderT ExtensionImpls IO UInt32 := do
     let errorCount : IO.Ref Nat ← IO.mkRef 0
     let logError msg := do
@@ -576,8 +620,10 @@ where
         IO.println "Saving TeX"
       emitTeX logError cfg.toConfig text
 
-    emitHtml cfg.emitHtmlSingle .single logError cfg text traverseHtmlSingle emitHtmlSingle
-    emitHtml cfg.emitHtmlMulti .multi logError cfg text traverseHtmlMulti emitHtmlMulti
+    emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single logError cfg text
+      traverseHtmlSingle emitHtmlSingle
+    emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi logError cfg text
+      traverseHtmlMulti emitHtmlMulti
 
     if let some wcFile := cfg.wordCount then
       if cfg.verbose then
@@ -592,35 +638,6 @@ where
     | n =>
         IO.eprintln s!"{n} errors were encountered!"
         return 1
-
-  emitHtml
-      (how : EmitHtml) (mode : Mode) (logError : String → IO Unit) (cfg : RenderConfig) (text : Part Manual)
-      (traverse : (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState))
-      (emit : (String → IO Unit) → RenderConfig → Part Manual → TraverseState → ReaderT ExtensionImpls IO Unit) :
-      ReaderT ExtensionImpls IO Unit := do
-    let outDir := modeOutputDir mode
-    match how with
-    | .no => pure ()
-    | .immediately =>
-        if cfg.verbose then
-          IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
-        let (text', traverseState) ← traverse logError cfg text
-        let traverseState := patchBlueprintTraverseState traverseState
-        emitXrefsJson (cfg.destination / outDir) traverseState
-        emit logError cfg text' traverseState
-        for step in extraSteps do
-          step mode logError cfg.toConfig traverseState text'
-    | .delay f =>
-        let (text', traverseState) ← traverse logError cfg text
-        let traverseState := patchBlueprintTraverseState traverseState
-        emitXrefsJson (cfg.destination / outDir) traverseState
-        SavedState.mk text' traverseState |>.save f
-    | .resumeFrom f =>
-        let { text, traverseState } ← SavedState.load f
-        let traverseState := patchBlueprintTraverseState traverseState
-        emit logError cfg text traverseState
-        for step in extraSteps do
-          step mode logError cfg.toConfig traverseState text
 
 def blueprintMainWithSharedPreviewManifest
     (text : Part Manual)
