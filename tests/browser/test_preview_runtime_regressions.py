@@ -1,4 +1,6 @@
+import json
 import re
+import urllib.request
 
 from playwright.sync_api import expect, Page
 
@@ -6,6 +8,70 @@ from support import assert_no_runtime_errors, record_runtime_errors
 
 
 class TestPreviewRuntimeRegressions:
+    def test_public_xref_excludes_internal_blueprint_indexes(self, server: str):
+        with urllib.request.urlopen(f"{server}/xref.json") as response:
+            data = json.load(response)
+
+        def has_domain(name: str) -> bool:
+            return name in data or ("\u00ab" + name + "\u00bb") in data
+
+        assert has_domain("Verso.Genre.Manual.section")
+        assert has_domain("Informal.Block.informal")
+        assert has_domain("Informal.Block.group")
+
+        excluded = [
+            "Informal.Block.informalCode",
+            "Informal.Block.informalPreview",
+            "Informal.Block.externalRenderedDecl",
+            "Informal.Inline.bpCite.usages",
+            "Informal.LeanCodePreview",
+            "Informal.inlinePreview.store",
+        ]
+        assert not any(has_domain(name) for name in excluded)
+
+        with urllib.request.urlopen(f"{server}/find/index.html") as response:
+            find_html = response.read().decode("utf-8")
+        for name in excluded:
+            assert name not in find_html
+
+    def test_highlighted_docstrings_read_text_content_without_layout_flush(self, server: str):
+        with urllib.request.urlopen(f"{server}/Blueprint-Summary/") as response:
+            html = response.read().decode("utf-8")
+
+        assert "const str = d.innerText;" not in html
+        assert 'const str = d.textContent || "";' in html
+
+    def test_used_by_panel_loads_manifest_only_when_opened(self, server: str, page: Page):
+        attempts = {"count": 0}
+
+        def count_manifest_fetch(route):
+            attempts["count"] += 1
+            route.continue_()
+
+        page.route("**/-verso-data/blueprint-preview-manifest.json", count_manifest_fetch)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+        page.locator('.bp_wrapper[title="used_target"] .bp_used_by_wrap').first.wait_for()
+        page.wait_for_timeout(250)
+
+        status = page.evaluate(
+            """() => {
+                const utils = window.bpPreviewUtils;
+                return utils.readSharedPreviewManifestStatus();
+            }"""
+        )
+        assert attempts["count"] == 0
+        assert status["state"] == "idle"
+
+        page.locator('.bp_wrapper[title="used_target"] .bp_used_by_chip').first.hover()
+        page.wait_for_function(
+            """() => {
+                const utils = window.bpPreviewUtils;
+                return utils.readSharedPreviewManifestStatus().state === "ready";
+            }"""
+        )
+        assert attempts["count"] == 1
+
     def test_code_summary_preview_opens_from_keyboard_focus_for_nonlink_trigger(
         self, server: str, page: Page
     ):
@@ -169,7 +235,7 @@ class TestPreviewRuntimeRegressions:
         assert "<p" in manifest["secondHtml"]
         assert manifest["statusAfterSecond"]["state"] == "ready"
         assert manifest["statusAfterSecond"]["attempts"] >= 2
-        assert attempts["count"] >= 2
+        assert attempts["count"] > 1
         assert_no_runtime_errors(errors)
 
     def test_used_by_panel_loads_manifest_backed_preview(self, server: str, page: Page):

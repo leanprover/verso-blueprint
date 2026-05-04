@@ -220,6 +220,73 @@ private def jsonPretty (json : Json) : String :=
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
 
+private def xrefExcludedDomainNames : Array Name :=
+  Informal.TraversalIndex.allSpecs.filterMap fun spec =>
+    match spec.kind with
+    | .semanticDomain => none
+    | .internalIndex | .runtimeCache | .accumulator => some spec.name
+
+private def isPublicXrefDomain (name : Name) : Bool :=
+  !xrefExcludedDomainNames.any (· == name)
+
+private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
+    Verso.NameMap Verso.Multi.Domain := Id.run do
+  let mut publicDomains : Verso.NameMap Verso.Multi.Domain := {}
+  for (name, domain) in domains do
+    if isPublicXrefDomain name then
+      publicDomains := publicDomains.insert! name domain
+  publicDomains
+
+def buildPublicXrefJson (state : TraverseState) : Json :=
+  Verso.Multi.xrefJson (publicXrefDomains state.domains) state.externalTags
+
+private def replaceFindPageXref (html xrefJson : String) : Option String :=
+  let marker := "window.xref = "
+  match html.splitOn marker with
+  | before :: afterMarkerPart :: afterMarkerParts =>
+      let afterMarker := String.intercalate marker (afterMarkerPart :: afterMarkerParts)
+      match afterMarker.splitOn Verso.Genre.Manual.find.js with
+      | _oldJson :: afterFindJsPart :: afterFindJsParts =>
+          some <|
+            before ++ marker ++ xrefJson ++ ";\n" ++
+            Verso.Genre.Manual.find.js ++
+            String.intercalate Verso.Genre.Manual.find.js (afterFindJsPart :: afterFindJsParts)
+      | _ => none
+  | _ => none
+
+private def highlightedDocstringInnerTextRead : String :=
+  "const str = d.innerText;"
+
+private def highlightedDocstringTextContentRead : String :=
+  "const str = d.textContent || \"\";"
+
+private def patchHighlightedDocstringStartupHtml (html : String) : Option String :=
+  let patched := html.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead
+  if patched == html then none else some patched
+
+private partial def patchHighlightedDocstringStartup (outDir : System.FilePath) : IO Unit := do
+  if !(← outDir.pathExists) then
+    return
+  if ← outDir.isDir then
+    for entry in ← outDir.readDir do
+      patchHighlightedDocstringStartup entry.path
+  else if outDir.extension == "html" then
+    let html ← IO.FS.readFile outDir
+    if let some patched := patchHighlightedDocstringStartupHtml html then
+      IO.FS.writeFile outDir patched
+
+def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
+    (state : TraverseState) : IO Unit := do
+  let outDir := outDirForMode cfg mode
+  let json := (buildPublicXrefJson state).compress
+  IO.FS.writeFile (outDir / "xref.json") json
+  let findIndex := outDir / "find" / "index.html"
+  if ← findIndex.pathExists then
+    let html ← IO.FS.readFile findIndex
+    match replaceFindPageXref html json with
+    | some html => IO.FS.writeFile findIndex html
+    | none => logError s!"Blueprint xref filter: could not find embedded xref payload in {findIndex}"
+
 private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
   match Informal.TraversalIndex.Nodes.data? state label with
   | some blockData => some (blockData.withResolvedNumbering state)
@@ -443,6 +510,8 @@ def emitSharedPreviewManifest (extensionImpls : ExtensionImpls) : ExtraStep := f
   IO.FS.createDirAll dataDir
   let json := (toJson file).compress
   IO.FS.writeFile (dataDir / manifestFilename) json
+  emitPublicXref mode logError cfg state
+  patchHighlightedDocstringStartup outDir
 
 def dumpSchemaFlag : String := "--dump-schema"
 def dumpManifestFlag : String := "--dump-manifest"

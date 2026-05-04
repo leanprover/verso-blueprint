@@ -52,6 +52,21 @@
 - Feature and legacy worktree branches are local-only by default. Do not push
   any branch to `origin` unless the user explicitly asks for that push.
 
+## Pull Request Submission
+
+- Before opening or editing a default-development PR, run
+  `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted public
+  PR title/body scaffold as the source of truth.
+- Before opening a paired backport PR, run
+  `python3 -m scripts.blueprint_harness prepare-backport-pr <release> --main-pr <pr>`
+  and use the emitted paired title/body scaffold.
+- Do not hand-roll PR descriptions from local status notes or validation
+  transcripts. Keep routine validation details in local/final reports unless
+  they change review risk or CI cannot show them.
+- Do not add generator or tool prefixes such as `[codex]` to public PR titles.
+- Keep local worktree names, write-scope notes, and coordination details out of
+  public PR bodies unless they materially help review.
+
 ## Release Status
 
 - The code is near release.
