@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
 
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_references import (
@@ -25,6 +24,7 @@ from scripts.blueprint_harness_utils import (
     run,
     run_capturing_failure,
 )
+from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
 
 
 TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -515,57 +515,6 @@ def test_blueprint_site_dir(output_root: Path, fixture: StandaloneTestBlueprint)
     return output_root / fixture.slug / "html-multi"
 
 
-def _package_relative_path(package_root: Path, path_text: str) -> Path:
-    path = Path(path_text)
-    if path.is_absolute():
-        return path
-    return package_root / path
-
-
-def panel_regression_command(package_root: Path, fixture: StandaloneTestBlueprint, site_dir: Path) -> list[str]:
-    return [
-        sys.executable,
-        str(_package_relative_path(package_root, fixture.panel_regression_script or "")),
-        "--site-dir",
-        str(site_dir),
-    ]
-
-
-def browser_test_command(
-    package_root: Path,
-    fixture: StandaloneTestBlueprint,
-    site_dir: Path,
-    pytest_args: list[str],
-) -> list[str]:
-    tests_path = _package_relative_path(package_root, fixture.browser_tests_path or "")
-    if shutil.which("uv") is not None:
-        command = [
-            "env",
-            "UV_CACHE_DIR=/tmp/verso-blueprint-uv-cache",
-            "uv",
-            "run",
-            "--project",
-            str(tests_path),
-            "--extra",
-            "test",
-            "python",
-            "-m",
-            "pytest",
-        ]
-    else:
-        command = [sys.executable, "-m", "pytest"]
-    return [
-        *command,
-        str(tests_path),
-        "-q",
-        "--browser",
-        "chromium",
-        "--site-dir",
-        str(site_dir),
-        *pytest_args,
-    ]
-
-
 def _subprocess_failure(step: str, err: subprocess.CalledProcessError) -> StepFailure:
     command = err.cmd
     if isinstance(command, (list, tuple)):
@@ -604,7 +553,7 @@ def validate_test_blueprint_outputs(
         if fixture.panel_regression_script is not None and not skip_panel_regression:
             failure = run_capturing_failure(
                 f"{fixture.slug} panel regression",
-                panel_regression_command(package_root, fixture, site_dir),
+                panel_regression_command(package_root, fixture.panel_regression_script or "", site_dir),
                 cwd=package_root,
             )
             if failure is not None:
@@ -615,7 +564,7 @@ def validate_test_blueprint_outputs(
         if fixture.browser_tests_path is not None and not skip_browser_tests:
             failure = run_capturing_failure(
                 f"{fixture.slug} browser tests",
-                browser_test_command(package_root, fixture, site_dir, pytest_args),
+                browser_test_command(package_root, fixture.browser_tests_path or "", site_dir, pytest_args),
                 cwd=package_root,
             )
             if failure is not None:
