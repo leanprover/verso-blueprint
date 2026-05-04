@@ -14,25 +14,6 @@ namespace Informal
 structure GroupBlockData where
   label : Data.Label
   header : String := ""
-deriving Inhabited, Lean.Quote
-
-instance : Lean.ToJson GroupBlockData where
-  toJson data := .arr #[Lean.ToJson.toJson data.label, Lean.ToJson.toJson data.header]
-
-instance : Lean.FromJson GroupBlockData where
-  fromJson? v := do
-    match v with
-    | .arr arr =>
-      let some label := arr[0]? | throw "expected group label"
-      let some header := arr[1]? | throw "expected group header"
-      return {
-        label := ← Lean.FromJson.fromJson? label
-        header := ← Lean.FromJson.fromJson? header
-      }
-    | _ =>
-      return {
-        label := ← v.getObjValAs? Data.Label "label"
-        header := ← v.getObjValAs? String "header"
-      }
+deriving Inhabited, Lean.FromJson, Lean.ToJson, Lean.Quote
 
 end Informal
