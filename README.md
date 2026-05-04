@@ -176,15 +176,16 @@ you want to enable it.
 
 ## Reference Blueprints
 
-The repository tracks a small starter template plus larger reference
-blueprints. The rendered catalog is published on GitHub Pages, and the
-maintainer-side source of truth for which projects belong to each release line
-is [`tests/harness/projects.json`](./tests/harness/projects.json).
+The repository also tracks larger reference blueprints.
 
-- [rendered reference blueprint index](https://leanprover.github.io/verso-blueprint/reference-blueprints/)
-- [project_template/](./project_template/)
-- [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron)
-- [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing)
+- [project_template/](./project_template/),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/project-template/)
+- [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/noperthedron/)
+- [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/spherepackingblueprint/)
+- [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/verso-flt/)
 
 ## Rendered Test Blueprints
 
