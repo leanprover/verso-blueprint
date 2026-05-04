@@ -86,6 +86,27 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #guard_msgs in
 #eval
   show IO Bool from do
+    let (out, st) ← renderManualDocHtmlStringAndState manualImpls externalDocstringDedupDoc
+    let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl
+    let previewObjects :=
+      match Informal.TraversalIndex.LeanCodePreviews.domain? st with
+      | some domain => domain.objects.toArray
+      | none => #[]
+    let previewData? := previewObjects[0]?.map fun (_key, obj) => obj.data.compress
+    pure (
+      countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 2 &&
+      previewObjects.size == 1 &&
+      match previewData? with
+      | some previewData =>
+        hasSubstr previewData "External declaration docstring dedup marker"
+      | none => false
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls proofFallbackSummaryDoc
     let label := Lean.Name.mkSimple "thm:preview.proof_fallback"
     let proofKey := PreviewCache.key label .proof

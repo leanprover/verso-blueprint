@@ -110,6 +110,22 @@ Statement with an associated Lean declaration link in the summary.
 {blueprint_summary}
 :::::::
 
+/-- External declaration docstring dedup marker for repeated preview refs. -/
+def externalDocstringDedupDecl : Nat := 0
+
+#docs (Genre.Manual) externalDocstringDedupDoc "External Docstring Dedup Wiring" :=
+:::::::
+:::definition "def:external.docstring.one" (lean := "Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl")
+First statement with a repeated external declaration preview target.
+:::
+
+:::definition "def:external.docstring.two" (lean := "Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl")
+Second statement with the same external declaration preview target.
+:::
+
+{blueprint_summary}
+:::::::
+
 #docs (Genre.Manual) proofFallbackSummaryDoc "Blueprint Proof Fallback Summary Wiring" :=
 :::::::
 :::theorem "thm:preview.proof_fallback"

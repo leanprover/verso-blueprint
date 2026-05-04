@@ -42,7 +42,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         !hasSubstr usedByJs "fallbackTemplates" &&
         hasSubstr usedByJs "const initialItem = items.find(function (item) {" &&
         hasSubstr usedByJs "item.classList.contains(\"bp_used_by_item_active\")" &&
-        hasSubstr usedByJs "activate(initialItem, { openWrap: false })" &&
+        hasSubstr usedByJs "function loadActivePreview()" &&
+        hasSubstr usedByJs "selectItem(initialItem)" &&
+        !hasSubstr usedByJs "activate(initialItem, { openWrap: false })" &&
         hasSubstr usedByJs "item.addEventListener(\"mouseenter\"" &&
         hasSubstr usedByJs "item.addEventListener(\"focusin\""
       | none => false
@@ -91,7 +93,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       | some usedByJs =>
         hasSubstr usedByJs "function bindUsedByPanel(panel)" &&
         hasSubstr usedByJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
-        hasSubstr usedByJs "activate(initialItem, { openWrap: false })"
+        hasSubstr usedByJs "selectItem(initialItem)" &&
+        !hasSubstr usedByJs "activate(initialItem, { openWrap: false })"
       | none => false
     )
 

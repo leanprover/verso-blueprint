@@ -1370,12 +1370,41 @@ def usedByPanelJs : String := r##"(function () {
       }
     }
 
-    function openWrap() {
+    function activeItem() {
+      return items.find(function (item) {
+        return item instanceof Element && item.classList.contains("bp_used_by_item_active");
+      }) || items[0] || null;
+    }
+
+    function selectItem(item) {
+      if (!(item instanceof Element)) return;
+      const itemTitle = (item.getAttribute("data-bp-used-preview-title") || "").trim() || defaultTitle;
+      items.forEach(function (other) {
+        if (other instanceof Element) {
+          other.classList.toggle("bp_used_by_item_active", other === item);
+        }
+      });
+      title.textContent = itemTitle;
+      body.innerHTML = "";
+    }
+
+    function loadActivePreview() {
+      const item = activeItem();
+      if (item instanceof Element) {
+        activate(item, { openWrap: false });
+      }
+    }
+
+    function openWrap(options) {
+      const opts = options && typeof options === "object" ? options : {};
       cancelClose();
       if (wrap instanceof Element) {
         wrap.classList.add("bp_used_by_wrap_open");
       }
       setExpanded(true);
+      if (opts.loadPreview !== false) {
+        loadActivePreview();
+      }
     }
 
     function closeWrap() {
@@ -1403,16 +1432,11 @@ def usedByPanelJs : String := r##"(function () {
       const previewKey = (item.getAttribute("data-bp-used-preview-key") || "").trim();
       const itemTitle = (item.getAttribute("data-bp-used-preview-title") || "").trim() || defaultTitle;
       const requestToken = ++activateRequestToken;
-      if (opts.openWrap !== false) {
-        openWrap();
-      }
-      items.forEach(function (other) {
-        if (other instanceof Element) {
-          other.classList.toggle("bp_used_by_item_active", other === item);
-        }
-      });
-      title.textContent = itemTitle;
+      selectItem(item);
       body.innerHTML = loadingPreviewHtml();
+      if (opts.openWrap !== false) {
+        openWrap({ loadPreview: false });
+      }
       if (
         !previewKey ||
         !previewUtils ||
@@ -1460,7 +1484,7 @@ def usedByPanelJs : String := r##"(function () {
       return item instanceof Element && item.classList.contains("bp_used_by_item_active");
     }) || items[0];
     if (initialItem instanceof Element) {
-      activate(initialItem, { openWrap: false });
+      selectItem(initialItem);
     }
 
     if (wrap instanceof Element && chip instanceof Element) {
@@ -1486,7 +1510,11 @@ def usedByPanelJs : String := r##"(function () {
         ev.stopPropagation();
         cancelClose();
         wrap.classList.toggle("bp_used_by_wrap_open");
-        setExpanded(wrap.classList.contains("bp_used_by_wrap_open"));
+        const expanded = wrap.classList.contains("bp_used_by_wrap_open");
+        setExpanded(expanded);
+        if (expanded) {
+          loadActivePreview();
+        }
       });
       panel.addEventListener("click", function (ev) {
         ev.stopPropagation();

@@ -331,6 +331,22 @@ def previewHoverUtilsJs : String := r##"(function () {
     return "-verso-data/blueprint-preview-manifest.json";
   }
 
+  function fetchSharedPreviewManifestJson(url) {
+    return fetch(url).then(function (resp) {
+      if (!resp.ok) {
+        throw new Error("HTTP " + resp.status + " while loading " + url);
+      }
+      return resp.json();
+    });
+  }
+
+  function fetchSharedPreviewManifestData() {
+    const jsonUrl = sharedPreviewManifestUrl();
+    return fetchSharedPreviewManifestJson(jsonUrl).then(function (data) {
+      return { data: data, url: jsonUrl };
+    });
+  }
+
   function loadSharedPreviewManifest() {
     if (window.bpSharedPreviewManifest instanceof Map) {
       return Promise.resolve(window.bpSharedPreviewManifest);
@@ -350,20 +366,14 @@ def previewHoverUtilsJs : String := r##"(function () {
       entryCount: 0
     });
     let promise = null;
-    promise = fetch(url)
-      .then(function (resp) {
-        if (!resp.ok) {
-          throw new Error("HTTP " + resp.status + " while loading " + url);
-        }
-        return resp.json();
-      })
-      .then(function (data) {
-        const map = decodeSharedPreviewManifest(data);
+    promise = fetchSharedPreviewManifestData()
+      .then(function (result) {
+        const map = decodeSharedPreviewManifest(result.data);
         window.bpSharedPreviewManifest = map;
         setSharedPreviewManifestStatus({
           state: "ready",
           attempts: attempts,
-          url: url,
+          url: result.url,
           lastError: "",
           entryCount: map.size
         });
