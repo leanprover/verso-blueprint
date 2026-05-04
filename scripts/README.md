@@ -13,268 +13,57 @@ intentionally narrower: it tells you which files under `scripts/` are normal
 entry points, which ones are implementation details, and where to look next
 for the full workflow.
 
-## Start Here
+## Workflow Entry Points
 
-The normal repository-facing entry points are:
+Use the shell wrappers for day-to-day maintenance:
+
+- `./scripts/validate-branch.sh`
+  Full pre-merge validation: Lean tests, harness tests, reference blueprints,
+  test blueprints, and configured regressions.
+- `./scripts/generate-review-artifacts.sh`
+  The usual artifact set for patch review: full reference catalog plus all or
+  selected local test blueprints.
+- `./scripts/generate-reference-blueprints.sh`
+  Rebuild the release-selected reference catalog.
+- `./scripts/generate-test-blueprints.sh`
+  Rebuild local HTML-producing test fixtures.
+- `./scripts/validate-reference-blueprints.sh`
+  Rebuild and validate reference projects.
+- `./scripts/validate-test-blueprints.sh`
+  Rebuild and validate local test-blueprint fixtures.
+
+Use the Python CLIs when you need selection, status, lifecycle, or worktree
+operations:
 
 ```bash
-./scripts/generate-review-artifacts.sh
-./scripts/generate-reference-blueprints.sh
-./scripts/generate-test-blueprints.sh
-./scripts/validate-test-blueprints.sh
-./scripts/validate-branch.sh
-./scripts/validate-reference-blueprints.sh
 python3 -m scripts.blueprint_harness --help
 python3 -m scripts.blueprint_reference_harness --help
+python3 -m scripts.blueprint_test_blueprints --help
 ```
 
-If you are starting new implementation work, create a linked worktree through
-the harness:
+Common starting points:
 
 ```bash
 python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock --priority P1 --summary "short description"
-```
-
-That command is intentionally heavyweight by default: it creates the git
-worktree, syncs the root checkout's `.lake/`, and warms the reference blueprint
-clones used by the current checkout. The new worktree defaults to the preferred
-active release ref such as `origin/v4.29.0`. If you only want the linked
-checkout itself, use:
-
-```bash
-python3 -m scripts.blueprint_harness create-worktree <name> --lightweight
-```
-
-If you want to verify that the active local release branch is still in sync
-with the preferred release ref before branching or landing, use:
-
-```bash
-python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness release-status --require-sync
-python3 -m scripts.blueprint_harness prepare-pr
-python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
-python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
-python3 -m scripts.blueprint_harness require-branch-role default_dev
-```
-
-`require-branch-role default_dev` is the explicit machine check for
-automation that must refuse non-backport work on backport-only release lines.
-
-`prepare-pr` prints a public draft PR title/body scaffold for the current
-default-dev work. It includes the public `leanprover/verso-blueprint`
-repository, base/head branches, and required backport lines while keeping local
-worktree bookkeeping out of the public body. The scaffold is reviewer-oriented:
-start with a short `This PR ...` paragraph suitable as the squash-merge commit
-body, then list only the main changes needed for review and avoid routine
-validation transcripts that CI already records.
-
-`prepare-backports` prints only the `Backport ...` lines for an existing draft
-default-dev PR body. Draft PRs may keep those lines as `pending`; before ready
-for review, replace each `pending` entry with `#<pr>` or `exempt: <reason>`.
-
-`prepare-backport-pr` prints a standardized paired backport branch name, PR
-title, local apply plan, and public PR body scaffold that points review back to
-the default-dev PR and limits the paired PR to release-line-specific deltas.
-
-With `--all-required`, it emits one scaffold block per required release plus
-the exact `git cherry-pick -x ...` commit series an agent should apply while
-resolving conflicts release by release.
-
-Paired backport branches themselves should be created with `git cherry-pick -x`.
-The paired-backport check validates both the recorded source SHAs and the patch
-IDs of the resulting commit series.
-
-To land one reviewed branch onto the active release branch from the root
-checkout, use:
-
-```bash
-python3 -m scripts.blueprint_harness land-release feat/some-branch
-python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
-```
-
-From a linked worktree, do not treat `lake build` or `lake test` as the
-default next step. Ordinary `generate` and `validate` runs reuse the current
-worktree `.lake/`; they do not automatically resync it from the root checkout.
-
-The harness now proactively refreshes the owner-module mtimes for embedded
-package assets such as `graph.css`, `graph.js`, `summary.css`,
-`bibliography.css`, and `static-web/math.js` before generator builds run, and
-also removes the owner modules' cached build outputs before running a targeted
-root `lake build` for those owning modules. This keeps
-downstream generated sites from silently serving stale embedded assets when
-only the asset files changed.
-
-If you want to refresh the worktree from the root checkout and shared reference
-cache, prefer:
-
-```bash
-python3 -m scripts.blueprint_harness sync-root-lake
-python3 -m scripts.blueprint_reference_harness sync
-```
-
-If you want to bump the package Lean toolchain and pin the matching `verso`
-release in the root package plus the tracked in-repo fixtures, use:
-
-```bash
-python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
-python3 -m scripts.blueprint_harness bump-toolchain 4.29.0 --skip-validation
-python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --verso-ref v4.29.0
-```
-
-That command:
-
-- rewrites the managed `lean-toolchain` files
-- rewrites the managed `require verso from git ...` pins to the matching
-  release tag
-- refreshes the committed `lake-manifest.json` files for the root package,
-  `project_template`, and `tests/test_blueprints/preview_runtime_showcase/`
-- runs the standard build/test validation set unless you pass
-  `--skip-validation`
-
-For rendering and browser regressions, prefer the in-repo test blueprints under
-`tests/test_blueprints/` over the external reference blueprints. The default
-browser suite now builds and serves
-`tests/test_blueprints/preview_runtime_showcase/` when you run:
-
-```bash
-uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
-```
-
-Use `./scripts/validate-test-blueprints.sh` when you want the local panel and
-browser regressions against generated test-blueprint output. Run
-`python3 -m scripts.blueprint_test_blueprints validate --help` for the canonical
-local validation flag surface.
-
-The generated `_out/test-blueprints/` tree has a directory page and individual
-sites:
-
-- `_out/test-blueprints/index.html` is the catalog for all local HTML-producing
-  test fixtures
-- `_out/test-blueprints/preview_runtime_showcase/` is one standalone entry in
-  that catalog, focused on browser/runtime regression coverage
-
-Use `./scripts/generate-review-artifacts.sh` when you want the local artifact
-set that is most useful during patch review:
-
-```bash
-./scripts/generate-review-artifacts.sh
-./scripts/generate-review-artifacts.sh preview_runtime_showcase summary-blockers
-```
-
-That command always rebuilds the full reference blueprint catalog under
-`_out/.../reference-blueprints/`. By default it also rebuilds all local test
-blueprints under `_out/.../test-blueprints/`; when you pass slugs, it narrows
-only the test-blueprint side.
-
-The local HTML fixture metadata now comes from two sources that are unified by
-the generator:
-
-- curated doc fixtures in
-  `tests/VersoBlueprintTests/TestBlueprintRegistry.lean`
-- standalone test package fixtures in `tests/harness/test_blueprints.json`
-
-The shared primary-category vocabulary also lives in
-`tests/harness/test_blueprints.json`. Individual fixtures add optional tags for
-cross-cutting topics that should show up in the generated test index without
-forcing more category sprawl.
-
-Use `./scripts/validate-branch.sh` as the canonical pre-merge check when you
-want all tests plus both artifact families rebuilt:
-
-```bash
-./scripts/validate-branch.sh
-```
-
-That command runs Lean tests, the Python harness/unit tests, regenerates
-`_out/reference-blueprints/`, regenerates `_out/test-blueprints/`, and then
-runs the local panel/browser regressions.
-
-The shared reference cache remains responsible for warmed external-project
-dependency state, including project-specific Mathlib builds.
-
-Use `worktree-list` as the local dashboard for parallel work. It combines the
-small manual records under `.worktrees/_meta/` with live Git state such as the
-current branch, dirty status, and commit distance from the active release
-branch. `worktree-list`
-already refreshes that metadata before printing; `worktree-sync` remains only
-as a compatibility alias for the same dashboard command. Locked worktrees are
-the ones another active session should not touch.
-
-When you run `generate`, `validate`, or `sync` from the root checkout while it
-is on the active release branch, the reference CLI expects that checkout to
-stay clean and in sync. Use `--allow-unsafe-root-release` only as an explicit
-maintainer override.
-
-The reference project manifest now declares explicit release targets and
-per-project compatibility entries in
-[`tests/harness/projects.json`](../tests/harness/projects.json). By default the
-reference CLI resolves the current checkout's release line and only touches the
-reference projects that declare a target for that release. You can inspect a
-specific declared release with:
-
-```bash
-python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
-python3 -m scripts.blueprint_reference_harness status --release v4.29.0
-python3 -m scripts.blueprint_reference_harness release-status
-python3 -m scripts.blueprint_reference_harness release-status --outdated-only
-```
-
-`release-status` is the summary/drift view for the release-target catalog. It
-shows which reference blueprints belong to each release line and can narrow to
-stale entries with `--outdated-only`. Treat that command and
-`tests/harness/projects.json` as the canonical project/release map instead of
-copying the current list into docs.
-
-Reference blueprint deployment is release-sliced:
-
-- `generate`, `validate`, and `sync` only operate on the current checkout's
-  release slice
-- the branch-local CI artifact for `reference-blueprints.yml` only includes the
-  selected release slice for that branch
-- the Pages deployment workflow rebuilds every release target with
-  `deploy_pages: true` and assembles one combined site under
-  `reference-blueprints/<release-id>/<project-id>/`
-
-`generate`, `validate`, and `sync` refuse to run a different release target
-from the wrong checkout; switch to the corresponding release branch first.
-
-If you want to make manual changes in one external reference blueprint repo,
-use a separate editable clone instead of the disposable validation clones:
-
-```bash
+python3 -m scripts.blueprint_harness paths
 python3 -m scripts.blueprint_reference_harness projects
-python3 -m scripts.blueprint_reference_harness edit <project-id>
-python3 -m scripts.blueprint_reference_harness edit <project-id> --branch feat/update-figures
+python3 -m scripts.blueprint_reference_harness status
+python3 -m scripts.blueprint_reference_harness sync
+python3 -m scripts.blueprint_test_blueprints list-json
 ```
 
-If you want to bump the pinned `VersoBlueprint` ref in those downstream repos
-from this checkout, use the dedicated editable-clone workflow:
+Reference blueprints and test blueprints are distinct artifact families:
 
-```bash
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref v1.2.3
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --generate --commit
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --commit --push
-```
+- reference blueprints are the release-facing validation catalog selected from
+  [`tests/harness/projects.json`](../tests/harness/projects.json)
+- test blueprints are local rendering/browser fixtures selected from
+  [`tests/VersoBlueprintTests/TestBlueprintRegistry.lean`](../tests/VersoBlueprintTests/TestBlueprintRegistry.lean)
+  and [`tests/harness/test_blueprints.json`](../tests/harness/test_blueprints.json)
 
-That command:
-
-- reuses or creates the editable checkout under `.worktrees/_reference-blueprints/edit/...`
-- rewrites the downstream `VersoBlueprint` git pin in `lakefile.lean`
-- runs the same manifest-aware `lake update VersoBlueprint` policy the harness
-  already uses for validation checkouts
-- builds the downstream project by default unless you pass `--skip-build`
-- optionally renders review output under `_out/.../reference-blueprints-edit/`
-- keeps commit and push as explicit opt-ins
-
-Use `./scripts/lean-low-priority ...` for long `lake`, `lean`, and
-`.lake/build/bin/*` commands when you intentionally run them.
-
-For non-default harness flows such as project selection, forwarded pytest
-arguments, opt-in Lean tests, or `--allow-local-build`, defer to
-[`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md) or
-`python3 -m scripts.blueprint_harness --help` rather than treating this README
-as the full command reference.
+The maintainer workflow, release policy, and Pages behavior live in
+[`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md). Keep this README as a
+script map, not a second command reference.
 
 ## What Lives Here
 
@@ -298,8 +87,10 @@ as the full command reference.
   Worktree, branch-landing, and coordination CLI.
 - `blueprint_reference_harness.py`
   Reference-blueprint generation, validation, and reference-checkout CLI.
+- `blueprint_test_blueprints.py`
+  Local test-blueprint fixture catalog, generation, and validation CLI.
 - `blueprint_harness_cli.py`
-  Shared argparse helper functions used by both CLIs.
+  Shared argparse helper functions used by the harness CLIs.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json).
@@ -308,6 +99,8 @@ as the full command reference.
   warm-up, and prune helpers shared by the reference CLI.
 - `blueprint_harness_utils.py`
   Shared process-launch helpers used by the harness modules.
+- `blueprint_harness_validation.py`
+  Shared panel/browser regression command builders.
 - `blueprint_harness_paths.py`
   Worktree-aware path resolution for `_out/` and reference-blueprint
   directories.

@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-03-24
+Last updated: 2026-05-04
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its
@@ -27,328 +27,196 @@ Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md).
 This is a maintainer document for this repository. It is not the end-user guide
 for starting a Blueprint project or learning every Blueprint directive.
 
-## Current Command Surface
-
-The supported repository-local entry points are:
-
-```bash
-./scripts/generate-review-artifacts.sh
-./scripts/generate-reference-blueprints.sh
-./scripts/validate-reference-blueprints.sh
-python3 -m scripts.blueprint_harness create-worktree <name>
-python3 -m scripts.blueprint_harness land-release <source-ref>
-python3 -m scripts.blueprint_harness release-status
-python3 -m scripts.blueprint_harness --help
-python3 -m scripts.blueprint_reference_harness generate
-python3 -m scripts.blueprint_reference_harness validate
-python3 -m scripts.blueprint_reference_harness projects
-python3 -m scripts.blueprint_reference_harness status
-python3 -m scripts.blueprint_reference_harness edit <project>
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref <ref>
-python3 -m scripts.blueprint_reference_harness sync
-python3 -m scripts.blueprint_reference_harness prune
-python3 -m scripts.blueprint_reference_harness --help
-python3 -m scripts.blueprint_harness paths
-python3 -m scripts.blueprint_harness sync-root-lake
-python3 -m scripts.blueprint_harness worktree-list
-python3 -m scripts.blueprint_harness worktree-claim
-python3 -m scripts.blueprint_harness worktree-status
-python3 -m scripts.blueprint_harness worktree-release
-python3 -m scripts.blueprint_harness worktree-prune-candidates
-python3 -m scripts.blueprint_harness worktree-retire
-```
+## Command Model
 
 The shell wrappers are the normal front door for day-to-day work. The Python
-modules are the single source of truth for orchestration and path resolution:
-`blueprint_harness.py` for worktree and landing flows, and
-`blueprint_reference_harness.py` for reference-project lifecycle flows.
+modules are the canonical source for flags, path resolution, and orchestration:
 
-Rule of thumb:
+- `blueprint_harness` handles worktrees, branch/release checks, PR scaffolds,
+  landing, toolchain bumps, and local coordination
+- `blueprint_reference_harness` handles reference-project generation,
+  validation, status, sync, editable checkouts, pin bumps, and pruning
+- `blueprint_test_blueprints` handles local test-blueprint listing,
+  generation, and validation
 
-- if the task is about linked worktrees, the active root release branch, or
-  local coordination, use `blueprint_harness`
-- if the task is about building, validating, syncing, editing, or pruning the
-  reference projects, use `blueprint_reference_harness`
+Start from the help text instead of copying flag lists into docs:
 
-The default reference project catalog lives at `tests/harness/projects.json`.
-It is the source of truth for the in-repo starter project, external reference
-blueprint repositories, release compatibility, and future ephemeral GitHub
-checkout validations.
+```bash
+python3 -m scripts.blueprint_harness --help
+python3 -m scripts.blueprint_reference_harness --help
+python3 -m scripts.blueprint_test_blueprints --help
+```
 
-That manifest is now release-aware. It declares top-level `release_targets`
-for supported Lean / `verso` lines and per-project `targets` keyed by release
-id. The reference harness resolves one concrete release target first and then
-selects only the projects that declare compatibility entries for that target.
+The two generated artifact families serve different purposes:
 
-The local test blueprint metadata is intentionally separate:
-
-- curated doc-backed fixtures live in
-  `tests/VersoBlueprintTests/TestBlueprintRegistry.lean`
-- standalone test package fixtures live in
+- reference blueprints are the release-facing validation catalog declared in
+  `tests/harness/projects.json`
+- test blueprints are local rendering and browser-regression fixtures declared
+  in `tests/VersoBlueprintTests/TestBlueprintRegistry.lean` and
   `tests/harness/test_blueprints.json`
 
-The shared primary-category vocabulary for all local HTML test fixtures also
-lives in `tests/harness/test_blueprints.json`. Curated docs and standalone
-fixtures both attach optional tags for cross-cutting coverage.
+Reference-project commands resolve the current checkout's release line by
+default. `generate`, `validate`, and `sync` require a matching checkout release
+line; switch branches instead of forcing a different release target.
 
 ## Everyday Workflows
 
-### Generate the Reference Blueprints
+### Start Implementation Work
+
+Create implementation work in a linked worktree and keep the root checkout as
+the stable base:
 
 ```bash
-./scripts/generate-reference-blueprints.sh
+python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock --priority P1 --summary "short description"
 ```
 
-This builds and renders the reference projects selected by the current
-checkout's release line. Inspect the active selection with:
+Before non-backport work, check the branch role and release sync state:
 
 ```bash
-python3 -m scripts.blueprint_reference_harness projects
+python3 -m scripts.blueprint_harness release-status --require-sync
+python3 -m scripts.blueprint_harness require-branch-role default_dev
 ```
 
-### Generate the Test Blueprints
+### Validate a Branch
+
+For the full pre-merge check, run:
 
 ```bash
-./scripts/generate-test-blueprints.sh
+./scripts/validate-branch.sh
 ```
 
-This builds the local inspection fixtures under `_out/test-blueprints/`,
-including:
+That command runs Lean tests, Python harness tests, reference blueprint
+generation, test-blueprint generation, and configured panel/browser
+regressions.
 
-- the curated test-doc sites emitted by `lake exe blueprint-test-docs`
-- the standalone `preview_runtime_showcase` browser-regression site
+For rendering-specific changes, use a cheaper progression first:
 
-The output root has two layers:
+```bash
+scripts/lean-low-priority lake test
+./scripts/generate-test-blueprints.sh preview_runtime_showcase
+./scripts/validate-test-blueprints.sh --skip-generate
+```
 
-- `_out/test-blueprints/index.html` is the generated directory page for all
-  local HTML-producing test fixtures
-- `_out/test-blueprints/<slug>/` is one concrete rendered fixture site
+Use browser pytest directly only when the patch changes browser runtime or
+interaction behavior:
 
-`preview_runtime_showcase` is one such concrete site. It is listed from the
-directory page, but it is not itself the directory page.
-
-When you are browsing generated local artifacts, prefer opening the test
-blueprint index first and then drilling into a specific site such as
-`preview_runtime_showcase`.
-
-Metadata now comes from two sources that are unified at generation time:
-
-- curated doc-backed fixtures declared in
-  `tests/VersoBlueprintTests/TestBlueprintRegistry.lean`
-- standalone test package fixtures declared in `tests/harness/test_blueprints.json`
-
-Each generated site carries one primary category from the shared vocabulary and
-optional tags for cross-cutting topics such as `preview`, `graph`, or
-`relationships`.
+```bash
+uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
+```
 
 ### Generate Review Artifacts
+
+For patch review artifacts without the full validation stack, run:
 
 ```bash
 ./scripts/generate-review-artifacts.sh
 ./scripts/generate-review-artifacts.sh preview_runtime_showcase summary-blockers
 ```
 
-Use this when you want the local artifact set that is most useful for patch
-review without running the full validation stack. This path:
+This always rebuilds the full reference catalog and rebuilds all local test
+blueprints unless you pass specific test-blueprint slugs.
 
-- always builds the full reference blueprint catalog under
-  `_out/.../reference-blueprints/`
-- builds all local test blueprints under `_out/.../test-blueprints/` when no
-  slugs are provided
-- lets you narrow only the test-blueprint side by passing one or more slugs
+### Work With Reference Blueprints
 
-## Rendering Validation
-
-When a patch touches code panels, summary status wiring, or preview-facing code
-render output, validate in layers instead of jumping straight to the heaviest
-browser path.
-
-Recommended order:
-
-1. Lean and string-shape tests:
-
-   ```bash
-   scripts/lean-low-priority lake test
-   ```
-
-   This catches most regressions in status logic, summary HTML generation, and
-   focused render-matrix tests without generating sites.
-
-2. Regenerate the smallest real showcase that exercises code panels:
-
-   ```bash
-   ./scripts/generate-test-blueprints.sh preview_runtime_showcase
-   ```
-
-   This validates the real Verso render path and writes the output under
-   `_out/.../test-blueprints/preview_runtime_showcase/`.
-
-3. Run the static showcase regression check:
-
-   ```bash
-   python3 tests/harness/preview_runtime_showcase/check_blueprint_code_panels.py \
-     --site-dir _out/test-blueprints/preview_runtime_showcase/html-multi
-   ```
-
-   In a linked worktree, use the worktree-specific output root instead, for
-   example `_out/<worktree>/test-blueprints/preview_runtime_showcase/html-multi`.
-
-Only move on to the browser pytest layer when the change actually affects the
-shared browser runtime or interaction behavior. Pure Lean-side render/status
-changes should usually be covered by the three steps above.
-
-### Validate the Test Blueprints
+Inspect the active reference catalog before generating or validating:
 
 ```bash
-./scripts/validate-test-blueprints.sh
+python3 -m scripts.blueprint_reference_harness projects
+python3 -m scripts.blueprint_reference_harness status
+python3 -m scripts.blueprint_reference_harness release-status
 ```
 
-This path:
-
-- generates the local test blueprint fixtures
-- runs the configured standalone panel/browser regressions from
-  `tests/harness/test_blueprints.json`
-
-### Branch Validation
+Build or validate the release-selected catalog:
 
 ```bash
-./scripts/validate-branch.sh
+./scripts/generate-reference-blueprints.sh
+./scripts/validate-reference-blueprints.sh
 ```
 
-This is the canonical pre-merge validation command for feature branches. It:
-
-- runs Lean tests
-- runs the Python harness/unit tests
-- builds the reference blueprints under `_out/reference-blueprints/`
-- builds the test blueprints under `_out/test-blueprints/`
-- runs the configured standalone panel/browser regressions
-
-Lean tests are intentionally opt-in:
-
-```bash
-./scripts/validate-reference-blueprints.sh --run-lean-tests
-```
-
-`validate-reference-blueprints.sh` remains available when you specifically want
-to rebuild the reference blueprint catalog. For day-to-day rendering and
-browser regression work, prefer the in-repo test blueprints instead of the
-external reference blueprints:
-
-```bash
-uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
-```
-
-That path builds and serves the default showcase under
-`tests/test_blueprints/preview_runtime_showcase/`. The reference blueprints are
-useful as release-facing artifacts, but the local test blueprint outputs are
-the primary rendering-development oracle.
-
-When you are browsing generated local artifacts, prefer opening the test
-blueprint index first and then drilling into a specific site such as
-`preview_runtime_showcase`.
-
-### Select Projects or Forward Test Flags
-
-The reference harness supports narrowing the catalog:
+Use `--project` on the Python CLI to narrow a reference command, and use the
+CLI help for the full flag surface:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness generate --project noperthedron
 python3 -m scripts.blueprint_reference_harness validate --project project-template --run-lean-tests
 ```
 
-For local fixture/browser filtering, pass pytest args through
-`validate-test-blueprints.sh` or `validate-branch.sh`:
+When editing an external reference repository, use an editable clone rather
+than the disposable validation clones:
 
 ```bash
+python3 -m scripts.blueprint_reference_harness edit <project-id>
+python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref <ref> --generate --commit
+```
+
+### Iterate on Test Blueprints
+
+Generate all local HTML-producing fixtures, or only selected slugs:
+
+```bash
+./scripts/generate-test-blueprints.sh
+./scripts/generate-test-blueprints.sh state-showcase summary-blockers
+```
+
+Validate local fixtures and forward pytest filters when needed:
+
+```bash
+./scripts/validate-test-blueprints.sh
 ./scripts/validate-test-blueprints.sh -k preview
-./scripts/validate-branch.sh -k preview
+./scripts/validate-test-blueprints.sh --pytest-arg=-k --pytest-arg preview
 ```
 
-Run `python3 -m scripts.blueprint_reference_harness --help` and
-`python3 -m scripts.blueprint_test_blueprints validate --help` for the canonical
-flag surfaces.
+The generated test-blueprint output has a browsable index:
 
-When you run the reference CLI from the root checkout while it is on the active
-release branch, it expects that checkout to stay clean and in sync with the
-preferred release ref. Use `--allow-unsafe-root-release` only as an explicit
-maintainer override on `generate`, `validate`, or `sync`.
+- `_out/test-blueprints/index.html`
+- `_out/test-blueprints/<slug>/`
 
-To inspect the active catalog:
+In a linked worktree, the same tree lives under `_out/<worktree>/test-blueprints/`.
+
+### Prepare or Land PRs
+
+Use the harness to generate public PR/backport scaffolds:
 
 ```bash
-python3 -m scripts.blueprint_reference_harness projects
-python3 -m scripts.blueprint_reference_harness status
-python3 -m scripts.blueprint_reference_harness release-status
-python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
-python3 -m scripts.blueprint_reference_harness release-status --release v4.28.0
-python3 -m scripts.blueprint_reference_harness release-status --outdated-only
-python3 -m scripts.blueprint_test_blueprints list-json
+python3 -m scripts.blueprint_harness prepare-pr
+python3 -m scripts.blueprint_harness prepare-backports
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
-`status` compares each external catalog pin against that project's upstream
-default branch and also compares the project's committed `VersoBlueprint` pin
-against this repository's current active release branch.
+Use `git cherry-pick -x` for paired backport branches so the paired-backport
+check can verify recorded source SHAs and patch IDs.
 
-`release-status` summarizes the declared release targets, reports which
-projects belong to each release line, and can filter down to stale targets with
-`--outdated-only`.
-
-`projects`, `status`, `generate`, `validate`, and `sync` all default to the
-current checkout's release line. `projects`, `status`, and `release-status` may
-inspect any declared release target with `--release ...`, but `generate`,
-`validate`, and `sync` require a matching checkout release line.
-
-Use `release-status` when you need the current catalog summary instead of
-copying project lists into this document:
+Land reviewed local work from the clean root checkout:
 
 ```bash
-python3 -m scripts.blueprint_reference_harness release-status
+python3 -m scripts.blueprint_harness land-release feat/some-branch
+python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
-To warm the shared reference blueprint cache and prepare local clones for the
-current checkout:
+### Maintain Toolchains and Caches
+
+Refresh a linked worktree from the root checkout and warm shared reference
+clones:
 
 ```bash
+python3 -m scripts.blueprint_harness sync-root-lake
 python3 -m scripts.blueprint_reference_harness sync
 ```
 
-To bump the package Lean toolchain and pin the matching `verso` release in the
-root package plus the tracked in-repo fixtures:
+Bump the Lean toolchain and matching `verso` pin through the harness:
 
 ```bash
 python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
-python3 -m scripts.blueprint_harness bump-toolchain 4.29.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --verso-ref v4.29.0
 ```
 
-That command rewrites the managed `lean-toolchain` and `require verso` pins,
-refreshes the committed manifests for the root package, `project_template`, and
-`tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
-build/test validation pass that maintainers would otherwise do manually. Pass
-`--verso-ref <tag>` only when the Lean toolchain ref and the upstream `verso`
-release tag need to differ.
-
-To remove stale harness-managed reference caches and orphaned local clones:
+Prune stale harness-managed reference caches and clones:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness prune --dry-run
 python3 -m scripts.blueprint_reference_harness prune
 ```
-
-To rewrite the pinned `VersoBlueprint` ref in one or more editable downstream
-reference clones from this checkout:
-
-```bash
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --ref v1.2.3
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --generate --commit
-python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <project-id> --ref v1.2.3 --commit --push
-```
-
-That command uses the editable-clone path rather than the disposable
-validation clones. It rewrites the downstream `VersoBlueprint` git pin in
-`lakefile.lean`, runs the same manifest-aware `lake update VersoBlueprint`
-policy the harness already uses elsewhere, builds the downstream project by
-default, optionally renders review output under
-`_out/.../reference-blueprints-edit/`, and keeps commit/push steps explicit.
 
 ## Output Layout
 
@@ -375,19 +243,22 @@ locations used by the harness.
 It also prints the shared reference blueprint cache root and the current
 checkout's local clone root.
 
-To generate the curated test-blueprint site fixture, run:
+To generate local test-blueprint fixtures, run:
 
 ```bash
 ./scripts/generate-test-blueprints.sh
 ```
 
-By default that renders all curated test-blueprint sites under the current
+By default that renders all local test-blueprint sites under the current
 checkout's worktree-aware `test-blueprints/` output root. Pass one or more
-slugs to render only a subset, for example:
+slugs to render only a subset:
 
 ```bash
 ./scripts/generate-test-blueprints.sh state-showcase summary-blockers
 ```
+
+Use `python3 -m scripts.blueprint_test_blueprints list-json` when you need the
+current slug list and metadata.
 
 ## Working from Linked Worktrees
 
