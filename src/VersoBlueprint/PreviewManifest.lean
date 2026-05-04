@@ -260,20 +260,14 @@ private def highlightedDocstringInnerTextRead : String :=
 private def highlightedDocstringTextContentRead : String :=
   "const str = d.textContent || \"\";"
 
-private def patchHighlightedDocstringStartupHtml (html : String) : Option String :=
-  let patched := html.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead
-  if patched == html then none else some patched
+private def patchHighlightedDocstringStartupJs (js : JS) : JS :=
+  { js with js := js.js.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead }
 
-private partial def patchHighlightedDocstringStartup (outDir : System.FilePath) : IO Unit := do
-  if !(← outDir.pathExists) then
-    return
-  if ← outDir.isDir then
-    for entry in ← outDir.readDir do
-      patchHighlightedDocstringStartup entry.path
-  else if outDir.extension == "html" then
-    let html ← IO.FS.readFile outDir
-    if let some patched := patchHighlightedDocstringStartupHtml html then
-      IO.FS.writeFile outDir patched
+private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
+  { assets with extraJs := Std.HashSet.ofArray <| assets.extraJs.toArray.map patchHighlightedDocstringStartupJs }
+
+private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
+  state.modifyHtmlAssets patchBlueprintHtmlAssets
 
 def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
     (state : TraverseState) : IO Unit := do
@@ -511,7 +505,6 @@ def emitSharedPreviewManifest (extensionImpls : ExtensionImpls) : ExtraStep := f
   let json := (toJson file).compress
   IO.FS.writeFile (dataDir / manifestFilename) json
   emitPublicXref mode logError cfg state
-  patchHighlightedDocstringStartup outDir
 
 def dumpSchemaFlag : String := "--dump-schema"
 def dumpManifestFlag : String := "--dump-manifest"
@@ -560,6 +553,75 @@ def handleCliFlags
   else
     handleDumpSchemaFlag options
 
+def blueprintMain (text : Part Manual)
+    (extensionImpls : ExtensionImpls := by exact extension_impls%)
+    (options : List String)
+    (config : RenderConfig := {})
+    (extraSteps : List ExtraStep := []) : IO UInt32 :=
+  ReaderT.run go extensionImpls
+where
+  modeOutputDir : Mode → String
+    | .single => "html-single"
+    | .multi => "html-multi"
+
+  go : ReaderT ExtensionImpls IO UInt32 := do
+    let errorCount : IO.Ref Nat ← IO.mkRef 0
+    let logError msg := do
+      errorCount.modify (· + 1)
+      IO.eprintln msg
+    let cfg ← parseRenderConfigOptions config options
+
+    if cfg.emitTeX then
+      if cfg.verbose then
+        IO.println "Saving TeX"
+      emitTeX logError cfg.toConfig text
+
+    emitHtml cfg.emitHtmlSingle .single logError cfg text traverseHtmlSingle emitHtmlSingle
+    emitHtml cfg.emitHtmlMulti .multi logError cfg text traverseHtmlMulti emitHtmlMulti
+
+    if let some wcFile := cfg.wordCount then
+      if cfg.verbose then
+        IO.println s!"Saving word counts to {wcFile}"
+      wordCount wcFile logError cfg.toConfig text
+
+    match ← errorCount.get with
+    | 0 => return 0
+    | 1 =>
+        IO.eprintln "An error was encountered!"
+        return 1
+    | n =>
+        IO.eprintln s!"{n} errors were encountered!"
+        return 1
+
+  emitHtml
+      (how : EmitHtml) (mode : Mode) (logError : String → IO Unit) (cfg : RenderConfig) (text : Part Manual)
+      (traverse : (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState))
+      (emit : (String → IO Unit) → RenderConfig → Part Manual → TraverseState → ReaderT ExtensionImpls IO Unit) :
+      ReaderT ExtensionImpls IO Unit := do
+    let outDir := modeOutputDir mode
+    match how with
+    | .no => pure ()
+    | .immediately =>
+        if cfg.verbose then
+          IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
+        let (text', traverseState) ← traverse logError cfg text
+        let traverseState := patchBlueprintTraverseState traverseState
+        emitXrefsJson (cfg.destination / outDir) traverseState
+        emit logError cfg text' traverseState
+        for step in extraSteps do
+          step mode logError cfg.toConfig traverseState text'
+    | .delay f =>
+        let (text', traverseState) ← traverse logError cfg text
+        let traverseState := patchBlueprintTraverseState traverseState
+        emitXrefsJson (cfg.destination / outDir) traverseState
+        SavedState.mk text' traverseState |>.save f
+    | .resumeFrom f =>
+        let { text, traverseState } ← SavedState.load f
+        let traverseState := patchBlueprintTraverseState traverseState
+        emit logError cfg text traverseState
+        for step in extraSteps do
+          step mode logError cfg.toConfig traverseState text
+
 def blueprintMainWithSharedPreviewManifest
     (text : Part Manual)
     (options : List String)
@@ -570,7 +632,7 @@ def blueprintMainWithSharedPreviewManifest
   let (dumped?, options) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
-  manualMain text (extensionImpls := extensionImpls) (options := options) (config := config)
+  blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
     (extraSteps := emitSharedPreviewManifest extensionImpls :: extraSteps)
 
 def manualMainWithSharedPreviewManifest
