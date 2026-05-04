@@ -49,6 +49,7 @@ from scripts.blueprint_harness_utils import (
     run,
     run_capturing_failure,
 )
+from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
 from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts
 
 
@@ -504,13 +505,6 @@ def lean_test_runner(package_root: Path) -> list[str]:
     return [str(package_root / "scripts" / "run-lean-tests.sh")]
 
 
-def resolve_repo_relative_path(package_root: Path, path_text: str) -> Path:
-    path = Path(path_text)
-    if path.is_absolute():
-        return path
-    return package_root / path
-
-
 def build_in_repo_projects(package_root: Path, projects: list[HarnessProject]) -> None:
     targets = [project.build_target for project in projects if project.build_target is not None]
     if targets:
@@ -610,45 +604,6 @@ def generate_projects(
         generate_git_project(layout, output_root, project, skip_build=skip_build)
 
 
-def panel_regression_command(package_root: Path, project: HarnessProject, site_dir: Path) -> list[str]:
-    return [
-        sys.executable,
-        str(resolve_repo_relative_path(package_root, project.panel_regression_script or "")),
-        "--site-dir",
-        str(site_dir),
-    ]
-
-
-def browser_test_command(package_root: Path, project: HarnessProject, site_dir: Path, pytest_args: list[str]) -> list[str]:
-    tests_path = resolve_repo_relative_path(package_root, project.browser_tests_path or "")
-    if shutil.which("uv"):
-        command = [
-            "env",
-            "UV_CACHE_DIR=/tmp/verso-blueprint-uv-cache",
-            "uv",
-            "run",
-            "--project",
-            str(tests_path),
-            "--extra",
-            "test",
-            "python",
-            "-m",
-            "pytest",
-        ]
-    else:
-        command = [sys.executable, "-m", "pytest"]
-    return [
-        *command,
-        str(tests_path),
-        "-q",
-        "--browser",
-        "chromium",
-        "--site-dir",
-        str(site_dir),
-        *pytest_args,
-    ]
-
-
 def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
@@ -743,7 +698,7 @@ def command_validate(args: argparse.Namespace) -> int:
         if project.panel_regression_script is not None and not args.skip_panel_regression:
             failure = run_capturing_failure(
                 f"{project.project_id} panel regression",
-                panel_regression_command(layout.package_root, project, site_dir),
+                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
                 cwd=layout.package_root,
             )
             if failure is not None:
@@ -754,7 +709,7 @@ def command_validate(args: argparse.Namespace) -> int:
         if project.browser_tests_path is not None and not args.skip_browser_tests:
             failure = run_capturing_failure(
                 f"{project.project_id} browser tests",
-                browser_test_command(layout.package_root, project, site_dir, args.pytest_arg),
+                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, args.pytest_arg),
                 cwd=layout.package_root,
             )
             if failure is not None:
