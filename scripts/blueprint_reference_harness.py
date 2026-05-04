@@ -18,6 +18,7 @@ from scripts.blueprint_harness_cli import (
     add_output_root_argument,
     add_project_selection_argument,
     add_serial_argument,
+    selected_output_root,
 )
 from scripts.blueprint_harness_paths import detect_harness_layout, resolve_output_root
 from scripts.blueprint_harness_projects import HarnessProject, resolve_manifest_path
@@ -607,7 +608,7 @@ def generate_projects(
 def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
-    output_root = resolve_output_root(args.output_root, Path(__file__))
+    output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     release_id, projects = select_release_projects(
@@ -638,7 +639,7 @@ def command_generate(args: argparse.Namespace) -> int:
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
-    output_root = resolve_output_root(args.output_root, Path(__file__))
+    output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     release_id, projects = select_release_projects(
@@ -1013,7 +1014,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_root_argument(generate)
     add_project_selection_argument(generate, help_text="Render only the selected project. Repeat to render more than one.")
     add_manifest_argument(generate)
-    generate.add_argument("--release", default=None, help="Release target to validate. Defaults to the current checkout release line.")
+    generate.add_argument("--release", default=None, help="Release target to generate. Defaults to the current checkout release line.")
     generate.add_argument(
         "--skip-build",
         action="store_true",

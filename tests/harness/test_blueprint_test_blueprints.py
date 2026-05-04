@@ -188,6 +188,26 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             },
         )
 
+    def test_validate_parser_combines_pytest_arg_and_passthrough_args(self) -> None:
+        parser = test_blueprints_mod.build_parser()
+        args, passthrough_args = parser.parse_known_args(
+            [
+                "validate",
+                "--pytest-arg=-k",
+                "--pytest-arg",
+                "preview",
+                "--",
+                "--maxfail=1",
+            ]
+        )
+
+        self.assertEqual(args.cmd, "validate")
+        self.assertEqual(args.pytest_arg, ["-k", "preview"])
+        self.assertEqual(
+            test_blueprints_mod._combined_pytest_args(args, passthrough_args),
+            ["-k", "preview", "--maxfail=1"],
+        )
+
     def test_render_test_blueprint_index_groups_entries_by_category(self) -> None:
         html = render_test_blueprint_index_html(
             ("Preview", "Runtime"),

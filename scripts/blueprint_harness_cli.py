@@ -4,7 +4,23 @@ import argparse
 
 
 def add_output_root_argument(command_parser: argparse.ArgumentParser) -> None:
-    command_parser.add_argument("output_root", nargs="?", default=None)
+    command_parser.add_argument(
+        "output_root",
+        nargs="?",
+        default=None,
+        help="Artifact output root. Defaults to the current checkout's harness output root.",
+    )
+    command_parser.add_argument(
+        "--output-root",
+        dest="output_root_option",
+        metavar="OUTPUT_ROOT",
+        default=None,
+        help="Artifact output root. Overrides the positional output_root argument.",
+    )
+
+
+def selected_output_root(args: argparse.Namespace) -> str | None:
+    return getattr(args, "output_root_option", None) or getattr(args, "output_root", None)
 
 
 def add_project_selection_argument(

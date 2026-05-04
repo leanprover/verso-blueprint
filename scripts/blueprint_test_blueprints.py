@@ -663,7 +663,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate test blueprints and run configured regressions.",
         description=(
             "Generate the in-repo test blueprint outputs, then run any configured standalone panel checks "
-            "and browser regression suites. Extra unknown arguments are forwarded to pytest."
+            "and browser regression suites. Use --pytest-arg or pass extra unknown arguments to forward "
+            "pytest filters and options."
         ),
     )
     validate.add_argument(
@@ -687,6 +688,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip configured Playwright browser regression suites.",
     )
     validate.add_argument(
+        "--pytest-arg",
+        action="append",
+        default=[],
+        help="Extra argument forwarded to pytest. Repeat for multiple arguments.",
+    )
+    validate.add_argument(
         "--stop-on-first-failure",
         action="store_true",
         help="Stop validation as soon as one phase fails instead of collecting later failures.",
@@ -698,6 +705,10 @@ def _pytest_passthrough_args(args: list[str]) -> list[str]:
     if args and args[0] == "--":
         return args[1:]
     return args
+
+
+def _combined_pytest_args(args: argparse.Namespace, passthrough_args: list[str]) -> list[str]:
+    return [*args.pytest_arg, *_pytest_passthrough_args(passthrough_args)]
 
 
 def main() -> int:
@@ -731,7 +742,7 @@ def main() -> int:
             category_order,
             fixtures,
             output_root,
-            _pytest_passthrough_args(unknown_args),
+            _combined_pytest_args(args, unknown_args),
             skip_generate=args.skip_generate,
             skip_panel_regression=args.skip_panel_regression,
             skip_browser_tests=args.skip_browser_tests,
