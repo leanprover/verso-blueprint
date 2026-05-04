@@ -24,12 +24,7 @@ fi
 
 ./scripts/run-lean-tests.sh
 
-python3 -m unittest \
-  tests.harness.test_blueprint_test_blueprints \
-  tests.harness.test_blueprint_harness_projects \
-  tests.harness.test_blueprint_harness_cli \
-  tests.harness.test_blueprint_harness_worktrees \
-  tests.harness.test_harness_entrypoints
+python3 -m unittest discover -s tests/harness -p 'test_*.py'
 
 ./scripts/generate-reference-blueprints.sh
 ./scripts/validate-test-blueprints.sh "$@"

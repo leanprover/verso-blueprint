@@ -89,7 +89,7 @@ jobs:
       - name: Run Python harness tests
         run: python3 -m unittest discover -s tests/harness -p 'test_*.py'
       - name: Check Python harness syntax
-        run: python3 -m py_compile scripts/blueprint_harness.py scripts/blueprint_reference_harness.py scripts/blueprint_harness_cli.py scripts/blueprint_harness_paths.py scripts/blueprint_harness_projects.py scripts/blueprint_harness_worktrees.py scripts/check_project_template_fresh_repo.py scripts/check_math_lint_fresh_repo.py scripts/check_backport_pr.py scripts/emit_reference_deploy_matrix.py scripts/prepare_reference_blueprints_pages.py
+        run: python3 -m compileall -q scripts
 
   project-template-fresh-repo:
     name: Project Template Fresh Repo
