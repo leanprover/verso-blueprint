@@ -138,6 +138,14 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.all_required)
         self.assertEqual(args.main_pr, 11)
 
+    def test_backport_label_for_release_uses_normalized_release_ref(self) -> None:
+        self.assertEqual(harness_mod.backport_label_for_release("v4.28.0"), "backport-v4.28.0")
+        self.assertEqual(
+            harness_mod.backport_label_for_release("leanprover/lean4:v4.28.0"),
+            "backport-v4.28.0",
+        )
+        self.assertEqual(harness_mod.backport_label_for_release("4.28.0"), "backport-v4.28.0")
+
     def test_bump_toolchain_parses_optional_flags(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["bump-toolchain", "4.29.0", "--verso-ref", "v4.29.0", "--skip-validation"])
@@ -507,10 +515,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("paired_worktree=backport-v428-backport-discipline", output)
         self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
         self.assertIn("paired_title=[backport v4.28.0] fix: require draft plans and base-aware retire", output)
+        self.assertIn("paired_label=backport-v4.28.0", output)
         self.assertIn("source_commits=abc123,def456", output)
         self.assertIn("git cherry-pick -x abc123 def456", output)
         self.assertIn("## PR Submission Guardrails", output)
         self.assertIn("Use the PR title and body below as the public backport PR metadata", output)
+        self.assertIn("Apply the release label `backport-v4.28.0`", output)
         self.assertIn("Keep review-facing discussion on the default-development PR", output)
         self.assertIn("Do not add routine validation transcripts to the backport PR body", output)
         self.assertIn("## PR Title\n[backport v4.28.0] fix: require draft plans and base-aware retire", output)
@@ -553,8 +563,10 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         output = out.getvalue()
         self.assertIn("backport_release=v4.28.0", output)
         self.assertIn("paired_branch=fix/backport-v428-backport-discipline", output)
+        self.assertIn("paired_label=backport-v4.28.0", output)
         self.assertIn("backport_release=v4.27.0", output)
         self.assertIn("paired_branch=fix/backport-v427-backport-discipline", output)
+        self.assertIn("paired_label=backport-v4.27.0", output)
         self.assertIn("\n---\n", output)
 
     def test_land_main_rejects_unsynced_main(self) -> None:

@@ -537,6 +537,12 @@ def release_marker(release_ref: str) -> str:
     return "v" + re.sub(r"[^A-Za-z0-9]+", "", normalized.removeprefix("v"))
 
 
+def backport_label_for_release(release_ref: str) -> str:
+    normalized = normalize_lean_release_ref(release_ref)
+    label_fragment = re.sub(r"[^A-Za-z0-9._-]+", "-", normalized).strip("-").lower()
+    return f"backport-{label_fragment or 'release'}"
+
+
 def slugify_backport_fragment(text: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", text.strip())
     cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-")
@@ -579,6 +585,7 @@ def print_prepare_backport_pr_scaffold(
     paired_branch = default_backport_branch_name(source_branch, backport_release)
     paired_worktree = default_backport_worktree_name(source_branch, backport_release)
     paired_title = f"[backport {backport_release}] {main_title}"
+    paired_label = backport_label_for_release(backport_release)
 
     print("## Local Backport Plan")
     print()
@@ -589,6 +596,7 @@ def print_prepare_backport_pr_scaffold(
     print(f"paired_worktree={paired_worktree}")
     print(f"paired_branch={paired_branch}")
     print(f"paired_title={paired_title}")
+    print(f"paired_label={paired_label}")
     print(f"source_commits={','.join(source_commits)}")
     print(f"base_ref=origin/{backport_release}")
     print()
@@ -605,6 +613,7 @@ def print_prepare_backport_pr_scaffold(
     print()
     print("## PR Submission Guardrails")
     print("- Use the PR title and body below as the public backport PR metadata.")
+    print(f"- Apply the release label `{paired_label}` to the paired backport PR.")
     print("- Keep review-facing discussion on the default-development PR unless this backport diverges.")
     print("- Do not add routine validation transcripts to the backport PR body; CI is the default validation record.")
     print()
