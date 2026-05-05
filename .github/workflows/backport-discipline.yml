@@ -13,8 +13,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  checks: read
-  statuses: read
 
 jobs:
   paired-backport:

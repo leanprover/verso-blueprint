@@ -125,7 +125,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--token",
         default=os.environ.get("GITHUB_TOKEN"),
-        help="GitHub token with read access to pull requests and checks. Defaults to GITHUB_TOKEN.",
+        help="GitHub token with read access to pull requests. Defaults to GITHUB_TOKEN.",
     )
     return parser.parse_args()
 
