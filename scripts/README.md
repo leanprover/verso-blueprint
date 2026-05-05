@@ -3,9 +3,12 @@
 This directory contains repository-local maintainer tooling for
 `verso-blueprint`.
 
-For package-facing usage, the preferred entry point is still
-`lake exe blueprint-gen`, not the Python harness here. Start with the
-top-level [`README.md`](../README.md) and [`doc/MANUAL.md`](../doc/MANUAL.md).
+For package-facing usage, use the project's Blueprint generator entry point,
+not the Python harness here. CI and Mathlib-heavy projects should prefer
+`lake env lean --run <GeneratorMain>.lean --output ...` after building the
+needed Lean library artifacts; `lake exe blueprint-gen` remains available for
+projects that want a compiled generator executable. Start with the top-level
+[`README.md`](../README.md) and [`doc/MANUAL.md`](../doc/MANUAL.md).
 
 For repository maintenance, the canonical workflow document is
 [`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md). This README is

@@ -45,6 +45,11 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             ("preview", "runtime", "browser", "graph", "summary", "relationships"),
         )
         self.assertEqual(fixture.project_root, "tests/test_blueprints/preview_runtime_showcase")
+        self.assertEqual(fixture.build_command, ("lake", "build", "PreviewRuntimeShowcase"))
+        self.assertEqual(
+            fixture.generate_command,
+            ("lake", "env", "lean", "--run", "PreviewRuntimeShowcaseMain.lean", "--output", "{output_dir}"),
+        )
         self.assertEqual(fixture.browser_tests_path, "tests/browser")
         self.assertEqual(
             fixture.panel_regression_script,

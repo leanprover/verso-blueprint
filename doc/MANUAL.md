@@ -20,7 +20,7 @@ If you are starting a first project, read
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
 - [Rendering Surface](#rendering-surface)
 - [Metadata Export and Preview Manifest](#metadata-export-and-preview-manifest)
-- [The Generator Executable](#the-generator-executable)
+- [The Generator Entry Point](#the-generator-entry-point)
 - [Blueprint Options](#blueprint-options)
 - [Experimental Widget](#experimental-widget)
 - [Current Limits](#current-limits)
@@ -31,7 +31,7 @@ A Blueprint project usually owns three things:
 
 - chapter modules containing the mathematical content
 - a Blueprint top-level file that assembles the document
-- a generator executable that renders the site
+- a generator entry point that renders the site
 
 The Blueprint top-level file is often called `Contents.lean` in existing
 projects, but the filename is not special. What matters is that one module
@@ -89,7 +89,7 @@ The role of each file is:
   intentionally unfinished open problem
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the renderer entry point
-- `lakefile.lean`: the package definition and the generator executable
+- `lakefile.lean`: the package definition and optional generator executable
 
 ## The Blueprint Top-Level File
 
@@ -555,12 +555,13 @@ for:
 - metadata export for other tools
 - inspection and debugging
 
-Useful inspection flags on a Blueprint executable:
+After building the relevant Lean targets, useful inspection flags on a
+Blueprint generator are:
 
 ```bash
-lake exe <generator> --dump-schema
-lake exe <generator> --dump-manifest
-lake exe <generator> --help
+lake env lean --run <GeneratorMain>.lean --dump-schema
+lake env lean --run <GeneratorMain>.lean --dump-manifest
+lake env lean --run <GeneratorMain>.lean --help
 ```
 
 - `--dump-schema` prints the JSON Schema for the manifest
@@ -569,12 +570,12 @@ lake exe <generator> --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## The Generator Executable
+## The Generator Entry Point
 
-Blueprint projects normally expose a small generator executable.
+Blueprint projects normally expose a small generator `main` function.
 
-In the commands below, `<generator>` stands for whatever executable name the
-project chooses.
+In the commands below, `<GeneratorMain>.lean` stands for the Lean file that
+defines the generator `main`, such as `ProjectTemplateMain.lean`.
 
 Minimal example:
 
@@ -599,10 +600,31 @@ Blueprint-specific rendered surfaces, applies Blueprint's shared preview and
 public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 
-Typical usage:
+Recommended CI usage builds the Lean library or formalization targets needed by
+the document, then runs the generator file directly:
 
 ```bash
-lake exe <generator> --output _out/site
+lake build <library-or-formalization-target>
+lake env lean --run <GeneratorMain>.lean --output _out/site
+```
+
+That path still checks the Blueprint document and writes the same HTML output,
+but it does not force Lake to compile the generator executable and its
+transitive native artifacts. In Mathlib-heavy projects this is often faster for
+cold CI jobs, even though the interpreted generator step itself can be a little
+slower than a compiled executable.
+
+Projects may also declare a `lean_exe` for repeated local runs:
+
+```lean
+lean_exe «blueprint-gen» where
+  root := `ProjectTemplateMain
+```
+
+Then the compiled-executable path remains available:
+
+```bash
+lake exe blueprint-gen --output _out/site
 ```
 
 ## Blueprint Options

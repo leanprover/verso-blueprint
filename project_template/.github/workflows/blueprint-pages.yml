@@ -60,13 +60,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            .lake/build/bin
             .lake/build/lib
             .lake/build/ir
-          key: ${{ runner.os }}-lean-build-v1-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', '.gitmodules', '*.lean', '**/*.lean', 'scripts/ci-pages.sh') }}
+          key: ${{ runner.os }}-lean-build-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', '.gitmodules', '*.lean', '**/*.lean', 'scripts/ci-pages.sh') }}
           restore-keys: |
-            ${{ runner.os }}-lean-build-v1-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', '.gitmodules') }}-
-            ${{ runner.os }}-lean-build-v1-
+            ${{ runner.os }}-lean-build-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', '.gitmodules') }}-
+            ${{ runner.os }}-lean-build-v2-
       - if: ${{ inputs.harness_enabled }}
         name: Restore formalization Lean build cache
         uses: actions/cache@v4
