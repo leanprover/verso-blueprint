@@ -28,12 +28,6 @@ class FakeGitHubApi:
     def commit_diff(self, sha: str) -> str:
         return self._commit_diffs[sha]
 
-    def check_runs(self, sha: str) -> dict[str, object]:
-        return {"check_runs": []}
-
-    def combined_status(self, sha: str) -> dict[str, object]:
-        return {"state": "success"}
-
 
 def diff_for(line: str) -> str:
     return (
@@ -82,19 +76,6 @@ Backport v4.26.0: exempt: no longer maintained
     def test_should_enforce_skips_non_default_dev_targets(self) -> None:
         pull_request = {"base": {"ref": "v4.28.0"}, "draft": False}
         self.assertFalse(backport_mod.should_enforce(pull_request, "v4.29.0", ("v4.28.0",)))
-
-    def test_check_runs_state_rejects_pending_and_failing_runs(self) -> None:
-        with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending"):
-            backport_mod.check_runs_state(
-                {"check_runs": [{"name": "CI", "status": "in_progress", "conclusion": None}]},
-                {"state": "pending"},
-            )
-
-        with self.assertRaisesRegex(backport_mod.BackportCheckError, "failing"):
-            backport_mod.check_runs_state(
-                {"check_runs": [{"name": "CI", "status": "completed", "conclusion": "failure"}]},
-                {"state": "failure"},
-            )
 
     def test_run_requires_metadata_for_draft_default_dev_prs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,14 +174,13 @@ Backport v4.26.0: exempt: no longer maintained
         with self.assertRaisesRegex(backport_mod.BackportCheckError, "does not match the patch from source commit"):
             backport_mod.verify_backport_commit_series(api, 11, 13)
 
-    def test_verify_backport_pr_checks_commit_series_before_ci(self) -> None:
+    def test_verify_backport_pr_accepts_structural_match_without_ci_status(self) -> None:
         api = FakeGitHubApi(
             pull_requests={
                 13: {
                     "base": {"ref": "v4.28.0"},
                     "draft": False,
                     "state": "open",
-                    "head": {"sha": "c" * 40},
                 }
             },
             pull_request_commits={
