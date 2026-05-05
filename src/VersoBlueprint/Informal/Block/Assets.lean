@@ -1150,6 +1150,14 @@ span[class$="_thmlabel"]::after {
   content: "";
 }
 
+details.bp_kind_proof_wrapper > summary.bp_heading {
+  cursor: pointer;
+}
+
+details.bp_kind_proof_wrapper > summary.bp_heading::marker {
+  color: var(--bp-color-text-faint);
+}
+
 .bp_wrapper.bp_style_plain .bp_heading,
 div.theorem-style-plain div[class$="_thmheading"] {
   font-style: normal;

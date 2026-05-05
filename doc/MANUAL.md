@@ -634,7 +634,8 @@ that elaborates the Blueprint chapter or document:
 
 ```lean
 set_option verso.blueprint.numbering global
-set_option verso.blueprint.foldProofs true
+set_option verso.blueprint.foldProofBlocks true
+set_option verso.blueprint.foldCodeBlocks false
 ```
 
 Current options:
@@ -647,6 +648,12 @@ Current options:
 - `verso.blueprint.foldProofs`
   - default: `true`
   - folds proof bodies in rendered Lean code panels after `by`
+- `verso.blueprint.foldProofBlocks`
+  - default: `false`
+  - renders proof blocks as collapsed disclosure blocks
+- `verso.blueprint.foldCodeBlocks`
+  - default: `false`
+  - renders Lean, Rust, and external code panels as collapsed disclosure blocks
 - `verso.blueprint.trimTeXLabelPrefix`
   - default: `false`
   - trims TeX-style label prefixes when deriving Lean names

@@ -122,6 +122,16 @@ register_option verso.blueprint.foldProofs : Bool := {
   descr := "Enable proof folding in VersoBlueprint Lean code blocks (hide text after `by` behind a toggle)"
 }
 
+register_option verso.blueprint.foldProofBlocks : Bool := {
+  defValue := false
+  descr := "Render VersoBlueprint proof blocks as collapsed details blocks"
+}
+
+register_option verso.blueprint.foldCodeBlocks : Bool := {
+  defValue := false
+  descr := "Render VersoBlueprint Lean, Rust, and external code panels as collapsed details blocks"
+}
+
 def provedStatusHasSorry (status : Data.ProvedStatus) : Bool :=
   status.isIncomplete
 
@@ -152,8 +162,11 @@ def externalCodeEntryTitle (found total missing withGaps : Nat) : String :=
 def mkCodePanel
     (header : CodePanelHeader) (summaryTitle : String)
     (progressBar body : Output.Html)
-    (attrs : Array (String × String) := #[]) : Output.Html :=
+    (attrs : Array (String × String) := #[])
+    (folded : Bool := false) : Output.Html :=
   open Verso.Output.Html in
+  let attrs :=
+    if folded then attrs else attrs.push ("open", "open")
   {{
     <div class="bp_wrapper bp_code_panel_wrapper">
       <details class="bp_code_block bp_code_panel" {{attrs}}>

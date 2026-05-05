@@ -110,7 +110,7 @@ def spec : StoreSpec := {
   name := Resolve.informalCodeDomainName
   kind := .internalIndex
   key := "informal label"
-  value := "InlineCodeData plus code-panel anchor ids"
+  value := "InlineCodeData plus code-panel anchor ids and folding settings"
   summary := "Traversal-local index for Blueprint code-panel sources keyed by informal label."
 }
 

@@ -418,7 +418,7 @@ private def jsTemplate : String := r##"(function () {
   }
 
   function openDetailsAncestors(elem) {
-    let cur = elem && elem.parentElement;
+    let cur = elem;
     while (cur) {
       if (cur.tagName === "DETAILS") {
         cur.setAttribute("open", "open");

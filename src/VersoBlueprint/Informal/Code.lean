@@ -46,7 +46,7 @@ private partial def previewCodeBlocks
 block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
-    let .ok cdata@{ label, definedDefs := _, definedTheorems := _, foldProofs := _ } := fromJson? (α := InlineCodeData) data
+    let .ok cdata@{ label, definedDefs := _, definedTheorems := _, foldCodeBlock := _, foldProofs := _ } := fromJson? (α := InlineCodeData) data
       | logError s!"Malformed data: {data}"
         pure none
     if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
@@ -76,7 +76,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      let .ok { label, definedDefs, definedTheorems, foldProofs } := fromJson? (α := InlineCodeData) data
+      let .ok { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs } := fromJson? (α := InlineCodeData) data
         | HtmlT.logError s!"Malformed data: {data}"
           pure .empty
       let s ← HtmlT.state
@@ -93,12 +93,13 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let panelSummary :=
         renderPanelIndicator label
           {
-            source := some (.inline { label, definedDefs, definedTheorems, foldProofs })
+            source := some (.inline { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs })
           }
           getDeclHref
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
       let panelBody := .seq (← blocks.mapM goB)
       pure <| mkCodePanel panelHeader panelSummary.summaryTitle panelSummary.indicator panelBody panelAttrs
+        (folded := foldCodeBlock)
 
 structure CodeConfig where
   label : Data.Label
@@ -172,6 +173,7 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       label := cfg.label
       definedDefs
       definedTheorems
+      foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
       foldProofs := verso.blueprint.foldProofs.get (← getOptions)
     }
     let codeRef ← getRef

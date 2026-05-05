@@ -316,7 +316,8 @@ This function only renders optional external code panel body for `(lean := ...)`
 def renderParts (panelHeader : CodePanelHeader)
     (summaryTitle : String) (indicator : Output.Html)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
-    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[]) : RenderParts :=
+    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
+    (folded : Bool := false) : RenderParts :=
   open Verso.Output.Html in
   if externalDecls.isEmpty then
     {}
@@ -335,6 +336,7 @@ def renderParts (panelHeader : CodePanelHeader)
         {{<ul class="bp_code_hover_list bp_external_decl_list">
             {{.seq <| linkedDecls.map (renderExternalDeclRow ∘ externalDeclRowData)}}
           </ul>}}
+        (folded := folded)
     { externalCodePanel }
 
 end ExternalCode

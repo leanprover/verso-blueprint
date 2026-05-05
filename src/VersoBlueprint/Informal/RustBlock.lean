@@ -59,12 +59,14 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
         | none => { fallbackCodePanelHeader with caption := "Rust code" }
       let body := Informal.Rust.highlightHtml cdata.raw
       pure <| mkCodePanel panelHeader s!"Rust code for {cdata.label}" .empty body attrs
+        (folded := cdata.foldCodeBlock)
 
 private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
     let data : Informal.Rust.InlineCodeData := {
       label := cfg.label
       raw := contents.getString
+      foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
     }
     Environment.registerRustCode cfg.label { raw := contents.getString }
     ``(Block.other (Block.informalRustCode $(quote data)) #[])
