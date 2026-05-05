@@ -618,7 +618,7 @@ private def renderStatementMetadataPanel (data : BlockData) : Output.Html :=
 
 private def renderInformalBlock (data : BlockData) (numberText : String) (attrs : Array (String × String))
     (codeEntry : Output.Html) (groupEntry? : Option Output.Html) (usedByEntry : Output.Html)
-    (content : Array Output.Html) : Output.Html :=
+    (content : Array Output.Html) (folded : Bool := false) : Output.Html :=
   open Verso.Output.Html in
   let style := blockKindRenderStyle data
   let labelText := s!"{data.label}"
@@ -634,16 +634,28 @@ private def renderInformalBlock (data : BlockData) (numberText : String) (attrs 
     match data.kind with
     | .proof => .empty
     | .statement _ => renderStatementMetadataPanel data
-  {{
-    <div class={{wrapperClass}} title={{labelText}} {{attrs}}>
-      <div class={{headingClass}}>
-        {{titleRow}}
-        {{extras}}
+  if folded then
+    {{
+      <details class={{wrapperClass}} title={{labelText}} {{attrs}}>
+        <summary class={{headingClass}}>
+          {{titleRow}}
+          {{extras}}
+        </summary>
+        {{metadataPanel}}
+        <div class={{contentClass}}> {{ content }} </div>
+      </details>
+    }}
+  else
+    {{
+      <div class={{wrapperClass}} title={{labelText}} {{attrs}}>
+        <div class={{headingClass}}>
+          {{titleRow}}
+          {{extras}}
+        </div>
+        {{metadataPanel}}
+        <div class={{contentClass}}> {{ content }} </div>
       </div>
-      {{metadataPanel}}
-      <div class={{contentClass}}> {{ content }} </div>
-    </div>
-  }}
+    }}
 
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
   match blockData.kind, blockData.codeData with
@@ -847,14 +859,20 @@ block_extension Block.informal (data : BlockData) where
                 decls
                 getDeclHref
                 getDeclAnchorAttrs
+                (folded := data.foldCodeBlock)
           | _, _ => none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
         let content := (← blocks.mapM goB)
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
         let groupEntry ← renderGroupEntry relatedPanelContext data
         let usedByEntry ← renderUsedByEntry relatedPanelContext data
+        let foldInformalBlock :=
+          match data.kind with
+          | .proof => data.foldProofBlock
+          | .statement _ => false
         let informalBlock :=
           renderInformalBlock data (data.displayNumber s) attrs codeEntry groupEntry usedByEntry content
+            (folded := foldInformalBlock)
         return .seq #[informalBlock, externalPanel]
 
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
@@ -976,13 +994,16 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       match owner with
       | some owner => Environment.getAuthor? owner
       | none => pure none
+    let opts ← getOptions
     let data : BlockData := {
       kind := blockKind
       codeData
       label
+      foldProofBlock := verso.blueprint.foldProofBlocks.get opts
+      foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
       parent := node?.bind (·.parent)
       count
-      numberingMode := numberingMode (← getOptions)
+      numberingMode := numberingMode opts
       statementDeps
       proofDeps
       owner

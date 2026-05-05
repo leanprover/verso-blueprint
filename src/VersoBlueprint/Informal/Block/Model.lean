@@ -61,6 +61,7 @@ structure InlineCodeData where
   label : Data.Label
   definedDefs : Array CodeDeclData := #[]
   definedTheorems : Array CodeDeclData := #[]
+  foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
@@ -105,6 +106,8 @@ structure BlockData where
   /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
   codeData : Option BlockCodeData := none
   label : Data.Label
+  foldProofBlock : Bool := false
+  foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
