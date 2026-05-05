@@ -92,6 +92,8 @@ subjects such as `Update files` or `misc cleanup`.
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired `v4.28.0` PR
   - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
+  - apply the scaffolded release label, for example `backport-v4.28.0`, to the
+    paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
     `Backport ...: exempt: <reason>`
