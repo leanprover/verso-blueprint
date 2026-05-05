@@ -28,8 +28,8 @@ Today a Blueprint project usually owns three things:
 
 - chapter modules containing the mathematical content
 - a Blueprint top-level file that assembles chapters and rendered overview pages
-- a site-generation executable that resolves forward references, computes
-  metadata, and writes the generated output under `_out/`
+- a generator entry point that resolves forward references, computes metadata,
+  and writes the generated output under `_out/`
 
 `verso-blueprint` provides the Blueprint directives, rendering commands, preview
 runtime, and support library code. The starter layout in

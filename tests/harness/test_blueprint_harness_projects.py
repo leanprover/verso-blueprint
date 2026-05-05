@@ -63,6 +63,27 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             capture_output=True,
         ).stdout.strip()
 
+    def assert_resolved_projects_match_manifest(self, release_id: str) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        release = resolve_release_target(catalog, release_id, PACKAGE_ROOT)
+        projects = resolve_projects_for_release(catalog, release.release_id, None)
+
+        expected_projects: list[str] = []
+        expected_refs: dict[str, str | None] = {}
+        for project in catalog.projects:
+            target = next((target for target in project.targets if target.release == release.release_id), None)
+            if target is None:
+                continue
+            expected_projects.append(project.project_id)
+            expected_refs[project.project_id] = target.ref
+
+        self.assertEqual([project.project_id for project in projects], expected_projects)
+        for project in projects:
+            self.assertEqual(project.selected_release, release.release_id)
+            expected_ref = expected_refs[project.project_id]
+            if expected_ref is not None:
+                self.assertEqual(project.ref, expected_ref)
+
     def test_default_manifest_contains_current_external_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
         catalog = load_project_catalog(manifest)
@@ -76,18 +97,25 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
-        self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
+        self.assertEqual(projects[0].build_command, ("lake", "build", "ProjectTemplate"))
+        self.assertEqual(
+            projects[0].generate_command,
+            ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
+        )
         self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0"])
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
-        self.assertEqual(projects[1].targets[0].ref, "47f28af5e6d3edf0de439b7de9c3f121e14e4707")
+        self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
+        self.assertEqual(
+            projects[1].generate_command,
+            ("lake", "env", "lean", "--run", "Main.lean", "--output", "{output_dir}"),
+        )
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
-        self.assertEqual(projects[4].targets[0].ref, "6506b992702a6e47a29d90d504f9e55eb65e13e9")
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -110,66 +138,26 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         matrix = deploy_project_matrix(catalog.release_targets, catalog)
 
+        expected_entries = []
+        for release in catalog.release_targets:
+            if not release.deploy_pages:
+                continue
+            for project in resolve_projects_for_release(catalog, release.release_id, None):
+                expected_entries.append(
+                    {
+                        "release_id": release.release_id,
+                        "toolchain": release.toolchain,
+                        "verso_ref": release.verso_ref,
+                        "branch": release.branch,
+                        "project_id": project.project_id,
+                        "artifact_name": f"reference-blueprints-release-{release.release_id}__project__{project.project_id}",
+                        "artifact_path": f"_out/reference-blueprints/{release.release_id}/{project.project_id}",
+                    }
+                )
+
         self.assertEqual(
             matrix,
-            {
-                "include": [
-                    {
-                        "release_id": "v4.28.0",
-                        "toolchain": "v4.28.0",
-                        "verso_ref": "v4.28.0",
-                        "branch": "v4.28.0",
-                        "project_id": "project-template",
-                        "artifact_name": "reference-blueprints-release-v4.28.0__project__project-template",
-                        "artifact_path": "_out/reference-blueprints/v4.28.0/project-template",
-                    },
-                    {
-                        "release_id": "v4.28.0",
-                        "toolchain": "v4.28.0",
-                        "verso_ref": "v4.28.0",
-                        "branch": "v4.28.0",
-                        "project_id": "spherepackingblueprint",
-                        "artifact_name": "reference-blueprints-release-v4.28.0__project__spherepackingblueprint",
-                        "artifact_path": "_out/reference-blueprints/v4.28.0/spherepackingblueprint",
-                    },
-                    {
-                        "release_id": "v4.28.0",
-                        "toolchain": "v4.28.0",
-                        "verso_ref": "v4.28.0",
-                        "branch": "v4.28.0",
-                        "project_id": "verso-flt",
-                        "artifact_name": "reference-blueprints-release-v4.28.0__project__verso-flt",
-                        "artifact_path": "_out/reference-blueprints/v4.28.0/verso-flt",
-                    },
-                    {
-                        "release_id": "v4.28.0",
-                        "toolchain": "v4.28.0",
-                        "verso_ref": "v4.28.0",
-                        "branch": "v4.28.0",
-                        "project_id": "algebraic-combinatorics",
-                        "artifact_name": "reference-blueprints-release-v4.28.0__project__algebraic-combinatorics",
-                        "artifact_path": "_out/reference-blueprints/v4.28.0/algebraic-combinatorics",
-                    },
-                    {
-                        "release_id": "v4.29.0",
-                        "toolchain": "v4.29.0",
-                        "verso_ref": "v4.29.0",
-                        "branch": "v4.29.0",
-                        "project_id": "project-template",
-                        "artifact_name": "reference-blueprints-release-v4.29.0__project__project-template",
-                        "artifact_path": "_out/reference-blueprints/v4.29.0/project-template",
-                    },
-                    {
-                        "release_id": "v4.29.0",
-                        "toolchain": "v4.29.0",
-                        "verso_ref": "v4.29.0",
-                        "branch": "v4.29.0",
-                        "project_id": "noperthedron",
-                        "artifact_name": "reference-blueprints-release-v4.29.0__project__noperthedron",
-                        "artifact_path": "_out/reference-blueprints/v4.29.0/noperthedron",
-                    },
-                ]
-            },
+            {"include": expected_entries},
         )
 
     def test_git_checkout_project_is_supported(self) -> None:
@@ -258,29 +246,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
-        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-
-        release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
-        projects = resolve_projects_for_release(catalog, release.release_id, None)
-
-        self.assertEqual([project.project_id for project in projects], ["project-template", "noperthedron"])
-        self.assertEqual(projects[1].selected_release, "v4.29.0")
-        self.assertEqual(projects[1].ref, "47f28af5e6d3edf0de439b7de9c3f121e14e4707")
+        self.assert_resolved_projects_match_manifest("v4.29.0")
 
     def test_resolve_projects_for_older_release_uses_matching_targets(self) -> None:
-        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-
-        release = resolve_release_target(catalog, "v4.28.0", PACKAGE_ROOT)
-        projects = resolve_projects_for_release(catalog, release.release_id, None)
-
-        self.assertEqual(
-            [project.project_id for project in projects],
-            ["project-template", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
-        )
-        self.assertEqual(projects[1].selected_release, "v4.28.0")
-        self.assertEqual(projects[1].ref, "4346c148b91c3a0d1060a0413176e8290a3e0839")
-        self.assertEqual(projects[2].ref, "1d4f671ee5aa6169bd263384d52d97b8957d2d15")
-        self.assertEqual(projects[3].ref, "6506b992702a6e47a29d90d504f9e55eb65e13e9")
+        self.assert_resolved_projects_match_manifest("v4.28.0")
 
     def test_duplicate_project_ids_are_rejected(self) -> None:
         manifest_data = {

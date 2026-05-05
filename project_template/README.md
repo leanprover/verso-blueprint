@@ -11,7 +11,7 @@ project that already has the right moving parts:
 - a GitHub Pages workflow under `.github/workflows/`
 - chapter files with real Blueprint blocks
 - a Blueprint top-level file
-- a `blueprint-gen` executable
+- a generator entry point, plus an optional `blueprint-gen` executable
 - a local CI script for build-and-render checks
 - rendered graph and summary pages
 
@@ -46,7 +46,8 @@ The important files are:
   the intentionally unfinished conjecture
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the rendering entry point
-- `lakefile.lean`: the package definition and the `blueprint-gen` executable
+- `lakefile.lean`: the package definition and optional `blueprint-gen`
+  executable
 - `.github/workflows/blueprint-pages.yml`: copyable reusable Pages workflow
   used by the template
 - `.github/workflows/pages.yml`: thin caller into the local reusable workflow
@@ -70,7 +71,7 @@ The important files are:
 
 1. Copy this folder into a new repository.
 2. Rename `ProjectTemplate` to your project name.
-3. Keep the `blueprint-gen` executable and top-level file structure.
+3. Keep the generator entry point and top-level file structure.
 4. Replace the addition, multiplication, and Collatz chapters with your own
    content.
 
@@ -83,8 +84,18 @@ lake update
 
 Run `lake update` once after copying the template. After that, use
 `./scripts/ci-pages.sh` whenever you want the same local build-and-render check
-that the included GitHub Pages workflow runs. If you only want to regenerate
-the site manually, `lake exe blueprint-gen --output _out/site` still works.
+that the included GitHub Pages workflow runs. The script builds the Lean library
+artifacts and then runs the generator file directly:
+
+```bash
+lake build ProjectTemplate
+lake env lean --run ProjectTemplateMain.lean --output _out/site
+```
+
+This avoids compiling a generator executable and its transitive native artifacts,
+which is especially helpful in cold CI jobs and Mathlib-heavy projects. If you
+want a compiled executable for repeated local runs,
+`lake exe blueprint-gen --output _out/site` still works.
 
 ## GitHub Pages
 

@@ -591,6 +591,10 @@ The harness is now project-driven rather than hardcoded to one project.
   outside this repository
 - external entries should declare release-specific refs under `targets` plus
   the build and generation commands needed after checkout
+- prefer a build command that targets only the Lean library or formalization
+  artifacts needed by the document, followed by a `lake env lean --run ...`
+  generation command; do not build the generator executable unless that native
+  executable is the behavior under review
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
@@ -616,11 +620,16 @@ Minimal external catalog entry shape:
       "ref": "0123456789abcdef0123456789abcdef01234567"
     }
   ],
-  "build_command": ["lake", "build"],
-  "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+  "build_command": ["lake", "build", "SomeUserProject"],
+  "generate_command": ["lake", "env", "lean", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
   "site_subdir": "html-multi"
 }
 ```
+
+The `lean --run` form is intentionally the catalog default for reference
+projects. It still requires the imported Lean modules to have been built first,
+but it avoids Lake's executable build path and the transitive native compilation
+cost that can dominate Mathlib-heavy projects.
 
 That override policy is now the default maintainer behavior: the external
 projects keep their committed dependency pointed at an approved upstream repo,

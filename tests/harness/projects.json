@@ -32,8 +32,8 @@
           "release": "v4.29.0"
         }
       ],
-      "build_command": ["lake", "build"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "ProjectTemplate"],
+      "generate_command": ["lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -50,8 +50,8 @@
           "ref": "070e0c6d7bb205c89270cb1b60e5cf3cf431af28"
         }
       ],
-      "build_command": ["lake", "build"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "Contents"],
+      "generate_command": ["lake", "env", "lean", "--run", "Main.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -68,8 +68,8 @@
           "ref": "ac4f16b7fc8d6b3a5bd7ed9d8dff37eff6ff0e8b"
         }
       ],
-      "build_command": ["lake", "build"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "SpherePackingBlueprint"],
+      "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -86,8 +86,8 @@
           "ref": "ad4cffd681b6234e9ab30b19adb69c92b962ff34"
         }
       ],
-      "build_command": ["lake", "build", "blueprint-gen"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "FLTBlueprint"],
+      "generate_command": ["lake", "env", "lean", "--run", "FLTBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -104,8 +104,8 @@
           "ref": "1fda7a4581e55dca27209f060a90179b0a1a2f32"
         }
       ],
-      "build_command": ["lake", "build", "blueprint-gen"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],
+      "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }
   ]

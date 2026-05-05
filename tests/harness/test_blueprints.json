@@ -18,8 +18,8 @@
       "summary": "Standalone browser-regression showcase with summary, graph, panel, and inline preview pages.",
       "tags": ["preview", "runtime", "browser", "graph", "summary", "relationships"],
       "project_root": "tests/test_blueprints/preview_runtime_showcase",
-      "build_command": ["lake", "build"],
-      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "build_command": ["lake", "build", "PreviewRuntimeShowcase"],
+      "generate_command": ["lake", "env", "lean", "--run", "PreviewRuntimeShowcaseMain.lean", "--output", "{output_dir}"],
       "validation": {
         "panel_regression_script": "tests/harness/preview_runtime_showcase/check_blueprint_code_panels.py",
         "browser_tests_path": "tests/browser"

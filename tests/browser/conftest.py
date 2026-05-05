@@ -16,7 +16,6 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from scripts.blueprint_harness_paths import (
     canonical_test_blueprint_output_dir,
-    canonical_test_blueprint_package_dir,
     default_test_blueprint_site_dir,
 )
 
@@ -74,19 +73,18 @@ def load_redirects(site_dir: str | Path):
 
 
 def build_test_blueprint_site(name: str) -> Path:
-    package_dir = canonical_test_blueprint_package_dir(name, Path(__file__))
     output_dir = canonical_test_blueprint_output_dir(name, Path(__file__))
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
-            str(PACKAGE_ROOT / "scripts" / "lean-low-priority"),
-            "lake",
-            "exe",
-            "blueprint-gen",
-            "--output",
+            sys.executable,
+            "-m",
+            "scripts.blueprint_test_blueprints",
+            "generate",
+            name,
             str(output_dir),
         ],
-        cwd=package_dir,
+        cwd=PACKAGE_ROOT,
         check=True,
     )
     return output_dir / "html-multi"
