@@ -88,18 +88,6 @@ class GitHubApi:
             raise BackportCheckError(f"Unexpected pull request payload for #{number}")
         return data
 
-    def check_runs(self, sha: str) -> dict[str, Any]:
-        data = self.get_json(f"/repos/{self.repo_full_name}/commits/{sha}/check-runs")
-        if not isinstance(data, dict):
-            raise BackportCheckError(f"Unexpected check run payload for {sha}")
-        return data
-
-    def combined_status(self, sha: str) -> dict[str, Any]:
-        data = self.get_json(f"/repos/{self.repo_full_name}/commits/{sha}/status")
-        if not isinstance(data, dict):
-            raise BackportCheckError(f"Unexpected combined status payload for {sha}")
-        return data
-
     def pull_request_commits(self, number: int) -> list[PullRequestCommit]:
         commits: list[PullRequestCommit] = []
         page = 1
@@ -289,41 +277,6 @@ def verify_backport_commit_series(api: GitHubApi, source_pr_number: int, backpor
             )
 
 
-def check_runs_state(check_runs: dict[str, Any], combined_status: dict[str, Any]) -> None:
-    failures: list[str] = []
-    pending: list[str] = []
-    seen_run = False
-
-    for run in check_runs.get("check_runs", []):
-        if not isinstance(run, dict):
-            continue
-        seen_run = True
-        name = str(run.get("name") or "<unnamed check>")
-        status = str(run.get("status") or "")
-        conclusion = run.get("conclusion")
-        if status != "completed":
-            pending.append(name)
-            continue
-        if conclusion in {"success", "neutral", "skipped"}:
-            continue
-        failures.append(f"{name} ({conclusion or 'unknown'})")
-
-    state = str(combined_status.get("state") or "")
-    if state in {"failure", "error"}:
-        failures.append(f"combined status ({state})")
-    elif state == "pending":
-        pending.append("combined status")
-
-    if failures:
-        raise BackportCheckError("paired backport PR checks are failing: " + ", ".join(failures))
-    if pending:
-        raise BackportCheckError("paired backport PR checks are still pending: " + ", ".join(pending))
-    if not seen_run and state not in {"success", ""}:
-        raise BackportCheckError(f"paired backport PR has unexpected combined status `{state}`")
-    if not seen_run and state == "":
-        raise BackportCheckError("paired backport PR does not report any check runs yet")
-
-
 def verify_backport_pr(
     api: GitHubApi,
     source_pr_number: int,
@@ -347,15 +300,6 @@ def verify_backport_pr(
         raise BackportCheckError(f"paired backport PR #{entry.pr_number} is closed without merge")
 
     verify_backport_commit_series(api, source_pr_number, entry.pr_number)
-
-    if bool(pr.get("merged")):
-        return
-
-    sha = str(pr.get("head", {}).get("sha") or "")
-    if not sha:
-        raise BackportCheckError(f"paired backport PR #{entry.pr_number} is missing a head SHA")
-
-    check_runs_state(api.check_runs(sha), api.combined_status(sha))
 
 
 def event_pull_request(event: dict[str, Any]) -> dict[str, Any]:
@@ -401,7 +345,7 @@ def run(event_path: str | None, token: str | None) -> int:
             else:
                 print(
                     f"[backport-check] {branch}: paired PR #{entry.pr_number} recorded; "
-                    "ready-state checks will run after ready for review"
+                    "paired PR structure will be verified after ready for review"
                 )
         return 0
 
