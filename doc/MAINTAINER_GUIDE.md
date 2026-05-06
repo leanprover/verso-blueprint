@@ -359,8 +359,10 @@ materially help review. The generated body is intentionally reviewer-oriented:
 start with a short `This PR ...` paragraph that is suitable for permanent
 history, keep implementation inventory out of the opening summary, and do not
 include routine validation transcripts that CI already records. For PRs that
-need paired backports, use a merge commit when landing so the `cherry-pick -x`
-source commits remain in default-development history. For an
+need paired backports, use a Lean-style title of the form `type: summary`
+without a type scope such as `feat(entry): ...`, and use a merge commit when
+landing so the `cherry-pick -x` source commits remain in default-development
+history. For an
 existing PR where only the backport lines need a refresh, run:
 
 ```bash

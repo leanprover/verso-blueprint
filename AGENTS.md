@@ -214,4 +214,8 @@
   sequences.
 - Prefer branch names of the form `feat/<slug>`, `fix/<slug>`, `docs/<slug>`,
   `chore/<slug>`, or local-only `wip/<slug>`.
-- Prefer commit subjects of the form `type(scope): summary`.
+- Prefer commit and PR subjects of the Lean upstream form `type: summary`.
+- Use Lean's public title types: `feat`, `fix`, `doc`, `style`, `refactor`,
+  `test`, `chore`, and `perf`.
+- Do not add type scopes such as `feat(entry): ...` to public PR or commit
+  titles; put the affected area in the subject instead.

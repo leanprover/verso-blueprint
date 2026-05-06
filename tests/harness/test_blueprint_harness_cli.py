@@ -559,6 +559,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("draft=true", output)
         self.assertIn("## PR Submission Guardrails", output)
         self.assertIn("Use the PR title and body below as the public PR metadata", output)
+        self.assertIn("Follow Lean upstream title style", output)
+        self.assertIn("without type scopes such as `feat(entry): ...`", output)
         self.assertIn("Do not add generator or tool prefixes such as `[codex]`", output)
         self.assertIn("Do not add routine validation transcripts to the PR body", output)
         self.assertIn("recommended_merge_method=merge", output)
@@ -581,7 +583,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             harness_mod.print_public_pr_message_scaffold(
                 default_dev="v4.30.0",
                 source_branch="docs/release-note",
-                title="docs: update release note",
+                title="doc: update release note",
                 backport_lines=[
                     "Backport v4.29.0: exempt: docs-only",
                     "Backport v4.28.0: exempt: docs-only",
@@ -639,6 +641,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("git cherry-pick -x abc123 def456", output)
         self.assertIn("## PR Submission Guardrails", output)
         self.assertIn("Use the PR title and body below as the public backport PR metadata", output)
+        self.assertIn("Keep the title after the backport prefix in Lean upstream style", output)
         self.assertIn("Apply the release label `backport-v4.28.0`", output)
         self.assertIn("Keep review-facing discussion on the default-development PR", output)
         self.assertIn("Do not add routine validation transcripts to the backport PR body", output)

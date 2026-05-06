@@ -34,20 +34,26 @@ Prefer short, descriptive slugs over opaque branch names.
 
 ## Commit Conventions
 
-Prefer concise imperative subjects in the form:
+Follow Lean upstream's commit convention for public commit and PR titles. Use
+concise imperative subjects in the form:
 
 ```text
 type: summary
 ```
 
+Use the Lean title types `feat`, `fix`, `doc`, `style`, `refactor`, `test`,
+`chore`, and `perf`. Do not add a type scope such as `feat(entry): ...`; put
+the affected area in the subject instead.
+
 Examples:
 
 - `feat: add local worktree registry commands`
 - `fix: preserve inline proof-gap precision`
-- `docs: document worktree claim workflow`
+- `doc: document worktree claim workflow`
 
-Keep the subject line tight enough for `git log --oneline`. Avoid generic
-subjects such as `Update files` or `misc cleanup`.
+Keep the subject line tight enough for `git log --oneline`. Use imperative,
+present tense; do not capitalize the first letter; do not end the subject with
+a period. Avoid generic subjects such as `Update files` or `misc cleanup`.
 
 ## Verso Upstream Backlog
 
@@ -69,7 +75,8 @@ Do those upstream write actions only when they are explicitly requested.
 
 ## Pull Request Conventions
 
-- PR titles should usually match the intended final commit title.
+- PR titles should follow the same Lean-style `type: summary` format and should
+  usually match the intended final commit title.
 - Avoid generator/tool prefixes such as `[codex]`; the title should describe
   the change, not who or what drafted it.
 - For a draft default-development PR, generate the public-facing title/body
