@@ -514,8 +514,10 @@ The harness is worktree-aware:
 - in a linked worktree it writes artifacts to `_out/<worktree>/...`
 - by default it prefers reusing the root checkout's prepared package `.lake`
   artifacts and binaries
-- it also keeps shared warmed reference dependency package caches under
-  `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages`
+- it also keeps shared warmed reference dependency caches under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, with downloaded
+  Lake packages under `packages/` and external path-dependency build trees under
+  `path-builds/`
 - those shared caches are keyed by external repository, project root, and
   selected project ref; they preserve expensive pinned dependency state such as
   Mathlib package builds, not generated Blueprint site artifacts
@@ -599,8 +601,10 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --dry-run
 - the default validation catalog mixes in-repo projects with external reference
   blueprints; the larger published reference blueprints live in external
   repositories
-- the harness warms shared reference dependency packages under
-  `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages`
+- the harness warms shared reference dependency caches under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, including Lake
+  packages and `.lake/build` trees for external path dependencies such as
+  formalization submodules
 - the cache key is derived from the external repository URL, project root, and
   selected project ref, so one project can keep separate caches for different
   Lean/mathlib release pins
@@ -608,8 +612,8 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --dry-run
   `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
 - each checkout gets its own local clone under
   `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`,
-  seeded from the dependency package cache so transitive build artifacts stay
-  warm across worktrees
+  seeded from the dependency cache so transitive package and path-dependency
+  build artifacts stay warm across worktrees
 - editable reference-project clones live separately under
   `.worktrees/_reference-blueprints/edit/<checkout>/` and are not touched by
   `sync`, `generate`, or `prune`
@@ -678,9 +682,9 @@ pushes to release branches named like `v4.30.0`, and manual dispatch, it:
 - generates external references from per-job local clones seeded by the keyed
   dependency cache
 - restores and saves external reference dependency caches by the same
-  repository/project-root/ref key used locally, caching only the external
-  project's `.lake/packages/` tree rather than the source checkout or generated
-  Blueprint site's own build output
+  repository/project-root/ref key used locally, caching the external project's
+  `.lake/packages/` tree and `.lake/build` trees for external path dependencies
+  rather than the source checkout or generated Blueprint site's own output
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like

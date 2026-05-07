@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 import re
 import shutil
 import subprocess
@@ -100,6 +101,10 @@ def reference_dependency_packages_dir(layout, project: HarnessProject) -> Path:
     return reference_dependency_cache_dir(layout, project) / "packages"
 
 
+def reference_dependency_path_builds_dir(layout, project: HarnessProject) -> Path:
+    return reference_dependency_cache_dir(layout, project) / "path-builds"
+
+
 def reference_local_checkout_dir(layout, project: HarnessProject) -> Path:
     return layout.reference_project_checkout_root / reference_dependency_cache_key(project)
 
@@ -128,6 +133,10 @@ def reference_dependency_cache_keys(projects: tuple[HarnessProject, ...] | list[
 
 def lake_packages_dir(project_dir: Path) -> Path:
     return project_dir / ".lake" / "packages"
+
+
+def lake_build_dir(project_dir: Path) -> Path:
+    return project_dir / ".lake" / "build"
 
 
 def read_reference_toolchain_candidate(path: Path) -> ReferenceToolchainCandidate | None:
@@ -266,7 +275,6 @@ def store_lake_packages_in_dependency_cache(
     run(["rsync", "-a", "--delete", f"{source_packages}/", f"{destination_packages}/"], cwd=layout.package_root)
     return destination_packages
 
-
 def discard_lake_packages(project_dir: Path) -> Path | None:
     packages = lake_packages_dir(project_dir)
     if not packages.exists() and not packages.is_symlink():
@@ -276,6 +284,75 @@ def discard_lake_packages(project_dir: Path) -> Path | None:
     else:
         shutil.rmtree(packages)
     return packages
+
+
+def _relative_path_dependency_dirs(project_dir: Path, package_root: Path) -> list[Path]:
+    manifest_path = project_dir / "lake-manifest.json"
+    if not manifest_path.exists():
+        return []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    packages = manifest.get("packages")
+    if not isinstance(packages, list):
+        return []
+
+    package_root = package_root.resolve()
+    project_dir = project_dir.resolve()
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for package in packages:
+        if not isinstance(package, dict) or package.get("type") != "path":
+            continue
+        raw_dir = package.get("dir")
+        if not isinstance(raw_dir, str) or not raw_dir:
+            continue
+        dependency_dir = (project_dir / raw_dir).resolve()
+        if dependency_dir == package_root:
+            continue
+        try:
+            relative_dir = dependency_dir.relative_to(project_dir)
+        except ValueError:
+            continue
+        if str(relative_dir) == ".":
+            continue
+        relative_text = relative_dir.as_posix()
+        if relative_text in seen:
+            continue
+        seen.add(relative_text)
+        paths.append(relative_dir)
+    return paths
+
+
+def seed_lake_path_builds_from_dependency_cache(layout, project: HarnessProject, project_dir: Path) -> Path | None:
+    source_root = reference_dependency_path_builds_dir(layout, project)
+    if not source_root.exists():
+        return None
+    copied = False
+    for relative_dir in _relative_path_dependency_dirs(project_dir, layout.package_root):
+        source_build = source_root / relative_dir / ".lake" / "build"
+        if not source_build.exists():
+            continue
+        destination_build = lake_build_dir(project_dir / relative_dir)
+        destination_build.mkdir(parents=True, exist_ok=True)
+        run(["rsync", "-a", f"{source_build}/", f"{destination_build}/"], cwd=layout.package_root)
+        copied = True
+    return source_root if copied else None
+
+
+def store_lake_path_builds_in_dependency_cache(layout, project: HarnessProject, project_dir: Path) -> Path | None:
+    destination_root = reference_dependency_path_builds_dir(layout, project)
+    copied = False
+    for relative_dir in _relative_path_dependency_dirs(project_dir, layout.package_root):
+        source_build = lake_build_dir(project_dir / relative_dir)
+        if not source_build.exists():
+            continue
+        destination_build = destination_root / relative_dir / ".lake" / "build"
+        destination_build.mkdir(parents=True, exist_ok=True)
+        run(["rsync", "-a", "--delete", f"{source_build}/", f"{destination_build}/"], cwd=layout.package_root)
+        copied = True
+    return destination_root if copied else None
 
 
 def short_git_ref(ref: str) -> str:
@@ -763,15 +840,18 @@ def sync_reference_cache_checkout(
         seed_lake_packages_from_dependency_cache(layout, project, project_dir, package_mode=package_mode) is not None
         and package_mode == REFERENCE_PACKAGE_MODE_MOVE
     )
+    seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
     try:
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=True):
             run_reference_lake_update(layout.package_root, project_dir)
+            seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
             if warm_build and project.build_command is not None:
                 command = lean_low_priority_command(layout.package_root, *project.build_command)
                 try:
                     run_with_heartbeat(command, cwd=project_dir, label=f"{project.project_id}: warm cache build")
                 except subprocess.CalledProcessError as err:
                     raise SystemExit(reference_cache_warm_build_failure_message(layout, project, command, err)) from err
+            store_lake_path_builds_in_dependency_cache(layout, project, project_dir)
             if store_lake_packages_in_dependency_cache(layout, project, project_dir, package_mode=package_mode) is not None:
                 # The dependency cache is now the source of truth. Drop the warmed
                 # cache checkout copy so large external projects do not keep two
@@ -836,6 +916,7 @@ def sync_reference_local_checkout(
             ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / project.project_root / '.lake'}/"],
             cwd=layout.package_root,
         )
+    seed_lake_path_builds_from_dependency_cache(layout, project, local_dir / project.project_root)
     return local_dir
 
 
@@ -897,15 +978,19 @@ def generate_git_project(
         output_dir = output_dir_for(project, output_root)
         output_dir.mkdir(parents=True, exist_ok=True)
         bootstrap_reference_checkout(project_dir=project_dir)
+        def update_reference_project() -> None:
+            run_reference_lake_update(
+                layout.package_root,
+                project_dir,
+                reconcile_toolchains=True,
+            )
+            seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
+
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
-                update_project=lambda: run_reference_lake_update(
-                    layout.package_root,
-                    project_dir,
-                    reconcile_toolchains=True,
-                ),
+                update_project=update_reference_project,
                 build_command=project.build_command,
                 generate_command=project.generate_command or (),
                 format_command=lambda command: format_project_command(
@@ -921,6 +1006,7 @@ def generate_git_project(
                 skip_build=skip_build,
                 project_id=project.project_id,
             )
+            store_lake_path_builds_in_dependency_cache(layout, project, project_dir)
     finally:
         if borrowed_packages:
             store_lake_packages_in_dependency_cache(layout, project, project_dir, package_mode=package_mode)
