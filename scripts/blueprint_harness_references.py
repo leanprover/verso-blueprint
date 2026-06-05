@@ -117,6 +117,17 @@ def store_lake_packages_in_dependency_cache(layout, project: HarnessProject, pro
     return destination_packages
 
 
+def discard_lake_packages(project_dir: Path) -> Path | None:
+    packages = lake_packages_dir(project_dir)
+    if not packages.exists() and not packages.is_symlink():
+        return None
+    if packages.is_symlink() or packages.is_file():
+        packages.unlink()
+    else:
+        shutil.rmtree(packages)
+    return packages
+
+
 def short_git_ref(ref: str) -> str:
     return ref[:12] if COMMIT_HASH_PATTERN.fullmatch(ref) is not None else ref
 
@@ -666,7 +677,11 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
         run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
         if warm_build and project.build_command is not None:
             run(lean_low_priority_command(layout.package_root, *project.build_command), cwd=project_dir)
-        store_lake_packages_in_dependency_cache(layout, project, project_dir)
+        if store_lake_packages_in_dependency_cache(layout, project, project_dir) is not None:
+            # The dependency cache is now the source of truth. Drop the warmed
+            # cache checkout copy so large external projects do not keep two
+            # Mathlib package trees before the local checkout is prepared.
+            discard_lake_packages(project_dir)
     finally:
         cache_lakefile.write_text(original_text, encoding="utf-8")
     return cache_dir

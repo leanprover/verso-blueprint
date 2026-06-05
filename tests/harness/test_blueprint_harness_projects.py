@@ -265,6 +265,22 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ],
         )
 
+    def test_discard_lake_packages_prunes_warmed_checkout_copy(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project_dir = root / "checkout"
+            packages = project_dir / ".lake" / "packages"
+            mathlib_artifact = packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            mathlib_artifact.parent.mkdir(parents=True)
+            mathlib_artifact.write_text("warm", encoding="utf-8")
+
+            pruned = refs_mod.discard_lake_packages(project_dir)
+
+        self.assertEqual(pruned, packages)
+        self.assertFalse(packages.exists())
+
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
