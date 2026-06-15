@@ -246,10 +246,12 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
+            original_run_with_heartbeat = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -265,6 +267,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 )
             finally:
                 commands_mod.run = original_run
+                commands_mod.run_with_heartbeat = original_run_with_heartbeat
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
@@ -287,10 +290,12 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
+            original_run_with_heartbeat = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -306,6 +311,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 )
             finally:
                 commands_mod.run = original_run
+                commands_mod.run_with_heartbeat = original_run_with_heartbeat
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(

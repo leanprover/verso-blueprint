@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
-import subprocess
-import sys
 from pathlib import Path
 import shutil
 import re
+import subprocess
+import sys
+import time
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,60 @@ def format_command(command: list[str]) -> str:
 def run(command: list[str], *, cwd: Path) -> None:
     print(f"[blueprint-harness] $ {format_command(command)}")
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def format_elapsed(seconds: float) -> str:
+    total_seconds = int(seconds)
+    minutes, seconds = divmod(total_seconds, 60)
+    if minutes:
+        return f"{minutes}m{seconds:02d}s"
+    return f"{seconds}s"
+
+
+@contextmanager
+def timed_step(label: str):
+    start = time.monotonic()
+    print(f"[blueprint-harness] starting {label}", flush=True)
+    try:
+        yield
+    except BaseException:
+        elapsed = format_elapsed(time.monotonic() - start)
+        print(f"[blueprint-harness] failed {label} after {elapsed}", flush=True)
+        raise
+    else:
+        elapsed = format_elapsed(time.monotonic() - start)
+        print(f"[blueprint-harness] finished {label} in {elapsed}", flush=True)
+
+
+def run_with_heartbeat(
+    command: list[str],
+    *,
+    cwd: Path,
+    label: str,
+    heartbeat_seconds: int = 60,
+) -> None:
+    print(f"[blueprint-harness] $ {format_command(command)}")
+    with timed_step(label):
+        start = time.monotonic()
+        proc = subprocess.Popen(command, cwd=cwd)
+        try:
+            while True:
+                try:
+                    returncode = proc.wait(timeout=heartbeat_seconds)
+                    break
+                except subprocess.TimeoutExpired:
+                    elapsed = format_elapsed(time.monotonic() - start)
+                    print(
+                        f"[blueprint-harness] still running {label} after {elapsed}: {format_command(command)}",
+                        flush=True,
+                    )
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, command)
+        except BaseException:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            raise
 
 
 def run_output(command: list[str], *, cwd: Path) -> str:

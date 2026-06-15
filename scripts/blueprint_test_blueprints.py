@@ -482,6 +482,7 @@ def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTe
                     },
                 ),
                 skip_build=False,
+                project_id=fixture.slug,
             )
     finally:
         restore_tracked_project_manifest(original_manifest)
