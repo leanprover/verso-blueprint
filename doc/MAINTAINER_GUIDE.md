@@ -661,11 +661,10 @@ default-development catalog and passes it to the release-branch harness with
 so two projects in the same release line can deploy against different release
 candidate tags when needed.
 
-At the moment that means:
-
-- `v4.30.0` deploys Pages for `noperthedron`, `verso-flt`, and
-  `verso-carleson`
-- `v4.29.0` deploys Pages for `spherepackingblueprint`
+The current published project/release split is intentionally not duplicated
+here. Read `tests/harness/projects.json`; every project target marked
+`publish_reference: true` is part of the deployed catalog for that target's
+release.
 
 The branch-local site artifact produced by `reference-blueprints.yml` for one
 release includes:

@@ -210,7 +210,7 @@ The repository also tracks larger reference blueprints.
 
 - [project_template/](./project_template/), the in-repo starter template
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.29.0/spherepackingblueprint/)
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/spherepackingblueprint/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),

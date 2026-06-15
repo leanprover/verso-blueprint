@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 
+from scripts.blueprint_harness_projects import default_project_manifest, load_project_catalog
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -167,17 +169,13 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
 
     def test_readme_uses_release_namespaced_reference_links(self) -> None:
         readme = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
 
-        self.assertNotIn("reference-blueprints/project-template/", readme)
-        self.assertNotIn("reference-blueprints/noperthedron/", readme)
-        self.assertNotIn("reference-blueprints/spherepackingblueprint/", readme)
-        self.assertNotIn("reference-blueprints/verso-flt/", readme)
-        self.assertNotIn("reference-blueprints/verso-carleson/", readme)
-
-        self.assertIn("reference-blueprints/v4.29.0/spherepackingblueprint/", readme)
-        self.assertIn("reference-blueprints/v4.30.0/noperthedron/", readme)
-        self.assertIn("reference-blueprints/v4.30.0/verso-flt/", readme)
-        self.assertIn("reference-blueprints/v4.30.0/verso-carleson/", readme)
+        for project in catalog.projects:
+            self.assertNotIn(f"reference-blueprints/{project.project_id}/", readme)
+            for target in project.targets:
+                if target.publish_reference:
+                    self.assertIn(f"reference-blueprints/{target.release}/{project.project_id}/", readme)
 
     def test_project_template_readme_does_not_link_unpublished_render(self) -> None:
         readme = (PACKAGE_ROOT / "project_template" / "README.md").read_text(encoding="utf-8")
