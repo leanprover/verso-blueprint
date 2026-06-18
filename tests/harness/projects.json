@@ -47,9 +47,8 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "caa4d8950fa8c390ea0a191c8b1ad687a8841ddb",
-          "publish_reference": true
+          "release": "v4.30.0",
+          "ref": "516bab06c7f65aa60e265e56edc42acf75b51cf9"
         }
       ],
       "build_command": ["bash", "scripts/ci-reference-build.sh"],
