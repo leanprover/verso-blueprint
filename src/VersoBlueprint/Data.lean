@@ -41,18 +41,15 @@ set_option doc.verso true
 -- set_option pp.rawOnError true
 
 -- informal object labels are names for now, but that could change
-@[expose]
 def Label := Name
 deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
-@[expose] def LabelMap A := NameMap A
+def LabelMap A := NameMap A
 
 instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
 
-@[expose]
 abbrev Parent := Label
 
-@[expose]
 abbrev AuthorId := Label
 
 /-- Where a declared dependency edge came from. -/
