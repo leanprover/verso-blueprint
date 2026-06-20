@@ -17,7 +17,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let legacyTemplateBinderJs? := findLegacyTemplatePreviewBinderJs? st
+    let removedTemplateBinderJs? := findRemovedTemplatePreviewBinderJs? st
     let inlineJs? := findInlinePreviewJs? st
     let mathJs? := findMathPreludeJs? st
     pure (
@@ -43,7 +43,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         ".bp_summary_preview_panel_body"
         ".bp_summary_preview_panel_close"
         (allowHtmlCache := true) &&
-      legacyTemplateBinderJs?.isNone &&
+      removedTemplateBinderJs?.isNone &&
       match inlineJs?, mathJs? with
       | some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&

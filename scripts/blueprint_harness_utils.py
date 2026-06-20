@@ -6,22 +6,32 @@ import subprocess
 import sys
 from pathlib import Path
 import shutil
+import re
 
 
-EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
-    ("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    ("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    ("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    ("src/VersoBlueprint/Commands/inline-preview.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    ("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
-    ("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
-    ("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
-    ("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
-    ("src/VersoBlueprint/Informal/Block/relation-panel.js", "src/VersoBlueprint/Informal/Block/Assets.lean", "VersoBlueprint.Informal.Block.Assets"),
-    ("src/VersoBlueprint/Slides/blueprint-slides.css", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    ("src/VersoBlueprint/Slides/blueprint-slides.js", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    ("static-web/math.js", "src/VersoBlueprint/Macros.lean", "VersoBlueprint.Macros"),
+@dataclass(frozen=True)
+class EmbeddedAssetOwner:
+    asset: str
+    owner: str
+    target: str
+
+
+EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/inline-preview.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Informal/Block/relation-panel.js", "src/VersoBlueprint/Informal/Block/Assets.lean", "VersoBlueprint.Informal.Block.Assets"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.css", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.js", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
+    EmbeddedAssetOwner("static-web/math.js", "src/VersoBlueprint/Macros.lean", "VersoBlueprint.Macros"),
 )
+
+INCLUDE_STR_RE = re.compile(r'include_str\s+"([^"]+)"')
 
 
 @dataclass(frozen=True)
@@ -120,6 +130,30 @@ def _target_from_source(package_root: Path, source: Path) -> str:
     return ".".join(source.relative_to(source_root).with_suffix("").parts)
 
 
+def _normalized_relative_path(package_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(package_root.resolve()).as_posix()
+
+
+def discover_embedded_asset_owners(package_root: Path) -> tuple[EmbeddedAssetOwner, ...]:
+    discovered: list[EmbeddedAssetOwner] = []
+    for owner in sorted((package_root / "src" / "VersoBlueprint").rglob("*.lean")):
+        source = owner.read_text(encoding="utf-8")
+        owner_rel = _normalized_relative_path(package_root, owner)
+        target = _target_from_source(package_root, owner)
+        for include_path in INCLUDE_STR_RE.findall(source):
+            asset = (owner.parent / include_path).resolve()
+            if asset.suffix not in {".css", ".js"}:
+                continue
+            discovered.append(
+                EmbeddedAssetOwner(
+                    asset=_normalized_relative_path(package_root, asset),
+                    owner=owner_rel,
+                    target=target,
+                )
+            )
+    return tuple(discovered)
+
+
 def _local_olean_source(package_root: Path, olean: Path) -> Path | None:
     lean_build_root = package_root / ".lake" / "build" / "lib" / "lean"
     try:
@@ -213,22 +247,22 @@ def _materialize_module_owner(package_root: Path, owner_rel: str, target: str) -
 def ensure_embedded_asset_owner_outputs(package_root: Path) -> list[str]:
     materialized_targets: list[str] = []
     seen_targets: set[str] = set()
-    for asset_rel, owner_rel, target in EMBEDDED_ASSET_OWNER_PATHS:
-        asset = package_root / asset_rel
-        owner = package_root / owner_rel
-        if not asset.exists() or not owner.exists() or target in seen_targets:
+    for asset_owner in EMBEDDED_ASSET_OWNERS:
+        asset = package_root / asset_owner.asset
+        owner = package_root / asset_owner.owner
+        if not asset.exists() or not owner.exists() or asset_owner.target in seen_targets:
             continue
-        if _materialize_module_owner(package_root, owner_rel, target):
-            materialized_targets.append(target)
-        seen_targets.add(target)
+        if _materialize_module_owner(package_root, asset_owner.owner, asset_owner.target):
+            materialized_targets.append(asset_owner.target)
+        seen_targets.add(asset_owner.target)
     return materialized_targets
 
 
 def refresh_embedded_asset_owner_mtimes(package_root: Path) -> list[Path]:
     touched: list[Path] = []
-    for asset_rel, owner_rel, _target in EMBEDDED_ASSET_OWNER_PATHS:
-        asset = package_root / asset_rel
-        owner = package_root / owner_rel
+    for asset_owner in EMBEDDED_ASSET_OWNERS:
+        asset = package_root / asset_owner.asset
+        owner = package_root / asset_owner.owner
         if not asset.exists() or not owner.exists():
             continue
         if asset.stat().st_mtime_ns <= owner.stat().st_mtime_ns:
@@ -242,17 +276,17 @@ def rebuild_embedded_asset_owners(package_root: Path) -> list[str]:
     touched_targets: list[str] = []
     owners_by_target: dict[str, str] = {}
     seen_targets: set[str] = set()
-    for asset_rel, owner_rel, target in EMBEDDED_ASSET_OWNER_PATHS:
-        asset = package_root / asset_rel
-        owner = package_root / owner_rel
+    for asset_owner in EMBEDDED_ASSET_OWNERS:
+        asset = package_root / asset_owner.asset
+        owner = package_root / asset_owner.owner
         if not asset.exists() or not owner.exists():
             continue
         os.utime(owner, None)
-        _remove_module_artifacts(package_root, target)
-        if target not in seen_targets:
-            touched_targets.append(target)
-            owners_by_target[target] = owner_rel
-            seen_targets.add(target)
+        _remove_module_artifacts(package_root, asset_owner.target)
+        if asset_owner.target not in seen_targets:
+            touched_targets.append(asset_owner.target)
+            owners_by_target[asset_owner.target] = asset_owner.owner
+            seen_targets.add(asset_owner.target)
     if touched_targets:
         run(lean_low_priority_command(package_root, "lake", "build", *touched_targets), cwd=package_root)
         for target in touched_targets:

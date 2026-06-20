@@ -46,19 +46,20 @@ Work:
    phase-safe representation
 3. define one canonical API for preview labels and titles; avoid mixing raw
    labels, resolved titles, and local fallbacks across renderers
-4. keep future graph, summary, relation-panel, and inline-reference behavior on
-   shared browser helpers where the interaction model is genuinely shared; the
-   current graph, relation-panel, and inline-preview surfaces plus trigger,
-   dismiss, popover, slide cleanup, and resize/scroll lifecycles already use
-   bundled runtime helpers
+4. keep graph, summary, relation-panel, Slides, custom-client, and
+   inline-reference behavior on shared browser helpers where the interaction
+   model is genuinely shared; the current surfaces, descriptors, trigger
+   binding, dismissal, popover, slide cleanup, and resize/scroll lifecycles
+   already use bundled runtime helpers
 5. evaluate a lighter preview delivery path so a page does not always fetch and
    decode the full shared manifest for a small number of previews
 6. remove remaining browser timing workarounds only after targeted browser tests
    prove the replacement path; panel lifecycle workarounds should stay behind
    runtime helpers rather than feature-local listeners
-7. keep shaping bundled JavaScript helpers around component-like surfaces
-   before a future React implementation, so data/cache lookup, content
-   rendering, local UI state, and lifecycle binding remain separate concerns
+7. split the large preview runtime only along the component-like boundaries now
+   encoded in its API tiers: data/cache lookup, fragment rendering and
+   hydration, template descriptors, preview surface state, lifecycle binding,
+   and readiness/debug hooks
 
 ### Data Model and Status Semantics
 
@@ -108,8 +109,9 @@ Work:
    practical release mechanism
 2. replace the mtime workaround with a durable generated-or-staged Lean
    dependency edge for browser assets
-3. keep graph, summary, bibliography, slides, block, and shared static-web
-   assets under one inventory so asset ownership is not rediscovered per feature
+3. keep the structured embedded-asset inventory covered against discovered
+   browser `include_str` references so graph, summary, bibliography, slides,
+   block, and shared static-web ownership is not rediscovered per feature
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files
 
@@ -176,9 +178,10 @@ Work:
    checkout or an external Blueprint project without hand-editing manifests
 8. retire local workaround branches promptly once their content is either
    landed, deliberately ported, or recorded in this roadmap
-9. improve `prepare-pr` scaffolds for multi-commit work so generated PR titles
-   and bodies describe the branch-level change instead of inheriting misleading
-   last-commit metadata
+9. keep PR and backport scaffolds branch-level: default-development PRs should
+   pass an intentional branch title to `prepare-pr`, and paired backport
+   scaffolds should read the public title of `--main-pr` instead of inheriting
+   the last local commit subject
 
 ## Design Candidates
 

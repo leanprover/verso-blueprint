@@ -159,7 +159,7 @@ generated HTML or browser tests:
 ./scripts/validate-branch.sh
 ```
 
-The tracked owner inventory lives in `EMBEDDED_ASSET_OWNER_PATHS` in
+The tracked owner inventory lives in `EMBEDDED_ASSET_OWNERS` in
 `scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
 asset, add it to that inventory and cover the mapping in the harness tests so
 artifact generation rebuilds the right Lean owner.
@@ -463,8 +463,11 @@ python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
 
 That helper prints a standardized paired branch name, a title of the form
 `[backport v4.30.0] ...`, a `backport-v4.30.0` release label, and a PR body
-that points back to the primary
-default-development review.
+that points back to the primary default-development review. By default the
+title after the backport prefix is read from the GitHub title of `--main-pr`,
+which keeps multi-commit backports from inheriting the last local commit
+subject. Use `--main-title '<type>: <subject>'` only when the GitHub lookup is
+not available or you intentionally need to override the public title.
 
 When several backport releases are required, use:
 

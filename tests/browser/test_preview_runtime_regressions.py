@@ -623,7 +623,7 @@ class TestPreviewRuntimeRegressions:
                         hasDiagnostics: typeof api.diagnostics !== "undefined",
                         hasReadHtml: typeof api.readHtml === "function"
                     },
-                    legacyGlobals: {
+                    removedGlobals: {
                         hasPreviewUtils: "bpPreviewUtils" in window,
                         hasPreviewHydrators: "bpPreviewHydrators" in window,
                         hasPreviewTrace: "bpPreviewTrace" in window,
@@ -662,7 +662,7 @@ class TestPreviewRuntimeRegressions:
             "hasDiagnostics": False,
             "hasReadHtml": False,
         }
-        assert rendered["legacyGlobals"] == {
+        assert rendered["removedGlobals"] == {
             "hasPreviewUtils": False,
             "hasPreviewHydrators": False,
             "hasPreviewTrace": False,

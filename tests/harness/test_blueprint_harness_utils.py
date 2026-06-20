@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.blueprint_harness_utils import (
-    EMBEDDED_ASSET_OWNER_PATHS,
+    EMBEDDED_ASSET_OWNERS,
+    EmbeddedAssetOwner,
+    discover_embedded_asset_owners,
     ensure_embedded_asset_owner_outputs,
     rebuild_embedded_asset_owners,
     refresh_embedded_asset_owner_mtimes,
@@ -18,6 +20,14 @@ def _command_arg(command: list[str], option: str) -> str:
 
 
 class TestBlueprintHarnessUtils(unittest.TestCase):
+    def test_embedded_asset_inventory_matches_browser_include_strs(self) -> None:
+        package_root = Path(__file__).resolve().parents[2]
+
+        self.assertEqual(
+            set(EMBEDDED_ASSET_OWNERS),
+            set(discover_embedded_asset_owners(package_root)),
+        )
+
     def test_common_js_assets_are_owned_by_common_module(self) -> None:
         for asset in (
             "src/VersoBlueprint/Commands/open-target-details.js",
@@ -26,12 +36,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/inline-preview.js",
         ):
             self.assertIn(
-                (
+                EmbeddedAssetOwner(
                     asset,
                     "src/VersoBlueprint/Commands/Common.lean",
                     "VersoBlueprint.Commands.Common",
                 ),
-                EMBEDDED_ASSET_OWNER_PATHS,
+                EMBEDDED_ASSET_OWNERS,
             )
 
     def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
@@ -42,7 +52,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 "VersoBlueprint.Informal.Block.Assets",
             ),
         ):
-            self.assertIn((asset, owner, target), EMBEDDED_ASSET_OWNER_PATHS)
+            self.assertIn(EmbeddedAssetOwner(asset, owner, target), EMBEDDED_ASSET_OWNERS)
 
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

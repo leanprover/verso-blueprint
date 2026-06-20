@@ -16,7 +16,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanStatusChipDoc
-    let legacyTemplateBinderJs? := findLegacyTemplatePreviewBinderJs? st
+    let removedTemplateBinderJs? := findRemovedTemplatePreviewBinderJs? st
     pure (
       hasSubstr out "bp_code_link_status_proved" &&
       hasSubstr out "bp_code_link_status_warning" &&
@@ -41,7 +41,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         ".bp_code_summary_preview_body"
         ".bp_code_summary_preview_close" &&
       hasSubstr out "data-bp-template-preview-title-attr=\"data-bp-preview-title\"" &&
-      legacyTemplateBinderJs?.isNone
+      removedTemplateBinderJs?.isNone
     )
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.LeanStatus

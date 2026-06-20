@@ -157,6 +157,36 @@ def current_commit_subject(repo_root: Path) -> str:
     return subject
 
 
+def github_pr_title(repo_root: Path, pr_number: int) -> str | None:
+    result = subprocess.run(
+        ["gh", "pr", "view", str(pr_number), "--repo", PUBLIC_REPOSITORY, "--json", "title"],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    title = payload.get("title") if isinstance(payload, dict) else None
+    return title if isinstance(title, str) and title.strip() else None
+
+
+def resolve_main_pr_title(repo_root: Path, args: argparse.Namespace) -> str:
+    if args.main_title is not None:
+        return validate_public_pr_title(args.main_title)
+    title = github_pr_title(repo_root, args.main_pr)
+    if title is None:
+        raise SystemExit(
+            "[blueprint-harness] unable to read the default-development PR title from GitHub; "
+            "pass `--main-title '<type>: <subject>'` explicitly."
+        )
+    return validate_public_pr_title(title)
+
+
 def validate_public_pr_title(title: str) -> str:
     normalized = title.strip()
     if normalized != title or not normalized:
@@ -794,7 +824,7 @@ def command_prepare_backport_pr(args: argparse.Namespace) -> int:
     if not source_branch:
         raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
 
-    main_title = validate_public_pr_title(args.main_title or current_commit_subject(layout.package_root))
+    main_title = resolve_main_pr_title(layout.package_root, args)
     source_commits = source_commit_series(layout.package_root, source_branch)
     default_dev = default_dev_branch(layout.package_root)
 
@@ -1260,7 +1290,7 @@ def add_pr_preparation_commands(subparsers) -> None:
     prepare_backport_pr.add_argument(
         "--main-title",
         default=None,
-        help="Override the default-development PR title. Defaults to the current commit subject.",
+        help="Override the default-development PR title. Defaults to the title of `--main-pr` from GitHub.",
     )
     prepare_backport_pr.add_argument(
         "--source-branch",

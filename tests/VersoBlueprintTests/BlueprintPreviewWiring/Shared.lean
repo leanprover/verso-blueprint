@@ -59,7 +59,7 @@ def findInlinePreviewJs? (st : TraverseState) : Option String :=
 def findMathPreludeJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "window.bpTexPreludeTable"
 
-def findLegacyTemplatePreviewBinderJs? (st : TraverseState) : Option String :=
+def findRemovedTemplatePreviewBinderJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "previewUtils.bindTemplatePreviewRoots({"
 
 def findRelationPanelJs? (st : TraverseState) : Option String :=
