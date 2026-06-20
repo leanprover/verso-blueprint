@@ -17,6 +17,7 @@ from tests.preview_runtime_api import (
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 API_DOC = PACKAGE_ROOT / "doc" / "API.md"
+DESIGN_RATIONALE = PACKAGE_ROOT / "doc" / "DESIGN_RATIONALE.md"
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
     "bindDismissHandlers",
@@ -147,6 +148,30 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("const previewHydrators = new Map();", runtime)
         self.assertNotIn("window.bpPreviewHydrators", runtime)
         self.assertNotIn("window.bpPreviewTrace", runtime)
+
+    def test_preview_runtime_component_boundaries_are_named(self) -> None:
+        runtime = blueprint_js_source()
+
+        for marker in (
+            "Generated-data URL helpers and graph delegation.",
+            "Manifest/cache status, loading, and diagnostics.",
+            "Preview resolution joins semantic manifest entries with opaque body fragments.",
+            "Canonical generated-node rendering.",
+            "Bundled preview surface and lifecycle helpers.",
+            "API assembly and readiness synchronization.",
+        ):
+            self.assertIn(marker, runtime)
+
+    def test_design_rationale_explains_html_cache_boundary(self) -> None:
+        design = DESIGN_RATIONALE.read_text(encoding="utf-8")
+
+        self.assertIn("### Body Fragments vs Full Node Wrappers", design)
+        self.assertIn(
+            "The rendered-fragment cache should not grow into a second node-wrapper cache",
+            design,
+        )
+        self.assertIn("renderCanonicalPreviewInto", design)
+        self.assertIn("manifestEntry.href", design)
 
     def test_slide_runtime_uses_verso_blueprint_namespace(self) -> None:
         runtime = (BLUEPRINT_SRC / "Slides" / "blueprint-slides.js").read_text(

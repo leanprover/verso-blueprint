@@ -448,6 +448,34 @@ code-panel structure without changing the semantic data contract. Cached HTML
 may visibly contain relation panels, code panels, and headings, but those are a
 rendering of manifest semantics, not a second data source.
 
+### Body Fragments vs Full Node Wrappers
+
+The rendered-fragment cache should not grow into a second node-wrapper cache
+just because a browser client wants a whole Blueprint node. The current split is
+intentional:
+
+- `blueprint-html-cache.json` stores reusable rendered bodies. Those fragments
+  are small enough to use in hovers, relation panels, custom cards, Slides, and
+  generated consumers that provide their own wrapper.
+- `blueprint-manifest.json` stores the semantic entry, including the generated
+  page `href` and preview key needed to find the canonical page occurrence.
+- the generated HTML page remains the owner of the exact page-level node shell:
+  heading layout, wrapper attributes, relation-panel placement, code extras,
+  folded state, and any future page-local affordances.
+
+For `renderCanonicalPreviewInto`, the browser runtime therefore follows
+`manifestEntry.href`, loads the generated page, clones the linked node, rebases
+links, inserts the copy, and hydrates it. That JavaScript is justified because
+it delegates shell structure back to the Lean-generated page instead of
+duplicating shell semantics in browser code.
+
+Adding a richer cache would be justified only if a repeated real use case needs
+canonical node wrappers without page fetches and the cost is visible. In that
+case the new artifact should be an explicit generated-node cache, not an
+overloaded HTML-cache entry. It should still be produced by the same Lean block
+shell renderer and keyed by the same manifest preview key, so JavaScript remains
+a loader/inserter rather than the owner of Blueprint semantics.
+
 ### Phase Boundary Checklist
 
 When adding a new Blueprint surface, choose its data boundary explicitly:

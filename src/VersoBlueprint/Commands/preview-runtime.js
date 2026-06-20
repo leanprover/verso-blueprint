@@ -1,9 +1,11 @@
 (function () {
   if (window.VersoBlueprint && window.VersoBlueprint.render) return;
 
+  // Runtime-local registries. Keep these private and expose behavior through
+  // the render API instead of growing new window globals.
   const previewHydrators = new Map();
 
-  // Debug and local-template utilities.
+  // Runtime-local diagnostics and page-local template capture.
 
   function previewDebugEnabled() {
     try {
@@ -83,7 +85,7 @@
       .replaceAll("'", "&#39;");
   }
 
-  // Manifest and rendered-fragment cache stores.
+  // Generated-data URL helpers and graph delegation.
 
   function blueprintGraphApi() {
     return window.bpGraphApi && typeof window.bpGraphApi === "object" ? window.bpGraphApi : null;
@@ -209,6 +211,8 @@
       return loadManifestGraphs(blueprintManifestUrl(), options);
     });
   }
+
+  // Manifest/cache status, loading, and diagnostics.
 
   function missingPreviewKeyDiagnosticHtml() {
     return (
@@ -435,7 +439,12 @@
     return previewKey(label, "statement");
   }
 
-  // Preview resolution joins semantic manifest entries with opaque fragments.
+  // Preview resolution joins semantic manifest entries with opaque body fragments.
+  //
+  // The HTML cache is presentation data. Runtime code may insert and hydrate
+  // its fragments, but semantic facts must come from the manifest entry. If a
+  // future client needs another fact, add it to the manifest instead of parsing
+  // cached HTML.
 
   async function loadBlueprintStoreEntry(store, previewKey) {
     const exact = readBlueprintStoreEntry(store, previewKey);
@@ -546,6 +555,14 @@
     renderHtmlInto(target, html, opts);
     return result;
   }
+
+  // Canonical generated-node rendering.
+  //
+  // The HTML cache intentionally carries reusable body fragments, not full
+  // Blueprint node wrappers. To render the exact Lean-generated shell without
+  // duplicating wrapper semantics in JavaScript or emitting a second wrapper
+  // cache, follow the manifest href, clone the canonical node, and rebase its
+  // links for insertion into the current page.
 
   function urlWithoutHash(url) {
     const clone = new URL(url.href);
@@ -788,7 +805,12 @@
     renderAll(".bp_math.display", true);
   }
 
-  // Panel behavior helpers shared by bundled Blueprint features.
+  // Bundled preview surface and lifecycle helpers.
+  //
+  // These helpers own browser interaction state for Blueprint's bundled graph,
+  // summary, relation-panel, inline-preview, and slide clients. They are not a
+  // semantic data layer and are not part of the stable custom-client API unless
+  // explicitly re-exported through stableCustomClientApi below.
 
   function bindCloseOnce(button, onClose) {
     if (!(button instanceof Element)) return;
@@ -1619,6 +1641,8 @@
       showTrigger: showTrigger
     });
   }
+
+  // Hydration extension points and option readers.
 
   function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
