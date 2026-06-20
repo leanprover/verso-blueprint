@@ -903,9 +903,11 @@ Browser-side custom interfaces should start through
 `renderCanonicalPreviewInto` for the full generated Blueprint node wrapper, and
 `loadGraphs` for standalone graph-data clients.
 
+Use [`API.md#choosing-an-api`](./API.md#choosing-an-api) when deciding between
+the generated ESM modules, the runtime callback, and Lean-side graft helpers.
 See [`API.md#browser-esm-apis`](./API.md#browser-esm-apis) for ordinary
-`import { ... } from ...` usage, module path rules, and the full-node rendering
-example. See [`API.md#browser-runtime-api`](./API.md#browser-runtime-api) for
+`import { ... } from ...` usage, module path rules, and copyable inline
+examples. See [`API.md#browser-runtime-api`](./API.md#browser-runtime-api) for
 the `window.VersoBlueprint.onRenderReady` API and stable runtime table.
 
 ### Troubleshooting Grafts
@@ -930,10 +932,15 @@ the `window.VersoBlueprint.onRenderReady` API and stable runtime table.
 The detailed public API reference lives in [`API.md`](./API.md). It covers:
 
 - the generated `blueprint-manifest.json` and `blueprint-html-cache.json` files
-- finalized graph data from Lean, the manifest, and browser clients
-- `Informal.Graft` and manifest/cache rendering helpers for custom generators
-- generated ESM modules such as `api/preview.mjs` and `api/graph.mjs`
-- the stable browser runtime API and the boundary around bundled helper APIs
+- [which API to use for each integration shape](./API.md#choosing-an-api)
+- [finalized graph data](./API.md#graph-data-apis) from Lean, the manifest,
+  and browser clients
+- [`Informal.Graft` and manifest/cache rendering helpers](./API.md#lean-graft-and-render-apis)
+  for custom generators
+- [generated ESM modules](./API.md#browser-esm-apis) such as `api/preview.mjs`
+  and `api/graph.mjs`
+- [the stable browser runtime API](./API.md#browser-runtime-api) and the
+  boundary around bundled helper APIs
 
 ## The Generator Entry Point
 

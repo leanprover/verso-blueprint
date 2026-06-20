@@ -23,7 +23,8 @@ If you want to start a Blueprint project today, read these in order:
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)
 3. [doc/MANUAL.md](./doc/MANUAL.md)
 4. [doc/API.md](./doc/API.md) when you need stable Lean, generated-data, or
-   browser integration APIs
+   browser integration APIs; start with
+   [Choosing an API](./doc/API.md#choosing-an-api)
 
 ## Current Project Shape
 
@@ -257,7 +258,11 @@ Read these in order:
    project and file layout
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md): first Blueprint walkthrough
 3. [doc/MANUAL.md](./doc/MANUAL.md): authoring and rendering reference
-4. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs
+4. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs.
+   Start with [Choosing an API](./doc/API.md#choosing-an-api), then jump to
+   [Browser ESM APIs](./doc/API.md#browser-esm-apis),
+   [Graph Data APIs](./doc/API.md#graph-data-apis), or
+   [Lean Graft and Render APIs](./doc/API.md#lean-graft-and-render-apis).
 
 ### Developer Documentation
 
