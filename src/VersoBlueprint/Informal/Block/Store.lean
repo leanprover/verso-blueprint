@@ -147,7 +147,7 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
     | .proof, .statement _ => incoming.kind
     | .proof, .proof => existing.kind
   { existing with
-      kind
+      kind := kind
       parent := existing.parent <|> incoming.parent
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount

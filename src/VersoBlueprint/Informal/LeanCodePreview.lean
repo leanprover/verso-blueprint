@@ -39,7 +39,7 @@ def lookupKey (decl : Name) : String :=
   Informal.LeanDeclPreviewKey.lookupKey decl
 
 inductive Source where
-  | inlineBlocks (blocks : Array ManualBlock)
+  | inlineBlocks (blocks : Array ManualBlock) (sourceLocation : Informal.Data.SourceLocationResult)
   | externalDecl (decl : Informal.Data.ExternalRef)
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -54,8 +54,11 @@ structure Entry where
   source : Source
 deriving Inhabited, Repr, ToJson, FromJson
 
-def Entry.ofInlineBlocks (target : Name) (blocks : Array ManualBlock) : Entry :=
-  { target := target.eraseMacroScopes, source := .inlineBlocks blocks }
+def Entry.ofInlineBlocks
+    (target : Name)
+    (blocks : Array ManualBlock)
+    (sourceLocation : Informal.Data.SourceLocationResult) : Entry :=
+  { target := target.eraseMacroScopes, source := .inlineBlocks blocks sourceLocation }
 
 def Entry.ofExternalDecl (target : Name) (decl : Informal.Data.ExternalRef) : Entry :=
   { target := target.eraseMacroScopes, source := .externalDecl decl }
@@ -71,7 +74,7 @@ def renderWithState
     (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
     IO Informal.RenderedManualHtml := do
   match entry.source with
-  | .inlineBlocks blocks =>
+  | .inlineBlocks blocks _sourceLocation =>
     Informal.renderManualBlocksHtmlWithStateAndHovers blocks impls state
       (logError := logError) (hoverState := hoverState)
   | .externalDecl decl =>

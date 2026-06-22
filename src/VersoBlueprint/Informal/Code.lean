@@ -73,11 +73,11 @@ block_extension Block.informalCode (data : InlineCodeData) where
           }
           modify fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson updated)
       let previewBlocks := previewCodeBlocks id _contents
-      let previewTargets :=
-        (cdata.definedDefs.map (·.name)) ++ (cdata.definedTheorems.map (·.name))
-      for target in previewTargets do
+      for decl in cdata.declarations do
+        let target := decl.name
         let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey target
-        let previewData := toJson (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks)
+        let previewData := toJson
+          (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks decl.sourceLocation)
         let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
         modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
         if existingPreview?.isNone then
@@ -290,14 +290,25 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
         | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
         | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
 
+private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM Data.SourceLocationResult := do
+  match ← Data.SourceLocation.ofSyntax? stx with
+  | some location => pure <| Data.SourceLocationResult.found location
+  | none =>
+      pure <| Data.SourceLocationResult.unavailable
+        s!"inline Lean declaration source location unavailable for {declName}"
+
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
   | cfg, contents => do
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
     let res ← Lean.elabCommands leanCfg contents
     let codeBlock := res.block
-    let definedDefs := res.definedDefs.map CodeDeclData.ofLiterateDef
-    let definedTheorems := res.definedTheorems.map CodeDeclData.ofLiterateThm
+    let definedDefs ← res.definedDefs.mapM fun decl => do
+      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
+      pure <| CodeDeclData.ofLiterateDef decl sourceLocation
+    let definedTheorems ← res.definedTheorems.mapM fun decl => do
+      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
+      pure <| CodeDeclData.ofLiterateThm decl sourceLocation
     let mut inferredUseRefs : DependencyAnalysis.InferredUseRefs := {}
     let codeRef ← getRef
     Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems

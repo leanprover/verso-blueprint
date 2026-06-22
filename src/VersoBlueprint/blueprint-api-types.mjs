@@ -27,6 +27,20 @@
  */
 
 /**
+ * Options accepted by label-resolution helpers.
+ *
+ * This duplicates the small generated-data loader option surface because the
+ * JSDoc/TypeScript toolchain used for the public API does not accept typedef
+ * intersections consistently.
+ *
+ * @typedef {Object} BlueprintLabelResolveOptions
+ * @property {string} [facet] Preview facet to resolve. Defaults to `statement`.
+ * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
+ * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
+ * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
+ */
+
+/**
  * Context passed to preview hydrators.
  *
  * @typedef {Object} BlueprintHydratorContext
@@ -124,6 +138,25 @@
  */
 
 /**
+ * Source file/range for a Blueprint manifest entry.
+ *
+ * Lines and characters use LSP zero-based UTF-16 coordinates.
+ *
+ * @typedef {Object} BlueprintSourceLocation
+ * @property {string} path Source file path.
+ * @property {{ start: { line: number, character: number }, end: { line: number, character: number } }} range Source range.
+ */
+
+/**
+ * Result of looking up a source location for a manifest entry.
+ *
+ * @typedef {Object} BlueprintSourceLocationResult
+ * @property {boolean} ok Whether a concrete source location is available.
+ * @property {BlueprintSourceLocation | null} location Source location on success.
+ * @property {string} error Diagnostic message when unavailable.
+ */
+
+/**
  * External source markup attached to a Blueprint label.
  *
  * @typedef {Object} BlueprintExternalMarkup
@@ -205,6 +238,7 @@
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
+ * @property {BlueprintSourceLocationResult} [sourceLocation] Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
  */
@@ -314,6 +348,33 @@
  * @property {string} diagnosticHtml Diagnostic HTML when unavailable.
  * @property {string} [canonicalHtml] Full canonical generated-node HTML.
  * @property {string} [canonicalSourceHref] Source document URL for the canonical node.
+ */
+
+/**
+ * Result of resolving a Blueprint block label.
+ *
+ * @typedef {Object} BlueprintResolveLabelResult
+ * @property {boolean} ok Whether the label resolved to a manifest entry.
+ * @property {string} label Requested Blueprint label.
+ * @property {string} facet Requested or resolved facet.
+ * @property {string} key Resolved preview key, or the requested key when missing.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {string} href Generated-page href on success.
+ * @property {BlueprintSourceLocationResult} sourceLocation Source location result for the label entry.
+ */
+
+/**
+ * Result of resolving a Lean declaration name.
+ *
+ * @typedef {Object} BlueprintResolveDeclarationResult
+ * @property {boolean} ok Whether the declaration resolved to a manifest entry.
+ * @property {string} declaration Requested or resolved Lean declaration name.
+ * @property {string} key Resolved preview key, or the requested key when missing.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {string} href Generated-page href on success.
+ * @property {BlueprintSourceLocationResult} sourceLocation Source location result for the declaration.
  */
 
 /**
@@ -434,6 +495,8 @@
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
  * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
+ * @property {function(string, BlueprintLabelResolveOptions=): Promise<BlueprintResolveLabelResult>} resolveLabel
+ * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintResolveDeclarationResult>} resolveDeclaration
  * @property {function(BlueprintSourceMetadataInput, BlueprintDataApiOptions=): Promise<BlueprintSourceMetadataResult>} resolveSourceMetadata
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
  */
@@ -458,6 +521,8 @@
  * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
+ * @property {function(string, BlueprintLabelResolveOptions=): Promise<BlueprintResolveLabelResult>} resolveLabel
+ * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintResolveDeclarationResult>} resolveDeclaration
  * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintPreviewResult>} resolvePreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintPreviewResult>} renderPreviewInto
  * @property {function(string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} resolveCanonicalPreview

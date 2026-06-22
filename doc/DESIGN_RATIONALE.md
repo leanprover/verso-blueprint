@@ -611,6 +611,12 @@ membership, or other semantic facts. If a new generated consumer needs another
 semantic fact, add that fact to `PreviewManifest.Entry` or a typed structure
 referenced from it; do not encode it only in rendered HTML.
 
+Manifest links and source locations deliberately answer different questions.
+`Entry.href` points at a generated Blueprint occurrence, suitable for jumping to
+the statement/proof/declaration preview in the site. `Entry.sourceLocation`
+points back to the source file and range that produced the entry, and carries an
+explicit success/error result so missing source data is visible to clients.
+
 This rule keeps custom consumers independent of presentation markup. It also
 lets Blueprint change CSS, heading layout, relation-panel markup, or rendered
 code-panel structure without changing the semantic data contract. Cached HTML

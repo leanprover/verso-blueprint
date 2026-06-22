@@ -34,7 +34,7 @@ import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
  * @module blueprint-preview-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -269,6 +269,52 @@ export function loadSourceDocument(id, options) {
 }
 
 /**
+ * Resolve a Blueprint block label to its manifest entry and source location.
+ *
+ * `sourceLocation` points to the authored Blueprint label/facet location. Use
+ * `resolveSourceMetadata` when a client needs original-source provenance from
+ * `entry.sources`.
+ *
+ * @param {string} label Blueprint block label.
+ * @param {BlueprintLabelResolveOptions} [options] Optional facet and load overrides.
+ * @returns {Promise<BlueprintResolveLabelResult>}
+ *
+ * @example
+ * import { createPreview } from "./-verso-data/api/preview.mjs";
+ *
+ * const preview = createPreview();
+ * const result = await preview.resolveLabel("main_theorem");
+ * if (result.ok && result.sourceLocation.ok) {
+ *   console.log(result.href, result.sourceLocation.location.path);
+ * }
+ */
+export function resolveLabel(label, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveLabel", [label, options]);
+}
+
+/**
+ * Resolve a Lean declaration name to its manifest entry and source location.
+ *
+ * `sourceLocation` points to the Lean declaration source. Use the returned
+ * `manifestEntry` or `resolveSourceMetadata` for Blueprint provenance records.
+ *
+ * @param {string} declName Lean declaration name.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintResolveDeclarationResult>}
+ *
+ * @example
+ * import { resolveDeclaration } from "./-verso-data/api/preview.mjs";
+ *
+ * const result = await resolveDeclaration("Nat.add");
+ * if (result.ok) {
+ *   console.log(result.href, result.sourceLocation);
+ * }
+ */
+export function resolveDeclaration(declName, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveDeclaration", [declName, options]);
+}
+
+/**
  * Load a single HTML-cache entry by key.
  *
  * @param {string} key HTML cache key.
@@ -439,6 +485,8 @@ const previewApi = {
   loadHtmlCacheEntry,
   previewKey,
   statementPreviewKey,
+  resolveLabel,
+  resolveDeclaration,
   resolvePreview,
   renderPreviewInto,
   resolveCanonicalPreview,
