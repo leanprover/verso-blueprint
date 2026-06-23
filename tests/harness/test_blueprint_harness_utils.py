@@ -311,9 +311,9 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             asset = root / "src" / "VersoBlueprint" / "Commands" / "summary.css"
-            owner = root / "src" / "VersoBlueprint" / "Commands" / "Summary.lean"
+            owner = root / "src" / "VersoBlueprint" / "Commands" / "Summary" / "Html.lean"
             dep_source = root / "src" / "VersoBlueprint" / "Commands" / "Summary" / "Data.lean"
-            owner_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Commands" / "Summary.olean"
+            owner_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Commands" / "Summary" / "Html.olean"
             dep_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Commands" / "Summary" / "Data.olean"
             owner.parent.mkdir(parents=True, exist_ok=True)
             dep_source.parent.mkdir(parents=True, exist_ok=True)
@@ -326,12 +326,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 self.assertEqual(cwd, root)
                 if command[-1] == "src/VersoBlueprint/Commands/Summary/Data.lean":
                     dep_olean.write_text("fresh dep", encoding="utf-8")
-                elif command[-1] == "src/VersoBlueprint/Commands/Summary.lean":
+                elif command[-1] == "src/VersoBlueprint/Commands/Summary/Html.lean":
                     owner_olean.write_text("fresh owner", encoding="utf-8")
 
             def fake_run_output(command: list[str], *, cwd: Path) -> str:
                 self.assertEqual(cwd, root)
-                if command[-1] == "src/VersoBlueprint/Commands/Summary.lean":
+                if command[-1] == "src/VersoBlueprint/Commands/Summary/Html.lean":
                     return str(dep_olean) + "\n" + str(dep_olean) + "\n"
                 return ""
 
@@ -341,7 +341,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             ):
                 rebuilt = rebuild_embedded_asset_owners(root)
 
-            self.assertEqual(rebuilt, ["VersoBlueprint.Commands.Summary"])
+            self.assertEqual(rebuilt, ["VersoBlueprint.Commands.Summary.Html"])
             self.assertEqual(run_mock.call_count, 3)
             self.assertEqual(deps_mock.call_count, 2)
             dep_command = run_mock.call_args_list[1].args[0]
@@ -349,7 +349,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             self.assertEqual(dep_command[1:4], ["lake", "env", "lean"])
             self.assertEqual(owner_command[1:4], ["lake", "env", "lean"])
             self.assertEqual(dep_command[-1], "src/VersoBlueprint/Commands/Summary/Data.lean")
-            self.assertEqual(owner_command[-1], "src/VersoBlueprint/Commands/Summary.lean")
+            self.assertEqual(owner_command[-1], "src/VersoBlueprint/Commands/Summary/Html.lean")
             self.assertEqual(dep_olean.read_text(encoding="utf-8"), "fresh dep")
             self.assertEqual(owner_olean.read_text(encoding="utf-8"), "fresh owner")
 
