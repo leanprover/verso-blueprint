@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoBlueprint.Data
+import VersoBlueprint.Source.Data
 
 namespace Informal
 
@@ -152,6 +153,8 @@ structure BlockData where
   kind : Data.InProgressKind := .proof
   /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
   codeData : Option BlockCodeData := none
+  /-- Optional original-source provenance attached with directive-local metadata. -/
+  sourceRef : Option Source.Ref := none
   label : Data.Label
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false

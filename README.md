@@ -180,6 +180,40 @@ Blueprint manifest, and are not rendered at their source location in the output
 site by default. Use `slot` names such as `statement` and `proof` when one
 Blueprint node corresponds to multiple source spans.
 
+Blueprint can also record original-source provenance for audit tools. Declare a
+source document with `:::source_document` and attach node-local source spans in
+a leading Verso metadata block:
+
+````md
+:::source_document "paper"
+%%%
+title := "Representation Theory"
+kind := .pdf
+pdf := "source/paper.pdf"
+%%%
+:::
+
+:::lemma_ "addition_right_identity"
+%%%
+source := {
+  document := "paper"
+  spans := #[
+    {
+      page := "12"
+      pdf := some { path := "source/pages/page-12.pdf" }
+    }
+  ]
+}
+%%%
+
+For every natural number $`n`, $`n + 0 = n`.
+:::
+````
+
+Current behavior: source provenance is exported in the Blueprint manifest as
+`sourceDocuments` and per-entry `sources`, and kept hidden in rendered pages.
+Rich audit-interface rendering is planned separately.
+
 ### Rendering to HTML
 
 Blueprint can render:

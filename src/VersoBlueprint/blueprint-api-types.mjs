@@ -134,6 +134,68 @@
  */
 
 /**
+ * Original source document declared by a Blueprint site.
+ *
+ * @typedef {Object} BlueprintSourceDocument
+ * @property {string} id Stable source-document id.
+ * @property {string} title Human-readable source title.
+ * @property {"pdf" | "text" | string} kind Broad source-document kind.
+ * @property {string} [pdf] Source PDF path, when the document is PDF-backed.
+ * @property {string} [pageRoot] Optional root for extracted source pages.
+ * @property {string} [imageRoot] Optional root for extracted page images.
+ */
+
+/**
+ * Text source span for an original source reference.
+ *
+ * @typedef {Object} BlueprintSourceTextRange
+ * @property {string} path Source text path.
+ * @property {number} startLine One-based inclusive start line.
+ * @property {number} endLine One-based inclusive end line.
+ * @property {number} [startCharacter] Optional start character.
+ * @property {number} [endCharacter] Optional end character.
+ */
+
+/**
+ * Source PDF crop box in top-left page coordinates.
+ *
+ * @typedef {Object} BlueprintSourcePdfBox
+ * @property {number} scale Coordinate scale used for the extracted page.
+ * @property {number} pageWidth Scaled page width.
+ * @property {number} pageHeight Scaled page height.
+ * @property {number} xMin Left edge.
+ * @property {number} yMin Top edge.
+ * @property {number} xMax Right edge.
+ * @property {number} yMax Bottom edge.
+ */
+
+/**
+ * PDF/page-image source data for an original source span.
+ *
+ * @typedef {Object} BlueprintSourcePdfSpan
+ * @property {string} path Source PDF page path.
+ * @property {string} [image] Optional rendered page image path.
+ * @property {BlueprintSourcePdfBox} [box] Optional crop box.
+ */
+
+/**
+ * One original source span attached to a Blueprint node.
+ *
+ * @typedef {Object} BlueprintSourceSpan
+ * @property {string} page Source-local page identifier.
+ * @property {BlueprintSourceTextRange} [text] Text location for this span.
+ * @property {BlueprintSourcePdfSpan} [pdf] PDF/page-image location for this span.
+ */
+
+/**
+ * Original source provenance attached to a manifest entry.
+ *
+ * @typedef {Object} BlueprintSourceRef
+ * @property {string} document Source-document id.
+ * @property {BlueprintSourceSpan[]} spans Source spans within the document.
+ */
+
+/**
  * Semantic manifest entry emitted for a rendered Blueprint preview or an
  * external-markup-only node.
  *
@@ -144,6 +206,7 @@
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
+ * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
  */
 
 /**

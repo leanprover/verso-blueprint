@@ -162,12 +162,76 @@ then normalizes those phase-local records into the semantic manifest and the
 rendered-fragment cache. Generated ESM APIs load those two files; they do not
 rerun traversal and should not recover semantics by scraping cached HTML.
 
+Source-provenance data also lives in the manifest. Declared source documents
+are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
+of zero or more refs pointing back to those documents. An abbreviated excerpt
+looks like this:
+
+Clients should read `entry.sources`; the manifest does not emit a singular
+`entry.source` field. Most block and external-markup entries have at most one
+source ref, while `.leanDecl` entries can aggregate refs from multiple sourced
+Blueprint nodes that share the same Lean declaration preview.
+
+```json
+{
+  "sourceDocuments": [
+    {
+      "id": "paper",
+      "title": "Representation Theory",
+      "kind": "pdf",
+      "pdf": "source/paper.pdf",
+      "pageRoot": "source/pages",
+      "imageRoot": "source/pages/images"
+    }
+  ],
+  "previews": [
+    {
+      "sources": [
+        {
+          "document": "paper",
+          "spans": [
+            {
+              "page": "12",
+              "text": {
+                "path": "source/pages/page-12.md",
+                "startLine": 41,
+                "endLine": 45
+              },
+              "pdf": {
+                "path": "source/pages/page-12.pdf",
+                "image": "source/pages/images/page-12.png",
+                "box": {
+                  "scale": 2,
+                  "pageWidth": 1600,
+                  "pageHeight": 2200,
+                  "xMin": 120,
+                  "yMin": 240,
+                  "xMax": 980,
+                  "yMax": 520
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+When a sourced Blueprint node has associated Lean declaration previews, the
+corresponding `.leanDecl` manifest entries also expose every owning ref in
+`sources`. This lets audit clients follow the source-document, Blueprint-node,
+and Lean-declaration chain without scraping rendered HTML.
+
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `blockStatementEntries`, `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`,
+`sourceDocument?`, `entriesWithSource`, `entriesForSourceDocument`,
 `ownerValues`, `tagValues`, and `workQueueEntries`. Entry-level helpers
-`Entry.matchesText` and `Entry.matchesCode` provide the same search predicates
-used by the `lake exe vbp query` interface.
+`Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
+the same source filtering and search predicates used by the `lake exe vbp query`
+interface.
 
 ```lean
 import VersoBlueprint.PreviewManifest

@@ -25,6 +25,7 @@ import VersoBlueprint.Git
 import VersoBlueprint.Html
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
+import VersoBlueprint.Source.Data
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewManifest
@@ -795,6 +796,8 @@ structure Entry where
   codeData : Option Informal.BlockCodeData := none
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
+  /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
+  sources : Array Informal.Source.Ref := #[]
   /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
@@ -825,10 +828,15 @@ def Entry.blockKind (entry : Entry) : Informal.Data.InProgressKind :=
   | .proof => .proof
   | .statement => .statement (entry.kind.getD .theorem)
 
+/-- Primary source ref for internal block-rendering paths that still accept one source attachment. -/
+def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
+  entry.sources[0]?
+
 /-- Convert manifest entry metadata to the shared informal block model. -/
 def Entry.blockData (entry : Entry) : Informal.BlockData := {
   kind := entry.blockKind
   codeData := entry.codeData
+  sourceRef := entry.primarySource?
   label := entry.label
   parent := entry.parent
   count := 0
@@ -870,6 +878,8 @@ structure File where
   the browser runtime.
   -/
   graphs : Array Informal.Graph.GraphData := #[]
+  /-- Original source documents referenced by source provenance entries. -/
+  sourceDocuments : Array Informal.Source.Document := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-
@@ -1105,6 +1115,22 @@ def reportPreviewMetadataLossWarnings
     (reportWarning : String → IO Unit) (state : TraverseState) (file : File) : IO Unit := do
   for loss in previewMetadataLosses state file do
     reportWarning loss.warningMessage
+
+/-- Declared source document with the given id, if present. -/
+def File.sourceDocument? (file : File) (id : String) : Option Informal.Source.Document :=
+  file.sourceDocuments.find? fun document => document.id == id
+
+/-- Whether this manifest entry carries original-source provenance for the document id. -/
+def Entry.hasSourceDocument (entry : Entry) (id : String) : Bool :=
+  entry.sources.any fun sourceRef => sourceRef.document == id
+
+/-- Manifest entries carrying original-source provenance. -/
+def File.entriesWithSource (file : File) : Array Entry :=
+  file.previews.filter fun entry => !entry.sources.isEmpty
+
+/-- Manifest entries whose original-source provenance points at the given document id. -/
+def File.entriesForSourceDocument (file : File) (id : String) : Array Entry :=
+  file.previews.filter fun entry => entry.hasSourceDocument id
 
 /-- Whether this manifest entry represents an informal Blueprint block. -/
 def Entry.isBlock (entry : Entry) : Bool :=
@@ -1431,6 +1457,15 @@ private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
   (Informal.TraversalIndex.ExternalMarkup.data? state label).map (·.markup.toArray) |>.getD #[]
 
+private def sourceRef? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
+  Informal.TraversalIndex.SourceRefs.data? state label
+
+private def sourceRefsForBlockLabel (state : TraverseState) (label : Name) :
+    Array Informal.Source.Ref :=
+  match sourceRef? state label with
+  | some sourceRef => #[sourceRef]
+  | none => #[]
+
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
   match Informal.TraversalIndex.Groups.data? state parent with
   | some groupData =>
@@ -1482,6 +1517,20 @@ private def blockCodeData?
     else
       some (Informal.BlockCodeData.external externalDecls)
   Informal.BlockCodeData.ofHintAndInline external? inline?
+
+private def leanCodePreviewSourceRefs (state : TraverseState) :
+    Std.HashMap String (Array Informal.Source.Ref) := Id.run do
+  let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
+  for decoded in Informal.PreviewSource.traversalStoredEntries state do
+    match decoded with
+    | .ok stored =>
+        if let some sourceRef := sourceRef? state stored.entry.label then
+          for key in stored.entry.leanCodePreviewKeys do
+            let current := (sources.get? key).getD #[]
+            sources := sources.insert key (pushUnique current sourceRef)
+    | .error _ =>
+        pure ()
+  sources
 
 private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
   let axes : Array RelationAxis :=
@@ -1601,6 +1650,7 @@ private def blockSemanticManifestEntry
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
+    sources := sourceRefsForBlockLabel state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
     group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1692,6 +1742,7 @@ private def buildLeanCodeEntries
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
+  let sourceRefs := leanCodePreviewSourceRefs state
   for decoded in Informal.TraversalIndex.LeanCodePreviews.entries state do
     match decoded with
     | .error err =>
@@ -1704,12 +1755,14 @@ private def buildLeanCodeEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
+      let key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
       let manifestEntry : Entry := {
-        key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
+        key
         targetKind := .leanDecl
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target
+        sources := (sourceRefs.get? key).getD #[]
       }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
@@ -1759,6 +1812,30 @@ private def buildCitationEntries
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries, hoverState)
 
+private def buildSourceDocuments
+    (logError : String → IO Unit)
+    (state : TraverseState) : IO (Array Informal.Source.Document) := do
+  let mut documents := #[]
+  for decoded in Informal.TraversalIndex.SourceDocuments.entries state do
+    match decoded with
+    | .error err =>
+      logError s!"Blueprint manifest: malformed source-document entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      documents := documents.push stored.data
+  pure <| documents.qsort (fun a b => a.id < b.id)
+
+private def validateSourceRefs
+    (logError : String → IO Unit)
+    (documents : Array Informal.Source.Document)
+    (state : TraverseState) : IO Unit := do
+  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
+    match decoded with
+    | .error err =>
+      logError s!"Blueprint manifest: malformed source-ref entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      unless documents.any (fun doc => doc.id == stored.data.document) do
+        logError s!"Blueprint manifest: source ref for label {stored.canonicalName} references unknown source document '{stored.data.document}'"
+
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a
 completed Manual traversal state.
@@ -1779,11 +1856,13 @@ def buildPreviewDataFiles
     buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
   let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
   let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
+  let sourceDocuments ← buildSourceDocuments logError state
+  validateSourceRefs logError sourceDocuments state
   let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   let htmlEntries := (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   let graphs := Informal.GraphApi.cachedData state
   pure {
-    manifest := { previews, graphs }
+    manifest := { previews, graphs, sourceDocuments }
     htmlCache := {
       entries := htmlEntries
       hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup

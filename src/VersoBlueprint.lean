@@ -23,6 +23,7 @@ import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros
 import VersoBlueprint.Math
 import VersoBlueprint.Rust
+import VersoBlueprint.Source
 import VersoBlueprint.Environment
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Attribute

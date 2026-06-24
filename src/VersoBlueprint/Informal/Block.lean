@@ -29,6 +29,7 @@ import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.Source.Metadata
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
@@ -70,6 +71,13 @@ block_extension Block.informal (data : BlockData) where
       let blockData := blockData.withTraversalNumberingContext (← read)
       registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
+      if let some sourceRef := blockData.sourceRef then
+        match Informal.TraversalIndex.SourceRefs.data? (← get) blockData.label with
+        | some existing =>
+            unless existing == sourceRef do
+              Verso.reportError s!"Label {blockData.label} already has conflicting source provenance"
+        | none =>
+            modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
       return none
   toTeX := none
   extraCss := Informal.Block.Assets.blockCssAssets
@@ -164,15 +172,40 @@ block_extension Block.informal (data : BlockData) where
           companionPanels := #[externalPanel]
         }
 
+private structure ParsedDirectiveContents where
+  sourceRef? : Option Source.Ref := none
+  body : Array (TSyntax `block) := #[]
+
+private def parseDirectiveSourceMetadata
+    (cfg : Config) (contents : Array (TSyntax `block)) : DocElabM ParsedDirectiveContents := do
+  let leading ← Source.Metadata.splitLeadingMetadata contents
+  let sourceRef? ←
+    match leading.term? with
+    | some term =>
+        let metadata ← Source.Metadata.evalNodeMetadataInput term
+        if let some sourceRef := metadata.source? then
+          let validationErrors := Source.Ref.validationErrors sourceRef
+          for error in validationErrors do
+            logErrorAt term m!"Label {cfg.label} has invalid source metadata: {toString error}"
+          pure (some sourceRef)
+        else
+          pure none
+    | none =>
+        pure none
+  let body ← Source.Metadata.visibleBlocksWithoutMetadata leading.body fun block =>
+    logErrorAt block m!"Label {cfg.label} has a metadata block after visible content; Blueprint source metadata must be the first block inside the directive"
+  pure { sourceRef?, body }
+
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
     let blockRef ← getRef
     let resolved ← cfg.resolveForDirective kind isProof
+    let parsedContents ← parseDirectiveSourceMetadata cfg contents
     let label := resolved.label
     let accepted ← Environment.push
       label resolved.envKind resolved.codeHint resolved.parent resolved.priority
       resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.statementUses
-    let contents ← contents.mapM elabBlock
+    let contents ← parsedContents.body.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
     let previewBlocks ← liftM <| Informal.evalElaboratedBlocks (contents.map (·.raw))
@@ -210,6 +243,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let data : BlockData := {
       kind := blockKind
       codeData
+      sourceRef := parsedContents.sourceRef?
       label
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
