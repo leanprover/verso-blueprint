@@ -569,8 +569,8 @@ Current behavior:
   fragment for that key
 - markup-only rendered fragments choose Markdown `statement`, Markdown
   `default`, TeX `statement`, then TeX `default` when multiple source slots are
-  available; Markdown uses MD4Lean/MD4C-generated HTML with raw HTML disabled,
-  while TeX uses escaped source text
+  available; Markdown uses MD4Lean/MD4C with GitHub/CommonMark extensions,
+  dollar math, and raw HTML disabled, while TeX uses escaped source text
 - if a bodyless directive for the same label carried `(lean := ...)`, the
   external-markup manifest entry keeps the corresponding Lean preview keys and
   `codeData`

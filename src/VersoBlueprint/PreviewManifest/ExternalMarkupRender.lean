@@ -47,76 +47,18 @@ private def externalMarkupRenderCss : String := r##"
   display: flow-root;
 }
 
-.bp_external_markdown_body > :first-child {
+.bp_external_markdown_body > :first-child,
+.bp_external_markdown_body > :first-child > :first-child {
   margin-top: 0;
 }
 
-.bp_external_markdown_body > :last-child {
+.bp_external_markdown_body > :last-child,
+.bp_external_markdown_body > :last-child > :last-child {
   margin-bottom: 0;
-}
-
-.bp_external_markdown_body h1,
-.bp_external_markdown_body h2,
-.bp_external_markdown_body h3,
-.bp_external_markdown_body h4,
-.bp_external_markdown_body h5,
-.bp_external_markdown_body h6 {
-  margin: 0.75rem 0 0.35rem;
-  line-height: 1.25;
-}
-
-.bp_external_markdown_body h1 {
-  font-size: 1.22rem;
-}
-
-.bp_external_markdown_body h2 {
-  font-size: 1.12rem;
-}
-
-.bp_external_markdown_body h3,
-.bp_external_markdown_body h4,
-.bp_external_markdown_body h5,
-.bp_external_markdown_body h6 {
-  font-size: 1rem;
-}
-
-.bp_external_markdown_body p {
-  margin: 0.45rem 0;
-}
-
-.bp_external_markdown_body ul,
-.bp_external_markdown_body ol {
-  margin: 0.45rem 0 0.45rem 1.15rem;
-  padding: 0;
-}
-
-.bp_external_markdown_body blockquote {
-  margin: 0.55rem 0;
-  padding-left: 0.8rem;
-  border-left: 0.16rem solid var(--bp-color-border-soft, #e2e8f0);
-  color: var(--bp-color-text-muted, #475569);
 }
 
 .bp_external_markdown_body pre {
   overflow: auto;
-  border: 1px solid var(--bp-color-border-soft, #e2e8f0);
-  border-radius: var(--bp-radius-md, 0.375rem);
-  background: var(--bp-color-surface-muted, #f8fafc);
-  padding: 0.65rem 0.75rem;
-  font-size: 0.86rem;
-  line-height: 1.45;
-}
-
-.bp_external_markdown_body code {
-  padding: 0.02rem 0.18rem;
-  border-radius: 0.22rem;
-  background: var(--bp-color-surface-muted, #f8fafc);
-}
-
-.bp_external_markdown_body pre code {
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
 }
 "##
 
@@ -167,7 +109,8 @@ entries with no generated HTML cache fragment.
 -/
 structure ExternalMarkupRenderConfig where
   mode : ExternalMarkupRenderMode := .markdown
-  warn : Bool := true
+  /-- Include a visible note that generated HTML came from external source, not native Verso. -/
+  showSourceNotice : Bool := true
   preferences : Array ExternalMarkupPreference := defaultExternalMarkupPreferences
 deriving Inhabited, Repr
 
@@ -196,8 +139,24 @@ private def externalMarkupNoticeHtml (markup : Informal.Data.ExternalMarkup) : V
     #[("class", "bp_external_markup_notice"), ("role", "note")]
     (VersoBlueprint.Html.text text)
 
+/--
+Parser flags for source-only Markdown fragments.
+
+Use GitHub/CommonMark extensions and dollar math, but disable raw HTML so the
+generated cache fragment can be inserted as trusted HTML.
+-/
+private def externalMarkupMarkdownParserFlags : UInt32 :=
+  MD4Lean.MD_DIALECT_GITHUB ||| MD4Lean.MD_FLAG_LATEXMATHSPANS ||| MD4Lean.MD_FLAG_NOHTML
+
+private def externalMarkupMarkdownRendererFlags : UInt32 :=
+  MD4Lean.MD_HTML_FLAG_XHTML ||| MD4Lean.MD_HTML_FLAG_MATHJAX |||
+    MD4Lean.MD_HTML_FLAG_MATHJAX_USE_DOLLAR
+
+private def renderStandardMarkdownHtml? (raw : String) : Option String :=
+  MD4Lean.renderHtml raw externalMarkupMarkdownParserFlags externalMarkupMarkdownRendererFlags
+
 private def renderMarkdownBody? (raw : String) : Option Verso.Output.Html := do
-  let html ← MD4Lean.renderHtml raw
+  let html ← renderStandardMarkdownHtml? raw
   some <| Verso.Output.Html.tag "div" #[("class", "bp_external_markdown_body")]
     (Verso.Output.Html.text false html)
 
@@ -219,7 +178,7 @@ def renderExternalMarkupEntryHtml
     (markup : Informal.Data.ExternalMarkup) : Option String := do
   let body ← renderExternalMarkupBody? cfg markup
   let content :=
-    if cfg.warn then
+    if cfg.showSourceNotice then
       #[externalMarkupNoticeHtml markup, body]
     else
       #[body]

@@ -74,6 +74,16 @@ A markup-only witness can introduce a Blueprint node while porting.
 For every $n$, **source** text can back a Blueprint node.
 
 - Review imported source
+
+> Standard Markdown blockquote.
+
+| Term | Meaning |
+| --- | --- |
+| `n` | natural number |
+
+    #check Nat.add
+
+<span>raw HTML stays text</span>
 ```
 :::::::
 
@@ -216,10 +226,14 @@ Summary-only content should stay hidden.
     let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
     let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
       ({ mode := .none } : Informal.PreviewManifest.ExternalMarkupRenderConfig)
+    let witnessFilesNoNotice ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+      ({ showSourceNotice := false } : Informal.PreviewManifest.ExternalMarkupRenderConfig)
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
       | return false
     let some witnessHtml := witnessFiles.htmlCache.findHtml? witnessKey
+      | return false
+    let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
       | return false
     let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc
     let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) markdownState
@@ -264,10 +278,17 @@ Summary-only content should stay hidden.
       hasSubstr witnessHtml "Rendered from external TeX source" &&
       hasSubstr witnessHtml "\\begin{theorem}" &&
       (witnessFilesNoRender.htmlCache.findHtml? witnessKey).isNone &&
+      !hasSubstr witnessHtmlNoNotice "bp_external_markup_notice" &&
+      hasSubstr witnessHtmlNoNotice "\\begin{theorem}" &&
       hasSubstr markdownHtml "bp_external_markdown_body" &&
       hasSubstr markdownHtml "<h1>Markdown witness</h1>" &&
       hasSubstr markdownHtml "<strong>source</strong>" &&
       hasSubstr markdownHtml "<li>Review imported source</li>" &&
+      hasSubstr markdownHtml "<blockquote>" &&
+      hasSubstr markdownHtml "<table>" &&
+      hasSubstr markdownHtml "<pre><code>#check Nat.add" &&
+      hasSubstr markdownHtml "&lt;span&gt;raw HTML stays text&lt;/span&gt;" &&
+      hasSubstr markdownHtml "For every $n$" &&
       (match bodylessEntry.targetKind with | .externalMarkup => true | _ => false) &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&

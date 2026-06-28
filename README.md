@@ -164,7 +164,8 @@ This was imported from a Markdown proof sketch.
 Labeled standalone `tex` and `md` blocks are exported as semantic
 external-markup catalog entries. Generated preview data also includes a
 source-backed rendered fragment for markup-only entries: Markdown receives a
-standard MD4Lean/MD4C HTML rendering, while TeX is shown as escaped source.
+standard MD4Lean/MD4C HTML rendering with raw HTML disabled, while TeX is shown
+as escaped source.
 Pass `--external-markup-render source` to force escaped source text, or
 `--external-markup-render none` to keep manifest-only entries without generated
 HTML cache fragments. When the same label also has a rendered Blueprint
