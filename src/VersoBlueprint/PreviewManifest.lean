@@ -1067,6 +1067,21 @@ def previewMetadataLosses (state : TraverseState) (file : File) : Array PreviewM
               }
     losses
 
+/-- Human-facing warning text for one manifest metadata-loss audit result. -/
+def PreviewMetadataLoss.warningMessage (loss : PreviewMetadataLoss) : String :=
+  let manifestEntry :=
+    match loss.manifestEntryKey? with
+    | some key => s!"manifest entry {key}"
+    | none => "no matching manifest entry"
+  let missing := String.intercalate ", " loss.missingLeanCodePreviewKeys.toList
+  s!"Blueprint manifest: traversal preview {loss.previewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
+
+/-- Report non-fatal generator warnings for traversal metadata lost during manifest export. -/
+def reportPreviewMetadataLossWarnings
+    (reportWarning : String → IO Unit) (state : TraverseState) (file : File) : IO Unit := do
+  for loss in previewMetadataLosses state file do
+    reportWarning loss.warningMessage
+
 /-- Stable string form used by manifest query APIs for Blueprint labels. -/
 def labelString : Name → String
   | .str .anonymous s => s
@@ -1764,6 +1779,7 @@ private def dumpManifest
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.manifest
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1780,6 +1796,7 @@ private def dumpHtmlCache
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1811,6 +1828,7 @@ def emitBlueprintPreviewData
     (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
     ExtraStep := fun mode logError cfg state _text => do
   let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln state files.manifest
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
   let apiDir := dataDir / apiModuleDirname

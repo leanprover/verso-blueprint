@@ -937,8 +937,9 @@ Lean clients. `Informal.PreviewManifest.File` provides block-entry filtering,
 primary label lookup, owner/tag/work-queue extraction, and entry search
 predicates. `Informal.PreviewManifest.previewMetadataLosses` audits whether
 traversal-preview Lean metadata, including bodyless `(lean := ...)` payloads,
-survived manifest construction. `VersoBlueprint.Vbp` formats those results as
-JSON, but it should not own a parallel selector model.
+survived manifest construction. Preview-data generation reports non-empty audit
+results as warnings, while `VersoBlueprint.Vbp` formats those results as JSON
+for stricter review workflows; neither should own a parallel selector model.
 
 ### Traversal Storage Roles
 

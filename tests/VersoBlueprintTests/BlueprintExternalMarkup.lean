@@ -239,6 +239,19 @@ Summary-only content should stay hidden.
       match bodylessEntry.codeData with
       | some (.external refs) => refs.map (fun ref => ref.canonical)
       | _ => #[]
+    let brokenBodylessManifest : Informal.PreviewManifest.File := {
+      bodylessFiles.manifest with
+      previews := bodylessFiles.manifest.previews.map fun entry =>
+        if entry.key == bodylessKey then
+          { entry with leanCodePreviewKeys := #[], codeData := none }
+        else
+          entry
+    }
+    let brokenBodylessLosses :=
+      Informal.PreviewManifest.previewMetadataLosses bodylessState brokenBodylessManifest
+    let some brokenBodylessLoss := brokenBodylessLosses[0]?
+      | return false
+    let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
     pure <|
       hasSubstr traversedTex "\\begin{theorem}" &&
       hasSubstr traversedMd "Imported **Markdown** proof witness." &&
@@ -261,6 +274,12 @@ Summary-only content should stay hidden.
       bodylessExternalRefs.contains `Nat.add &&
       bodylessExternalRefs.contains `Nat.mul &&
       bodylessLosses.isEmpty &&
+      brokenBodylessLosses.size == 1 &&
+      brokenBodylessLoss.manifestEntryKey? == some bodylessKey &&
+      brokenBodylessLoss.missingLeanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+      brokenBodylessLoss.missingLeanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
+      hasSubstr brokenBodylessLossMessage "lost Lean preview keys" &&
+      hasSubstr brokenBodylessLossMessage s!"manifest entry {bodylessKey}" &&
       hasSubstr bodylessHtml "Bodyless Lean-backed witness" &&
       !hasSubstr externalOut "\\begin{theorem}" &&
       !hasSubstr externalOut "thm:external-markup" &&

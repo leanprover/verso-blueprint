@@ -186,7 +186,9 @@ Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty
 result means a traversal preview, such as a bodyless directive carrying
 `(lean := ...)`, had Lean preview keys that were not represented by the matching
-manifest entry.
+manifest entry. The standard preview-data generator reports the same condition
+as a non-fatal warning so source-only import issues are visible without blocking
+site generation.
 
 Three common workflows consume that same model:
 

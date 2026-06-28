@@ -574,6 +574,9 @@ Current behavior:
 - if a bodyless directive for the same label carried `(lean := ...)`, the
   external-markup manifest entry keeps the corresponding Lean preview keys and
   `codeData`
+- generation emits a non-fatal warning if traversal recorded Lean preview
+  metadata for a bodyless/source-backed node but the exported manifest entry no
+  longer carries it
 - pass `--external-markup-render source` to render the selected source as
   escaped source text, or `--external-markup-render none` to keep markup-only
   entries manifest-only with no HTML cache body

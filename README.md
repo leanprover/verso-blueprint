@@ -170,7 +170,8 @@ Pass `--external-markup-render source` to force escaped source text, or
 HTML cache fragments. When the same label also has a rendered Blueprint
 statement or proof, the raw markup is attached to that block's manifest entry
 instead. Bodyless Blueprint directives that carry `(lean := ...)` still
-contribute their Lean preview keys and code data to the exported manifest entry.
+contribute their Lean preview keys and code data to the exported manifest entry;
+the generator warns if that metadata is ever dropped during manifest export.
 
 These `ExternalMarkup` attachments are primarily a porting aid for existing
 TeX or Markdown sources. They are stored on the labeled node, exported in the
