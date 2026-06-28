@@ -97,7 +97,7 @@ def helpText : String := String.intercalate "\n" [
   s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
   s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
   s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
-  s!"  {externalMarkupRenderFlag} <mode>  Render markup-only external sources in the cache ({ExternalMarkupRenderMode.cliValues}; default markdown).",
+  s!"  {externalMarkupRenderFlag} <mode>  Render markup-only external sources in the cache ({ExternalMarkupRenderMode.cliValues}; default markdown, conservative Markdown HTML).",
   s!"  {helpFlag}              Show this help text and exit.",
   "",
   "Standard manual rendering options:",
