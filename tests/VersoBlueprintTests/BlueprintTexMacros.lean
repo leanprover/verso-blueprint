@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintTexMacros.Root
 import VersoBlueprintTests.Blueprint.Support
-import VersoBlueprint.Widget
+import VersoBlueprint.Lib.PreviewSource
 
 namespace Verso.VersoBlueprintTests.BlueprintTexMacros
 
@@ -50,20 +50,19 @@ Widget preview uses $`\widgetmacro`.
 #guard_msgs in
 #eval
   show Lean.Elab.Term.TermElabM Bool from do
-    let out ← buildFor (Name.mkSimple "widget_preview")
-    let some selection := out.previewSelection?
+    let label := Name.mkSimple "widget_preview"
+    let some selection := Informal.PreviewSource.environmentSelection? (← getEnv) label
       | return false
     let previewHtml := toJson (← Informal.PreviewSource.renderWidgetHtml (some selection.preview))
     let encoded := Json.compress previewHtml
     pure (
-      selection.facet == .statement &&
-      selection.key == PreviewCache.statementKey (Name.mkSimple "widget_preview") &&
+      selection.facet == PreviewCache.Facet.statement &&
+      selection.key == PreviewCache.statementKey label &&
       !selection.preview.blocks.isEmpty &&
       selection.preview.stxs.isEmpty &&
       hasSubstr encoded "data-bp-tex-prelude-id" &&
       !hasSubstr encoded "data-bp-tex-prelude=\\\"" &&
-      !hasSubstr encoded "\"texPrelude\"" &&
-      !hasSubstr blueprintWidget.javascript "texPrelude"
+      !hasSubstr encoded "\"texPrelude\""
     )
 
 end Verso.VersoBlueprintTests.BlueprintTexMacros

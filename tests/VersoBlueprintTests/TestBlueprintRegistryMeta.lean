@@ -46,7 +46,7 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     slug := "widget-preview"
     title := "Blueprint Widget Preview"
     category := "Preview"
-    summary := "Widget-side TeX prelude and preview rendering checks."
+    summary := "TeX prelude and preview rendering checks."
     tags := #["preview", "widget", "tex"]
     kind := "curated_doc"
   },
