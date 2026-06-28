@@ -208,6 +208,8 @@ jobs:
           echo "manifest_path=${{ needs.resolve-deploy-releases.outputs.manifest_path }}"
           echo "deployable_release_count=${{ needs.resolve-deploy-releases.outputs.deployable_release_count }}"
           echo "deployable_project_count=${{ needs.resolve-deploy-releases.outputs.deployable_project_count }}"
+      # The deploy workflow runs on an isolated runner and assembles the public
+      # Pages artifact, so it rebuilds the published /js-api/ docs itself.
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
@@ -215,10 +217,8 @@ jobs:
           cache: npm
       - name: Install JavaScript dependencies
         run: npm ci
-      - name: Generate JavaScript API docs
-        run: npm run docs
-      - name: Check JavaScript API docs
-        run: npm run check:docs
+      - name: Generate and check JavaScript API docs
+        run: ./scripts/generate-js-api-docs.sh
       - name: Download release reference artifacts
         uses: actions/download-artifact@v7
         with:

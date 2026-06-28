@@ -225,6 +225,11 @@ Useful maintainer commands:
 - `npm run docs`
 - `npm run check:docs`
 
+The rendered API reference is deployed on GitHub Pages at
+[leanprover.github.io/verso-blueprint/js-api/](https://leanprover.github.io/verso-blueprint/js-api/).
+CI also uploads the same generated HTML as the `js-api-docs` artifact on each
+`ci.yml` run for PR-local inspection.
+
 Custom clients can import the generated preview module directly from a rendered
 site:
 

@@ -9,7 +9,10 @@ import shutil
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare a GitHub Pages site for the generated reference and test blueprints."
+        description=(
+            "Prepare a GitHub Pages site for generated reference blueprints, "
+            "test blueprints, and optional JavaScript API docs."
+        )
     )
     parser.add_argument(
         "--reference-root",
@@ -237,7 +240,12 @@ def main() -> int:
                 "<title>Verso Blueprint Rendered Artifacts</title>",
                 "<body>",
                 "<h1>Verso Blueprint Rendered Artifacts</h1>",
-                "<p>Generated reference and test sites assembled from the current workflow run.</p>",
+                (
+                    "<p>Generated reference sites, test sites, and JavaScript API docs "
+                    "assembled from the current workflow run.</p>"
+                    if publish_js_api_docs
+                    else "<p>Generated reference and test sites assembled from the current workflow run.</p>"
+                ),
                 "<h2>Reference Blueprints</h2>",
                 "<p><a href=\"reference-blueprints/\">Open reference blueprint index</a></p>",
                 *(

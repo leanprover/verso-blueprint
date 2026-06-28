@@ -109,10 +109,10 @@ jobs:
         run: npm run build:types
       - name: Check JavaScript API declarations
         run: npm run check:types
-      - name: Generate JavaScript API docs
-        run: npm run docs
-      - name: Check JavaScript API docs
-        run: npm run check:docs
+      # CI validates the generated API docs and uploads them as a review artifact.
+      # The Pages deployment workflow rebuilds its own published copy.
+      - name: Generate and check JavaScript API docs
+        run: ./scripts/generate-js-api-docs.sh
       - name: Upload JavaScript API docs artifact
         uses: actions/upload-artifact@v7
         with:
