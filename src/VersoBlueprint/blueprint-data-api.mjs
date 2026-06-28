@@ -5,8 +5,18 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * Generated-data API for custom Blueprint clients.
  *
  * This module is emitted as `-verso-data/api/data.mjs` in generated sites. It
- * exposes manifest, HTML cache, and URL helpers without installing any
- * page-global render hook.
+ * exposes manifest, HTML cache, preview-key, and URL helpers without importing
+ * DOM rendering code or installing any page-global render hook.
+ *
+ * Use this module for audits, dashboards, migration tools, or Node-like clients
+ * that own their UI and only need generated data. The manifest is the semantic
+ * contract: labels, facets, generated links, external markup metadata,
+ * dependency metadata, status metadata, and graph records. The HTML cache is
+ * rendered presentation data; do not parse it to recover semantics.
+ *
+ * Browser clients that need to insert Blueprint content should use
+ * `api/preview.mjs` instead. Graph dashboards may use this module for manifest
+ * data, but graph-specific helpers are collected in `api/graph.mjs`.
  *
  * @module blueprint-data-api
  */
@@ -26,6 +36,23 @@ const previewUrls = createPreviewUrlApi(moduleUrl);
  *
  * @param {BlueprintDataApiOptions} [options] Loader and generated-data base URL options.
  * @returns {BlueprintDataApi} Data API instance.
+ *
+ * @example
+ * // Import the data-only API when no DOM rendering is needed.
+ * import { createPreviewData } from "./-verso-data/api/data.mjs";
+ *
+ * // Create an isolated data loader for this client.
+ * const data = createPreviewData();
+ *
+ * // Build the same manifest/cache key Blueprint uses for statement previews.
+ * const key = data.statementPreviewKey("main_theorem");
+ *
+ * // Read one semantic manifest entry by key.
+ * const entry = await data.loadManifestEntry(key);
+ *
+ * if (entry) {
+ *   console.log(entry.href, entry.label, entry.facet);
+ * }
  */
 export function createPreviewData(options) {
   return createBlueprintDataApi(optionsWithDefaultDataBaseUrl(options, moduleUrl));
@@ -161,6 +188,10 @@ export function readHtmlCacheStatus() {
 /**
  * Load and decode the Blueprint manifest.
  *
+ * The manifest is the semantic data source for generated Blueprint sites. Use
+ * it for labels, generated links, external markup metadata, graph records, and
+ * other structured facts.
+ *
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<Map<string, BlueprintManifestEntry>>}
  */
@@ -170,6 +201,10 @@ export function loadManifest(options) {
 
 /**
  * Load and decode the rendered HTML fragment cache.
+ *
+ * The cache contains rendered presentation fragments keyed like the manifest.
+ * Insert or display these fragments as HTML; do not parse them to rediscover
+ * semantic data that already lives in the manifest.
  *
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<Map<string, BlueprintHtmlCacheEntry>>}

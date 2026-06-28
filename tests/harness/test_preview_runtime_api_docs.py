@@ -141,6 +141,11 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("Only the files listed in this table are public", api_doc)
         for entry in PUBLIC_API_MODULES.values():
             self.assertIn(entry["jsdoc_page"], js_api_docs)
+        self.assertIn("Start from the kind of client you are writing", js_api_docs)
+        self.assertIn("## Rendering Paths", js_api_docs)
+        self.assertIn("api/preview.mjs", js_api_docs)
+        self.assertIn("api/data.mjs", js_api_docs)
+        self.assertIn("api/graph.mjs", js_api_docs)
 
     def test_api_stable_api_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
