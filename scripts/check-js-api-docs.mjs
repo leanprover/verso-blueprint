@@ -154,12 +154,36 @@ requireIncludes(
 for (const entry of [...Object.values(publicApiContract.modules), publicApiContract.typesModule]) {
   requireIncludes("index.html", pages["index.html"], entry.jsdocPage, `${entry.jsdocPage} guide link`);
 }
+requireIncludes(
+  "index.html",
+  pages["index.html"],
+  "Start from the kind of client you are writing",
+  "client-selection guide"
+);
+requireIncludes(
+  "index.html",
+  pages["index.html"],
+  "Rendering Paths",
+  "rendering-path guide"
+);
 
 requireMatches(
   previewPage,
   pages[previewPage],
   /id="\.createPreview"[\s\S]*?&rarr; \{BlueprintPreviewApi\}/,
   "createPreview return type"
+);
+requireIncludes(
+  previewPage,
+  pages[previewPage],
+  "Common rendering choices",
+  "preview module rendering guidance"
+);
+requireIncludes(
+  previewPage,
+  pages[previewPage],
+  "await preview.renderCanonicalPreviewInto",
+  "createPreview example"
 );
 requireMatches(
   previewPage,
@@ -180,11 +204,23 @@ requireMatches(
   /id="\.createPreviewData"[\s\S]*?&rarr; \{BlueprintDataApi\}/,
   "createPreviewData return type"
 );
+requireIncludes(
+  dataPage,
+  pages[dataPage],
+  "The manifest is the semantic data source",
+  "data module manifest guidance"
+);
 requireMatches(
   graphPage,
   pages[graphPage],
   /id="\.loadGraphs"[\s\S]*?Load graph variants from this generated site's default manifest\./,
   "loadGraphs documentation"
+);
+requireIncludes(
+  graphPage,
+  pages[graphPage],
+  "explicit preview renderer from <code>api/preview.mjs</code>",
+  "graph module preview renderer guidance"
 );
 
 for (const typeName of [

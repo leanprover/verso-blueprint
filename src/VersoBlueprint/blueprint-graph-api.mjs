@@ -15,6 +15,14 @@ import {
  * Data-only calls do not load the interactive graph renderer; render helpers
  * lazy-load it when called.
  *
+ * Use the data helpers when a dashboard needs finalized graph records from the
+ * manifest or graph JSON embedded beside a rendered graph block. Use
+ * {@link renderGraphs} or {@link renderGraphBlock} only when the page already
+ * contains generated graph-block markup. Rendering graph blocks requires an
+ * explicit preview renderer from `api/preview.mjs` so graph popovers and nested
+ * previews use the same manifest/cache loader and hydration path as the rest of
+ * the page.
+ *
  * @module blueprint-graph-api
  */
 
@@ -43,6 +51,10 @@ export const graphApiModuleUrl = (baseUrl = moduleUrl) => coreGraphApiModuleUrl(
 
 /**
  * Read embedded graph data from the current graph page or supplied root.
+ *
+ * This is for pages that already contain generated graph-block markup. Use
+ * {@link loadGraphs} when the current document does not contain the graph you
+ * want to inspect.
  *
  * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
  * @returns {BlueprintGraphData | null}
@@ -79,8 +91,21 @@ export const loadManifestGraphs = (url, options) => {
 /**
  * Load graph variants from this generated site's default manifest.
  *
+ * This is the simplest graph-data entry point for dashboards and audits that
+ * need graph records but do not need to render graph blocks.
+ *
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<BlueprintGraphData[]>}
+ *
+ * @example
+ * // Import graph data helpers when no graph rendering is needed.
+ * import { loadGraphs } from "./-verso-data/api/graph.mjs";
+ *
+ * // Load finalized graph records from the generated manifest.
+ * const graphs = await loadGraphs();
+ * for (const graph of graphs) {
+ *   console.log(graph.key, graph.nodes.length, graph.edges.length);
+ * }
  */
 export const loadGraphs = (options) =>
   coreLoadManifestGraphs(coreDataUrl("blueprint-manifest.json", moduleUrl), options);
@@ -126,9 +151,27 @@ function requirePreviewUtils(options) {
 /**
  * Render one standard `.bp_graph_fullwidth` graph block.
  *
+ * The block must be generated Blueprint graph markup. Pass `previewUtils` from
+ * `createPreview()` so node preview panels use the same renderer as the rest
+ * of the client.
+ *
  * @param {Element} graphBlock Standard graph block.
  * @param {BlueprintGraphRenderOptions} [options] Graph render options.
  * @returns {Promise<BlueprintGraphController | null>}
+ *
+ * @example
+ * // Graph rendering needs a preview renderer for popovers and hydration.
+ * import { createPreview } from "./-verso-data/api/preview.mjs";
+ * import { renderGraphBlock } from "./-verso-data/api/graph.mjs";
+ *
+ * // Create one preview renderer for graph node previews.
+ * const previewUtils = createPreview();
+ *
+ * // Initialize one generated graph block and force an immediate render.
+ * await renderGraphBlock(document.querySelector(".bp_graph_fullwidth"), {
+ *   previewUtils,
+ *   refresh: true
+ * });
  */
 export async function renderGraphBlock(graphBlock, options) {
   const runtime = await loadGraphRuntimeModule();
@@ -138,9 +181,26 @@ export async function renderGraphBlock(graphBlock, options) {
 /**
  * Render every standard graph block under a document, element, or fragment.
  *
+ * This initializes the same interactive graph UI used by generated Blueprint
+ * pages. It does not create graph markup from raw graph data; the root must
+ * already contain generated `.bp_graph_fullwidth` blocks.
+ *
  * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
  * @param {BlueprintGraphRenderOptions} [options] Graph render options.
  * @returns {Promise<BlueprintGraphController[]>}
+ *
+ * @example
+ * // Graph rendering needs a preview renderer for popovers and hydration.
+ * import { createPreview } from "./-verso-data/api/preview.mjs";
+ * import { renderGraphs } from "./-verso-data/api/graph.mjs";
+ *
+ * // Create one preview renderer and initialize every graph under a custom root.
+ * const previewUtils = createPreview();
+ * await renderGraphs(document.querySelector("#slide"), {
+ *   previewUtils,
+ *   layout: "fill",
+ *   refresh: true
+ * });
  */
 export async function renderGraphs(root, options) {
   const runtime = await loadGraphRuntimeModule();

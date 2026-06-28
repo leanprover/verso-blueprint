@@ -361,6 +361,30 @@ which is deliberately narrower than the graft manifest/cache context: it only
 packages the live traversal state and stored informal blocks needed to compute
 group, uses, and used-by panel rows.
 
+### Browser Rendering Path Inventory
+
+The browser rendering paths intentionally converge on one renderer shape, but
+they do not all start the same way. Use this inventory before adding a new
+runtime hook or moving code between feature modules.
+
+| Path | Startup owner | Semantic source | Rendering and interaction owner |
+| --- | --- | --- | --- |
+| Regular generated Manual pages | `blueprint-page-runtime.mjs` imported from `extraHead` | `blueprint-manifest.json`, `blueprint-html-cache.json`, graph JSON embedded in graph blocks | One `createPreview()` renderer starts inline previews, relation panels, graph blocks, and template-preview descriptor binding. |
+| Custom ESM preview clients | `api/preview.mjs` and caller-created `createPreview()` renderer | Manifest/cache plus optional canonical generated pages | The stable preview API loads data, inserts rendered fragments or canonical nodes, runs math, and hydrates nested Blueprint widgets. |
+| Data-only clients | `api/data.mjs` and caller-created `createPreviewData()` data API | Manifest/cache and manifest graph records | No DOM rendering; callers own all UI and use the data API for URL construction, loading, status, and single-entry lookup. |
+| Graph clients | `api/graph.mjs` | Finalized graph records from the manifest or graph data embedded beside a graph block | Data helpers stay graph-only; render helpers lazy-load `Commands/graph.mjs` and require an explicit preview renderer for graph preview panels. |
+| Blueprint-owned panel features | `blueprint-page-runtime.mjs` or the Slides adapter passes a renderer into feature startup | Manifest/cache entries and feature-owned Lean-emitted attributes | Feature scripts adapt `createPreviewSurface`, `renderPreviewIntoSurface`, `resolvePreviewHtml`, and lifecycle helpers to concrete panel UIs. |
+| Summary and code-summary previews | Lean emits descriptor attributes; `preview-runtime-template.mjs` binds them at page load and after hydration | Descriptor attributes plus local templates or manifest/cache lookup keys | The shared template binder creates surfaces and triggers; no feature-specific startup module owns this path. |
+| Current classic-script Slides output | `Slides/ClassicPreviewAdapter.lean` installs the private `window.VersoBlueprint.onRenderReady` bridge | Same manifest/cache and generated node markup as other consumers | Classic-script compatibility wraps the ESM runtime chunks and should stay isolated until Slides move to an ESM entrypoint. |
+
+Two invariants keep these paths from drifting apart:
+
+1. A custom client starts from a generated public ESM module, not from
+   `Commands/*.mjs` implementation chunks or `window.VersoBlueprint`.
+2. A bundled panel feature may configure a preview surface, but it should not
+   reimplement manifest/cache loading, panel slot updates, trigger lifetime,
+   dismissal, repositioning, or preview diagnostics.
+
 ### Node Component Ownership
 
 A rendered Blueprint node is intentionally assembled from a small set of owned
