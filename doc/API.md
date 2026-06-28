@@ -185,12 +185,12 @@ def workQueueLabels
 
 Generator-side Lean callers can configure markup-only external-source cache
 fragments with `Informal.PreviewManifest.ExternalMarkupRenderConfig`. The
-default mode, `.markdown`, renders selected Markdown slots through MD4Lean/MD4C
-with GitHub/CommonMark extensions, dollar math, and raw HTML disabled; TeX falls
-back to escaped source. `.source` always emits escaped source; `.none` keeps
-external-markup entries semantic-only with no generated HTML-cache fragment. Set
-`showSourceNotice := false` when an embedding context should omit the visible
-source-backed notice from generated fragments.
+default mode, `.markdown`, renders selected Markdown slots through Blueprint's
+interpreter-safe Markdown renderer and escapes raw HTML; TeX falls back to
+escaped source. `.source` always emits escaped source; `.none` keeps
+external-markup entries semantic-only with no generated HTML-cache fragment.
+Set `showSourceNotice := false` when an embedding context should omit the
+visible source-backed notice from generated fragments.
 
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty

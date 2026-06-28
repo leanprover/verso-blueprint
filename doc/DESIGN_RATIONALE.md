@@ -611,10 +611,10 @@ rendering of manifest semantics, not a second data source.
 Source-backed external-markup fragments follow the same split. The manifest
 entry owns the label, facet, Lean preview keys, code data, source language,
 slot, and optional source range. The cache entry owns only the generated body
-fragment: MD4Lean/MD4C-rendered Markdown with raw HTML disabled by default, or
-escaped source text for TeX and `--external-markup-render source`. Shared source
-summaries and escaped source blocks live in `Informal.ExternalMarkupView`, so
-source-location display and preview-cache rendering do not grow separate
+fragment: interpreter-safe rendered Markdown with raw HTML escaped by default,
+or escaped source text for TeX and `--external-markup-render source`. Shared
+source summaries and escaped source blocks live in `Informal.ExternalMarkupView`,
+so source-location display and preview-cache rendering do not grow separate
 escaping or range-formatting rules.
 
 The generation boundary is:
@@ -768,7 +768,7 @@ rather than page-local template bodies:
    including uses, reverse uses, and group panel entries, while traversal state
    is still available. `PreviewManifest/ExternalMarkupRender.lean` owns the
    source-backed external-markup fragment renderer so source selection,
-   MD4Lean/MD4C Markdown rendering, fallback source rendering, and the
+   interpreter-safe Markdown rendering, fallback source rendering, and the
    source-backed notice shell stay out of manifest entry construction.
    `PreviewManifest/Cli.lean` owns command-line option parsing and help text for
    the generator wrapper, leaving `PreviewManifest.lean` focused on schema,
