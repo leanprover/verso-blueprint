@@ -161,17 +161,6 @@ jobs:
         run: |
           echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
           echo "deploy_pages=${{ needs.resolve-reference-release.outputs.deploy_pages }}"
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - name: Install JavaScript dependencies
-        run: npm ci
-      - name: Generate JavaScript API docs
-        run: npm run docs
-      - name: Check JavaScript API docs
-        run: npm run check:docs
       - name: Download reference blueprint artifacts
         uses: actions/download-artifact@v7
         with:
@@ -184,7 +173,7 @@ jobs:
           name: test-blueprints
           path: _out/test-blueprints
       - name: Prepare site artifact
-        run: python3 ./scripts/prepare_reference_blueprints_pages.py --js-api-docs-root _out/jsdoc-api
+        run: python3 ./scripts/prepare_reference_blueprints_pages.py
       - name: Upload site artifact
         uses: actions/upload-artifact@v7
         with:

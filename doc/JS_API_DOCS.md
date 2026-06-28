@@ -144,11 +144,12 @@ module pages, local links, and Blueprint typedef anchors.
 
 CI uses the generated docs in two places:
 
+- The Pages deployment workflow rebuilds and checks the same docs, then stages
+  them under `_site/js-api/` so the public deployment exposes them at
+  [leanprover.github.io/verso-blueprint/js-api/](https://leanprover.github.io/verso-blueprint/js-api/).
 - `ci.yml` uploads `_out/jsdoc-api` as the `js-api-docs` artifact for direct
-  inspection from pull requests and branch runs.
-- The Pages assembly workflows rebuild and check the same docs, then stage
-  them under `_site/js-api/` so the deployed site exposes them at
-  `https://leanprover.github.io/verso-blueprint/js-api/`.
+  inspection from pull requests and branch runs. Those artifact URLs are
+  run-specific, so use the Pages deployment as the stable documentation link.
 
 For the curated integration guide that also covers Lean APIs, generated data
 files, and stability policy, see `doc/API.md` in the source repository.

@@ -8,6 +8,12 @@ For authoring syntax and rendering behavior, see
 [`MANUAL.md`](./MANUAL.md). For the architecture boundaries behind these APIs,
 see [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
 
+For exact JavaScript signatures, typedefs, return shapes, and module-level
+examples, use the
+[generated JavaScript API reference](https://leanprover.github.io/verso-blueprint/js-api/).
+This source document is the curated integration guide: it explains which API
+surface to choose and where the stability boundaries are.
+
 If you are not sure where to start, read [Choosing an API](#choosing-an-api)
 first. The short version is:
 
@@ -22,6 +28,8 @@ first. The short version is:
   fragments
 - use the Lean graft/render APIs when a generator wants to place Blueprint nodes
   into a custom page
+- use the generated JavaScript API reference, not this guide, for exhaustive
+  browser export documentation
 
 ## Contents
 
@@ -402,6 +410,11 @@ Generated sites emit importable modules under `-verso-data/api/`:
 - `preview.mjs`
 - `graph.mjs`
 
+This section is a navigation guide for choosing the right generated module. It
+is intentionally not the exhaustive JavaScript reference. Use the
+[generated JavaScript API reference](https://leanprover.github.io/verso-blueprint/js-api/)
+for complete export lists, signatures, typedefs, result shapes, and examples.
+
 The relative path depends on the generated page location. Root generated pages
 can import from `-verso-data/api/...`; nested generated pages commonly import
 from `../-verso-data/api/...`. Generated clients that need to resolve the
@@ -525,13 +538,13 @@ if (target) {
 }
 ```
 
-The generated ESM modules expose these entrypoint groups:
+At a high level, the public generated browser modules are:
 
-| Module | Exports |
+| Module | Purpose |
 | --- | --- |
-| `api/data.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; data API creation/default access: `createPreviewData`, `currentDataApi`, `getDataApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; preview-key helpers: `previewKey`, `statementPreviewKey`. |
-| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; renderer creation/default access: `createPreview`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
-| `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; graph-data helpers: `getGraphData`, `getGraphVariants`, `loadManifestGraphs`, `loadGraphs`; graph rendering helpers: `renderGraphBlock`, `renderGraphs`. |
+| `api/data.mjs` | Data-only clients: generated-data URLs, manifest/cache loading, status readers, and preview-key helpers. |
+| `api/preview.mjs` | Render-capable clients: data helpers plus preview resolution, fragment insertion, canonical node rendering, label-based `renderNode`, and hydration. |
+| `api/graph.mjs` | Graph clients: finalized graph loading, embedded graph-block data access, and graph-block rendering with an explicit preview renderer. |
 
 Only the files listed in this table are public generated-site browser API
 entrypoints. Other generated JavaScript files under `-verso-data/`, including
@@ -540,8 +553,11 @@ the `blueprint-*-core.mjs`, `blueprint-api-common.mjs`, and
 generated page runtime or by those public entrypoints.
 
 The exact JavaScript signatures, typedefs, and module-level examples are
-generated from JSDoc. In CI they are published as the `js-api-docs` artifact;
-locally, run `npm run docs` and open `_out/jsdoc-api/index.html`.
+generated from JSDoc and published on GitHub Pages at
+[leanprover.github.io/verso-blueprint/js-api/](https://leanprover.github.io/verso-blueprint/js-api/).
+CI also uploads the same generated HTML as an artifact named `js-api-docs` for
+PR-local inspection.
+Locally, run `npm run docs` and open `_out/jsdoc-api/index.html`.
 
 ## Browser Runtime API
 
@@ -766,7 +782,10 @@ renderer from a generated Manual page.
 
 External clients should start from the stable API below. These entry points are
 the contract for audit interfaces, dashboards, slide adapters, comparison
-views, and browser-only examples.
+views, and browser-only examples. This table is a compact stability index used
+by the docs tests to keep the public method set aligned with the runtime source;
+the generated JavaScript API reference remains the detailed signature and type
+reference.
 
 | Entry point | Use |
 | --- | --- |

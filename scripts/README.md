@@ -81,6 +81,9 @@ script map, not a second command reference.
   Thin wrapper for patch-review artifact generation: always rebuilds the full
   reference blueprint catalog and then generates all or selected local test
   blueprints.
+- `generate-js-api-docs.sh`
+  Generate the Docdash JavaScript API reference and run the generated-docs
+  smoke check used by CI and Pages assembly.
 - `generate-test-blueprints.sh`
   Thin wrapper for the local test-blueprint generator.
 - `validate-test-blueprints.sh`

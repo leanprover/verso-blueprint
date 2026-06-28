@@ -13,6 +13,22 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
+    def write_minimal_inputs(self, root: Path) -> tuple[Path, Path]:
+        reference_root = root / "reference-blueprints"
+        test_root = root / "test-blueprints"
+
+        (reference_root / "project-template" / "html-multi").mkdir(parents=True)
+        (reference_root / "project-template" / "html-multi" / "index.html").write_text(
+            "reference project template",
+            encoding="utf-8",
+        )
+        (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
+        (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
+            "test showcase",
+            encoding="utf-8",
+        )
+        return reference_root, test_root
+
     def run_helper(
         self,
         reference_root: Path,
@@ -105,21 +121,10 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
     def test_prepare_pages_stages_javascript_api_docs_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            reference_root = tmp_path / "reference-blueprints"
-            test_root = tmp_path / "test-blueprints"
             js_api_docs_root = tmp_path / "jsdoc-api"
             output_root = tmp_path / "_site"
 
-            (reference_root / "project-template" / "html-multi").mkdir(parents=True)
-            (reference_root / "project-template" / "html-multi" / "index.html").write_text(
-                "reference project template",
-                encoding="utf-8",
-            )
-            (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
-            (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
-                "test showcase",
-                encoding="utf-8",
-            )
+            reference_root, test_root = self.write_minimal_inputs(tmp_path)
             js_api_docs_root.mkdir()
             (js_api_docs_root / "index.html").write_text("js api docs", encoding="utf-8")
             (js_api_docs_root / "module-blueprint-preview-api.html").write_text(
@@ -146,6 +151,39 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             landing_index = (output_root / "index.html").read_text(encoding="utf-8")
             self.assertIn("JavaScript API", landing_index)
             self.assertIn('href="js-api/"', landing_index)
+            self.assertIn("JavaScript API docs assembled", landing_index)
+
+    def test_prepare_pages_rejects_missing_javascript_api_docs_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            reference_root, test_root = self.write_minimal_inputs(tmp_path)
+            output_root = tmp_path / "_site"
+
+            result = self.run_helper(
+                reference_root,
+                test_root,
+                output_root,
+                js_api_docs_root=tmp_path / "missing-jsdoc-api",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("missing JavaScript API docs root", result.stderr)
+
+    def test_prepare_pages_rejects_javascript_api_docs_without_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            reference_root, test_root = self.write_minimal_inputs(tmp_path)
+            js_api_docs_root = tmp_path / "jsdoc-api"
+            output_root = tmp_path / "_site"
+            js_api_docs_root.mkdir()
+
+            result = self.run_helper(
+                reference_root,
+                test_root,
+                output_root,
+                js_api_docs_root=js_api_docs_root,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("JavaScript API docs root is missing index.html", result.stderr)
 
     def test_prepare_pages_stages_release_namespaced_reference_blueprints(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
