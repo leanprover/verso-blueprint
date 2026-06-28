@@ -233,6 +233,8 @@ Summary-only content should stay hidden.
       | return false
     let some bodylessHtml := bodylessFiles.htmlCache.findHtml? bodylessKey
       | return false
+    let bodylessLosses :=
+      Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessFiles.manifest
     let bodylessExternalRefs : Array Name :=
       match bodylessEntry.codeData with
       | some (.external refs) => refs.map (fun ref => ref.canonical)
@@ -250,14 +252,15 @@ Summary-only content should stay hidden.
       hasSubstr witnessHtml "\\begin{theorem}" &&
       (witnessFilesNoRender.htmlCache.findHtml? witnessKey).isNone &&
       hasSubstr markdownHtml "bp_external_markdown_body" &&
-      hasSubstr markdownHtml "Markdown witness" &&
-      hasSubstr markdownHtml "class=\"bp_math inline\"" &&
+      hasSubstr markdownHtml "<h1>Markdown witness</h1>" &&
       hasSubstr markdownHtml "<strong>source</strong>" &&
+      hasSubstr markdownHtml "<li>Review imported source</li>" &&
       (match bodylessEntry.targetKind with | .externalMarkup => true | _ => false) &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
       bodylessExternalRefs.contains `Nat.add &&
       bodylessExternalRefs.contains `Nat.mul &&
+      bodylessLosses.isEmpty &&
       hasSubstr bodylessHtml "Bodyless Lean-backed witness" &&
       !hasSubstr externalOut "\\begin{theorem}" &&
       !hasSubstr externalOut "thm:external-markup" &&

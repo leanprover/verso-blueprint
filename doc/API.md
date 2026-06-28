@@ -175,6 +175,19 @@ def workQueueLabels
     Informal.PreviewManifest.labelString entry.label
 ```
 
+Generator-side Lean callers can configure markup-only external-source cache
+fragments with `Informal.PreviewManifest.ExternalMarkupRenderConfig`. The
+default mode, `.markdown`, renders selected Markdown slots with MD4Lean/MD4C
+and falls back to escaped source for TeX; `.source` always emits escaped source;
+`.none` keeps external-markup entries semantic-only with no generated HTML-cache
+fragment.
+
+Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
+whether traversal-preview metadata survived manifest construction. A non-empty
+result means a traversal preview, such as a bodyless directive carrying
+`(lean := ...)`, had Lean preview keys that were not represented by the matching
+manifest entry.
+
 Three common workflows consume that same model:
 
 1. A Manual page can graft a node from the same document while traversal state
@@ -771,6 +784,10 @@ That module imports `api/preview.mjs`, constructs the page renderer with
 inline-preview, relation-panel, graph, and template-preview bindings. Command
 renderers still contribute markup, CSS, and stable data attributes, but they no
 longer inject preview-runtime startup JavaScript into Manual `extraJs`.
+`withBlueprintAssets` also includes the CSS needed for manifest-backed block
+shells and source-backed external-markup fragments; feature-specific JavaScript
+continues to be registered by the renderers that emit those interactive
+features.
 
 The private `window.VersoBlueprint.onRenderReady` bridge remains only for the
 current classic-script Slides adapter. New custom clients should import the ESM

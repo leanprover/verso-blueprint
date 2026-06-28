@@ -608,6 +608,12 @@ code-panel structure without changing the semantic data contract. Cached HTML
 may visibly contain relation panels, code panels, and headings, but those are a
 rendering of manifest semantics, not a second data source.
 
+Source-backed external-markup fragments follow the same split. The manifest
+entry owns the label, facet, Lean preview keys, code data, source language,
+slot, and optional source range. The cache entry owns only the generated body
+fragment: MD4Lean/MD4C-rendered Markdown by default, or escaped source text for
+TeX and `--external-markup-render source`.
+
 ### Body Fragments vs Full Node Wrappers
 
 The rendered-fragment cache should not grow into a second node-wrapper cache
@@ -737,7 +743,10 @@ rather than page-local template bodies:
    Verso hover side table, while generated pages merge those hover payloads into
    `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
-   is still available.
+   is still available. `PreviewManifest/ExternalMarkupRender.lean` owns the
+   source-backed external-markup fragment renderer so source selection,
+   MD4Lean/MD4C Markdown rendering, fallback source rendering, and the warning
+   shell stay out of manifest entry construction.
 3. `PreviewManifest.lean` owns browser-side runtime emission for regular Manual
    pages. It writes `blueprint-page-runtime.mjs` plus the ESM support modules
    from the graph core and the `preview-runtime*` chunks: the data chunk owns
@@ -920,8 +929,10 @@ entries without knowing each traversal domain's raw JSON decoding details.
 Finished manifest files also own the reusable query helpers for downstream
 Lean clients. `Informal.PreviewManifest.File` provides block-entry filtering,
 primary label lookup, owner/tag/work-queue extraction, and entry search
-predicates. `VersoBlueprint.Vbp` formats those results as JSON, but it should
-not own a parallel selector model.
+predicates. `Informal.PreviewManifest.previewMetadataLosses` audits whether
+traversal-preview Lean metadata, including bodyless `(lean := ...)` payloads,
+survived manifest construction. `VersoBlueprint.Vbp` formats those results as
+JSON, but it should not own a parallel selector model.
 
 ### Traversal Storage Roles
 
@@ -998,7 +1009,7 @@ reasons:
 | `Nodes` | Informal block traversal | `TraversalIndex.Nodes.data?`, `TraversalIndex.Nodes.entries`, node rendering, graph finalization, relation-panel construction, and preview-manifest construction | Keep lightweight semantic node facts and node anchors in one traversal store. Bulk readers enumerate through `Nodes.entries` and keep any display-order or normalization policy in their own layer. |
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store at most one inline Lean code payload per informal label. The rendered statement then resolves inline code separately from the semantic node metadata, and inline code takes precedence over external declaration hints when both are available. |
 | `RustInlineCode` | `Block.informalRustCode.traverse` | `TraversalIndex.RustInlineCode.object?`, `TraversalIndex.RustInlineCode.data?`, and Rust code-panel rendering | Store Rust code-panel payloads outside `Nodes` so the semantic node index stays language-neutral while renderers still get a typed code-panel source. |
-| `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, preview-manifest construction, source-backed cache rendering, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies. |
+| `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, preview-manifest construction, `PreviewManifest/ExternalMarkupRender.lean`, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies selected by `ExternalMarkupRenderConfig`. |
 | `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?`, `PreviewSource.traversalEntryByKey?`, `PreviewSource.traversalStoredEntries`, and preview-data construction | Store preview metadata and rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys even when the rendered body is empty; empty body blocks are not a signal that the semantic preview metadata is empty. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
 | `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | `TraversalIndex.LeanCodePreviews.entry?`, `TraversalIndex.LeanCodePreviews.decodedEntry?`, `TraversalIndex.LeanCodePreviews.entries`, preview-data construction, same-document grafts, and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |

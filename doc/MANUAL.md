@@ -547,8 +547,8 @@ Current behavior:
   fragment for that key
 - markup-only rendered fragments choose Markdown `statement`, Markdown
   `default`, TeX `statement`, then TeX `default` when multiple source slots are
-  available; Markdown uses conservative generated HTML, while TeX uses escaped
-  source text
+  available; Markdown uses MD4Lean/MD4C-generated HTML with raw HTML disabled,
+  while TeX uses escaped source text
 - if a bodyless directive for the same label carried `(lean := ...)`, the
   external-markup manifest entry keeps the corresponding Lean preview keys and
   `codeData`
@@ -566,9 +566,11 @@ Current behavior:
 - the block is not displayed in the rendered output unless `(display := summary)`
   or `(display := source)` is provided, or the file sets
   `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
-- display and source-backed cache rendering are intentionally simple; future
-  converters can replace the raw/simple Markdown path with Markdown-to-Verso or
-  TeX-to-Verso rendering
+- display and source-backed cache rendering are intentionally a preview path:
+  Markdown cache fragments use the standard Markdown renderer that Verso already
+  vendors through MD4Lean, while future converters can still add richer
+  Markdown-to-Verso or TeX-to-Verso rendering when projects need native
+  Blueprint structure
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems
