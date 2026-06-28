@@ -985,8 +985,18 @@ def readFile (path : System.FilePath) : IO File := do
 
 end HtmlCache
 
+/-- Paired preview-data outputs emitted for a generated Blueprint site. -/
 structure Files where
+  /--
+  Semantic preview data. This is the public source of truth for labels, hrefs,
+  relationship topology, Lean-code associations, external-source metadata, and
+  other facts that generated consumers need.
+  -/
   manifest : File := {}
+  /--
+  Opaque rendered fragments and their hover payload side table. Consumers join
+  this cache with `manifest` by preview key when they need presentation data.
+  -/
   htmlCache : HtmlCache.File := {}
 deriving Inhabited, Repr
 
@@ -1743,6 +1753,11 @@ private def buildCitationEntries
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a
 completed Manual traversal state.
+
+This is the traversal-to-public-data boundary: traversal domains may contain
+semantic payloads that are not visible as rendered page bodies, such as bodyless
+external-source directives carrying Lean preview keys. Preserve those facts in
+the manifest, and keep rendered fragments in the HTML cache.
 -/
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
@@ -1821,7 +1836,9 @@ Emit the canonical Blueprint manifest and rendered-fragment cache files.
 The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
 or citation key. The rendered-fragment cache contains the corresponding opaque
 rendered fragments for browser hover previews and file-mode consumers such as
-slides.
+slides. Emission also writes the generated ESM APIs under `-verso-data/`, merges
+hover payloads into the Verso docs side table, and reports non-fatal warnings
+when traversal-preview metadata was lost before export.
 -/
 def emitBlueprintPreviewData
     (extensionImpls : ExtensionImpls)

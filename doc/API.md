@@ -154,6 +154,14 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
+Generator-side data flow is source-to-traversal-to-public JSON. During Manual
+traversal, Blueprint records preview identities, rendered bodies, Lean-code
+associations, citations, graph data, and external-source witnesses in traversal
+state and traversal domains. `Informal.PreviewManifest.buildPreviewDataFiles`
+then normalizes those phase-local records into the semantic manifest and the
+rendered-fragment cache. Generated ESM APIs load those two files; they do not
+rerun traversal and should not recover semantics by scraping cached HTML.
+
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `blockStatementEntries`, `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`,

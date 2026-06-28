@@ -617,6 +617,26 @@ summaries and escaped source blocks live in `Informal.ExternalMarkupView`, so
 source-location display and preview-cache rendering do not grow separate
 escaping or range-formatting rules.
 
+The generation boundary is:
+
+```text
+Lean/Verso source modules
+  -> Manual traversal state and traversal domains
+  -> PreviewManifest.buildPreviewDataFiles
+  -> blueprint-manifest.json and blueprint-html-cache.json
+  -> generated ESM APIs and browser/custom clients
+```
+
+Traversal domains are richer than rendered page HTML. They carry semantic
+payloads for the current generator process, including bodyless directives whose
+visible text comes from an external source. `buildPreviewDataFiles` is the
+normalization point where those traversal facts become public, stable generated
+data. It must therefore decide from traversal metadata, not from whether a
+rendered block body is empty, whether a preview entry is semantically real. If
+that boundary loses semantic data such as Lean preview keys, downstream
+fallbacks should report or copy the existing traversal metadata rather than
+reconstruct it from rendered markup.
+
 ### Body Fragments vs Full Node Wrappers
 
 The rendered-fragment cache should not grow into a second node-wrapper cache
