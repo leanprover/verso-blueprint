@@ -567,6 +567,9 @@ Current behavior:
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
   by default the generated HTML cache also gets a source-backed rendered
   fragment for that key
+- manifest entries include `authoredLabel` alongside the canonical `label` so
+  clients can display and round-trip punctuation-heavy authored labels without
+  parsing Lean pretty-name quoting
 - markup-only rendered fragments choose Markdown `statement`, Markdown
   `default`, TeX `statement`, then TeX `default` when multiple source slots are
   available; Markdown uses an interpreter-safe renderer for common review

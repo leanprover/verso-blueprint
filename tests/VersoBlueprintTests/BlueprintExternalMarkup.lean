@@ -273,6 +273,7 @@ Summary-only content should stay hidden.
       !externalFiles.manifest.previews.any (fun entry => entry.key == externalMarkupOnlyKey) &&
       (match witnessEntry.targetKind with | .externalMarkup => true | _ => false) &&
       witnessEntry.label == Name.mkSimple "external.witness" &&
+      witnessEntry.authoredLabel == "external.witness" &&
       witnessEntry.externalMarkup.size == 1 &&
       hasSubstr witnessHtml "bp_external_markup_notice" &&
       hasSubstr witnessHtml "Rendered from external TeX source" &&
@@ -290,6 +291,7 @@ Summary-only content should stay hidden.
       hasSubstr markdownHtml "&lt;span&gt;raw HTML stays text&lt;/span&gt;" &&
       hasSubstr markdownHtml "For every $n$" &&
       (match bodylessEntry.targetKind with | .externalMarkup => true | _ => false) &&
+      bodylessEntry.authoredLabel == "external.bodyless.lean" &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
       bodylessExternalRefs.contains `Nat.add &&

@@ -714,6 +714,18 @@ def RelationAxis.display : RelationAxis → String
   | .statement => "statement"
   | .proof => "proof"
 
+/--
+Stable human-facing string form for Blueprint labels.
+
+String-authored labels are stored as simple Lean names so that semantic APIs can
+still use `Name`, but Lean's pretty printer quotes punctuation-heavy components.
+This projection keeps those authored labels usable by generated clients without
+requiring them to parse Lean pretty-name syntax.
+-/
+def labelString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
+
 /-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
 structure RelatedEntry where
   /-- Informal label for the related node. -/
@@ -755,6 +767,8 @@ structure Entry where
   targetKind : EntryKind
   /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
   label : Name
+  /-- Authored/display label text, preserving string-authored punctuation without pretty-name quoting. -/
+  authoredLabel : String := labelString label
   /-- Which preview variant this entry contains; non-block entries use `statement`. -/
   facet : PreviewCache.Facet
   /-- Kind (definition, proposition, lemma, theorem, corollary). -/
@@ -1092,11 +1106,6 @@ def reportPreviewMetadataLossWarnings
   for loss in previewMetadataLosses state file do
     reportWarning loss.warningMessage
 
-/-- Stable string form used by manifest query APIs for Blueprint labels. -/
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
-
 /-- Whether this manifest entry represents an informal Blueprint block. -/
 def Entry.isBlock (entry : Entry) : Bool :=
   match entry.targetKind with
@@ -1116,7 +1125,7 @@ def File.blockStatementEntries (file : File) : Array Entry :=
 /-- All block entries matching the public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
-    entry.isBlock && labelString entry.label == label
+    entry.isBlock && (entry.authoredLabel == label || labelString entry.label == label)
 
 /--
 Best public block entry for a label.
@@ -1157,7 +1166,8 @@ private def containsSearchText (text value : String) : Bool :=
 /-- Case-insensitive text search over user-facing block manifest fields. -/
 def Entry.matchesText (entry : Entry) (query : String) : Bool :=
   let text := query.toLower
-  containsSearchText text (labelString entry.label) ||
+  containsSearchText text entry.authoredLabel ||
+    containsSearchText text (labelString entry.label) ||
     containsSearchText text entry.title ||
     entry.parentTitle.any (containsSearchText text) ||
     entry.tags.any (containsSearchText text) ||

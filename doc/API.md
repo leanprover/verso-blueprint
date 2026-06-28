@@ -192,6 +192,12 @@ external-markup entries semantic-only with no generated HTML-cache fragment.
 Set `showSourceNotice := false` when an embedding context should omit the
 visible source-backed notice from generated fragments.
 
+Manifest entries serialize both `label`, the canonical target label, and
+`authoredLabel`, the authored/display string form. UI and review clients should
+prefer `authoredLabel` when presenting or round-tripping labels that contain
+punctuation, while code that needs canonical identity can continue to use
+`label`.
+
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty
 result means a traversal preview, such as a bodyless directive carrying

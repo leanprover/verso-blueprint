@@ -587,11 +587,11 @@ The workflow implies a few constraints for renderers:
 
 The preview manifest and rendered-fragment cache have separate responsibilities:
 the manifest owns semantics, and the cache owns presentation. The manifest is
-the authoritative source for labels, facets, titles, hrefs, group membership,
-relation topology, Lean-code associations, ownership metadata, tags, priority,
-effort, and external markup metadata. The rendered-fragment cache stores opaque
-HTML bodies keyed by the same preview keys, plus the Verso hover payloads needed
-by those bodies.
+the authoritative source for labels, authored/display label strings, facets,
+titles, hrefs, group membership, relation topology, Lean-code associations,
+ownership metadata, tags, priority, effort, and external markup metadata. The
+rendered-fragment cache stores opaque HTML bodies keyed by the same preview keys,
+plus the Verso hover payloads needed by those bodies.
 
 Consumers should join the two files by preview key at the last responsible
 moment. A renderer may use the manifest entry to decide what the object means
@@ -913,7 +913,9 @@ That split is deliberate:
 The UI can converge while the identity schemes remain distinct. Manifest entries
 therefore carry a `targetKind` tag (`block`, `leanDecl`, `citation`, or
 `externalMarkup`) instead of relying on every preview key to mean
-`(label, facet)`.
+`(label, facet)`. They also carry `authoredLabel` next to the canonical `label`
+so review clients can present labels exactly enough for authored markup sources
+without treating Lean pretty-name syntax as a UI contract.
 
 ### Shared Retrieval Namespace for Callers
 

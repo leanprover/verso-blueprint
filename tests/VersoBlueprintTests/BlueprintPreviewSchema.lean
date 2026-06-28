@@ -40,6 +40,9 @@ open Informal.PreviewManifest
       let labelDesc? := do
         let labelJson ← entryProps.get? "label"
         labelJson.getObjValAs? String "description" |>.toOption
+      let authoredLabelDesc? := do
+        let authoredLabelJson ← entryProps.get? "authoredLabel"
+        authoredLabelJson.getObjValAs? String "description" |>.toOption
       let some useRefProps := useRefProps? | return false
       let displayCaptionDesc? := do
         let displayCaptionJson ← entryProps.get? "displayCaption"
@@ -52,6 +55,7 @@ open Informal.PreviewManifest
         entryProps.contains "key" &&
         entryProps.contains "targetKind" &&
         entryProps.contains "label" &&
+        entryProps.contains "authoredLabel" &&
         entryProps.contains "facet" &&
         entryProps.contains "kind" &&
         entryProps.contains "title" &&
@@ -82,6 +86,7 @@ open Informal.PreviewManifest
         entryProps.contains "effort" &&
         !entryProps.contains "html" &&
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label." &&
+        authoredLabelDesc? == some "Authored/display label text, preserving string-authored punctuation without pretty-name quoting." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Rendered-fragment cache keys for Lean declaration previews associated with this entry." &&
