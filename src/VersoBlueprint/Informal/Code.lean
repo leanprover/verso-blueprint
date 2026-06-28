@@ -8,13 +8,13 @@ import VersoManual
 import VersoBlueprint.Compat
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Environment
-import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.CodeSummary
+import VersoBlueprint.Informal.ExternalMarkupView
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.Lean
 import VersoBlueprint.Lib.ExtensionDecode
@@ -252,25 +252,6 @@ structure ExternalMarkupBlockData where
   display : ExternalMarkupDisplayMode := .hidden
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-private def externalMarkupSummary (language : Data.ExternalMarkupLanguage)
-    (slot : String) (location? : Option Data.ExternalMarkupLocation) : String :=
-  let base := s!"External {language.displayName} markup ({slot})"
-  match location? with
-  | none => base
-  | some location =>
-      let start := location.range.start
-      let stop := location.range.«end»
-      s!"{base}: {location.path}:{start.line}:{start.character}-{stop.line}:{stop.character}"
-
-private def externalMarkupSummaryHtml (summary : String) : Verso.Output.Html := open Verso.Output in
-  Html.tag "p" #[("class", "bp_external_markup_summary")] (VersoBlueprint.Html.text summary)
-
-private def externalMarkupSourceHtml (summary raw : String) : Verso.Output.Html := open Verso.Output in
-  let summaryHtml := Html.tag "summary" #[] (VersoBlueprint.Html.text summary)
-  let codeHtml := Html.tag "code" #[] (VersoBlueprint.Html.text raw)
-  let preHtml := Html.tag "pre" #[("class", "bp_external_markup_source")] codeHtml
-  Html.tag "details" #[("class", "bp_external_markup")] (Html.seq #[summaryHtml, preHtml])
-
 block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
   traverse id data _contents := do
@@ -303,12 +284,11 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
       let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
           (fun _ => s!"Malformed external markup data: {data}")
         | pure .empty
-      let summary := externalMarkupSummary cdata.markup.language cdata.markup.slot cdata.markup.location
       pure <|
         match cdata.display with
         | .hidden => .empty
-        | .summary => externalMarkupSummaryHtml summary
-        | .source => externalMarkupSourceHtml summary cdata.markup.raw
+        | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
+        | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
 
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig

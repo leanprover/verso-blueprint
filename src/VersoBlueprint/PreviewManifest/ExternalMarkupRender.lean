@@ -10,6 +10,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Render
+import VersoBlueprint.Informal.ExternalMarkupView
 
 namespace Informal.PreviewManifest
 
@@ -188,31 +189,12 @@ def selectedExternalMarkup?
   (cfg.preferences.findSome? fun preference =>
     nonempty.find? fun item => externalMarkupMatchesPreference item preference) <|> nonempty[0]?
 
-private def externalMarkupLocationText? (location? : Option Informal.Data.ExternalMarkupLocation) :
-    Option String := do
-  let location ← location?
-  some s!"{location.path}:{location.range.start.line}:{location.range.start.character}-{location.range.«end».line}:{location.range.«end».character}"
-
-private def externalMarkupSelectionSummary (markup : Informal.Data.ExternalMarkup) : String :=
-  let base := s!"external {markup.language.displayName} source ({markup.slot})"
-  match externalMarkupLocationText? markup.location with
-  | some location => s!"{base}: {location}"
-  | none => base
-
 private def externalMarkupNoticeHtml (markup : Informal.Data.ExternalMarkup) : Verso.Output.Html :=
   let text :=
-    s!"Rendered from {externalMarkupSelectionSummary markup}; no native Verso body is available."
+    s!"Rendered from {Informal.ExternalMarkupView.sourceSummary markup}; no native Verso body is available."
   Verso.Output.Html.tag "p"
     #[("class", "bp_external_markup_notice"), ("role", "note")]
     (VersoBlueprint.Html.text text)
-
-private def externalMarkupSourceHtml (markup : Informal.Data.ExternalMarkup) : Verso.Output.Html :=
-  let code := Verso.Output.Html.tag "code"
-    #[("class", s!"language-{markup.language.key}")]
-    (VersoBlueprint.Html.text markup.raw)
-  Verso.Output.Html.tag "pre"
-    #[("class", s!"bp_external_markup_source bp_external_markup_source_{markup.language.key}")]
-    code
 
 private def renderMarkdownBody? (raw : String) : Option Verso.Output.Html := do
   let html ← MD4Lean.renderHtml raw
@@ -224,11 +206,11 @@ private def renderExternalMarkupBody?
     (markup : Informal.Data.ExternalMarkup) : Option Verso.Output.Html :=
   match cfg.mode with
   | .none => none
-  | .source => some <| externalMarkupSourceHtml markup
+  | .source => some <| Informal.ExternalMarkupView.sourcePreHtml markup
   | .markdown =>
       match markup.language with
-      | .markdown => renderMarkdownBody? markup.raw <|> some (externalMarkupSourceHtml markup)
-      | .tex => some <| externalMarkupSourceHtml markup
+      | .markdown => renderMarkdownBody? markup.raw <|> some (Informal.ExternalMarkupView.sourcePreHtml markup)
+      | .tex => some <| Informal.ExternalMarkupView.sourcePreHtml markup
 
 def renderExternalMarkupEntryHtml
     (cfg : ExternalMarkupRenderConfig)

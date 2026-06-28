@@ -505,6 +505,28 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 ```
 ````
 
+A source-only Markdown node can still keep Lean links by pairing a bodyless
+Blueprint directive with a labeled Markdown witness. The directive contributes
+the semantic Blueprint node and `(lean := ...)` declarations; the Markdown block
+contributes the source-backed preview body:
+
+````md
+:::theorem "raw_addition_right_identity" (lean := "Nat.add_zero")
+:::
+
+```md "raw_addition_right_identity" (slot := statement)
+# Addition right identity
+
+For every natural number `n`, adding zero on the right leaves it unchanged.
+```
+````
+
+The generated manifest entry is `targetKind: "externalMarkup"` with key
+`externalMarkup:raw_addition_right_identity`. Its external-markup data records
+the Markdown source, and its Lean preview keys and `codeData` still refer to
+`Nat.add_zero`. The HTML cache gets a source-backed rendered Markdown fragment
+unless generation is run with `--external-markup-render none`.
+
 If a label needs more than one external span, give each block a separate slot.
 Common slots are `statement` and `proof`; importer-specific slots are also
 allowed when they are stable and documented by the project.
