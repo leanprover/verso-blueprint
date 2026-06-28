@@ -81,7 +81,7 @@ def Preview.nonEmpty (preview : Preview) : Bool :=
   !preview.isEmpty
 
 def Preview.ofTraversalEntry (entry : PreviewCache.Entry) : Preview :=
-  { blocks := entry.blocks }
+  { blocks := entry.renderedBody.blocks }
 
 def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
     Selection :=
@@ -144,7 +144,7 @@ def traversalFacetEntry?
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
   let (_, entry) ←
-    preferredFacet? (traversalFacetEntry? s label) (fun entry => !entry.blocks.isEmpty)
+    preferredFacet? (traversalFacetEntry? s label) (fun entry => entry.hasRenderedBody)
   pure entry
 
 def traversalSelection?

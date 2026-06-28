@@ -122,12 +122,12 @@ private def renderManualGraftNode
         renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
           node.selectionDescription
   | some (preview, entry) =>
-      if preview.blocks.isEmpty then
+      if !preview.hasRenderedBody then
         pure <| Html.tag "div" (manualNodeAttrs node) <|
           renderNotice "bp_graft_node_notice" "error"
             "Blueprint node has no cached content" node.key
       else
-        let body ← renderManualBlocks goB preview.blocks
+        let body ← renderManualBlocks goB preview.renderedBody.blocks
         let codeBodies ←
           if node.compact then
             pure #[]

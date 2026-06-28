@@ -162,15 +162,19 @@ This was imported from a Markdown proof sketch.
 ````
 
 Labeled standalone `tex` and `md` blocks are exported as semantic
-external-markup catalog entries without adding rendered preview bodies. When the
-same label also has a rendered Blueprint statement or proof, the raw markup is
-attached to that block's manifest entry instead.
+external-markup catalog entries. Generated preview data also includes a
+source-backed rendered fragment for markup-only entries: Markdown receives a
+conservative HTML rendering, while TeX is shown as escaped source. Pass
+`--external-markup-render none` to keep manifest-only entries without generated
+HTML cache fragments. When the same label also has a rendered Blueprint
+statement or proof, the raw markup is attached to that block's manifest entry
+instead.
 
 These `ExternalMarkup` attachments are primarily a porting aid for existing
 TeX or Markdown sources. They are stored on the labeled node, exported in the
-Blueprint manifest, and are not rendered into the output site by default.
-Use `slot` names such as `statement` and `proof` when one Blueprint node
-corresponds to multiple source spans.
+Blueprint manifest, and are not rendered at their source location in the output
+site by default. Use `slot` names such as `statement` and `proof` when one
+Blueprint node corresponds to multiple source spans.
 
 ### Rendering to HTML
 

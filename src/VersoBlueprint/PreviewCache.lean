@@ -41,13 +41,38 @@ def proofKey (label : Name) : String :=
   key label .proof
 
 /--
-Preview payload stored during traversal.
-`blocks` are already in the Manual genre and can be rendered by later HTML consumers.
+Semantic preview metadata stored during traversal.
 
-This is a traversal-phase cache, not the canonical semantic node record. The
-interactive widget path still reads syntax from `Environment.InProgress`
-because it needs elaboration-time data before Manual preview blocks are
-available.
+This metadata is meaningful even when a node has no rendered body blocks. For
+example, a bodyless imported theorem may still carry Lean declaration preview
+keys from `(lean := ...)`.
+-/
+structure Metadata where
+  label : Name
+  facet : Facet
+  /-- HTML-cache keys for associated Lean declaration previews. -/
+  leanCodePreviewKeys : Array String := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+/--
+Rendered preview body stored during traversal.
+
+`blocks` are already in the Manual genre and can be rendered by later HTML
+consumers. Empty body blocks do not imply empty semantic metadata.
+-/
+structure RenderedBody where
+  blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+def RenderedBody.hasRenderedBody (body : RenderedBody) : Bool :=
+  !body.blocks.isEmpty
+
+/--
+Preview payload stored during traversal.
+
+The derived JSON shape remains flat for compatibility with saved traversal
+states, but callers should treat `metadata` and `renderedBody` as separate
+concerns.
 -/
 structure Entry where
   label : Name
@@ -57,9 +82,31 @@ structure Entry where
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
+def Entry.metadata (entry : Entry) : Metadata := {
+  label := entry.label
+  facet := entry.facet
+  leanCodePreviewKeys := entry.leanCodePreviewKeys
+}
+
+def Entry.renderedBody (entry : Entry) : RenderedBody := {
+  blocks := entry.blocks
+}
+
+def Entry.hasRenderedBody (entry : Entry) : Bool :=
+  entry.renderedBody.hasRenderedBody
+
+def Entry.ofMetadataAndBody (metadata : Metadata) (body : RenderedBody := {}) : Entry := {
+  label := metadata.label
+  facet := metadata.facet
+  blocks := body.blocks
+  leanCodePreviewKeys := metadata.leanCodePreviewKeys
+}
+
 def Entry.ofBlocks (label : Name) (facet : Facet)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
     (leanCodePreviewKeys : Array String := #[]) : Entry :=
-  { label, facet, blocks, leanCodePreviewKeys }
+  Entry.ofMetadataAndBody
+    { label, facet, leanCodePreviewKeys }
+    { blocks }
 
 end Informal.PreviewCache

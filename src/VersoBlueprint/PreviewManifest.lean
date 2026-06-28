@@ -16,6 +16,7 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.Macros
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
@@ -108,8 +109,78 @@ private def buildMetadataCss : String := r##"
 def buildMetadataHtmlAssets : HtmlAssets :=
   { extraCss := [buildMetadataCss] }
 
+private def externalMarkupRenderCss : String := r##"
+.bp_external_markup_node .bp_external_markup_notice {
+  margin: 0 0 0.65rem;
+  padding: 0.42rem 0.55rem;
+  border: 1px solid var(--bp-color-status-warning-border, #f59e0b);
+  border-radius: var(--bp-radius-md, 0.375rem);
+  background: var(--bp-color-status-warning-surface, #fffbeb);
+  color: var(--bp-color-status-warning-text, #92400e);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.bp_external_markup_source,
+.bp_external_markdown_code {
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid var(--bp-color-border-soft, #e2e8f0);
+  border-radius: var(--bp-radius-md, 0.375rem);
+  background: var(--bp-color-surface-muted, #f8fafc);
+  padding: 0.65rem 0.75rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.bp_external_markup_source code,
+.bp_external_markdown_code code {
+  white-space: inherit;
+}
+
+.bp_external_markdown_body {
+  display: flow-root;
+}
+
+.bp_external_markdown_body > :first-child {
+  margin-top: 0;
+}
+
+.bp_external_markdown_body > :last-child {
+  margin-bottom: 0;
+}
+
+.bp_external_markdown_body h4,
+.bp_external_markdown_body h5,
+.bp_external_markdown_body h6 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.bp_external_markdown_body p {
+  margin: 0.45rem 0;
+}
+
+.bp_external_markdown_body ul {
+  margin: 0.45rem 0 0.45rem 1.15rem;
+  padding: 0;
+}
+"##
+
+def externalMarkupRenderHtmlAssets : HtmlAssets :=
+  { extraCss := [externalMarkupRenderCss]
+    extraJs := [Informal.Macros.blueprintMathJs] }
+
+def blueprintBlockHtmlAssets : HtmlAssets :=
+  { extraCss := Informal.Block.Assets.blockCssAssets
+    extraJs := Informal.Block.Assets.blockJsAssets }
+
 def blueprintHtmlAssets : HtmlAssets :=
-  Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets
+  Verso.Genre.Manual.highlightAssets
+    |>.combine blueprintBlockHtmlAssets
+    |>.combine buildMetadataHtmlAssets
+    |>.combine externalMarkupRenderHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
@@ -1077,6 +1148,271 @@ def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
 def externalMarkupEntryKey (label : Name) : String :=
   s!"externalMarkup:{label}"
 
+/-- Generated HTML strategy for markup-only Blueprint nodes. -/
+inductive ExternalMarkupRenderMode where
+  /-- Export semantic manifest entries only, matching the original source-witness behavior. -/
+  | none
+  /-- Render the selected external source as escaped source text. -/
+  | source
+  /-- Render Markdown source as a conservative HTML approximation; render other sources as source text. -/
+  | markdown
+deriving Inhabited, Repr, DecidableEq
+
+def ExternalMarkupRenderMode.parse? (raw : String) : Option ExternalMarkupRenderMode :=
+  match raw.trimAscii.toString.toLower with
+  | "none" | "off" | "hidden" => some .none
+  | "source" | "raw" => some .source
+  | "markdown" | "md" => some .markdown
+  | _ => none
+
+def ExternalMarkupRenderMode.cliValues : String :=
+  "markdown, source, none"
+
+/-- Preferred language/slot when choosing one source attachment for generated HTML. -/
+structure ExternalMarkupPreference where
+  language : Informal.Data.ExternalMarkupLanguage
+  slot : String
+deriving Inhabited, Repr
+
+def defaultExternalMarkupPreferences : Array ExternalMarkupPreference :=
+  #[
+    { language := .markdown, slot := "statement" },
+    { language := .markdown, slot := Informal.Data.defaultExternalMarkupSlot },
+    { language := .tex, slot := "statement" },
+    { language := .tex, slot := Informal.Data.defaultExternalMarkupSlot }
+  ]
+
+/--
+Options for Lean-side HTML fragments generated from markup-only external
+sources.
+
+The default gives source-only Markdown projects a rendered preview while still
+marking the body as source-backed. Set `mode := .none` to keep manifest-only
+entries with no generated HTML cache fragment.
+-/
+structure ExternalMarkupRenderConfig where
+  mode : ExternalMarkupRenderMode := .markdown
+  warn : Bool := true
+  preferences : Array ExternalMarkupPreference := defaultExternalMarkupPreferences
+deriving Inhabited, Repr
+
+private def sameExternalMarkupLanguage
+    (a b : Informal.Data.ExternalMarkupLanguage) : Bool :=
+  match a, b with
+  | .tex, .tex => true
+  | .markdown, .markdown => true
+  | _, _ => false
+
+private def externalMarkupMatchesPreference
+    (markup : Informal.Data.ExternalMarkup) (preference : ExternalMarkupPreference) : Bool :=
+  sameExternalMarkupLanguage markup.language preference.language && markup.slot == preference.slot
+
+private def selectedExternalMarkup?
+    (cfg : ExternalMarkupRenderConfig)
+    (markup : Array Informal.Data.ExternalMarkup) : Option Informal.Data.ExternalMarkup :=
+  let nonempty := markup.filter fun item => !item.raw.trimAscii.toString.isEmpty
+  (cfg.preferences.findSome? fun preference =>
+    nonempty.find? fun item => externalMarkupMatchesPreference item preference) <|> nonempty[0]?
+
+private def externalMarkupLocationText? (location? : Option Informal.Data.ExternalMarkupLocation) :
+    Option String := do
+  let location ← location?
+  some s!"{location.path}:{location.range.start.line}:{location.range.start.character}-{location.range.«end».line}:{location.range.«end».character}"
+
+private def externalMarkupSelectionSummary (markup : Informal.Data.ExternalMarkup) : String :=
+  let base := s!"external {markup.language.displayName} source ({markup.slot})"
+  match externalMarkupLocationText? markup.location with
+  | some location => s!"{base}: {location}"
+  | none => base
+
+private def externalMarkupNoticeHtml (markup : Informal.Data.ExternalMarkup) : Output.Html :=
+  let text :=
+    s!"Rendered from {externalMarkupSelectionSummary markup}; no native Verso body is available."
+  Output.Html.tag "p"
+    #[("class", "bp_external_markup_notice"), ("role", "note")]
+    (VersoBlueprint.Html.text text)
+
+private def externalMarkupSourceHtml (markup : Informal.Data.ExternalMarkup) : Output.Html :=
+  let code := Output.Html.tag "code"
+    #[("class", s!"language-{markup.language.key}")]
+    (VersoBlueprint.Html.text markup.raw)
+  Output.Html.tag "pre"
+    #[("class", s!"bp_external_markup_source bp_external_markup_source_{markup.language.key}")]
+    code
+
+private partial def markdownStrongSegments : List String → Bool → Array Output.Html
+  | [], _ => #[]
+  | segment :: rest, strong =>
+      let node :=
+        if segment.isEmpty then
+          #[]
+        else if strong then
+          #[Output.Html.tag "strong" #[] (VersoBlueprint.Html.text segment)]
+        else
+          #[VersoBlueprint.Html.text segment]
+      node ++ markdownStrongSegments rest (!strong)
+
+private def renderMarkdownTextInline (text : String) : Array Output.Html :=
+  markdownStrongSegments (text.splitOn "**") false
+
+private partial def markdownMathSegments : List String → Bool → Array Output.Html
+  | [], _ => #[]
+  | segment :: rest, math =>
+      let node :=
+        if segment.isEmpty then
+          #[]
+        else if math then
+          #[Output.Html.tag "code" #[("class", "bp_math inline")]
+            (VersoBlueprint.Html.text segment)]
+        else
+          renderMarkdownTextInline segment
+      node ++ markdownMathSegments rest (!math)
+
+private def renderMarkdownInline (text : String) : Output.Html :=
+  Output.Html.seq <| markdownMathSegments (text.splitOn "$") false
+
+private def markdownParagraphHtml (text : String) : Output.Html :=
+  Output.Html.tag "p" #[] (renderMarkdownInline text)
+
+private def markdownListHtml (items : Array String) : Output.Html :=
+  Output.Html.tag "ul" #[] <|
+    Output.Html.seq <|
+      items.map fun item =>
+        Output.Html.tag "li" #[] (renderMarkdownInline item)
+
+private def markdownCodeBlockHtml (info : String) (lines : Array String) : Output.Html :=
+  let source := String.intercalate "\n" lines.toList
+  let codeAttrs :=
+    if info.isEmpty then
+      #[]
+    else
+      #[("data-bp-markdown-fence-info", info)]
+  let code := Output.Html.tag "code" codeAttrs (VersoBlueprint.Html.text source)
+  Output.Html.tag "pre" #[("class", "bp_external_markdown_code")] code
+
+private def markdownHeading? (line : String) : Option (String × String) :=
+  let trimmed := line.trimAscii.toString
+  if trimmed.startsWith "### " then
+    some ("h6", (trimmed.drop 4).toString)
+  else if trimmed.startsWith "## " then
+    some ("h5", (trimmed.drop 3).toString)
+  else if trimmed.startsWith "# " then
+    some ("h4", (trimmed.drop 2).toString)
+  else
+    none
+
+private def markdownListItem? (line : String) : Option String :=
+  let trimmed := line.trimAscii.toString
+  if trimmed.startsWith "- " || trimmed.startsWith "* " then
+    some ((trimmed.drop 2).toString)
+  else
+    none
+
+private structure MarkdownRenderState where
+  out : Array Output.Html := #[]
+  paragraphLines : Array String := #[]
+  listItems : Array String := #[]
+  codeFence : Option (String × Array String) := none
+
+private def MarkdownRenderState.flushParagraph (st : MarkdownRenderState) :
+    MarkdownRenderState :=
+  let text := String.intercalate " " st.paragraphLines.toList |>.trimAscii.toString
+  if text.isEmpty then
+    { st with paragraphLines := #[] }
+  else
+    { st with out := st.out.push (markdownParagraphHtml text), paragraphLines := #[] }
+
+private def MarkdownRenderState.flushList (st : MarkdownRenderState) :
+    MarkdownRenderState :=
+  if st.listItems.isEmpty then
+    st
+  else
+    { st with out := st.out.push (markdownListHtml st.listItems), listItems := #[] }
+
+private def MarkdownRenderState.flushPendingBlocks (st : MarkdownRenderState) :
+    MarkdownRenderState :=
+  st.flushParagraph.flushList
+
+private def MarkdownRenderState.flushOpenCodeFence (st : MarkdownRenderState) :
+    MarkdownRenderState :=
+  match st.codeFence with
+  | some (info, lines) =>
+      { st with out := st.out.push (markdownCodeBlockHtml info lines), codeFence := none }
+  | none => st
+
+private def markdownProcessLine (st : MarkdownRenderState) (line : String) :
+    MarkdownRenderState :=
+  let trimmed := line.trimAscii.toString
+  match st.codeFence with
+  | some (info, lines) =>
+      if trimmed.startsWith "```" then
+        { st with out := st.out.push (markdownCodeBlockHtml info lines), codeFence := none }
+      else
+        { st with codeFence := some (info, lines.push line) }
+  | none =>
+      if trimmed.startsWith "```" then
+        let st := st.flushPendingBlocks
+        { st with codeFence := some ((trimmed.drop 3).trimAscii.toString, #[]) }
+      else if trimmed.isEmpty then
+        st.flushPendingBlocks
+      else
+        match markdownHeading? trimmed with
+        | some (tag, text) =>
+            let st := st.flushPendingBlocks
+            { st with out := st.out.push (Output.Html.tag tag #[] (renderMarkdownInline text)) }
+        | none =>
+            match markdownListItem? trimmed with
+            | some item =>
+                let st := st.flushParagraph
+                { st with listItems := st.listItems.push item }
+            | none =>
+                let st := st.flushList
+                { st with paragraphLines := st.paragraphLines.push trimmed }
+
+private def renderMarkdownBody (raw : String) : Output.Html :=
+  let st :=
+    (raw.splitOn "\n").foldl markdownProcessLine {}
+      |>.flushOpenCodeFence
+      |>.flushPendingBlocks
+  Output.Html.tag "div" #[("class", "bp_external_markdown_body")] (Output.Html.seq st.out)
+
+private def renderExternalMarkupBody?
+    (cfg : ExternalMarkupRenderConfig)
+    (markup : Informal.Data.ExternalMarkup) : Option Output.Html :=
+  match cfg.mode with
+  | .none => none
+  | .source => some <| externalMarkupSourceHtml markup
+  | .markdown =>
+      match markup.language with
+      | .markdown => some <| renderMarkdownBody markup.raw
+      | .tex => some <| externalMarkupSourceHtml markup
+
+private def renderExternalMarkupEntryHtml
+    (cfg : ExternalMarkupRenderConfig)
+    (entry : Entry)
+    (markup : Informal.Data.ExternalMarkup) : Option String := do
+  let body ← renderExternalMarkupBody? cfg markup
+  let blockData := entry.blockData
+  let heading := entry.heading
+  let content :=
+    if cfg.warn then
+      #[externalMarkupNoticeHtml markup, body]
+    else
+      #[body]
+  let html := Informal.renderInformalBlockModel {
+    data := blockData
+    context := Informal.InformalBlockRenderContext.forBlock blockData heading.label
+      (statementCaption? := some heading.caption)
+      (attrs := #[
+        ("data-bp-source-backed", "true"),
+        ("data-bp-external-markup-language", markup.language.key),
+        ("data-bp-external-markup-slot", markup.slot)
+      ])
+    content
+    wrapperClass? := some "bp_preview_data_node_blueprint bp_external_markup_node"
+  }
+  some <| Output.Html.asString html
+
 /-- Count available Lean-code preview entries before display-level deduplication. -/
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
   (entry.leanCodePreviewKeys.filterMap index.findEntry?).size
@@ -1462,17 +1798,29 @@ private def buildGroupRelation?
     entries
   }
 
-def blockEntryOfTraversalPreview
+private def fallbackTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
+    PreviewCache.Entry :=
+  PreviewCache.Entry.ofBlocks label facet #[]
+
+private def traversalPreviewOrFallback
+    (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
+    PreviewCache.Entry :=
+  (Informal.TraversalIndex.TraversalPreviews.entry? state (PreviewCache.key label facet)).getD
+    (fallbackTraversalPreview label facet)
+
+private def blockSemanticManifestEntry
     (state : TraverseState)
-    (preview : PreviewCache.Entry) : Entry :=
+    (preview : PreviewCache.Entry)
+    (key : String := PreviewCache.key preview.label preview.facet)
+    (targetKind : EntryKind := .block)
+    (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
   let blockData? := blockInfo? state preview.label
-  let key := PreviewCache.key preview.label preview.facet
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
   let codeData := blockCodeData? state preview.label preview blockData?
   let storedBlocks := Informal.collectStoredBlocks state
   {
     key
-    targetKind := .block
+    targetKind
     label := preview.label
     facet := preview.facet
     kind := blockKind? blockData?
@@ -1486,7 +1834,7 @@ def blockEntryOfTraversalPreview
     proofUses := blockData?.map (·.proofUses) |>.getD #[]
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
-    externalMarkup := externalMarkupArray state preview.label
+    externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
     group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1495,6 +1843,11 @@ def blockEntryOfTraversalPreview
     priority := blockData?.bind (·.priority)
     effort := blockData?.bind (·.effort)
   }
+
+def blockEntryOfTraversalPreview
+    (state : TraverseState)
+    (preview : PreviewCache.Entry) : Entry :=
+  blockSemanticManifestEntry state preview
 
 def findTraversalBlockEntry? (state : TraverseState) (key : String) :
     Option (PreviewCache.Entry × Entry) := do
@@ -1516,9 +1869,9 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if entry.blocks.isEmpty then
+      if !entry.hasRenderedBody then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString
@@ -1536,9 +1889,11 @@ private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : 
 private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
-    (previewBackedEntries : Array Entry) : IO (Array Entry) := do
+    (previewBackedEntries : Array Entry)
+    (renderConfig : ExternalMarkupRenderConfig := {}) :
+    IO (Array Entry × Array HtmlCache.Entry) := do
   let mut entries := #[]
-  let storedBlocks := Informal.collectStoredBlocks state
+  let mut htmlEntries := #[]
   for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
@@ -1549,32 +1904,16 @@ private def buildExternalMarkupEntries
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
         continue
-      let blockData? := blockInfo? state data.label
-      let headingParts? := blockHeadingParts? state data.label .statement blockData?
-      entries := entries.push {
-        key := externalMarkupEntryKey data.label
-        targetKind := .externalMarkup
-        label := data.label
-        facet := .statement
-        kind := blockKind? blockData?
-        title := blockTitle state data.label .statement blockData?
-        displayCaption := headingParts?.map (·.caption)
-        displayLabel := headingParts?.map (·.label)
-        href := blockHref state data.label
-        parent := blockData?.bind (·.parent)
-        parentTitle := blockParentTitle? state blockData?
-        statementUses := blockData?.map (·.statementUses) |>.getD #[]
-        proofUses := blockData?.map (·.proofUses) |>.getD #[]
-        externalMarkup := data.markup.toArray
-        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-        group := blockData?.bind (buildGroupRelation? state storedBlocks)
-        ownerDisplayName := blockData?.bind (·.ownerDisplayName)
-        tags := blockData?.map (·.tags) |>.getD #[]
-        priority := blockData?.bind (·.priority)
-        effort := blockData?.bind (·.effort)
-      }
-  pure entries
+      let statementPreview := traversalPreviewOrFallback state data.label .statement
+      let manifestEntry := blockSemanticManifestEntry state statementPreview
+        (key := externalMarkupEntryKey data.label)
+        (targetKind := .externalMarkup)
+        (externalMarkup? := some data.markup.toArray)
+      entries := entries.push manifestEntry
+      if let some markup := selectedExternalMarkup? renderConfig manifestEntry.externalMarkup then
+        if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry markup then
+          htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+  pure (entries, htmlEntries)
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
@@ -1659,14 +1998,16 @@ completed Manual traversal state.
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO Files := do
+    (state : TraverseState)
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
-  let externalMarkupPreviews ← buildExternalMarkupEntries logError state traversalPreviews
+  let (externalMarkupPreviews, externalMarkupHtml) ←
+    buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
   let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
   let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
   let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
-  let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  let htmlEntries := (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   let graphs := Informal.GraphApi.cachedData state
   pure {
     manifest := { previews, graphs }
@@ -1720,18 +2061,47 @@ private def parseRenderConfigOptions (config : RenderConfig := {}) :
   | (other :: _) => throw (↑ s!"Unknown option {other}")
   | [] => pure config
 
+def externalMarkupRenderFlag : String := "--external-markup-render"
+
+private partial def parseExternalMarkupRenderOptions (config : ExternalMarkupRenderConfig := {}) :
+    List String → Except String (ExternalMarkupRenderConfig × List String)
+  | [] => .ok (config, [])
+  | flag :: value :: more =>
+      if flag == externalMarkupRenderFlag then
+        match ExternalMarkupRenderMode.parse? value with
+        | some mode => parseExternalMarkupRenderOptions { config with mode } more
+        | none =>
+            .error s!"Unknown value for {externalMarkupRenderFlag}: {value}. Expected one of: {ExternalMarkupRenderMode.cliValues}"
+      else
+        match parseExternalMarkupRenderOptions config (value :: more) with
+        | .ok (config, options) => .ok (config, flag :: options)
+        | .error err => .error err
+  | [flag] =>
+      if flag == externalMarkupRenderFlag then
+        .error s!"Missing value for {externalMarkupRenderFlag}. Expected one of: {ExternalMarkupRenderMode.cliValues}"
+      else
+        .ok (config, [flag])
+
+private def parseExternalMarkupRenderOptionsIO
+    (config : ExternalMarkupRenderConfig) (options : List String) :
+    IO (ExternalMarkupRenderConfig × List String) :=
+  match parseExternalMarkupRenderOptions config options with
+  | .ok parsed => pure parsed
+  | .error err => throw <| IO.userError err
+
 private def dumpManifest
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO UInt32 := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
   IO.println <| jsonPretty <| toJson files.manifest
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1739,14 +2109,15 @@ private def dumpHtmlCache
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO UInt32 := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1773,8 +2144,11 @@ or citation key. The rendered-fragment cache contains the corresponding opaque
 rendered fragments for browser hover previews and file-mode consumers such as
 slides.
 -/
-def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
-  let files ← buildPreviewDataFiles extensionImpls logError state
+def emitBlueprintPreviewData
+    (extensionImpls : ExtensionImpls)
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
+    ExtraStep := fun mode logError cfg state _text => do
+  let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
   let apiDir := dataDir / apiModuleDirname
@@ -1806,6 +2180,7 @@ def helpText : String := String.intercalate "\n" [
   s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
   s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
   s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
+  s!"  {externalMarkupRenderFlag} <mode>  Render markup-only external sources in the cache ({ExternalMarkupRenderMode.cliValues}; default markdown).",
   s!"  {helpFlag}              Show this help text and exit.",
   "",
   "Standard manual rendering options:",
@@ -1834,20 +2209,28 @@ def handleCliFlags
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO (Option UInt32 × List String) := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
+    IO (Option UInt32 × List String × ExternalMarkupRenderConfig) := do
   if options.contains helpFlag then
     IO.println helpText
-    pure (some 0, stripFlag helpFlag options)
-  else if options.contains dumpManifestFlag then
-    let options := stripFlag dumpManifestFlag options
-    let code ← dumpManifest text options extensionImpls config
-    pure (some code, options)
-  else if options.contains dumpHtmlCacheFlag then
-    let options := stripFlag dumpHtmlCacheFlag options
-    let code ← dumpHtmlCache text options extensionImpls config
-    pure (some code, options)
+    pure (some 0, stripFlag helpFlag options, externalMarkupConfig)
+  else if options.contains dumpSchemaFlag then
+    let (dumped?, options) ← handleDumpSchemaFlag options
+    pure (dumped?, options, externalMarkupConfig)
   else
-    handleDumpSchemaFlag options
+    let (externalMarkupConfig, options) ←
+      parseExternalMarkupRenderOptionsIO externalMarkupConfig options
+    if options.contains dumpManifestFlag then
+      let options := stripFlag dumpManifestFlag options
+      let code ← dumpManifest text options extensionImpls config externalMarkupConfig
+      pure (some code, options, externalMarkupConfig)
+    else if options.contains dumpHtmlCacheFlag then
+      let options := stripFlag dumpHtmlCacheFlag options
+      let code ← dumpHtmlCache text options extensionImpls config externalMarkupConfig
+      pure (some code, options, externalMarkupConfig)
+    else
+      pure (none, options, externalMarkupConfig)
 
 private abbrev HtmlTraverse :=
   (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState)
@@ -1936,11 +2319,11 @@ def blueprintMainWithPreviewData
     (config : RenderConfig := {})
     (extraSteps : List ExtraStep := []) : IO UInt32 := do
   let config := withBlueprintAssets config
-  let (dumped?, options) ← handleCliFlags text options extensionImpls config
+  let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
-    (extraSteps := emitBlueprintPreviewData extensionImpls :: extraSteps)
+    (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
 
 -- Compatibility for reference generators pinned before preview data was renamed.
 @[deprecated blueprintMainWithPreviewData (since := "2026-06-08")]

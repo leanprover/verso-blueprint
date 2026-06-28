@@ -543,7 +543,18 @@ Current behavior:
   under slot `"default"` unless `(slot := ...)` is provided
 - a labeled standalone external-markup block is exported to the semantic
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
-  it does not create a rendered-fragment preview body
+  by default the generated HTML cache also gets a source-backed rendered
+  fragment for that key
+- markup-only rendered fragments choose Markdown `statement`, Markdown
+  `default`, TeX `statement`, then TeX `default` when multiple source slots are
+  available; Markdown uses conservative generated HTML, while TeX uses escaped
+  source text
+- if a bodyless directive for the same label carried `(lean := ...)`, the
+  external-markup manifest entry keeps the corresponding Lean preview keys and
+  `codeData`
+- pass `--external-markup-render source` to render the selected source as
+  escaped source text, or `--external-markup-render none` to keep markup-only
+  entries manifest-only with no HTML cache body
 - if the same label also has a rendered statement or proof, the external markup
   is attached to that block's manifest entry instead of creating a separate
   external-markup entry
@@ -555,8 +566,9 @@ Current behavior:
 - the block is not displayed in the rendered output unless `(display := summary)`
   or `(display := source)` is provided, or the file sets
   `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
-- display rendering is intentionally simple; future converters can replace the
-  raw display path with Markdown-to-Verso or TeX-to-Verso rendering
+- display and source-backed cache rendering are intentionally simple; future
+  converters can replace the raw/simple Markdown path with Markdown-to-Verso or
+  TeX-to-Verso rendering
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems
