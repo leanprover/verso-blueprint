@@ -179,8 +179,7 @@ def primaryNodeTitle?
 
 def workQueueLabels
     (manifest : Informal.PreviewManifest.File) : Array String :=
-  manifest.workQueueEntries.map fun entry =>
-    Informal.PreviewManifest.labelString entry.label
+  manifest.workQueueEntries.map (·.authoredLabel)
 ```
 
 Generator-side Lean callers can configure markup-only external-source cache
@@ -192,11 +191,19 @@ external-markup entries semantic-only with no generated HTML-cache fragment.
 Set `showSourceNotice := false` when an embedding context should omit the
 visible source-backed notice from generated fragments.
 
-Manifest entries serialize both `label`, the canonical target label, and
-`authoredLabel`, the authored/display string form. UI and review clients should
-prefer `authoredLabel` when presenting or round-tripping labels that contain
-punctuation, while code that needs canonical identity can continue to use
-`label`.
+#### Manifest Label Fields
+
+Manifest entries serialize several label-like fields with distinct roles:
+
+- `key` is the stable lookup/cache identifier for a manifest entry. It may
+  contain a target-family prefix such as `externalMarkup:` and should not be
+  treated as display text.
+- `targetKind` says how to interpret the key namespace: `block`, `leanDecl`,
+  `citation`, or `externalMarkup`.
+- `label` is the canonical target label used for semantic identity.
+- `authoredLabel` is the authored/display string form. UI and review clients
+  should prefer it when presenting or round-tripping labels that contain
+  punctuation.
 
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty

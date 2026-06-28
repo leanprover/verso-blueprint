@@ -99,6 +99,18 @@ The source body is imported from Markdown.
 ```
 :::::::
 
+#docs (Manual) externalPunctuationBodylessLeanWitnessDoc "External Punctuation Bodyless Lean Witness" :=
+:::::::
+:::theorem "Chapter4:Theorem4.2.1" (lean := "Nat.add")
+:::
+
+```md "Chapter4:Theorem4.2.1" (slot := statement)
+# Punctuation-label witness
+
+The source body is imported from Markdown.
+```
+:::::::
+
 #docs (Manual) externalMarkupMultiLanguageDoc "External Markup Multi-language Slots" :=
 :::::::
 ```tex "external.multi" (slot := statement)
@@ -247,10 +259,22 @@ Summary-only content should stay hidden.
       | return false
     let some bodylessHtml := bodylessFiles.htmlCache.findHtml? bodylessKey
       | return false
+    let (_punctuationOut, punctuationState) ←
+      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc
+    let punctuationFiles ←
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) punctuationState
+    let punctuationLabel := Name.mkSimple "Chapter4:Theorem4.2.1"
+    let punctuationKey := Informal.PreviewManifest.externalMarkupEntryKey punctuationLabel
+    let some punctuationEntry := punctuationFiles.manifest.previews.find? (fun entry => entry.key == punctuationKey)
+      | return false
     let bodylessLosses :=
       Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessFiles.manifest
     let bodylessExternalRefs : Array Name :=
       match bodylessEntry.codeData with
+      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | _ => #[]
+    let punctuationExternalRefs : Array Name :=
+      match punctuationEntry.codeData with
       | some (.external refs) => refs.map (fun ref => ref.canonical)
       | _ => #[]
     let brokenBodylessManifest : Informal.PreviewManifest.File := {
@@ -296,6 +320,11 @@ Summary-only content should stay hidden.
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
       bodylessExternalRefs.contains `Nat.add &&
       bodylessExternalRefs.contains `Nat.mul &&
+      (match punctuationEntry.targetKind with | .externalMarkup => true | _ => false) &&
+      punctuationEntry.label == punctuationLabel &&
+      punctuationEntry.authoredLabel == "Chapter4:Theorem4.2.1" &&
+      punctuationEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+      punctuationExternalRefs.contains `Nat.add &&
       bodylessLosses.isEmpty &&
       brokenBodylessLosses.size == 1 &&
       brokenBodylessLoss.manifestEntryKey? == some bodylessKey &&

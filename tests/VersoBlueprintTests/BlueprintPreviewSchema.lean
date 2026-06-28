@@ -108,4 +108,24 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let entry : Entry := {
+      key := "externalMarkup:«Chapter4:Theorem4.2.1»"
+      targetKind := .externalMarkup
+      label := Name.mkSimple "Chapter4:Theorem4.2.1"
+      facet := .statement
+      title := "Theorem 4.2.1"
+    }
+    let oldEntryJson? := do
+      let obj ← (toJson entry).getObj?
+      pure <| Json.mkObj <| (obj.erase "authoredLabel").toList
+    match oldEntryJson?.bind (fromJson? (α := Entry)) with
+    | .ok entry =>
+      entry.label == Name.mkSimple "Chapter4:Theorem4.2.1" &&
+        entry.authoredLabel == "Chapter4:Theorem4.2.1"
+    | .error _ => false
+
 end Verso.VersoBlueprintTests.BlueprintPreviewSchema
