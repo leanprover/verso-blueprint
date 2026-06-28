@@ -1,36 +1,8 @@
 (function () {
   "use strict";
 
-  var typeNames = [
-    "BlueprintCanonicalPreviewResult",
-    "BlueprintDataApi",
-    "BlueprintDataApiOptions",
-    "BlueprintExternalMarkup",
-    "BlueprintExternalMarkupPayload",
-    "BlueprintExternalMarkupPreference",
-    "BlueprintExternalMarkupPreferences",
-    "BlueprintExternalMarkupRenderer",
-    "BlueprintFetchJson",
-    "BlueprintFetchText",
-    "BlueprintGraphData",
-    "BlueprintGraphLayoutOptions",
-    "BlueprintGraphVariant",
-    "BlueprintHtmlCacheEntry",
-    "BlueprintHydrator",
-    "BlueprintHydratorContext",
-    "BlueprintHydratorEntry",
-    "BlueprintHydrators",
-    "BlueprintLoadDocument",
-    "BlueprintLoadDocumentPayload",
-    "BlueprintManifestEntry",
-    "BlueprintPreviewApi",
-    "BlueprintPreviewOptions",
-    "BlueprintPreviewResult",
-    "BlueprintRenderNodeRequest",
-    "BlueprintRenderNodeResult",
-    "BlueprintStoreStatus",
-    "BlueprintTemplateBinder"
-  ];
+  var typeNames = (window.blueprintJSDocTypeNames || []).slice();
+  if (typeNames.length === 0) return;
 
   typeNames.sort(function (left, right) {
     return right.length - left.length;

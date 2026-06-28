@@ -36,7 +36,7 @@
     "nameInOutputPath": false,
     "private": false,
     "scopeInOutputPath": false,
-    "scripts": ["jsdoc-type-links.js"],
+    "scripts": ["jsdoc-type-names.js", "jsdoc-type-links.js"],
     "search": true,
     "sort": true,
     "static": true,

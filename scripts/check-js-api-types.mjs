@@ -4,6 +4,9 @@ import path from "node:path";
 const typesDir = path.resolve("dist/types/src/VersoBlueprint");
 const contractPath = path.resolve("tests/preview_runtime_api_contract.json");
 const publicApiContract = JSON.parse(await readFile(contractPath, "utf8"));
+const publicApiTypeExports = Array.isArray(publicApiContract.typeExports)
+  ? publicApiContract.typeExports
+  : [];
 const failures = [];
 
 function fail(message) {
@@ -47,17 +50,31 @@ function exportedValueNames(text) {
   return names;
 }
 
-function requireExactExports(relativePath, text, expectedNames) {
-  const actualNames = exportedValueNames(text);
+function exportedTypeNames(text) {
+  const names = new Set();
+  for (const match of text.matchAll(/^export type ([A-Za-z][A-Za-z0-9_]*)\b/gm)) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function requireExactNames(description, actualNames, expectedNames) {
   const expected = new Set(expectedNames);
   const missing = [...expected].filter((name) => !actualNames.has(name)).sort();
   const extra = [...actualNames].filter((name) => !expected.has(name)).sort();
   if (missing.length > 0 || extra.length > 0) {
-    fail(
-      `${relativePath}: public declaration exports mismatch` +
-      `; missing=[${missing.join(", ")}] extra=[${extra.join(", ")}]`
-    );
+    fail(`${description} mismatch; missing=[${missing.join(", ")}] extra=[${extra.join(", ")}]`);
   }
+}
+
+function requireExactExports(relativePath, text, expectedNames) {
+  const actualNames = exportedValueNames(text);
+  requireExactNames(`${relativePath}: public declaration exports`, actualNames, expectedNames);
+}
+
+function requireExactTypeExports(relativePath, text, expectedNames) {
+  const actualNames = exportedTypeNames(text);
+  requireExactNames(`${relativePath}: public type exports`, actualNames, expectedNames);
 }
 
 function requireTypeBlock(relativePath, text, typeName) {
@@ -91,6 +108,7 @@ const apiTypesDeclaration = declarationFilename(publicApiContract.typesModule);
 const dataDeclaration = declarationFilename(publicApiContract.modules.data);
 const graphDeclaration = declarationFilename(publicApiContract.modules.graph);
 const previewDeclaration = declarationFilename(publicApiContract.modules.preview);
+const apiTypes = declarations[apiTypesDeclaration];
 
 for (const [relativePath, text] of Object.entries(declarations)) {
   rejectMatches(relativePath, text, /module:blueprint-api-types~/, "JSDoc longname leak");
@@ -111,6 +129,11 @@ requireExactExports(
   previewDeclaration,
   declarations[previewDeclaration],
   publicApiContract.exports.preview
+);
+requireExactTypeExports(
+  apiTypesDeclaration,
+  apiTypes,
+  publicApiTypeExports
 );
 
 requireMatches(
@@ -201,7 +224,6 @@ for (const apiName of graphInternalApiNames) {
   );
 }
 
-const apiTypes = declarations[apiTypesDeclaration];
 const dataApiType = requireTypeBlock(
   apiTypesDeclaration,
   apiTypes,
