@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-06-21
+Last reviewed: 2026-06-30
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Requests that should eventually move into upstream `verso`, Lake, or Lean live
@@ -107,6 +107,17 @@ Work:
    the public type list contract-backed, generate the JSDoc linker data from
    it, and keep generated declaration/docs checks in CI so this explicit
    duplication does not silently drift or collapse to broad types.
+9. after the source metadata API stabilizes, implement source previews as
+   standard VBP-rendered interface content that consumes manifest
+   `sourceDocuments` and `entry.sources`; keep PDF viewers, text excerpts, and
+   crop overlays out of the browser API contract
+10. evaluate whether the metadata-only `resolveSourceMetadata` helper belongs
+   in `api/data.mjs` as well as, or instead of, `api/preview.mjs`. Move it only
+   if the stable client split becomes clearer; until then, avoid another public
+   API churn round
+11. deduplicate the source metadata resolver with manifest/data lookup helpers
+   once more source consumers exist, so missing-entry, missing-document, and
+   source-ref normalization semantics have one implementation
 
 ### Data Model and Status Semantics
 

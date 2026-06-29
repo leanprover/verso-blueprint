@@ -26,13 +26,15 @@ import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
  * - {@link renderNode} starts from a Blueprint label and can fall back to
  *   call-scoped external Markdown, TeX, Verso, or source renderers when no
  *   native preview exists.
+ * - {@link resolveSourceMetadata} resolves source-provenance metadata from the
+ *   manifest for custom preview/source interfaces.
  * - {@link hydrate} runs Blueprint math and nested-preview behavior after a
  *   client has inserted cached HTML itself.
  *
  * @module blueprint-preview-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -386,6 +388,21 @@ export function renderNode(element, request, options) {
 }
 
 /**
+ * Resolve source-provenance metadata for a preview key or manifest entry.
+ *
+ * The result joins `entry.sources` with the matching source-document records
+ * from the manifest. Use this when a custom UI wants source metadata but owns
+ * its own rendering.
+ *
+ * @param {BlueprintSourceMetadataInput} source Preview key, manifest entry, or render result.
+ * @param {BlueprintPreviewOptions} [options] Optional render and load overrides.
+ * @returns {Promise<BlueprintSourceMetadataResult>}
+ */
+export function resolveSourceMetadata(source, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveSourceMetadata", [source, options]);
+}
+
+/**
  * Hydrate Blueprint-specific behavior inside an already-rendered subtree.
  *
  * Call this after inserting Blueprint-rendered HTML yourself. It runs math,
@@ -427,6 +444,7 @@ const previewApi = {
   resolveCanonicalPreview,
   renderCanonicalPreviewInto,
   renderNode,
+  resolveSourceMetadata,
   hydrate
 };
 

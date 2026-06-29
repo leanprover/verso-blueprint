@@ -614,7 +614,7 @@ Current behavior:
 Blueprint can record a three-level source provenance chain for audit tooling:
 original source document, Verso Blueprint node, and associated Lean material.
 This phase stores the source-document catalog and node-local source spans. It
-does not render a source audit interface in generated pages yet.
+does not render a full source-provenance interface in generated pages yet.
 
 Declare source documents with `:::source_document`. The directive body must
 contain exactly one Verso metadata block:
@@ -671,6 +671,12 @@ Manifest clients should read `entry.sources`; there is no singular
 several sourced Blueprint nodes share the same Lean declaration preview.
 Browser clients can resolve those document ids with `loadSourceDocument` or
 read the complete catalog with `loadSourceDocuments`.
+
+Browser clients can call `resolveSourceMetadata` from `api/preview.mjs` to
+resolve source refs for a preview key, manifest entry, or render result. The
+API returns structured source-document metadata and recorded text/PDF spans; it
+does not render source previews. Source preview UI, PDF page viewers, and crop
+overlays remain Blueprint/Verso interface work.
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems

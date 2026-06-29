@@ -64,6 +64,9 @@
     "BlueprintExternalMarkupPreferences",
     "BlueprintRenderNodeRequest",
     "BlueprintRenderNodeResult",
+    "BlueprintResolvedSourceRef",
+    "BlueprintSourceMetadataInput",
+    "BlueprintSourceMetadataResult",
     "BlueprintDataApi",
     "BlueprintPreviewApi"
   ],
@@ -117,6 +120,7 @@
       "renderPreviewInto",
       "resolveCanonicalPreview",
       "resolvePreview",
+      "resolveSourceMetadata",
       "statementPreviewKey",
       "version"
     ],

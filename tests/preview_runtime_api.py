@@ -51,6 +51,7 @@ RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-base.mjs"),
     Path("Commands/preview-runtime-data.mjs"),
     Path("Commands/preview-runtime-render.mjs"),
+    Path("Commands/preview-runtime-source-metadata.mjs"),
     Path("Commands/preview-runtime-hydration.mjs"),
     Path("Commands/preview-runtime-lifecycle.mjs"),
     Path("Commands/preview-runtime-surface.mjs"),

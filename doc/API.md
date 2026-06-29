@@ -178,6 +178,23 @@ Generated browser APIs expose the same split. Use `loadManifestEntry` or
 extracted page roots. These helpers reuse the cached manifest load; they do not
 fetch a second JSON file.
 
+Render-capable clients can use `resolveSourceMetadata(source)` when they want
+the source refs attached to a preview joined with declared source-document
+metadata. The `source` argument can be a preview key, a manifest entry, or a
+result returned by `resolvePreview`, `resolveCanonicalPreview`, or `renderNode`:
+
+```javascript
+const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
+const sourceMetadata = await api.resolveSourceMetadata(key);
+if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
+```
+
+This API returns structured metadata only. Source preview rendering, PDF page
+viewers, and crop overlays remain Blueprint/Verso interface work rather than
+browser API policy. Returned file paths and PDF/image/text coordinates are
+metadata; `resolveSourceMetadata` does not fetch those assets or decide how a
+source preview should look.
+
 ```json
 {
   "sourceDocuments": [
@@ -950,14 +967,19 @@ reference.
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
 | `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. It accepts the same hydration options as `renderPreviewInto`. |
 | `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
+| `api.resolveSourceMetadata(source, options)` | Resolve source provenance for a preview key, manifest entry, or render result. It joins `entry.sources` with declared source documents and returns `{ ok, key, manifestEntry, sources }`. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. It accepts the same hydration options as `renderPreviewInto`. |
 
 ## Preview Result Shapes
 
 Preview/render helpers resolve to plain objects with an `ok` boolean and the
-normalized preview `key`. Successful results include semantic manifest data and
-the rendered HTML used by the operation. Failed results include a `reason` and
-`diagnosticHtml` suitable for insertion into the page.
+normalized preview `key`. Successful render results include semantic manifest
+data and the rendered HTML used by the operation. Failed render results include
+a `reason` and `diagnosticHtml` suitable for insertion into the page.
+`resolveSourceMetadata` is data-only: it returns source metadata and failure
+reasons, but no rendered HTML. It also does not load source PDFs, extracted
+text, or page images; callers use the returned paths and spans in the source UI
+they own.
 
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |
@@ -966,6 +988,7 @@ the rendered HTML used by the operation. Failed results include a `reason` and
 | `resolveCanonicalPreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html, canonicalHtml, canonicalSourceHref }` | `{ ok: false, key, reason, diagnosticHtml }` |
 | `renderCanonicalPreviewInto(element, key, options)` | The `resolveCanonicalPreview` success shape after writing `canonicalHtml` into `element` and hydrating it. | The `resolveCanonicalPreview` failure shape after writing `diagnosticHtml` into `element`. |
 | `renderNode(element, request, options)` | Native-preview success shape with `renderMode: "native"` and `canonicalHtml`, or external-markup success shape with `renderMode: "external-markup"`, `externalMarkup`, and `canonicalHtml`. | `{ ok: false, key, reason, manifestEntry?, externalMarkup?, nativePreview?, diagnosticHtml }` after writing diagnostics unless `options.diagnostics === false`. |
+| `resolveSourceMetadata(source)` | `{ ok: true, key, manifestEntry, sources }`, where each source has `{ sourceRef, documentId, document, spans }`. | `{ ok: false, key, reason, manifestEntry?, sources: [] }`. |
 
 The most common failure `reason` values are:
 
@@ -982,6 +1005,7 @@ The most common failure `reason` values are:
 - `external-markup-render-failed`
 - `external-markup-node-shell-missing`
 - `external-markup-node-shell-load-failed`
+- `source-missing`
 
 Treat `html` and `canonicalHtml` as opaque rendered fragments. Use
 `manifestEntry` for semantic facts such as labels, titles, dependency metadata,
@@ -1040,6 +1064,7 @@ The current private source chunks are:
 | `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks. |
 | `preview-runtime-data.mjs` | Manifest/cache loading, status readers, and store lookups. |
 | `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
+| `preview-runtime-source-metadata.mjs` | Source-provenance lookup and source-document joins for structured metadata. |
 | `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch. |
 | `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
 | `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
@@ -1125,8 +1150,9 @@ includes a graph-data card that imports `loadGraphs()` from `api/graph.mjs` to
 read `blueprint-manifest.json.graphs` without embedding a rendered graph, a
 `type="module"` example that imports `renderPreviewInto` from
 `-verso-data/api/preview.mjs`, `renderNode` cards for native label rendering and
-a metadata-bearing external-markup node with a call-scoped body renderer, and a graph
-module example that imports `loadGraphs` from `-verso-data/api/graph.mjs`.
+a metadata-bearing external-markup node with a call-scoped body renderer and
+generated source refs, and a graph module example that imports `loadGraphs`
+from `-verso-data/api/graph.mjs`.
 
 The client asset lives in
 [`custom-render-client.js`](../tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/custom-render-client.js),

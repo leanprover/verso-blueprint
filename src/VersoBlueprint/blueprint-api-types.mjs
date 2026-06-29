@@ -389,6 +389,33 @@
  */
 
 /**
+ * One source reference after resolving its source-document metadata.
+ *
+ * @typedef {Object} BlueprintResolvedSourceRef
+ * @property {BlueprintSourceRef} sourceRef Original manifest source ref.
+ * @property {string} documentId Source-document id from `sourceRef.document`.
+ * @property {BlueprintSourceDocument | null} document Resolved source-document metadata, or `null` when missing.
+ * @property {BlueprintSourceSpan[]} spans Source spans from the original source ref.
+ */
+
+/**
+ * Input accepted by source-metadata helpers.
+ *
+ * @typedef {string | BlueprintManifestEntry | BlueprintPreviewResult | BlueprintCanonicalPreviewResult | BlueprintRenderNodeResult} BlueprintSourceMetadataInput
+ */
+
+/**
+ * Result returned by source-metadata helpers.
+ *
+ * @typedef {Object} BlueprintSourceMetadataResult
+ * @property {boolean} ok Whether source provenance was available.
+ * @property {string} key Requested or resolved preview key.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {BlueprintResolvedSourceRef[]} sources Resolved source references.
+ */
+
+/**
  * Data API returned by `createPreviewData`.
  *
  * @typedef {Object} BlueprintDataApi
@@ -435,6 +462,7 @@
  * @property {function(string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} resolveCanonicalPreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} renderCanonicalPreviewInto
  * @property {function(Element, (string | BlueprintRenderNodeRequest), BlueprintPreviewOptions=): Promise<BlueprintRenderNodeResult>} renderNode
+ * @property {function(BlueprintSourceMetadataInput, BlueprintPreviewOptions=): Promise<BlueprintSourceMetadataResult>} resolveSourceMetadata
  * @property {function(Element, BlueprintPreviewOptions=): boolean} hydrate
  * @property {function(BlueprintGraphData, BlueprintGraphRenderOptions=): Element | null} [createGraphBlock] Installed by the graph runtime when graph rendering is started.
  * @property {function(Element, BlueprintGraphData, BlueprintGraphRenderOptions=): Promise<BlueprintGraphController | null>} [renderGraphData] Installed by the graph runtime when graph rendering is started.
