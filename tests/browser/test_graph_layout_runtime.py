@@ -195,8 +195,7 @@ class TestGraphLayoutRuntime:
             blueprint_render_api_script(
                 """
                 const block = document.querySelector(".bp_graph_fullwidth");
-                const graphModuleUrl = new URL("../-verso-data/api/graph.mjs", window.location.href).href;
-                const graphModule = await import(graphModuleUrl);
+                const graphModule = await import(api.graphApiModuleUrl());
                 const pageGraph = graphModule.getGraphData(block);
                 const manifestGraphs = await graphModule.loadGraphs();
                 const manifestGraph = manifestGraphs.find((graph) => graph.key === pageGraph.key) || null;
@@ -209,6 +208,7 @@ class TestGraphLayoutRuntime:
                     hasLegacyGlobal: typeof window.bpGraphApi !== "undefined",
                     previewHasGraphData: typeof api.getGraphData === "function",
                     previewHasLoadGraphs: typeof api.loadGraphs === "function",
+                    previewHasGraphApiModuleUrl: typeof api.graphApiModuleUrl === "function",
                     pageKey: pageGraph.key,
                     manifestGraphs: manifestGraphs.length,
                     manifestKey: manifestGraph ? manifestGraph.key : "",
@@ -231,6 +231,7 @@ class TestGraphLayoutRuntime:
         assert graph_data["hasLegacyGlobal"] is False
         assert graph_data["previewHasGraphData"] is False
         assert graph_data["previewHasLoadGraphs"] is False
+        assert graph_data["previewHasGraphApiModuleUrl"] is True
         assert graph_data["pageKey"].startswith("graph:#<")
         assert graph_data["manifestGraphs"] == 1
         assert graph_data["manifestKey"] == graph_data["pageKey"]
@@ -265,8 +266,7 @@ class TestGraphLayoutRuntime:
                 host.appendChild(clone);
                 document.body.appendChild(host);
 
-                const graphModuleUrl = new URL("../-verso-data/api/graph.mjs", window.location.href).href;
-                const graphModule = await import(graphModuleUrl);
+                const graphModule = await import(api.graphApiModuleUrl());
                 const controller = await graphModule.renderGraphBlock(clone, {
                     previewUtils: api,
                     layout: "fill"
@@ -359,6 +359,30 @@ class TestGraphLayoutRuntime:
         assert metrics["layout"] == ""
         assert metrics["canvasHeight"] > 240
         assert metrics["svgHeight"] > 200
+
+    def test_single_page_custom_graph_clients_use_generated_api_urls(
+        self,
+        preview_runtime_showcase_root_server: str,
+        page: Page,
+    ):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        goto_graph_page(page, f"{preview_runtime_showcase_root_server}/html-single/")
+
+        client = page.locator("#custom-render-client-example").first
+        expect(client).to_have_attribute("data-bp-custom-client-status", "ready", timeout=15000)
+
+        preview_module_card = page.locator("[data-bp-preview-module-example]").first
+        expect(preview_module_card).to_have_attribute("data-bp-preview-module-ok", "true")
+        expect(preview_module_card).to_have_attribute("data-bp-preview-module-render-api", "true")
+
+        graph_card = page.locator("[data-bp-custom-client-graph]").first
+        expect(graph_card).to_have_attribute("data-bp-graph-ok", "true")
+        expect(graph_card).to_have_attribute("data-bp-graph-count", "1")
+        expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
+        expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
+        expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
+            "Nodes 58"
+        )
 
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})

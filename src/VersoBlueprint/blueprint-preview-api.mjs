@@ -153,6 +153,16 @@ export function previewApiModuleUrl(baseUrl) {
 }
 
 /**
+ * Resolve the generated graph API module URL.
+ *
+ * @param {string} [baseUrl] Base URL. Defaults to this module URL.
+ * @returns {string}
+ */
+export function graphApiModuleUrl(baseUrl) {
+  return previewUrls.graphApiModuleUrl(baseUrl);
+}
+
+/**
  * Build the preview key for a Blueprint label and facet.
  *
  * @param {string} label Blueprint label.
@@ -373,6 +383,7 @@ const previewApi = {
   htmlCacheUrl,
   dataApiModuleUrl,
   previewApiModuleUrl,
+  graphApiModuleUrl,
   createPreview,
   currentRenderApi,
   getRenderApi,

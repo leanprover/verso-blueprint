@@ -1,8 +1,5 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
-import {
-  getGraphData as coreGetGraphData,
-  getGraphVariants as coreGetGraphVariants
-} from "../blueprint-graph-core.mjs";
+import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants } from "../blueprint-graph-core.mjs";
 
 const {
   debounce,

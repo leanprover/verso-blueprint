@@ -389,6 +389,7 @@
  * @property {function(): string} htmlCacheUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
+ * @property {function(): string} graphApiModuleUrl
  * @property {function(string, string=): string} previewKey
  * @property {function(string): string} statementPreviewKey
  * @property {function(): BlueprintStoreStatus} readManifestStatus
@@ -408,6 +409,7 @@
  * @property {function(): string} htmlCacheUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
+ * @property {function(): string} graphApiModuleUrl
  * @property {function(string, string=): string} previewKey
  * @property {function(string): string} statementPreviewKey
  * @property {function(): BlueprintStoreStatus} readManifestStatus
