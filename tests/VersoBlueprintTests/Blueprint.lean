@@ -26,6 +26,7 @@ import VersoBlueprintTests.BlueprintPreviewSchema
 import VersoBlueprintTests.BlueprintPreviewPanels
 import VersoBlueprintTests.BlueprintPreviewSource
 import VersoBlueprintTests.BlueprintPreviewWiring
+import VersoBlueprintTests.BlueprintSource
 import VersoBlueprintTests.BlueprintRustCode
 import VersoBlueprintTests.BlueprintSummaryLinks
 import VersoBlueprintTests.BlueprintSummaryStatus

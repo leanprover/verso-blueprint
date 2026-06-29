@@ -23,6 +23,10 @@ open Lean
 def informalDomainName : Name := Name.mkSimple "Informal.Block.informal"
 def informalCodeDomainName : Name := Name.mkSimple "Informal.Block.informalCode"
 def informalRustCodeDomainName : Name := Name.mkSimple "Informal.Block.informalRustCode"
+/-- Traversal domain for declared source documents. -/
+def sourceDocumentDomainName : Name := Name.mkSimple "Informal.Source.document"
+/-- Traversal domain for source provenance attached to informal Blueprint nodes. -/
+def sourceRefDomainName : Name := Name.mkSimple "Informal.Source.ref"
 /--
 Traversal domain for external-markup attachments.
 

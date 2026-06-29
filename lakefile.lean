@@ -55,6 +55,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,
     `VersoBlueprintTests.BlueprintPreviewWiring,
+    `VersoBlueprintTests.BlueprintSource,
     `VersoBlueprintTests.BlueprintRustCode,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,

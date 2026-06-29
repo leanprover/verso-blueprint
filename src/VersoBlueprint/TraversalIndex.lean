@@ -13,6 +13,7 @@ import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
+import VersoBlueprint.Source.Data
 
 /-!
 Typed accessors for Blueprint's traversal-time stores.
@@ -207,6 +208,62 @@ def saveData (state : TraverseState) (label : Name) (data : Informal.Rust.Inline
   saveObjectData state domainName label.toString (toJson data)
 
 end RustInlineCode
+
+namespace SourceDocuments
+
+def spec : StoreSpec := {
+  name := Resolve.sourceDocumentDomainName
+  kind := .semanticDomain
+  key := "source document id"
+  value := "Source.Document declaration metadata"
+  summary := "Semantic index for original source documents referenced by Blueprint nodes."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (id : String) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName id
+
+def data? (state : TraverseState) (id : String) : Option Informal.Source.Document :=
+  objectData? state domainName id
+
+def saveData (state : TraverseState) (id : String) (data : Informal.Source.Document) :
+    TraverseState :=
+  saveObjectData state domainName id (toJson data)
+
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.Source.Document)) :=
+  decodeStoreEntries state domainName
+
+end SourceDocuments
+
+namespace SourceRefs
+
+def spec : StoreSpec := {
+  name := Resolve.sourceRefDomainName
+  kind := .semanticDomain
+  key := "informal label"
+  value := "Source.Ref provenance metadata"
+  summary := "Semantic index for original-source spans attached to Blueprint nodes."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName label.toString
+
+def data? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
+  objectData? state domainName label.toString
+
+def saveData (state : TraverseState) (label : Name) (data : Informal.Source.Ref) :
+    TraverseState :=
+  saveObjectData state domainName label.toString (toJson data)
+
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.Source.Ref)) :=
+  decodeStoreEntries state domainName
+
+end SourceRefs
 
 namespace ExternalMarkup
 
@@ -492,6 +549,8 @@ def allSpecs : Array StoreSpec := #[
   Nodes.spec,
   InlineCode.spec,
   RustInlineCode.spec,
+  SourceDocuments.spec,
+  SourceRefs.spec,
   ExternalMarkup.spec,
   Groups.spec,
   Graphs.spec,

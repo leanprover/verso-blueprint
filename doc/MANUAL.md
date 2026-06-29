@@ -602,6 +602,67 @@ Current behavior:
   MD4Lean interpreter support or richer converters can still replace this path
   when projects need fuller Markdown, TeX, or native Blueprint structure
 
+### Original Source Provenance
+
+Blueprint can record a three-level source provenance chain for audit tooling:
+original source document, Verso Blueprint node, and associated Lean material.
+This phase stores the source-document catalog and node-local source spans. It
+does not render a source audit interface in generated pages yet.
+
+Declare source documents with `:::source_document`. The directive body must
+contain exactly one Verso metadata block:
+
+````md
+:::source_document "paper"
+%%%
+title := "Representation Theory"
+kind := .pdf
+pdf := "source/paper.pdf"
+pageRoot := "source/pages"
+imageRoot := "source/pages/images"
+%%%
+:::
+````
+
+Attach source provenance to a Blueprint node with a leading metadata block
+inside the node directive. The metadata block must be the first block in the
+directive body; a later metadata block is rejected so that provenance is easy to
+find and strip before rendering the visible statement.
+
+````md
+:::lemma_ "addition_right_identity"
+%%%
+source := {
+  document := "paper"
+  spans := #[
+    {
+      page := "12"
+      text := some {
+        path := "source/pages/page-12.md"
+        startLine := 41
+        endLine := 45
+      }
+      pdf := some {
+        path := "source/pages/page-12.pdf"
+        image := "source/pages/images/page-12.png"
+      }
+    }
+  ]
+}
+%%%
+
+For every natural number $`n`, $`n + 0 = n`.
+:::
+````
+
+The generated manifest exports declared documents in `sourceDocuments` and each
+manifest entry's original-source refs in `entry.sources`. Source metadata is
+hidden from normal HTML output.
+
+Manifest clients should read `entry.sources`; there is no singular
+`entry.source` field. Lean declaration entries may contain multiple refs when
+several sourced Blueprint nodes share the same Lean declaration preview.
+
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems
 before the final site render.

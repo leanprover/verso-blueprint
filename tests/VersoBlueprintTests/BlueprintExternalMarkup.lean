@@ -111,6 +111,35 @@ The source body is imported from Markdown.
 ```
 :::::::
 
+#docs (Manual) sourcedExternalMarkupWitnessDoc "Sourced External Markup Witness" :=
+:::::::
+:::source_document "external-paper"
+%%%
+title := "External Paper"
+kind := .pdf
+pdf := "source/external-paper.pdf"
+%%%
+:::
+
+:::theorem "external.sourced.witness"
+%%%
+source := {
+  document := "external-paper"
+  spans := #[
+    {
+      page := "7"
+      pdf := some { path := "source/external-paper-page-7.pdf" }
+    }
+  ]
+}
+%%%
+:::
+
+```md "external.sourced.witness" (slot := statement)
+Imported Markdown statement with source provenance.
+```
+:::::::
+
 #docs (Manual) externalMarkupMultiLanguageDoc "External Markup Multi-language Slots" :=
 :::::::
 ```tex "external.multi" (slot := statement)
@@ -290,6 +319,13 @@ Summary-only content should stay hidden.
     let some brokenBodylessLoss := brokenBodylessLosses[0]?
       | return false
     let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
+    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc
+    let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) sourcedWitnessState
+    let sourcedWitnessKey :=
+      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.sourced.witness")
+    let some sourcedWitnessEntry :=
+        sourcedWitnessFiles.manifest.previews.find? (fun entry => entry.key == sourcedWitnessKey)
+      | return false
     pure <|
       hasSubstr traversedTex "\\begin{theorem}" &&
       hasSubstr traversedMd "Imported **Markdown** proof witness." &&
@@ -333,6 +369,12 @@ Summary-only content should stay hidden.
       hasSubstr brokenBodylessLossMessage "lost Lean preview keys" &&
       hasSubstr brokenBodylessLossMessage s!"manifest entry {bodylessKey}" &&
       hasSubstr bodylessHtml "Bodyless Lean-backed witness" &&
+      sourcedWitnessEntry.targetKind == .externalMarkup &&
+      sourcedWitnessEntry.externalMarkup.size == 1 &&
+      sourcedWitnessEntry.sources.any (fun sourceRef =>
+        sourceRef.document == "external-paper" &&
+          sourceRef.spans.size == 1 &&
+          sourceRef.spans[0]!.page == "7") &&
       !hasSubstr externalOut "\\begin{theorem}" &&
       !hasSubstr externalOut "thm:external-markup" &&
       !hasSubstr externalOut "Imported **Markdown** proof witness" &&

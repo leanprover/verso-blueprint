@@ -115,27 +115,30 @@ model instead of recomputing similar facts in several layers.
 
 Work:
 
-1. revisit `Informal.Environment.InProgress` after the widget path no longer
+1. prioritize a deduplication pass after source provenance lands, starting with
+   repeated traversal-store decoding, manifest filtering, and validation-message
+   assembly patterns that now exist across preview, source, and status data
+2. revisit `Informal.Environment.InProgress` after the widget path no longer
    needs elaboration-time syntax; today it remains separate from `Data.Node`
    because it owns directive-stack state, preview blocks, and `elabStx`
-2. keep `Informal.Environment.State` as the persisted semantic store and
+3. keep `Informal.Environment.State` as the persisted semantic store and
    traversal indexes as rendered-site projections; consolidate only if the
    replacement keeps numbering, hrefs, preview ids, and HTML-cache keys
    phase-safe
-3. extend the centralized declaration-level presentation in
+4. extend the centralized declaration-level presentation in
    `ProvedStatus.presentation` into a broader node-health record derived from
    `Data.Node` plus external declaration checks; declaration rows, summary
    detail rows, heading marks, code-entry icons, and external-code rows already
    share the declaration-status vocabulary
-4. encode the intended ownership rules for `CodeRef.external`, especially the
+5. encode the intended ownership rules for `CodeRef.external`, especially the
    difference between Blueprint-owned labels and Lean-owned declaration names
-5. decide whether richer group metadata belongs in the core data model, then
+6. decide whether richer group metadata belongs in the core data model, then
    either port the local `group-metadata-rendering` work or retire it
-6. reject invalid nested and duplicate declarations before they mutate the
+7. reject invalid nested and duplicate declarations before they mutate the
    active environment stack
-7. keep imported duplicate collision checks for node labels, group labels, and
+8. keep imported duplicate collision checks for node labels, group labels, and
    author ids covered by sibling-import and transitive-import tests
-8. revisit external declaration footer/status semantics once out-of-workspace
+9. revisit external declaration footer/status semantics once out-of-workspace
    declarations are represented precisely enough to distinguish declaration
    completeness from dependency completeness
 
