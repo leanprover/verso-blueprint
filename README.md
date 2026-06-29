@@ -212,6 +212,8 @@ For every natural number $`n`, $`n + 0 = n`.
 
 Current behavior: source provenance is exported in the Blueprint manifest as
 `sourceDocuments` and per-entry `sources`, and kept hidden in rendered pages.
+Browser clients can resolve source-document ids with `loadSourceDocument` or
+load the complete catalog with `loadSourceDocuments`.
 Rich audit-interface rendering is planned separately.
 
 ### Rendering to HTML

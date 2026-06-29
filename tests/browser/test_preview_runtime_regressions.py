@@ -1207,6 +1207,92 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_data_api_resolves_source_documents_from_manifest(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                const calls = [];
+                const manifestPayload = {
+                    sourceDocuments: [
+                        {
+                            id: "paper",
+                            title: "Representation Theory",
+                            kind: "pdf",
+                            pdf: "source/paper.pdf",
+                            pageRoot: "source/pages",
+                            imageRoot: "source/pages/images"
+                        }
+                    ],
+                    previews: [
+                        {
+                            key: "sample_node--statement",
+                            label: "sample_node",
+                            authoredLabel: "sample_node",
+                            facet: "statement",
+                            sources: [
+                                {
+                                    document: "paper",
+                                    spans: [
+                                        {
+                                            page: "42",
+                                            pdf: {
+                                                path: "source/pages/p42.pdf",
+                                                image: "source/pages/images/p42.png"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    graphs: []
+                };
+                const data = createPreviewData({
+                    fetchJson(url) {
+                        calls.push(url);
+                        return manifestPayload;
+                    }
+                });
+                const sourceDocuments = await data.loadSourceDocuments();
+                const entry = await data.loadManifestEntry(data.statementPreviewKey("sample_node"));
+                const sourceDocument = await data.loadSourceDocument(entry.sources[0].document);
+                const sameDocument = await data.loadSourceDocument("paper");
+                const missingDocument = await data.loadSourceDocument("missing");
+                const emptyDocument = await data.loadSourceDocument("");
+                const manifest = await data.loadManifest();
+
+                return {
+                    calls: calls.length,
+                    manifestSize: manifest.size,
+                    sourceDocumentCount: sourceDocuments.length,
+                    sourceDocumentId: sourceDocument && sourceDocument.id,
+                    sourceDocumentTitle: sourceDocument && sourceDocument.title,
+                    sourceDocumentPdf: sourceDocument && sourceDocument.pdf,
+                    entrySourceDocument: entry && entry.sources[0].document,
+                    sameObject: sourceDocument === sameDocument,
+                    missingDocument,
+                    emptyDocument
+                };
+                """
+            )
+        )
+
+        assert result["calls"] == 1
+        assert result["manifestSize"] == 1
+        assert result["sourceDocumentCount"] == 1
+        assert result["sourceDocumentId"] == "paper"
+        assert result["sourceDocumentTitle"] == "Representation Theory"
+        assert result["sourceDocumentPdf"] == "source/paper.pdf"
+        assert result["entrySourceDocument"] == "paper"
+        assert result["sameObject"] is True
+        assert result["missingDocument"] is None
+        assert result["emptyDocument"] is None
+        assert_no_runtime_errors(errors)
+
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         attempts = {"count": 0}

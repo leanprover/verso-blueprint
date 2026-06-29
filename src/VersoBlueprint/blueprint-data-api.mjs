@@ -21,7 +21,7 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * @module blueprint-data-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintHtmlCacheEntry } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -235,6 +235,30 @@ export function loadManifestEntry(key, options) {
 }
 
 /**
+ * Load source-document declarations from the Blueprint manifest.
+ *
+ * Use these records to resolve `entry.sources[*].document` ids to display
+ * metadata such as the document title, PDF path, or extracted page roots.
+ *
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintSourceDocument[]>}
+ */
+export function loadSourceDocuments(options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "loadSourceDocuments", [options]);
+}
+
+/**
+ * Load one source-document declaration by id.
+ *
+ * @param {string} id Source-document id.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintSourceDocument | null>}
+ */
+export function loadSourceDocument(id, options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "loadSourceDocument", [id, options]);
+}
+
+/**
  * Load a single HTML-cache entry by key.
  *
  * @param {string} key HTML cache key.
@@ -260,6 +284,8 @@ const dataApi = {
   loadManifest,
   readManifestStatus,
   loadManifestEntry,
+  loadSourceDocuments,
+  loadSourceDocument,
   loadHtmlCache,
   readHtmlCacheStatus,
   loadHtmlCacheEntry,

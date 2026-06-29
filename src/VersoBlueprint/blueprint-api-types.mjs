@@ -397,6 +397,8 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
  */
 
@@ -417,6 +419,8 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
  * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintPreviewResult>} resolvePreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintPreviewResult>} renderPreviewInto
