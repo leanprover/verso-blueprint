@@ -921,9 +921,7 @@ features.
 
 Generated slide decks load one slide-specific module entrypoint:
 `-verso-data/blueprint-slide-runtime.mjs`. `withBlueprintSlidesAssets` injects
-it with Slides `extraHead`; the current development branch uses a temporary
-`verso-slides` pin that contains upstream PR 59 plus a 4.31 toolchain
-compatibility commit. New custom clients should import the ESM modules
+it with Slides `extraHead`. New custom clients should import the ESM modules
 directly.
 
 ### Stable Custom-Client API
