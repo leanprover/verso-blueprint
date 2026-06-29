@@ -108,7 +108,7 @@ or is still going through the classic Slides bridge.
 | --- | --- | --- | --- |
 | Regular generated Manual page | `-verso-data/blueprint-page-runtime.mjs` | Creates one renderer with `createPreview()`, starts inline previews, relation panels, graphs, and descriptor-bound template previews. | Nothing extra; `withBlueprintAssets` installs this module. |
 | Custom browser page, dashboard, audit view, or slide adapter | `-verso-data/api/preview.mjs` | Manifest/cache loading, preview lookup, rendered-fragment insertion, canonical node loading, math rendering, and hydration. | `createPreview()`, then `resolvePreview`, `renderPreviewInto`, `renderCanonicalPreviewInto`, `renderNode`, or `hydrate`. |
-| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, status readers, and graph-data loading without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadHtmlCache`, `loadGraphs`, or single-entry readers. |
+| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, status readers, source-document lookup, and graph-data loading without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadSourceDocuments`, `loadHtmlCache`, `loadGraphs`, or single-entry readers. |
 | Graph data or graph-block rendering | `-verso-data/api/graph.mjs` | Graph JSON discovery, manifest graph loading, lazy graph runtime loading, and graph block initialization. | `loadGraphs`, `getGraphData`, `getGraphVariants`, or `renderGraphs(root, { previewUtils })`. |
 | Blueprint-owned panels in generated pages | Renderer bundled helpers | Panel slots, content updates, trigger lifetime, dismissal, repositioning, diagnostics, and shared preview lookup. | Feature scripts use `createPreviewSurface`, `renderPreviewIntoSurface`, or `resolvePreviewHtml`; custom clients should not import these helpers directly. |
 | Summary and code-summary previews | Lean-emitted template descriptors plus `preview-runtime-template.mjs` | Selector configuration and binding for preview templates. | Emit descriptor attributes from Lean; no feature-specific startup script is needed. |
@@ -171,6 +171,12 @@ Clients should read `entry.sources`; the manifest does not emit a singular
 `entry.source` field. Most block and external-markup entries have at most one
 source ref, while `.leanDecl` entries can aggregate refs from multiple sourced
 Blueprint nodes that share the same Lean declaration preview.
+
+Generated browser APIs expose the same split. Use `loadManifestEntry` or
+`resolvePreview` to read `entry.sources`, then use `loadSourceDocument` or
+`loadSourceDocuments` to resolve those document ids to titles, PDF paths, and
+extracted page roots. These helpers reuse the cached manifest load; they do not
+fetch a second JSON file.
 
 ```json
 {
@@ -570,6 +576,9 @@ const data = createPreviewData({ fetchJson });
 
 const manifest = await data.loadManifest();
 const entry = await data.loadManifestEntry(data.previewKey("addition_right_identity", "statement"));
+const sourceDocument = entry?.sources?.[0]
+  ? await data.loadSourceDocument(entry.sources[0].document)
+  : null;
 const graphs = await loadManifestGraphs(data.manifestUrl(), { fetchJson });
 ```
 
@@ -900,6 +909,7 @@ reference.
 | `api.loadManifest(options)` / `api.loadHtmlCache(options)` | Load the generated `Map` values keyed by preview key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key, options)` / `api.loadHtmlCacheEntry(key, options)` | Read one generated entry by key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
+| `api.loadSourceDocuments(options)` / `api.loadSourceDocument(id, options)` | Read declared source-document metadata from the manifest, either as the full list or by source-document id. |
 | `api.dataApiModuleUrl()` | Resolve the generated ESM data API module URL for dynamic imports from custom clients. |
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |

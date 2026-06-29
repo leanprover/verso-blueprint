@@ -21,6 +21,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     return Object.assign({
       status: null,
       map: null,
+      decodedFile: null,
       promise: null
     }, fields || {});
   }
@@ -115,6 +116,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     const blueprintManifestStoreForApi = createBlueprintStore({
       url: blueprintManifestUrlForApi,
       decode: decodeBlueprintManifest,
+      decodeFile: decodeBlueprintManifestFile,
       debugLabel: "manifest.loadFailed",
       consoleLabel: "Blueprint manifest",
       unavailableTitle: "Preview manifest unavailable.",
@@ -137,6 +139,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     function resetBlueprintStoreForApi(store) {
       store.status = null;
       store.map = null;
+      store.decodedFile = null;
       store.promise = null;
     }
 
@@ -254,6 +257,10 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
         .then(function (result) {
           const map = store.decode(result.data);
           store.map = map;
+          store.decodedFile =
+            typeof store.decodeFile === "function"
+              ? store.decodeFile(result.data, map)
+              : null;
           setBlueprintStoreStatusForApi(store, {
             state: "ready",
             attempts: attempts,
@@ -269,6 +276,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
               ? err.message
               : String(err);
           store.map = null;
+          store.decodedFile = null;
           setBlueprintStoreStatusForApi(store, {
             state: "error",
             attempts: attempts,
@@ -301,6 +309,27 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
     function loadBlueprintManifestForApi(options) {
       return loadBlueprintStoreForApi(blueprintManifestStoreForApi, options);
+    }
+
+    async function loadBlueprintManifestFileForApi(options) {
+      await loadBlueprintManifestForApi(options);
+      return blueprintManifestStoreForApi.decodedFile || {
+        previews: new Map(),
+        sourceDocuments: [],
+        sourceDocumentsById: new Map()
+      };
+    }
+
+    async function loadBlueprintSourceDocumentsForApi(options) {
+      const file = await loadBlueprintManifestFileForApi(options);
+      return file.sourceDocuments;
+    }
+
+    async function loadBlueprintSourceDocumentForApi(id, options) {
+      const trimmedId = typeof id === "string" ? id.trim() : "";
+      if (!trimmedId) return null;
+      const file = await loadBlueprintManifestFileForApi(options);
+      return file.sourceDocumentsById.get(trimmedId) || null;
     }
 
     function loadBlueprintHtmlCacheForApi(options) {
@@ -359,6 +388,8 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       fetchStoreData: fetchBlueprintStoreDataForApi,
       loadStore: loadBlueprintStoreForApi,
       loadManifest: loadBlueprintManifestForApi,
+      loadSourceDocuments: loadBlueprintSourceDocumentsForApi,
+      loadSourceDocument: loadBlueprintSourceDocumentForApi,
       loadHtmlCache: loadBlueprintHtmlCacheForApi,
       readStoreEntry: readBlueprintStoreEntryForApi,
       previewKey: previewKey,
@@ -411,6 +442,47 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     });
   }
 
+  export function decodeBlueprintSourceDocuments(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Blueprint manifest must be an object with a sourceDocuments array");
+    }
+    const documents = data.sourceDocuments;
+    if (typeof documents === "undefined" || documents === null) {
+      return { sourceDocuments: [], sourceDocumentsById: new Map() };
+    }
+    if (!Array.isArray(documents)) {
+      throw new Error("Blueprint manifest sourceDocuments must be an array");
+    }
+    const sourceDocumentsById = new Map();
+    documents.forEach(function (document, index) {
+      if (!document || typeof document !== "object" || Array.isArray(document)) {
+        throw new Error("Blueprint source document " + index + " must be an object");
+      }
+      const id = typeof document.id === "string" ? document.id.trim() : "";
+      if (!id) {
+        throw new Error("Blueprint source document " + index + " is missing id");
+      }
+      if (sourceDocumentsById.has(id)) {
+        throw new Error("Blueprint manifest contains duplicate source document " + id);
+      }
+      sourceDocumentsById.set(id, document);
+    });
+    return {
+      sourceDocuments: documents,
+      sourceDocumentsById: sourceDocumentsById
+    };
+  }
+
+  export function decodeBlueprintManifestFile(data, previews) {
+    const previewMap = previews instanceof Map ? previews : decodeBlueprintManifest(data);
+    const sourceData = decodeBlueprintSourceDocuments(data);
+    return {
+      previews: previewMap,
+      sourceDocuments: sourceData.sourceDocuments,
+      sourceDocumentsById: sourceData.sourceDocumentsById
+    };
+  }
+
   export function decodeBlueprintHtmlCache(data) {
     return decodeBlueprintKeyedEntries(data, {
       arrayField: "entries",
@@ -451,6 +523,8 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     createBlueprintDataApi,
     decodeBlueprintKeyedEntries,
     decodeBlueprintManifest,
+    decodeBlueprintSourceDocuments,
+    decodeBlueprintManifestFile,
     decodeBlueprintHtmlCache,
     missingPreviewKeyDiagnosticHtml,
     previewKey,

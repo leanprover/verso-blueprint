@@ -662,6 +662,8 @@ hidden from normal HTML output.
 Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean declaration entries may contain multiple refs when
 several sourced Blueprint nodes share the same Lean declaration preview.
+Browser clients can resolve those document ids with `loadSourceDocument` or
+read the complete catalog with `loadSourceDocuments`.
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems

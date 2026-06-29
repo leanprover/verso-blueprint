@@ -1207,6 +1207,113 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_public_apis_resolve_source_documents_from_manifest(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                const { createPreview } = await import(api.previewApiModuleUrl());
+                const dataCalls = [];
+                const previewCalls = [];
+                const manifestPayload = {
+                    sourceDocuments: [
+                        {
+                            id: "paper",
+                            title: "Representation Theory",
+                            kind: "pdf",
+                            pdf: "source/paper.pdf",
+                            pageRoot: "source/pages",
+                            imageRoot: "source/pages/images"
+                        }
+                    ],
+                    previews: [
+                        {
+                            key: "sample_node--statement",
+                            label: "sample_node",
+                            authoredLabel: "sample_node",
+                            facet: "statement",
+                            sources: [
+                                {
+                                    document: "paper",
+                                    spans: [
+                                        {
+                                            page: "42",
+                                            pdf: {
+                                                path: "source/pages/p42.pdf",
+                                                image: "source/pages/images/p42.png"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    graphs: []
+                };
+                const data = createPreviewData({
+                    fetchJson(url) {
+                        dataCalls.push(url);
+                        return manifestPayload;
+                    }
+                });
+                const preview = createPreview({
+                    fetchJson(url) {
+                        previewCalls.push(url);
+                        return manifestPayload;
+                    }
+                });
+                const sourceDocuments = await data.loadSourceDocuments();
+                const entry = await data.loadManifestEntry(data.statementPreviewKey("sample_node"));
+                const sourceDocument = await data.loadSourceDocument(entry.sources[0].document);
+                const sameDocument = await data.loadSourceDocument("paper");
+                const missingDocument = await data.loadSourceDocument("missing");
+                const emptyDocument = await data.loadSourceDocument("");
+                const manifest = await data.loadManifest();
+                const previewSourceDocument = await preview.loadSourceDocument("paper");
+                const previewSourceDocuments = await preview.loadSourceDocuments();
+                const previewEntry = await preview.loadManifestEntry(
+                    preview.statementPreviewKey("sample_node")
+                );
+
+                return {
+                    dataCalls: dataCalls.length,
+                    previewCalls: previewCalls.length,
+                    manifestSize: manifest.size,
+                    sourceDocumentCount: sourceDocuments.length,
+                    sourceDocumentId: sourceDocument && sourceDocument.id,
+                    sourceDocumentTitle: sourceDocument && sourceDocument.title,
+                    sourceDocumentPdf: sourceDocument && sourceDocument.pdf,
+                    entrySourceDocument: entry && entry.sources[0].document,
+                    sameObject: sourceDocument === sameDocument,
+                    missingDocument,
+                    emptyDocument,
+                    previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
+                    previewSourceDocumentCount: previewSourceDocuments.length,
+                    previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
+                };
+                """
+            )
+        )
+
+        assert result["dataCalls"] == 1
+        assert result["previewCalls"] == 1
+        assert result["manifestSize"] == 1
+        assert result["sourceDocumentCount"] == 1
+        assert result["sourceDocumentId"] == "paper"
+        assert result["sourceDocumentTitle"] == "Representation Theory"
+        assert result["sourceDocumentPdf"] == "source/paper.pdf"
+        assert result["entrySourceDocument"] == "paper"
+        assert result["sameObject"] is True
+        assert result["missingDocument"] is None
+        assert result["emptyDocument"] is None
+        assert result["previewSourceDocumentId"] == "paper"
+        assert result["previewSourceDocumentCount"] == 1
+        assert result["previewEntrySourceDocument"] == "paper"
+        assert_no_runtime_errors(errors)
+
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         attempts = {"count": 0}
