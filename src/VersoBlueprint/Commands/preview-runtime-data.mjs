@@ -21,7 +21,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     return Object.assign({
       status: null,
       map: null,
-      file: null,
+      decodedFile: null,
       promise: null
     }, fields || {});
   }
@@ -139,7 +139,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     function resetBlueprintStoreForApi(store) {
       store.status = null;
       store.map = null;
-      store.file = null;
+      store.decodedFile = null;
       store.promise = null;
     }
 
@@ -257,7 +257,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
         .then(function (result) {
           const map = store.decode(result.data);
           store.map = map;
-          store.file =
+          store.decodedFile =
             typeof store.decodeFile === "function"
               ? store.decodeFile(result.data, map)
               : null;
@@ -276,7 +276,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
               ? err.message
               : String(err);
           store.map = null;
-          store.file = null;
+          store.decodedFile = null;
           setBlueprintStoreStatusForApi(store, {
             state: "error",
             attempts: attempts,
@@ -313,7 +313,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
     async function loadBlueprintManifestFileForApi(options) {
       await loadBlueprintManifestForApi(options);
-      return blueprintManifestStoreForApi.file || {
+      return blueprintManifestStoreForApi.decodedFile || {
         previews: new Map(),
         sourceDocuments: [],
         sourceDocumentsById: new Map()

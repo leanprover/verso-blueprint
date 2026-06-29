@@ -1207,7 +1207,7 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_data_api_resolves_source_documents_from_manifest(self, server: str, page: Page):
+    def test_public_apis_resolve_source_documents_from_manifest(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
 
@@ -1215,7 +1215,9 @@ class TestPreviewRuntimeRegressions:
             blueprint_render_api_script(
                 """
                 const { createPreviewData } = await import(api.dataApiModuleUrl());
-                const calls = [];
+                const { createPreview } = await import(api.previewApiModuleUrl());
+                const dataCalls = [];
+                const previewCalls = [];
                 const manifestPayload = {
                     sourceDocuments: [
                         {
@@ -1253,7 +1255,13 @@ class TestPreviewRuntimeRegressions:
                 };
                 const data = createPreviewData({
                     fetchJson(url) {
-                        calls.push(url);
+                        dataCalls.push(url);
+                        return manifestPayload;
+                    }
+                });
+                const preview = createPreview({
+                    fetchJson(url) {
+                        previewCalls.push(url);
                         return manifestPayload;
                     }
                 });
@@ -1264,9 +1272,15 @@ class TestPreviewRuntimeRegressions:
                 const missingDocument = await data.loadSourceDocument("missing");
                 const emptyDocument = await data.loadSourceDocument("");
                 const manifest = await data.loadManifest();
+                const previewSourceDocument = await preview.loadSourceDocument("paper");
+                const previewSourceDocuments = await preview.loadSourceDocuments();
+                const previewEntry = await preview.loadManifestEntry(
+                    preview.statementPreviewKey("sample_node")
+                );
 
                 return {
-                    calls: calls.length,
+                    dataCalls: dataCalls.length,
+                    previewCalls: previewCalls.length,
                     manifestSize: manifest.size,
                     sourceDocumentCount: sourceDocuments.length,
                     sourceDocumentId: sourceDocument && sourceDocument.id,
@@ -1275,13 +1289,17 @@ class TestPreviewRuntimeRegressions:
                     entrySourceDocument: entry && entry.sources[0].document,
                     sameObject: sourceDocument === sameDocument,
                     missingDocument,
-                    emptyDocument
+                    emptyDocument,
+                    previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
+                    previewSourceDocumentCount: previewSourceDocuments.length,
+                    previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
                 };
                 """
             )
         )
 
-        assert result["calls"] == 1
+        assert result["dataCalls"] == 1
+        assert result["previewCalls"] == 1
         assert result["manifestSize"] == 1
         assert result["sourceDocumentCount"] == 1
         assert result["sourceDocumentId"] == "paper"
@@ -1291,6 +1309,9 @@ class TestPreviewRuntimeRegressions:
         assert result["sameObject"] is True
         assert result["missingDocument"] is None
         assert result["emptyDocument"] is None
+        assert result["previewSourceDocumentId"] == "paper"
+        assert result["previewSourceDocumentCount"] == 1
+        assert result["previewEntrySourceDocument"] == "paper"
         assert_no_runtime_errors(errors)
 
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
