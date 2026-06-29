@@ -192,6 +192,10 @@ private def renderHeaderExtras
     uses? := renderUsesExtra? cfg entry
     code? := renderCodeExtra? entry blockData
     usedBy? := renderUsedByExtra? cfg entry
+    markup? :=
+      match entry.facet with
+      | .statement => Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
+      | .proof => none
   }
 
 private def renderCodePanel

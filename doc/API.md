@@ -252,8 +252,8 @@ def workQueueLabels
   manifest.workQueueEntries.map (·.authoredLabel)
 ```
 
-Generator-side Lean callers can configure markup-only external-source cache
-fragments with `Informal.PreviewManifest.ExternalMarkupRenderConfig`. The
+Generator-side Lean callers can configure source-backed external-source cache
+fragments with `Informal.ExternalMarkupRender.Config`. The
 default mode, `.markdown`, renders selected Markdown slots through Blueprint's
 interpreter-safe Markdown renderer and escapes raw HTML; TeX falls back to
 escaped source. `.source` always emits escaped source; `.none` keeps
@@ -280,7 +280,7 @@ whether traversal-preview metadata survived manifest construction. A non-empty
 result means a traversal preview, such as a bodyless directive carrying
 `(lean := ...)`, had Lean preview keys that were not represented by the matching
 manifest entry. The standard preview-data generator reports the same condition
-as a non-fatal warning so source-only import issues are visible without blocking
+as a non-fatal warning so source-backed import issues are visible without blocking
 site generation.
 
 Three common workflows consume that same model:

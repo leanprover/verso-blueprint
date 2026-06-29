@@ -481,7 +481,9 @@ Imported Markdown proof sketch.
 
 External markup attachments are intended for faithful import and comparison
 workflows. They are stored on the associated Blueprint node, exported in the
-Blueprint manifest, and hidden in rendered pages by default.
+Blueprint manifest, and do not replace an authored Verso body. Rendered node
+headers show a small `MD` and/or `TeX` badge when external markup is attached;
+the badge is only an attachment signal and does not display the raw source.
 
 To keep an external markup witness without attaching it to a Blueprint node,
 omit the label:
@@ -505,7 +507,7 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 ```
 ````
 
-A source-only Markdown node can still keep Lean links by pairing a bodyless
+A bodyless Markdown-backed node can still keep Lean links by pairing a bodyless
 Blueprint directive with a labeled Markdown witness. The directive contributes
 the semantic Blueprint node and `(lean := ...)` declarations; the Markdown block
 contributes the source-backed preview body:
@@ -524,8 +526,10 @@ For every natural number `n`, adding zero on the right leaves it unchanged.
 The generated manifest entry is `targetKind: "externalMarkup"` with key
 `externalMarkup:raw_addition_right_identity`. Its external-markup data records
 the Markdown source, and its Lean preview keys and `codeData` still refer to
-`Nat.add_zero`. The HTML cache gets a source-backed rendered Markdown fragment
-unless generation is run with `--external-markup-render none`.
+`Nat.add_zero`. Because the directive has no authored Verso body, rendered pages
+and the HTML cache use a source-backed Markdown fragment for the visible body;
+HTML-cache generation can disable that fragment with
+`--external-markup-render none`.
 
 If a label needs more than one external span, give each block a separate slot.
 Common slots are `statement` and `proof`; importer-specific slots are also
@@ -567,10 +571,12 @@ Current behavior:
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
   by default the generated HTML cache also gets a source-backed rendered
   fragment for that key
+- a bodyless statement directive with external markup uses the same
+  source-backed rendering path for the ordinary generated page body
 - manifest entries include `authoredLabel` alongside the canonical `label` so
   clients can display and round-trip punctuation-heavy authored labels without
   parsing Lean pretty-name quoting
-- markup-only rendered fragments choose Markdown `statement`, Markdown
+- source-backed rendered fragments choose Markdown `statement`, Markdown
   `default`, TeX `statement`, then TeX `default` when multiple source slots are
   available; Markdown uses an interpreter-safe renderer for common review
   markup such as headings, paragraphs, lists, blockquotes, tables, fenced or
@@ -582,9 +588,10 @@ Current behavior:
 - generation emits a non-fatal warning if traversal recorded Lean preview
   metadata for a bodyless/source-backed node but the exported manifest entry no
   longer carries it
-- pass `--external-markup-render source` to render the selected source as
-  escaped source text, or `--external-markup-render none` to keep markup-only
-  entries manifest-only with no HTML cache body
+- pass `--external-markup-render source` during manifest/cache generation to
+  render the selected source as escaped source text, or
+  `--external-markup-render none` to keep source-backed entries manifest-only with
+  no HTML cache body
 - if the same label also has a rendered statement or proof, the external markup
   is attached to that block's manifest entry instead of creating a separate
   external-markup entry
@@ -703,13 +710,13 @@ views.
 ### Rendered statement blocks
 
 Rendered statement headers show related metadata chips in this order: group,
-uses, used by, then Lean status. The statement `uses` chip shows statement-side
-dependencies; proof headers show their own `uses` chip for proof-side
-dependencies on the same label. This keeps prerequisites for the statement and
-prerequisites used only by the proof visually distinct. When local or external
-Lean material is available, the rendered page links or previews the associated
-content. Rows in the uses and used-by panels show statement/proof badges plus
-any non-default dependency origin or intent badges.
+uses, used by, external-markup badge, then Lean status. The statement `uses`
+chip shows statement-side dependencies; proof headers show their own `uses`
+chip for proof-side dependencies on the same label. This keeps prerequisites
+for the statement and prerequisites used only by the proof visually distinct.
+When local or external Lean material is available, the rendered page links or
+previews the associated content. Rows in the uses and used-by panels show
+statement/proof badges plus any non-default dependency origin or intent badges.
 
 Relation previews show the human title and a right-aligned concrete Blueprint
 label in the preview header; the label links to the target statement. Single

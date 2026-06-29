@@ -26,6 +26,7 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
+import VersoBlueprint.Informal.ExternalMarkupRender
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
@@ -95,7 +96,21 @@ block_extension Block.informal (data : BlockData) where
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
         let relatedPanelContext := RelatedPanel.RelationContext.ofState s
-        let attrs := s.htmlId id
+        let markup :=
+          (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
+        let selectedMarkupAndContent? :=
+          match data.kind with
+          | .statement _ =>
+              if blocks.isEmpty then
+                Informal.ExternalMarkupRender.selectedContent? {} markup
+              else
+                none
+          | .proof => none
+        let sourceBackedAttrs :=
+          match selectedMarkupAndContent? with
+          | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
+          | none => #[]
+        let attrs := s.htmlId id ++ sourceBackedAttrs
         let codeHref := Informal.TraversalIndex.InlineCode.href? s data.label
         let codeData? : Option InlineCodeData ←
           pure <| Informal.TraversalIndex.InlineCode.data? s data.label
@@ -138,11 +153,16 @@ block_extension Block.informal (data : BlockData) where
                 (folded := data.foldCodeBlock)
           | .proof => pure none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
-        let content := (← blocks.mapM goB)
+        let content ←
+          match selectedMarkupAndContent? with
+          | some (_, selectedContent) => pure selectedContent
+          | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
         let groupEntry ← RelatedPanel.renderGroupExtra relatedPanelContext data
         let usesEntry ← RelatedPanel.renderUsesExtra relatedPanelContext data
         let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
+        let markupEntry? :=
+          renderExternalMarkupHeaderExtra? markup
         let foldInformalBlock :=
           match data.kind with
           | .proof => data.foldProofBlock
@@ -158,6 +178,7 @@ block_extension Block.informal (data : BlockData) where
               group? := groupEntry.map HeaderExtra.group
               uses? := some <| HeaderExtra.uses usesEntry
               usedBy? := some <| HeaderExtra.usedBy usedByEntry
+              markup? := markupEntry?
               code? := some <| HeaderExtra.code codeEntry
             }
         return renderInformalBlockModel {

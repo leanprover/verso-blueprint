@@ -118,7 +118,7 @@ def blueprintHtmlAssets : HtmlAssets :=
   Verso.Genre.Manual.highlightAssets
     |>.combine blueprintBlockHtmlAssets
     |>.combine buildMetadataHtmlAssets
-    |>.combine externalMarkupRenderHtmlAssets
+    |>.combine Informal.ExternalMarkupRender.htmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
@@ -1725,7 +1725,7 @@ private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (previewBackedEntries : Array Entry)
-    (renderConfig : ExternalMarkupRenderConfig := {}) :
+    (renderConfig : Informal.ExternalMarkupRender.Config := {}) :
     IO (Array Entry × Array HtmlCache.Entry) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
@@ -1745,10 +1745,10 @@ private def buildExternalMarkupEntries
         (targetKind := .externalMarkup)
         (externalMarkup? := some data.markup.toArray)
       entries := entries.push manifestEntry
-      if let some markup := selectedExternalMarkup? renderConfig manifestEntry.externalMarkup then
+      if let some markup := Informal.ExternalMarkupRender.selected? renderConfig manifestEntry.externalMarkup then
         let heading := manifestEntry.heading
         if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
-            heading.caption heading.label markup then
+            heading.caption heading.label markup manifestEntry.externalMarkup then
           htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries)
 
@@ -1868,7 +1868,7 @@ def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO Files := do
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
   let (externalMarkupPreviews, externalMarkupHtml) ←
@@ -1893,7 +1893,7 @@ private def dumpManifest
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
@@ -1910,7 +1910,7 @@ private def dumpHtmlCache
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
@@ -1949,7 +1949,7 @@ when traversal-preview metadata was lost before export.
 -/
 def emitBlueprintPreviewData
     (extensionImpls : ExtensionImpls)
-    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
     ExtraStep := fun mode logError cfg state _text => do
   let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
   reportPreviewMetadataLossWarnings IO.eprintln state files.manifest
@@ -1974,8 +1974,8 @@ def handleCliFlags
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
-    IO (Option UInt32 × List String × ExternalMarkupRenderConfig) := do
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
+    IO (Option UInt32 × List String × Informal.ExternalMarkupRender.Config) := do
   if options.contains helpFlag then
     IO.println helpText
     pure (some 0, stripFlag helpFlag options, externalMarkupConfig)

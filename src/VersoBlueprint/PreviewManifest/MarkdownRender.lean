@@ -9,11 +9,11 @@ import VersoBlueprint.Html
 namespace Informal.PreviewManifest
 
 /--
-Interpreter-safe renderer for source-only Markdown fragments.
+Interpreter-safe renderer for Markdown fragments imported from external source.
 
 This intentionally covers the standard Markdown constructs that are useful for
 import review without calling native Markdown/MD4C bindings. Raw HTML is always
-escaped so the generated cache fragment can be inserted as trusted HTML.
+escaped so the generated fragment can be inserted as trusted HTML.
 -/
 private def markdownEscape (text : String) : String :=
   VersoBlueprint.Html.escapeText text
@@ -261,8 +261,9 @@ private partial def renderMarkdownBlocks (lines : Array String) (start : Nat := 
 /--
 Render a conservative, interpreter-safe Markdown subset to trusted HTML.
 
-This exists to keep generated preview data compatible with `lake env lean --run`
-until upstream MD4Lean rendering is available in interpreted generator mains.
+This exists to keep generated source-backed fragments compatible with
+`lake env lean --run` until upstream MD4Lean rendering is available in
+interpreted generator mains.
 -/
 def renderExternalMarkdownHtml (raw : String) : String :=
   let (html, _) := renderMarkdownBlocks (markdownLines raw)
