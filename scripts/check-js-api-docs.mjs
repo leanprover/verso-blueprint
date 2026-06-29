@@ -8,6 +8,9 @@ const publicApiDocPages = [
   ...Object.values(publicApiContract.modules).map((entry) => entry.jsdocPage),
   publicApiContract.typesModule.jsdocPage
 ];
+const publicApiTypeExports = Array.isArray(publicApiContract.typeExports)
+  ? publicApiContract.typeExports
+  : [];
 const dataPage = publicApiContract.modules.data.jsdocPage;
 const graphPage = publicApiContract.modules.graph.jsdocPage;
 const previewPage = publicApiContract.modules.preview.jsdocPage;
@@ -41,6 +44,39 @@ function requireIncludes(relativePath, text, needle, description) {
 function requireMatches(relativePath, text, pattern, description) {
   if (!pattern.test(text)) {
     fail(`${relativePath}: missing ${description}`);
+  }
+}
+
+function quotedStringArray(relativePath, text, variableName) {
+  const pattern = new RegExp(`(?:\\bvar\\s+|\\bglobalScope\\.)${variableName}\\s*=\\s*\\[([\\s\\S]*?)\\];`);
+  const match = text.match(pattern);
+  if (!match) {
+    fail(`${relativePath}: missing ${variableName} string array`);
+    return [];
+  }
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
+}
+
+function requireSameStringSet(description, actualNames, expectedNames) {
+  const actual = new Set(actualNames);
+  const expected = new Set(expectedNames);
+  const duplicateActual = actualNames.filter((name, index) => actualNames.indexOf(name) !== index);
+  const duplicateExpected = expectedNames.filter((name, index) => expectedNames.indexOf(name) !== index);
+  const missing = [...expected].filter((name) => !actual.has(name)).sort();
+  const extra = [...actual].filter((name) => !expected.has(name)).sort();
+
+  if (
+    duplicateActual.length > 0 ||
+    duplicateExpected.length > 0 ||
+    missing.length > 0 ||
+    extra.length > 0
+  ) {
+    fail(
+      `${description} mismatch` +
+      `; missing=[${missing.join(", ")}] extra=[${extra.join(", ")}]` +
+      ` duplicateActual=[${[...new Set(duplicateActual)].sort().join(", ")}]` +
+      ` duplicateExpected=[${[...new Set(duplicateExpected)].sort().join(", ")}]`
+    );
   }
 }
 
@@ -138,12 +174,19 @@ async function checkPublicModulePages() {
 
 const pages = {
   "index.html": await requireReadableFile("index.html"),
+  "jsdoc-type-names.js": await requireReadableFile("jsdoc-type-names.js"),
   "jsdoc-type-links.js": await requireReadableFile("jsdoc-type-links.js")
 };
 
 for (const page of publicApiDocPages) {
   pages[page] = await requireReadableFile(page);
 }
+
+requireSameStringSet(
+  "public API type-link names",
+  quotedStringArray("jsdoc-type-names.js", pages["jsdoc-type-names.js"], "blueprintJSDocTypeNames"),
+  publicApiTypeExports
+);
 
 requireIncludes(
   "index.html",
@@ -194,6 +237,12 @@ requireMatches(
 requireMatches(
   previewPage,
   pages[previewPage],
+  /<script src="jsdoc-type-names\.js"><\/script>[\s\S]*?<script src="jsdoc-type-links\.js"><\/script>/,
+  "typedef name and linking scripts"
+);
+requireMatches(
+  previewPage,
+  pages[previewPage],
   /<script src="jsdoc-type-links\.js"><\/script>/,
   "typedef-linking script"
 );
@@ -223,13 +272,7 @@ requireIncludes(
   "graph module preview renderer guidance"
 );
 
-for (const typeName of [
-  "BlueprintDataApi",
-  "BlueprintPreviewApi",
-  "BlueprintRenderNodeRequest",
-  "BlueprintRenderNodeResult",
-  "BlueprintExternalMarkupPreference"
-]) {
+for (const typeName of publicApiTypeExports) {
   requireIncludes(
     typesPage,
     pages[typesPage],
@@ -237,8 +280,8 @@ for (const typeName of [
     `${typeName} typedef anchor`
   );
   requireIncludes(
-    "jsdoc-type-links.js",
-    pages["jsdoc-type-links.js"],
+    "jsdoc-type-names.js",
+    pages["jsdoc-type-names.js"],
     `"${typeName}"`,
     `${typeName} client-side link mapping`
   );

@@ -27,8 +27,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "build:types": "tsc -p tsconfig.types.json",
-    "docs": "rm -rf _out/jsdoc-api && jsdoc -c jsdoc.json",
-    "check:docs": "node scripts/check-js-api-docs.mjs",
+    "docs": "node scripts/generate-jsdoc-type-names.mjs && rm -rf _out/jsdoc-api && jsdoc -c jsdoc.json",
+    "check:docs": "node scripts/generate-jsdoc-type-names.mjs --check && node scripts/check-js-api-docs.mjs",
     "check:types": "node scripts/check-js-api-types.mjs"
   },
   "devDependencies": {

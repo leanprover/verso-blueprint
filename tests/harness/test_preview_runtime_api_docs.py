@@ -11,6 +11,7 @@ from tests.preview_runtime_api import (
     PUBLIC_API_JSDOC_SOURCES,
     PUBLIC_API_MODULES,
     PUBLIC_API_PACKAGE_EXPORTS,
+    PUBLIC_API_TYPE_EXPORTS,
     PUBLIC_DATA_API_EXPORTS,
     PUBLIC_GENERATED_API_MODULES,
     PUBLIC_GRAPH_API_EXPORTS,
@@ -28,6 +29,7 @@ from tests.preview_runtime_api import (
 API_DOC = PACKAGE_ROOT / "doc" / "API.md"
 DESIGN_RATIONALE = PACKAGE_ROOT / "doc" / "DESIGN_RATIONALE.md"
 JSDOC_CONFIG = PACKAGE_ROOT / "jsdoc.json"
+JSDOC_TYPE_NAMES = PACKAGE_ROOT / "doc" / "jsdoc-static" / "jsdoc-type-names.js"
 PACKAGE_JSON = PACKAGE_ROOT / "package.json"
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
@@ -124,9 +126,21 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         source_includes = set(jsdoc_config["source"]["include"])
 
         self.assertEqual(source_includes, PUBLIC_API_JSDOC_SOURCES)
+        self.assertEqual(
+            jsdoc_config["docdash"]["scripts"],
+            ["jsdoc-type-names.js", "jsdoc-type-links.js"],
+        )
         self.assertFalse(any("/Commands/" in source for source in source_includes))
         self.assertFalse(any(source.endswith("-core.mjs") for source in source_includes))
         self.assertFalse(any(source.endswith("-common.mjs") for source in source_includes))
+
+    def test_jsdoc_type_linker_matches_public_type_contract(self) -> None:
+        source = JSDOC_TYPE_NAMES.read_text(encoding="utf-8")
+        match = re.search(r"\bglobalScope\.blueprintJSDocTypeNames\s*=\s*\[([\s\S]*?)\];", source)
+
+        self.assertIsNotNone(match)
+        type_names = set(re.findall(r'"([^"]+)"', match.group(1)))
+        self.assertEqual(type_names, PUBLIC_API_TYPE_EXPORTS)
 
     def test_api_doc_module_table_matches_public_generated_modules(self) -> None:
         api_doc = API_DOC.read_text(encoding="utf-8")

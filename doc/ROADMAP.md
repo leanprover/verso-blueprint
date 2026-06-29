@@ -104,8 +104,9 @@ Work:
    `BlueprintPreviewApi` repeats the data API methods from `BlueprintDataApi`:
    TypeScript accepts intersection typedefs, but JSDoc/Docdash rejects `&`,
    while JSDoc-native `@augments` on a typedef is rejected by TypeScript. Keep
-   generated declaration checks in CI so this explicit duplication does not
-   silently drift or collapse to broad types.
+   the public type list contract-backed, generate the JSDoc linker data from
+   it, and keep generated declaration/docs checks in CI so this explicit
+   duplication does not silently drift or collapse to broad types.
 
 ### Data Model and Status Semantics
 

@@ -46,6 +46,7 @@ PUBLIC_GENERATED_API_MODULES = {
 PUBLIC_DATA_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["data"])
 PUBLIC_PREVIEW_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["preview"])
 PUBLIC_GRAPH_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["graph"])
+PUBLIC_API_TYPE_EXPORTS = set(PUBLIC_API_CONTRACT["typeExports"])
 RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-base.mjs"),
     Path("Commands/preview-runtime-data.mjs"),
