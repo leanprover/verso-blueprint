@@ -9,7 +9,7 @@ A Blueprint project combines:
 - links to local Lean code or existing Lean declarations
 - optional attached Rust code blocks on labeled nodes for mixed-language notes
 - optional external TeX or Markdown markup attachments on labeled nodes to help
-  port existing sources
+  port existing documents
 - automatic tracking of formalization progress by analyzing the associated Lean
   code and declarations, including incomplete declarations such as `sorry`
 - rendered overview pages such as dependency graphs and progress summaries
@@ -40,6 +40,29 @@ runtime, and support library code. The starter layout in
 For the broader rendered artifact index, including published reference
 blueprints and local test fixtures, see the
 [published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
+
+## Three-Level Blueprint Model
+
+Blueprint keeps three related layers separate:
+
+1. **Original sources and provenance.** These are the papers, PDFs, imported
+   files, page references, and source spans that explain where the mathematical
+   content came from.
+2. **Informal Blueprint content.** This is the labeled mathematical statement,
+   proof, or definition as Blueprint understands it. Native Verso bodies are
+   the normal representation. Raw Markdown or TeX external markup can also be
+   attached to a labeled node as a compatibility representation while porting an
+   existing document.
+3. **Formal Lean content.** This is the Lean code or declarations associated
+   with a Blueprint label. It drives progress state, declaration panels, and
+   links between the informal document and the formalization.
+
+A single Blueprint node can have data from all three layers at once. For
+example, a theorem can cite a source span in a PDF, keep a Markdown witness or
+native Verso statement as its informal content, and link to one or more Lean
+declarations. External Markdown and TeX attachments should be read as Level 2
+informal content unless they are separately referenced by Level 1 source
+provenance metadata.
 
 ## Core Features
 
@@ -143,7 +166,8 @@ Blueprint supports inline math such as ``$`n + 0 = n` `` and display math such a
 renderer used by the generated HTML.
 
 Blueprint nodes can also carry raw external markup through labeled `tex` and
-`md` code blocks:
+`md` code blocks. These blocks are Level 2 informal representations in the
+model above, not original-source provenance by themselves:
 
 ````md
 :::theorem "addition_right_identity"
@@ -163,9 +187,9 @@ This was imported from a Markdown proof sketch.
 
 Labeled standalone `tex` and `md` blocks are exported as semantic
 external-markup catalog entries. Generated preview data also includes a
-source-backed rendered fragment for markup-only entries: Markdown receives a
-conservative interpreter-safe HTML rendering with raw HTML escaped, while TeX
-is shown as escaped source.
+rendered fragment backed by that external markup for markup-only entries:
+Markdown receives a conservative interpreter-safe HTML rendering with raw HTML
+escaped, while TeX is shown as escaped source.
 Pass `--external-markup-render source` to force escaped source text, or
 `--external-markup-render none` to keep manifest-only entries without generated
 HTML cache fragments. When the same label also has a rendered Blueprint
@@ -174,15 +198,15 @@ instead. Bodyless Blueprint directives that carry `(lean := ...)` still
 contribute their Lean preview keys and code data to the exported manifest entry;
 the generator warns if that metadata is ever dropped during manifest export.
 
-These `ExternalMarkup` attachments are primarily a porting aid for existing
-TeX or Markdown sources. They are stored on the labeled node, exported in the
-Blueprint manifest, and are not rendered at their source location in the output
-site by default. Use `slot` names such as `statement` and `proof` when one
-Blueprint node corresponds to multiple source spans.
+These `ExternalMarkup` attachments are primarily a porting aid for existing TeX
+or Markdown documents. They are stored on the labeled node, exported in the
+Blueprint manifest, and are not rendered at the code-block location in the
+output site by default. Use `slot` names such as `statement` and `proof` when
+one Blueprint node corresponds to multiple informal markup witnesses.
 
-Blueprint can also record original-source provenance for audit tools. Declare a
-source document with `:::source_document` and attach node-local source spans in
-a leading Verso metadata block:
+Blueprint can separately record Level 1 original-source provenance for audit
+tools. Declare a source document with `:::source_document` and attach node-local
+source spans in a leading Verso metadata block:
 
 ````md
 :::source_document "paper"
