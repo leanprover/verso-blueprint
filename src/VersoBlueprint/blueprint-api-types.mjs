@@ -140,7 +140,7 @@
  * @typedef {Object} BlueprintManifestEntry
  * @property {string} key Stable manifest key.
  * @property {string} [label] Canonical Blueprint node label when available.
- * @property {string} [authoredLabel] Authored/display label without Lean pretty-name quoting.
+ * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.

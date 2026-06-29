@@ -809,73 +809,7 @@ structure Entry where
   priority : Option String := none
   /-- Declared effort estimate for this informal node, if any. -/
   effort : Option String := none
-deriving Inhabited, Repr, ToJson
-
-/--
-Wire-format decoder for manifest entries.
-
-Keep this structure in sync with `Entry`. It exists so manifests generated
-before `authoredLabel` was added still decode and derive that field from the
-canonical label.
--/
-private structure EntryJson where
-  key : String
-  targetKind : EntryKind
-  label : Name
-  authoredLabel : Option String := none
-  facet : PreviewCache.Facet
-  kind : Option Informal.Data.NodeKind := none
-  title : String
-  displayCaption : Option String := none
-  displayLabel : Option String := none
-  href : Option String := none
-  parent : Option Name := none
-  parentTitle : Option String := none
-  statementUses : Array Informal.Data.UseRef := #[]
-  proofUses : Array Informal.Data.UseRef := #[]
-  leanCodePreviewKeys : Array String := #[]
-  codeData : Option Informal.BlockCodeData := none
-  externalMarkup : Array Informal.Data.ExternalMarkup := #[]
-  uses : Array RelatedEntry := #[]
-  usedBy : Array RelatedEntry := #[]
-  group : Option GroupRelation := none
-  ownerDisplayName : Option String := none
-  tags : Array String := #[]
-  priority : Option String := none
-  effort : Option String := none
-deriving FromJson
-
-private def EntryJson.toEntry (entry : EntryJson) : Entry := {
-  key := entry.key
-  targetKind := entry.targetKind
-  label := entry.label
-  authoredLabel := entry.authoredLabel.getD (labelString entry.label)
-  facet := entry.facet
-  kind := entry.kind
-  title := entry.title
-  displayCaption := entry.displayCaption
-  displayLabel := entry.displayLabel
-  href := entry.href
-  parent := entry.parent
-  parentTitle := entry.parentTitle
-  statementUses := entry.statementUses
-  proofUses := entry.proofUses
-  leanCodePreviewKeys := entry.leanCodePreviewKeys
-  codeData := entry.codeData
-  externalMarkup := entry.externalMarkup
-  uses := entry.uses
-  usedBy := entry.usedBy
-  group := entry.group
-  ownerDisplayName := entry.ownerDisplayName
-  tags := entry.tags
-  priority := entry.priority
-  effort := entry.effort
-}
-
-instance : FromJson Entry where
-  fromJson? json := do
-    let entry ← fromJson? (α := EntryJson) json
-    pure entry.toEntry
+deriving Inhabited, Repr, ToJson, FromJson
 
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
 structure EntryHeading where
@@ -1188,10 +1122,10 @@ def Entry.isStatement (entry : Entry) : Bool :=
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
-/-- All block entries matching the public label string, including non-statement facets. -/
+/-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
-    entry.isBlock && (entry.authoredLabel == label || labelString entry.label == label)
+    entry.isBlock && entry.authoredLabel == label
 
 /--
 Best public block entry for a label.
@@ -1233,7 +1167,6 @@ private def containsSearchText (text value : String) : Bool :=
 def Entry.matchesText (entry : Entry) (query : String) : Bool :=
   let text := query.toLower
   containsSearchText text entry.authoredLabel ||
-    containsSearchText text (labelString entry.label) ||
     containsSearchText text entry.title ||
     entry.parentTitle.any (containsSearchText text) ||
     entry.tags.any (containsSearchText text) ||

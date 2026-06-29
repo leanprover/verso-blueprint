@@ -147,8 +147,8 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
         some "informal:addition_assoc:statement" &&
       sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
       sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
-      sampleMetadataManifest.workQueueEntries.map (fun entry =>
-        Informal.PreviewManifest.labelString entry.label) == #["zeta_statement", "alpha_statement"]
+      sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
+        #["zeta_statement", "alpha_statement"]
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
@@ -192,7 +192,9 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
         | some labels =>
             jsonHasApiStability json &&
               jsonArrayHasStringField labels "label" "addition_spec" &&
+              jsonArrayHasStringField labels "authoredLabel" "addition_spec" &&
               jsonArrayHasStringField labels "label" "addition_assoc" &&
+              jsonArrayHasStringField labels "authoredLabel" "addition_assoc" &&
               !jsonArrayHasStringField labels "label" "Nat.add_assoc"
         | none => false
     | .error _ => false
@@ -207,6 +209,7 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
         | some statementUses =>
             jsonHasApiStability json &&
               jsonStringField? json "label" == some "addition_assoc" &&
+              jsonStringField? json "authoredLabel" == some "addition_assoc" &&
               jsonStringField? json "ownerDisplayName" == some "Project Author" &&
               jsonArrayHasStringField statementUses "label" "addition_spec" &&
               jsonArrayContainsString (jsonArrayField? json "leanCodePreviewKeys" |>.getD #[]) "lean:Nat.add_assoc"
@@ -239,6 +242,7 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
             jsonHasApiStability json &&
               jsonStringField? json "label" == some "addition_assoc" &&
               jsonStringField? node "label" == some "addition_assoc" &&
+              jsonStringField? node "authoredLabel" == some "addition_assoc" &&
               jsonArrayHasStringField statementUses "label" "addition_spec" &&
               (jsonArrayField? json "usedBy").isSome
         | _, _ => false
