@@ -14,9 +14,9 @@ Public graph-data helpers.
 
 `Informal.Graph` owns the stable graph data structures and the semantic
 environment builder. This module adds the traversal-state bridge: graph blocks
-store semantic `GraphData` during traversal, and renderers/manifests finalize
-that cached object against the completed traversal state to add hrefs and
-display titles.
+store semantic `GraphData` plus render options during traversal, and
+renderers/manifests finalize that cached object against the completed traversal
+state to add hrefs, display titles, and Lean-computed graph render variants.
 -/
 
 namespace Informal.GraphApi
@@ -74,6 +74,14 @@ def finalData (state : TraverseState) (data : Informal.Graph.GraphData) :
       groups := data.groups.map (enrichGroup state)
   }
 
+/-- Finalize graph data and attach Lean-computed render variants. -/
+def finalDataWithVariants
+    (state : TraverseState)
+    (data : Informal.Graph.GraphData)
+    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
+  let data := finalData state data
+  { data with variants := data.renderVariants options }
+
 /--
 Finalize a graph block's semantic graph data for public page JSON.
 
@@ -87,6 +95,19 @@ def finalDataForBlock
   finalData state (keyedData id data)
 
 /--
+Finalize a graph block's semantic graph data and attach render variants.
+
+This is the render-ready form used by generated graph pages and manifest
+clients that render graphs without scraping the graph page HTML.
+-/
+def finalDataForBlockWithOptions
+    (state : TraverseState)
+    (id : Verso.Multi.InternalId)
+    (data : Informal.Graph.GraphData)
+    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
+  finalDataWithVariants state (keyedData id data) options
+
+/--
 Store graph block data during traversal.
 
 The cached payload deliberately remains semantic data plus the stable block key;
@@ -95,12 +116,14 @@ call `cachedData` after traversal finishes to read the public, finalized form.
 def saveData
     (state : TraverseState)
     (id : Verso.Multi.InternalId)
-    (data : Informal.Graph.GraphData) : TraverseState :=
+    (data : Informal.Graph.GraphData)
+    (options : Informal.Graph.GraphOptions) : TraverseState :=
   let key := cacheKey id
   let data := keyedData id data
+  let cached : Informal.Graph.CachedGraphData := { data, options }
   state
     |> (fun state => Informal.TraversalIndex.Graphs.saveId state key id)
-    |> (fun state => Informal.TraversalIndex.Graphs.saveData state key data)
+    |> (fun state => Informal.TraversalIndex.Graphs.saveData state key cached)
 
 /--
 Read every traversal-cached graph and finalize it for public manifest/API use.
@@ -109,6 +132,7 @@ Call this only with the completed traversal state for the document/site being
 emitted.
 -/
 def cachedData (state : TraverseState) : Array Informal.Graph.GraphData :=
-  Informal.TraversalIndex.Graphs.allData state |>.map (finalData state)
+  Informal.TraversalIndex.Graphs.allData state |>.map fun cached =>
+    finalDataWithVariants state cached.data cached.options
 
 end Informal.GraphApi

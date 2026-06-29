@@ -226,18 +226,20 @@
  * @property {unknown[]} nodes Graph node payloads.
  * @property {unknown[]} edges Graph edge payloads.
  * @property {unknown[]} groups Optional graph grouping payloads.
+ * @property {BlueprintGraphVariant[]} [variants] Precomputed DOT variants for the bundled graph renderer.
  */
 
 /**
- * DOT fallback graph variant embedded by graph pages.
+ * Graph render variant emitted by Lean for the bundled graph renderer.
  *
  * @typedef {Object} BlueprintGraphVariant
  * @property {string} key Variant key.
  * @property {string} label Human-readable variant label.
  * @property {string} dot DOT source.
- * @property {Record<string, unknown>} [options] Rendering options emitted with the fallback.
+ * @property {Record<string, unknown>} [options] Rendering options emitted with the variant.
  * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
  * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.
+ * @property {unknown[]} [previewKeyByNodeId] SVG node ids mapped to Blueprint preview-cache keys.
  */
 
 /**
@@ -254,6 +256,12 @@
  * @typedef {Object} BlueprintGraphRenderOptions
  * @property {Record<string, unknown>} previewUtils Render-capable Blueprint preview API required by public `api/graph.mjs` render helpers.
  * @property {"page" | "block" | "fill" | string} [layout] Graph sizing mode.
+ * @property {BlueprintGraphLayoutOptions} [graphOptions] Initial graph-control values for graph data rendered from manifest records.
+ * @property {BlueprintGraphVariant[]} [variants] Optional precomputed DOT variants overriding `graphData.variants`;
+ * required when rendering graph records that do not already carry Lean-emitted variants.
+ * @property {"pinned" | "hover" | string} [previewMode] Initial graph node preview behavior for graph data rendered from manifest records.
+ * @property {"docked" | "anchored" | string} [previewPlacement] Initial graph node preview placement for graph data rendered from manifest records.
+ * @property {boolean} [replace] In `renderGraphData`, replace host children by default; set to `false` to append.
  * @property {boolean} [refresh] Re-render immediately after initialization.
  * @property {BlueprintGraphRuntimeLibraries} [libraries] Runtime dependency URL overrides.
  */
@@ -428,6 +436,8 @@
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} renderCanonicalPreviewInto
  * @property {function(Element, (string | BlueprintRenderNodeRequest), BlueprintPreviewOptions=): Promise<BlueprintRenderNodeResult>} renderNode
  * @property {function(Element, BlueprintPreviewOptions=): boolean} hydrate
+ * @property {function(BlueprintGraphData, BlueprintGraphRenderOptions=): Element | null} [createGraphBlock] Installed by the graph runtime when graph rendering is started.
+ * @property {function(Element, BlueprintGraphData, BlueprintGraphRenderOptions=): Promise<BlueprintGraphController | null>} [renderGraphData] Installed by the graph runtime when graph rendering is started.
  */
 
 export {};

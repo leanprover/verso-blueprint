@@ -160,7 +160,7 @@ export function readGraphJsonScript(root, selector) {
 }
 
 /**
- * Read DOT fallback graph variants embedded in a graph page.
+ * Read a legacy DOT-only graph variant embedded in older graph pages.
  *
  * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
  * @returns {BlueprintGraphVariant[]}
@@ -198,12 +198,13 @@ export function normalizeGraphData(rawData) {
     key: typeof data.key === "string" ? data.key : "graph",
     nodes: Array.isArray(data.nodes) ? data.nodes : [],
     edges: Array.isArray(data.edges) ? data.edges : [],
-    groups: Array.isArray(data.groups) ? data.groups : []
+    groups: Array.isArray(data.groups) ? data.groups : [],
+    variants: Array.isArray(data.variants) ? data.variants : []
   };
 }
 
 /**
- * Extract graph variants from a parsed Blueprint manifest.
+ * Extract graph records from a parsed Blueprint manifest.
  *
  * @param {unknown} manifest Parsed manifest JSON.
  * @returns {BlueprintGraphData[]}
@@ -278,7 +279,7 @@ export function loadJson(url, options, errorPrefix) {
 }
 
 /**
- * Load graph variants from a manifest URL.
+ * Load graph records from a manifest URL.
  *
  * @param {string} [url] Manifest URL. Defaults to `blueprint-manifest.json`.
  * @param {BlueprintDataApiOptions} [options] Optional loader options.
@@ -295,7 +296,7 @@ export function loadManifestGraphs(url, options) {
 }
 
 /**
- * Load graph variants from the default generated manifest URL.
+ * Load graph records from the default generated manifest URL.
  *
  * @param {BlueprintDataApiOptions} [options] Optional loader options.
  * @returns {Promise<BlueprintGraphData[]>}

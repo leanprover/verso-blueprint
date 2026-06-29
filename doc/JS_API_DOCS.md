@@ -10,7 +10,7 @@ Start from the kind of client you are writing:
 | --- | --- | --- |
 | Render Blueprint previews or generated nodes in the browser | `./-verso-data/api/preview.mjs` | `createPreview()` |
 | Read manifest/cache data without DOM rendering | `./-verso-data/api/data.mjs` | `createPreviewData()` |
-| Read graph data or initialize existing graph blocks | `./-verso-data/api/graph.mjs` | `loadGraphs()` or `renderGraphs()` |
+| Read or render graph data | `./-verso-data/api/graph.mjs` | `loadGraphs()` or `renderGraphData()` |
 
 Use the preview API for most custom browser clients. It owns manifest/cache
 loading, rendered-fragment insertion, canonical generated-node loading, math
@@ -66,21 +66,26 @@ if (entry) {
 }
 ```
 
-Use the graph API when you need finalized graph records, or when you already
-have graph-block markup and want the same interactive graph renderer used by
-generated Blueprint pages:
+Use the graph API when you need finalized graph records, when you want to render
+manifest graph data, or when you already have graph-block markup and want the
+same interactive graph renderer used by generated Blueprint pages:
 
 ```js
 // Graph rendering still needs the preview renderer for popovers and hydration.
 import { createPreview } from "./-verso-data/api/preview.mjs";
-import { loadGraphs, renderGraphs } from "./-verso-data/api/graph.mjs";
+import { loadGraphs, renderGraphData } from "./-verso-data/api/graph.mjs";
 
 // Read graph records from the manifest without rendering them.
 const graphs = await loadGraphs();
 
-// Initialize generated graph-block markup with the interactive graph runtime.
+// Render manifest graph data with the interactive graph runtime. The graph
+// record should carry Lean-emitted `variants`; embedded page scripts are only
+// for graph blocks that already exist in generated markup.
 const previewUtils = createPreview();
-await renderGraphs(document.querySelector("#graph-host"), { previewUtils, refresh: true });
+await renderGraphData(document.querySelector("#graph-host"), graphs[0], {
+  previewUtils,
+  layout: "fill"
+});
 ```
 
 ## Modules
@@ -99,8 +104,9 @@ implementation chunks for generated pages, Slides, and those entrypoints.
   rendered-fragment caches, preview keys, and generated-data URLs without
   installing browser-global render hooks.
 - [graph API](module-blueprint-graph-api.html): read graph data embedded in
-  generated graph pages, load graph variants from a manifest, or render
-  generated graph blocks with an explicit preview renderer.
+  generated graph pages, load graph records from a manifest, render manifest
+  graph data, or render generated graph blocks with an explicit preview
+  renderer.
 - [shared API types](module-blueprint-api-types.html): request, result, option,
   manifest, cache, graph, external-markup, and hydrator shapes.
 
@@ -113,7 +119,7 @@ document Blueprint's private runtime chunks directly.
 | --- | --- | --- |
 | `api/preview.mjs` | Custom browser views that render previews, canonical nodes, external-markup fallbacks, or already-inserted fragments. | Reading `window.VersoBlueprint` or importing `Commands/*.mjs`. |
 | `api/data.mjs` | Audit tools, dashboards, migration checks, and Node-like clients that only need generated JSON data. | Parsing rendered HTML to rediscover labels, graph topology, status, or dependencies. |
-| `api/graph.mjs` | Graph dashboards and custom pages that render generated graph blocks. | Calling graph render helpers without an explicit `previewUtils` renderer. |
+| `api/graph.mjs` | Graph dashboards and custom pages that read or render finalized graph records. | Calling graph render helpers without an explicit `previewUtils` renderer. |
 | `blueprint-page-runtime.mjs` | Regular generated Manual pages; it starts Blueprint's bundled feature scripts for you. | Custom clients that need isolated loaders, custom fetchers, or independent render options. |
 
 The generated manifest is the semantic data contract. The HTML cache is

@@ -64,6 +64,279 @@ function dotForVariantOptions(variant, options) {
   return dotWithGraphOptions(variant.dot, options);
 }
 
+// Runtime graph-data rendering consumes Lean-computed variants from public GraphData,
+// then feeds the generated block into the same initializer used by page graphs.
+let runtimeGraphIdCounter = 0;
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value, fallback) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return typeof fallback === "string" ? fallback : "";
+}
+
+function graphName(value) {
+  return stringValue(value, "").trim();
+}
+
+function htmlIdKey(value) {
+  let out = "";
+  for (const char of String(value || "")) {
+    if (/^[A-Za-z0-9]$/.test(char)) {
+      out += char;
+    } else if (char === "-") {
+      out += "--";
+    } else {
+      out += "-" + char.codePointAt(0).toString(16).toUpperCase().padStart(4, "0");
+    }
+  }
+  return out;
+}
+
+function prefixedHtmlId(prefix, value) {
+  const body = htmlIdKey(value);
+  return body ? prefix + "-" + body : prefix;
+}
+
+function normalizePublicGraphData(rawData) {
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
+  const data = rawData;
+  return {
+    schemaVersion: Number.isFinite(Number(data.schemaVersion)) ? Number(data.schemaVersion) : 1,
+    key: stringValue(data.key, "graph"),
+    nodes: asArray(data.nodes),
+    edges: asArray(data.edges),
+    groups: asArray(data.groups),
+    variants: asArray(data.variants)
+  };
+}
+
+function graphOptionsFromRenderOptions(options, variants) {
+  const opts = options && typeof options === "object" ? options : {};
+  const rawOptions =
+    opts.graphOptions && typeof opts.graphOptions === "object"
+      ? opts.graphOptions
+      : opts.options && typeof opts.options === "object"
+        ? opts.options
+        : variants[0] && variants[0].options && typeof variants[0].options === "object"
+          ? variants[0].options
+          : opts;
+  return normalizeGraphOptions(rawOptions);
+}
+
+function graphVariantsFromRenderOptions(data, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const rawVariants = asArray(opts.variants).length > 0 ? asArray(opts.variants) : asArray(data && data.variants);
+  return rawVariants.filter(function (variant) {
+    return variant && typeof variant === "object" && graphName(variant.key) && stringValue(variant.dot, "").trim();
+  });
+}
+
+function createEl(doc, tagName, attrs, text) {
+  const el = doc.createElement(tagName);
+  Object.entries(attrs || {}).forEach(function (entry) {
+    const name = entry[0];
+    const value = entry[1];
+    if (value === null || typeof value === "undefined" || value === false) return;
+    if (value === true) {
+      el.setAttribute(name, name);
+    } else {
+      el.setAttribute(name, String(value));
+    }
+  });
+  if (typeof text === "string") el.textContent = text;
+  return el;
+}
+
+function appendSelectOption(doc, select, value, label, selected) {
+  const option = createEl(doc, "option", { value: value }, label);
+  if (selected) option.selected = true;
+  select.appendChild(option);
+  return option;
+}
+
+function appendJsonScript(doc, parent, className, value) {
+  const script = createEl(doc, "script", {
+    type: "application/json",
+    class: className
+  });
+  script.textContent = JSON.stringify(value || null);
+  parent.appendChild(script);
+  return script;
+}
+
+function createPreviewPanel(doc, classes, headerClass, titleClass, closeClass, bodyClass, closeLabel, mode, placement) {
+  const panel = createEl(doc, "aside", {
+    class: classes,
+    "data-bp-preview-mode": mode,
+    "data-bp-preview-placement": placement,
+    hidden: true
+  });
+  const header = createEl(doc, "div", { class: headerClass });
+  header.appendChild(createEl(doc, "div", { class: titleClass }));
+  header.appendChild(createEl(doc, "button", {
+    type: "button",
+    class: closeClass,
+    "aria-label": closeLabel
+  }, "Close"));
+  panel.appendChild(header);
+  panel.appendChild(createEl(doc, "div", { class: bodyClass }));
+  return panel;
+}
+
+function graphControlId(data, suffix) {
+  runtimeGraphIdCounter += 1;
+  return prefixedHtmlId("bp-runtime-graph", (data && data.key ? data.key : "graph") + "-" + runtimeGraphIdCounter) + suffix;
+}
+
+export function createGraphBlock(graphData, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const data = normalizePublicGraphData(graphData);
+  if (!data) return null;
+  const doc = opts.document && typeof opts.document.createElement === "function" ? opts.document : document;
+  const variants = graphVariantsFromRenderOptions(data, opts);
+  if (variants.length === 0) return null;
+  const graphOptions = graphOptionsFromRenderOptions(opts, variants);
+  const block = createEl(doc, "div", { class: "bp_graph_fullwidth", "data-bp-graph-source": "runtime" });
+  if (opts.layout) block.setAttribute("data-bp-graph-layout", graphLayoutMode(block, opts));
+  const graphViewSelectId = graphControlId(data, "--view");
+  const graphDirectionSelectId = graphControlId(data, "--direction");
+  const graphPackInputId = graphControlId(data, "--pack");
+  const graphPreviewModeSelectId = graphControlId(data, "--preview-mode");
+  const graphPreviewPlacementSelectId = graphControlId(data, "--preview-placement");
+  const graphLegendPanelId = graphControlId(data, "--legend");
+  const graphOptionsPanelId = graphControlId(data, "--options");
+  const previewMode = String(opts.previewMode || "pinned");
+  const previewPlacement = String(opts.previewPlacement || "docked");
+
+  const controls = createEl(doc, "div", { class: "bp_graph_controls" });
+  const primary = createEl(doc, "div", { class: "bp_graph_controls_primary" });
+  primary.appendChild(createEl(doc, "button", {
+    type: "button",
+    class: "bp_graph_controls_button bp_graph_legend_button",
+    "aria-haspopup": "dialog",
+    "aria-expanded": "false",
+    "aria-controls": graphLegendPanelId
+  }, "Legend"));
+  primary.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphViewSelectId }, "View"));
+  const viewSelect = createEl(doc, "select", { id: graphViewSelectId, class: "bp_graph_controls_select bp_graph_view_select" });
+  variants.forEach(function (variant, index) {
+    appendSelectOption(doc, viewSelect, variant.key, variant.label || variant.key, index === 0);
+  });
+  primary.appendChild(viewSelect);
+  controls.appendChild(primary);
+  const actions = createEl(doc, "div", { class: "bp_graph_controls_actions" });
+  actions.appendChild(createEl(doc, "button", {
+    type: "button",
+    class: "bp_graph_controls_button bp_graph_options_button",
+    "aria-haspopup": "dialog",
+    "aria-expanded": "false",
+    "aria-controls": graphOptionsPanelId
+  }, "Graph options"));
+  controls.appendChild(actions);
+  block.appendChild(controls);
+
+  const legendPopover = createEl(doc, "div", { id: graphLegendPanelId, class: "bp_graph_legend_popover", hidden: true });
+  const legendHeader = createEl(doc, "div", { class: "bp_graph_legend_popover_header" });
+  legendHeader.appendChild(createEl(doc, "span", { class: "bp_graph_legend_popover_title" }, "Legend"));
+  legendHeader.appendChild(createEl(doc, "button", { type: "button", class: "bp_graph_legend_popover_close", "aria-label": "Close legend" }, "Close"));
+  legendPopover.appendChild(legendHeader);
+  const legendBody = createEl(doc, "div", { class: "bp_graph_legend_popover_body" });
+  legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "full" }));
+  if (variants.some(function (variant) { return variant.key === "group"; })) {
+    legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "group", hidden: true }));
+  }
+  legendPopover.appendChild(legendBody);
+  block.appendChild(legendPopover);
+
+  const optionsPopover = createEl(doc, "div", { id: graphOptionsPanelId, class: "bp_graph_options_popover", hidden: true });
+  const optionsHeader = createEl(doc, "div", { class: "bp_graph_options_popover_header" });
+  optionsHeader.appendChild(createEl(doc, "span", { class: "bp_graph_options_popover_title" }, "Graph options"));
+  optionsHeader.appendChild(createEl(doc, "button", { type: "button", class: "bp_graph_options_popover_close", "aria-label": "Close graph options" }, "Close"));
+  optionsPopover.appendChild(optionsHeader);
+  const optionsBody = createEl(doc, "div", { class: "bp_graph_options_popover_body" });
+  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphDirectionSelectId }, "Direction"));
+  const directionSelect = createEl(doc, "select", {
+    id: graphDirectionSelectId,
+    class: "bp_graph_controls_select bp_graph_direction_select",
+    "data-bp-graph-default-direction": graphOptions.direction
+  });
+  ["TB", "LR", "RL", "BT"].forEach(function (direction) {
+    appendSelectOption(doc, directionSelect, direction, direction, direction === graphOptions.direction);
+  });
+  optionsBody.appendChild(directionSelect);
+  const packLabel = createEl(doc, "label", { class: "bp_graph_option_toggle", for: graphPackInputId });
+  const packInput = createEl(doc, "input", {
+    id: graphPackInputId,
+    type: "checkbox",
+    class: "bp_graph_pack_input",
+    "data-bp-graph-default-pack": graphPackAttr(graphOptions.pack),
+    checked: graphOptions.pack
+  });
+  packInput.checked = !!graphOptions.pack;
+  packLabel.appendChild(packInput);
+  packLabel.appendChild(createEl(doc, "span", {}, "Pack disconnected components"));
+  optionsBody.appendChild(packLabel);
+  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphPreviewModeSelectId }, "Preview"));
+  const previewModeSelect = createEl(doc, "select", {
+    id: graphPreviewModeSelectId,
+    class: "bp_graph_controls_select bp_graph_preview_mode_select",
+    "data-bp-graph-default-preview-mode": previewMode
+  });
+  appendSelectOption(doc, previewModeSelect, "pinned", "Click to pin", previewMode !== "hover");
+  appendSelectOption(doc, previewModeSelect, "hover", "Hover", previewMode === "hover");
+  optionsBody.appendChild(previewModeSelect);
+  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphPreviewPlacementSelectId }, "Position"));
+  const previewPlacementSelect = createEl(doc, "select", {
+    id: graphPreviewPlacementSelectId,
+    class: "bp_graph_controls_select bp_graph_preview_placement_select",
+    "data-bp-graph-default-preview-placement": previewPlacement
+  });
+  appendSelectOption(doc, previewPlacementSelect, "docked", "Docked", previewPlacement !== "anchored");
+  appendSelectOption(doc, previewPlacementSelect, "anchored", "Near node", previewPlacement === "anchored");
+  optionsBody.appendChild(previewPlacementSelect);
+  optionsPopover.appendChild(optionsBody);
+  block.appendChild(optionsPopover);
+
+  const canvas = createEl(doc, "div", {
+    class: "bp_graph_canvas",
+    "data-bp-graph-direction": graphOptions.direction,
+    "data-bp-graph-pack": graphPackAttr(graphOptions.pack)
+  });
+  appendJsonScript(doc, canvas, "bp-graph-data", data);
+  appendJsonScript(doc, canvas, "bp-graph-variants", variants);
+  const dotSource = createEl(doc, "script", { type: "text/plain", class: "dot-source" });
+  dotSource.textContent = variants[0].dot || "";
+  canvas.appendChild(dotSource);
+  block.appendChild(canvas);
+  block.appendChild(createPreviewPanel(
+    doc,
+    "bp_graph_preview bp_preview_panel",
+    "bp_graph_preview_header bp_preview_panel_header",
+    "bp_graph_preview_title bp_preview_panel_title",
+    "bp_graph_preview_close bp_preview_panel_close",
+    "bp_graph_preview_body bp_preview_panel_body",
+    "Close informal preview",
+    previewMode,
+    previewPlacement
+  ));
+  block.appendChild(createPreviewPanel(
+    doc,
+    "bp_group_hover_preview bp_preview_panel",
+    "bp_group_hover_preview_header bp_preview_panel_header",
+    "bp_group_hover_preview_title bp_preview_panel_title",
+    "bp_group_hover_preview_close bp_preview_panel_close",
+    "bp_group_hover_preview_graph bp_preview_panel_body",
+    "Close group preview",
+    previewMode,
+    previewPlacement
+  ));
+  return block;
+}
+
 function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
   if (!previewController) return;
   const graphState = ensureGraphBlockState(graphBlock);
@@ -961,10 +1234,29 @@ export async function renderGraphs(root, options) {
     .filter(function (controller) { return !!controller; });
 }
 
+export async function renderGraphData(host, graphData, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (!(host instanceof Element)) return null;
+  const block = createGraphBlock(graphData, Object.assign({}, opts, { document: host.ownerDocument || document }));
+  if (!block) return null;
+  if (opts.replace === false) {
+    host.appendChild(block);
+  } else {
+    host.replaceChildren(block);
+  }
+  return renderGraphBlock(block, opts);
+}
+
 export function installGraphRenderApi(previewUtils, options) {
   if (!previewUtils || typeof previewUtils !== "object") return {};
   const installed = {
     ensureGraphRuntimeLibraries: ensureGraphRuntimeLibraries,
+    createGraphBlock: function (graphData, nextOptions) {
+      return createGraphBlock(
+        graphData,
+        Object.assign({}, options || {}, nextOptions || {})
+      );
+    },
     initGraphBlock: function (graphBlock, nextOptions) {
       return initGraphBlock(
         previewUtils,
@@ -986,6 +1278,13 @@ export function installGraphRenderApi(previewUtils, options) {
       }
       return renderGraphs(
         root,
+        Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
+      );
+    },
+    renderGraphData: function (host, graphData, nextOptions) {
+      return renderGraphData(
+        host,
+        graphData,
         Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
       );
     }
@@ -1025,9 +1324,11 @@ export function startGraphRuntime(previewUtils, options) {
 export const graphRuntime = {
   ensureGraphRuntimeLibraries,
   getGraphRenderApi,
+  createGraphBlock,
   initGraphBlock,
   renderGraphBlock,
   renderGraphs,
+  renderGraphData,
   installGraphRenderApi,
   bindGraphs,
   startGraphRuntime
