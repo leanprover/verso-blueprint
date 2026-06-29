@@ -230,46 +230,8 @@ export function createPreviewRuntimeApi(options) {
   return renderApi;
 }
 
-export function installPreviewRuntimeApi(options) {
-  const renderApi = createPreviewRuntimeApi(options);
-  if (typeof window === "undefined") return renderApi;
-
-  function reportRenderReadyError(err) {
-    window.setTimeout(function () {
-      throw err;
-    }, 0);
-  }
-
-  function onRenderReady(fn) {
-    if (typeof fn !== "function") return;
-    fn(renderApi);
-  }
-
-  const namespace =
-    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-      ? window.VersoBlueprint
-      : {};
-  const queuedRenderReadyCallbacks = Array.isArray(namespace.renderReadyCallbacks)
-    ? namespace.renderReadyCallbacks.slice()
-    : [];
-  namespace.render = renderApi;
-  namespace.onRenderReady = onRenderReady;
-  namespace.renderReadyCallbacks = [];
-  window.VersoBlueprint = namespace;
-  queuedRenderReadyCallbacks.forEach(function (fn) {
-    try {
-      onRenderReady(fn);
-    } catch (err) {
-      reportRenderReadyError(err);
-    }
-  });
-
-  return renderApi;
-}
-
 export const previewRuntimeApi = {
-  createPreviewRuntimeApi,
-  installPreviewRuntimeApi
+  createPreviewRuntimeApi
 };
 
 export default previewRuntimeApi;

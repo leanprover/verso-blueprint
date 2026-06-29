@@ -2,24 +2,6 @@ import { dataUrl as graphDataUrl } from "./blueprint-graph-core.mjs";
 
 const version = 1;
 
-function defaultGlobalScope() {
-  return typeof globalThis !== "undefined" ? globalThis : {};
-}
-
-function blueprintPrivateNamespace(globalScope = defaultGlobalScope()) {
-  const namespace =
-    globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
-      ? globalScope.VersoBlueprint
-      : {};
-  const privateNamespace =
-    namespace.__private && typeof namespace.__private === "object"
-      ? namespace.__private
-      : {};
-  namespace.__private = privateNamespace;
-  globalScope.VersoBlueprint = namespace;
-  return privateNamespace;
-}
-
 export function dataUrl(filename, baseUrl) {
   return graphDataUrl(filename, baseUrl);
 }
@@ -67,17 +49,6 @@ export const previewCore = {
   previewKey,
   statementPreviewKey
 };
-
-export function installPreviewCoreGlobal(globalScope = defaultGlobalScope()) {
-  const namespace = blueprintPrivateNamespace(globalScope);
-  const existingCore =
-    namespace.previewCore && typeof namespace.previewCore === "object"
-      ? namespace.previewCore
-      : {};
-  Object.assign(existingCore, previewCore);
-  namespace.previewCore = existingCore;
-  return existingCore;
-}
 
 export { version };
 

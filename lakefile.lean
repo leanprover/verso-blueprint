@@ -6,7 +6,8 @@ open Lake DSL
 -- require verso from "../verso"
 -- TODO: return to a release tag after leanprover/verso#854 lands.
 require verso from git "https://github.com/ejgallego/verso"@"a61eb8993e8d1a617a60c502020f95f3525e6c9d"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"2b5ce1ffa9f22743057068128e20aee96a798976"
+-- Temporary v4.30-compatible pin to leanprover/verso-slides#59 for Config.extraHead.
+require «verso-slides» from git "https://github.com/ejgallego/verso-slides.git"@"5ea825aa133ca5aa66a5248f31e510baaa0f4b60"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
 package VersoBlueprint where

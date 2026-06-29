@@ -1136,36 +1136,13 @@ export function ensureGraphRuntimeLibraries(options) {
   return graphRuntimeLibrariesPromise;
 }
 
-function currentRenderApi() {
-  const namespace =
-    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-      ? window.VersoBlueprint
-      : null;
-  const renderApi =
-    namespace && namespace.render && typeof namespace.render === "object"
-      ? namespace.render
-      : null;
-  return renderApi;
-}
-
 export function getGraphRenderApi(options) {
   const opts = options && typeof options === "object" ? options : {};
   if (opts.previewUtils && typeof opts.previewUtils === "object") {
     return Promise.resolve(opts.previewUtils);
   }
-  const readyApi = currentRenderApi();
-  if (readyApi) return Promise.resolve(readyApi);
-  const namespace =
-    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-      ? window.VersoBlueprint
-      : null;
-  if (namespace && typeof namespace.onRenderReady === "function") {
-    return new Promise(function (resolve) {
-      namespace.onRenderReady(resolve);
-    });
-  }
   return Promise.reject(
-    new Error("Blueprint graph rendering requires the Blueprint render API or options.previewUtils")
+    new Error("Blueprint graph rendering requires options.previewUtils from createPreview().")
   );
 }
 

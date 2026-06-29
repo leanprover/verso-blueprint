@@ -12,7 +12,6 @@ from support import (
     assert_no_runtime_errors,
     find_free_port,
     record_runtime_errors,
-    wait_for_blueprint_render_api,
     wait_for_server,
 )
 from scripts.blueprint_harness_project_commands import (
@@ -212,7 +211,6 @@ class TestBlueprintSlidesRuntime:
         assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
-        wait_for_blueprint_render_api(page)
         page.wait_for_function(
             """() => !!(window.VersoBlueprint && window.VersoBlueprint.slides && window.VersoBlueprint.slides.hydrate)"""
         )

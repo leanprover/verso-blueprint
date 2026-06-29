@@ -91,7 +91,8 @@ Generate a slide deck with Blueprint preview-node assets enabled.
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
 rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
-deck's `-verso-data/` directory after the deck is written.
+deck's `-verso-data/` directory after the deck is written, alongside the ESM
+runtime modules used to hydrate the deck in the browser.
 -/
 public def slidesMainWithBlueprintPreviews
     (config : VersoSlides.Config := {})
@@ -106,7 +107,8 @@ public def slidesMainWithBlueprintPreviews
   let htmlCache? ← htmlCachePath?.mapM Informal.Graft.readBlueprintHtmlCache
   let rc ← slidesMainWithBlueprintRenderer config manifest? htmlCache? doc (quiet := quiet)
   if rc == 0 then
-    writeBlueprintSlidesJs config.outputDir
+    Informal.PreviewManifest.writeBlueprintRuntimeModules (config.outputDir / "-verso-data")
+    writeBlueprintSlidesRuntimeModules config.outputDir
     if let some previewManifest := previewManifest? then
       copyBlueprintManifest config.outputDir previewManifest
     if let some previewHtmlCache := htmlCachePath? then

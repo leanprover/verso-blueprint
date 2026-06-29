@@ -63,13 +63,13 @@ Work:
    encoded in its API tiers: data/cache lookup, fragment rendering and
    hydration, template descriptors, preview surface state, lifecycle binding,
    and readiness/debug hooks. Each split should keep the generated ESM
-   `createPreview()` API and the classic Slides adapter working, then
+   `createPreview()` API, generated page runtime, and slide runtime working, then
    move private helpers in this order:
    - readiness/bootstrap and render API installation
      (landed as the current `Commands/preview-runtime-api.mjs` API chunk)
    - manifest/cache loading, status, and entry lookup
      (landed as `Commands/preview-runtime-data.mjs`, emitted as ESM for Manual
-     pages and wrapped only by the classic Slides adapter)
+     pages and slide decks)
    - generated-data URL and preview-key primitives shared by generated page
      runtime and ESM clients
      (landed as `blueprint-preview-core.mjs`, shared by the generated page
@@ -77,10 +77,10 @@ Work:
      still live in `Commands/preview-runtime-data.mjs`)
    - fragment and canonical-node resolution plus diagnostic rendering
      (landed as `Commands/preview-runtime-render.mjs`, emitted as ESM for
-     Manual pages and wrapped only by the classic Slides adapter)
+     Manual pages and slide decks)
    - hydration registry and math/feature hydrator dispatch
      (landed as `Commands/preview-runtime-hydration.mjs`, emitted as ESM for
-     Manual pages and wrapped only by the classic Slides adapter)
+     Manual pages and slide decks)
    - template descriptor binding for Lean-emitted preview triggers
      (landed as `Commands/preview-runtime-template.mjs`)
    - preview surface state, slots, and content updates

@@ -57,14 +57,6 @@ def blueprint_render_api_script(body: str) -> str:
     return f"""
     async () => {{
         async function loadBlueprintRenderApi() {{
-            if (
-                window.VersoBlueprint &&
-                typeof window.VersoBlueprint.onRenderReady === "function"
-            ) {{
-                return await new Promise((resolve) => {{
-                    window.VersoBlueprint.onRenderReady(resolve);
-                }});
-            }}
             const moduleUrl = new URL(
                 "-verso-data/blueprint-page-runtime.mjs",
                 document.baseURI
@@ -82,16 +74,4 @@ def blueprint_render_api_script(body: str) -> str:
 
 
 def wait_for_blueprint_render_api(page: Page) -> None:
-    page.evaluate(
-        """
-        async () => {
-            const startedAt = performance.now();
-            while (performance.now() - startedAt < 5000) {
-                const namespace = window.VersoBlueprint || {};
-                if (namespace.render || typeof namespace.onRenderReady === "function") return;
-                await new Promise((resolve) => window.setTimeout(resolve, 20));
-            }
-        }
-        """
-    )
     page.evaluate(blueprint_render_api_script("return true;"))

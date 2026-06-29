@@ -123,32 +123,50 @@ private def writeSlidesPreviewDataFiles
 /-- info: true -/
 #guard_msgs in
 #eval
-  let js := Informal.Slides.blueprintSlidesJs
-  hasAllSubstr js [
-    "window.VersoBlueprint.onRenderReady(function (previewUtils) {",
-    "namespace.slides = slideRuntime",
-    "slideRuntime.hydrate = hydrateWhenReady",
-    "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"",
-    "previewUtils.hydrate(node)",
-    "data-bp-slide-href",
-    "data-bp-slide-link"
-  ] &&
-    lacksAllSubstr js [
-      "function blueprintRender()",
-      "if (utils && typeof utils.hydrate === \"function\")",
-      "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")",
-      "function openBlueprintHref(href)",
-      "function renderDocstrings(root)",
-      "function ensureLeanHover(target)",
-      "function scheduleSlidePreviewCleanup()",
-      "function bindSlideUsedByPanels",
-      "async function renderEntry(entry, node, key)",
-      "function renderGroupChip(entry)",
-      "function renderUsesChip(entries)",
-      "function renderCodeStatusChip(entry, count)",
-      "window.bpSlideNodeRuntime",
-      "window.bpSlideNodeRuntimeConfig"
-    ]
+  let cfg := Informal.Slides.withBlueprintSlidesAssets {}
+  let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
+  let matchingHeads :=
+    cfg.extraHead.filter fun html =>
+      hasAllSubstr html.asString [
+        "<script type=\"module\"",
+        Informal.Slides.blueprintSlideRuntimeModulePath
+      ]
+  matchingHeads.size == 1 &&
+    cfgAgain.extraHead.size == cfg.extraHead.size
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let root ← freshSlidesSmokeRoot
+    let outDir := root / "slides"
+    Informal.PreviewManifest.writeBlueprintRuntimeModules (outDir / "-verso-data")
+    Informal.Slides.writeBlueprintSlidesRuntimeModules outDir
+    let runtime ← IO.FS.readFile
+      (outDir / "-verso-data" / Informal.Slides.blueprintSlideRuntimeModuleFilename)
+    let slides ← IO.FS.readFile
+      (outDir / "-verso-data" / Informal.Slides.blueprintSlidesModulePath)
+    pure <|
+      hasAllSubstr runtime [
+        "import { createPreview } from \"./api/preview.mjs\";",
+        "import { startGraphRuntime } from \"./Commands/graph.mjs\";",
+        "import { start as startBlueprintSlides } from \"./Slides/blueprint-slides.mjs\";",
+        "startBlueprintSlides(preview)"
+      ] &&
+      hasAllSubstr slides [
+        "export function start(previewUtils",
+        "preview.registerPreviewHydrator(\"slideBlueprintLinks\"",
+        "preview.hydrate(node)",
+        "data-bp-slide-href",
+        "data-bp-slide-link"
+      ] &&
+      lacksAllSubstr slides [
+        "window.VersoBlueprint.onRenderReady",
+        "window.bpSlideNodeRuntime",
+        "window.bpSlideNodeRuntimeConfig"
+      ] &&
+      (← (outDir / "-verso-data" / "api" / "preview.mjs").pathExists) &&
+      (← (outDir / "-verso-data" / "Commands" / "graph.mjs").pathExists)
 
 /-- info: true -/
 #guard_msgs in
@@ -205,8 +223,11 @@ private def writeSlidesPreviewDataFiles
   let cfg := Informal.Slides.withBlueprintSlidesAssets {}
   let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
   cfg.extraCss.any (·.filename == Informal.Slides.blueprintSlidesCssFilename) &&
-    cfg.extraJs.contains Informal.Slides.blueprintSlidesJsFilename &&
+    cfg.extraHead.any (fun html =>
+      hasSubstr html.asString Informal.Slides.blueprintSlideRuntimeModulePath) &&
+    cfg.extraJs.isEmpty &&
     cfgAgain.extraCss.size == cfg.extraCss.size &&
+    cfgAgain.extraHead.size == cfg.extraHead.size &&
     cfgAgain.extraJs.size == cfg.extraJs.size
 
 /-- info: true -/
@@ -409,14 +430,20 @@ private def writeSlidesPreviewDataFiles
     let copiedManifest := Informal.Slides.blueprintSlidesManifestPath outDir
     let copiedHtmlCache := Informal.Slides.blueprintSlidesHtmlCachePath outDir
     let normalizedKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
+    let slideRuntimePath := outDir / "-verso-data" / Informal.Slides.blueprintSlideRuntimeModuleFilename
+    let slideRuntimeModulePath := outDir / "-verso-data" / Informal.Slides.blueprintSlidesModulePath
     pure <|
       (← copiedManifest.pathExists) &&
         (← copiedHtmlCache.pathExists) &&
+        (← slideRuntimePath.pathExists) &&
+        (← slideRuntimeModulePath.pathExists) &&
         hasSubstr index "data-bp-rendered=\"static\"" &&
         hasSubstr index "bp_slide_node_blueprint" &&
         hasSubstr index "bp_extra_slot_code" &&
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
+        hasSubstr index s!"src=\"{Informal.Slides.blueprintSlideRuntimeModulePath}\"" &&
+        !hasSubstr index "blueprint-slides.js" &&
         hasSubstr index "href=\"#--informal-preview" &&
         !hasSubstr index "Loading Blueprint node"
 

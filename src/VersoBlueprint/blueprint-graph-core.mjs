@@ -6,20 +6,6 @@ function defaultGlobalScope() {
   return typeof globalThis !== "undefined" ? globalThis : {};
 }
 
-function blueprintPrivateNamespace(globalScope = defaultGlobalScope()) {
-  const namespace =
-    globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
-      ? globalScope.VersoBlueprint
-      : {};
-  const privateNamespace =
-    namespace.__private && typeof namespace.__private === "object"
-      ? namespace.__private
-      : {};
-  namespace.__private = privateNamespace;
-  globalScope.VersoBlueprint = namespace;
-  return privateNamespace;
-}
-
 function currentHref(globalScope = defaultGlobalScope()) {
   const windowObj = globalScope && globalScope.window;
   return windowObj && windowObj.location ? windowObj.location.href : "";
@@ -320,18 +306,6 @@ export const graphCore = {
   loadManifestGraphs,
   loadGraphs
 };
-
-export function installGraphCoreGlobal(globalScope = defaultGlobalScope()) {
-  const namespace = blueprintPrivateNamespace(globalScope);
-  const existingCore =
-    namespace.graphCore && typeof namespace.graphCore === "object"
-      ? namespace.graphCore
-      : {};
-  Object.assign(existingCore, graphCore);
-  namespace.graphCore = existingCore;
-
-  return existingCore;
-}
 
 export { version };
 
