@@ -505,6 +505,28 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 ```
 ````
 
+A source-only Markdown node can still keep Lean links by pairing a bodyless
+Blueprint directive with a labeled Markdown witness. The directive contributes
+the semantic Blueprint node and `(lean := ...)` declarations; the Markdown block
+contributes the source-backed preview body:
+
+````md
+:::theorem "raw_addition_right_identity" (lean := "Nat.add_zero")
+:::
+
+```md "raw_addition_right_identity" (slot := statement)
+# Addition right identity
+
+For every natural number `n`, adding zero on the right leaves it unchanged.
+```
+````
+
+The generated manifest entry is `targetKind: "externalMarkup"` with key
+`externalMarkup:raw_addition_right_identity`. Its external-markup data records
+the Markdown source, and its Lean preview keys and `codeData` still refer to
+`Nat.add_zero`. The HTML cache gets a source-backed rendered Markdown fragment
+unless generation is run with `--external-markup-render none`.
+
 If a label needs more than one external span, give each block a separate slot.
 Common slots are `statement` and `proof`; importer-specific slots are also
 allowed when they are stable and documented by the project.
@@ -543,7 +565,26 @@ Current behavior:
   under slot `"default"` unless `(slot := ...)` is provided
 - a labeled standalone external-markup block is exported to the semantic
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
-  it does not create a rendered-fragment preview body
+  by default the generated HTML cache also gets a source-backed rendered
+  fragment for that key
+- manifest entries include `authoredLabel` alongside the canonical `label` so
+  clients can display and round-trip punctuation-heavy authored labels without
+  parsing Lean pretty-name quoting
+- markup-only rendered fragments choose Markdown `statement`, Markdown
+  `default`, TeX `statement`, then TeX `default` when multiple source slots are
+  available; Markdown uses an interpreter-safe renderer for common review
+  markup such as headings, paragraphs, lists, blockquotes, tables, fenced or
+  indented code, inline code, strong text, and dollar math text, while raw HTML
+  and TeX sources are escaped
+- if a bodyless directive for the same label carried `(lean := ...)`, the
+  external-markup manifest entry keeps the corresponding Lean preview keys and
+  `codeData`
+- generation emits a non-fatal warning if traversal recorded Lean preview
+  metadata for a bodyless/source-backed node but the exported manifest entry no
+  longer carries it
+- pass `--external-markup-render source` to render the selected source as
+  escaped source text, or `--external-markup-render none` to keep markup-only
+  entries manifest-only with no HTML cache body
 - if the same label also has a rendered statement or proof, the external markup
   is attached to that block's manifest entry instead of creating a separate
   external-markup entry
@@ -555,8 +596,11 @@ Current behavior:
 - the block is not displayed in the rendered output unless `(display := summary)`
   or `(display := source)` is provided, or the file sets
   `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
-- display rendering is intentionally simple; future converters can replace the
-  raw display path with Markdown-to-Verso or TeX-to-Verso rendering
+- display and source-backed cache rendering are intentionally a preview path:
+  Markdown cache fragments use a conservative Lean-side renderer so
+  `lake env lean --run <GeneratorMain>.lean` remains supported. Future upstream
+  MD4Lean interpreter support or richer converters can still replace this path
+  when projects need fuller Markdown, TeX, or native Blueprint structure
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems

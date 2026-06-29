@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -59,6 +61,29 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command([sys.executable, "-m", "scripts.blueprint_test_blueprints", "list"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(result.stdout.strip(), "preview_runtime_showcase")
+
+    def test_external_markup_generator_supports_lean_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "site"
+            result = self.run_command(
+                [
+                    "./scripts/lean-low-priority",
+                    "lake",
+                    "env",
+                    "lean",
+                    "--run",
+                    "tests/LeanRunExternalMarkupMain.lean",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            cache_path = output / "html-multi" / "-verso-data" / "blueprint-html-cache.json"
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            html = "\n".join(entry["html"] for entry in cache["entries"])
+            self.assertIn("bp_external_markdown_body", html)
+            self.assertIn("<h1>Markdown witness</h1>", html)
+            self.assertIn("&lt;span&gt;raw HTML stays text&lt;/span&gt;", html)
 
     def test_generate_reference_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/generate-reference-blueprints.sh", "--help"])

@@ -66,6 +66,51 @@ A markup-only witness can introduce a Blueprint node while porting.
 ```
 :::::::
 
+#docs (Manual) externalMarkdownWitnessDoc "External Markdown Witness" :=
+:::::::
+```md "external.markdown.witness" (slot := statement)
+# Markdown witness
+
+For every $n$, **source** text can back a Blueprint node.
+
+- Review imported source
+
+> Standard Markdown blockquote.
+
+| Term | Meaning |
+| --- | --- |
+| `n` | natural number |
+
+    #check Nat.add
+
+<span>raw HTML stays text</span>
+```
+:::::::
+
+#docs (Manual) externalBodylessLeanWitnessDoc "External Bodyless Lean Witness" :=
+:::::::
+:::theorem "external.bodyless.lean" (lean := "Nat.add, Nat.mul")
+:::
+
+```md "external.bodyless.lean" (slot := statement)
+# Bodyless Lean-backed witness
+
+The source body is imported from Markdown.
+```
+:::::::
+
+#docs (Manual) externalPunctuationBodylessLeanWitnessDoc "External Punctuation Bodyless Lean Witness" :=
+:::::::
+:::theorem "Chapter4:Theorem4.2.1" (lean := "Nat.add")
+:::
+
+```md "Chapter4:Theorem4.2.1" (slot := statement)
+# Punctuation-label witness
+
+The source body is imported from Markdown.
+```
+:::::::
+
 #docs (Manual) externalMarkupMultiLanguageDoc "External Markup Multi-language Slots" :=
 :::::::
 ```tex "external.multi" (slot := statement)
@@ -191,9 +236,60 @@ Summary-only content should stay hidden.
       | return false
     let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
     let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+    let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+      ({ mode := .none } : Informal.PreviewManifest.ExternalMarkupRenderConfig)
+    let witnessFilesNoNotice ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+      ({ showSourceNotice := false } : Informal.PreviewManifest.ExternalMarkupRenderConfig)
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
       | return false
+    let some witnessHtml := witnessFiles.htmlCache.findHtml? witnessKey
+      | return false
+    let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
+      | return false
+    let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc
+    let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) markdownState
+    let markdownKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markdown.witness")
+    let some markdownHtml := markdownFiles.htmlCache.findHtml? markdownKey
+      | return false
+    let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc
+    let bodylessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) bodylessState
+    let bodylessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.bodyless.lean")
+    let some bodylessEntry := bodylessFiles.manifest.previews.find? (fun entry => entry.key == bodylessKey)
+      | return false
+    let some bodylessHtml := bodylessFiles.htmlCache.findHtml? bodylessKey
+      | return false
+    let (_punctuationOut, punctuationState) ←
+      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc
+    let punctuationFiles ←
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) punctuationState
+    let punctuationLabel := Name.mkSimple "Chapter4:Theorem4.2.1"
+    let punctuationKey := Informal.PreviewManifest.externalMarkupEntryKey punctuationLabel
+    let some punctuationEntry := punctuationFiles.manifest.previews.find? (fun entry => entry.key == punctuationKey)
+      | return false
+    let bodylessLosses :=
+      Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessFiles.manifest
+    let bodylessExternalRefs : Array Name :=
+      match bodylessEntry.codeData with
+      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | _ => #[]
+    let punctuationExternalRefs : Array Name :=
+      match punctuationEntry.codeData with
+      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | _ => #[]
+    let brokenBodylessManifest : Informal.PreviewManifest.File := {
+      bodylessFiles.manifest with
+      previews := bodylessFiles.manifest.previews.map fun entry =>
+        if entry.key == bodylessKey then
+          { entry with leanCodePreviewKeys := #[], codeData := none }
+        else
+          entry
+    }
+    let brokenBodylessLosses :=
+      Informal.PreviewManifest.previewMetadataLosses bodylessState brokenBodylessManifest
+    let some brokenBodylessLoss := brokenBodylessLosses[0]?
+      | return false
+    let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
     pure <|
       hasSubstr traversedTex "\\begin{theorem}" &&
       hasSubstr traversedMd "Imported **Markdown** proof witness." &&
@@ -201,8 +297,42 @@ Summary-only content should stay hidden.
       !externalFiles.manifest.previews.any (fun entry => entry.key == externalMarkupOnlyKey) &&
       (match witnessEntry.targetKind with | .externalMarkup => true | _ => false) &&
       witnessEntry.label == Name.mkSimple "external.witness" &&
+      witnessEntry.authoredLabel == "external.witness" &&
       witnessEntry.externalMarkup.size == 1 &&
-      (witnessFiles.htmlCache.findHtml? witnessKey).isNone &&
+      hasSubstr witnessHtml "bp_external_markup_notice" &&
+      hasSubstr witnessHtml "Rendered from external TeX source" &&
+      hasSubstr witnessHtml "\\begin{theorem}" &&
+      (witnessFilesNoRender.htmlCache.findHtml? witnessKey).isNone &&
+      !hasSubstr witnessHtmlNoNotice "bp_external_markup_notice" &&
+      hasSubstr witnessHtmlNoNotice "\\begin{theorem}" &&
+      hasSubstr markdownHtml "bp_external_markdown_body" &&
+      hasSubstr markdownHtml "<h1>Markdown witness</h1>" &&
+      hasSubstr markdownHtml "<strong>source</strong>" &&
+      hasSubstr markdownHtml "<li>Review imported source</li>" &&
+      hasSubstr markdownHtml "<blockquote>" &&
+      hasSubstr markdownHtml "<table>" &&
+      hasSubstr markdownHtml "<pre><code>#check Nat.add" &&
+      hasSubstr markdownHtml "&lt;span&gt;raw HTML stays text&lt;/span&gt;" &&
+      hasSubstr markdownHtml "For every $n$" &&
+      (match bodylessEntry.targetKind with | .externalMarkup => true | _ => false) &&
+      bodylessEntry.authoredLabel == "external.bodyless.lean" &&
+      bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+      bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
+      bodylessExternalRefs.contains `Nat.add &&
+      bodylessExternalRefs.contains `Nat.mul &&
+      (match punctuationEntry.targetKind with | .externalMarkup => true | _ => false) &&
+      punctuationEntry.label == punctuationLabel &&
+      punctuationEntry.authoredLabel == "Chapter4:Theorem4.2.1" &&
+      punctuationEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+      punctuationExternalRefs.contains `Nat.add &&
+      bodylessLosses.isEmpty &&
+      brokenBodylessLosses.size == 1 &&
+      brokenBodylessLoss.manifestEntryKey? == some bodylessKey &&
+      brokenBodylessLoss.missingLeanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+      brokenBodylessLoss.missingLeanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
+      hasSubstr brokenBodylessLossMessage "lost Lean preview keys" &&
+      hasSubstr brokenBodylessLossMessage s!"manifest entry {bodylessKey}" &&
+      hasSubstr bodylessHtml "Bodyless Lean-backed witness" &&
       !hasSubstr externalOut "\\begin{theorem}" &&
       !hasSubstr externalOut "thm:external-markup" &&
       !hasSubstr externalOut "Imported **Markdown** proof witness" &&

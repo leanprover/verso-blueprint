@@ -154,6 +154,14 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
+Generator-side data flow is source-to-traversal-to-public JSON. During Manual
+traversal, Blueprint records preview identities, rendered bodies, Lean-code
+associations, citations, graph data, and external-source witnesses in traversal
+state and traversal domains. `Informal.PreviewManifest.buildPreviewDataFiles`
+then normalizes those phase-local records into the semantic manifest and the
+rendered-fragment cache. Generated ESM APIs load those two files; they do not
+rerun traversal and should not recover semantics by scraping cached HTML.
+
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `blockStatementEntries`, `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`,
@@ -171,9 +179,39 @@ def primaryNodeTitle?
 
 def workQueueLabels
     (manifest : Informal.PreviewManifest.File) : Array String :=
-  manifest.workQueueEntries.map fun entry =>
-    Informal.PreviewManifest.labelString entry.label
+  manifest.workQueueEntries.map (·.authoredLabel)
 ```
+
+Generator-side Lean callers can configure markup-only external-source cache
+fragments with `Informal.PreviewManifest.ExternalMarkupRenderConfig`. The
+default mode, `.markdown`, renders selected Markdown slots through Blueprint's
+interpreter-safe Markdown renderer and escapes raw HTML; TeX falls back to
+escaped source. `.source` always emits escaped source; `.none` keeps
+external-markup entries semantic-only with no generated HTML-cache fragment.
+Set `showSourceNotice := false` when an embedding context should omit the
+visible source-backed notice from generated fragments.
+
+#### Manifest Label Fields
+
+Manifest entries serialize several label-like fields with distinct roles:
+
+- `key` is the stable lookup/cache identifier for a manifest entry. It may
+  contain a target-family prefix such as `externalMarkup:` and should not be
+  treated as display text.
+- `targetKind` says how to interpret the key namespace: `block`, `leanDecl`,
+  `citation`, or `externalMarkup`.
+- `label` is the canonical target label used for semantic identity.
+- `authoredLabel` is the authored/display string form. UI and review clients
+  should prefer it when presenting or round-tripping labels that contain
+  punctuation.
+
+Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
+whether traversal-preview metadata survived manifest construction. A non-empty
+result means a traversal preview, such as a bodyless directive carrying
+`(lean := ...)`, had Lean preview keys that were not represented by the matching
+manifest entry. The standard preview-data generator reports the same condition
+as a non-fatal warning so source-only import issues are visible without blocking
+site generation.
 
 Three common workflows consume that same model:
 
@@ -771,6 +809,10 @@ That module imports `api/preview.mjs`, constructs the page renderer with
 inline-preview, relation-panel, graph, and template-preview bindings. Command
 renderers still contribute markup, CSS, and stable data attributes, but they no
 longer inject preview-runtime startup JavaScript into Manual `extraJs`.
+`withBlueprintAssets` also includes the CSS needed for manifest-backed block
+shells and source-backed external-markup fragments; feature-specific JavaScript
+continues to be registered by the renderers that emit those interactive
+features.
 
 The private `window.VersoBlueprint.onRenderReady` bridge remains only for the
 current classic-script Slides adapter. New custom clients should import the ESM

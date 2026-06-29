@@ -17,6 +17,8 @@ import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.PreviewManifest.Cli
+import VersoBlueprint.PreviewManifest.ExternalMarkupRender
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
@@ -108,8 +110,14 @@ private def buildMetadataCss : String := r##"
 def buildMetadataHtmlAssets : HtmlAssets :=
   { extraCss := [buildMetadataCss] }
 
+def blueprintBlockHtmlAssets : HtmlAssets :=
+  { extraCss := Informal.Block.Assets.blockCssAssets }
+
 def blueprintHtmlAssets : HtmlAssets :=
-  Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets
+  Verso.Genre.Manual.highlightAssets
+    |>.combine blueprintBlockHtmlAssets
+    |>.combine buildMetadataHtmlAssets
+    |>.combine externalMarkupRenderHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
@@ -706,6 +714,18 @@ def RelationAxis.display : RelationAxis → String
   | .statement => "statement"
   | .proof => "proof"
 
+/--
+Stable human-facing string form for Blueprint labels.
+
+String-authored labels are stored as simple Lean names so that semantic APIs can
+still use `Name`, but Lean's pretty printer quotes punctuation-heavy components.
+This projection keeps those authored labels usable by generated clients without
+requiring them to parse Lean pretty-name syntax.
+-/
+def labelString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
+
 /-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
 structure RelatedEntry where
   /-- Informal label for the related node. -/
@@ -747,6 +767,8 @@ structure Entry where
   targetKind : EntryKind
   /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
   label : Name
+  /-- Authored/display label text, preserving string-authored punctuation without pretty-name quoting. -/
+  authoredLabel : String := labelString label
   /-- Which preview variant this entry contains; non-block entries use `statement`. -/
   facet : PreviewCache.Facet
   /-- Kind (definition, proposition, lemma, theorem, corollary). -/
@@ -977,8 +999,18 @@ def readFile (path : System.FilePath) : IO File := do
 
 end HtmlCache
 
+/-- Paired preview-data outputs emitted for a generated Blueprint site. -/
 structure Files where
+  /--
+  Semantic preview data. This is the public source of truth for labels, hrefs,
+  relationship topology, Lean-code associations, external-source metadata, and
+  other facts that generated consumers need.
+  -/
   manifest : File := {}
+  /--
+  Opaque rendered fragments and their hover payload side table. Consumers join
+  this cache with `manifest` by preview key when they need presentation data.
+  -/
   htmlCache : HtmlCache.File := {}
 deriving Inhabited, Repr
 
@@ -999,10 +1031,80 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
-/-- Stable string form used by manifest query APIs for Blueprint labels. -/
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
+/-- Manifest metadata that was present during traversal but is absent from export. -/
+structure PreviewMetadataLoss where
+  /-- Traversal-preview cache key whose metadata was not fully represented. -/
+  previewKey : String
+  /-- Blueprint label recorded by traversal. -/
+  label : Name
+  /-- Preview facet recorded by traversal. -/
+  facet : PreviewCache.Facet
+  /-- Matching manifest entry key, if the manifest contains one. -/
+  manifestEntryKey? : Option String := none
+  /-- Lean declaration preview keys present during traversal but missing from the manifest entry. -/
+  missingLeanCodePreviewKeys : Array String := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+/--
+Find the manifest entry that should carry metadata for a traversal preview.
+
+Bodyless source-backed nodes may export as `targetKind: "externalMarkup"` rather
+than as ordinary block entries, but the label/facet provenance is still the same.
+-/
+def File.findPreviewMetadataEntry? (file : File) (metadata : PreviewCache.Metadata) :
+    Option Entry :=
+  file.previews.find? fun entry =>
+    entry.label == metadata.label && entry.facet == metadata.facet
+
+private def missingPreviewLeanCodeKeys (entry? : Option Entry)
+    (metadata : PreviewCache.Metadata) : Array String :=
+  metadata.leanCodePreviewKeys.filter fun key =>
+    match entry? with
+    | some entry => !entry.leanCodePreviewKeys.contains key
+    | none => true
+
+/--
+Return traversal-preview metadata that was lost while constructing the manifest.
+
+This is intentionally a queryable invariant rather than an unconditional build
+error so tests and downstream tooling can opt into stricter checks without
+changing existing generation behavior.
+-/
+def previewMetadataLosses (state : TraverseState) (file : File) : Array PreviewMetadataLoss :=
+  Id.run do
+    let mut losses := #[]
+    for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
+      match decoded with
+      | .error _ => pure ()
+      | .ok stored =>
+          let metadata := stored.data.metadata
+          if !metadata.leanCodePreviewKeys.isEmpty then
+            let manifestEntry? := file.findPreviewMetadataEntry? metadata
+            let missing := missingPreviewLeanCodeKeys manifestEntry? metadata
+            if !missing.isEmpty then
+              losses := losses.push {
+                previewKey := stored.canonicalName
+                label := metadata.label
+                facet := metadata.facet
+                manifestEntryKey? := manifestEntry?.map (·.key)
+                missingLeanCodePreviewKeys := missing
+              }
+    losses
+
+/-- Human-facing warning text for one manifest metadata-loss audit result. -/
+def PreviewMetadataLoss.warningMessage (loss : PreviewMetadataLoss) : String :=
+  let manifestEntry :=
+    match loss.manifestEntryKey? with
+    | some key => s!"manifest entry {key}"
+    | none => "no matching manifest entry"
+  let missing := String.intercalate ", " loss.missingLeanCodePreviewKeys.toList
+  s!"Blueprint manifest: traversal preview {loss.previewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
+
+/-- Report non-fatal generator warnings for traversal metadata lost during manifest export. -/
+def reportPreviewMetadataLossWarnings
+    (reportWarning : String → IO Unit) (state : TraverseState) (file : File) : IO Unit := do
+  for loss in previewMetadataLosses state file do
+    reportWarning loss.warningMessage
 
 /-- Whether this manifest entry represents an informal Blueprint block. -/
 def Entry.isBlock (entry : Entry) : Bool :=
@@ -1020,10 +1122,10 @@ def Entry.isStatement (entry : Entry) : Bool :=
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
-/-- All block entries matching the public label string, including non-statement facets. -/
+/-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
-    entry.isBlock && labelString entry.label == label
+    entry.isBlock && entry.authoredLabel == label
 
 /--
 Best public block entry for a label.
@@ -1064,7 +1166,7 @@ private def containsSearchText (text value : String) : Bool :=
 /-- Case-insensitive text search over user-facing block manifest fields. -/
 def Entry.matchesText (entry : Entry) (query : String) : Bool :=
   let text := query.toLower
-  containsSearchText text (labelString entry.label) ||
+  containsSearchText text entry.authoredLabel ||
     containsSearchText text entry.title ||
     entry.parentTitle.any (containsSearchText text) ||
     entry.tags.any (containsSearchText text) ||
@@ -1462,17 +1564,29 @@ private def buildGroupRelation?
     entries
   }
 
-def blockEntryOfTraversalPreview
+private def fallbackTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
+    PreviewCache.Entry :=
+  PreviewCache.Entry.ofBlocks label facet #[]
+
+private def traversalPreviewOrFallback
+    (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
+    PreviewCache.Entry :=
+  (Informal.TraversalIndex.TraversalPreviews.entry? state (PreviewCache.key label facet)).getD
+    (fallbackTraversalPreview label facet)
+
+private def blockSemanticManifestEntry
     (state : TraverseState)
-    (preview : PreviewCache.Entry) : Entry :=
+    (preview : PreviewCache.Entry)
+    (key : String := PreviewCache.key preview.label preview.facet)
+    (targetKind : EntryKind := .block)
+    (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
   let blockData? := blockInfo? state preview.label
-  let key := PreviewCache.key preview.label preview.facet
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
   let codeData := blockCodeData? state preview.label preview blockData?
   let storedBlocks := Informal.collectStoredBlocks state
   {
     key
-    targetKind := .block
+    targetKind
     label := preview.label
     facet := preview.facet
     kind := blockKind? blockData?
@@ -1486,7 +1600,7 @@ def blockEntryOfTraversalPreview
     proofUses := blockData?.map (·.proofUses) |>.getD #[]
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
-    externalMarkup := externalMarkupArray state preview.label
+    externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
     group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1495,6 +1609,11 @@ def blockEntryOfTraversalPreview
     priority := blockData?.bind (·.priority)
     effort := blockData?.bind (·.effort)
   }
+
+def blockEntryOfTraversalPreview
+    (state : TraverseState)
+    (preview : PreviewCache.Entry) : Entry :=
+  blockSemanticManifestEntry state preview
 
 def findTraversalBlockEntry? (state : TraverseState) (key : String) :
     Option (PreviewCache.Entry × Entry) := do
@@ -1516,9 +1635,9 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if entry.blocks.isEmpty then
+      if !entry.hasRenderedBody then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString
@@ -1536,9 +1655,11 @@ private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : 
 private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
-    (previewBackedEntries : Array Entry) : IO (Array Entry) := do
+    (previewBackedEntries : Array Entry)
+    (renderConfig : ExternalMarkupRenderConfig := {}) :
+    IO (Array Entry × Array HtmlCache.Entry) := do
   let mut entries := #[]
-  let storedBlocks := Informal.collectStoredBlocks state
+  let mut htmlEntries := #[]
   for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
@@ -1549,32 +1670,18 @@ private def buildExternalMarkupEntries
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
         continue
-      let blockData? := blockInfo? state data.label
-      let headingParts? := blockHeadingParts? state data.label .statement blockData?
-      entries := entries.push {
-        key := externalMarkupEntryKey data.label
-        targetKind := .externalMarkup
-        label := data.label
-        facet := .statement
-        kind := blockKind? blockData?
-        title := blockTitle state data.label .statement blockData?
-        displayCaption := headingParts?.map (·.caption)
-        displayLabel := headingParts?.map (·.label)
-        href := blockHref state data.label
-        parent := blockData?.bind (·.parent)
-        parentTitle := blockParentTitle? state blockData?
-        statementUses := blockData?.map (·.statementUses) |>.getD #[]
-        proofUses := blockData?.map (·.proofUses) |>.getD #[]
-        externalMarkup := data.markup.toArray
-        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-        group := blockData?.bind (buildGroupRelation? state storedBlocks)
-        ownerDisplayName := blockData?.bind (·.ownerDisplayName)
-        tags := blockData?.map (·.tags) |>.getD #[]
-        priority := blockData?.bind (·.priority)
-        effort := blockData?.bind (·.effort)
-      }
-  pure entries
+      let statementPreview := traversalPreviewOrFallback state data.label .statement
+      let manifestEntry := blockSemanticManifestEntry state statementPreview
+        (key := externalMarkupEntryKey data.label)
+        (targetKind := .externalMarkup)
+        (externalMarkup? := some data.markup.toArray)
+      entries := entries.push manifestEntry
+      if let some markup := selectedExternalMarkup? renderConfig manifestEntry.externalMarkup then
+        let heading := manifestEntry.heading
+        if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
+            heading.caption heading.label markup then
+          htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+  pure (entries, htmlEntries)
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
@@ -1655,18 +1762,25 @@ private def buildCitationEntries
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a
 completed Manual traversal state.
+
+This is the traversal-to-public-data boundary: traversal domains may contain
+semantic payloads that are not visible as rendered page bodies, such as bodyless
+external-source directives carrying Lean preview keys. Preserve those facts in
+the manifest, and keep rendered fragments in the HTML cache.
 -/
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO Files := do
+    (state : TraverseState)
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
-  let externalMarkupPreviews ← buildExternalMarkupEntries logError state traversalPreviews
+  let (externalMarkupPreviews, externalMarkupHtml) ←
+    buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
   let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
   let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
   let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
-  let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  let htmlEntries := (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   let graphs := Informal.GraphApi.cachedData state
   pure {
     manifest := { previews, graphs }
@@ -1676,62 +1790,20 @@ def buildPreviewDataFiles
     }
   }
 
-private def parseRenderConfigOptions (config : RenderConfig := {}) :
-    List String → ReaderT ExtensionImpls IO RenderConfig
-  | ("--output"::dir::more) => parseRenderConfigOptions { config with destination := dir } more
-  | ("--depth"::n::more) => parseRenderConfigOptions { config with htmlDepth := n.toNat! } more
-
-  | ("--with-tex"::more) => parseRenderConfigOptions { config with emitTeX := true } more
-  | ("--without-tex"::more) => parseRenderConfigOptions { config with emitTeX := false } more
-
-  | ("--with-html-single"::more) => parseRenderConfigOptions { config with emitHtmlSingle := .immediately } more
-  | ("--delay-html-single"::more) =>
-    match Verso.CLI.requireFilename "--delay-html-single" more with
-    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlSingle := .delay f } more'
-    | .error e => throw (↑ e)
-  | ("--resume-html-single"::more) =>
-    match Verso.CLI.requireFilename "--resume-html-single" more with
-    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlSingle := .resumeFrom f } more'
-    | .error e => throw (↑ e)
-  | ("--without-html-single"::more) => parseRenderConfigOptions { config with emitHtmlSingle := .no } more
-
-  | ("--with-html-multi"::more) => parseRenderConfigOptions { config with emitHtmlMulti := .immediately } more
-  | ("--delay-html-multi"::more) =>
-    match Verso.CLI.requireFilename "--delay-html-multi" more with
-    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlMulti := .delay f } more'
-    | .error e => throw (↑ e)
-  | ("--resume-html-multi"::more) =>
-    match Verso.CLI.requireFilename "--resume-html-multi" more with
-    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlMulti := .resumeFrom f } more'
-    | .error e => throw (↑ e)
-  | ("--without-html-multi"::more) => parseRenderConfigOptions { config with emitHtmlMulti := .no } more
-
-  | ("--with-word-count"::more) =>
-    match Verso.CLI.requireFilename "--with-word-count" more with
-    | .ok file more' _ => parseRenderConfigOptions { config with wordCount := some file } more'
-    | .error e => throw (↑ e)
-  | ("--without-word-count"::more) => parseRenderConfigOptions { config with wordCount := none } more
-  | ("--draft"::more) => parseRenderConfigOptions { config with draft := true } more
-  | ("--verbose"::more) => parseRenderConfigOptions { config with verbose := true } more
-  | ("--remote-config"::more) =>
-    match Verso.CLI.requireFilename "--remote-config" more with
-    | .ok file more' _ => parseRenderConfigOptions { config with remoteConfigFile := some file } more'
-    | .error e => throw (↑ e)
-  | (other :: _) => throw (↑ s!"Unknown option {other}")
-  | [] => pure config
-
 private def dumpManifest
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO UInt32 := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.manifest
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1739,14 +1811,16 @@ private def dumpHtmlCache
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO UInt32 := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) : IO UInt32 := do
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1771,10 +1845,16 @@ Emit the canonical Blueprint manifest and rendered-fragment cache files.
 The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
 or citation key. The rendered-fragment cache contains the corresponding opaque
 rendered fragments for browser hover previews and file-mode consumers such as
-slides.
+slides. Emission also writes the generated ESM APIs under `-verso-data/`, merges
+hover payloads into the Verso docs side table, and reports non-fatal warnings
+when traversal-preview metadata was lost before export.
 -/
-def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
-  let files ← buildPreviewDataFiles extensionImpls logError state
+def emitBlueprintPreviewData
+    (extensionImpls : ExtensionImpls)
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
+    ExtraStep := fun mode logError cfg state _text => do
+  let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
+  reportPreviewMetadataLossWarnings IO.eprintln state files.manifest
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
   let apiDir := dataDir / apiModuleDirname
@@ -1796,33 +1876,6 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 
-def dumpSchemaFlag : String := "--dump-schema"
-def dumpManifestFlag : String := "--dump-manifest"
-def dumpHtmlCacheFlag : String := "--dump-html-cache"
-def helpFlag : String := "--help"
-
-def helpText : String := String.intercalate "\n" [
-  "Blueprint manifest/cache options:",
-  s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
-  s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
-  s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
-  s!"  {helpFlag}              Show this help text and exit.",
-  "",
-  "Standard manual rendering options:",
-  "  --output <dir>",
-  "  --depth <n>",
-  "  --with-tex | --without-tex",
-  "  --with-html-single | --delay-html-single <file> | --resume-html-single <file> | --without-html-single",
-  "  --with-html-multi | --delay-html-multi <file> | --resume-html-multi <file> | --without-html-multi",
-  "  --with-word-count <file> | --without-word-count",
-  "  --draft",
-  "  --verbose",
-  "  --remote-config <file>"
-]
-
-private def stripFlag (flag : String) (args : List String) : List String :=
-  args.filter (· != flag)
-
 def handleDumpSchemaFlag (args : List String) : IO (Option UInt32 × List String) := do
   if args.contains dumpSchemaFlag then
     IO.println schemaString
@@ -1834,20 +1887,28 @@ def handleCliFlags
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {}) : IO (Option UInt32 × List String) := do
+    (config : RenderConfig := {})
+    (externalMarkupConfig : ExternalMarkupRenderConfig := {}) :
+    IO (Option UInt32 × List String × ExternalMarkupRenderConfig) := do
   if options.contains helpFlag then
     IO.println helpText
-    pure (some 0, stripFlag helpFlag options)
-  else if options.contains dumpManifestFlag then
-    let options := stripFlag dumpManifestFlag options
-    let code ← dumpManifest text options extensionImpls config
-    pure (some code, options)
-  else if options.contains dumpHtmlCacheFlag then
-    let options := stripFlag dumpHtmlCacheFlag options
-    let code ← dumpHtmlCache text options extensionImpls config
-    pure (some code, options)
+    pure (some 0, stripFlag helpFlag options, externalMarkupConfig)
+  else if options.contains dumpSchemaFlag then
+    let (dumped?, options) ← handleDumpSchemaFlag options
+    pure (dumped?, options, externalMarkupConfig)
   else
-    handleDumpSchemaFlag options
+    let (externalMarkupConfig, options) ←
+      parseExternalMarkupRenderOptionsIO externalMarkupConfig options
+    if options.contains dumpManifestFlag then
+      let options := stripFlag dumpManifestFlag options
+      let code ← dumpManifest text options extensionImpls config externalMarkupConfig
+      pure (some code, options, externalMarkupConfig)
+    else if options.contains dumpHtmlCacheFlag then
+      let options := stripFlag dumpHtmlCacheFlag options
+      let code ← dumpHtmlCache text options extensionImpls config externalMarkupConfig
+      pure (some code, options, externalMarkupConfig)
+    else
+      pure (none, options, externalMarkupConfig)
 
 private abbrev HtmlTraverse :=
   (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState)
@@ -1936,11 +1997,11 @@ def blueprintMainWithPreviewData
     (config : RenderConfig := {})
     (extraSteps : List ExtraStep := []) : IO UInt32 := do
   let config := withBlueprintAssets config
-  let (dumped?, options) ← handleCliFlags text options extensionImpls config
+  let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
-    (extraSteps := emitBlueprintPreviewData extensionImpls :: extraSteps)
+    (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
 
 -- Compatibility for reference generators pinned before preview data was renamed.
 @[deprecated blueprintMainWithPreviewData (since := "2026-06-08")]

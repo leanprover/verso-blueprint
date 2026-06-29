@@ -112,6 +112,7 @@ private def groupRelationJson (group : GroupRelation) : Json :=
 private def entrySummaryFields (entry : Entry) : List (String × Json) := [
     ("key", Json.str entry.key),
     ("label", nameJson entry.label),
+    ("authoredLabel", Json.str entry.authoredLabel),
     ("title", Json.str entry.title),
     ("kind", toJson entry.kind),
     ("facet", toJson entry.facet),
@@ -137,6 +138,7 @@ private def entryDetailFields (entry : Entry) : List (String × Json) := [
     ("key", Json.str entry.key),
     ("targetKind", toJson entry.targetKind),
     ("label", nameJson entry.label),
+    ("authoredLabel", Json.str entry.authoredLabel),
     ("facet", toJson entry.facet),
     ("kind", toJson entry.kind),
     ("title", Json.str entry.title),
