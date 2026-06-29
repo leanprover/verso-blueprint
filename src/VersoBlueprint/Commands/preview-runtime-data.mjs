@@ -1,4 +1,4 @@
-import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
+import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
   // Generated-data URL helpers.
@@ -100,6 +100,10 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
     function previewApiModuleUrlForApi() {
       return corePreviewApiModuleUrl(readBlueprintDataBaseUrl());
+    }
+
+    function graphApiModuleUrlForApi() {
+      return coreGraphApiModuleUrl(readBlueprintDataBaseUrl());
     }
 
     function blueprintHtmlCacheUrlForApi() {
@@ -338,6 +342,7 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       manifestUrl: blueprintManifestUrlForApi,
       dataApiModuleUrl: dataApiModuleUrlForApi,
       previewApiModuleUrl: previewApiModuleUrlForApi,
+      graphApiModuleUrl: graphApiModuleUrlForApi,
       missingPreviewKeyDiagnosticHtml: missingPreviewKeyDiagnosticHtml,
       htmlCacheUrl: blueprintHtmlCacheUrlForApi,
       manifestStore: blueprintManifestStoreForApi,

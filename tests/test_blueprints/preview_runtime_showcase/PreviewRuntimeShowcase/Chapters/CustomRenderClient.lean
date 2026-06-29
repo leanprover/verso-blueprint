@@ -293,11 +293,7 @@ private def previewModuleExample : Verso.Output.Html :=
 
 private def previewModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
-// Import the generated preview/render ESM API.
-import {
-  createPreview,
-  previewKey
-} from "../-verso-data/api/preview.mjs";
+const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
 
 // Find the showcase card that will display this module-based result.
 const card = document.querySelector("[data-bp-preview-module-example]");
@@ -306,11 +302,11 @@ if (card) {
   const summary = card.querySelector("[data-bp-preview-module-summary]");
   const body = card.querySelector("[data-bp-preview-module-body]");
   try {
-    // Create a call-site renderer from the generated ESM modules.
-    const api = createPreview();
+    // Import the generated preview/render ESM API for this output layout.
+    const api = await loadPreviewApi();
 
     // Build the manifest/cache key for the statement facet.
-    const key = previewKey("preview_facets", "statement");
+    const key = api.previewKey("preview_facets", "statement");
 
     // Load the generated preview manifest through this renderer.
     const manifest = await api.loadManifest();
@@ -344,15 +340,24 @@ if (card) {
 
 private def graphModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
-// Import the generated graph-data ESM API.
-import { loadGraphs } from "../-verso-data/api/graph.mjs";
+const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
 
 // Find the showcase card that already displays graph manifest data.
 const card = document.querySelector("[data-bp-custom-client-graph]");
 if (card) {
   try {
+    // Import the generated preview/render ESM API for this output layout.
+    const api = await loadPreviewApi();
+    const graphApiUrl =
+      typeof api.graphApiModuleUrl === "function"
+        ? api.graphApiModuleUrl()
+        : api.dataUrl("api/graph.mjs");
+
+    // Import the generated graph-data ESM API.
+    const graphModule = await import(graphApiUrl);
+
     // Load every finalized graph record from blueprint-manifest.json.graphs.
-    const graphs = await loadGraphs();
+    const graphs = await graphModule.loadGraphs();
 
     // Use the first graph in this small fixture.
     const graph = graphs[0] || null;

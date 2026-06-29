@@ -263,6 +263,19 @@ const graphRuntimeCoreModule =
     typeof privateNamespace.graphRuntimeCore === "object"
     ? privateNamespace.graphRuntimeCore
     : {};
+const graphCoreModule =
+  privateNamespace.graphCore &&
+    typeof privateNamespace.graphCore === "object"
+    ? privateNamespace.graphCore
+    : {};
+const coreGetGraphData =
+  typeof graphCoreModule.getGraphData === "function"
+    ? graphCoreModule.getGraphData
+    : function () { return null; };
+const coreGetGraphVariants =
+  typeof graphCoreModule.getGraphVariants === "function"
+    ? graphCoreModule.getGraphVariants
+    : function () { return []; };
 "##
 
 private def graphRuntimeClientJs : String :=

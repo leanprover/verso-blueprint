@@ -527,9 +527,7 @@ class TestPreviewRuntimeRegressions:
                         "custom_loader--statement",
                         { hydrate: false, renderMath: false }
                     );
-                    const graphModule = await import(
-                      new URL("../-verso-data/api/graph.mjs", window.location.href).href
-                    );
+                    const graphModule = await import(api.graphApiModuleUrl());
                     const customGraphs = await graphModule.loadManifestGraphs(
                       customApi.manifestUrl(),
                       { fetchJson: customFetchJson }

@@ -88,6 +88,7 @@ export function createPreviewRuntimeApi(options) {
     loadHtmlCacheEntry: function (key, options) { return dataApi.loadHtmlCacheEntry(key, options); },
     dataApiModuleUrl: dataApi.dataApiModuleUrl,
     previewApiModuleUrl: dataApi.previewApiModuleUrl,
+    graphApiModuleUrl: dataApi.graphApiModuleUrl,
     previewKey: dataApi.previewKey,
     statementPreviewKey: dataApi.statementPreviewKey,
     resolvePreview: function (previewKey, options) {
@@ -177,6 +178,7 @@ export function createPreviewRuntimeApi(options) {
     loadHtmlCacheEntry: previewDataApi.loadHtmlCacheEntry,
     dataApiModuleUrl: previewDataApi.dataApiModuleUrl,
     previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
+    graphApiModuleUrl: previewDataApi.graphApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
     resolvePreview: previewDataApi.resolvePreview,

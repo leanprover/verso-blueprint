@@ -185,7 +185,7 @@ const graphApiNames = [
   "graphsFromManifest",
   "normalizeGraphData",
   ...publicApiContract.exports.graph.filter(
-    (name) => !["dataUrl", "renderGraphBlock", "renderGraphs", "version"].includes(name)
+    (name) => !["dataUrl", "graphApiModuleUrl", "renderGraphBlock", "renderGraphs", "version"].includes(name)
   )
 ];
 const graphInternalApiNames = [
