@@ -126,14 +126,6 @@ private def blueprintPageRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{"-verso-data/" ++ pageRuntimeModuleFilename}}></script>}}
 
-private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
-    Array Verso.Output.Html :=
-  let valueString := Verso.Output.Html.asString value
-  if values.any (fun item => Verso.Output.Html.asString item == valueString) then
-    values
-  else
-    values.push value
-
 def withBuildMetadataAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
   let htmlAssets := htmlConfig.toHtmlAssets.combine buildMetadataHtmlAssets
@@ -148,7 +140,8 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := {
       htmlConfig with
       toHtmlAssets := htmlAssets
-      extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
+      extraHead := VersoBlueprint.Html.pushIfRenderedMissing htmlConfig.extraHead
+        blueprintPageRuntimeHead
     }
   }
 

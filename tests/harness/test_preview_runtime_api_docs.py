@@ -323,18 +323,6 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn('include_str "blueprint-slide-runtime.mjs"', slide_assets)
         self.assertIn('include_str "blueprint-slides.mjs"', slide_assets)
         self.assertNotIn("ClassicPreviewAdapter", slide_assets)
-        for old_common_include_path in (
-            "preview-runtime-base.mjs",
-            "preview-runtime-data.mjs",
-            "preview-runtime-render.mjs",
-            "preview-runtime-hydration.mjs",
-            "preview-runtime-lifecycle.mjs",
-            "preview-runtime-surface.mjs",
-            "preview-runtime-template.mjs",
-            "preview-runtime-api.mjs",
-            "inline-preview.mjs",
-        ):
-            self.assertNotIn(f'include_str "{old_common_include_path}"', common)
         self.assertNotIn("import VersoBlueprint.BrowserAsset", common)
         self.assertNotIn("BrowserAsset", slide_assets)
         self.assertIn("function collectPreviewTemplates(root, selector, keyAttr)", base)

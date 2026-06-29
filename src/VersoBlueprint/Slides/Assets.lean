@@ -10,6 +10,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Graft.Assets
+import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
 
@@ -46,14 +47,6 @@ private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :
 private def blueprintSlideRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{blueprintSlideRuntimeModulePath}}></script>}}
-
-private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
-    Array Verso.Output.Html :=
-  let valueString := Verso.Output.Html.asString value
-  if values.any (fun item => Verso.Output.Html.asString item == valueString) then
-    values
-  else
-    values.push value
 
 private def ensureParentDir (path : System.FilePath) : IO Unit := do
   let dir := path.parent.getD "."
@@ -132,7 +125,8 @@ def writeSlideImages
 public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
   { config with
     extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
-    extraHead := pushHtmlIfMissing config.extraHead blueprintSlideRuntimeHead }
+    extraHead := VersoBlueprint.Html.pushIfRenderedMissing config.extraHead
+      blueprintSlideRuntimeHead }
 
 /-- Write the slide-specific ESM runtime files under the deck's `-verso-data/`. -/
 public def writeBlueprintSlidesRuntimeModules (outputDir : System.FilePath) : IO Unit := do

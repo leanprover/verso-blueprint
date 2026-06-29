@@ -95,8 +95,7 @@ pull requests unless that upstream write action is explicitly requested.
   - current Blueprint workaround:
     Blueprint package assets are embedded through package-owned Lean modules and
     emitted through Blueprint-local `-verso-data/` writers; regular Manual
-    pages inject the page ESM entrypoint with raw `extraHead`, while legacy
-    classic-script paths such as slides still need Blueprint-local wrappers
+    pages and slide decks inject their ESM entrypoints with `extraHead`
   - desired upstream behavior:
     downstream packages should be able to declare emitted runtime assets with
     stable output URLs, explicit asset kinds such as stylesheet, classic script,
