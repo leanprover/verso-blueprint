@@ -325,6 +325,113 @@ class TestGraphLayoutRuntime:
         assert result["hasSvg"]
         assert result["activeVariant"] == "full"
 
+    def test_public_graph_api_can_render_manifest_graph_data(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const graphModule = await import(api.graphApiModuleUrl());
+                const graphs = await graphModule.loadGraphs();
+                const graph = graphs[0] || null;
+                if (!graph) return { ok: false, reason: "missing manifest graph" };
+                const manifestVariantKeys = Array.isArray(graph.variants)
+                    ? graph.variants.map((variant) => variant.key)
+                    : [];
+
+                const detached = await graphModule.createGraphBlock(graph, {
+                    layout: "fill",
+                    graphOptions: { direction: "LR", pack: true }
+                });
+                const detachedData = graphModule.getGraphData(detached);
+                const detachedVariants = graphModule.getGraphVariants(detached);
+
+                const host = document.createElement("section");
+                host.id = "manifest-graph-host";
+                host.style.height = "520px";
+                host.style.marginTop = "24px";
+                document.body.appendChild(host);
+
+                const controller = await graphModule.renderGraphData(host, graph, {
+                    previewUtils: api,
+                    layout: "fill",
+                    graphOptions: { direction: "LR", pack: true }
+                });
+                const block = host.querySelector(".bp_graph_fullwidth");
+                await new Promise((resolve, reject) => {
+                    const startedAt = performance.now();
+                    const check = () => {
+                        const canvas = block ? block.querySelector(".bp_graph_canvas") : null;
+                        const svg = canvas ? canvas.querySelector("svg") : null;
+                        const state = block ? block.__bpGraphState || null : null;
+                        if (
+                            canvas &&
+                            svg &&
+                            state &&
+                            state.renderFinalizedToken === state.renderToken
+                        ) {
+                            resolve();
+                            return;
+                        }
+                        if (performance.now() - startedAt > 5000) {
+                            reject(new Error("manifest graph data did not render"));
+                            return;
+                        }
+                        setTimeout(check, 50);
+                    };
+                    check();
+                });
+                const canvas = block ? block.querySelector(".bp_graph_canvas") : null;
+                const svg = canvas ? canvas.querySelector("svg") : null;
+                const state = block ? block.__bpGraphState || null : null;
+                const select = block ? block.querySelector(".bp_graph_view_select") : null;
+                const directionSelect = block ? block.querySelector(".bp_graph_direction_select") : null;
+                const packInput = block ? block.querySelector(".bp_graph_pack_input") : null;
+                return {
+                    ok: true,
+                    moduleCreateGraphBlock: typeof graphModule.createGraphBlock === "function",
+                    moduleRenderGraphData: typeof graphModule.renderGraphData === "function",
+                    runtimeCreateGraphBlock: typeof api.createGraphBlock === "function",
+                    runtimeRenderGraphData: typeof api.renderGraphData === "function",
+                    manifestVariantKeys,
+                    detachedBlock: !!detached && detached.matches(".bp_graph_fullwidth"),
+                    detachedKey: detachedData ? detachedData.key : "",
+                    detachedVariantKeys: detachedVariants.map((variant) => variant.key),
+                    hostChildCount: host.children.length,
+                    controller: !!controller && !!block && controller === block.__bpGraphController,
+                    layout: block ? (block.getAttribute("data-bp-graph-layout") || "") : "",
+                    canvasLayout: canvas ? (canvas.getAttribute("data-bp-graph-layout") || "") : "",
+                    hasSvg: !!svg,
+                    activeVariant: state ? state.renderedVariantKey : "",
+                    viewCount: select ? select.options.length : 0,
+                    direction: directionSelect ? directionSelect.value : "",
+                    pack: packInput ? packInput.checked : false
+                };
+                """
+            )
+        )
+
+        assert result["ok"], result
+        assert result["moduleCreateGraphBlock"]
+        assert result["moduleRenderGraphData"]
+        assert result["runtimeCreateGraphBlock"]
+        assert result["runtimeRenderGraphData"]
+        assert {"full", "group"}.issubset(set(result["manifestVariantKeys"]))
+        assert result["detachedBlock"]
+        assert result["detachedKey"].startswith("graph:#<")
+        assert {"full", "group"}.issubset(set(result["detachedVariantKeys"]))
+        assert result["hostChildCount"] == 1
+        assert result["controller"]
+        assert result["layout"] == "fill"
+        assert result["canvasLayout"] == "fill"
+        assert result["hasSvg"]
+        assert result["activeVariant"] == "full"
+        assert result["viewCount"] >= 2
+        assert result["direction"] == "LR"
+        assert result["pack"] is True
+
     def test_single_page_graph_canvas_does_not_collapse(
         self,
         preview_runtime_showcase_root_server: str,

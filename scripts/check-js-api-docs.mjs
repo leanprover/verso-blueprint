@@ -262,7 +262,7 @@ requireIncludes(
 requireMatches(
   graphPage,
   pages[graphPage],
-  /id="\.loadGraphs"[\s\S]*?Load graph variants from this generated site's default manifest\./,
+  /id="\.loadGraphs"[\s\S]*?Load finalized graph records from this generated site's default manifest\./,
   "loadGraphs documentation"
 );
 requireIncludes(

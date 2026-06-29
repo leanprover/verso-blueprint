@@ -325,7 +325,7 @@ def spec : StoreSpec := {
   name := Resolve.graphDomainName
   kind := .runtimeCache
   key := "graph block key"
-  value := "semantic GraphData plus graph block anchor ids"
+  value := "semantic GraphData, render options, and graph block anchor ids"
   summary := "Traversal-cached Blueprint graph data finalized by GraphApi for manifest and browser consumers."
 }
 
@@ -334,14 +334,14 @@ def domainName : Name := spec.name
 def object? (state : TraverseState) (key : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName key
 
-def data? (state : TraverseState) (key : String) : Option Informal.Graph.GraphData :=
+def data? (state : TraverseState) (key : String) : Option Informal.Graph.CachedGraphData :=
   objectData? state domainName key
 
 def saveId
     (state : TraverseState) (key : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName key id
 
-def saveData (state : TraverseState) (key : String) (data : Informal.Graph.GraphData) :
+def saveData (state : TraverseState) (key : String) (data : Informal.Graph.CachedGraphData) :
     TraverseState :=
   saveObjectData state domainName key (toJson data)
 
@@ -350,11 +350,11 @@ def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
 
 /-- Decode every cached graph entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry Informal.Graph.GraphData)) :=
+    Array (Except DecodeError (StoredEntry Informal.Graph.CachedGraphData)) :=
   decodeStoreEntries state domainName
 
-def allData (state : TraverseState) : Array Informal.Graph.GraphData :=
-  entries state |>.filterMap (·.toOption.map (·.data)) |>.qsort (fun a b => a.key < b.key)
+def allData (state : TraverseState) : Array Informal.Graph.CachedGraphData :=
+  entries state |>.filterMap (·.toOption.map (·.data)) |>.qsort (fun a b => a.data.key < b.data.key)
 
 end Graphs
 

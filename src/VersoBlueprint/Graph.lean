@@ -112,7 +112,7 @@ structure GraphOptions where
   the SVG into the canvas.
   -/
   pack : Bool := false
-deriving Inhabited, BEq, FromJson, ToJson, Quote
+deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 
 private def graphPackAttr (pack : Bool) : String :=
   if pack then "true" else "false"
@@ -172,7 +172,7 @@ structure GraphRenderVariant where
   hoverOnNodeId : Array (String × String) := #[]
   /-- Node ids that open Blueprint preview-cache entries. -/
   previewKeyByNodeId : Array (String × String) := #[]
-deriving Inhabited, ToJson
+deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /-- Direction order used by the bundled graph controls. -/
 def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
@@ -262,6 +262,20 @@ structure GraphData where
   nodes : Array NodeData := #[]
   edges : Array EdgeData := #[]
   groups : Array GroupData := #[]
+  /--
+  Precomputed DOT render variants for the bundled browser graph renderer.
+
+  Manifest clients should use these variants instead of re-deriving DOT from
+  graph topology in JavaScript. The semantic fields above remain the stable
+  data contract for dashboards and audits.
+  -/
+  variants : Array GraphRenderVariant := #[]
+deriving Inhabited, Repr, ToJson, FromJson, Quote
+
+/-- Traversal-time graph cache payload, before href/title finalization. -/
+structure CachedGraphData where
+  data : GraphData := {}
+  options : GraphOptions := {}
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 def NodeData.toGraphNode (node : NodeData) : GraphNode String := {

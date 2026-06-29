@@ -1282,6 +1282,15 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
           Json.mkObj [("type", Json.str "null")]
         ])
       ]
+  | .const ``Prod _ =>
+      let fstSchema ← schemaForType args[0]!
+      let sndSchema ← schemaForType args[1]!
+      pure <| Json.mkObj [
+        ("type", Json.str "array"),
+        ("prefixItems", Json.arr #[fstSchema, sndSchema]),
+        ("minItems", Json.num 2),
+        ("maxItems", Json.num 2)
+      ]
   | .const name _ =>
       let st ← get
       if st.seen.contains name then

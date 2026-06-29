@@ -121,6 +121,7 @@
       "version"
     ],
     "graph": [
+      "createGraphBlock",
       "dataUrl",
       "getGraphData",
       "getGraphVariants",
@@ -128,6 +129,7 @@
       "loadGraphs",
       "loadManifestGraphs",
       "renderGraphBlock",
+      "renderGraphData",
       "renderGraphs",
       "version"
     ]

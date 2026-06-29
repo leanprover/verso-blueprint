@@ -17,11 +17,12 @@ import {
  *
  * Use the data helpers when a dashboard needs finalized graph records from the
  * manifest or graph JSON embedded beside a rendered graph block. Use
- * {@link renderGraphs} or {@link renderGraphBlock} only when the page already
- * contains generated graph-block markup. Rendering graph blocks requires an
- * explicit preview renderer from `api/preview.mjs` so graph popovers and nested
- * previews use the same manifest/cache loader and hydration path as the rest of
- * the page.
+ * {@link renderGraphData} to create the standard graph UI from a finalized
+ * manifest graph record, or {@link renderGraphs} / {@link renderGraphBlock}
+ * when the page already contains generated graph-block markup. Rendering graph
+ * blocks requires an explicit preview renderer from `api/preview.mjs` so graph
+ * popovers and nested previews use the same manifest/cache loader and hydration
+ * path as the rest of the page.
  *
  * @module blueprint-graph-api
  */
@@ -74,7 +75,7 @@ export function getGraphVariants(root) {
 }
 
 /**
- * Load graph variants from a manifest URL.
+ * Load finalized graph records from a manifest URL.
  *
  * @param {string} [url] Manifest URL. Defaults to this module's generated-data manifest.
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
@@ -89,7 +90,7 @@ export const loadManifestGraphs = (url, options) => {
 };
 
 /**
- * Load graph variants from this generated site's default manifest.
+ * Load finalized graph records from this generated site's default manifest.
  *
  * This is the simplest graph-data entry point for dashboards and audits that
  * need graph records but do not need to render graph blocks.
@@ -211,6 +212,58 @@ export async function renderGraphs(root, options) {
   return runtime.renderGraphs(root, renderOptions);
 }
 
+/**
+ * Create standard Blueprint graph-block markup from finalized graph data.
+ *
+ * This is useful when a custom browser client loaded graph records with
+ * {@link loadGraphs} and wants to insert the same graph block shape used by
+ * generated pages. The returned element is not rendered until it is inserted
+ * and passed to {@link renderGraphBlock}, or until {@link renderGraphData} is
+ * used. Returns `null` when the graph record does not contain precomputed
+ * render variants and no `options.variants` override is supplied.
+ *
+ * @param {BlueprintGraphData} graphData Finalized graph record.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render options.
+ * @returns {Promise<Element | null>} Standard graph block, or `null` when no
+ * render variants are available.
+ */
+export async function createGraphBlock(graphData, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.createGraphBlock(graphData, options);
+}
+
+/**
+ * Render finalized graph data into a host element.
+ *
+ * This constructs the standard `.bp_graph_fullwidth` block, inserts it into
+ * `host`, lazy-loads the graph renderer, and returns the same controller as
+ * {@link renderGraphBlock}. Pass `replace: false` to append instead of replacing
+ * the host's existing children. Returns `null` without changing `host` when the
+ * graph record does not contain precomputed render variants and no
+ * `options.variants` override is supplied.
+ *
+ * @param {Element} host Element that will contain the graph block.
+ * @param {BlueprintGraphData} graphData Finalized graph record, typically from {@link loadGraphs}.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render options.
+ * @returns {Promise<BlueprintGraphController | null>} Graph controller, or
+ * `null` when no graph block can be built.
+ *
+ * @example
+ * import { createPreview } from "./-verso-data/api/preview.mjs";
+ * import { loadGraphs, renderGraphData } from "./-verso-data/api/graph.mjs";
+ *
+ * const previewUtils = createPreview();
+ * const [graph] = await loadGraphs();
+ * await renderGraphData(document.querySelector("#graph-host"), graph, {
+ *   previewUtils,
+ *   layout: "fill"
+ * });
+ */
+export async function renderGraphData(host, graphData, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.renderGraphData(host, graphData, requirePreviewUtils(options));
+}
+
 const graphApi = {
   version,
   dataUrl,
@@ -219,8 +272,10 @@ const graphApi = {
   getGraphVariants,
   loadManifestGraphs,
   loadGraphs,
+  createGraphBlock,
   renderGraphBlock,
-  renderGraphs
+  renderGraphs,
+  renderGraphData
 };
 
 export default graphApi;
