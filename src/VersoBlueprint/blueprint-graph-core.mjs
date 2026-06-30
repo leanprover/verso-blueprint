@@ -146,31 +146,6 @@ export function readGraphJsonScript(root, selector) {
 }
 
 /**
- * Read a legacy DOT-only graph variant embedded in older graph pages.
- *
- * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
- * @returns {BlueprintGraphVariant[]}
- */
-export function graphFallbackVariants(root) {
-  const graphRoot = graphCanvasFor(root);
-  if (!graphRoot) return [];
-  const dotSource = graphRoot.querySelector("script.dot-source");
-  const dotTxt = dotSource ? (dotSource.textContent || "").trim() : "";
-  if (!dotTxt) return [];
-  return [{
-    key: "full",
-    label: "Full Graph",
-    dot: dotTxt,
-    options: {
-      direction: graphRoot.getAttribute("data-bp-graph-direction"),
-      pack: graphRoot.getAttribute("data-bp-graph-pack")
-    },
-    selectOnNodeId: [],
-    hoverOnNodeId: []
-  }];
-}
-
-/**
  * Normalize raw graph JSON into the stable graph payload shape.
  *
  * @param {unknown} rawData Parsed graph JSON.
@@ -229,7 +204,7 @@ export function getGraphVariants(root) {
   if (Array.isArray(parsed) && parsed.length > 0) {
     return /** @type {BlueprintGraphVariant[]} */ (parsed);
   }
-  return graphFallbackVariants(root || currentDocument());
+  return [];
 }
 
 /**
@@ -297,7 +272,6 @@ export const graphCore = {
   graphApiModuleUrl,
   graphCanvasFor,
   readGraphJsonScript,
-  graphFallbackVariants,
   normalizeGraphData,
   graphsFromManifest,
   getGraphData,

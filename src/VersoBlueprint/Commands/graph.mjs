@@ -308,9 +308,6 @@ export function createGraphBlock(graphData, options) {
   });
   appendJsonScript(doc, canvas, "bp-graph-data", data);
   appendJsonScript(doc, canvas, "bp-graph-variants", variants);
-  const dotSource = createEl(doc, "script", { type: "text/plain", class: "dot-source" });
-  dotSource.textContent = variants[0].dot || "";
-  canvas.appendChild(dotSource);
   block.appendChild(canvas);
   block.appendChild(createPreviewPanel(
     doc,
