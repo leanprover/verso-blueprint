@@ -126,14 +126,6 @@ private def blueprintPageRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{"-verso-data/" ++ pageRuntimeModuleFilename}}></script>}}
 
-private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
-    Array Verso.Output.Html :=
-  let valueString := Verso.Output.Html.asString value
-  if values.any (fun item => Verso.Output.Html.asString item == valueString) then
-    values
-  else
-    values.push value
-
 def withBuildMetadataAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
   let htmlAssets := htmlConfig.toHtmlAssets.combine buildMetadataHtmlAssets
@@ -148,7 +140,8 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := {
       htmlConfig with
       toHtmlAssets := htmlAssets
-      extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
+      extraHead := VersoBlueprint.Html.pushIfRenderedMissing htmlConfig.extraHead
+        blueprintPageRuntimeHead
     }
   }
 
@@ -697,6 +690,23 @@ private def dataApiModuleAliasMjs : String :=
 private def previewApiModuleAliasMjs : String :=
   "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ previewApiModuleFilename ++ "\";\n"
+
+/-- Write the generated ESM runtime and public browser API modules under `-verso-data/`. -/
+public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit := do
+  let apiDir := dataDir / apiModuleDirname
+  IO.FS.createDirAll dataDir
+  IO.FS.createDirAll apiDir
+  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
+  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
+  IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs
+  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
+  IO.FS.writeFile (dataDir / dataApiModuleFilename) dataApiModuleMjs
+  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
+  writePageRuntimeModules dataDir
+  writePreviewRuntimeModules dataDir
+  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
 
 inductive EntryKind where
   | block
@@ -1945,22 +1955,10 @@ def emitBlueprintPreviewData
   reportPreviewMetadataLossWarnings IO.eprintln state files.manifest
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
-  let apiDir := dataDir / apiModuleDirname
   IO.FS.createDirAll dataDir
-  IO.FS.createDirAll apiDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
-  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
-  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
-  IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs
-  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
-  IO.FS.writeFile (dataDir / dataApiModuleFilename) dataApiModuleMjs
-  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
-  writePageRuntimeModules dataDir
-  writePreviewRuntimeModules dataDir
-  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
-  IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
-  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
+  writeBlueprintRuntimeModules dataDir
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 

@@ -30,7 +30,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
 
     def test_common_module_does_not_own_runtime_js_assets(self) -> None:
         for asset in (
-            "src/VersoBlueprint/Commands/preview-ready.mjs",
             "src/VersoBlueprint/blueprint-graph-core.mjs",
             "src/VersoBlueprint/blueprint-preview-core.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
@@ -48,34 +47,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                     asset,
                     "src/VersoBlueprint/Commands/Common.lean",
                     "VersoBlueprint.Commands.Common",
-                ),
-                EMBEDDED_ASSET_OWNERS,
-            )
-
-    def test_classic_slide_adapter_assets_are_owned_by_slide_adapter_module(self) -> None:
-        for asset in (
-            "src/VersoBlueprint/blueprint-graph-core.mjs",
-            "src/VersoBlueprint/blueprint-preview-core.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
-            "src/VersoBlueprint/Commands/preview-ready.mjs",
-            "src/VersoBlueprint/Commands/inline-preview.mjs",
-            "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
-            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
-            "src/VersoBlueprint/Commands/graph.mjs",
-            "src/VersoBlueprint/Slides/blueprint-slides.mjs",
-        ):
-            self.assertIn(
-                EmbeddedAssetOwner(
-                    asset,
-                    "src/VersoBlueprint/Slides/ClassicPreviewAdapter.lean",
-                    "VersoBlueprint.Slides.ClassicPreviewAdapter",
                 ),
                 EMBEDDED_ASSET_OWNERS,
             )
@@ -125,12 +96,17 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 EMBEDDED_ASSET_OWNERS,
             )
 
-    def test_preview_client_js_assets_are_owned_by_classic_adapter(self) -> None:
+    def test_slide_esm_assets_are_owned_by_slide_assets_module(self) -> None:
         for asset, owner, target in (
             (
-                "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
-                "src/VersoBlueprint/Slides/ClassicPreviewAdapter.lean",
-                "VersoBlueprint.Slides.ClassicPreviewAdapter",
+                "src/VersoBlueprint/Slides/blueprint-slides.mjs",
+                "src/VersoBlueprint/Slides/Assets.lean",
+                "VersoBlueprint.Slides.Assets",
+            ),
+            (
+                "src/VersoBlueprint/Slides/blueprint-slide-runtime.mjs",
+                "src/VersoBlueprint/Slides/Assets.lean",
+                "VersoBlueprint.Slides.Assets",
             ),
         ):
             self.assertIn(EmbeddedAssetOwner(asset, owner, target), EMBEDDED_ASSET_OWNERS)
@@ -379,6 +355,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             root = Path(tmp)
             css = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.css"
             js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.mjs"
+            runtime = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slide-runtime.mjs"
             owner = root / "src" / "VersoBlueprint" / "Slides" / "Assets.lean"
             cached_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Slides" / "Assets.olean"
             cached_ir = root / ".lake" / "build" / "ir" / "VersoBlueprint" / "Slides" / "Assets.c"
@@ -387,6 +364,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             cached_ir.parent.mkdir(parents=True, exist_ok=True)
             css.write_text("/* css */", encoding="utf-8")
             js.write_text("// js", encoding="utf-8")
+            runtime.write_text("// runtime", encoding="utf-8")
             owner.write_text("-- lean", encoding="utf-8")
             cached_olean.write_text("stale", encoding="utf-8")
             cached_ir.write_text("stale", encoding="utf-8")

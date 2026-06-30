@@ -10,16 +10,20 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Graft.Assets
+import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
-import VersoBlueprint.Slides.ClassicPreviewAdapter
 
 namespace Informal.Slides
 
 def blueprintSlidesCssFilename : String := "blueprint-slides.css"
-def blueprintSlidesJsFilename : String := "blueprint-slides.js"
+def blueprintSlideRuntimeModuleFilename : String := "blueprint-slide-runtime.mjs"
+def blueprintSlidesModulePath : String := "Slides/blueprint-slides.mjs"
+def blueprintSlideRuntimeModulePath : String := "-verso-data/" ++ blueprintSlideRuntimeModuleFilename
 
 private def slideNodeCss : String := include_str "blueprint-slides.css"
+private def slideRuntimeModuleMjs : String := include_str "blueprint-slide-runtime.mjs"
+private def slideNodeHydrationModuleMjs : String := include_str "blueprint-slides.mjs"
 
 def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   { css :=
@@ -28,12 +32,7 @@ def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
           Informal.Graft.css,
           Verso.Genre.Manual.docstringStyle,
           Informal.Commands.graphCss,
-          slideNodeCss]).css
-    js :=
-      (ClassicPreviewAdapter.inlinePreviewAssetBundle.withJs []
-        [ ClassicPreviewAdapter.relationPanelJs,
-          ClassicPreviewAdapter.graphRuntimeJs,
-          ClassicPreviewAdapter.slideNodeHydrationJs]).js }
+          slideNodeCss]).css }
 
 def blueprintSlidesCss : String :=
   String.intercalate "\n\n" blueprintSlidesAssetBundle.css
@@ -42,14 +41,12 @@ def blueprintSlidesCssFile : VersoSlides.CssFile where
   filename := blueprintSlidesCssFilename
   contents := ⟨blueprintSlidesCss⟩
 
-def blueprintSlidesJs : String :=
-  String.intercalate "\n\n" blueprintSlidesAssetBundle.js
-
-public def blueprintSlidesExtraJs : Array String :=
-  #[blueprintSlidesJsFilename]
-
 private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
+
+private def blueprintSlideRuntimeHead : Verso.Output.Html :=
+  open Verso.Output.Html in
+  {{<script type="module" src={{blueprintSlideRuntimeModulePath}}></script>}}
 
 private def ensureParentDir (path : System.FilePath) : IO Unit := do
   let dir := path.parent.getD "."
@@ -124,15 +121,18 @@ def writeSlideImages
       let contents ← IO.FS.readBinFile resolved
       writeBinFileWithDirs (imagesDir / outputName) contents
 
-/-- Add the Blueprint slide CSS/JS assets to a Verso Slides config. -/
+/-- Add the Blueprint slide CSS assets to a Verso Slides config. -/
 public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
   { config with
     extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
-    extraJs := pushIfMissing config.extraJs blueprintSlidesJsFilename }
+    extraHead := VersoBlueprint.Html.pushIfRenderedMissing config.extraHead
+      blueprintSlideRuntimeHead }
 
-/-- Write the JavaScript file referenced by {name}`withBlueprintSlidesAssets`. -/
-public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
-  writeTextFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
+/-- Write the slide-specific ESM runtime files under the deck's `-verso-data/`. -/
+public def writeBlueprintSlidesRuntimeModules (outputDir : System.FilePath) : IO Unit := do
+  let dataDir := outputDir / "-verso-data"
+  writeTextFileWithDirs (dataDir / blueprintSlideRuntimeModuleFilename) slideRuntimeModuleMjs
+  writeTextFileWithDirs (dataDir / blueprintSlidesModulePath) slideNodeHydrationModuleMjs
 
 private def blueprintSlidesDataPath (outputDir : System.FilePath) (filename : String) :
     System.FilePath :=
