@@ -119,6 +119,7 @@ inductive HeaderExtraKind where
   | uses
   | code
   | usedBy
+  | markup
   | custom (key : Lean.Name)
 deriving Repr, Inhabited, BEq
 
@@ -126,6 +127,7 @@ def HeaderExtraKind.defaultOrder : HeaderExtraKind → Nat
   | .group => 10
   | .uses => 20
   | .usedBy => 30
+  | .markup => 35
   | .code => 40
   | .custom _ => 100
 
@@ -141,6 +143,7 @@ def HeaderExtraKind.slotKey : HeaderExtraKind → String
   | .uses => "uses"
   | .code => "code"
   | .usedBy => "used_by"
+  | .markup => "markup"
   | .custom key => s!"custom_{headerExtraCssSegment key.toString}"
 
 def HeaderExtraKind.slotClass (kind : HeaderExtraKind) : String :=
@@ -176,6 +179,9 @@ def HeaderExtra.code (html : Verso.Output.Html) : HeaderExtra :=
 def HeaderExtra.usedBy (html : Verso.Output.Html) : HeaderExtra :=
   HeaderExtra.ofHtml .usedBy html
 
+def HeaderExtra.markup (html : Verso.Output.Html) : HeaderExtra :=
+  HeaderExtra.ofHtml .markup html
+
 def HeaderExtra.custom (key : Lean.Name) (html : Verso.Output.Html)
     (order : Nat := HeaderExtraKind.defaultOrder (.custom key)) (wrapperClass : String := "") :
     HeaderExtra :=
@@ -190,6 +196,7 @@ structure HeaderExtras where
   uses? : Option HeaderExtra := none
   code? : Option HeaderExtra := none
   usedBy? : Option HeaderExtra := none
+  markup? : Option HeaderExtra := none
   custom : Array HeaderExtra := #[]
 
 private def HeaderExtra.asStandard (kind : HeaderExtraKind) (extra : HeaderExtra) : HeaderExtra :=
@@ -201,6 +208,7 @@ private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra 
       extras.group?.map (·.asStandard .group),
       extras.uses?.map (·.asStandard .uses),
       extras.usedBy?.map (·.asStandard .usedBy),
+      extras.markup?.map (·.asStandard .markup),
       extras.code?.map (·.asStandard .code)
     ].filterMap id
   (standard ++ extras.custom).qsort fun a b =>
@@ -215,6 +223,8 @@ private def HeaderExtras.wrapperClass (extras : HeaderExtras) : String :=
       classes := classes.push "bp_extras_with_uses"
     if extras.usedBy?.isSome then
       classes := classes.push "bp_extras_with_used_by"
+    if extras.markup?.isSome then
+      classes := classes.push "bp_extras_with_markup"
     if extras.code?.isSome then
       classes := classes.push "bp_extras_with_code"
     if !extras.custom.isEmpty then
@@ -242,6 +252,84 @@ def renderHeaderExtras (extras : HeaderExtras) : Verso.Output.Html :=
         {{renderable.map renderHeaderExtraSlot}}
       </div>
     }}
+
+private def externalMarkupBadgeText : Data.ExternalMarkupLanguage → String
+  | .markdown => "MD"
+  | .tex => "TeX"
+
+private def pushUniqueString (values : Array String) (value : String) : Array String :=
+  if values.contains value then values else values.push value
+
+private def externalMarkupLanguages (markup : Array Data.ExternalMarkup) :
+    Array Data.ExternalMarkupLanguage :=
+  markup.foldl
+    (init := #[])
+    fun acc item =>
+      if acc.any (fun current => decide (current = item.language)) then
+        acc
+      else
+        acc.push item.language
+
+private def externalMarkupSlotsFor
+    (markup : Array Data.ExternalMarkup) (language : Data.ExternalMarkupLanguage) :
+    Array String :=
+  markup.foldl
+    (init := #[])
+    fun acc item =>
+      if decide (item.language = language) then
+        pushUniqueString acc item.slot
+      else
+        acc
+
+private def externalMarkupBadgeTitle
+    (language : Data.ExternalMarkupLanguage) (slots : Array String) : String :=
+  let slotText :=
+    if slots.isEmpty then
+      ""
+    else
+      s!" ({String.intercalate ", " slots.toList})"
+  s!"External {language.displayName} source markup attached{slotText}"
+
+private def renderExternalMarkupBadge
+    (language : Data.ExternalMarkupLanguage) (slots : Array String) :
+    Verso.Output.Html :=
+  let title := externalMarkupBadgeTitle language slots
+  let cls := s!"bp_external_markup_badge bp_external_markup_badge_{language.key}"
+  let slotAttr := String.intercalate "," slots.toList
+  let prefixHtml :=
+    Verso.Output.Html.tag "span"
+      #[("class", "bp_external_markup_badge_prefix")]
+      (.text true "source")
+  let languageText :=
+    Verso.Output.Html.tag "span"
+      #[("class", "bp_external_markup_badge_language")]
+      (.text true (externalMarkupBadgeText language))
+  Verso.Output.Html.tag "span"
+    #[("class", cls),
+      ("title", title),
+      ("aria-label", title),
+      ("data-bp-external-markup-language", language.key),
+      ("data-bp-external-markup-slots", slotAttr)]
+    (.seq #[prefixHtml, languageText])
+
+def renderExternalMarkupBadges (markup : Array Data.ExternalMarkup) : Verso.Output.Html :=
+  let languages := externalMarkupLanguages markup
+  if languages.isEmpty then
+    .empty
+  else
+    let badges := languages.map fun language =>
+      renderExternalMarkupBadge language (externalMarkupSlotsFor markup language)
+    Verso.Output.Html.tag "span"
+      #[("class", "bp_external_markup_badges"),
+        ("title", "External source markup attached")]
+      (.seq badges)
+
+def renderExternalMarkupHeaderExtra? (markup : Array Data.ExternalMarkup) :
+    Option HeaderExtra :=
+  if markup.isEmpty then
+    none
+  else
+    some <| HeaderExtra.markup (renderExternalMarkupBadges markup)
 
 private def renderMetadataItem (key : String) (value : Verso.Output.Html) (extraClass : String := "") :
     Verso.Output.Html :=

@@ -71,6 +71,7 @@ span[class$="_thmlabel"]::after {
   --bp-extra-group-col: minmax(5rem, max-content);
   --bp-extra-uses-col: minmax(5.2rem, max-content);
   --bp-extra-used-by-col: minmax(7.2rem, max-content);
+  --bp-extra-markup-col: max-content;
   --bp-extra-code-col: max-content;
   --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
   display: inline-grid;
@@ -116,6 +117,42 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "group uses used code";
 }
 
+.bp_extras_with_markup {
+  grid-template-columns:
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "used markup code";
+}
+
+.bp_extras_with_markup.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "uses used markup code";
+}
+
+.bp_extras_with_markup.bp_extras_with_group {
+  grid-template-columns:
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "group used markup code";
+}
+
+.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "group uses used markup code";
+}
+
 .bp_extra_slot {
   display: inline-flex;
   align-items: center;
@@ -141,6 +178,58 @@ span[class$="_thmlabel"]::after {
 .bp_extra_slot_used_by {
   grid-area: used;
   justify-content: flex-start;
+}
+
+.bp_extra_slot_markup {
+  grid-area: markup;
+  justify-content: flex-start;
+}
+
+.bp_external_markup_badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.bp_external_markup_badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  min-height: 1.08rem;
+  border: 1px solid var(--bp-color-border-panel);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  padding: 0.06rem 0.36rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bp_external_markup_badge_prefix {
+  color: var(--bp-color-text-faint);
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.bp_external_markup_badge_language {
+  color: var(--bp-color-text-strong);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.bp_external_markup_badge_markdown {
+  border-color: color-mix(in srgb, #0f766e 35%, var(--bp-color-border-panel));
+  background: color-mix(in srgb, #0f766e 8%, var(--bp-color-surface-muted));
+}
+
+.bp_external_markup_badge_tex {
+  border-color: color-mix(in srgb, #7c2d12 34%, var(--bp-color-border-panel));
+  background: color-mix(in srgb, #7c2d12 7%, var(--bp-color-surface-muted));
 }
 
 .bp_metadata_panel {

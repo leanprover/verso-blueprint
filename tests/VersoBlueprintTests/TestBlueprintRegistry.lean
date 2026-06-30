@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 import VersoBlueprintTests.BlueprintAutoDeps.Preview
+import VersoBlueprintTests.BlueprintExternalMarkup
 import VersoBlueprintTests.BlueprintGraft
 import VersoBlueprintTests.BlueprintLinkHover
 import VersoBlueprintTests.BlueprintMetadataPanel
@@ -34,6 +35,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "hover-cite-only" => some Verso.VersoBlueprintTests.BlueprintLinkHover.hoverCiteOnlyDoc
   | "widget-preview" => some Verso.VersoBlueprintTests.BlueprintTexMacros.widgetPreviewDoc
   | "rust-inline-preview" => some Verso.VersoBlueprintTests.BlueprintRustCode.rustCatalogDoc
+  | "external-markup-source" => some Verso.VersoBlueprintTests.BlueprintExternalMarkup.externalMarkupShowcaseDoc
   | "metadata-panel" => some Verso.VersoBlueprintTests.BlueprintMetadataPanel.metadataPanelDoc
   | "direct-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Direct.directImportedDuplicateDoc
   | "transitive-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive.transitiveImportedDuplicateDoc

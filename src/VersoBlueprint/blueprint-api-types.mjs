@@ -197,7 +197,7 @@
 
 /**
  * Semantic manifest entry emitted for a rendered Blueprint preview or an
- * external-markup-only node.
+ * source-backed external-markup node.
  *
  * @typedef {Object} BlueprintManifestEntry
  * @property {string} key Stable manifest key.
