@@ -427,30 +427,120 @@ private def sourceRefTitle (sourceRef : Source.Ref) : String :=
   else
     s!"Original source document {sourceRef.document}: {String.intercalate " | " spanSummary}"
 
-private def renderSourceRefBadge (sourceRef : Source.Ref) : Verso.Output.Html :=
+private def sourceRefsChipText (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "source 1"
+  else
+    s!"sources {sourceRefs.size}"
+
+private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "Original source"
+  else
+    s!"Original sources ({sourceRefs.size})"
+
+private def sourceRefsPanelMeta (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "Source provenance preview"
+  else
+    "Source provenance previews"
+
+private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
+  let summaries := sourceRefs.map sourceRefSummary |>.toList
+  if summaries.isEmpty then
+    "Original source provenance"
+  else
+    s!"Original source provenance: {String.intercalate " | " summaries}"
+
+private def sourceSpanPreviewText (span : Source.Span) : String :=
+  let summary := sourceSpanSummary span
+  if summary.isEmpty then
+    "Source span recorded without page, text, or PDF location"
+  else
+    summary
+
+private def renderSourceSpanPreview (span : Source.Span) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let summary := sourceSpanPreviewText span
+  {{
+    <li class="bp_source_ref_panel_span">
+      <span class="bp_source_ref_panel_span_text">{{.text true summary}}</span>
+    </li>
+  }}
+
+private def renderSourceRefPreviewItem (sourceRef : Source.Ref) : Verso.Output.Html :=
   open Verso.Output.Html in
   let summary := sourceRefSummary sourceRef
   let title := sourceRefTitle sourceRef
+  let spanNodes :=
+    if sourceRef.spans.isEmpty then
+      #[{{
+        <li class="bp_source_ref_panel_span bp_source_ref_panel_span_empty">
+          "No source span recorded."
+        </li>
+      }}]
+    else
+      sourceRef.spans.map renderSourceSpanPreview
   {{
-      <span class="bp_source_ref_badge"
-          title={{title}}
-          aria-label={{title}}
-          data-bp-source-document={{sourceRef.document}}>
-        <span class="bp_source_ref_prefix">"doc"</span>
-        <span class="bp_source_ref_summary">{{.text true summary}}</span>
-      </span>
+    <li class="bp_source_ref_panel_item"
+        title={{title}}
+        data-bp-source-document={{sourceRef.document}}>
+      <div class="bp_source_ref_panel_document">
+        <span class="bp_source_ref_panel_key">"Document"</span>
+        <code>{{.text true sourceRef.document}}</code>
+      </div>
+      <div class="bp_source_ref_panel_summary">{{.text true summary}}</div>
+      <ul class="bp_source_ref_panel_spans">
+        {{spanNodes}}
+      </ul>
+    </li>
   }}
 
-private def renderSourceRefBadges (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
-  Verso.Output.Html.tag "span"
-    #[("class", "bp_source_refs"), ("title", "Original source provenance")]
-    (Verso.Output.Html.seq (sourceRefs.map renderSourceRefBadge))
+private def renderSourceRefPreview (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let chipText := sourceRefsChipText sourceRefs
+  let chipTitle := sourceRefsChipTitle sourceRefs
+  let panelTitle := sourceRefsPanelTitle sourceRefs
+  let panelMeta := sourceRefsPanelMeta sourceRefs
+  let previewItems := sourceRefs.map renderSourceRefPreviewItem
+  {{
+    <div class="bp_relation_wrap bp_source_ref_wrap">
+      <button type="button"
+          class="bp_relation_chip bp_source_ref_chip"
+          title={{chipTitle}}
+          aria-expanded="false">
+        {{.text true chipText}}
+      </button>
+      <div class="bp_relation_panel bp_source_ref_panel">
+        <div class="bp_relation_panel_header">
+          <div class="bp_relation_panel_title">{{.text true panelTitle}}</div>
+          <div class="bp_relation_panel_meta">{{.text true panelMeta}}</div>
+        </div>
+        <div class="bp_relation_panel_body bp_source_ref_panel_body">
+          <div class="bp_relation_preview_surface bp_source_ref_preview_surface">
+            <div class="bp_relation_preview_header">
+              <div class="bp_relation_preview_label">"Preview"</div>
+              <div class="bp_relation_preview_heading bp_preview_header_heading">
+                <div class="bp_relation_preview_title">{{.text true panelTitle}}</div>
+                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
+              </div>
+            </div>
+            <div class="bp_relation_preview_body bp_source_ref_preview_body">
+              <ul class="bp_source_ref_panel_list">
+                {{previewItems}}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }}
 
 def renderSourceHeaderExtra? (sourceRefs : Array Source.Ref) : Option HeaderExtra :=
   if sourceRefs.isEmpty then
     none
   else
-    some <| HeaderExtra.source (renderSourceRefBadges sourceRefs)
+    some <| HeaderExtra.source (renderSourceRefPreview sourceRefs)
 
 private def HeaderExtras.withSourceRefs (extras : HeaderExtras) (sourceRefs : Array Source.Ref) :
     HeaderExtras :=

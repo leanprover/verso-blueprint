@@ -614,10 +614,11 @@ Current behavior:
 Blueprint can record a three-level source provenance chain for audit tooling:
 original source document, Verso Blueprint node, and associated Lean material.
 This phase stores the source-document catalog and node-local source spans.
-Generated Blueprint node shells show a compact source badge when a node has
-source provenance; full source preview interfaces such as PDF page viewers,
-crop overlays, and side-by-side text review remain interface work for clients
-or later Blueprint UI.
+Generated Blueprint node shells show a compact source chip when a node has
+source provenance. The chip opens a lightweight source preview with the
+document id and recorded span details. Fuller source review interfaces such as
+PDF page viewers, crop overlays, and side-by-side text review remain interface
+work for clients or later Blueprint UI.
 
 Declare source documents with `:::source_document`. The directive body must
 contain exactly one Verso metadata block:
@@ -667,8 +668,9 @@ For every natural number $`n`, $`n + 0 = n`.
 
 The generated manifest exports declared documents in `sourceDocuments` and each
 manifest entry's original-source refs in `entry.sources`. Normal generated node
-shells also show a compact source badge with the source document id and page
-summary when source provenance is present.
+shells also show a compact source chip when source provenance is present; open
+it to inspect the source document id, page summary, and recorded text/PDF span
+details.
 
 Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean declaration entries may contain multiple refs when
@@ -678,10 +680,9 @@ read the complete catalog with `loadSourceDocuments`.
 
 Browser clients can call `resolveSourceMetadata` from `api/preview.mjs` to
 resolve source refs for a preview key, manifest entry, or render result. The
-API returns structured source-document metadata and recorded text/PDF spans; it
-does not render source previews beyond the compact built-in badge. Source
-preview UI, PDF page viewers, and crop overlays remain Blueprint/Verso
-interface work.
+API returns structured source-document metadata and recorded text/PDF spans.
+The built-in source preview is intentionally lightweight; richer PDF page
+viewers and crop overlays remain Blueprint/Verso interface work.
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems

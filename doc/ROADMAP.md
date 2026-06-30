@@ -108,7 +108,7 @@ Work:
    it, and keep generated declaration/docs checks in CI so this explicit
    duplication does not silently drift or collapse to broad types.
 9. after the source metadata API stabilizes, expand the compact generated
-   source badges into standard VBP-rendered review interfaces that consume
+   source previews into fuller VBP-rendered review interfaces that consume
    manifest `sourceDocuments` and `entry.sources`; keep PDF viewers, text
    excerpts, and crop overlays out of the browser API contract
 10. evaluate whether the metadata-only `resolveSourceMetadata` helper belongs

@@ -1736,6 +1736,42 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_source_header_chip_opens_source_preview(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        statement = page.locator(
+            '.bp_wrapper[title="custom_client_external_markdown_metadata"]'
+        ).first
+        source_slot = statement.locator(".bp_extra_slot_source").first
+        chip = source_slot.locator(".bp_source_ref_chip").first
+        expect(chip).to_have_text("source 1")
+
+        uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        source_box = require_box(chip)
+        uses_box = require_box(uses_chip)
+        source_bottom = source_box["y"] + source_box["height"]
+        uses_bottom = uses_box["y"] + uses_box["height"]
+        assert abs(source_bottom - uses_bottom) < 1
+
+        chip.hover()
+
+        panel = source_slot.locator(".bp_source_ref_panel").first
+        expect(panel).to_be_visible()
+        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Original source")
+        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Source provenance preview")
+
+        preview = panel.locator(".bp_relation_preview_surface").first
+        expect(preview).to_be_visible()
+        expect(preview.locator(".bp_relation_preview_title")).to_have_text("Original source")
+        body = preview.locator(".bp_source_ref_preview_body").first
+        expect(body).to_contain_text("custom-client-paper")
+        expect(body).to_contain_text("custom-client-paper p. 42")
+        expect(body).to_contain_text("source/pages/page-42.md:10-12")
+        expect(body).to_contain_text("source/pages/page-42.pdf")
+
+        assert_no_runtime_errors(errors)
+
     def test_uses_single_dependency_loads_manifest_backed_inline_preview(
         self, server: str, page: Page
     ):

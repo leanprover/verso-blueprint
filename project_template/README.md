@@ -49,7 +49,7 @@ The important files are:
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the rendering entry point
 - `source/addition-source.pdf`: a tiny committed source-document fixture used
-  by the addition chapter's source badge
+  by the addition chapter's source chip and preview
 - `lakefile.lean`: the package definition and optional `blueprint-gen`
   executable
 - `.github/workflows/blueprint-pages.yml`: copyable reusable Pages workflow
