@@ -286,6 +286,47 @@ span[class$="_thmlabel"]::after {
   font-weight: 600;
 }
 
+.bp_metadata_source {
+  flex: 1 1 100%;
+  align-items: flex-start;
+}
+
+.bp_source_refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.bp_source_ref_badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  max-width: 100%;
+  min-height: 1.25rem;
+  border: 1px solid color-mix(in srgb, #2563eb 24%, var(--bp-color-border-panel));
+  border-radius: var(--bp-radius-md);
+  background: color-mix(in srgb, #2563eb 6%, var(--bp-color-surface-muted));
+  color: var(--bp-color-text-strong);
+  padding: 0.1rem 0.42rem;
+  line-height: 1.15;
+}
+
+.bp_source_ref_prefix {
+  color: var(--bp-color-text-faint);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.bp_source_ref_summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .bp_metadata_link {
   color: inherit;
   text-decoration: none;

@@ -19,7 +19,8 @@ def renderExternalMarkupEntryHtml
     (blockData : Informal.BlockData)
     (headingCaption headingLabel : String)
     (selectedMarkup : Informal.Data.ExternalMarkup)
-    (headerMarkup : Array Informal.Data.ExternalMarkup := #[selectedMarkup]) : Option String := do
+    (headerMarkup : Array Informal.Data.ExternalMarkup := #[selectedMarkup])
+    (sourceRefs : Array Informal.Source.Ref := #[]) : Option String := do
   let content ← Informal.ExternalMarkupRender.content? cfg selectedMarkup
   let html := Informal.renderInformalBlockModel {
     data := blockData
@@ -29,6 +30,7 @@ def renderExternalMarkupEntryHtml
       (headerExtras := {
         markup? := Informal.renderExternalMarkupHeaderExtra? headerMarkup
       })
+      (sourceRefs := sourceRefs)
     content
     wrapperClass? := some "bp_preview_data_node_blueprint bp_external_markup_node"
   }

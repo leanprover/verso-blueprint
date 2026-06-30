@@ -1753,7 +1753,7 @@ private def buildExternalMarkupEntries
       if let some markup := Informal.ExternalMarkupRender.selected? renderConfig manifestEntry.externalMarkup then
         let heading := manifestEntry.heading
         if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
-            heading.caption heading.label markup manifestEntry.externalMarkup then
+            heading.caption heading.label markup manifestEntry.externalMarkup manifestEntry.sources then
           htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries)
 

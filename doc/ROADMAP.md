@@ -107,10 +107,10 @@ Work:
    the public type list contract-backed, generate the JSDoc linker data from
    it, and keep generated declaration/docs checks in CI so this explicit
    duplication does not silently drift or collapse to broad types.
-9. after the source metadata API stabilizes, implement source previews as
-   standard VBP-rendered interface content that consumes manifest
-   `sourceDocuments` and `entry.sources`; keep PDF viewers, text excerpts, and
-   crop overlays out of the browser API contract
+9. after the source metadata API stabilizes, expand the compact generated
+   source badges into standard VBP-rendered review interfaces that consume
+   manifest `sourceDocuments` and `entry.sources`; keep PDF viewers, text
+   excerpts, and crop overlays out of the browser API contract
 10. evaluate whether the metadata-only `resolveSourceMetadata` helper belongs
    in `api/data.mjs` as well as, or instead of, `api/preview.mjs`. Move it only
    if the stable client split becomes clearer; until then, avoid another public

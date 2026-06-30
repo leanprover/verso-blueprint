@@ -189,11 +189,12 @@ const sourceMetadata = await api.resolveSourceMetadata(key);
 if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
 ```
 
-This API returns structured metadata only. Source preview rendering, PDF page
-viewers, and crop overlays remain Blueprint/Verso interface work rather than
-browser API policy. Returned file paths and PDF/image/text coordinates are
-metadata; `resolveSourceMetadata` does not fetch those assets or decide how a
-source preview should look.
+Generated Blueprint node shells render compact source-provenance badges from
+this same manifest data. The API itself returns structured metadata only:
+richer source preview rendering, PDF page viewers, and crop overlays remain
+Blueprint/Verso interface work rather than browser API policy. Returned file
+paths and PDF/image/text coordinates are metadata; `resolveSourceMetadata` does
+not fetch those assets or decide how a source preview should look.
 
 ```json
 {

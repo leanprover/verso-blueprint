@@ -50,6 +50,12 @@ private def entryHasSourcePage
     sourceRef.document == document &&
       sourceRef.spans.any (fun span => span.page == page)
 
+private def htmlHasSourceBadge (html document pageText : String) : Bool :=
+  hasSubstr html "bp_metadata_source" &&
+    hasSubstr html "bp_source_ref_badge" &&
+    hasSubstr html document &&
+    hasSubstr html pageText
+
 private def failedCheckLabels (checks : Array (String × Bool)) : Array String :=
   checks.filterMap fun (label, ok) =>
     if ok then none else some label
@@ -630,6 +636,7 @@ external markup.
       ("theorem 2.1 Nat.mul data", theorem21Refs.contains `Nat.mul),
       ("theorem 2.1 source page", entryHasSourcePage theorem21Entry "imported-paper" "12"),
       ("theorem 2.1 markdown badge", hasSubstr theorem21Html "bp_external_markup_badge_markdown"),
+      ("theorem 2.1 source badge", htmlHasSourceBadge theorem21Html "imported-paper" "p. 12"),
       ("theorem 2.1 rendered markdown", hasSubstr theorem21Html "<h1>Theorem 2.1</h1>")
     ]
     let selectedMarkdownChecks : Array (String × Bool) := #[
@@ -646,6 +653,7 @@ external markup.
       ("selected Markdown source page", entryHasSourcePage selectedMarkdownEntry "imported-paper" "12"),
       ("selected Markdown markdown badge", hasSubstr selectedMarkdownHtml "bp_external_markup_badge_markdown"),
       ("selected Markdown tex badge", hasSubstr selectedMarkdownHtml "bp_external_markup_badge_tex"),
+      ("selected Markdown source badge", htmlHasSourceBadge selectedMarkdownHtml "imported-paper" "p. 12"),
       ("selected Markdown rendered body", hasSubstr selectedMarkdownHtml "<h2>Selected Markdown statement</h2>"),
       ("selected Markdown did not render tex body", !hasSubstr selectedMarkdownHtml "thm:selected-markdown")
     ]
@@ -673,6 +681,7 @@ external markup.
       ("proposition 2.4 Nat.mul data", proposition24Refs.contains `Nat.mul),
       ("proposition 2.4 source page 15", entryHasSourcePage proposition24Entry "imported-paper" "15"),
       ("proposition 2.4 source page 16", entryHasSourcePage proposition24Entry "imported-paper" "16"),
+      ("proposition 2.4 source badge", htmlHasSourceBadge proposition24Html "imported-paper" "pp. 15, 16"),
       ("proposition 2.4 statement use", proposition24Entry.statementUses.any (fun use => use.label == Name.mkSimple "ImportedPaper:Theorem2.1")),
       ("proposition 2.4 rendered markdown", hasSubstr proposition24Html "<h3>Proposition 2.4</h3>")
     ]
@@ -682,6 +691,7 @@ external markup.
       ("rewrite markdown attachment", entryHasExternalMarkup rewriteEntry .markdown "statement"),
       ("rewrite Nat.add data", rewriteRefs.contains `Nat.add),
       ("rewrite source page", entryHasSourcePage rewriteEntry "imported-paper" "17"),
+      ("rewrite source badge", htmlHasSourceBadge showcaseHtml "imported-paper" "p. 17"),
       ("rewrite statement use", rewriteEntry.statementUses.any (fun use => use.label == Name.mkSimple "ImportedPaper:Theorem2.1")),
       ("metadata losses", showcaseLosses.isEmpty)
     ]

@@ -299,7 +299,7 @@ private def renderExternalMarkupBadge
   let prefixHtml :=
     Verso.Output.Html.tag "span"
       #[("class", "bp_external_markup_badge_prefix")]
-      (.text true "source")
+      (.text true "markup")
   let languageText :=
     Verso.Output.Html.tag "span"
       #[("class", "bp_external_markup_badge_language")]
@@ -358,6 +358,90 @@ private def renderMetadataCodeValue (value : Data.AuthorId) : Verso.Output.Html 
 private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) : Verso.Output.Html :=
   {{<a class="bp_metadata_link bp_metadata_value" href={{href}}><code>s!"{value}"</code></a>}}
 
+private def pushUniqueMetadataString (values : Array String) (value : String) : Array String :=
+  if values.contains value then values else values.push value
+
+private def sourceSpanPages (spans : Array Source.Span) : Array String :=
+  spans.foldl
+    (init := #[])
+    fun pages span =>
+      let page := span.page.trimAscii.toString
+      if page.isEmpty then pages else pushUniqueMetadataString pages page
+
+private def sourcePagesSummary (pages : Array String) : String :=
+  match pages.toList with
+  | [] => ""
+  | [page] => s!"p. {page}"
+  | _ => s!"pp. {String.intercalate ", " pages.toList}"
+
+private def sourceTextRangeSummary (range : Source.TextRange) : String :=
+  let lineSummary :=
+    if range.startLine == range.endLine then
+      s!"{range.startLine}"
+    else
+      s!"{range.startLine}-{range.endLine}"
+  s!"text {range.path}:{lineSummary}"
+
+private def sourcePdfSpanSummary (span : Source.PdfSpan) : String :=
+  match span.image with
+  | Option.some image => s!"pdf {span.path}; image {image}"
+  | Option.none => s!"pdf {span.path}"
+
+private def sourceSpanSummary (span : Source.Span) : String :=
+  let page := span.page.trimAscii.toString
+  let parts : Array String :=
+    if page.isEmpty then #[] else #[s!"page {page}"]
+  let parts :=
+    match span.text with
+    | Option.some textRange => parts.push (sourceTextRangeSummary textRange)
+    | Option.none => parts
+  let parts :=
+    match span.pdf with
+    | Option.some pdf => parts.push (sourcePdfSpanSummary pdf)
+    | Option.none => parts
+  String.intercalate "; " parts.toList
+
+private def sourceRefSummary (sourceRef : Source.Ref) : String :=
+  let pages := sourceSpanPages sourceRef.spans
+  let pageSummary := sourcePagesSummary pages
+  if pageSummary.isEmpty then
+    sourceRef.document
+  else
+    s!"{sourceRef.document} {pageSummary}"
+
+private def sourceRefTitle (sourceRef : Source.Ref) : String :=
+  let spanSummary :=
+    sourceRef.spans.map sourceSpanSummary |>.toList |>.filter (fun summary => !summary.isEmpty)
+  if spanSummary.isEmpty then
+    s!"Original source document {sourceRef.document}"
+  else
+    s!"Original source document {sourceRef.document}: {String.intercalate " | " spanSummary}"
+
+private def renderSourceRefBadge (sourceRef : Source.Ref) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let summary := sourceRefSummary sourceRef
+  let title := sourceRefTitle sourceRef
+  {{
+      <span class="bp_source_ref_badge"
+          title={{title}}
+          aria-label={{title}}
+          data-bp-source-document={{sourceRef.document}}>
+        <span class="bp_source_ref_prefix">"doc"</span>
+        <span class="bp_source_ref_summary">{{.text true summary}}</span>
+      </span>
+  }}
+
+private def renderSourceMetadataItem (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  if sourceRefs.isEmpty then
+    .empty
+  else
+    renderMetadataItem "Source" {{
+      <span class="bp_source_refs">
+        {{sourceRefs.map renderSourceRefBadge}}
+      </span>
+    }} "bp_metadata_source"
+
 private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
   open Verso.Output.Html in
   let avatar : Verso.Output.Html :=
@@ -375,10 +459,12 @@ private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
     renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeValue owner]) "bp_metadata_owner"
   | _, _, _ => .empty
 
-private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html :=
+private def renderStatementMetadataPanel (data : BlockData) (sourceRefs : Array Source.Ref) :
+    Verso.Output.Html :=
   open Verso.Output.Html in
   let metadata := data.metadataPresentation
   let ownerItem := renderOwnerMetadataItem data
+  let sourceNode := renderSourceMetadataItem sourceRefs
   let effortNode : Verso.Output.Html :=
     match metadata.effort with
     | some effort => renderMetadataItem "Effort" (renderMetadataTextValue effort)
@@ -400,10 +486,11 @@ private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html 
           {{metadata.tags.map (fun tag => {{ <span class="bp_metadata_tag">{{.text true tag}}</span> }})}}
         </span>
       }}
-  if metadata.hasAny then
+  if metadata.hasAny || !sourceRefs.isEmpty then
     {{
       <div class="bp_metadata_panel">
         {{ownerItem}}
+        {{sourceNode}}
         {{effortNode}}
         {{priorityNode}}
         {{tagNodes}}
@@ -425,6 +512,7 @@ structure InformalBlockRenderContext where
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
+  sourceRefs : Array Source.Ref := #[]
   folded : Bool := false
 
 /--
@@ -443,18 +531,27 @@ def InformalBlockRenderContext.forBlock
     (attrs : Array (String × String) := #[])
     (titleRowAttrs? : Option (Array (String × String)) := none)
     (headerExtras : HeaderExtras := {})
+    (sourceRefs : Array Source.Ref := #[])
     (folded : Bool := false) :
     InformalBlockRenderContext :=
   let captionText? :=
     match data.kind with
     | .proof => proofCaption?
     | .statement _ => statementCaption?
+  let sourceRefs :=
+    if sourceRefs.isEmpty then
+      match data.sourceRef with
+      | Option.some sourceRef => #[sourceRef]
+      | Option.none => #[]
+    else
+      sourceRefs
   {
     numberText
     captionText?
     attrs
     titleRowAttrs?
     headerExtras
+    sourceRefs
     folded
   }
 
@@ -554,7 +651,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   let metadataPanel : Verso.Output.Html :=
     match data.kind with
     | .proof => .empty
-    | .statement _ => renderStatementMetadataPanel data
+    | .statement _ => renderStatementMetadataPanel data ctx.sourceRefs
   renderInformalBlockShell
     {
       style
