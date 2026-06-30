@@ -34,6 +34,8 @@ project_template/
       Multiplication.lean
       Collatz.lean
   ProjectTemplateMain.lean
+  source/
+    addition-source.pdf
   scripts/
     ci-pages.sh
 ```
@@ -46,6 +48,8 @@ The important files are:
   the intentionally unfinished conjecture
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the rendering entry point
+- `source/addition-source.pdf`: a tiny committed source-document fixture used
+  by the addition chapter's source badge
 - `lakefile.lean`: the package definition and optional `blueprint-gen`
   executable
 - `.github/workflows/blueprint-pages.yml`: copyable reusable Pages workflow
@@ -61,6 +65,7 @@ The important files are:
 - local Lean code attached to a Blueprint label
 - local Rust code attached to a Blueprint label
 - a statement linked to an existing Lean declaration
+- source-document metadata attached to one theorem
 - group and author metadata
 - rendered progress summary and dependency graph pages
 - a separate Collatz chapter with one intentionally unfinished theorem so the

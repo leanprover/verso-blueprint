@@ -115,6 +115,7 @@ def renderBlockTitleRow (style : BlockKindRenderStyle)
 
 /-- Standard and custom Blueprint block header extra kinds. -/
 inductive HeaderExtraKind where
+  | source
   | group
   | uses
   | code
@@ -124,6 +125,7 @@ inductive HeaderExtraKind where
 deriving Repr, Inhabited, BEq
 
 def HeaderExtraKind.defaultOrder : HeaderExtraKind → Nat
+  | .source => 5
   | .group => 10
   | .uses => 20
   | .usedBy => 30
@@ -139,6 +141,7 @@ private def headerExtraCssSegment (raw : String) : String :=
     |>.replace " " "_"
 
 def HeaderExtraKind.slotKey : HeaderExtraKind → String
+  | .source => "source"
   | .group => "group"
   | .uses => "uses"
   | .code => "code"
@@ -167,6 +170,9 @@ def HeaderExtra.ofHtml (kind : HeaderExtraKind) (html : Verso.Output.Html)
     (order : Nat := kind.defaultOrder) (wrapperClass : String := "") : HeaderExtra :=
   { kind, html, order, wrapperClass }
 
+def HeaderExtra.source (html : Verso.Output.Html) : HeaderExtra :=
+  HeaderExtra.ofHtml .source html
+
 def HeaderExtra.group (html : Verso.Output.Html) : HeaderExtra :=
   HeaderExtra.ofHtml .group html
 
@@ -192,6 +198,7 @@ Standard Blueprint header extras plus a controlled extension point for
 project-specific extras.
 -/
 structure HeaderExtras where
+  source? : Option HeaderExtra := none
   group? : Option HeaderExtra := none
   uses? : Option HeaderExtra := none
   code? : Option HeaderExtra := none
@@ -205,6 +212,7 @@ private def HeaderExtra.asStandard (kind : HeaderExtraKind) (extra : HeaderExtra
 private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra :=
   let standard : Array HeaderExtra :=
     #[
+      extras.source?.map (·.asStandard .source),
       extras.group?.map (·.asStandard .group),
       extras.uses?.map (·.asStandard .uses),
       extras.usedBy?.map (·.asStandard .usedBy),
@@ -217,6 +225,8 @@ private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra 
 private def HeaderExtras.wrapperClass (extras : HeaderExtras) : String :=
   let classes := Id.run do
     let mut classes := #["bp_extras", "thm_header_extras"]
+    if extras.source?.isSome then
+      classes := classes.push "bp_extras_with_source"
     if extras.group?.isSome then
       classes := classes.push "bp_extras_with_group"
     if extras.uses?.isSome then
@@ -431,16 +441,22 @@ private def renderSourceRefBadge (sourceRef : Source.Ref) : Verso.Output.Html :=
       </span>
   }}
 
-private def renderSourceMetadataItem (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
-  open Verso.Output.Html in
+private def renderSourceRefBadges (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
+  Verso.Output.Html.tag "span"
+    #[("class", "bp_source_refs"), ("title", "Original source provenance")]
+    (Verso.Output.Html.seq (sourceRefs.map renderSourceRefBadge))
+
+def renderSourceHeaderExtra? (sourceRefs : Array Source.Ref) : Option HeaderExtra :=
   if sourceRefs.isEmpty then
-    .empty
+    none
   else
-    renderMetadataItem "Source" {{
-      <span class="bp_source_refs">
-        {{sourceRefs.map renderSourceRefBadge}}
-      </span>
-    }} "bp_metadata_source"
+    some <| HeaderExtra.source (renderSourceRefBadges sourceRefs)
+
+private def HeaderExtras.withSourceRefs (extras : HeaderExtras) (sourceRefs : Array Source.Ref) :
+    HeaderExtras :=
+  match extras.source? with
+  | some _ => extras
+  | none => { extras with source? := renderSourceHeaderExtra? sourceRefs }
 
 private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
   open Verso.Output.Html in
@@ -459,12 +475,10 @@ private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
     renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeValue owner]) "bp_metadata_owner"
   | _, _, _ => .empty
 
-private def renderStatementMetadataPanel (data : BlockData) (sourceRefs : Array Source.Ref) :
-    Verso.Output.Html :=
+private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html :=
   open Verso.Output.Html in
   let metadata := data.metadataPresentation
   let ownerItem := renderOwnerMetadataItem data
-  let sourceNode := renderSourceMetadataItem sourceRefs
   let effortNode : Verso.Output.Html :=
     match metadata.effort with
     | some effort => renderMetadataItem "Effort" (renderMetadataTextValue effort)
@@ -486,11 +500,10 @@ private def renderStatementMetadataPanel (data : BlockData) (sourceRefs : Array 
           {{metadata.tags.map (fun tag => {{ <span class="bp_metadata_tag">{{.text true tag}}</span> }})}}
         </span>
       }}
-  if metadata.hasAny || !sourceRefs.isEmpty then
+  if metadata.hasAny then
     {{
       <div class="bp_metadata_panel">
         {{ownerItem}}
-        {{sourceNode}}
         {{effortNode}}
         {{priorityNode}}
         {{tagNodes}}
@@ -651,7 +664,8 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   let metadataPanel : Verso.Output.Html :=
     match data.kind with
     | .proof => .empty
-    | .statement _ => renderStatementMetadataPanel data ctx.sourceRefs
+    | .statement _ => renderStatementMetadataPanel data
+  let headerExtras := ctx.headerExtras.withSourceRefs ctx.sourceRefs
   renderInformalBlockShell
     {
       style
@@ -660,7 +674,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       captionText := ctx.captionText?.getD style.kindText
       attrs := ctx.attrs
       titleRowAttrs? := ctx.titleRowAttrs?
-      headerExtras := ctx.headerExtras
+      headerExtras
       metadataPanel
       folded := ctx.folded
       showHeader

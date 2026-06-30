@@ -8,6 +8,14 @@ open Informal
 
 #doc (Manual) "Addition" =>
 
+:::source_document "addition-source"
+%%%
+title := "Starter Addition Notes"
+kind := .pdf
+pdf := "source/addition-source.pdf"
+%%%
+:::
+
 :::group "addition_core"
 Core statements about addition on natural numbers.
 :::
@@ -22,6 +30,20 @@ operation.
 :::
 
 :::theorem "addition_right_identity" (parent := "addition_core") (owner := "project_author") (tags := "starter, arithmetic") (effort := "small") (priority := "high")
+%%%
+source := {
+  document := "addition-source"
+  spans := #[
+    {
+      page := "1"
+      pdf := some {
+        path := "source/addition-source.pdf"
+      }
+    }
+  ]
+}
+%%%
+
 For every natural number $`n`, adding zero on the right leaves it unchanged:
 $`n + 0 = n`.
 This is the first sanity check for {uses "addition_spec"}[].

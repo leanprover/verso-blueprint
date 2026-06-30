@@ -68,6 +68,7 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras {
+  --bp-extra-source-col: minmax(6rem, 16rem);
   --bp-extra-group-col: minmax(5rem, max-content);
   --bp-extra-uses-col: minmax(5.2rem, max-content);
   --bp-extra-used-by-col: minmax(7.2rem, max-content);
@@ -153,6 +154,82 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "group uses used markup code";
 }
 
+.bp_extras_with_source {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source used code";
+}
+
+.bp_extras_with_source.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source uses used code";
+}
+
+.bp_extras_with_source.bp_extras_with_group {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group used code";
+}
+
+.bp_extras_with_source.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group uses used code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source uses used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group uses used markup code";
+}
+
 .bp_extra_slot {
   display: inline-flex;
   align-items: center;
@@ -163,6 +240,11 @@ span[class$="_thmlabel"]::after {
 .bp_extra_slot_code {
   grid-area: code;
   justify-content: flex-end;
+}
+
+.bp_extra_slot_source {
+  grid-area: source;
+  justify-content: flex-start;
 }
 
 .bp_extra_slot_group {
@@ -286,11 +368,6 @@ span[class$="_thmlabel"]::after {
   font-weight: 600;
 }
 
-.bp_metadata_source {
-  flex: 1 1 100%;
-  align-items: flex-start;
-}
-
 .bp_source_refs {
   display: inline-flex;
   flex-wrap: wrap;
@@ -303,18 +380,18 @@ span[class$="_thmlabel"]::after {
   align-items: center;
   gap: 0.22rem;
   max-width: 100%;
-  min-height: 1.25rem;
+  min-height: 1.08rem;
   border: 1px solid color-mix(in srgb, #2563eb 24%, var(--bp-color-border-panel));
   border-radius: var(--bp-radius-md);
   background: color-mix(in srgb, #2563eb 6%, var(--bp-color-surface-muted));
   color: var(--bp-color-text-strong);
-  padding: 0.1rem 0.42rem;
+  padding: 0.06rem 0.36rem;
   line-height: 1.15;
 }
 
 .bp_source_ref_prefix {
   color: var(--bp-color-text-faint);
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -323,7 +400,7 @@ span[class$="_thmlabel"]::after {
 .bp_source_ref_summary {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 

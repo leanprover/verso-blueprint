@@ -51,7 +51,7 @@ private def entryHasSourcePage
       sourceRef.spans.any (fun span => span.page == page)
 
 private def htmlHasSourceBadge (html document pageText : String) : Bool :=
-  hasSubstr html "bp_metadata_source" &&
+  hasSubstr html "bp_extra_slot_source" &&
     hasSubstr html "bp_source_ref_badge" &&
     hasSubstr html document &&
     hasSubstr html pageText
