@@ -368,15 +368,12 @@ private def renderMetadataCodeValue (value : Data.AuthorId) : Verso.Output.Html 
 private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) : Verso.Output.Html :=
   {{<a class="bp_metadata_link bp_metadata_value" href={{href}}><code>s!"{value}"</code></a>}}
 
-private def pushUniqueMetadataString (values : Array String) (value : String) : Array String :=
-  if values.contains value then values else values.push value
-
 private def sourceSpanPages (spans : Array Source.Span) : Array String :=
   spans.foldl
     (init := #[])
     fun pages span =>
       let page := span.page.trimAscii.toString
-      if page.isEmpty then pages else pushUniqueMetadataString pages page
+      if page.isEmpty then pages else pushUniqueString pages page
 
 private def sourcePagesSummary (pages : Array String) : String :=
   match pages.toList with
