@@ -1090,6 +1090,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
                 "project_lake_update_command": refs_mod.project_lake_update_command,
                 "run": refs_mod.run,
+                "run_with_heartbeat": refs_mod.run_with_heartbeat,
             }
 
             def fake_run(command, *, cwd):
@@ -1097,11 +1098,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     return
                 raise subprocess.CalledProcessError(7, command)
 
+            def fake_run_with_heartbeat(command, *, cwd, label):
+                fake_run(command, cwd=cwd)
+
             try:
                 refs_mod.update_git_checkout = lambda _project, _cache_dir: None
                 refs_mod.bootstrap_reference_checkout = lambda *, project_dir: None
                 refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update"]
                 refs_mod.run = fake_run
+                refs_mod.run_with_heartbeat = fake_run_with_heartbeat
 
                 with self.assertRaises(SystemExit) as raised:
                     refs_mod.sync_reference_cache_checkout(layout, project, warm_build=True)
@@ -1360,6 +1365,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             originals = {
                 "command_rewrite_local_blueprint_dependency": commands_mod.rewrite_local_blueprint_dependency,
                 "command_run": commands_mod.run,
+                "command_run_with_heartbeat": commands_mod.run_with_heartbeat,
                 "sync_reference_cache_checkout": refs_mod.sync_reference_cache_checkout,
                 "sync_reference_local_checkout": refs_mod.sync_reference_local_checkout,
                 "project_lake_update_command": refs_mod.project_lake_update_command,
@@ -1387,6 +1393,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
                 refs_mod.run = lambda command, *, cwd: commands.append(command)
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
 
                 generate_git_project(layout, output_root, project, skip_build=False)
             finally:
@@ -1395,6 +1402,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         commands_mod.rewrite_local_blueprint_dependency = value
                     elif name == "command_run":
                         commands_mod.run = value
+                    elif name == "command_run_with_heartbeat":
+                        commands_mod.run_with_heartbeat = value
                     else:
                         setattr(refs_mod, name, value)
 
@@ -1641,6 +1650,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "rewrite_pinned_blueprint_dependency": refs_mod.rewrite_pinned_blueprint_dependency,
                 "project_lake_update_command": refs_mod.project_lake_update_command,
                 "run": refs_mod.run,
+                "run_with_heartbeat": refs_mod.run_with_heartbeat,
                 "git_has_tracked_changes": refs_mod.git_has_tracked_changes,
             }
             commands: list[list[str]] = []
@@ -1657,6 +1667,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 )
                 refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
                 refs_mod.run = lambda command, *, cwd: commands.append(command)
+                refs_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 refs_mod.git_has_tracked_changes = lambda _checkout_root, _pathspec: False
 
                 result = bump_reference_project(

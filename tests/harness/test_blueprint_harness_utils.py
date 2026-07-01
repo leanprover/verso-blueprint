@@ -1,4 +1,7 @@
+import contextlib
+import io
 import os
+import subprocess
 import tempfile
 import time
 import unittest
@@ -12,6 +15,7 @@ from scripts.blueprint_harness_utils import (
     ensure_embedded_asset_owner_outputs,
     rebuild_embedded_asset_owners,
     refresh_embedded_asset_owner_mtimes,
+    run_with_heartbeat,
 )
 
 
@@ -112,6 +116,33 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             ),
         ):
             self.assertIn(EmbeddedAssetOwner(asset, owner, target), EMBEDDED_ASSET_OWNERS)
+
+    def test_run_with_heartbeat_reports_long_running_command(self) -> None:
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.wait_calls = 0
+
+            def wait(self, timeout: int | None = None) -> int:
+                self.wait_calls += 1
+                if self.wait_calls == 1:
+                    raise subprocess.TimeoutExpired(["slow"], timeout)
+                return 0
+
+        fake_process = FakeProcess()
+        out = io.StringIO()
+        with (
+            patch("scripts.blueprint_harness_utils.subprocess.Popen", return_value=fake_process) as popen_mock,
+            patch("scripts.blueprint_harness_utils.time.monotonic", side_effect=[0.0, 0.0, 61.0, 62.0]),
+            contextlib.redirect_stdout(out),
+        ):
+            run_with_heartbeat(["slow"], cwd=Path("/tmp"), label="external build")
+
+        popen_mock.assert_called_once_with(["slow"], cwd=Path("/tmp"))
+        output = out.getvalue()
+        self.assertIn("[blueprint-harness] $ slow", output)
+        self.assertIn("[blueprint-harness] starting external build", output)
+        self.assertIn("[blueprint-harness] still running external build after 1m01s", output)
+        self.assertIn("[blueprint-harness] finished external build in 1m02s", output)
 
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

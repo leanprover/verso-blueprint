@@ -12,6 +12,8 @@ from scripts.blueprint_harness_utils import (
     lean_low_priority_command,
     rebuild_embedded_asset_owners,
     run,
+    run_with_heartbeat,
+    timed_step,
 )
 
 
@@ -245,15 +247,21 @@ def run_project_update_build_generate(
     generate_command: tuple[str, ...],
     format_command: Callable[[tuple[str, ...]], list[str]],
     skip_build: bool,
+    project_id: str | None = None,
 ) -> None:
-    update_project()
+    label_prefix = f"{project_id}: " if project_id is not None else ""
+    with timed_step(f"{label_prefix}update project"):
+        update_project()
     if not skip_build and build_command is not None:
-        run(
+        run_with_heartbeat(
             lean_low_priority_command(package_root, *format_command(build_command)),
             cwd=project_dir,
+            label=f"{label_prefix}build project",
         )
-    ensure_and_log_embedded_asset_owner_outputs(package_root)
-    run(
+    with timed_step(f"{label_prefix}embedded asset owner outputs"):
+        ensure_and_log_embedded_asset_owner_outputs(package_root)
+    run_with_heartbeat(
         lean_low_priority_command(package_root, *format_command(generate_command)),
         cwd=project_dir,
+        label=f"{label_prefix}generate project",
     )

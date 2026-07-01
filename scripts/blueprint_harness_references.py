@@ -27,7 +27,7 @@ from scripts.blueprint_harness_project_commands import (
     run_project_update_build_generate,
     snapshot_tracked_project_manifest,
 )
-from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run
+from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run, run_with_heartbeat
 
 
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
@@ -642,7 +642,7 @@ def bump_reference_project(
     command_output_root = output_root or (layout.artifact_root / "reference-blueprints-edit")
 
     if build_project and project.build_command is not None:
-        run(
+        run_with_heartbeat(
             lean_low_priority_command(
                 layout.package_root,
                 *format_project_command(
@@ -657,12 +657,13 @@ def bump_reference_project(
                 ),
             ),
             cwd=project_dir,
+            label=f"{project.project_id}: edit build project",
         )
 
     if generate_site:
         generated_output = output_dir_for(project, command_output_root)
         generated_output.mkdir(parents=True, exist_ok=True)
-        run(
+        run_with_heartbeat(
             lean_low_priority_command(
                 layout.package_root,
                 *format_project_command(
@@ -677,6 +678,7 @@ def bump_reference_project(
                 ),
             ),
             cwd=project_dir,
+            label=f"{project.project_id}: edit generate project",
         )
 
     pathspec = project_checkout_pathspec(edit_dir, project_dir)
@@ -767,7 +769,7 @@ def sync_reference_cache_checkout(
             if warm_build and project.build_command is not None:
                 command = lean_low_priority_command(layout.package_root, *project.build_command)
                 try:
-                    run(command, cwd=project_dir)
+                    run_with_heartbeat(command, cwd=project_dir, label=f"{project.project_id}: warm cache build")
                 except subprocess.CalledProcessError as err:
                     raise SystemExit(reference_cache_warm_build_failure_message(layout, project, command, err)) from err
             if store_lake_packages_in_dependency_cache(layout, project, project_dir, package_mode=package_mode) is not None:
@@ -870,6 +872,7 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
                     ),
                 ),
                 skip_build=skip_build,
+                project_id=project.project_id,
             )
     finally:
         restore_tracked_project_manifest(original_manifest)
@@ -916,6 +919,7 @@ def generate_git_project(
                     ),
                 ),
                 skip_build=skip_build,
+                project_id=project.project_id,
             )
     finally:
         if borrowed_packages:
