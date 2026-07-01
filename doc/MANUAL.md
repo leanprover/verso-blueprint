@@ -682,6 +682,8 @@ Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
 `api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
 render result. The API returns structured source-document metadata and recorded
 text/PDF spans.
+Use the data API for metadata-only audit or dashboard clients; use the preview
+API when the same client also renders Blueprint nodes or cached previews.
 The built-in source preview is intentionally lightweight; richer PDF page
 viewers and crop overlays remain Blueprint/Verso interface work.
 

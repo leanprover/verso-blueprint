@@ -111,9 +111,11 @@ Work:
    source previews into fuller VBP-rendered review interfaces that consume
    manifest `sourceDocuments` and `entry.sources`; keep PDF viewers, text
    excerpts, and crop overlays out of the browser API contract
-10. deduplicate the source metadata resolver with manifest/data lookup helpers
-   once more source consumers exist, so missing-entry, missing-document, and
-   source-ref normalization semantics have one implementation
+10. scheduled follow-up: deduplicate the source metadata resolver with
+   manifest/data lookup helpers now that both `api/data.mjs` and
+   `api/preview.mjs` expose it. The target shape is one data-layer primitive for
+   preview-key/manifest-entry input normalization, missing-entry reasons,
+   source-document joins, and source-ref normalization semantics.
 
 ### Data Model and Status Semantics
 

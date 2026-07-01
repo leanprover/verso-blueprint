@@ -1261,9 +1261,14 @@ class TestPreviewRuntimeRegressions:
         result = page.evaluate(
             blueprint_render_api_script(
                 """
-                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                const {
+                    createPreviewData,
+                    resolveSourceMetadata: resolveSourceMetadataFromDataModule,
+                    statementPreviewKey: moduleStatementPreviewKey
+                } = await import(api.dataApiModuleUrl());
                 const { createPreview } = await import(api.previewApiModuleUrl());
                 const dataCalls = [];
+                const moduleCalls = [];
                 const previewCalls = [];
                 const manifestPayload = {
                     sourceDocuments: [
@@ -1321,6 +1326,15 @@ class TestPreviewRuntimeRegressions:
                 const sourceMetadata = await data.resolveSourceMetadata(
                     data.statementPreviewKey("sample_node")
                 );
+                const moduleSourceMetadata = await resolveSourceMetadataFromDataModule(
+                    moduleStatementPreviewKey("sample_node"),
+                    {
+                        fetchJson(url) {
+                            moduleCalls.push(url);
+                            return manifestPayload;
+                        }
+                    }
+                );
                 const manifest = await data.loadManifest();
                 const previewSourceDocument = await preview.loadSourceDocument("paper");
                 const previewSourceDocuments = await preview.loadSourceDocuments();
@@ -1330,6 +1344,7 @@ class TestPreviewRuntimeRegressions:
 
                 return {
                     dataCalls: dataCalls.length,
+                    moduleCalls: moduleCalls.length,
                     previewCalls: previewCalls.length,
                     manifestSize: manifest.size,
                     sourceDocumentCount: sourceDocuments.length,
@@ -1342,9 +1357,15 @@ class TestPreviewRuntimeRegressions:
                     emptyDocument,
                     dataHasSourceMetadataResolver:
                         typeof data.resolveSourceMetadata === "function",
+                    moduleHasSourceMetadataResolver:
+                        typeof resolveSourceMetadataFromDataModule === "function",
                     dataSourceMetadataOk: sourceMetadata.ok,
                     dataSourceMetadataDocumentTitle: sourceMetadata.sources[0].document.title,
                     dataSourceMetadataPage: sourceMetadata.sources[0].spans[0].page,
+                    moduleSourceMetadataOk: moduleSourceMetadata.ok,
+                    moduleSourceMetadataDocumentTitle:
+                        moduleSourceMetadata.sources[0].document.title,
+                    moduleSourceMetadataPage: moduleSourceMetadata.sources[0].spans[0].page,
                     previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
                     previewSourceDocumentCount: previewSourceDocuments.length,
                     previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
@@ -1354,6 +1375,7 @@ class TestPreviewRuntimeRegressions:
         )
 
         assert result["dataCalls"] == 1
+        assert result["moduleCalls"] == 1
         assert result["previewCalls"] == 1
         assert result["manifestSize"] == 1
         assert result["sourceDocumentCount"] == 1
@@ -1365,9 +1387,13 @@ class TestPreviewRuntimeRegressions:
         assert result["missingDocument"] is None
         assert result["emptyDocument"] is None
         assert result["dataHasSourceMetadataResolver"] is True
+        assert result["moduleHasSourceMetadataResolver"] is True
         assert result["dataSourceMetadataOk"] is True
         assert result["dataSourceMetadataDocumentTitle"] == "Representation Theory"
         assert result["dataSourceMetadataPage"] == "42"
+        assert result["moduleSourceMetadataOk"] is True
+        assert result["moduleSourceMetadataDocumentTitle"] == "Representation Theory"
+        assert result["moduleSourceMetadataPage"] == "42"
         assert result["previewSourceDocumentId"] == "paper"
         assert result["previewSourceDocumentCount"] == 1
         assert result["previewEntrySourceDocument"] == "paper"

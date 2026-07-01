@@ -172,23 +172,31 @@ Clients should read `entry.sources`; the manifest does not emit a singular
 source ref, while `.leanDecl` entries can aggregate refs from multiple sourced
 Blueprint nodes that share the same Lean declaration preview.
 
-Generated browser APIs expose the same split. Use `loadManifestEntry` or
-`resolvePreview` to read `entry.sources`, then use `loadSourceDocument` or
-`loadSourceDocuments` to resolve those document ids to titles, PDF paths, and
-extracted page roots. These helpers reuse the cached manifest load; they do not
-fetch a second JSON file.
+Generated browser APIs expose the same split. Data-only clients should use
+`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
+`loadSourceDocument`, `loadSourceDocuments`, and `resolveSourceMetadata` do not
+import DOM rendering code. Render-capable clients should use `api/preview.mjs`
+when they also need `resolvePreview`, `renderNode`, canonical node loading, or
+hydration. Both entrypoints reuse the cached manifest load; resolving source
+metadata does not fetch a second JSON file.
 
-Clients can use `resolveSourceMetadata(source)` from either `api/data.mjs` or
-`api/preview.mjs` when they want the source refs attached to a preview joined
-with declared source-document metadata. The `source` argument can be a preview
-key, a manifest entry, or a result returned by `resolvePreview`,
-`resolveCanonicalPreview`, or `renderNode`:
+Clients can call `resolveSourceMetadata(source)` from either entrypoint when
+they want the source refs attached to a preview joined with declared
+source-document metadata. The `source` argument can be a preview key, a manifest
+entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
+`renderNode`:
 
 ```javascript
 const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
 const sourceMetadata = await api.resolveSourceMetadata(key);
 if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
 ```
+
+`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
+`createPreviewData()` instance method and as a module-level named export. Use
+the instance method when a client supplies a custom `fetchJson`; the module-level
+export is convenient for ordinary generated-site scripts that use the default
+loader.
 
 Generated Blueprint node shells render a compact source chip and lightweight
 source preview from this same manifest data. The API itself returns structured

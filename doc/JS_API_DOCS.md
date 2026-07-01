@@ -57,7 +57,10 @@ data:
 
 ```js
 // Import the data-only API when no DOM rendering is needed.
-import { createPreviewData } from "./-verso-data/api/data.mjs";
+import {
+  createPreviewData,
+  resolveSourceMetadata
+} from "./-verso-data/api/data.mjs";
 
 // Create an isolated data loader for this client.
 const data = createPreviewData();
@@ -66,9 +69,11 @@ const data = createPreviewData();
 const manifest = await data.loadManifest();
 const entry = manifest.get(data.statementPreviewKey("Chapter2:Problem2.11.6"));
 const sourceMetadata = await data.resolveSourceMetadata(entry);
+const sameSourceMetadata = await resolveSourceMetadata(entry);
 
 if (entry) {
   console.log(entry.href, entry.label, entry.facet, sourceMetadata.sources[0]?.document?.title);
+  console.log(sameSourceMetadata.sources[0]?.document?.title);
 }
 ```
 
