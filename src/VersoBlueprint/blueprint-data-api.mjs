@@ -21,7 +21,7 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * @module blueprint-data-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -259,6 +259,20 @@ export function loadSourceDocument(id, options) {
 }
 
 /**
+ * Resolve original-source provenance for a preview key or manifest entry.
+ *
+ * This joins `entry.sources` with declared source-document metadata. It returns
+ * structured metadata only; callers own PDF/text loading and presentation.
+ *
+ * @param {BlueprintSourceMetadataInput} source Preview key, manifest entry, or render result.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintSourceMetadataResult>}
+ */
+export function resolveSourceMetadata(source, options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "resolveSourceMetadata", [source, options]);
+}
+
+/**
  * Load a single HTML-cache entry by key.
  *
  * @param {string} key HTML cache key.
@@ -286,6 +300,7 @@ const dataApi = {
   loadManifestEntry,
   loadSourceDocuments,
   loadSourceDocument,
+  resolveSourceMetadata,
   loadHtmlCache,
   readHtmlCacheStatus,
   loadHtmlCacheEntry,

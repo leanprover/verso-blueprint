@@ -1,5 +1,6 @@
 import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
+import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
 
   // Generated-data URL helpers.
 
@@ -362,7 +363,12 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       return loadBlueprintStoreEntryForApi(blueprintHtmlCacheStoreForApi, previewKey, options);
     }
 
-    return {
+    function resolveBlueprintSourceMetadataForApi(source, options) {
+      const opts = Object.assign({}, normalizeBlueprintDataOptions(options), { dataApi });
+      return resolveSourceMetadata(source, opts);
+    }
+
+    const dataApi = {
       dataUrl: blueprintDataUrlForApi,
       fetchJson: fetchBlueprintJsonForApi,
       decodeKeyedEntries: decodeBlueprintKeyedEntries,
@@ -397,11 +403,13 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       loadStoreEntry: loadBlueprintStoreEntryForApi,
       loadManifestEntry: loadBlueprintManifestEntryForApi,
       loadHtmlCacheEntry: loadBlueprintHtmlCacheEntryForApi,
+      resolveSourceMetadata: resolveBlueprintSourceMetadataForApi,
       setDataBaseUrl: setBlueprintDataBaseUrlForApi,
       setFetchJson: setBlueprintFetchJsonForApi,
       resetStore: resetBlueprintStoreForApi,
       resetStores: resetBlueprintDataStoresForApi
     };
+    return dataApi;
   }
 
   export function decodeBlueprintKeyedEntries(data, spec) {

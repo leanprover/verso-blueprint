@@ -91,6 +91,7 @@
       "readHtmlCacheStatus",
       "readManifestStatus",
       "ready",
+      "resolveSourceMetadata",
       "statementPreviewKey",
       "version"
     ],

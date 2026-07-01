@@ -376,7 +376,7 @@ runtime hook or moving code between feature modules.
 | --- | --- | --- | --- |
 | Regular generated Manual pages | `blueprint-page-runtime.mjs` imported from `extraHead` | `blueprint-manifest.json`, `blueprint-html-cache.json`, graph JSON embedded in graph blocks | One `createPreview()` renderer starts inline previews, relation panels, graph blocks, and template-preview descriptor binding. |
 | Custom ESM preview clients | `api/preview.mjs` and caller-created `createPreview()` renderer | Manifest/cache plus optional canonical generated pages | The stable preview API loads data, inserts rendered fragments or canonical nodes, runs math, and hydrates nested Blueprint widgets. |
-| Data-only clients | `api/data.mjs` and caller-created `createPreviewData()` data API | Manifest/cache and manifest graph records | No DOM rendering; callers own all UI and use the data API for URL construction, loading, status, and single-entry lookup. |
+| Data-only clients | `api/data.mjs` and caller-created `createPreviewData()` data API | Manifest/cache, source metadata, and manifest graph records | No DOM rendering; callers own all UI and use the data API for URL construction, loading, status, source-metadata resolution, and single-entry lookup. |
 | Graph clients | `api/graph.mjs` | Finalized graph records from the manifest or graph data embedded beside a graph block | Data helpers stay graph-only; render helpers can construct a standard graph block from manifest data or initialize existing graph markup, lazy-load `Commands/graph.mjs`, and require an explicit preview renderer for graph preview panels. |
 | Blueprint-owned panel features | `blueprint-page-runtime.mjs` or `blueprint-slide-runtime.mjs` passes a renderer into feature startup | Manifest/cache entries and feature-owned Lean-emitted attributes | Feature scripts adapt `createPreviewSurface`, `renderPreviewIntoSurface`, `resolvePreviewHtml`, and lifecycle helpers to concrete panel UIs. |
 | Summary and code-summary previews | Lean emits descriptor attributes; `preview-runtime-template.mjs` binds them at page load and after hydration | Descriptor attributes plus local templates or manifest/cache lookup keys | The shared template binder creates surfaces and triggers; no feature-specific startup module owns this path. |
@@ -526,8 +526,9 @@ The workflow implies a few constraints for renderers:
   handling, URL/key forwarding, default API handles, status fallbacks, and
   method dispatch; `blueprint-data-api.mjs` owns the standalone data-only public
   module; `preview-runtime-data.mjs` owns factory-backed manifest/cache decoding
-  and loading, load-status readers, entry and source-document lookup, and
-  graph-core delegation, and is emitted as an ESM support module for
+  and loading, load-status readers, entry/source-document lookup,
+  source-metadata resolution, and graph-core delegation, and is emitted as an
+  ESM support module for
   `api/data.mjs`/`api/preview.mjs`;
   `preview-runtime-render.mjs` owns manifest/cache joins, rendered-fragment
   insertion, and canonical-node loading through injected data and canonical page
@@ -555,8 +556,8 @@ The workflow implies a few constraints for renderers:
   | API assembly | Assemble the stable render API for `createPreviewRuntimeApi`. | `Commands/preview-runtime-api.mjs` emitted as an ESM support module |
   | Preview URL/key primitives | Resolve `-verso-data` URLs and normalize preview keys for page-runtime and custom ESM clients. | `blueprint-preview-core.mjs` shared implementation file |
   | Generated ESM wrapper mechanics | Share default `dataBaseUrl` setup, URL/key forwarding, default API handles, fallback statuses, and method dispatch across public ESM entrypoints without sharing their stores. | `blueprint-api-common.mjs` internal support file emitted for `api/data.mjs` and `api/preview.mjs` |
-  | Preview data access | Load manifest/cache JSON through the configured `fetchJson` or ambient `fetch`, keep load status, delegate graph data to graph core, and look up entries plus source documents. | `Commands/preview-runtime-data.mjs` emitted as an ESM support module |
-  | Data-only public API | Expose manifest/cache/source-document/graph loading without importing DOM rendering, hydration, or surfaces. | `blueprint-data-api.mjs` re-exported as `api/data.mjs` |
+  | Preview data access | Load manifest/cache JSON through the configured `fetchJson` or ambient `fetch`, keep load status, delegate graph data to graph core, and look up entries plus source documents and source metadata. | `Commands/preview-runtime-data.mjs` emitted as an ESM support module |
+  | Data-only public API | Expose manifest/cache/source-document/source-metadata/graph loading without importing DOM rendering, hydration, or surfaces. | `blueprint-data-api.mjs` re-exported as `api/data.mjs` |
   | Fragment rendering | Resolve manifest/cache pairs through an injected data API, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers through injectable page loaders. | `Commands/preview-runtime-render.mjs` emitted as an ESM support module |
   | Source metadata lookup | Join `entry.sources` with source-document metadata and return structured data without owning presentation. | `Commands/preview-runtime-source-metadata.mjs` emitted as an ESM support module |
   | Hydration registry and explicit hydrator options | Run math rendering plus generated-page feature hydrators after insertion, while allowing custom clients to pass renderer-local or call-local hydrators. | `Commands/preview-runtime-hydration.mjs` emitted as an ESM support module |

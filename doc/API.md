@@ -109,7 +109,7 @@ or is part of Blueprint's generated slide runtime.
 | Regular generated Manual page | `-verso-data/blueprint-page-runtime.mjs` | Creates one renderer with `createPreview()`, starts inline previews, relation panels, graphs, and descriptor-bound template previews. | Nothing extra; `withBlueprintAssets` installs this module. |
 | Generated Blueprint slide deck | `-verso-data/blueprint-slide-runtime.mjs` | Creates one renderer with `createPreview()`, starts inline previews, relation panels, graphs, and slide-node hydration. | Nothing extra; `slidesMainWithBlueprintPreviews` installs this module. |
 | Custom browser page, dashboard, audit view, or slide adapter | `-verso-data/api/preview.mjs` | Manifest/cache loading, preview lookup, rendered-fragment insertion, canonical node loading, math rendering, and hydration. | `createPreview()`, then `resolvePreview`, `renderPreviewInto`, `renderCanonicalPreviewInto`, `renderNode`, or `hydrate`. |
-| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, status readers, source-document lookup, and graph-data loading without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadSourceDocuments`, `loadHtmlCache`, `loadGraphs`, or single-entry readers. |
+| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, status readers, source-document lookup, source-metadata resolution, and graph-data loading without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadSourceDocuments`, `resolveSourceMetadata`, `loadHtmlCache`, `loadGraphs`, or single-entry readers. |
 | Graph data or graph rendering | `-verso-data/api/graph.mjs` | Graph JSON discovery, manifest graph loading, graph-block construction, lazy graph runtime loading, and graph initialization. | `loadGraphs`, `getGraphData`, `getGraphVariants`, `renderGraphData(host, graph, { previewUtils })`, or `renderGraphs(root, { previewUtils })`. |
 | Blueprint-owned panels in generated pages | Renderer bundled helpers | Panel slots, content updates, trigger lifetime, dismissal, repositioning, diagnostics, and shared preview lookup. | Feature scripts use `createPreviewSurface`, `renderPreviewIntoSurface`, or `resolvePreviewHtml`; custom clients should not import these helpers directly. |
 | Summary and code-summary previews | Lean-emitted template descriptors plus `preview-runtime-template.mjs` | Selector configuration and binding for preview templates. | Emit descriptor attributes from Lean; no feature-specific startup script is needed. |
@@ -134,8 +134,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `api/graph.mjs` exposes graph-data helpers for ordinary browser `import`
   usage, plus graph-block rendering helpers for pages that carry generated
   graph markup.
-- `api/data.mjs` exposes manifest/cache/key/URL helpers for clients that do not
-  need to render DOM previews.
+- `api/data.mjs` exposes manifest/cache/key/URL helpers and source-metadata
+  resolution for clients that do not need to render DOM previews.
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
   `import` usage.
 
@@ -178,10 +178,11 @@ Generated browser APIs expose the same split. Use `loadManifestEntry` or
 extracted page roots. These helpers reuse the cached manifest load; they do not
 fetch a second JSON file.
 
-Render-capable clients can use `resolveSourceMetadata(source)` when they want
-the source refs attached to a preview joined with declared source-document
-metadata. The `source` argument can be a preview key, a manifest entry, or a
-result returned by `resolvePreview`, `resolveCanonicalPreview`, or `renderNode`:
+Clients can use `resolveSourceMetadata(source)` from either `api/data.mjs` or
+`api/preview.mjs` when they want the source refs attached to a preview joined
+with declared source-document metadata. The `source` argument can be a preview
+key, a manifest entry, or a result returned by `resolvePreview`,
+`resolveCanonicalPreview`, or `renderNode`:
 
 ```javascript
 const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
@@ -623,9 +624,7 @@ const data = createPreviewData({ fetchJson });
 
 const manifest = await data.loadManifest();
 const entry = await data.loadManifestEntry(data.previewKey("addition_right_identity", "statement"));
-const sourceDocument = entry?.sources?.[0]
-  ? await data.loadSourceDocument(entry.sources[0].document)
-  : null;
+const sourceMetadata = await data.resolveSourceMetadata(entry);
 const graphs = await loadManifestGraphs(data.manifestUrl(), { fetchJson });
 ```
 
@@ -700,7 +699,7 @@ At a high level, the public generated browser modules are:
 
 | Module | Purpose |
 | --- | --- |
-| `api/data.mjs` | Data-only clients: generated-data URLs, manifest/cache loading, status readers, and preview-key helpers. |
+| `api/data.mjs` | Data-only clients: generated-data URLs, manifest/cache loading, source-metadata resolution, status readers, and preview-key helpers. |
 | `api/preview.mjs` | Render-capable clients: data helpers plus preview resolution, fragment insertion, canonical node rendering, label-based `renderNode`, and hydration. |
 | `api/graph.mjs` | Graph clients: finalized graph loading, embedded graph-block data access, manifest-data graph rendering, and graph-block rendering with an explicit preview renderer. |
 

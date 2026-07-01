@@ -111,11 +111,7 @@ Work:
    source previews into fuller VBP-rendered review interfaces that consume
    manifest `sourceDocuments` and `entry.sources`; keep PDF viewers, text
    excerpts, and crop overlays out of the browser API contract
-10. evaluate whether the metadata-only `resolveSourceMetadata` helper belongs
-   in `api/data.mjs` as well as, or instead of, `api/preview.mjs`. Move it only
-   if the stable client split becomes clearer; until then, avoid another public
-   API churn round
-11. deduplicate the source metadata resolver with manifest/data lookup helpers
+10. deduplicate the source metadata resolver with manifest/data lookup helpers
    once more source consumers exist, so missing-entry, missing-document, and
    source-ref normalization semantics have one implementation
 
