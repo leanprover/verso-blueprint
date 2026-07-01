@@ -40,6 +40,9 @@
     "BlueprintExternalMarkupPreferences",
     "BlueprintRenderNodeRequest",
     "BlueprintRenderNodeResult",
+    "BlueprintResolvedSourceRef",
+    "BlueprintSourceMetadataInput",
+    "BlueprintSourceMetadataResult",
     "BlueprintDataApi",
     "BlueprintPreviewApi"
   ];

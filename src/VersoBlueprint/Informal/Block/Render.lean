@@ -115,6 +115,7 @@ def renderBlockTitleRow (style : BlockKindRenderStyle)
 
 /-- Standard and custom Blueprint block header extra kinds. -/
 inductive HeaderExtraKind where
+  | source
   | group
   | uses
   | code
@@ -124,6 +125,7 @@ inductive HeaderExtraKind where
 deriving Repr, Inhabited, BEq
 
 def HeaderExtraKind.defaultOrder : HeaderExtraKind → Nat
+  | .source => 5
   | .group => 10
   | .uses => 20
   | .usedBy => 30
@@ -139,6 +141,7 @@ private def headerExtraCssSegment (raw : String) : String :=
     |>.replace " " "_"
 
 def HeaderExtraKind.slotKey : HeaderExtraKind → String
+  | .source => "source"
   | .group => "group"
   | .uses => "uses"
   | .code => "code"
@@ -167,6 +170,9 @@ def HeaderExtra.ofHtml (kind : HeaderExtraKind) (html : Verso.Output.Html)
     (order : Nat := kind.defaultOrder) (wrapperClass : String := "") : HeaderExtra :=
   { kind, html, order, wrapperClass }
 
+def HeaderExtra.source (html : Verso.Output.Html) : HeaderExtra :=
+  HeaderExtra.ofHtml .source html
+
 def HeaderExtra.group (html : Verso.Output.Html) : HeaderExtra :=
   HeaderExtra.ofHtml .group html
 
@@ -192,6 +198,7 @@ Standard Blueprint header extras plus a controlled extension point for
 project-specific extras.
 -/
 structure HeaderExtras where
+  source? : Option HeaderExtra := none
   group? : Option HeaderExtra := none
   uses? : Option HeaderExtra := none
   code? : Option HeaderExtra := none
@@ -205,6 +212,7 @@ private def HeaderExtra.asStandard (kind : HeaderExtraKind) (extra : HeaderExtra
 private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra :=
   let standard : Array HeaderExtra :=
     #[
+      extras.source?.map (·.asStandard .source),
       extras.group?.map (·.asStandard .group),
       extras.uses?.map (·.asStandard .uses),
       extras.usedBy?.map (·.asStandard .usedBy),
@@ -217,6 +225,8 @@ private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra 
 private def HeaderExtras.wrapperClass (extras : HeaderExtras) : String :=
   let classes := Id.run do
     let mut classes := #["bp_extras", "thm_header_extras"]
+    if extras.source?.isSome then
+      classes := classes.push "bp_extras_with_source"
     if extras.group?.isSome then
       classes := classes.push "bp_extras_with_group"
     if extras.uses?.isSome then
@@ -299,7 +309,7 @@ private def renderExternalMarkupBadge
   let prefixHtml :=
     Verso.Output.Html.tag "span"
       #[("class", "bp_external_markup_badge_prefix")]
-      (.text true "source")
+      (.text true "markup")
   let languageText :=
     Verso.Output.Html.tag "span"
       #[("class", "bp_external_markup_badge_language")]
@@ -357,6 +367,186 @@ private def renderMetadataCodeValue (value : Data.AuthorId) : Verso.Output.Html 
 
 private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) : Verso.Output.Html :=
   {{<a class="bp_metadata_link bp_metadata_value" href={{href}}><code>s!"{value}"</code></a>}}
+
+private def pushUniqueMetadataString (values : Array String) (value : String) : Array String :=
+  if values.contains value then values else values.push value
+
+private def sourceSpanPages (spans : Array Source.Span) : Array String :=
+  spans.foldl
+    (init := #[])
+    fun pages span =>
+      let page := span.page.trimAscii.toString
+      if page.isEmpty then pages else pushUniqueMetadataString pages page
+
+private def sourcePagesSummary (pages : Array String) : String :=
+  match pages.toList with
+  | [] => ""
+  | [page] => s!"p. {page}"
+  | _ => s!"pp. {String.intercalate ", " pages.toList}"
+
+private def sourceTextRangeSummary (range : Source.TextRange) : String :=
+  let lineSummary :=
+    if range.startLine == range.endLine then
+      s!"{range.startLine}"
+    else
+      s!"{range.startLine}-{range.endLine}"
+  s!"text {range.path}:{lineSummary}"
+
+private def sourcePdfSpanSummary (span : Source.PdfSpan) : String :=
+  match span.image with
+  | Option.some image => s!"pdf {span.path}; image {image}"
+  | Option.none => s!"pdf {span.path}"
+
+private def sourceSpanSummary (span : Source.Span) : String :=
+  let page := span.page.trimAscii.toString
+  let parts : Array String :=
+    if page.isEmpty then #[] else #[s!"page {page}"]
+  let parts :=
+    match span.text with
+    | Option.some textRange => parts.push (sourceTextRangeSummary textRange)
+    | Option.none => parts
+  let parts :=
+    match span.pdf with
+    | Option.some pdf => parts.push (sourcePdfSpanSummary pdf)
+    | Option.none => parts
+  String.intercalate "; " parts.toList
+
+private def sourceRefSummary (sourceRef : Source.Ref) : String :=
+  let pages := sourceSpanPages sourceRef.spans
+  let pageSummary := sourcePagesSummary pages
+  if pageSummary.isEmpty then
+    sourceRef.document
+  else
+    s!"{sourceRef.document} {pageSummary}"
+
+private def sourceRefTitle (sourceRef : Source.Ref) : String :=
+  let spanSummary :=
+    sourceRef.spans.map sourceSpanSummary |>.toList |>.filter (fun summary => !summary.isEmpty)
+  if spanSummary.isEmpty then
+    s!"Original source document {sourceRef.document}"
+  else
+    s!"Original source document {sourceRef.document}: {String.intercalate " | " spanSummary}"
+
+private def sourceRefsChipText (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "source 1"
+  else
+    s!"sources {sourceRefs.size}"
+
+private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "Original source"
+  else
+    s!"Original sources ({sourceRefs.size})"
+
+private def sourceRefsPanelMeta (sourceRefs : Array Source.Ref) : String :=
+  if sourceRefs.size == 1 then
+    "Source provenance preview"
+  else
+    "Source provenance previews"
+
+private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
+  let summaries := sourceRefs.map sourceRefSummary |>.toList
+  if summaries.isEmpty then
+    "Original source provenance"
+  else
+    s!"Original source provenance: {String.intercalate " | " summaries}"
+
+private def sourceSpanPreviewText (span : Source.Span) : String :=
+  let summary := sourceSpanSummary span
+  if summary.isEmpty then
+    "Source span recorded without page, text, or PDF location"
+  else
+    summary
+
+private def renderSourceSpanPreview (span : Source.Span) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let summary := sourceSpanPreviewText span
+  {{
+    <li class="bp_source_ref_panel_span">
+      <span class="bp_source_ref_panel_span_text">{{.text true summary}}</span>
+    </li>
+  }}
+
+private def renderSourceRefPreviewItem (sourceRef : Source.Ref) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let summary := sourceRefSummary sourceRef
+  let title := sourceRefTitle sourceRef
+  let spanNodes :=
+    if sourceRef.spans.isEmpty then
+      #[{{
+        <li class="bp_source_ref_panel_span bp_source_ref_panel_span_empty">
+          "No source span recorded."
+        </li>
+      }}]
+    else
+      sourceRef.spans.map renderSourceSpanPreview
+  {{
+    <li class="bp_source_ref_panel_item"
+        title={{title}}
+        data-bp-source-document={{sourceRef.document}}>
+      <div class="bp_source_ref_panel_document">
+        <span class="bp_source_ref_panel_key">"Document"</span>
+        <code>{{.text true sourceRef.document}}</code>
+      </div>
+      <div class="bp_source_ref_panel_summary">{{.text true summary}}</div>
+      <ul class="bp_source_ref_panel_spans">
+        {{spanNodes}}
+      </ul>
+    </li>
+  }}
+
+private def renderSourceRefPreview (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let chipText := sourceRefsChipText sourceRefs
+  let chipTitle := sourceRefsChipTitle sourceRefs
+  let panelTitle := sourceRefsPanelTitle sourceRefs
+  let panelMeta := sourceRefsPanelMeta sourceRefs
+  let previewItems := sourceRefs.map renderSourceRefPreviewItem
+  {{
+    <div class="bp_relation_wrap bp_source_ref_wrap">
+      <button type="button"
+          class="bp_relation_chip bp_source_ref_chip"
+          title={{chipTitle}}
+          aria-expanded="false">
+        {{.text true chipText}}
+      </button>
+      <div class="bp_relation_panel bp_source_ref_panel">
+        <div class="bp_relation_panel_header">
+          <div class="bp_relation_panel_title">{{.text true panelTitle}}</div>
+          <div class="bp_relation_panel_meta">{{.text true panelMeta}}</div>
+        </div>
+        <div class="bp_relation_panel_body bp_source_ref_panel_body">
+          <div class="bp_relation_preview_surface bp_source_ref_preview_surface">
+            <div class="bp_relation_preview_header">
+              <div class="bp_relation_preview_label">"Preview"</div>
+              <div class="bp_relation_preview_heading bp_preview_header_heading">
+                <div class="bp_relation_preview_title">{{.text true panelTitle}}</div>
+                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
+              </div>
+            </div>
+            <div class="bp_relation_preview_body bp_source_ref_preview_body">
+              <ul class="bp_source_ref_panel_list">
+                {{previewItems}}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }}
+
+def renderSourceHeaderExtra? (sourceRefs : Array Source.Ref) : Option HeaderExtra :=
+  if sourceRefs.isEmpty then
+    none
+  else
+    some <| HeaderExtra.source (renderSourceRefPreview sourceRefs)
+
+private def HeaderExtras.withSourceRefs (extras : HeaderExtras) (sourceRefs : Array Source.Ref) :
+    HeaderExtras :=
+  match extras.source? with
+  | some _ => extras
+  | none => { extras with source? := renderSourceHeaderExtra? sourceRefs }
 
 private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
   open Verso.Output.Html in
@@ -425,6 +615,7 @@ structure InformalBlockRenderContext where
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
+  sourceRefs : Array Source.Ref := #[]
   folded : Bool := false
 
 /--
@@ -443,18 +634,27 @@ def InformalBlockRenderContext.forBlock
     (attrs : Array (String × String) := #[])
     (titleRowAttrs? : Option (Array (String × String)) := none)
     (headerExtras : HeaderExtras := {})
+    (sourceRefs : Array Source.Ref := #[])
     (folded : Bool := false) :
     InformalBlockRenderContext :=
   let captionText? :=
     match data.kind with
     | .proof => proofCaption?
     | .statement _ => statementCaption?
+  let sourceRefs :=
+    if sourceRefs.isEmpty then
+      match data.sourceRef with
+      | Option.some sourceRef => #[sourceRef]
+      | Option.none => #[]
+    else
+      sourceRefs
   {
     numberText
     captionText?
     attrs
     titleRowAttrs?
     headerExtras
+    sourceRefs
     folded
   }
 
@@ -555,6 +755,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
     match data.kind with
     | .proof => .empty
     | .statement _ => renderStatementMetadataPanel data
+  let headerExtras := ctx.headerExtras.withSourceRefs ctx.sourceRefs
   renderInformalBlockShell
     {
       style
@@ -563,7 +764,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       captionText := ctx.captionText?.getD style.kindText
       attrs := ctx.attrs
       titleRowAttrs? := ctx.titleRowAttrs?
-      headerExtras := ctx.headerExtras
+      headerExtras
       metadataPanel
       folded := ctx.folded
       showHeader

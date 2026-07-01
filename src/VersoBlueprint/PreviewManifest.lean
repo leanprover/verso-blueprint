@@ -618,6 +618,8 @@ private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.m
 
 private def previewRuntimeRenderModuleFilename : String := "preview-runtime-render.mjs"
 
+private def previewRuntimeSourceMetadataModuleFilename : String := "preview-runtime-source-metadata.mjs"
+
 private def previewRuntimeHydrationModuleFilename : String := "preview-runtime-hydration.mjs"
 
 private def previewRuntimeLifecycleModuleFilename : String := "preview-runtime-lifecycle.mjs"
@@ -634,6 +636,8 @@ private def previewRuntimeDataModuleMjs : String := include_str "Commands/previe
 
 private def previewRuntimeRenderModuleMjs : String := include_str "Commands/preview-runtime-render.mjs"
 
+private def previewRuntimeSourceMetadataModuleMjs : String := include_str "Commands/preview-runtime-source-metadata.mjs"
+
 private def previewRuntimeHydrationModuleMjs : String := include_str "Commands/preview-runtime-hydration.mjs"
 
 private def previewRuntimeLifecycleModuleMjs : String := include_str "Commands/preview-runtime-lifecycle.mjs"
@@ -648,6 +652,7 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
   (previewRuntimeRenderModuleFilename, previewRuntimeRenderModuleMjs),
+  (previewRuntimeSourceMetadataModuleFilename, previewRuntimeSourceMetadataModuleMjs),
   (previewRuntimeHydrationModuleFilename, previewRuntimeHydrationModuleMjs),
   (previewRuntimeLifecycleModuleFilename, previewRuntimeLifecycleModuleMjs),
   (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
@@ -1748,7 +1753,7 @@ private def buildExternalMarkupEntries
       if let some markup := Informal.ExternalMarkupRender.selected? renderConfig manifestEntry.externalMarkup then
         let heading := manifestEntry.heading
         if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
-            heading.caption heading.label markup manifestEntry.externalMarkup then
+            heading.caption heading.label markup manifestEntry.externalMarkup manifestEntry.sources then
           htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries)
 

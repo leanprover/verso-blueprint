@@ -26,6 +26,7 @@
     "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
     "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
     "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
+    "src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs",
     "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
     "src/VersoBlueprint/Commands/preview-runtime-template.mjs"
   ]

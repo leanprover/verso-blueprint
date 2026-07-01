@@ -75,6 +75,8 @@ Command modules are split by concern:
   `VersoBlueprint/Commands/preview-runtime-data.mjs`
 - the private preview render helpers in
   `VersoBlueprint/Commands/preview-runtime-render.mjs`
+- the private source metadata helpers in
+  `VersoBlueprint/Commands/preview-runtime-source-metadata.mjs`
 - the private preview hydration helpers in
   `VersoBlueprint/Commands/preview-runtime-hydration.mjs`
 - the private preview lifecycle helpers in
@@ -126,6 +128,7 @@ The private source modules are:
 - `Commands/preview-runtime-data.mjs`
 - `Commands/preview-runtime-base.mjs`
 - `Commands/preview-runtime-render.mjs`
+- `Commands/preview-runtime-source-metadata.mjs`
 - `Commands/preview-runtime-hydration.mjs`
 - `Commands/preview-runtime-lifecycle.mjs`
 - `Commands/preview-runtime-surface.mjs`
@@ -528,7 +531,9 @@ The workflow implies a few constraints for renderers:
   `api/data.mjs`/`api/preview.mjs`;
   `preview-runtime-render.mjs` owns manifest/cache joins, rendered-fragment
   insertion, and canonical-node loading through injected data and canonical page
-  loaders; `preview-runtime-hydration.mjs` owns fragment hydration, math
+  loaders; `preview-runtime-source-metadata.mjs` owns source-document joins for
+  structured source metadata;
+  `preview-runtime-hydration.mjs` owns fragment hydration, math
   rendering, and feature hydrator dispatch; `preview-runtime-lifecycle.mjs` owns
   trigger, dismissal, popover, and reposition lifetimes;
   `preview-runtime-surface.mjs` owns panel slots, content updates, and
@@ -553,6 +558,7 @@ The workflow implies a few constraints for renderers:
   | Preview data access | Load manifest/cache JSON through the configured `fetchJson` or ambient `fetch`, keep load status, delegate graph data to graph core, and look up entries plus source documents. | `Commands/preview-runtime-data.mjs` emitted as an ESM support module |
   | Data-only public API | Expose manifest/cache/source-document/graph loading without importing DOM rendering, hydration, or surfaces. | `blueprint-data-api.mjs` re-exported as `api/data.mjs` |
   | Fragment rendering | Resolve manifest/cache pairs through an injected data API, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers through injectable page loaders. | `Commands/preview-runtime-render.mjs` emitted as an ESM support module |
+  | Source metadata lookup | Join `entry.sources` with source-document metadata and return structured data without owning presentation. | `Commands/preview-runtime-source-metadata.mjs` emitted as an ESM support module |
   | Hydration registry and explicit hydrator options | Run math rendering plus generated-page feature hydrators after insertion, while allowing custom clients to pass renderer-local or call-local hydrators. | `Commands/preview-runtime-hydration.mjs` emitted as an ESM support module |
   | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | `Commands/preview-runtime-template.mjs` emitted as an ESM support module |
   | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | `Commands/preview-runtime-surface.mjs` emitted as an ESM support module |

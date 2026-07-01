@@ -68,6 +68,7 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras {
+  --bp-extra-source-col: minmax(5.2rem, max-content);
   --bp-extra-group-col: minmax(5rem, max-content);
   --bp-extra-uses-col: minmax(5.2rem, max-content);
   --bp-extra-used-by-col: minmax(7.2rem, max-content);
@@ -153,6 +154,82 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "group uses used markup code";
 }
 
+.bp_extras_with_source {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source used code";
+}
+
+.bp_extras_with_source.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source uses used code";
+}
+
+.bp_extras_with_source.bp_extras_with_group {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group used code";
+}
+
+.bp_extras_with_source.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group uses used code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source uses used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group used markup code";
+}
+
+.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    var(--bp-extra-source-col)
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-markup-col)
+    var(--bp-extra-code-col);
+  grid-template-areas: "source group uses used markup code";
+}
+
 .bp_extra_slot {
   display: inline-flex;
   align-items: center;
@@ -163,6 +240,11 @@ span[class$="_thmlabel"]::after {
 .bp_extra_slot_code {
   grid-area: code;
   justify-content: flex-end;
+}
+
+.bp_extra_slot_source {
+  grid-area: source;
+  justify-content: flex-start;
 }
 
 .bp_extra_slot_group {
@@ -742,6 +824,79 @@ span[class$="_thmlabel"]::after {
 
 .bp_relation_wrap.bp_relation_wrap_open > .bp_relation_panel {
   display: block;
+}
+
+.bp_source_ref_panel {
+  min-width: 20rem;
+  width: min(32rem, 92vw);
+}
+
+.bp_source_ref_panel_body {
+  display: block;
+  padding: 0.7rem;
+}
+
+.bp_source_ref_preview_surface {
+  min-height: 0;
+}
+
+.bp_source_ref_preview_body {
+  max-height: min(18rem, 58vh);
+}
+
+.bp_source_ref_panel_list {
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+}
+
+.bp_source_ref_panel_item {
+  display: grid;
+  gap: 0.32rem;
+  padding: 0.56rem 0.62rem;
+  border: 1px solid var(--bp-color-border-panel);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.bp_source_ref_panel_document {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_source_ref_panel_key {
+  color: var(--bp-color-text-faint);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bp_source_ref_panel_summary {
+  color: var(--bp-color-text-strong);
+  font-weight: 700;
+}
+
+.bp_source_ref_panel_spans {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.bp_source_ref_panel_span {
+  overflow-wrap: anywhere;
+}
+
+.bp_source_ref_panel_span_empty {
+  color: var(--bp-color-text-faint);
 }
 
 .bp_relation_panel_header {

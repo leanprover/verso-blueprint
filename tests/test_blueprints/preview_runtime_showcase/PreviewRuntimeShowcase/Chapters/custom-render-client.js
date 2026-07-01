@@ -119,6 +119,7 @@
     appendFact(facts, "Used by", Array.isArray(entry.usedBy) ? entry.usedBy.length : 0);
     appendFact(facts, "Code previews", Array.isArray(entry.leanCodePreviewKeys) ? entry.leanCodePreviewKeys.length : 0);
     appendFact(facts, "External markup", Array.isArray(entry.externalMarkup) ? entry.externalMarkup.length : 0);
+    appendFact(facts, "Source refs", Array.isArray(entry.sources) ? entry.sources.length : 0);
   }
 
   function appendMarkdownInline(parent, text) {

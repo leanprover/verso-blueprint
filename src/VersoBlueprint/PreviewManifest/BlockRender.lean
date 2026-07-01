@@ -241,6 +241,7 @@ def renderWithRenderedContent
         (proofCaption? := some entry.title)
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
         (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData)
+        (sourceRefs := entry.sources)
       content := #[content.body]
       companionPanels := #[codePanel]
       wrapperClass? := some cfg.wrapperClass

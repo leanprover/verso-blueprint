@@ -42,6 +42,14 @@ await preview.renderNode(document.querySelector("#target"), {
     ]
   }
 });
+
+// Resolve source metadata for the same label when provenance is available in
+// the manifest. Rendering the source preview is owned by the caller or by
+// Blueprint-generated UI.
+const sourceMetadata = await preview.resolveSourceMetadata(
+  preview.statementPreviewKey("Chapter2:Problem2.11.6")
+);
+console.log(sourceMetadata.sources);
 ```
 
 Use the data API when your code owns all UI and only needs structured generated
@@ -98,8 +106,9 @@ beside the public browser entrypoints in `-verso-data/` are private
 implementation chunks for generated pages, Slides, and those entrypoints.
 
 - [preview API](module-blueprint-preview-api.html): render Blueprint nodes,
-  hydrate generated fragments, resolve canonical generated-node shells, and
-  provide call-scoped external-markup fallback renderers.
+  hydrate generated fragments, resolve canonical generated-node shells, resolve
+  source metadata for previews, and provide call-scoped external-markup fallback
+  renderers.
 - [data API](module-blueprint-data-api.html): load generated manifests,
   rendered-fragment caches, preview keys, and generated-data URLs without
   installing browser-global render hooks.
@@ -117,7 +126,7 @@ document Blueprint's private runtime chunks directly.
 
 | Path | Use | Avoid |
 | --- | --- | --- |
-| `api/preview.mjs` | Custom browser views that render previews, canonical nodes, external-markup fallbacks, or already-inserted fragments. | Reading `window.VersoBlueprint` or importing `Commands/*.mjs`. |
+| `api/preview.mjs` | Custom browser views that render previews or canonical nodes, resolve source metadata for previews, provide external-markup fallbacks, or hydrate already-inserted fragments. | Reading `window.VersoBlueprint` or importing `Commands/*.mjs`. |
 | `api/data.mjs` | Audit tools, dashboards, migration checks, and Node-like clients that only need generated JSON data. | Parsing rendered HTML to rediscover labels, graph topology, status, or dependencies. |
 | `api/graph.mjs` | Graph dashboards and custom pages that read or render finalized graph records. | Calling graph render helpers without an explicit `previewUtils` renderer. |
 | `blueprint-page-runtime.mjs` | Regular generated Manual pages; it starts Blueprint's bundled feature scripts for you. | Custom clients that need isolated loaders, custom fetchers, or independent render options. |

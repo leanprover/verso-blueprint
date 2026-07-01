@@ -786,6 +786,9 @@ class TestPreviewRuntimeRegressions:
         expect(external_markdown_card).to_have_attribute(
             "data-bp-external-markup-slot", "original"
         )
+        expect(
+            external_markdown_card.locator("[data-bp-custom-client-summary]").first
+        ).to_contain_text("Source refs 1")
         external_markdown_body = external_markdown_card.locator(
             '[data-bp-custom-client-body="external-markdown"]'
         ).first
@@ -1207,6 +1210,50 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_generated_manifest_carries_source_metadata_for_external_markup(self, server: str):
+        with urllib.request.urlopen(f"{server}/-verso-data/blueprint-manifest.json") as response:
+            manifest = json.load(response)
+
+        source_document = next(
+            document
+            for document in manifest["sourceDocuments"]
+            if document["id"] == "custom-client-paper"
+        )
+        entry = next(
+            entry
+            for entry in manifest["previews"]
+            if entry["key"] == "externalMarkup:custom_client_external_markdown_metadata"
+        )
+        source_ref = entry["sources"][0]
+        span = source_ref["spans"][0]
+
+        assert source_document == {
+            "id": "custom-client-paper",
+            "imageRoot": "source/pages/images",
+            "kind": "pdf",
+            "pageRoot": "source/pages",
+            "pdf": "source/paper.pdf",
+            "title": "Representation Theory",
+        }
+        assert entry["targetKind"] == "externalMarkup"
+        assert entry["label"] == "custom_client_external_markdown_metadata"
+        assert source_ref["document"] == "custom-client-paper"
+        assert span["page"] == "42"
+        assert span["text"]["path"] == "source/pages/page-42.md"
+        assert span["text"]["startLine"] == 10
+        assert span["text"]["endLine"] == 12
+        assert span["pdf"]["path"] == "source/pages/page-42.pdf"
+        assert span["pdf"]["image"] == "source/pages/images/page-42.png"
+        assert span["pdf"]["box"] == {
+            "pageHeight": 2200,
+            "pageWidth": 1600,
+            "scale": 2,
+            "xMax": 980,
+            "xMin": 120,
+            "yMax": 520,
+            "yMin": 240,
+        }
+
     def test_public_apis_resolve_source_documents_from_manifest(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
@@ -1312,6 +1359,266 @@ class TestPreviewRuntimeRegressions:
         assert result["previewSourceDocumentId"] == "paper"
         assert result["previewSourceDocumentCount"] == 1
         assert result["previewEntrySourceDocument"] == "paper"
+        assert_no_runtime_errors(errors)
+
+    def test_public_preview_api_resolves_source_metadata(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreview } = await import(api.previewApiModuleUrl());
+                const calls = [];
+                const manifestPayload = {
+                    sourceDocuments: [
+                        {
+                            id: "paper",
+                            title: "Representation Theory",
+                            kind: "pdf",
+                            pdf: "source/paper.pdf",
+                            pageRoot: "source/pages",
+                            imageRoot: "source/pages/images"
+                        }
+                    ],
+                    previews: [
+                        {
+                            key: "sample_node--statement",
+                            label: "sample_node",
+                            authoredLabel: "sample_node",
+                            facet: "statement",
+                            sources: [
+                                {
+                                    document: "paper",
+                                    spans: [
+                                        {
+                                            page: "42",
+                                            text: {
+                                                path: "source/pages/page-42.md",
+                                                startLine: 10,
+                                                endLine: 12,
+                                                startCharacter: 3,
+                                                endCharacter: 20
+                                            },
+                                            pdf: {
+                                                path: "source/pages/page-42.pdf",
+                                                image: "source/pages/images/page-42.png",
+                                                box: {
+                                                    scale: 2,
+                                                    pageWidth: 1600,
+                                                    pageHeight: 2200,
+                                                    xMin: 120,
+                                                    yMin: 240,
+                                                    xMax: 980,
+                                                    yMax: 520
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            key: "externalMarkup:external_node",
+                            label: "external_node",
+                            authoredLabel: "external_node",
+                            externalMarkup: [
+                                {
+                                    language: "markdown",
+                                    slot: "original",
+                                    raw: "External source"
+                                }
+                            ],
+                            sources: [
+                                {
+                                    document: "paper",
+                                    spans: [
+                                        {
+                                            page: "43",
+                                            pdf: {
+                                                path: "source/pages/page-43.pdf"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            key: "unsourced--statement",
+                            label: "unsourced",
+                            authoredLabel: "unsourced",
+                            facet: "statement"
+                        },
+                        {
+                            key: "unknown_source_document--statement",
+                            label: "unknown_source_document",
+                            authoredLabel: "unknown_source_document",
+                            facet: "statement",
+                            sources: [
+                                {
+                                    document: "missing-paper",
+                                    spans: [
+                                        {
+                                            page: "44"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    graphs: []
+                };
+                const preview = createPreview({
+                    fetchJson(url) {
+                        calls.push(url);
+                        return manifestPayload;
+                    }
+                });
+
+                const native = await preview.resolveSourceMetadata(
+                    preview.statementPreviewKey("sample_node")
+                );
+                const externalEntry = await preview.loadManifestEntry("externalMarkup:external_node");
+                const external = await preview.resolveSourceMetadata(externalEntry);
+                const renderResult = {
+                    ok: true,
+                    key: externalEntry.key,
+                    manifestEntry: externalEntry,
+                    html: "<section>Rendered externally</section>",
+                    renderMode: "external-markup"
+                };
+                const externalFromRenderResult = await preview.resolveSourceMetadata(renderResult);
+                const failedRenderResult = {
+                    ok: false,
+                    key: preview.statementPreviewKey("sample_node"),
+                    reason: "html-cache-entry-missing",
+                    manifestEntry: null,
+                    diagnosticHtml: "<p>Missing rendered body</p>"
+                };
+                const nativeFromFailedRenderResult = await preview.resolveSourceMetadata(
+                    failedRenderResult
+                );
+                const missing = await preview.resolveSourceMetadata("missing--statement");
+                const unsourced = await preview.resolveSourceMetadata("unsourced--statement");
+                const unknownDocument = await preview.resolveSourceMetadata(
+                    "unknown_source_document--statement"
+                );
+
+                return {
+                    calls: calls.length,
+                    hasRenderHelper: typeof preview.renderSourceMetadataInto === "function",
+                    native: {
+                        ok: native.ok,
+                        key: native.key,
+                        sourceCount: native.sources.length,
+                        documentTitle: native.sources[0].document.title,
+                        documentId: native.sources[0].documentId,
+                        textPath: native.sources[0].spans[0].text.path,
+                        textStartLine: native.sources[0].spans[0].text.startLine,
+                        textEndLine: native.sources[0].spans[0].text.endLine,
+                        textStartCharacter: native.sources[0].spans[0].text.startCharacter,
+                        textEndCharacter: native.sources[0].spans[0].text.endCharacter,
+                        pdfPath: native.sources[0].spans[0].pdf.path,
+                        pdfImage: native.sources[0].spans[0].pdf.image,
+                        pdfBox: native.sources[0].spans[0].pdf.box,
+                        hasHtml: Object.prototype.hasOwnProperty.call(native, "html"),
+                        hasDiagnosticHtml:
+                            Object.prototype.hasOwnProperty.call(native, "diagnosticHtml")
+                    },
+                    external: {
+                        ok: external.ok,
+                        sourceCount: external.sources.length,
+                        documentTitle: external.sources[0].document.title,
+                        page: external.sources[0].spans[0].page,
+                        pdfPath: external.sources[0].spans[0].pdf.path
+                    },
+                    externalFromRenderResult: {
+                        ok: externalFromRenderResult.ok,
+                        key: externalFromRenderResult.key,
+                        sourceCount: externalFromRenderResult.sources.length,
+                        documentId: externalFromRenderResult.sources[0].documentId
+                    },
+                    nativeFromFailedRenderResult: {
+                        ok: nativeFromFailedRenderResult.ok,
+                        key: nativeFromFailedRenderResult.key,
+                        sourceCount: nativeFromFailedRenderResult.sources.length,
+                        documentId: nativeFromFailedRenderResult.sources[0].documentId
+                    },
+                    missing: {
+                        ok: missing.ok,
+                        reason: missing.reason
+                    },
+                    unsourced: {
+                        ok: unsourced.ok,
+                        reason: unsourced.reason,
+                        sourceCount: unsourced.sources.length
+                    },
+                    unknownDocument: {
+                        ok: unknownDocument.ok,
+                        sourceCount: unknownDocument.sources.length,
+                        documentId: unknownDocument.sources[0].documentId,
+                        documentMissing: unknownDocument.sources[0].document === null,
+                        page: unknownDocument.sources[0].spans[0].page
+                    }
+                };
+                """
+            )
+        )
+
+        assert result["calls"] == 1
+        assert result["hasRenderHelper"] is False
+        assert result["native"]["ok"] is True
+        assert result["native"]["key"] == "sample_node--statement"
+        assert result["native"]["sourceCount"] == 1
+        assert result["native"]["documentTitle"] == "Representation Theory"
+        assert result["native"]["documentId"] == "paper"
+        assert result["native"]["textPath"] == "source/pages/page-42.md"
+        assert result["native"]["textStartLine"] == 10
+        assert result["native"]["textEndLine"] == 12
+        assert result["native"]["textStartCharacter"] == 3
+        assert result["native"]["textEndCharacter"] == 20
+        assert result["native"]["pdfPath"] == "source/pages/page-42.pdf"
+        assert result["native"]["pdfImage"] == "source/pages/images/page-42.png"
+        assert result["native"]["pdfBox"] == {
+            "scale": 2,
+            "pageWidth": 1600,
+            "pageHeight": 2200,
+            "xMin": 120,
+            "yMin": 240,
+            "xMax": 980,
+            "yMax": 520,
+        }
+        assert result["native"]["hasHtml"] is False
+        assert result["native"]["hasDiagnosticHtml"] is False
+
+        assert result["external"]["ok"] is True
+        assert result["external"]["sourceCount"] == 1
+        assert result["external"]["documentTitle"] == "Representation Theory"
+        assert result["external"]["page"] == "43"
+        assert result["external"]["pdfPath"] == "source/pages/page-43.pdf"
+
+        assert result["externalFromRenderResult"]["ok"] is True
+        assert result["externalFromRenderResult"]["key"] == "externalMarkup:external_node"
+        assert result["externalFromRenderResult"]["sourceCount"] == 1
+        assert result["externalFromRenderResult"]["documentId"] == "paper"
+
+        assert result["nativeFromFailedRenderResult"]["ok"] is True
+        assert result["nativeFromFailedRenderResult"]["key"] == "sample_node--statement"
+        assert result["nativeFromFailedRenderResult"]["sourceCount"] == 1
+        assert result["nativeFromFailedRenderResult"]["documentId"] == "paper"
+
+        assert result["missing"]["ok"] is False
+        assert result["missing"]["reason"] == "manifest-entry-missing"
+
+        assert result["unsourced"]["ok"] is False
+        assert result["unsourced"]["reason"] == "source-missing"
+        assert result["unsourced"]["sourceCount"] == 0
+
+        assert result["unknownDocument"]["ok"] is True
+        assert result["unknownDocument"]["sourceCount"] == 1
+        assert result["unknownDocument"]["documentId"] == "missing-paper"
+        assert result["unknownDocument"]["documentMissing"] is True
+        assert result["unknownDocument"]["page"] == "44"
         assert_no_runtime_errors(errors)
 
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
@@ -1426,6 +1733,42 @@ class TestPreviewRuntimeRegressions:
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Statement facet marker for preview relationships.")
+
+        assert_no_runtime_errors(errors)
+
+    def test_source_header_chip_opens_source_preview(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        statement = page.locator(
+            '.bp_wrapper[title="custom_client_external_markdown_metadata"]'
+        ).first
+        source_slot = statement.locator(".bp_extra_slot_source").first
+        chip = source_slot.locator(".bp_source_ref_chip").first
+        expect(chip).to_have_text("source 1")
+
+        uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        source_box = require_box(chip)
+        uses_box = require_box(uses_chip)
+        source_bottom = source_box["y"] + source_box["height"]
+        uses_bottom = uses_box["y"] + uses_box["height"]
+        assert abs(source_bottom - uses_bottom) < 1
+
+        chip.hover()
+
+        panel = source_slot.locator(".bp_source_ref_panel").first
+        expect(panel).to_be_visible()
+        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Original source")
+        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Source provenance preview")
+
+        preview = panel.locator(".bp_relation_preview_surface").first
+        expect(preview).to_be_visible()
+        expect(preview.locator(".bp_relation_preview_title")).to_have_text("Original source")
+        body = preview.locator(".bp_source_ref_preview_body").first
+        expect(body).to_contain_text("custom-client-paper")
+        expect(body).to_contain_text("custom-client-paper p. 42")
+        expect(body).to_contain_text("source/pages/page-42.md:10-12")
+        expect(body).to_contain_text("source/pages/page-42.pdf")
 
         assert_no_runtime_errors(errors)
 

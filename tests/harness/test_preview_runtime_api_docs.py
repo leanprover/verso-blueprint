@@ -288,6 +288,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.mjs").read_text(
             encoding="utf-8"
         )
+        source_metadata = (
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-source-metadata.mjs"
+        ).read_text(encoding="utf-8")
         hydration = (
             BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.mjs"
         ).read_text(encoding="utf-8")
@@ -304,10 +307,11 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        for include_path in (
+        for old_common_include_path in (
             "preview-runtime-base.mjs",
             "preview-runtime-data.mjs",
             "preview-runtime-render.mjs",
+            "preview-runtime-source-metadata.mjs",
             "preview-runtime-hydration.mjs",
             "preview-runtime-lifecycle.mjs",
             "preview-runtime-surface.mjs",
@@ -317,7 +321,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             "blueprint-preview-core.mjs",
             "inline-preview.mjs",
         ):
-            self.assertNotIn(f'include_str "{include_path}"', common)
+            self.assertNotIn(f'include_str "{old_common_include_path}"', common)
         self.assertIn('include_str "blueprint-slide-runtime.mjs"', slide_assets)
         self.assertIn('include_str "blueprint-slides.mjs"', slide_assets)
         self.assertNotIn("ClassicPreviewAdapter", slide_assets)
@@ -343,6 +347,11 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function renderHtmlInto(target, html, options)", render)
         self.assertIn("async function resolveCanonicalBlueprintPreview(previewKey, options)", render)
         self.assertIn("export const previewRuntimeRender = {", render)
+        self.assertIn("async function resolveSourceMetadata(source, options)", source_metadata)
+        self.assertNotIn("function renderSourceMetadataInto", source_metadata)
+        self.assertNotIn("function sourceMetadataHtml", source_metadata)
+        self.assertIn("export const previewRuntimeSourceMetadata = {", source_metadata)
+        self.assertNotIn("function sourceMetadataHtml(result, options)", render)
         self.assertIn("function hydrateRenderedPreview(root, options)", hydration)
         self.assertIn("function renderBlueprintMath(root)", hydration)
         self.assertIn("function registerPreviewHydrator(name, fn)", hydration)

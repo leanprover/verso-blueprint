@@ -32,6 +32,7 @@ EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-base.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-data.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-render.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-hydration.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-surface.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
