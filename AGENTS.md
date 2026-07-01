@@ -169,10 +169,13 @@
   - `_out/test-blueprints/{<slug>,preview_runtime_showcase,state-showcase}/`
 - Default test-blueprint output in a linked worktree:
   - `_out/<worktree>/test-blueprints/{<slug>,preview_runtime_showcase,state-showcase}/`
-- Shared warmed reference blueprint cache for external git-checkout projects:
-  - `.worktrees/_reference-blueprints/cache/{noperthedron,spherepackingblueprint}/`
+- Shared warmed source checkout cache for external git-checkout projects:
+  - `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
+- Shared warmed dependency cache for external git-checkout projects:
+  - `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages/`
+  - `.worktrees/_reference-blueprints/deps/<source-ref-key>/path-builds/`
 - Current-checkout local reference blueprint clones for external git-checkout projects:
-  - `.worktrees/_reference-blueprints/by-worktree/<checkout>/{noperthedron,spherepackingblueprint}/`
+  - `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`
 
 ## Mathlib and Worktree Reuse
 

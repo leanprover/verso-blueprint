@@ -36,8 +36,10 @@ from scripts.blueprint_harness_references import (
     reference_submodule_update_command,
     reconcile_reference_toolchains,
     require_reference_harness_layout,
+    seed_lake_path_builds_from_dependency_cache,
     seed_reference_edit_checkout_lake,
     seed_lake_packages_from_dependency_cache,
+    store_lake_path_builds_in_dependency_cache,
     store_lake_packages_in_dependency_cache,
     update_git_checkout,
 )
@@ -407,6 +409,90 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(pruned, packages)
         self.assertFalse(packages.exists())
 
+    def test_reference_dependency_path_build_cache_seeds_external_path_dependencies(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = HarnessProject(
+            project_id="external-blueprint",
+            source_kind="git_checkout",
+            project_root="nested/blueprint",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/external-blueprint.git",
+            ref="main",
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_key = reference_dependency_cache_key(project)
+            path_builds = root / "deps" / cache_key / "path-builds"
+            project_dir = root / "checkout" / "nested" / "blueprint"
+            package_root = root / "pkg"
+            project_dir.mkdir(parents=True)
+            package_root.mkdir()
+            (path_builds / "Formalization" / ".lake" / "build" / "lib").mkdir(parents=True)
+            (project_dir / "Formalization" / ".lake" / "build" / "lib").mkdir(parents=True)
+            (project_dir / "lake-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "packages": [
+                            {
+                                "name": "VersoBlueprint",
+                                "type": "path",
+                                "dir": "../../../pkg",
+                            },
+                            {
+                                "name": "Formalization",
+                                "type": "path",
+                                "dir": "./Formalization",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            layout = SimpleNamespace(
+                package_root=package_root,
+                reference_dependency_cache_root=root / "deps",
+            )
+
+            original_run = refs_mod.run
+            commands: list[list[str]] = []
+            try:
+                refs_mod.run = lambda command, *, cwd: commands.append(command)
+
+                seeded_from = seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
+                stored_to = store_lake_path_builds_in_dependency_cache(layout, project, project_dir)
+            finally:
+                refs_mod.run = original_run
+
+        self.assertEqual(seeded_from, path_builds)
+        self.assertEqual(stored_to, path_builds)
+        self.assertEqual(
+            commands,
+            [
+                [
+                    "rsync",
+                    "-a",
+                    f"{path_builds / 'Formalization' / '.lake' / 'build'}/",
+                    f"{project_dir / 'Formalization' / '.lake' / 'build'}/",
+                ],
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    f"{project_dir / 'Formalization' / '.lake' / 'build'}/",
+                    f"{path_builds / 'Formalization' / '.lake' / 'build'}/",
+                ],
+            ],
+        )
+
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.30.0", PACKAGE_ROOT)
@@ -415,12 +501,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
+        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints-deploy.yml").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("emit_reference_release_matrix.py", workflow_text)
         self.assertIn("pattern: reference-blueprints-*", workflow_text)
         self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
         self.assertIn("matrix.reference_cache_key", workflow_text)
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages", workflow_text)
+        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", workflow_text)
+        self.assertIn("reference-deps-v2-${{ matrix.reference_cache_key }}", workflow_text)
+        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
+        self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
 
         for entry in matrix["include"]:
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
@@ -1358,6 +1451,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout = SimpleNamespace(
                 package_root=root / "pkg",
                 repo_root=root / "repo",
+                reference_dependency_cache_root=root / "deps",
             )
             layout.package_root.mkdir()
             layout.repo_root.mkdir()

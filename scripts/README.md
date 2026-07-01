@@ -119,8 +119,8 @@ script map, not a second command reference.
   dependency-cache key.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override,
-  dependency-package cache warm-up, and prune helpers shared by the reference
-  CLI.
+  dependency package/path-build cache warm-up, and prune helpers shared by the
+  reference CLI.
 - `blueprint_harness_utils.py`
   Shared process-launch helpers used by the harness modules.
 - `blueprint_harness_validation.py`

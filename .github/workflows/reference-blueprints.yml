@@ -86,9 +86,10 @@ jobs:
         with:
           path: |
             .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages
-          key: ${{ runner.os }}-reference-deps-v1-${{ matrix.reference_cache_key }}
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds
+          key: ${{ runner.os }}-reference-deps-v2-${{ matrix.reference_cache_key }}
           restore-keys: |
-            ${{ runner.os }}-reference-deps-v1-${{ matrix.project_id }}-
+            ${{ runner.os }}-reference-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
         run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
