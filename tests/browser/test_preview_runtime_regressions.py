@@ -1318,6 +1318,9 @@ class TestPreviewRuntimeRegressions:
                 const sameDocument = await data.loadSourceDocument("paper");
                 const missingDocument = await data.loadSourceDocument("missing");
                 const emptyDocument = await data.loadSourceDocument("");
+                const sourceMetadata = await data.resolveSourceMetadata(
+                    data.statementPreviewKey("sample_node")
+                );
                 const manifest = await data.loadManifest();
                 const previewSourceDocument = await preview.loadSourceDocument("paper");
                 const previewSourceDocuments = await preview.loadSourceDocuments();
@@ -1337,6 +1340,11 @@ class TestPreviewRuntimeRegressions:
                     sameObject: sourceDocument === sameDocument,
                     missingDocument,
                     emptyDocument,
+                    dataHasSourceMetadataResolver:
+                        typeof data.resolveSourceMetadata === "function",
+                    dataSourceMetadataOk: sourceMetadata.ok,
+                    dataSourceMetadataDocumentTitle: sourceMetadata.sources[0].document.title,
+                    dataSourceMetadataPage: sourceMetadata.sources[0].spans[0].page,
                     previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
                     previewSourceDocumentCount: previewSourceDocuments.length,
                     previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
@@ -1356,6 +1364,10 @@ class TestPreviewRuntimeRegressions:
         assert result["sameObject"] is True
         assert result["missingDocument"] is None
         assert result["emptyDocument"] is None
+        assert result["dataHasSourceMetadataResolver"] is True
+        assert result["dataSourceMetadataOk"] is True
+        assert result["dataSourceMetadataDocumentTitle"] == "Representation Theory"
+        assert result["dataSourceMetadataPage"] == "42"
         assert result["previewSourceDocumentId"] == "paper"
         assert result["previewSourceDocumentCount"] == 1
         assert result["previewEntrySourceDocument"] == "paper"

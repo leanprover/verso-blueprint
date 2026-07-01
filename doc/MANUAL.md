@@ -678,9 +678,10 @@ several sourced Blueprint nodes share the same Lean declaration preview.
 Browser clients can resolve those document ids with `loadSourceDocument` or
 read the complete catalog with `loadSourceDocuments`.
 
-Browser clients can call `resolveSourceMetadata` from `api/preview.mjs` to
-resolve source refs for a preview key, manifest entry, or render result. The
-API returns structured source-document metadata and recorded text/PDF spans.
+Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
+`api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
+render result. The API returns structured source-document metadata and recorded
+text/PDF spans.
 The built-in source preview is intentionally lightweight; richer PDF page
 viewers and crop overlays remain Blueprint/Verso interface work.
 

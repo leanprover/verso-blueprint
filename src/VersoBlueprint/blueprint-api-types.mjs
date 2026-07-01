@@ -434,6 +434,7 @@
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
  * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
+ * @property {function(BlueprintSourceMetadataInput, BlueprintDataApiOptions=): Promise<BlueprintSourceMetadataResult>} resolveSourceMetadata
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
  */
 
