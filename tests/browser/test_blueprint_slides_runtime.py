@@ -55,8 +55,9 @@ def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path
             lean_low_priority_command(
                 PACKAGE_ROOT,
                 "lake",
-                "env",
                 "lean",
+                "ProjectTemplateMain.lean",
+                "--",
                 "--run",
                 "ProjectTemplateMain.lean",
                 "--output",
@@ -95,8 +96,9 @@ def slides_server(tmp_path_factory):
         [
             "scripts/lean-low-priority",
             "lake",
-            "env",
             "lean",
+            "tests/browser/BlueprintSlidesRuntime.lean",
+            "--",
             "--run",
             "tests/browser/BlueprintSlidesRuntime.lean",
             str(output_dir),

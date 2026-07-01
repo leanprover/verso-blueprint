@@ -94,7 +94,7 @@ artifacts and then runs the generator file directly:
 
 ```bash
 lake build ProjectTemplate
-lake env lean --run ProjectTemplateMain.lean --output _out/site
+lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
 ```
 
 This avoids compiling a generator executable and its transitive native artifacts,

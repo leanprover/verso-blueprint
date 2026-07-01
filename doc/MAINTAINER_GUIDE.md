@@ -761,9 +761,10 @@ The harness is now project-driven rather than hardcoded to one project.
 - each project target owns its release ref, optional RC metadata, and
   `publish_reference: true` marker for the release-facing published catalog
 - prefer a build command that targets only the Lean library or formalization
-  artifacts needed by the document, followed by a `lake env lean --run ...`
-  generation command; do not build the generator executable unless that native
-  executable is the behavior under review
+  artifacts needed by the document, followed by a
+  `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...` generation
+  command; do not build the generator executable unless that native executable
+  is the behavior under review
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
@@ -799,17 +800,17 @@ Minimal external catalog entry shape:
         }
       ],
       "build_command": ["lake", "build", "SomeUserProject"],
-      "generate_command": ["lake", "env", "lean", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "SomeUserProjectMain.lean", "--", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }
   ]
 }
 ```
 
-The `lean --run` form is intentionally the catalog default for reference
-projects. It still requires the imported Lean modules to have been built first,
-but it avoids Lake's executable build path and the transitive native compilation
-cost that can dominate Mathlib-heavy projects.
+The `lake lean <file> -- --run <file>` form is intentionally the catalog default
+for reference projects. It still requires the imported Lean modules to have been
+built first, but it avoids Lake's executable build path and the transitive native
+compilation cost that can dominate Mathlib-heavy projects.
 
 That override policy is now the default maintainer behavior: the external
 projects keep their committed dependency pointed at an approved upstream repo,

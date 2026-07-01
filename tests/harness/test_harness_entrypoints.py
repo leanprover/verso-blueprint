@@ -62,15 +62,16 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(result.stdout.strip(), "preview_runtime_showcase")
 
-    def test_external_markup_generator_supports_lean_run(self) -> None:
+    def test_external_markup_generator_supports_lake_lean_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "site"
             result = self.run_command(
                 [
                     "./scripts/lean-low-priority",
                     "lake",
-                    "env",
                     "lean",
+                    "tests/LeanRunExternalMarkupMain.lean",
+                    "--",
                     "--run",
                     "tests/LeanRunExternalMarkupMain.lean",
                     "--output",

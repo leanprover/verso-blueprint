@@ -26,8 +26,9 @@ def preview_runtime_showcase_output_dir() -> Path:
         lean_low_priority_command(
             PACKAGE_ROOT,
             "lake",
-            "env",
             "lean",
+            "PreviewRuntimeShowcaseMain.lean",
+            "--",
             "--run",
             "PreviewRuntimeShowcaseMain.lean",
             "--output",
