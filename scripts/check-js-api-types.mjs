@@ -192,7 +192,6 @@ const graphInternalApiNames = [
   "ensureGraphRuntimeLibraries",
   "getGraphRenderApi",
   "graphCanvasFor",
-  "graphFallbackVariants",
   "graphsFromManifest",
   "initGraphBlock",
   "installGraphRenderApi",

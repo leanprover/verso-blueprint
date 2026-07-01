@@ -227,10 +227,6 @@ block_extension Block.graph (graphData : GraphBlockData) where
         else
           {{ <option value="anchored">"Near node"</option> }}
       ]
-      let fallbackDot : String :=
-        match graphVariants[0]? with
-        | some variant => variant.dot
-        | Option.none => publicGraphData.toDotWith graphData.options
       let previewPanel :=
         Informal.HoverRender.graphPreviewPanel
           graphData.previewMode
@@ -327,9 +323,6 @@ block_extension Block.graph (graphData : GraphBlockData) where
             </script>
             <script type="application/json" class="bp-graph-variants">
               {{.text false s!"{graphVariantJson}"}}
-            </script>
-            <script type="text/plain" class="dot-source">
-              {{.text false s!"{fallbackDot}"}}
             </script>
           </div>
           {{previewPanel}}
