@@ -25,7 +25,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("lake exe vbp build [--output <dir>] [--serve] [--port <n>]", text)
         self.assertIn("lake exe vbp query [--site <dir>] <selector>", text)
         self.assertIn("lake lean <GeneratorMain>.lean", text)
-        self.assertIn("lake env lean --run <GeneratorMain>.lean --output <output>", text)
+        self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
         self.assertIn("selectors`: query selector forms", text)
         self.assertIn("does not require generated Blueprint data", text)
         self.assertIn("all <label>", text)
@@ -54,7 +54,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
     def test_vbp_reference_documents_adoption_boundary(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
         self.assertIn("lake exe vbp discover", text)
-        self.assertIn("lake env lean --run", text)
+        self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean", text)
         self.assertIn("fully unstable", text)
 
     def test_readme_marks_vbp_json_unstable(self) -> None:

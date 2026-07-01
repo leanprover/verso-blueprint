@@ -138,7 +138,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].build_command, ("lake", "build", "ProjectTemplate"))
         self.assertEqual(
             projects[0].generate_command,
-            ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
+            (
+                "lake",
+                "lean",
+                "ProjectTemplateMain.lean",
+                "--",
+                "--run",
+                "ProjectTemplateMain.lean",
+                "--output",
+                "{output_dir}",
+            ),
         )
         expected_template_targets = [target.release_id for target in branch_policy.release_targets]
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
@@ -157,7 +166,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
-            ("lake", "env", "lean", "--run", "Main.lean", "--output", "{output_dir}"),
+            ("lake", "lean", "Main.lean", "--", "--run", "Main.lean", "--output", "{output_dir}"),
         )
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
@@ -174,7 +183,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
         self.assertEqual(
             projects[4].generate_command,
-            ("lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
+            ("lake", "lean", "BlueprintMain.lean", "--", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
         )
 
     def test_project_catalog_requires_json_object(self) -> None:

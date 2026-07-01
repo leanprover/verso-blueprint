@@ -25,31 +25,6 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Manual Rendering and Cross-References
 
-- [ ] Make MD4Lean Markdown rendering usable from interpreted `lean --run`
-  generator mains.
-  - current Blueprint pressure point:
-    Blueprint's preferred generation path for reference and consumer projects is
-    `lake env lean --run <GeneratorMain>.lean --output ...`; calling
-    `MD4Lean.renderHtml` from that path currently fails with
-    `Could not find native implementation of external declaration
-    'MD4Lean.renderHtml'`
-  - current Blueprint workaround:
-    source-backed external-markup preview fragments avoid depending on
-    MD4Lean's native HTML renderer during interpreted generation
-  - desired upstream behavior:
-    `MD4Lean.renderHtml` and related Markdown entry points should either work
-    under `lean --run` by loading their native implementation reliably, or
-    expose an interpreter-safe fallback/API that downstream generators can call
-    without switching to compiled executables
-  - removable Blueprint code:
-    any Blueprint-local conservative Markdown rendering or source fallback that
-    exists only to keep Markdown source witnesses compatible with interpreted
-    generator runs
-  - acceptance check:
-    a Blueprint generator main run with `lake env lean --run` can emit
-    source-backed Markdown preview-cache fragments without a missing native
-    implementation error
-
 - [ ] Support private or filtered xref-domain export for Manual HTML output.
   - upstream issue:
     `leanprover/verso#840`

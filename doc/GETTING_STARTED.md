@@ -180,7 +180,7 @@ that the included GitHub Pages workflow uses. Internally that script uses:
 
 ```bash
 lake build ProjectTemplate
-lake env lean --run ProjectTemplateMain.lean --output _out/site
+lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
 ```
 
 This path avoids building the generator executable and its transitive native

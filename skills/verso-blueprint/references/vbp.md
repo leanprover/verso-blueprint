@@ -46,7 +46,7 @@ Defaults:
 
 ```bash
 lake lean <GeneratorMain>.lean
-lake env lean --run <GeneratorMain>.lean --output <output>
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
 ```
 
 `build --serve` builds once, then serves `<output>/html-multi` with a local static server and keeps running. Without `--port`, it tries port `8000` and falls back to an available port. With `--serve --port <n>`, it fails if the requested port is unavailable. `--port` is accepted only with `--serve`. The command prints the actual preview URL.
@@ -87,10 +87,10 @@ For older projects, inspect the generator entry point, then use:
 ```bash
 lake build <library-or-formalization-target>
 lake lean <GeneratorMain>.lean
-lake env lean --run <GeneratorMain>.lean --output _out/site
-lake env lean --run <GeneratorMain>.lean --dump-manifest
-lake env lean --run <GeneratorMain>.lean --dump-html-cache
-lake env lean --run <GeneratorMain>.lean --help
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-html-cache
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --help
 ```
 
 The manifest/cache files are implementation details for normal agent work; use them directly only when `vbp query` is unavailable or when debugging `vbp` itself.

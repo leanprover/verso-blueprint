@@ -273,9 +273,10 @@ def workQueueLabels
 
 Generator-side Lean callers can configure source-backed external-source cache
 fragments with `Informal.ExternalMarkupRender.Config`. The
-default mode, `.markdown`, renders selected Markdown slots through Blueprint's
-interpreter-safe Markdown renderer and escapes raw HTML; TeX falls back to
-escaped source. `.source` always emits escaped source; `.none` keeps
+default mode, `.markdown`, renders selected Markdown slots through MD4Lean with
+raw HTML disabled and falls back to escaped source if MD4Lean cannot render the
+fragment; TeX falls back to escaped source. `.source` always emits escaped
+source; `.none` keeps
 external-markup entries semantic-only with no generated HTML-cache fragment.
 Set `showSourceNotice := false` when an embedding context should omit the
 visible source-backed notice from generated fragments.

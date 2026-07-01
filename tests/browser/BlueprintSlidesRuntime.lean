@@ -33,7 +33,7 @@ namespace Verso.VersoBlueprintTests.BlueprintSlidesRuntime
 :::::::
 
 private def usage : IO UInt32 := do
-  IO.eprintln "usage: lake env lean --run tests/browser/BlueprintSlidesRuntime.lean <output-dir> <blueprint-manifest> <blueprint-html-cache>"
+  IO.eprintln "usage: lake lean tests/browser/BlueprintSlidesRuntime.lean -- --run tests/browser/BlueprintSlidesRuntime.lean <output-dir> <blueprint-manifest> <blueprint-html-cache>"
   pure 1
 
 def run (args : List String) : IO UInt32 := do

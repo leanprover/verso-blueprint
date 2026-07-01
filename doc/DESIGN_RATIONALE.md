@@ -620,8 +620,8 @@ rendering of manifest semantics, not a second data source.
 Source-backed external-markup fragments follow the same split. The manifest
 entry owns the label, facet, Lean preview keys, code data, source language,
 slot, and optional source range. The cache entry owns only the generated body
-fragment: interpreter-safe rendered Markdown with raw HTML escaped by default,
-or escaped source text for TeX and `--external-markup-render source`. Shared
+fragment: MD4Lean-rendered Markdown with raw HTML disabled by default, or
+escaped source text for TeX and `--external-markup-render source`. Shared
 source summaries and escaped source blocks live in `Informal.ExternalMarkupView`,
 so source-location display and preview-cache rendering do not grow separate
 escaping or range-formatting rules.
@@ -775,10 +775,10 @@ rather than page-local template bodies:
    Verso hover side table, while generated pages merge those hover payloads into
    `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
-   is still available. `PreviewManifest/ExternalMarkupRender.lean` owns the
+   is still available. `Informal/ExternalMarkupRender.lean` owns the
    source-backed external-markup fragment renderer so source selection,
-   interpreter-safe Markdown rendering, fallback source rendering, and the
-   source-backed notice shell stay out of manifest entry construction.
+   MD4Lean Markdown rendering, fallback source rendering, and the source-backed
+   notice shell stay out of manifest entry construction.
    `PreviewManifest/Cli.lean` owns command-line option parsing and help text for
    the generator wrapper, leaving `PreviewManifest.lean` focused on schema,
    manifest/cache assembly, artifact emission, and the final generator entry

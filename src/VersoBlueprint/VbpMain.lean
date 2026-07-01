@@ -242,6 +242,17 @@ private partial def runBuildStages : List BuildStage → IO UInt32
       else
         pure code
 
+/--
+Run a generator through Lake's Lean wrapper.
+
+The raw environment-wrapped Lean interpreter form does not load package native
+libraries such as MD4Lean. The `lake lean Foo.lean -- --run Foo.lean ...` form
+does, while still avoiding the generator executable build path.
+-/
+private def generatorRunArgs (generatorFile output : FilePath) : Array String :=
+  #["lean", generatorFile.toString, "--", "--run", generatorFile.toString,
+    "--output", output.toString]
+
 private def buildPlan (output : FilePath) : IO (Except String BuildPlan) := do
   match ← projectInfo with
   | .error err => pure (.error err)
@@ -249,7 +260,7 @@ private def buildPlan (output : FilePath) : IO (Except String BuildPlan) := do
       pure (.ok {
         packageName := info.packageName,
         generatorPrepareArgs := #["lean", info.generatorFile.toString],
-        generatorArgs := #["env", "lean", "--run", info.generatorFile.toString, "--output", output.toString]
+        generatorArgs := generatorRunArgs info.generatorFile output
       })
 
 private def serveScript : String := String.intercalate "\n" [

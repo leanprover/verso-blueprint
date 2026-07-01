@@ -17,7 +17,7 @@
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],
-      "generate_command": ["lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "ProjectTemplateMain.lean", "--", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -36,7 +36,7 @@
         }
       ],
       "build_command": ["lake", "build", "Contents"],
-      "generate_command": ["lake", "env", "lean", "--run", "Main.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "Main.lean", "--", "--run", "Main.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -55,7 +55,7 @@
         }
       ],
       "build_command": ["bash", "scripts/ci-reference-build.sh"],
-      "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "SpherePackingBlueprintMain.lean", "--", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -74,7 +74,7 @@
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
-      "generate_command": ["lake", "env", "lean", "--run", "FLTBlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "FLTBlueprintMain.lean", "--", "--run", "FLTBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -94,7 +94,7 @@
         }
       ],
       "build_command": ["lake", "build", "CarlesonBlueprint"],
-      "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "lean", "BlueprintMain.lean", "--", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }
   ]

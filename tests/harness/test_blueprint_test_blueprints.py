@@ -49,7 +49,16 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
         self.assertEqual(fixture.build_command, ("lake", "build", "PreviewRuntimeShowcase"))
         self.assertEqual(
             fixture.generate_command,
-            ("lake", "env", "lean", "--run", "PreviewRuntimeShowcaseMain.lean", "--output", "{output_dir}"),
+            (
+                "lake",
+                "lean",
+                "PreviewRuntimeShowcaseMain.lean",
+                "--",
+                "--run",
+                "PreviewRuntimeShowcaseMain.lean",
+                "--output",
+                "{output_dir}",
+            ),
         )
         self.assertEqual(fixture.browser_tests_path, "tests/browser")
         self.assertEqual(

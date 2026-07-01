@@ -5,10 +5,10 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoManual
+import MD4Lean
 import VersoBlueprint.Data
 import VersoBlueprint.Html
 import VersoBlueprint.Informal.ExternalMarkupView
-import VersoBlueprint.PreviewManifest.MarkdownRender
 
 namespace Informal.ExternalMarkupRender
 
@@ -69,7 +69,7 @@ inductive Mode where
   | none
   /-- Render the selected external source as escaped source text. -/
   | source
-  /-- Render Markdown source with Blueprint's Lean-side renderer; render other sources as source text. -/
+  /-- Render Markdown source with MD4Lean; render other sources as source text. -/
   | markdown
 deriving Inhabited, Repr, DecidableEq
 
@@ -101,9 +101,8 @@ def defaultPreferences : Array Preference :=
 Options for Lean-side HTML fragments generated from external markup sources.
 
 The default gives bodyless Markdown-backed nodes a rendered preview while still
-marking the body as source-backed and remaining compatible with interpreted
-`lean --run` generators. Set `mode := .none` to keep manifest-only entries with
-no generated HTML cache fragment.
+marking the body as source-backed. Set `mode := .none` to keep manifest-only
+entries with no generated HTML cache fragment.
 -/
 structure Config where
   mode : Mode := .markdown
@@ -146,7 +145,7 @@ def noticeHtml (markup : Informal.Data.ExternalMarkup) : Verso.Output.Html :=
     (VersoBlueprint.Html.text text)
 
 private def renderMarkdownBody? (raw : String) : Option Verso.Output.Html := do
-  let html := Informal.PreviewManifest.renderExternalMarkdownHtml raw
+  let html ← MD4Lean.renderHtml raw
   some <| Verso.Output.Html.tag "div" #[("class", "bp_external_markdown_body")]
     (Verso.Output.Html.text false html)
 

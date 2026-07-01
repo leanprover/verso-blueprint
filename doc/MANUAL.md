@@ -578,10 +578,9 @@ Current behavior:
   parsing Lean pretty-name quoting
 - source-backed rendered fragments choose Markdown `statement`, Markdown
   `default`, TeX `statement`, then TeX `default` when multiple source slots are
-  available; Markdown uses an interpreter-safe renderer for common review
-  markup such as headings, paragraphs, lists, blockquotes, tables, fenced or
-  indented code, inline code, strong text, and dollar math text, while raw HTML
-  and TeX sources are escaped
+  available; Markdown is rendered by MD4Lean with raw HTML disabled and falls
+  back to escaped source if MD4Lean cannot render the fragment, while TeX
+  sources are escaped
 - if a bodyless directive for the same label carried `(lean := ...)`, the
   external-markup manifest entry keeps the corresponding Lean preview keys and
   `codeData`
@@ -604,10 +603,9 @@ Current behavior:
   or `(display := source)` is provided, or the file sets
   `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
 - display and source-backed cache rendering are intentionally a preview path:
-  Markdown cache fragments use a conservative Lean-side renderer so
-  `lake env lean --run <GeneratorMain>.lean` remains supported. Future upstream
-  MD4Lean interpreter support or richer converters can still replace this path
-  when projects need fuller Markdown, TeX, or native Blueprint structure
+  Markdown cache fragments use MD4Lean with escaped-source fallback, while
+  richer converters can still replace this path when projects need TeX or
+  native Blueprint structure
 
 ### Original Source Provenance
 
@@ -919,10 +917,10 @@ After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
 
 ```bash
-lake env lean --run <GeneratorMain>.lean --dump-schema
-lake env lean --run <GeneratorMain>.lean --dump-manifest
-lake env lean --run <GeneratorMain>.lean --dump-html-cache
-lake env lean --run <GeneratorMain>.lean --help
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-schema
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-html-cache
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --help
 ```
 
 - `--dump-schema` prints the JSON Schema for the manifest
@@ -1136,7 +1134,7 @@ the document, then runs the generator file directly:
 
 ```bash
 lake build <library-or-formalization-target>
-lake env lean --run <GeneratorMain>.lean --output _out/site
+lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 ```
 
 That path still checks the Blueprint document and writes the same HTML output,
