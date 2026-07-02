@@ -8,7 +8,9 @@ import Lean
 import Lean.Server.Utils
 import ProofWidgets.Component.Panel.Basic
 import ProofWidgets.Component.OfRpcMethod
-import ProofWidgets.Component.GraphDisplay
+import ProofWidgets.Component.GraphvizDisplay
+import ProofWidgets.Component.Maximizable
+import ProofWidgets.Component.HtmlDisplay
 import VersoBlueprint.Graph
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Data
@@ -19,166 +21,43 @@ open ProofWidgets Jsx
 
 section BlueprintWidget
 
-private structure GraphNodeLabel.Props where
-  label : String
-  width : Nat
-  height : Nat
-  shape : String
-  fillColor : String
-  borderColor : String
-  borderWidth : String
-  textColor : String
-  selected : Bool
-  dashArray? : Option String := none
-  tooltip? : Option String := none
-  location? : Option (String × Lsp.Range) := none
+open Informal Environment
+
+private structure ClickableGraphviz.Props extends GraphvizDisplay.Props where
+  locs : Array (Name × (Lsp.DocumentUri × Lsp.Range))
   deriving FromJson, ToJson
 
 @[widget_module]
-private def GraphNodeLabel : Component GraphNodeLabel.Props where
+private def ClickableGraphviz : Component ClickableGraphviz.Props where
   javascript := r#"
     import * as React from 'react'
     import { EditorContext } from '@leanprover/infoview'
+    import GraphvizDisplay from 'widget_module:hash,GRAPHVIZ_DISPLAY_HASH'
 
-    export default function({
-      label,
-      width,
-      height,
-      shape,
-      fillColor,
-      borderColor,
-      borderWidth,
-      textColor,
-      selected,
-      dashArray,
-      tooltip,
-      location,
-    }) {
+    export default function({ locs, ...props }) {
       const ec = React.useContext(EditorContext)
-      const clickable = !!location
-      const w = Number(width) || 80
-      const h = Number(height) || 28
-      const strokeWidth = Number(borderWidth) || 2
-      const maxChars = Math.max(1, Math.floor((w - 16) / 7))
-      const text = label.length > maxChars ? `${label.slice(0, Math.max(1, maxChars - 3))}...` : label
+      const locMap = React.useMemo(() => new Map(locs), [locs])
 
-      const revealLocation = React.useCallback((event) => {
-        if (!location) return
-        event.preventDefault()
-        event.stopPropagation()
-        const [uri, range] = location
+      const attributer = React.useCallback(function(d) {
+        if (d.tag !== 'g' || d.attributes.class !== 'node' || !locMap.has(d.key)) return
+        d.attributes.cursor = 'pointer'
+      }, [locMap])
+
+      const onClickNode = React.useCallback((ev, d) => {
+        if (!d || !('key' in d) || !locMap.has(d.key)) return
+        ev.preventDefault()
+        ev.stopPropagation()
+        const [uri, range] = locMap.get(d.key)
         ec.revealLocation({ uri, range })
-      }, [ec, location])
+      }, [ec, locMap])
 
-      const onKeyDown = React.useCallback((event) => {
-        if (event.key === 'Enter' || event.key === ' ') revealLocation(event)
-      }, [revealLocation])
-
-      const shapeProps = {
-        fill: fillColor,
-        stroke: selected ? '#2563eb' : borderColor,
-        strokeWidth: selected ? Math.max(strokeWidth, 3) : strokeWidth,
-        strokeDasharray: dashArray || undefined,
-      }
-      const shapeElement = shape === 'ellipse'
-        ? React.createElement('ellipse', { cx: 0, cy: 0, rx: w / 2, ry: h / 2, ...shapeProps })
-        : React.createElement('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 6, ry: 6, ...shapeProps })
-
-      return React.createElement('g', {
-        onClick: revealLocation,
-        onKeyDown,
-        role: clickable ? 'button' : undefined,
-        tabIndex: clickable ? 0 : undefined,
-        'aria-label': clickable ? `Jump to ${label}` : label,
-        style: { cursor: clickable ? 'pointer' : 'default' },
-      }, [
-        tooltip ? React.createElement('title', { key: 'title' }, tooltip) : null,
-        React.cloneElement(shapeElement, { key: 'shape' }),
-        React.createElement('text', {
-          key: 'text',
-          textAnchor: 'middle',
-          dominantBaseline: 'central',
-          fill: textColor,
-          style: {
-            fontFamily: 'var(--vscode-editor-font-family, sans-serif)',
-            fontSize: '12px',
-            fontWeight: selected ? 600 : 400,
-            pointerEvents: 'none',
-            userSelect: 'none',
-          },
-        }, text),
-      ])
+      return React.createElement(GraphvizDisplay, {
+        ...props,
+        attributer,
+        onClickNode,
+      })
     }
-  "#
-
-open Informal Environment
-
-private def graphLabelWidth (label : String) : Nat :=
-  Nat.min 220 (Nat.max 72 (label.length * 7 + 24))
-
-private def graphLabelHeight : Nat := 28
-
-private def styleHasToken (style token : String) : Bool :=
-  (style.splitOn ",").any fun part => part.trimAscii.toString == token
-
-private def strokeDashArray? (style : String) : Option String :=
-  if styleHasToken style "dotted" then
-    some "2 4"
-  else if styleHasToken style "dashed" then
-    some "6 4"
-  else
-    none
-
-private def graphDisplayVertex (node : Informal.Graph.NodeData)
-    (location? : Option (String × Lsp.Range)) (selected : Bool) : GraphDisplay.Vertex :=
-  let width := graphLabelWidth node.displayLabel
-  let height := graphLabelHeight
-  {
-    id := node.label.toString
-    label := Html.ofComponent GraphNodeLabel {
-      label := node.displayLabel
-      width
-      height
-      shape := node.visual.shape
-      fillColor := node.visual.fillcolor
-      borderColor := node.visual.color
-      borderWidth := node.visual.penwidth
-      textColor := node.visual.fontcolor
-      selected
-      dashArray? := strokeDashArray? node.visual.style
-      tooltip? := node.visual.tooltip?
-      location?
-    } #[]
-    boundingShape := .rect width.toFloat height.toFloat
-    details? := node.visual.tooltip?.map Html.text
-  }
-
-private def edgeHasAxis (edge : Informal.Graph.EdgeData) (axis : Informal.Graph.EdgeAxis) : Bool :=
-  edge.axes.any (· == axis)
-
-private def graphDisplayEdgeAttrs (edge : Informal.Graph.EdgeData) : Array (String × Json) :=
-  let isStatement := edgeHasAxis edge .statement
-  let isProof := edgeHasAxis edge .proof
-  if isStatement && isProof then
-    #[("strokeWidth", 3)]
-  else if isProof then
-    #[("strokeDasharray", "2 4"), ("strokeWidth", 2)]
-  else
-    #[]
-
-private def graphDisplayEdge (edge : Informal.Graph.EdgeData) : GraphDisplay.Edge := {
-  source := edge.source.toString
-  target := edge.target.toString
-  attrs := graphDisplayEdgeAttrs edge
-}
-
-private def graphDisplayForces : Array GraphDisplay.ForceParams := #[
-  .link { distance? := some 120.0, strength? := some 0.7 },
-  .collide { radius? := some 56.0 },
-  .manyBody { strength? := some (-220.0) },
-  .x { strength? := some 0.05 },
-  .y { strength? := some 0.05 }
-]
+  "#.replace "GRAPHVIZ_DISPLAY_HASH" (toString GraphvizDisplay.javascriptHash)
 
 /-- All imported modules plus the current module. -/
 private def currentAndImportedModules (env : Lean.Environment) : NameSet :=
@@ -280,7 +159,7 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
           else
             none
         | _ => none
-      let currLabel? := nodeInfos.head?.map (·.label)
+      let currLabel? := nodeInfos.head?.map (·.label.toString)
       let importedMods := currentAndImportedModules snapHere.env
 
       -- Find snapshot at end of file to retrieve the blueprint graph there,
@@ -296,7 +175,7 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
         RequestM.mapTaskCheap manifestTask fun manifest? => do
           let mut graphData := liveGraphData
           let mut manifestWarning : Option String := none
-          let mut locations : NameMap (String × Lsp.Range) := {}
+          let mut locs : Array (Name × (Lsp.DocumentUri × Lsp.Range)) := #[]
 
           if let .ok manifest := manifest? then
             let manifestIndex := manifest.index
@@ -310,24 +189,20 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
               -- Might need ilean-like data.
               let some srcLoc := (manifestIndex.findEntry? node.previewKey).bind (·.sourceLocation.location)
                 | continue
-              locations := locations.insert node.label (s!"file://{srcLoc.path}", srcLoc.range)
+              locs := locs.push (node.label, (System.Uri.pathToUri srcLoc.path, srcLoc.range))
           else
             manifestWarning := some "Blueprint hasn't been built - please build it to see the whole graph."
 
-          let vertices := graphData.nodes.map fun node =>
-            graphDisplayVertex node (locations.get? node.label) (currLabel? == some node.label)
-          let edges := graphData.edges.map graphDisplayEdge
-          let graphHtml : Html :=
-            if vertices.isEmpty then
-              <p>No Blueprint graph nodes found.</p>
-            else
-              <GraphDisplay vertices={vertices} edges={edges} forces={graphDisplayForces} />
-          return <div>
-              {graphHtml}
+          if graphData.nodes.isEmpty then
+            return <p>No Blueprint graph nodes found.</p>
+          else
+            let dot := graphData.toDotWith { direction := .TB } .compact
+            return <Maximizable>
+              <ClickableGraphviz locs={locs} dot={dot} centerOnVertex?={currLabel?} />
               {match manifestWarning with
                 | some warning => <p className="warning">{.text warning}</p>
                 | none => <span />}
-            </div>
+            </Maximizable>
 
 @[widget_module]
 def BlueprintGraph : Component BlueprintGraph.Props :=
