@@ -240,6 +240,9 @@ Browser clients can resolve source-document ids with `loadSourceDocument`, load
 the complete catalog with `loadSourceDocuments`, or join entry source refs with
 declared documents using `resolveSourceMetadata` from `api/data.mjs` or
 `api/preview.mjs`.
+Manifest entries also carry source-location lookup results. Custom browser
+clients can call `resolveLabel` for Blueprint labels or `resolveDeclaration`
+for Lean declarations when they need jump-to-source targets.
 Rich audit-interface rendering is planned separately.
 
 ### Rendering to HTML

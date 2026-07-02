@@ -421,6 +421,12 @@ def lookupKey (decl : Name) : String :=
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey
 
+def href? (state : TraverseState) (previewKey : String) : Option String :=
+  (Resolve.resolveDomainHrefs state domainName previewKey)[0]?
+
+def hrefFor? (state : TraverseState) (decl : Name) : Option String :=
+  href? state (lookupKey decl)
+
 def saveId
     (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName previewKey id

@@ -261,11 +261,17 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       | some owner => Environment.getAuthor? owner
       | none => pure none
     let opts ← getOptions
+    let sourceLocation :=
+      match ← Data.SourceLocation.ofSyntax? resolved.labelSyntax with
+      | some location => Data.SourceLocationResult.found location
+      | none =>
+        Data.SourceLocationResult.unavailable s!"label source location unavailable for {label}"
     let data : BlockData := {
       kind := blockKind
       codeData
       sourceRef := parsedContents.sourceRef?
       label
+      sourceLocation
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
       parent := node?.bind (·.parent)

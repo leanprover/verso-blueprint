@@ -21,7 +21,7 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * @module blueprint-data-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -259,6 +259,51 @@ export function loadSourceDocument(id, options) {
 }
 
 /**
+ * Resolve a Blueprint block label to its manifest entry and source location.
+ *
+ * `sourceLocation` points to the authored Blueprint label/facet location. Use
+ * `resolveSourceMetadata` when a client needs original-source provenance from
+ * `entry.sources`.
+ *
+ * @param {string} label Blueprint block label.
+ * @param {BlueprintLabelResolveOptions} [options] Optional facet and load overrides.
+ * @returns {Promise<BlueprintResolveLabelResult>}
+ *
+ * @example
+ * import { resolveLabel } from "./-verso-data/api/data.mjs";
+ *
+ * const result = await resolveLabel("main_theorem", { facet: "statement" });
+ * if (result.ok && result.sourceLocation.ok) {
+ *   console.log(result.href, result.sourceLocation.location.path);
+ * }
+ */
+export function resolveLabel(label, options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "resolveLabel", [label, options]);
+}
+
+/**
+ * Resolve a Lean declaration name to its manifest entry and source location.
+ *
+ * `sourceLocation` points to the Lean declaration source. Use the returned
+ * `manifestEntry` or `resolveSourceMetadata` for Blueprint provenance records.
+ *
+ * @param {string} declName Lean declaration name.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintResolveDeclarationResult>}
+ *
+ * @example
+ * import { resolveDeclaration } from "./-verso-data/api/data.mjs";
+ *
+ * const result = await resolveDeclaration("Nat.add");
+ * if (result.ok) {
+ *   console.log(result.key, result.sourceLocation);
+ * }
+ */
+export function resolveDeclaration(declName, options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "resolveDeclaration", [declName, options]);
+}
+
+/**
  * Resolve original-source provenance for a preview key or manifest entry.
  *
  * This joins `entry.sources` with declared source-document metadata. It returns
@@ -300,6 +345,8 @@ const dataApi = {
   loadManifestEntry,
   loadSourceDocuments,
   loadSourceDocument,
+  resolveLabel,
+  resolveDeclaration,
   resolveSourceMetadata,
   loadHtmlCache,
   readHtmlCacheStatus,

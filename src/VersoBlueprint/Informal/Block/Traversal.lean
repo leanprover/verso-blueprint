@@ -53,6 +53,7 @@ def registerBlockPreviewData
       Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
   let previewData := toJson <|
     PreviewCache.Entry.ofBlocks blockData.label previewFacet contents
+      (sourceLocation := blockData.sourceLocation)
       (leanCodePreviewKeys := leanCodePreviewKeys)
   let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
   if shouldWritePreviewData existingPreview? id then

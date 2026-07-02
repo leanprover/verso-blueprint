@@ -85,22 +85,32 @@ structure CodeDeclData where
   commandIndex : Nat := 0
   weight : Nat := 1
   provedStatus : Data.ProvedStatus := .proved
+  sourceLocation : Data.SourceLocationResult :=
+    Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable"
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-def CodeDeclData.ofLiterateDef (d : Data.LiterateDef) : CodeDeclData :=
+def CodeDeclData.ofLiterateDef (d : Data.LiterateDef)
+    (sourceLocation : Data.SourceLocationResult :=
+      Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable") :
+    CodeDeclData :=
   {
     name := d.name
     commandIndex := d.commandIndex
     weight := max d.commandLines 1
     provedStatus := d.provedStatus
+    sourceLocation
   }
 
-def CodeDeclData.ofLiterateThm (d : Data.LiterateThm) : CodeDeclData :=
+def CodeDeclData.ofLiterateThm (d : Data.LiterateThm)
+    (sourceLocation : Data.SourceLocationResult :=
+      Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable") :
+    CodeDeclData :=
   {
     name := d.name
     commandIndex := d.commandIndex
     weight := max d.commandLines 1
     provedStatus := d.provedStatus
+    sourceLocation
   }
 
 structure InlineCodeData where
@@ -112,6 +122,9 @@ structure InlineCodeData where
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
+
+def InlineCodeData.declarations (code : InlineCodeData) : Array CodeDeclData :=
+  code.definedDefs ++ code.definedTheorems
 
 /--
 Resolved block-level code semantics used by informal block rendering.
@@ -156,6 +169,9 @@ structure BlockData where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
   label : Data.Label
+  /-- Source location result for the user-written label token. -/
+  sourceLocation : Data.SourceLocationResult :=
+    Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
@@ -200,6 +216,9 @@ main semantic node index.
 structure StoredBlockData where
   kind : Data.InProgressKind := .proof
   label : Data.Label
+  /-- Source location result for the user-written label token. -/
+  sourceLocation : Data.SourceLocationResult :=
+    Data.SourceLocationResult.unavailable "label source location unavailable"
   parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
@@ -224,6 +243,7 @@ deriving FromJson, ToJson, Quote
 def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   kind := data.kind
   label := data.label
+  sourceLocation := data.sourceLocation
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
@@ -248,6 +268,7 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   kind := data.kind
   codeData
   label := data.label
+  sourceLocation := data.sourceLocation
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode

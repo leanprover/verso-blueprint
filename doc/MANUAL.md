@@ -680,6 +680,13 @@ Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
 `api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
 render result. The API returns structured source-document metadata and recorded
 text/PDF spans.
+Manifest entries also include `sourceLocation`, a lookup result for the authored
+Blueprint label/facet location or Lean declaration source. Browser clients that
+start from semantic names can call `resolveLabel` or `resolveDeclaration` from
+`api/data.mjs` or `api/preview.mjs` to get the generated link and source
+location together.
+Use the data API for metadata-only audit or dashboard clients; use the preview
+API when the same client also renders Blueprint nodes or cached previews.
 The built-in source preview is intentionally lightweight; richer PDF page
 viewers and crop overlays remain Blueprint/Verso interface work.
 

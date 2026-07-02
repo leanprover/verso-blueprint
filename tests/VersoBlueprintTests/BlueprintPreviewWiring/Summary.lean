@@ -12,6 +12,13 @@ open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
+private def sourceLocationOkWithPath
+    (result : Informal.Data.SourceLocationResult) (needle : String) : Bool :=
+  result.ok &&
+    match result.location with
+    | some location => hasSubstr location.path needle
+    | none => false
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -52,6 +59,33 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         !hasSubstr mathJs "window.VersoBlueprint.onRenderReady"
       | none => false
     )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let files ← buildManualPreviewDataFiles manualImpls externalDocstringDedupDoc
+    let some blockEntry := files.manifest.findPrimaryBlockEntry? "def:external.docstring.one"
+      | return false
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl
+    let some codeEntry := files.manifest.findEntry? codeKey
+      | return false
+    pure (
+      sourceLocationOkWithPath blockEntry.sourceLocation "Shared.lean" &&
+        sourceLocationOkWithPath codeEntry.sourceLocation "Shared.lean"
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let files ← buildManualPreviewDataFiles manualImpls usedByPreviewDoc
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
+    let some codeEntry := files.manifest.findEntry? codeKey
+      | return false
+    pure <| sourceLocationOkWithPath codeEntry.sourceLocation "Shared.lean"
 
 /-- info: true -/
 #guard_msgs in
