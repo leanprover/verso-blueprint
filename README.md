@@ -340,7 +340,9 @@ you want to enable it.
 
 The repository also tracks larger reference blueprints.
 
-- [project_template/](./project_template/), the in-repo starter template
+- [project_template/](./project_template/), the in-repo starter template,
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
+  and [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
   [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/spherepackingblueprint/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),

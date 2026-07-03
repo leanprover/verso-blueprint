@@ -13,7 +13,12 @@
           "release": "v4.30.0"
         },
         {
-          "release": "v4.31.0"
+          "release": "v4.31.0",
+          "publish_reference": true
+        },
+        {
+          "release": "v4.32.0",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],
