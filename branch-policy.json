@@ -1,7 +1,10 @@
 {
   "version": 2,
-  "default_dev_branch": "v4.31.0",
-  "required_backport_branches": ["v4.30.0"],
+  "default_dev_branch": "v4.32.0",
+  "required_backport_branches": [
+    "v4.31.0",
+    "v4.30.0"
+  ],
   "release_targets": [
     {
       "id": "v4.30.0",
@@ -15,6 +18,13 @@
       "toolchain": "v4.31.0",
       "verso_ref": "v4.31.0",
       "branch": "v4.31.0",
+      "deploy_pages": true
+    },
+    {
+      "id": "v4.32.0",
+      "toolchain": "v4.32.0",
+      "verso_ref": "v4.32.0",
+      "branch": "v4.32.0",
       "deploy_pages": true
     }
   ]
