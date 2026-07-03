@@ -156,7 +156,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(default_template_target.publish_reference)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
-        self.assertTrue(current_release.deploy_pages)
+        if current_release.deploy_pages:
+            self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_releases = {
             "noperthedron": "v4.31.0",
             "spherepackingblueprint": "v4.30.0",

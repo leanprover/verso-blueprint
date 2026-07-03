@@ -346,7 +346,8 @@ release links until their upstream repositories have been updated and validated
 for the new Lean release.
 
 - [project_template/](./project_template/), the in-repo starter template,
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
+  and [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/noperthedron/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),

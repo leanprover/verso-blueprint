@@ -18,7 +18,6 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 BRANCH_POLICY = load_branch_policy(PACKAGE_ROOT)
 DEFAULT_DEV_RELEASE = BRANCH_POLICY.default_dev_branch
 REQUIRED_BACKPORT_RELEASES = BRANCH_POLICY.required_backport_branches
-REQUIRED_BACKPORT_RELEASE = REQUIRED_BACKPORT_RELEASES[0]
 
 
 class FakeGitHubApi:
@@ -55,13 +54,18 @@ def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
     )
 
 
+def required_backport_body(status: str) -> str:
+    return "".join(f"{backport_line(branch, status)}\n" for branch in REQUIRED_BACKPORT_RELEASES)
+
+
 class BackportPrCheckTests(unittest.TestCase):
     def test_pr_template_backport_placeholder_is_safe_for_drafts(self) -> None:
         template = Path(__file__).resolve().parents[2] / ".github" / "PULL_REQUEST_TEMPLATE.md"
         entries = backport_mod.parse_backport_entries(template.read_text(encoding="utf-8"))
 
         self.assertEqual(set(entries), set(REQUIRED_BACKPORT_RELEASES))
-        self.assertTrue(entries[REQUIRED_BACKPORT_RELEASE].pending)
+        for branch in REQUIRED_BACKPORT_RELEASES:
+            self.assertTrue(entries[branch].pending)
 
     def test_parse_backport_entries_accepts_pr_pending_and_exemption(self) -> None:
         body = """
@@ -105,7 +109,7 @@ Backport v4.26.0: exempt: no longer maintained
             write_pull_request_event(
                 event_path,
                 draft=True,
-                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'pending')}\n",
+                body=required_backport_body("pending"),
             )
             self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
 
@@ -181,7 +185,7 @@ Backport v4.26.0: exempt: no longer maintained
             write_pull_request_event(
                 event_path,
                 draft=False,
-                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'pending')}\n",
+                body=required_backport_body("pending"),
             )
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending backport entries are not allowed"):
                 backport_mod.run(str(event_path), token=None)
@@ -192,7 +196,7 @@ Backport v4.26.0: exempt: no longer maintained
             write_pull_request_event(
                 event_path,
                 draft=False,
-                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'exempt: docs-only change')}\n",
+                body=required_backport_body("exempt: docs-only change"),
             )
             self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
 
