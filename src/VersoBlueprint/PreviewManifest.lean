@@ -1230,7 +1230,7 @@ def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
   entry.leanCodePreviewKeys.any (fun key => key.contains decl)
 
 def externalMarkupEntryKey (label : Name) : String :=
-  s!"externalMarkup:{label}"
+  Informal.PreviewSource.externalMarkupKey label
 
 /-- Count available Lean-code preview entries before display-level deduplication. -/
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=

@@ -157,6 +157,17 @@ def traversalLookupKey?
   let selection ← traversalSelection? s label
   pure selection.key
 
+def externalMarkupKey (label : Name) : String :=
+  s!"externalMarkup:{label}"
+
+def traversalExternalMarkupLookupKey?
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String := do
+  let data ← Informal.TraversalIndex.ExternalMarkup.data? s label
+  if data.markup.isEmpty then
+    none
+  else
+    some (externalMarkupKey label)
+
 /-- Selected traversal preview key, falling back to the fixed statement key.
 
 Use this for rendered browser surfaces that need "the best available preview

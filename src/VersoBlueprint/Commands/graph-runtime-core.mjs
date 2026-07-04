@@ -114,6 +114,16 @@
     return rect.bottom;
   }
 
+  function updateGraphCanvasOffset(graphRoot) {
+    if (!(graphRoot instanceof Element)) return;
+    const block = graphRoot.closest(".bp_graph_fullwidth");
+    if (!(block instanceof HTMLElement)) return;
+    block.style.setProperty(
+      "--bp-graph-canvas-top",
+      Math.max(0, Math.round(graphRoot.offsetTop)) + "px"
+    );
+  }
+
   function layoutGraphCanvasFill(graphRoot, graphState) {
     const rect = graphRoot.getBoundingClientRect();
     const parent = graphRoot.parentElement;
@@ -138,6 +148,7 @@
 
   export function layoutGraphCanvas(graphRoot, graphState, options) {
     if (!(graphRoot instanceof Element)) return;
+    updateGraphCanvasOffset(graphRoot);
     const layoutMode = graphLayoutMode(graphRoot, options);
     if (layoutMode === "fill") {
       layoutGraphCanvasFill(graphRoot, graphState);

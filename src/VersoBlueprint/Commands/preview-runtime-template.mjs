@@ -158,6 +158,7 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       triggerBoundAttr: readTemplateDescriptorString(root, "trigger-bound-attr", "data-bp-bound")
     };
     if ("fetchJson" in opts) bindOptions.fetchJson = opts.fetchJson;
+    if ("dataApi" in opts) bindOptions.dataApi = opts.dataApi;
     if (mode.length > 0 || placement.length > 0) {
       bindOptions.defaults = {
         mode: mode.length > 0 ? mode : "hover",

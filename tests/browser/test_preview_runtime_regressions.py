@@ -368,6 +368,129 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_blueprint_summary_external_markup_entries_have_previews(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Blueprint-Summary/")
+        wait_for_blueprint_render_api(page)
+        page.locator(".bp_summary[data-bp-template-preview-bound='1']").wait_for()
+
+        page.locator("details").evaluate_all("els => els.forEach(el => { el.open = true; })")
+
+        trigger = page.locator(
+            '.bp_summary_item_head '
+            '.bp_summary_preview_wrap_active'
+            '[data-bp-preview-key="externalMarkup:custom_client_external_markdown"]'
+        ).first
+        expect(trigger).to_have_count(1)
+        trigger.scroll_into_view_if_needed()
+        trigger.hover()
+
+        panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
+        expect(panel).to_be_visible()
+        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text(
+            "custom_client_external_markdown"
+        )
+        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text(
+            "External Markdown source"
+        )
+        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text("only Markdown")
+
+        assert_no_runtime_errors(errors)
+
+    def test_mobile_block_header_extras_wrap_without_page_overflow(self, server: str, page: Page):
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.goto(f"{server}/Core-Previews/")
+        page.locator(".bp_wrapper").first.wait_for()
+
+        metrics = page.evaluate(
+            """() => {
+                const viewportRight = window.innerWidth + 1;
+                const headings = Array.from(document.querySelectorAll(".bp_heading"));
+                const overflowing = headings.flatMap((heading) => {
+                    const extras = heading.querySelector(".bp_extras");
+                    if (!extras) return [];
+                    const headingRect = heading.getBoundingClientRect();
+                    const extrasRect = extras.getBoundingClientRect();
+                    const spillsViewport =
+                        extrasRect.right > viewportRight ||
+                        heading.scrollWidth > heading.clientWidth + 1;
+                    if (!spillsViewport) return [];
+                    return [{
+                        headingText: heading.textContent.trim().replace(/\\s+/g, " ").slice(0, 120),
+                        headingWidth: headingRect.width,
+                        headingScrollWidth: heading.scrollWidth,
+                        extrasRight: extrasRect.right,
+                        extrasWidth: extrasRect.width
+                    }];
+                });
+                return {
+                    documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+                    viewportWidth: window.innerWidth,
+                    overflowing
+                };
+            }"""
+        )
+
+        assert metrics["overflowing"] == []
+
+    def test_mobile_summary_decl_names_wrap_without_page_overflow(self, server: str, page: Page):
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.goto(f"{server}/Blueprint-Summary/")
+        page.locator(".bp_summary_decl_list").first.wait_for(state="attached")
+        page.locator("details").evaluate_all("els => els.forEach(el => { el.open = true; })")
+
+        metrics = page.evaluate(
+            """() => {
+                const viewportRight = window.innerWidth + 1;
+                const overflowItem = (node) => {
+                    const rect = node.getBoundingClientRect();
+                    return node.scrollWidth > node.clientWidth + 1 || rect.right > viewportRight;
+                };
+                const declLists = Array.from(document.querySelectorAll(".bp_summary_decl_list"));
+                const links = Array.from(document.querySelectorAll(".bp_summary_decl_list .bp_inline_preview_ref"));
+                const overflowingLists = declLists.filter((list) => list.scrollWidth > list.clientWidth + 1);
+                const overflowingItems = Array.from(
+                    document.querySelectorAll(
+                        ".bp_summary_item_head, .bp_summary_item_body, .bp_summary_item_actions"
+                    )
+                ).flatMap((node) => {
+                    if (!overflowItem(node)) return [];
+                    const rect = node.getBoundingClientRect();
+                    return [{
+                        text: node.textContent.trim().replace(/\\s+/g, " ").slice(0, 160),
+                        right: rect.right,
+                        width: rect.width,
+                        scrollWidth: node.scrollWidth,
+                        clientWidth: node.clientWidth
+                    }];
+                });
+                const overflowingLinks = links.flatMap((link) => {
+                    const rect = link.getBoundingClientRect();
+                    if (rect.right <= viewportRight) return [];
+                    return [{
+                        text: link.textContent.trim().replace(/\\s+/g, " ").slice(0, 160),
+                        right: rect.right,
+                        width: rect.width
+                    }];
+                });
+                return {
+                    linkCount: links.length,
+                    documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+                    viewportWidth: window.innerWidth,
+                    overflowingLists: overflowingLists.length,
+                    overflowingItems,
+                    overflowingLinks
+                };
+            }"""
+        )
+
+        assert metrics["linkCount"] > 0
+        assert metrics["overflowingLists"] == 0
+        assert metrics["overflowingItems"] == []
+        assert metrics["overflowingLinks"] == []
+
     def test_exact_cache_keys_keep_statement_and_proof_previews_distinct(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
