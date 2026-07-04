@@ -565,6 +565,9 @@ The local coordination layer is now machine-readable and untracked.
   branch when one exists, and prunes its stale reference clones
 - detached linked worktrees are also retireable once their `HEAD` commit is
   reachable from that worktree's preferred release ref
+- after a GitHub squash merge, pass `--merged-pr <number>` so `worktree-retire`
+  can verify that the merged PR head SHA, head branch, and base branch match the
+  local worktree before force-deleting the local branch
 - by default, each session should only retire or delete worktrees and branches
   it created or landed itself; broader cleanup should be explicit
 
@@ -589,6 +592,7 @@ python3 -m scripts.blueprint_harness worktree-list
 python3 -m scripts.blueprint_harness worktree-claim harness-rework --unlock --priority P0 --status review
 python3 -m scripts.blueprint_harness worktree-prune-candidates
 python3 -m scripts.blueprint_harness worktree-retire <name> --dry-run
+python3 -m scripts.blueprint_harness worktree-retire <name> --merged-pr <number>
 ```
 
 `worktree-list` already refreshes the local metadata before printing.

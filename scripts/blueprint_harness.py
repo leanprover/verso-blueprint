@@ -157,6 +157,58 @@ def current_commit_subject(repo_root: Path) -> str:
     return subject
 
 
+def github_pr_view_json(repo_root: Path, pr_number: int, fields: tuple[str, ...]) -> dict[str, object] | None:
+    result = subprocess.run(
+        ["gh", "pr", "view", str(pr_number), "--repo", PUBLIC_REPOSITORY, "--json", ",".join(fields)],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def branch_name_from_ref(ref: str) -> str:
+    for prefix in ("refs/remotes/origin/", "refs/heads/", "origin/"):
+        if ref.startswith(prefix):
+            return ref.removeprefix(prefix)
+    return ref
+
+
+def worktree_merged_pr_validation_error(
+    repo_root: Path,
+    pr_number: int,
+    worktree: GitWorktree,
+    base_ref: str,
+) -> str | None:
+    payload = github_pr_view_json(
+        repo_root,
+        pr_number,
+        ("state", "baseRefName", "headRefName", "headRefOid"),
+    )
+    if payload is None:
+        return f"unable to read GitHub PR #{pr_number}"
+    state = payload.get("state")
+    if state != "MERGED":
+        return f"GitHub PR #{pr_number} is not merged"
+    base_ref_name = payload.get("baseRefName")
+    if base_ref_name != branch_name_from_ref(base_ref):
+        return f"GitHub PR #{pr_number} base `{base_ref_name}` does not match `{base_ref}`"
+    head_ref_oid = payload.get("headRefOid")
+    if head_ref_oid != worktree.head:
+        return f"GitHub PR #{pr_number} head `{head_ref_oid}` does not match worktree head `{worktree.head}`"
+    head_ref_name = payload.get("headRefName")
+    if worktree.branch is not None and head_ref_name != worktree.branch:
+        return f"GitHub PR #{pr_number} head branch `{head_ref_name}` does not match `{worktree.branch}`"
+    return None
+
+
 def validate_public_pr_title(title: str) -> str:
     normalized = title.strip()
     if normalized != title or not normalized:
@@ -986,13 +1038,28 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         raise SystemExit(f"[blueprint-harness] cannot retire a linked worktree attached to `{release_branch}`")
     merge_subject = branch or worktree.head
     base_ref = preferred_worktree_base_ref(path)
-    if not ref_merged_into_worktree_base(layout.repo_root, merge_subject, path):
-        if branch is None:
+    merged_by_ancestry = ref_merged_into_worktree_base(layout.repo_root, merge_subject, path)
+    merged_pr = getattr(args, "merged_pr", None)
+    merge_mode = "ancestry"
+    branch_delete_flag = "-d"
+    if not merged_by_ancestry:
+        if merged_pr is not None:
+            validation_error = worktree_merged_pr_validation_error(layout.repo_root, merged_pr, worktree, base_ref)
+            if validation_error is None:
+                merge_mode = f"github-pr-{merged_pr}"
+                branch_delete_flag = "-D"
+            else:
+                raise SystemExit(f"[blueprint-harness] cannot retire worktree `{name}`: {validation_error}")
+        else:
+            squash_hint = "; pass `--merged-pr <number>` after a squash merge"
+            if branch is None:
+                raise SystemExit(
+                    f"[blueprint-harness] detached worktree `{name}` is at `{worktree.head}` "
+                    f"which is not merged into `{base_ref}`{squash_hint}"
+                )
             raise SystemExit(
-                f"[blueprint-harness] detached worktree `{name}` is at `{worktree.head}` "
-                f"which is not merged into `{base_ref}`"
+                f"[blueprint-harness] branch `{branch}` is not merged into `{base_ref}`{squash_hint}"
             )
-        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into `{base_ref}`")
     if not worktree_is_clean(path):
         raise SystemExit(f"[blueprint-harness] worktree `{name}` has local modifications")
 
@@ -1000,12 +1067,13 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
     print(f"path={path}")
     print(f"branch={branch or ''}")
     print(f"head={worktree.head}")
+    print(f"merge_mode={merge_mode}")
     if args.dry_run:
         return 0
 
     run(["git", "worktree", "remove", str(path)], cwd=layout.repo_root)
     if branch is not None:
-        run(["git", "branch", "-d", branch], cwd=layout.repo_root)
+        run(["git", "branch", branch_delete_flag, branch], cwd=layout.repo_root)
 
     manifest_path = resolve_manifest_path(None, layout.package_root)
     try:
@@ -1372,6 +1440,15 @@ def add_worktree_lifecycle_commands(subparsers) -> None:
         "--dry-run",
         action="store_true",
         help="Print the target worktree without deleting it.",
+    )
+    worktree_retire.add_argument(
+        "--merged-pr",
+        type=int,
+        default=None,
+        help=(
+            "Allow retiring a clean worktree whose branch was squash-merged by "
+            "verifying the merged GitHub PR head and base."
+        ),
     )
     worktree_retire.set_defaults(func=command_worktree_retire)
 
