@@ -334,6 +334,63 @@ export function createGraphBlock(graphData, options) {
   return block;
 }
 
+function readGraphNodeSvgHref(node) {
+  if (!(node instanceof Element)) return "";
+  const links = [];
+  if (String(node.localName || "").toLowerCase() === "a") links.push(node);
+  node.querySelectorAll("a").forEach(function (link) {
+    links.push(link);
+  });
+  for (const link of links) {
+    const href = (
+      link.getAttribute("href") ||
+      link.getAttribute("xlink:href") ||
+      (link.getAttributeNS
+        ? link.getAttributeNS("http://www.w3.org/1999/xlink", "href")
+        : "") ||
+      ""
+    ).trim();
+    if (href.length > 0) return href;
+  }
+  return "";
+}
+
+function graphDataNodeForPreview(graphData, label, previewKey) {
+  if (!graphData || typeof graphData !== "object" || !Array.isArray(graphData.nodes)) return null;
+  const normalizedLabel = String(label || "").trim();
+  const normalizedPreviewKey = String(previewKey || "").trim();
+  return graphData.nodes.find(function (node) {
+    if (!node || typeof node !== "object") return false;
+    const nodePreviewKey = typeof node.previewKey === "string" ? node.previewKey.trim() : "";
+    const nodeLabel = typeof node.label === "string" ? node.label.trim() : "";
+    const nodeDisplayLabel = typeof node.displayLabel === "string" ? node.displayLabel.trim() : "";
+    return (
+      (normalizedPreviewKey.length > 0 && nodePreviewKey === normalizedPreviewKey) ||
+      (normalizedLabel.length > 0 && (nodeLabel === normalizedLabel || nodeDisplayLabel === normalizedLabel))
+    );
+  }) || null;
+}
+
+function graphPreviewHref(graphData, node, label, previewKey) {
+  const svgHref = readGraphNodeSvgHref(node);
+  if (svgHref.length > 0) return svgHref;
+  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
+  return graphNode && typeof graphNode.href === "string" ? graphNode.href.trim() : "";
+}
+
+function graphPreviewLinkTitle(graphData, label, previewKey) {
+  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
+  const graphTitle = graphNode && typeof graphNode.title === "string" ? graphNode.title.trim() : "";
+  const normalizedLabel = String(label || "").trim();
+  return graphTitle && normalizedLabel && graphTitle !== normalizedLabel ? normalizedLabel : "";
+}
+
+function graphPreviewHeading(graphData, label, previewKey) {
+  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
+  const graphTitle = graphNode && typeof graphNode.title === "string" ? graphNode.title.trim() : "";
+  return graphTitle || String(label || "").trim();
+}
+
 function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
   if (!previewController) return;
   const graphState = ensureGraphBlockState(graphBlock);
@@ -360,7 +417,13 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     if (requestToken !== graphState.previewRequestToken) return;
     if (!html) return;
     graphState.previewActiveNode = anchorNode instanceof Element ? anchorNode : null;
-    previewController.show(label, html, graphState.previewActiveNode);
+    previewController.showContent({
+      heading: graphPreviewHeading(graphState.graphData, label, previewKey),
+      headingHref: graphPreviewHref(graphState.graphData, graphState.previewActiveNode, label, previewKey),
+      headingTitle: graphPreviewLinkTitle(graphState.graphData, label, previewKey),
+      html: html,
+      anchor: graphState.previewActiveNode
+    });
   };
   const canPreviewNode = function (node) {
     if (!(node instanceof Element)) return false;
@@ -524,7 +587,24 @@ function bindGraphPopover(previewUtils, graphBlock, buttonSelector, panelSelecto
     panel: popoverPanel,
     close: popoverClose,
     boundAttr: boundAttr,
-    offset: 8
+    offset: 8,
+    position: function (_controller, rootNode, triggerNode, panelNode) {
+      if (!(rootNode instanceof Element)) return;
+      if (!(triggerNode instanceof Element)) return;
+      if (!(panelNode instanceof HTMLElement)) return;
+      const rootRect = rootNode.getBoundingClientRect();
+      const triggerRect = triggerNode.getBoundingClientRect();
+      const top = Math.max(0, Math.round(triggerRect.bottom - rootRect.top + 8));
+      panelNode.style.top = top + "px";
+      if (rootRect.width <= 720) {
+        panelNode.style.left = "0px";
+        panelNode.style.right = "0px";
+        return;
+      }
+      const right = Math.max(0, Math.round(rootRect.right - triggerRect.right));
+      panelNode.style.left = "";
+      panelNode.style.right = right + "px";
+    }
   });
 }
 

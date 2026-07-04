@@ -134,6 +134,8 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const titleSlot = slots.title;
     const bodySlot = slots.body;
     if (!(titleSlot instanceof Element) || !(bodySlot instanceof Element)) return null;
+    const titleElement = titleSlot;
+    const bodyElement = bodySlot;
     const headerLabelSlot = slots.headerLabel instanceof HTMLElement ? slots.headerLabel : null;
     const footerSlot = slots.footer instanceof HTMLElement ? slots.footer : null;
     const closeButtonSlot = slots.closeButton instanceof HTMLElement ? slots.closeButton : null;
@@ -165,21 +167,37 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         const bodyPayload = Object.prototype.hasOwnProperty.call(payload, "payload")
           ? payload.payload
           : payload.html;
-        renderBody(bodySlot, bodyPayload, surface, payload);
+        renderBody(bodyElement, bodyPayload, surface, payload);
         return true;
       }
       const html = typeof payload.html === "string" ? payload.html : "";
       if (html.length === 0 && payload.allowEmpty !== true) return false;
-      renderHtmlInto(bodySlot, html, readObjectOption(payload, "renderOptions", undefined));
+      renderHtmlInto(bodyElement, html, readObjectOption(payload, "renderOptions", undefined));
       return true;
+    }
+
+    function renderSurfaceTitle(content) {
+      const payload = content && typeof content === "object" ? content : {};
+      const heading = typeof payload.heading === "string" ? payload.heading : "";
+      const href = typeof payload.headingHref === "string" ? payload.headingHref.trim() : "";
+      const title = typeof payload.headingTitle === "string" ? payload.headingTitle.trim() : "";
+      if (href.length === 0 || heading.length === 0) {
+        titleElement.textContent = heading;
+        return;
+      }
+      const link = document.createElement("a");
+      link.setAttribute("href", href);
+      if (title.length > 0) link.setAttribute("title", title);
+      link.textContent = heading;
+      titleElement.replaceChildren(link);
     }
 
     /** @type {PreviewSurface} */
     const surface = {
       panel: panel,
-      title: titleSlot,
+      title: titleElement,
       headerLabel: headerLabelSlot,
-      body: bodySlot,
+      body: bodyElement,
       footer: footerSlot,
       closeButton: closeButtonSlot,
       behavior: normalizePanelBehavior(panel, defaults, null),
@@ -233,8 +251,8 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       },
       hideContent: function () {
         panel.hidden = true;
-        titleSlot.textContent = "";
-        clearBody(bodySlot);
+        titleElement.textContent = "";
+        clearBody(bodyElement);
         surface.clearChrome();
         if (onHide) onHide(surface);
       },
@@ -256,7 +274,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
           surface.hideContent();
           return false;
         }
-        titleSlot.textContent = typeof payload.heading === "string" ? payload.heading : "";
+        renderSurfaceTitle(payload);
         surface.setSource(source);
         if (!renderSurfaceBody(payload)) {
           surface.hideContent();
@@ -273,7 +291,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         if (payload.behavior && typeof payload.behavior === "object") {
           surface.setBehavior(payload.behavior);
         }
-        titleSlot.textContent = typeof payload.heading === "string" ? payload.heading : "";
+        renderSurfaceTitle(payload);
         if (
           Object.prototype.hasOwnProperty.call(payload, "source") ||
           Object.prototype.hasOwnProperty.call(payload, "anchor")
