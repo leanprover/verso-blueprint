@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-06-30
+Last reviewed: 2026-07-07
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Requests that should eventually move into upstream `verso`, Lake, or Lean live
@@ -41,14 +41,16 @@ Current shape:
 
 Work:
 
-1. keep one-label preview callers, traversal preview enumeration, and finished
-   manifest entry queries behind shared helpers; `PreviewSource` owns
-   statement/proof fallback, traversal store helpers own whole-domain decoding,
-   and `PreviewManifest.File` owns client-facing manifest filters and label lookup
+1. keep the landed preview-source consolidation intact: one-label preview
+   callers, traversal preview enumeration, and finished manifest entry queries
+   go through shared helpers; `PreviewSource` owns statement/proof selection,
+   traversal store helpers own whole-domain decoding, and
+   `PreviewManifest.File` owns client-facing manifest filters and label lookup
 2. merge the traversal preview cache and widget `elabStx` preview path behind a
    phase-safe representation
-3. define one canonical API for preview labels and titles; avoid mixing raw
-   labels, resolved titles, and local fallbacks across renderers
+3. keep preview labels and titles on the canonical manifest-backed path; new
+   renderers should consume resolved manifest titles instead of mixing raw
+   labels, source labels, and local fallbacks
 4. keep graph, summary, relation-panel, Slides, custom-client, and
    inline-reference behavior on shared browser helpers where the interaction
    model is genuinely shared; the current surfaces, descriptors, trigger
