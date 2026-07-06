@@ -742,6 +742,136 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         ):
             self.assertIsNone(harness_mod.github_pr_title(Path("/tmp/worktree"), 11))
 
+    def test_worktree_merged_pr_validation_accepts_matching_metadata(self) -> None:
+        worktree = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "state": "MERGED",
+                "baseRefName": "v4.31.0",
+                "headRefName": "feat/demo",
+                "headRefOid": "abc123",
+            },
+        ):
+            self.assertIsNone(
+                harness_mod.worktree_merged_pr_validation_error(
+                    Path("/tmp/repo"),
+                    152,
+                    worktree,
+                    "origin/v4.31.0",
+                )
+            )
+
+    def test_worktree_merged_pr_validation_rejects_mismatched_head(self) -> None:
+        worktree = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "state": "MERGED",
+                "baseRefName": "v4.31.0",
+                "headRefName": "feat/demo",
+                "headRefOid": "def456",
+            },
+        ):
+            error = harness_mod.worktree_merged_pr_validation_error(
+                Path("/tmp/repo"),
+                152,
+                worktree,
+                "origin/v4.31.0",
+            )
+
+        self.assertIn("does not match worktree head", error)
+
+    def test_worktree_merged_pr_validation_rejects_unmerged_pr(self) -> None:
+        worktree = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "state": "OPEN",
+                "baseRefName": "v4.31.0",
+                "headRefName": "feat/demo",
+                "headRefOid": "abc123",
+            },
+        ):
+            error = harness_mod.worktree_merged_pr_validation_error(
+                Path("/tmp/repo"),
+                152,
+                worktree,
+                "origin/v4.31.0",
+            )
+
+        self.assertIn("is not merged", error)
+
+    def test_worktree_merged_pr_validation_rejects_mismatched_base(self) -> None:
+        worktree = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "state": "MERGED",
+                "baseRefName": "v4.30.0",
+                "headRefName": "feat/demo",
+                "headRefOid": "abc123",
+            },
+        ):
+            error = harness_mod.worktree_merged_pr_validation_error(
+                Path("/tmp/repo"),
+                152,
+                worktree,
+                "origin/v4.31.0",
+            )
+
+        self.assertIn("base `v4.30.0` does not match `origin/v4.31.0`", error)
+
+    def test_worktree_merged_pr_validation_rejects_mismatched_branch(self) -> None:
+        worktree = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "state": "MERGED",
+                "baseRefName": "v4.31.0",
+                "headRefName": "feat/other",
+                "headRefOid": "abc123",
+            },
+        ):
+            error = harness_mod.worktree_merged_pr_validation_error(
+                Path("/tmp/repo"),
+                152,
+                worktree,
+                "origin/v4.31.0",
+            )
+
+        self.assertIn("head branch `feat/other` does not match `feat/demo`", error)
+
     def test_prepare_backport_pr_requires_title_when_github_lookup_fails(self) -> None:
         args = argparse.Namespace(
             release="v4.28.0",
@@ -1618,6 +1748,136 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ["git", "branch", "-d", backport.branch],
             ],
         )
+
+    def test_worktree_retire_accepts_verified_squash_merged_pr(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=152)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+            reference_source_cache_root=Path("/tmp/cache"),
+            reference_dependency_cache_root=Path("/tmp/deps"),
+            reference_project_root=Path("/tmp/reference-root"),
+        )
+        demo = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        commands: list[list[str]] = []
+        seen_prs: list[int] = []
+
+        def fake_pr_validation(_repo_root, pr_number, worktree, base_ref):
+            seen_prs.append(pr_number)
+            self.assertEqual(worktree, demo)
+            self.assertEqual(base_ref, "origin/v4.31.0")
+            return None
+
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            worktree_record_map=lambda _repo_root: (
+                {
+                    "demo": SimpleNamespace(
+                        name="demo",
+                        locked=False,
+                    )
+                },
+                Path("/tmp/repo/.worktrees/registry.json"),
+            ),
+            git_worktree_map=lambda _repo_root: {"demo": demo},
+            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
+            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
+            worktree_merged_pr_validation_error=fake_pr_validation,
+            worktree_is_clean=lambda _path: True,
+            local_release_ref=lambda _repo_root: "v4.31.0",
+            run=lambda command, *, cwd: commands.append(command),
+            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
+            load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
+            git_worktrees=lambda _repo_root: [],
+            reference_prune_plan=lambda *_args, **_kwargs: [],
+        ):
+            self.assertEqual(harness_mod.command_worktree_retire(args), 0)
+
+        self.assertEqual(seen_prs, [152])
+        self.assertEqual(
+            commands,
+            [
+                ["git", "worktree", "remove", str(demo.path)],
+                ["git", "branch", "-D", demo.branch],
+            ],
+        )
+
+    def test_worktree_retire_rejects_unverified_squash_merged_pr(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=152)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+        )
+        demo = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            worktree_record_map=lambda _repo_root: (
+                {
+                    "demo": SimpleNamespace(
+                        name="demo",
+                        locked=False,
+                    )
+                },
+                Path("/tmp/repo/.worktrees/registry.json"),
+            ),
+            git_worktree_map=lambda _repo_root: {"demo": demo},
+            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
+            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
+            worktree_merged_pr_validation_error=lambda *_args: "GitHub PR #152 is not merged",
+            local_release_ref=lambda _repo_root: "v4.31.0",
+        ):
+            with self.assertRaisesRegex(SystemExit, "GitHub PR #152 is not merged"):
+                harness_mod.command_worktree_retire(args)
+
+    def test_worktree_retire_hints_for_unverified_squash_merge(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+        )
+        demo = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="feat/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            worktree_record_map=lambda _repo_root: (
+                {
+                    "demo": SimpleNamespace(
+                        name="demo",
+                        locked=False,
+                    )
+                },
+                Path("/tmp/repo/.worktrees/registry.json"),
+            ),
+            git_worktree_map=lambda _repo_root: {"demo": demo},
+            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
+            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
+            local_release_ref=lambda _repo_root: "v4.31.0",
+        ):
+            with self.assertRaisesRegex(SystemExit, "pass `--merged-pr <number>` after a squash merge"):
+                harness_mod.command_worktree_retire(args)
 
     def test_worktree_retire_rejects_locked_worktree(self) -> None:
         args = argparse.Namespace(name="demo", dry_run=False)
