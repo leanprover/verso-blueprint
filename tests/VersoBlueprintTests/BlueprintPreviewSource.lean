@@ -111,4 +111,59 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
           variant.previewKeyByNodeId.any (fun (_, key) => key == proofKey))
       | none => false
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
+    let label := Name.mkSimple "preview.missing"
+    let statementKey := PreviewCache.statementKey label
+    let semantic : Informal.Graph.GraphData := {
+      nodes := #[{
+        label
+        title := "Missing preview"
+        displayLabel := "Missing preview"
+        previewKey := statementKey
+        visual := { fillcolor := "#ffffff" }
+      }]
+    }
+    let finalized := Informal.GraphApi.finalData st semantic
+    let variants := finalized.renderVariants {}
+    pure <|
+      finalized.nodes.isEmpty &&
+      finalized.edges.isEmpty &&
+      finalized.groups.isEmpty &&
+      variants.all (fun variant =>
+        variant.previewKeyByNodeId.all (fun (_, key) =>
+          !key.isEmpty && key != statementKey))
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
+    let label := Name.mkSimple "preview.unknown"
+    let semantic : Informal.Graph.GraphData := {
+      nodes := #[{
+        label
+        title := "Unknown preview"
+        displayLabel := "Unknown preview"
+        previewKey := PreviewCache.statementKey label
+        warnings := { unknownRef := true }
+        visual := { fillcolor := "#ffffff" }
+      }]
+    }
+    let finalized := Informal.GraphApi.finalData st semantic
+    let variants := finalized.renderVariants {}
+    pure <|
+      match finalized.nodes[0]? with
+      | some node =>
+        node.label == label &&
+        node.warnings.unknownRef &&
+        node.previewKey.isEmpty &&
+        variants.all (fun variant => variant.previewKeyByNodeId.isEmpty)
+      | none => false
+
 end Verso.VersoBlueprintTests.BlueprintPreviewSource

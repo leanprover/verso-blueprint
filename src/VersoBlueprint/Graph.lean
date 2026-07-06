@@ -170,7 +170,7 @@ structure GraphRenderVariant where
   selectOnNodeId : Array (String × String) := #[]
   /-- Node ids that preview another variant on hover. -/
   hoverOnNodeId : Array (String × String) := #[]
-  /-- Node ids that open Blueprint preview-cache entries. -/
+  /-- Node ids that open Blueprint preview-cache entries. Nodes without renderable previews are omitted. -/
   previewKeyByNodeId : Array (String × String) := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
@@ -242,6 +242,7 @@ structure NodeData where
   kind : Option Data.NodeKind := none
   parent : Option Name := none
   href : Option String := none
+  /-- Selected preview-cache key for this node, or the empty string when no traversal preview exists. -/
   previewKey : String
   statementUses : Array Data.UseRef := #[]
   proofUses : Array Data.UseRef := #[]
@@ -1425,11 +1426,15 @@ per parent group.
 -/
 def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
-    (previewKeyForLabel : Name → String := PreviewCache.statementKey) :
+    (previewKeyForLabel : Name → String := fun _ => "") :
     Array GraphRenderVariant :=
   let previewKeyByNodeId (graph : Graph String) : Array (String × String) :=
-    graph.map fun node =>
-      (graphNodeSvgId node.label, previewKeyForLabel node.label)
+    graph.filterMap fun node =>
+      let previewKey := (previewKeyForLabel node.label).trimAscii.toString
+      if previewKey.isEmpty then
+        none
+      else
+        some (graphNodeSvgId node.label, previewKey)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
   let parentChildren := graphParentChildren graph
@@ -1487,7 +1492,7 @@ def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array
   let previewKeyForLabel label :=
     match data.nodes.find? (fun node => node.label == label) with
     | some node => node.previewKey
-    | none => PreviewCache.statementKey label
+    | none => ""
   mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
 
 end Informal.Graph

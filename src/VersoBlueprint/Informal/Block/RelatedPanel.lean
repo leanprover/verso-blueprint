@@ -70,7 +70,6 @@ structure PanelEntry where
   label : Data.Label
   href : Option String := none
   badgesHtml : Output.Html := .empty
-  previewFallbackLabel? : Option String := none
   active : Bool := false
 
 /-- Whether a one-entry related panel should stay as an inline preview chip or render the full panel. -/
@@ -341,6 +340,10 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 private def previewLookupKey (source : BlockData) : String :=
   PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
+private def nonEmptyPreviewLookupKey? (key : String) : Option String :=
+  let key := key.trimAscii.toString
+  if key.isEmpty then none else some key
+
 /-- Render a relation-row badge with semantic relation styling classes. -/
 private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
@@ -418,7 +421,6 @@ private def mkBlockEntry {m}
     label := source.label
     href
     badgesHtml
-    previewFallbackLabel? := some s!"{source.label}"
   }
 
 private def mkLabelEntry {m}
@@ -430,12 +432,11 @@ private def mkLabelEntry {m}
   let previewTitle := s!"{label}"
   pure {
     previewId
-    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement ctx.state label
+    previewKey := (Informal.PreviewSource.traversalLookupKey? ctx.state label).getD ""
     previewTitle
     label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
     badgesHtml
-    previewFallbackLabel? := some s!"{label}"
   }
 
 private def loadingBody (detail : String) : Output.Html :=
@@ -471,8 +472,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
-      (previewLookupKey? := some entry.previewKey)
-      (previewFallbackLabel? := entry.previewFallbackLabel?)
+      (previewLookupKey? := nonEmptyPreviewLookupKey? entry.previewKey)
       (previewHeaderLabel? := some s!"{entry.label}")
       (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
@@ -503,9 +503,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       let mut attrs := #[
         ("class", itemClass),
         ("data-bp-relation-preview-id", entry.previewId),
-        ("data-bp-relation-preview-key", entry.previewKey),
         ("data-bp-relation-preview-title", entry.previewTitle)
       ]
+      if let some previewKey := nonEmptyPreviewLookupKey? entry.previewKey then
+        attrs := attrs.push ("data-bp-relation-preview-key", previewKey)
       for attr in Informal.HoverRender.previewHeaderLinkAttrs (some s!"{entry.label}") entry.href do
         attrs := attrs.push attr
       pure attrs

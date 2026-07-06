@@ -168,15 +168,6 @@ def traversalExternalMarkupLookupKey?
   else
     some (externalMarkupKey label)
 
-/-- Selected traversal preview key, falling back to the fixed statement key.
-
-Use this for rendered browser surfaces that need "the best available preview
-for this label" while still producing a deterministic statement key when no
-cached traversal preview exists. -/
-def traversalLookupKeyOrStatement
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : String :=
-  (traversalLookupKey? s label).getD (PreviewCache.statementKey label)
-
 def traversalPreview?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do
   let selection ← traversalSelection? s label

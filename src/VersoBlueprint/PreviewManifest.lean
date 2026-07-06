@@ -480,39 +480,28 @@ private def highlightedDocstringInnerTextRead : String :=
 private def highlightedDocstringTextContentRead : String :=
   "const str = d.textContent || \"\";"
 
-private def highlightedTacticShowGuardBefore : String :=
-  "if (inst.reference.className == 'tactic') {
-            const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
+private def highlightedTacticShowToggleRead : String :=
+  "const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
 
-private def highlightedTacticShowGuardBeforeNoScope : String :=
-  "if (inst.reference.className == 'tactic') {
-            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+private def highlightedTacticShowGuardedToggleRead : String :=
+  "if (!inst.reference.querySelector(\":scope > .tactic-state\")) {
+            return false;
+          }
+          const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
 
-private def highlightedTacticShowGuardAfter : String :=
-  "if (inst.reference.className == 'tactic') {
-            if (!inst.reference.querySelector(\".tactic-state\")) {
-              return false;
-            }
-            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+private def highlightedTacticContentCloneRead : String :=
+  "const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
 
-private def highlightedTacticContentBefore : String :=
-  "if (tgt.className == 'tactic') {
-            const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
-
-private def highlightedTacticContentBeforeNoScope : String :=
-  "if (tgt.className == 'tactic') {
-            const state = tgt.querySelector(\".tactic-state\").cloneNode(true);"
-
-private def highlightedTacticContentAfter : String :=
-  "if (tgt.className == 'tactic') {
-            const stateSource = tgt.querySelector(\".tactic-state\");
-            if (!stateSource) {
-              return content;
-            }
-            const state = stateSource.cloneNode(true);"
+private def highlightedTacticContentGuardedCloneRead : String :=
+  "const stateSource = tgt.querySelector(\":scope > .tactic-state\");
+          if (!stateSource) {
+            return content;
+          }
+          const state = stateSource.cloneNode(true);"
 
 private def isHighlightedStartupJs (source : String) : Bool :=
-  source.contains "let docsJson = \"-verso-docs.json\";" &&
+  source.contains "/* Render docstrings */" &&
+    source.contains "const str = d.innerText;" &&
     source.contains "const defaultTippyProps = {"
 
 private def replaceFirstHighlightedJs?
@@ -545,12 +534,12 @@ private def patchHighlightedStartupJs (js : JS) : JS :=
           highlightedDocstringTextContentRead
       |> replaceRequiredHighlightedJs
           "tactic show guard"
-          [highlightedTacticShowGuardBefore, highlightedTacticShowGuardBeforeNoScope]
-          highlightedTacticShowGuardAfter
+          [highlightedTacticShowToggleRead]
+          highlightedTacticShowGuardedToggleRead
       |> replaceRequiredHighlightedJs
           "tactic content guard"
-          [highlightedTacticContentBefore, highlightedTacticContentBeforeNoScope]
-          highlightedTacticContentAfter
+          [highlightedTacticContentCloneRead]
+          highlightedTacticContentGuardedCloneRead
   { js with js := patched }
 
 private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
@@ -1091,7 +1080,8 @@ than as ordinary block entries, but the label/facet provenance is still the same
 def File.findPreviewMetadataEntry? (file : File) (metadata : PreviewCache.Metadata) :
     Option Entry :=
   file.previews.find? fun entry =>
-    entry.label == metadata.label && entry.facet == metadata.facet
+    (entry.targetKind == .block || entry.targetKind == .externalMarkup) &&
+      entry.label == metadata.label && entry.facet == metadata.facet
 
 private def missingPreviewLeanCodeKeys (entry? : Option Entry)
     (metadata : PreviewCache.Metadata) : Array String :=
@@ -1582,7 +1572,7 @@ private def relatedEntryForLabel
     label
     title := blockTitle state label .statement blockData?
     href := blockHref state label
-    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state label
+    previewKey := (Informal.PreviewSource.traversalLookupKey? state label).getD ""
     axes
   }
 
@@ -1594,7 +1584,7 @@ private def relatedEntryForBlock
     label := blockData.label
     title := blockTitle state blockData.label .statement (some blockData)
     href := blockHref state blockData.label
-    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state blockData.label
+    previewKey := (Informal.PreviewSource.traversalLookupKey? state blockData.label).getD ""
     axes
   }
 
@@ -1649,15 +1639,19 @@ private def buildGroupRelation?
     entries
   }
 
-private def fallbackTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
+/--
+Construct the metadata shell used by source-backed external-markup entries when
+the label has no rendered block preview body.
+-/
+private def emptyTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
     PreviewCache.Entry :=
   PreviewCache.Entry.ofBlocks label facet #[]
 
-private def traversalPreviewOrFallback
+private def traversalPreviewOrEmpty
     (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
     PreviewCache.Entry :=
   (Informal.TraversalIndex.TraversalPreviews.entry? state (PreviewCache.key label facet)).getD
-    (fallbackTraversalPreview label facet)
+    (emptyTraversalPreview label facet)
 
 private def blockSemanticManifestEntry
     (state : TraverseState)
@@ -1757,7 +1751,7 @@ private def buildExternalMarkupEntries
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
         continue
-      let statementPreview := traversalPreviewOrFallback state data.label .statement
+      let statementPreview := traversalPreviewOrEmpty state data.label .statement
       let manifestEntry := blockSemanticManifestEntry state statementPreview
         (key := externalMarkupEntryKey data.label)
         (targetKind := .externalMarkup)

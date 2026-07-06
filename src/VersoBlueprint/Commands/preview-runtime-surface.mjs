@@ -387,6 +387,15 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     return surface;
   }
 
+  export function previewResultTitle(result) {
+    const entry =
+      result && result.manifestEntry && typeof result.manifestEntry === "object"
+        ? result.manifestEntry
+        : null;
+    const title = entry && typeof entry.title === "string" ? entry.title.trim() : "";
+    return title;
+  }
+
   export async function renderPreviewIntoSurface(surface, previewKey, options) {
     if (!surface || typeof surface.replaceBody !== "function") {
       throw new Error("renderPreviewIntoSurface surface must be a preview surface");
@@ -407,10 +416,12 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const mayRender = function () {
       return !shouldRender || shouldRender();
     };
-    const replaceBody = function (html, bodyRenderOptions) {
+    const replaceBody = function (html, bodyRenderOptions, bodyHeading) {
       if (!mayRender()) return false;
       surface.replaceBody({
-        heading: heading,
+        heading: typeof bodyHeading === "string" && bodyHeading.trim().length > 0
+          ? bodyHeading.trim()
+          : heading,
         html: html,
         allowEmpty: true,
         renderOptions: bodyRenderOptions
@@ -436,14 +447,16 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         const diagnosticHtml = result && typeof result.diagnosticHtml === "string"
           ? result.diagnosticHtml
           : "";
+        const resultTitle = previewResultTitle(result);
         replaceBody(
           diagnosticHtml ||
             fallbackDiagnostic("fallbackDiagnostic", "The preview cache content could not be loaded."),
-          diagnosticRenderOptions
+          diagnosticRenderOptions,
+          resultTitle
         );
         return result;
       }
-      replaceBody(result.html, renderOptions);
+      replaceBody(result.html, renderOptions, previewResultTitle(result));
       return result;
     } catch (_err) {
       replaceBody(
@@ -459,7 +472,6 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
 
   export async function resolvePreviewHtml(previewKey, options) {
     const opts = options && typeof options === "object" ? options : {};
-    const fallbackHtml = readStringOption(opts, "fallbackHtml", "");
     try {
       const result = await resolveBlueprintPreview(previewKey, opts);
       if (result && result.ok && typeof result.html === "string" && result.html.length > 0) {
@@ -473,14 +485,18 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       return {
         ok: false,
         key: result && typeof result.key === "string" ? result.key : previewKey,
-        html: fallbackHtml,
+        html: result && typeof result.diagnosticHtml === "string" ? result.diagnosticHtml : "",
         result: result || null
       };
     } catch (_err) {
       return {
         ok: false,
         key: previewKey,
-        html: fallbackHtml,
+        html: previewMessageHtml({
+          kind: "error",
+          title: "Preview unavailable",
+          detail: "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
+        }),
         result: null
       };
     }
@@ -616,6 +632,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     resolvePreviewHtml,
     createPreviewPanel,
     previewMessageHtml,
+    previewResultTitle,
     setPreviewHeaderLink
   };
 

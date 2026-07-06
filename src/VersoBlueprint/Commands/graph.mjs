@@ -19,13 +19,6 @@ const {
   makeGroupPanelPositioner
 } = graphRuntimeCoreModule;
 
-function collectPreviewTemplates(previewUtils, rootNode) {
-  return previewUtils.collectPreviewTemplates(
-    rootNode || document,
-    "template.bp_graph_preview_tpl[data-bp-preview-label]"
-  );
-}
-
 function readPublicGraphData(root) {
   return coreGetGraphData(root);
 }
@@ -391,7 +384,7 @@ function graphPreviewHeading(graphData, label, previewKey) {
   return graphTitle || String(label || "").trim();
 }
 
-function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
+function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewController, previewKeyByNodeId) {
   if (!previewController) return;
   const graphState = ensureGraphBlockState(graphBlock);
   const previewKeys =
@@ -401,7 +394,7 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     previewController.hide();
     return;
   }
-  if (!previewController.title || !previewController.body || (previewMap.size === 0 && previewKeys.size === 0)) {
+  if (!previewController.title || !previewController.body || previewKeys.size === 0) {
     previewController.hide();
     return;
   }
@@ -409,11 +402,9 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     const requestToken = ++graphState.previewRequestToken;
     const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
     const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-    let html = previewMap.get(label) || "";
-    if (!html && previewKey) {
-      const resolved = await previewUtils.resolvePreviewHtml(previewKey);
-      html = resolved.html || "";
-    }
+    if (!previewKey) return;
+    const resolved = await previewUtils.resolvePreviewHtml(previewKey);
+    const html = resolved.html || "";
     if (requestToken !== graphState.previewRequestToken) return;
     if (!html) return;
     graphState.previewActiveNode = anchorNode instanceof Element ? anchorNode : null;
@@ -427,10 +418,9 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
   };
   const canPreviewNode = function (node) {
     if (!(node instanceof Element)) return false;
-    const label = graphNodeLabel(node);
     const nodeId = graphNodeId(node);
     const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-    return !!label && (previewMap.has(label) || !!previewKey);
+    return !!previewKey;
   };
   svg.querySelectorAll("g.node").forEach(function (node) {
     if (!canPreviewNode(node)) return;
@@ -454,8 +444,8 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
       return true;
     }
     const label = graphNodeLabel(node);
-    if (label) show(label, node);
-    return !!label;
+    show(label, node);
+    return true;
   };
   previewController.bindTriggers({
     eventRoot: svg,
@@ -663,7 +653,6 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
-      const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
       const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
       const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
       let previewController = null;
@@ -993,7 +982,6 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             previewUtils,
             graphBlock,
             graphContainer,
-            previewMap,
             previewController,
             activeVariant.previewKeyByNodeId
           );

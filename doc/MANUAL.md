@@ -741,10 +741,9 @@ label in the preview header; the label links to the target statement. Single
 uses or used-by entries use the same inline preview chrome, with relation
 metadata badges shown in the preview footer.
 
-Inline preview triggers prefer manifest-backed rendered fragments. The small
-fallback HTML path is reserved for triggers that explicitly carry
-`data-bp-preview-fallback-*` attributes, so intentionally authored fallback
-metadata still renders when no generated preview key is available.
+Inline preview triggers require manifest-backed rendered fragments. A missing
+or stale preview key renders the shared preview diagnostic instead of inventing
+label-only fallback HTML.
 
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.
