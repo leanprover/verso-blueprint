@@ -17,6 +17,7 @@ import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
+import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
@@ -80,6 +81,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
   -- for TOC
   -- localContentItem _ _ _ := none
   data := toJson graphData
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
       match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
           (fun _ => "Malformed data in Block.graph.traverse") with
@@ -89,7 +91,10 @@ block_extension Block.graph (graphData : GraphBlockData) where
       | Option.none =>
         pure ()
       return none
-  toTeX := none
+  toTeX :=
+    open Verso.Output.TeX in
+    some <| fun _goI _goB _id _data _blocks =>
+      pure <| .text "The dependency graph is available in the HTML output."
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in

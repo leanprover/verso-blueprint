@@ -413,6 +413,7 @@ def validate_test_blueprint_outputs(
     skip_generate: bool = False,
     skip_panel_regression: bool = False,
     skip_browser_tests: bool = False,
+    run_real_pdf_smoke: bool = False,
     stop_on_first_failure: bool = False,
 ) -> int:
     failures: list[StepFailure] = []
@@ -446,7 +447,62 @@ def validate_test_blueprint_outputs(
         )
     )
 
+    if run_real_pdf_smoke and not (stop_on_first_failure and failures):
+        if failure := run_real_pdf_smoke_check(package_root, output_root):
+            failures.append(failure)
+
     return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+
+
+def run_real_pdf_smoke_check(package_root: Path, output_root: Path) -> StepFailure | None:
+    if shutil.which("lualatex") is None:
+        print(f"{TEST_BLUEPRINT_HARNESS_PREFIX} real PDF smoke skipped: lualatex not found")
+        return None
+
+    project_dir = package_root / "project_template"
+    output_dir = output_root / "_real-pdf-smoke"
+    original_manifest = snapshot_tracked_project_manifest(project_dir)
+    try:
+        with maybe_in_repo_blueprint_dependency_override(project_dir, package_root, log=True):
+            run_project_update_build_generate(
+                package_root,
+                project_dir,
+                update_project=lambda: run_project_lake_update(package_root, project_dir),
+                build_command=("lake", "build", "ProjectTemplate"),
+                generate_command=(
+                    "lake",
+                    "exe",
+                    "blueprint-gen",
+                    "--output",
+                    "{output_dir}",
+                    "--pdf",
+                ),
+                format_command=lambda command: format_project_command(
+                    command,
+                    {
+                        "package_root": package_root,
+                        "project_dir": project_dir,
+                        "output_dir": output_dir,
+                        "slug": "_real-pdf-smoke",
+                    },
+                ),
+                skip_build=False,
+                project_id="real-pdf-smoke",
+            )
+    except subprocess.CalledProcessError as err:
+        return _subprocess_failure("real PDF smoke", err)
+    except SystemExit as err:
+        return StepFailure("real PDF smoke", str(err))
+    finally:
+        restore_tracked_project_manifest(original_manifest)
+
+    pdf_path = output_dir / "pdf" / "main.pdf"
+    if not pdf_path.exists():
+        return StepFailure("real PDF smoke", f"missing expected PDF: {pdf_path}")
+    if pdf_path.stat().st_size == 0:
+        return StepFailure("real PDF smoke", f"empty PDF: {pdf_path}")
+    print(f"{TEST_BLUEPRINT_HARNESS_PREFIX} real PDF smoke wrote {pdf_path}")
+    return None
 
 
 def find_test_blueprint(fixtures: list[StandaloneTestBlueprint], slug: str) -> StandaloneTestBlueprint:
@@ -538,6 +594,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip configured Playwright browser regression suites.",
     )
     validate.add_argument(
+        "--run-real-pdf-smoke",
+        action="store_true",
+        help="If lualatex is available, build project_template with --pdf and check pdf/main.pdf.",
+    )
+    validate.add_argument(
         "--pytest-arg",
         action="append",
         default=[],
@@ -596,6 +657,7 @@ def main() -> int:
             skip_generate=args.skip_generate,
             skip_panel_regression=args.skip_panel_regression,
             skip_browser_tests=args.skip_browser_tests,
+            run_real_pdf_smoke=args.run_real_pdf_smoke,
             stop_on_first_failure=args.stop_on_first_failure,
         )
     raise SystemExit("unreachable")

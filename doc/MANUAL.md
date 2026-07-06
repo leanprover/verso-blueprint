@@ -1167,6 +1167,52 @@ Then the compiled-executable path remains available:
 lake exe blueprint-gen --output _out/site
 ```
 
+To emit TeX and compile a PDF in the same run, pass `--pdf`:
+
+```bash
+lake exe blueprint-gen --output _out/site --pdf
+```
+
+The PDF is written to `_out/site/pdf/main.pdf`. The default engine is
+`lualatex`, run with `-shell-escape` because Verso TeX output may include
+assets that require it. Use `--pdf-engine <cmd>` for another
+lualatex-compatible command and `--pdf-runs <n>` to change the number of LaTeX
+passes. `--pdf` implies `--with-tex`; `--with-tex` alone still only writes the
+TeX tree under `_out/site/tex/`.
+
+### HTML and PDF Feature Support
+
+PDF generation is a static TeX/PDF output path. It is useful for reading,
+archiving, and print-oriented review, but it is not a replacement for the
+interactive HTML site. Unless a generator disables the HTML modes explicitly,
+`--pdf` still writes the usual HTML and preview-data artifacts in addition to
+the TeX tree and `main.pdf`.
+
+The table below describes the current built-in rendering behavior. The PDF
+column refers to what appears in `_out/site/pdf/main.pdf`, not to data files
+that may still be emitted alongside the HTML site. PDF status values mean:
+`Supported` renders directly in PDF, `Static only` renders without HTML
+interaction, `Partial` renders only selected static pieces, `Notice only`
+renders a pointer to the HTML output, and `Not in PDF` is absent from
+`main.pdf`.
+
+| Feature | HTML site | PDF status | PDF output |
+| --- | --- | --- | --- |
+| Ordinary Manual prose, headings, lists, and structure | Full generated HTML pages | Supported | Static TeX/PDF via Verso's TeX renderer |
+| Blueprint statement and proof blocks | Numbered headers, metadata chips, folding, relation panels, Lean status, previews, and authored body content | Static only | Static title and authored body content; no folding, chips, panels, or hover UI |
+| Math and project TeX macros | KaTeX-rendered math, with best-effort KaTeX linting during elaboration | Supported | LaTeX math in the generated TeX/PDF; Blueprint inserts project TeX preludes into the generated TeX |
+| Citations and bibliography | Linked citation and bibliography UI | Supported | Static citations and bibliography entries |
+| `{uses ...}` and `{bpref ...}` inline references | Links, preview triggers, and dependency metadata | Static only | Static inline text, or the resolved target title when no inline text is provided |
+| Attached Lean code | Code panels, Lean declaration summaries, hovers, and preview data | Static only | Static code content when present; no hovers, status widgets, or runtime previews |
+| Attached Rust code | Styled and foldable Rust code panels | Static only | Static verbatim Rust code block |
+| External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
+| Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
+| Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
+| Grafted Blueprint nodes | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
+| Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
+| Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
+| Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |
+
 ## Blueprint Options
 
 Set Blueprint options with ordinary Lean `set_option` commands in the module

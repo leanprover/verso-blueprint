@@ -102,6 +102,15 @@ which is especially helpful in cold CI jobs and Mathlib-heavy projects. If you
 want a compiled executable for repeated local runs,
 `lake exe blueprint-gen --output _out/site` still works.
 
+To build a PDF locally, run:
+
+```bash
+lake exe blueprint-gen --output _out/site --pdf
+```
+
+This writes `_out/site/pdf/main.pdf` and requires a `lualatex`-compatible
+command on `PATH`.
+
 ## GitHub Pages
 
 The template includes `.github/workflows/pages.yml`.
