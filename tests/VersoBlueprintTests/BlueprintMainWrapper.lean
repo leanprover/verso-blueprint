@@ -9,8 +9,13 @@ import VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintMainWrapper
 
-open Verso.Genre.Manual
+open Verso Genre Manual
 open Verso.VersoBlueprintTests.Blueprint.Support
+
+#docs (Manual) pdfSmokeDoc "PDF Smoke" :=
+:::::::
+This tiny document exercises PDF engine invocation.
+:::::::
 
 /-- info: true -/
 #guard_msgs in
@@ -107,5 +112,102 @@ open Verso.VersoBlueprintTests.Blueprint.Support
         appearsBefore out "<h1>Example</h1>" "class=\"bp_build_metadata\"" &&
         appearsBefore out "class=\"bp_build_metadata\"" "class=\"authors\""
   | none => false
+
+private partial def freshPdfSmokeRoot : IO System.FilePath := do
+  let suffix ← IO.rand 0 1000000000000
+  let cwd ← IO.currentDir
+  let root :=
+    cwd / ".lake" / "build" / "tmp" /
+      "verso-blueprint-pdf-smoke-test" / toString suffix
+  if ← root.pathExists then
+    freshPdfSmokeRoot
+  else
+    pure root
+
+private def fakePdfEngineScript : String := r#"#!/bin/sh
+set -eu
+outdir=""
+for arg in "$@"; do
+  case "$arg" in
+    -output-directory=*) outdir="${arg#-output-directory=}" ;;
+  esac
+done
+if [ -z "$outdir" ]; then
+  echo "missing output directory" >&2
+  exit 2
+fi
+printf '%s\n' "$@" > "$outdir/fake-engine-args.txt"
+{
+  printf '%s\n' "${TEXMFVAR:-}"
+  printf '%s\n' "${TEXMFCACHE:-}"
+  printf '%s\n' "${TEXMFCONFIG:-}"
+} > "$outdir/fake-engine-env.txt"
+{
+  for name in main.pdf main.aux main.toc main.out main.log; do
+    if [ -e "$outdir/$name" ]; then
+      printf '%s\n' "$name"
+    fi
+  done
+} > "$outdir/fake-stale-before.txt"
+printf 'fake pdf\n' > "$outdir/main.pdf"
+"#
+
+private def writeFakePdfEngine (root : System.FilePath) : IO System.FilePath := do
+  IO.FS.createDirAll root
+  let engine := root / "fake-pdf-engine.sh"
+  IO.FS.writeFile engine fakePdfEngineScript
+  let chmod ← IO.Process.output { cmd := "chmod", args := #["+x", engine.toString] }
+  unless chmod.exitCode == 0 do
+    throw <| IO.userError s!"chmod failed: {chmod.stderr}"
+  pure engine
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let root ← freshPdfSmokeRoot
+    let engine ← writeFakePdfEngine root
+    let outDir := root / "site"
+    let runPdfBuild : IO UInt32 :=
+      Informal.PreviewManifest.blueprintMain
+        pdfSmokeDoc.toPart
+        (extensionImpls := by exact extension_impls%)
+        (options := [
+          "--output", outDir.toString,
+          "--without-html-single",
+          "--without-html-multi"
+        ])
+        (pdfOptions := {
+          enabled := true
+          engine := engine.toString
+          runs := 1
+        })
+    let code1 ← runPdfBuild
+    let pdfDir := outDir / "pdf"
+    IO.FS.writeFile (pdfDir / "main.aux") "stale aux"
+    IO.FS.writeFile (pdfDir / "main.toc") "stale toc"
+    IO.FS.writeFile (pdfDir / "main.out") "stale out"
+    IO.FS.writeFile (pdfDir / "main.log") "stale log"
+    let code2 ← runPdfBuild
+    let argsLog ← IO.FS.readFile (pdfDir / "fake-engine-args.txt")
+    let envLog ← IO.FS.readFile (pdfDir / "fake-engine-env.txt")
+    let staleBeforeLog ← IO.FS.readFile (pdfDir / "fake-stale-before.txt")
+    pure <|
+      code1 == 0 &&
+        code2 == 0 &&
+        (← (pdfDir / "main.pdf").pathExists) &&
+        !(← (pdfDir / "main.aux").pathExists) &&
+        !(← (pdfDir / "main.toc").pathExists) &&
+        !(← (pdfDir / "main.out").pathExists) &&
+        !(← (pdfDir / "main.log").pathExists) &&
+        (← (outDir / "tex" / "main.tex").pathExists) &&
+        hasSubstr argsLog "-shell-escape" &&
+        hasSubstr argsLog "-halt-on-error" &&
+        hasSubstr argsLog s!"-output-directory={pdfDir}" &&
+        hasSubstr argsLog "main.tex" &&
+        hasSubstr envLog (outDir / "tex-cache" / "var").toString &&
+        hasSubstr envLog (outDir / "tex-cache" / "cache").toString &&
+        hasSubstr envLog (outDir / "tex-cache" / "config").toString &&
+        staleBeforeLog.trimAscii.isEmpty
 
 end Verso.VersoBlueprintTests.BlueprintMainWrapper

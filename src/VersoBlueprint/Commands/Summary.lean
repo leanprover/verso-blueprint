@@ -24,6 +24,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
@@ -1902,9 +1903,13 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
 open Verso Doc Elab Genre Manual in
 block_extension Block.summary (summary : Summary) where
   data := toJson summary
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse _id _data _contents := do
     return none
-  toTeX := none
+  toTeX :=
+    open Verso.Output.TeX in
+    some <| fun _goI _goB _id _data _blocks =>
+      pure <| .text "The Blueprint summary is available in the HTML output."
   toHtml := some summaryBlockToHtml
   extraCss := summaryAssetBundle.css
   extraJs := summaryAssetBundle.js

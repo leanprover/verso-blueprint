@@ -10,6 +10,7 @@ import VersoBlueprint.Compat
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.MathLint
 import VersoBlueprint.Macros
+import VersoBlueprint.TeX
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -34,6 +35,27 @@ private def mathClasses (mode : MathMode) : String :=
   "bp_math " ++ match mode with
     | .inline => "inline"
     | .display => "display"
+
+private def displayMathEnvironments : List String := [
+  "align",
+  "align*",
+  "alignat",
+  "alignat*",
+  "equation",
+  "equation*",
+  "flalign",
+  "flalign*",
+  "gather",
+  "gather*",
+  "multline",
+  "multline*"
+]
+
+private def isDisplayMathSource (source : String) : Bool :=
+  let source := source.trimAscii.toString
+  source.startsWith "\\[" ||
+    displayMathEnvironments.any fun env =>
+      source.startsWith ("\\begin{" ++ env ++ "}")
 
 /-- Narrow the warning site from the whole math literal down to the offending source slice when possible. -/
 private def lintWarningRef? [Monad m] [MonadFileMap m]
@@ -78,6 +100,7 @@ private def mathHtmlAssets (texPrelude : String) : HtmlAssets :=
 
 inline_extension Inline.bpMath (data : BpMathData) where
   data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse _id data _contents := do
     let some { texPrelude, .. } ← Informal.ExtensionDecode.decode? (α := BpMathData) data
         (fun _ => s!"Malformed blueprint math payload during traversal: {data}")
@@ -94,7 +117,11 @@ inline_extension Inline.bpMath (data : BpMathData) where
         | pure .empty
       pure <| match mode with
         | .inline => .raw s!"${source}$"
-        | .display => .raw s!"\\[{source}\\]"
+        | .display =>
+            if isDisplayMathSource source then
+              .raw s!"\n{source.trimAscii.toString}\n"
+            else
+              .raw s!"\\[{source}\\]"
   toHtml :=
     open Verso.Doc.Html in
     some <| fun _goI _id data _contents => do

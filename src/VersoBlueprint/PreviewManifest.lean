@@ -26,6 +26,8 @@ import VersoBlueprint.Html
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
 import VersoBlueprint.Source.Data
+import VersoBlueprint.TeX.Cleanup
+import VersoBlueprint.TeX.Pdf
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewManifest
@@ -1936,6 +1938,12 @@ private def dumpManifest
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
+  let options ←
+    match parsePdfOptions options with
+    | .ok (_, options) => pure options
+    | .error err =>
+        IO.eprintln err
+        return 2
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
@@ -1953,6 +1961,12 @@ private def dumpHtmlCache
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
+  let options ←
+    match parsePdfOptions options with
+    | .ok (_, options) => pure options
+    | .error err =>
+        IO.eprintln err
+        return 2
   let errorCount : IO.Ref Nat ← IO.mkRef 0
   let logError msg := do
     errorCount.modify (· + 1)
@@ -2082,7 +2096,8 @@ def blueprintMain (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
     (options : List String)
     (config : RenderConfig := {})
-    (extraSteps : List ExtraStep := []) : IO UInt32 :=
+    (extraSteps : List ExtraStep := [])
+    (pdfOptions : PdfOptions := {}) : IO UInt32 :=
   ReaderT.run go extensionImpls
 where
   go : ReaderT ExtensionImpls IO UInt32 := do
@@ -2091,6 +2106,7 @@ where
       errorCount.modify (· + 1)
       IO.eprintln msg
     let cfg ← parseRenderConfigOptions (withBuildMetadataAssets config) options
+    let cfg := if pdfOptions.enabled then { cfg with emitTeX := true } else cfg
     let buildMetadata ← readBuildMetadata
     let extraSteps := emitBuildMetadata buildMetadata :: extraSteps
 
@@ -2098,6 +2114,7 @@ where
       if cfg.verbose then
         IO.println "Saving TeX"
       emitTeX logError cfg.toConfig text
+      Informal.TeX.Cleanup.patchFile logError cfg.toConfig text
 
     emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single logError cfg text
       traverseHtmlSingle emitHtmlSingle
@@ -2108,6 +2125,8 @@ where
       if cfg.verbose then
         IO.println s!"Saving word counts to {wcFile}"
       wordCount wcFile logError cfg.toConfig text
+    if pdfOptions.enabled then
+      Informal.TeX.Pdf.compile logError pdfOptions cfg.toConfig
 
     match ← errorCount.get with
     | 0 => return 0
@@ -2128,8 +2147,15 @@ def blueprintMainWithPreviewData
   let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
+  let (pdfOptions, options) ←
+    match parsePdfOptions options with
+    | .ok parsed => pure parsed
+    | .error err =>
+        IO.eprintln err
+        return 2
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
     (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
+    (pdfOptions := pdfOptions)
 
 -- Compatibility for reference generators pinned before preview data was renamed.
 @[deprecated blueprintMainWithPreviewData (since := "2026-06-08")]
