@@ -94,7 +94,7 @@ def BlueprintNode.fromAttrs? (attrs : Array (String × String)) : Option Bluepri
   guard (marker == nodeMarkerValue)
   let label ← attrValue? attrs "data-bp-label"
   let facet := attrValue? attrs "data-bp-facet" |>.getD "statement"
-  let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
+  let key ← attrValue? attrs "data-bp-preview-key"
   let displayLabel? := attrValue? attrs "data-bp-display-label"
   let compact := attrValue? attrs "data-bp-compact" == some "true"
   let showHeader := attrValue? attrs "data-bp-show-header" != some "false"
