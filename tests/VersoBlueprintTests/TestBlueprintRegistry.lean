@@ -1,4 +1,4 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
@@ -33,7 +33,6 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "hover-link" => some Verso.VersoBlueprintTests.BlueprintLinkHover.hoverLinkDoc
   | "hover-uses-dedup" => some Verso.VersoBlueprintTests.BlueprintLinkHover.hoverUsesDedupDoc
   | "hover-cite-only" => some Verso.VersoBlueprintTests.BlueprintLinkHover.hoverCiteOnlyDoc
-  | "widget-preview" => some Verso.VersoBlueprintTests.BlueprintTexMacros.widgetPreviewDoc
   | "rust-inline-preview" => some Verso.VersoBlueprintTests.BlueprintRustCode.rustCatalogDoc
   | "external-markup-source" => some Verso.VersoBlueprintTests.BlueprintExternalMarkup.externalMarkupShowcaseDoc
   | "metadata-panel" => some Verso.VersoBlueprintTests.BlueprintMetadataPanel.metadataPanelDoc
