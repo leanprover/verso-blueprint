@@ -89,6 +89,16 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Install PDF toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-pygments \
+            texlive-fonts-extra \
+            texlive-fonts-recommended \
+            texlive-latex-extra \
+            texlive-luatex \
+            texlive-plain-generic
       - name: Restore Lake package cache
         uses: actions/cache@v5
         with:
@@ -127,8 +137,9 @@ jobs:
         run: |
           lean --version
           lake --version
+          lualatex --version | head -n 1
           python3 --version
-      - name: Generate release reference blueprints
+      - name: Generate release reference blueprints with PDFs
         run: |
           python3 -m scripts.blueprint_reference_harness generate \
             --manifest _out/deploy-projects/${{ matrix.project_id }}.json \

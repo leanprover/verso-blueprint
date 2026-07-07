@@ -15,7 +15,7 @@ from scripts.blueprint_harness_releases import (
     release_branch_from_lean_ref,
     rewrite_lean_toolchain,
 )
-from scripts.blueprint_harness_projects import HarnessProject, reference_dependency_cache_key
+from scripts.blueprint_harness_projects import HarnessProject, command_with_pdf, reference_dependency_cache_key
 from scripts.blueprint_harness_project_commands import (
     discard_untracked_project_manifest,
     format_project_command,
@@ -920,7 +920,14 @@ def sync_reference_local_checkout(
     return local_dir
 
 
-def generate_in_repo_command_project(layout, output_root: Path, project: HarnessProject, *, skip_build: bool) -> None:
+def generate_in_repo_command_project(
+    layout,
+    output_root: Path,
+    project: HarnessProject,
+    *,
+    skip_build: bool,
+    pdf: bool = False,
+) -> None:
     project_dir = layout.package_root / project.project_root
     if not project_dir.exists():
         raise SystemExit(f"[blueprint-harness] missing in-repo project root for `{project.project_id}`: {project_dir}")
@@ -932,6 +939,9 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     try:
         with maybe_in_repo_blueprint_dependency_override(project_dir, layout.package_root, log=True):
+            generate_command = project.generate_command or ()
+            if pdf:
+                generate_command = command_with_pdf(generate_command)
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
@@ -941,7 +951,7 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
                     reconcile_toolchains=False,
                 ),
                 build_command=project.build_command,
-                generate_command=project.generate_command or (),
+                generate_command=generate_command,
                 format_command=lambda command: format_project_command(
                     command,
                     reference_command_placeholders(
@@ -966,6 +976,7 @@ def generate_git_project(
     *,
     skip_build: bool,
     package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
+    pdf: bool = False,
 ) -> None:
     package_mode = validate_reference_package_mode(package_mode)
     rebuild_and_log_embedded_asset_owners(layout.package_root)
@@ -987,12 +998,15 @@ def generate_git_project(
             seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
 
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
+            generate_command = project.generate_command or ()
+            if pdf:
+                generate_command = command_with_pdf(generate_command)
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
                 update_project=update_reference_project,
                 build_command=project.build_command,
-                generate_command=project.generate_command or (),
+                generate_command=generate_command,
                 format_command=lambda command: format_project_command(
                     command,
                     reference_command_placeholders(

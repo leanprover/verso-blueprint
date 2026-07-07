@@ -58,6 +58,16 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Install PDF toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-pygments \
+            texlive-fonts-extra \
+            texlive-fonts-recommended \
+            texlive-latex-extra \
+            texlive-luatex \
+            texlive-plain-generic
       - name: Restore Lake package cache
         uses: actions/cache@v5
         with:
@@ -96,9 +106,10 @@ jobs:
         run: |
           lean --version
           lake --version
+          lualatex --version | head -n 1
           python3 --version
-      - name: Generate reference blueprint
-        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --reference-package-mode move --project ${{ matrix.project_id }}
+      - name: Generate reference blueprint with PDF
+        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --reference-package-mode move --pdf --project ${{ matrix.project_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
@@ -166,15 +177,14 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           pattern: reference-blueprints-*
-          path: _out/reference-blueprints
-          merge-multiple: true
+          path: _out/reference-blueprints-artifacts
       - name: Download test blueprints artifact
         uses: actions/download-artifact@v7
         with:
           name: test-blueprints
           path: _out/test-blueprints
       - name: Prepare site artifact
-        run: python3 ./scripts/prepare_reference_blueprints_pages.py
+        run: python3 ./scripts/prepare_reference_blueprints_pages.py --reference-root _out/reference-blueprints-artifacts
       - name: Upload site artifact
         uses: actions/upload-artifact@v7
         with:

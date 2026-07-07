@@ -1177,8 +1177,12 @@ The PDF is written to `_out/site/pdf/main.pdf`. The default engine is
 `lualatex`, run with `-shell-escape` because Verso TeX output may include
 assets that require it. Use `--pdf-engine <cmd>` for another
 lualatex-compatible command and `--pdf-runs <n>` to change the number of LaTeX
-passes. `--pdf` implies `--with-tex`; `--with-tex` alone still only writes the
-TeX tree under `_out/site/tex/`.
+passes. The generated prelude uses standard TeX Live packages plus the Source
+font packages; on Ubuntu CI, install `python3-pygments`, `texlive-luatex`,
+`texlive-latex-extra`, `texlive-fonts-recommended`, and
+`texlive-fonts-extra`, and `texlive-plain-generic`. `--pdf` implies
+`--with-tex`; `--with-tex` alone still only writes the TeX tree under
+`_out/site/tex/`.
 
 ### HTML and PDF Feature Support
 

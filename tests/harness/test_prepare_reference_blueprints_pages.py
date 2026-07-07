@@ -69,6 +69,8 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
                 "reference project template",
                 encoding="utf-8",
             )
+            (reference_root / "project-template" / "pdf").mkdir(parents=True)
+            (reference_root / "project-template" / "pdf" / "main.pdf").write_bytes(b"project template pdf")
             (reference_root / "noperthedron" / "html-multi").mkdir(parents=True)
             (reference_root / "noperthedron" / "html-multi" / "index.html").write_text(
                 "reference noperthedron",
@@ -95,6 +97,10 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
                 "reference project template",
             )
             self.assertEqual(
+                (output_root / "reference-blueprints" / "project-template" / "pdf" / "main.pdf").read_bytes(),
+                b"project template pdf",
+            )
+            self.assertEqual(
                 (output_root / "test-blueprints" / "preview_runtime_showcase" / "html-multi" / "index.html").read_text(
                     encoding="utf-8"
                 ),
@@ -107,6 +113,7 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
 
             landing_index = (output_root / "index.html").read_text(encoding="utf-8")
             self.assertIn("reference-blueprints/project-template/", landing_index)
+            self.assertIn("reference-blueprints/project-template/pdf/main.pdf", landing_index)
             self.assertIn("reference-blueprints/noperthedron/", landing_index)
             self.assertIn("Open reference blueprint index", landing_index)
             self.assertIn("test-blueprints/", landing_index)
@@ -114,9 +121,71 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
 
             reference_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
             self.assertIn('href="project-template/"', reference_index)
+            self.assertIn('href="project-template/pdf/main.pdf"', reference_index)
             self.assertIn('href="noperthedron/"', reference_index)
+            self.assertNotIn('href="noperthedron/pdf/main.pdf"', reference_index)
             self.assertNotIn("reference-blueprints/project-template/", reference_index)
             self.assertNotIn("js-api/", landing_index)
+
+    def test_prepare_pages_stages_downloaded_reference_artifact_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            reference_root = tmp_path / "reference-blueprints-artifacts"
+            test_root = tmp_path / "test-blueprints"
+            output_root = tmp_path / "_site"
+
+            (reference_root / "reference-blueprints-project-template" / "html-multi").mkdir(parents=True)
+            (
+                reference_root
+                / "reference-blueprints-project-template"
+                / "html-multi"
+                / "index.html"
+            ).write_text("reference project template", encoding="utf-8")
+            (reference_root / "reference-blueprints-project-template" / "pdf").mkdir(parents=True)
+            (reference_root / "reference-blueprints-project-template" / "pdf" / "main.pdf").write_bytes(
+                b"project template pdf"
+            )
+            (reference_root / "reference-blueprints-noperthedron" / "html-multi").mkdir(parents=True)
+            (reference_root / "reference-blueprints-noperthedron" / "html-multi" / "index.html").write_text(
+                "reference noperthedron",
+                encoding="utf-8",
+            )
+
+            (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
+            (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
+                "test showcase",
+                encoding="utf-8",
+            )
+
+            result = self.run_helper(reference_root, test_root, output_root)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+            self.assertEqual(
+                (output_root / "reference-blueprints" / "project-template" / "index.html").read_text(
+                    encoding="utf-8"
+                ),
+                "reference project template",
+            )
+            self.assertEqual(
+                (output_root / "reference-blueprints" / "project-template" / "pdf" / "main.pdf").read_bytes(),
+                b"project template pdf",
+            )
+            self.assertEqual(
+                (output_root / "reference-blueprints" / "noperthedron" / "index.html").read_text(encoding="utf-8"),
+                "reference noperthedron",
+            )
+            self.assertFalse((output_root / "reference-blueprints" / "reference-blueprints-project-template").exists())
+
+            landing_index = (output_root / "index.html").read_text(encoding="utf-8")
+            self.assertIn("reference-blueprints/project-template/", landing_index)
+            self.assertIn("reference-blueprints/project-template/pdf/main.pdf", landing_index)
+            self.assertNotIn("reference-blueprints/reference-blueprints-project-template/", landing_index)
+
+            reference_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
+            self.assertIn('href="project-template/"', reference_index)
+            self.assertIn('href="project-template/pdf/main.pdf"', reference_index)
+            self.assertIn('href="noperthedron/"', reference_index)
+            self.assertNotIn("reference-blueprints-project-template", reference_index)
 
     def test_prepare_pages_stages_javascript_api_docs_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,6 +276,10 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
                 "reference noperthedron v4.29.0",
                 encoding="utf-8",
             )
+            (reference_root / "v4.29.0" / "noperthedron" / "pdf").mkdir(parents=True)
+            (reference_root / "v4.29.0" / "noperthedron" / "pdf" / "main.pdf").write_bytes(
+                b"noperthedron pdf v4.29.0"
+            )
 
             (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
             (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
@@ -238,6 +311,17 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
                 ).read_text(encoding="utf-8"),
                 "reference noperthedron v4.29.0",
             )
+            self.assertEqual(
+                (
+                    output_root
+                    / "reference-blueprints"
+                    / "v4.29.0"
+                    / "noperthedron"
+                    / "pdf"
+                    / "main.pdf"
+                ).read_bytes(),
+                b"noperthedron pdf v4.29.0",
+            )
 
             release_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
             self.assertIn('href="v4.28.0/"', release_index)
@@ -250,6 +334,8 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn('href="project-template/"', release_project_index)
             self.assertIn('href="noperthedron/"', release_project_index)
+            self.assertIn('href="noperthedron/pdf/main.pdf"', release_project_index)
+            self.assertNotIn('href="project-template/pdf/main.pdf"', release_project_index)
             self.assertNotIn("reference-blueprints/v4.29.0/noperthedron/", release_project_index)
 
             alias_index = (output_root / "reference-blueprints" / "noperthedron" / "index.html").read_text(

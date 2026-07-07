@@ -547,7 +547,13 @@ def release_target_manifest_entry(target: HarnessReleaseTarget) -> dict[str, obj
     }
 
 
-def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
+def command_with_pdf(command: tuple[str, ...]) -> tuple[str, ...]:
+    if "--pdf" in command:
+        return command
+    return (*command, "--pdf")
+
+
+def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False) -> dict[str, object]:
     if project.selected_release is None:
         raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
 
@@ -579,7 +585,12 @@ def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
     if project.build_command is not None:
         entry["build_command"] = list(project.build_command)
     if project.generate_command is not None:
-        entry["generate_command"] = list(project.generate_command)
+        generate_command = project.generate_command
+        if include_pdf:
+            generate_command = command_with_pdf(generate_command)
+        entry["generate_command"] = list(generate_command)
+    elif include_pdf:
+        raise ValueError(f"project `{project.project_id}` needs a `generate_command` to publish PDF output")
     validation: dict[str, object] = {}
     if project.panel_regression_script is not None:
         validation["panel_regression_script"] = project.panel_regression_script
@@ -590,11 +601,16 @@ def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
     return entry
 
 
-def deploy_project_manifest(target: HarnessReleaseTarget, project: HarnessProject) -> dict[str, object]:
+def deploy_project_manifest(
+    target: HarnessReleaseTarget,
+    project: HarnessProject,
+    *,
+    include_pdf: bool = True,
+) -> dict[str, object]:
     return {
         "version": 2,
         "release_targets": [release_target_manifest_entry(target)],
-        "projects": [project_manifest_entry(project)],
+        "projects": [project_manifest_entry(project, include_pdf=include_pdf)],
     }
 
 

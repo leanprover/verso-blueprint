@@ -690,6 +690,8 @@ pushes to release branches named like `v4.30.0`, and manual dispatch, it:
 - resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
   `publish_reference: true`
+- builds `pdf/main.pdf` for those reference targets, using the workflow's
+  installed TeX toolchain
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
 - stages a branch-local site artifact under `_site/` only when the selected
@@ -715,7 +717,9 @@ default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
 `projects.json` refs. The per-project target entry also owns any RC override,
 so two projects in the same release line can deploy against different release
-candidate tags when needed.
+candidate tags when needed. Deploy one-project manifests append `--pdf` to the
+selected generator command, so checked-out release branches can publish PDFs
+without needing a new reference-harness CLI flag.
 
 The current published project/release split is intentionally not duplicated
 here. Read `tests/harness/projects.json`; every project target marked
@@ -728,6 +732,8 @@ release includes:
 - `_site/index.html`
 - `_site/reference-blueprints/<project-id>/` for each deployable reference
   target selected on that branch
+- `_site/reference-blueprints/<project-id>/pdf/main.pdf` for each deployable
+  reference target selected on that branch
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -743,6 +749,8 @@ includes:
 - `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release slices
+- `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
+  selected reference target's deployed PDF
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -758,6 +766,9 @@ The shared staging helper understands both input shapes:
 - a single-release local/CI artifact rooted at `_out/reference-blueprints/<project-id>/`
 - or a deploy-time combined artifact rooted at
   `_out/reference-blueprints/<release-id>/<project-id>/`
+
+For either input shape, it copies `pdf/main.pdf` next to the staged HTML and
+adds an index link only when that PDF exists.
 
 The staging helper is:
 

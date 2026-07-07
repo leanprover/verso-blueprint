@@ -29,11 +29,13 @@ private def processOutputTail (text : String) (lineCount : Nat := 30) : String :
     String.intercalate "\n" <| lines.drop (lines.length - lineCount)
 
 private def processFailureText (out : IO.Process.Output) : String :=
+  let stdout := processOutputTail out.stdout
   let stderr := processOutputTail out.stderr
-  if stderr.isEmpty then
-    processOutputTail out.stdout
-  else
-    stderr
+  match stdout.isEmpty, stderr.isEmpty with
+  | true, true => ""
+  | false, true => s!"stdout:\n{stdout}"
+  | true, false => s!"stderr:\n{stderr}"
+  | false, false => s!"stdout:\n{stdout}\nstderr:\n{stderr}"
 
 private def compileArgs (pdfDir : System.FilePath) : Array String :=
   #[

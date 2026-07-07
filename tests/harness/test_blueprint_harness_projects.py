@@ -10,6 +10,7 @@ import unittest
 from scripts.blueprint_harness_projects import (
     HarnessProject,
     IN_REPO_PROJECT_SOURCE_KIND,
+    command_with_pdf,
     default_project_manifest,
     deploy_matrix_from_controller_catalog,
     load_project_catalog,
@@ -56,6 +57,16 @@ def load_project_catalog_text(text: str, manifest_path: Path | str):
 
 
 class BlueprintHarnessProjectsTests(unittest.TestCase):
+    def test_command_with_pdf_appends_pdf_once(self) -> None:
+        self.assertEqual(
+            command_with_pdf(("lake", "exe", "blueprint-gen")),
+            ("lake", "exe", "blueprint-gen", "--pdf"),
+        )
+        self.assertEqual(
+            command_with_pdf(("lake", "exe", "blueprint-gen", "--pdf")),
+            ("lake", "exe", "blueprint-gen", "--pdf"),
+        )
+
     def init_git_repo(self, root: Path) -> None:
         subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -529,13 +540,27 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         self.assertIn("emit_reference_release_matrix.py", workflow_text)
         self.assertIn("pattern: reference-blueprints-*", workflow_text)
+        self.assertIn("path: _out/reference-blueprints-artifacts", workflow_text)
+        self.assertIn("--reference-root _out/reference-blueprints-artifacts", workflow_text)
+        self.assertNotIn("merge-multiple: true", workflow_text)
         self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
+        self.assertIn("--pdf --project ${{ matrix.project_id }}", workflow_text)
+        self.assertIn("Install PDF toolchain", workflow_text)
+        self.assertIn("Generate reference blueprint with PDF", workflow_text)
+        self.assertIn("lualatex --version", workflow_text)
+        self.assertIn("texlive-fonts-extra", workflow_text)
+        self.assertIn("texlive-plain-generic", workflow_text)
         self.assertIn("matrix.reference_cache_key", workflow_text)
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages", workflow_text)
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", workflow_text)
         self.assertIn("reference-deps-v2-${{ matrix.reference_cache_key }}", workflow_text)
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
         self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
+        self.assertIn("Install PDF toolchain", deploy_workflow_text)
+        self.assertIn("Generate release reference blueprints with PDFs", deploy_workflow_text)
+        self.assertIn("lualatex --version", deploy_workflow_text)
+        self.assertIn("texlive-fonts-extra", deploy_workflow_text)
+        self.assertIn("texlive-plain-generic", deploy_workflow_text)
 
         for entry in matrix["include"]:
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
@@ -698,6 +723,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             manifest_by_project["old-release-project"]["projects"][0]["source"]["project_root"],
             "old-controller",
         )
+        self.assertEqual(
+            manifest_by_project["old-release-project"]["projects"][0]["generate_command"],
+            ["lake", "exe", "blueprint-gen", "--pdf"],
+        )
         self.assertEqual(matrix_by_project["old-release-project"]["project_root"], "old-controller")
         self.assertEqual(matrix_by_project["old-release-project"]["rc"], "")
         self.assertEqual(matrix_by_project["old-release-project"]["toolchain"], "v4.28.0")
@@ -705,6 +734,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["targets"],
             [{"release": "v4.29.0", "ref": "new-controller-ref", "rc": "4.29-rc1"}],
+        )
+        self.assertEqual(
+            manifest_by_project["new-release-project"]["projects"][0]["generate_command"],
+            ["lake", "exe", "blueprint-gen", "--pdf"],
         )
         self.assertNotIn("rc", manifest_by_project["new-release-project"]["release_targets"][0])
         self.assertEqual(matrix_by_project["new-release-project"]["rc"], "4.29-rc1")
@@ -1575,7 +1608,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
                 commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
 
-                generate_git_project(layout, output_root, project, skip_build=False)
+                generate_git_project(layout, output_root, project, skip_build=False, pdf=True)
             finally:
                 for name, value in originals.items():
                     if name == "command_rewrite_local_blueprint_dependency":
@@ -1592,6 +1625,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(commands[0], reference_submodule_update_command())
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
+        self.assertTrue(
+            any(
+                command[1:]
+                == ["lake", "exe", "blueprint-gen", "--output", str(output_root / "external-blueprint"), "--pdf"]
+                for command in commands
+            )
+        )
 
     def test_generate_git_project_move_mode_restores_packages_after_failure(self) -> None:
         import scripts.blueprint_harness_references as refs_mod

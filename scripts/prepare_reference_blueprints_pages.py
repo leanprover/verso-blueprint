@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import html
 from pathlib import Path
 import shutil
@@ -37,13 +38,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def html_link(project_id: str, *, release: str | None = None, prefix: str = "reference-blueprints/") -> str:
-    label = html.escape(project_id)
-    if release is None:
-        href = f"{prefix}{label}/"
-    else:
-        href = f"{prefix}{html.escape(release)}/{label}/"
-    return f'<li><a href="{href}">{label}</a></li>'
+PDF_OUTPUT = Path("pdf") / "main.pdf"
+REFERENCE_ARTIFACT_PREFIX = "reference-blueprints-"
+
+
+@dataclass(frozen=True)
+class ReferenceProject:
+    project_id: str
+    has_pdf: bool = False
+
+
+def html_link(
+    project: ReferenceProject,
+    *,
+    prefix: str = "reference-blueprints/",
+) -> str:
+    label = html.escape(project.project_id)
+    href = f"{prefix}{label}/"
+    pdf_href = f"{prefix}{label}/pdf/main.pdf"
+    pdf_link = f' <a href="{pdf_href}">PDF</a>' if project.has_pdf else ""
+    return f'<li><a href="{href}">{label}</a>{pdf_link}</li>'
 
 
 def html_test_link(slug: str) -> str:
@@ -58,9 +72,18 @@ def html_release_link(release: str, *, prefix: str = "reference-blueprints/") ->
     return f'<li><a href="{href}">{label}</a></li>'
 
 
-def write_reference_index(reference_root: Path, release_projects: dict[str | None, list[str]]) -> None:
+def reference_project_id(project_dir: Path) -> str:
+    name = project_dir.name
+    if name.startswith(REFERENCE_ARTIFACT_PREFIX):
+        artifact_project_id = name.removeprefix(REFERENCE_ARTIFACT_PREFIX)
+        if artifact_project_id:
+            return artifact_project_id
+    return name
+
+
+def write_reference_index(reference_root: Path, release_projects: dict[str | None, list[ReferenceProject]]) -> None:
     if None in release_projects:
-        items = [html_link(project_id, prefix="") for project_id in release_projects[None]]
+        items = [html_link(project, prefix="") for project in release_projects[None]]
         body = [
             "<!doctype html>",
             "<html lang=\"en\">",
@@ -91,7 +114,7 @@ def write_reference_index(reference_root: Path, release_projects: dict[str | Non
             "<body>",
             f"<h1>Reference Blueprints {html.escape(release)}</h1>",
             "<ul>",
-            *[html_link(project_id, prefix="") for project_id in projects],
+            *[html_link(project, prefix="") for project in projects],
             "</ul>",
             "</body>",
             "</html>",
@@ -135,7 +158,7 @@ def write_redirect_alias(alias_root: Path, target_href: str, *, label: str) -> N
     (alias_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
 
 
-def write_unique_project_aliases(reference_root: Path, release_projects: dict[str | None, list[str]]) -> None:
+def write_unique_project_aliases(reference_root: Path, release_projects: dict[str | None, list[ReferenceProject]]) -> None:
     if None in release_projects:
         return
 
@@ -143,7 +166,7 @@ def write_unique_project_aliases(reference_root: Path, release_projects: dict[st
     for release, projects in release_projects.items():
         assert release is not None
         for project in projects:
-            releases_by_project.setdefault(project, []).append(release)
+            releases_by_project.setdefault(project.project_id, []).append(release)
 
     for project, releases in releases_by_project.items():
         if len(releases) != 1:
@@ -159,25 +182,54 @@ def write_unique_project_aliases(reference_root: Path, release_projects: dict[st
         )
 
 
-def copy_reference_sites(reference_root: Path, publish_reference_root: Path) -> dict[str | None, list[str]]:
-    release_projects: dict[str | None, list[str]] = {}
+def copy_reference_project(
+    project_dir: Path,
+    publish_project_root: Path,
+    *,
+    project_id: str | None = None,
+) -> ReferenceProject:
+    project_id = project_id or reference_project_id(project_dir)
+    shutil.copytree(project_dir / "html-multi", publish_project_root)
+    pdf_path = project_dir / PDF_OUTPUT
+    has_pdf = pdf_path.exists()
+    if has_pdf:
+        publish_pdf = publish_project_root / PDF_OUTPUT
+        publish_pdf.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pdf_path, publish_pdf)
+    return ReferenceProject(project_id, has_pdf=has_pdf)
+
+
+def copy_reference_sites(reference_root: Path, publish_reference_root: Path) -> dict[str | None, list[ReferenceProject]]:
+    release_projects: dict[str | None, list[ReferenceProject]] = {}
     children = sorted(path for path in reference_root.iterdir() if path.is_dir())
     if all((child / "html-multi").exists() for child in children):
-        projects: list[str] = []
+        projects: list[ReferenceProject] = []
         for project_dir in children:
-            shutil.copytree(project_dir / "html-multi", publish_reference_root / project_dir.name)
-            projects.append(project_dir.name)
+            project_id = reference_project_id(project_dir)
+            projects.append(
+                copy_reference_project(
+                    project_dir,
+                    publish_reference_root / project_id,
+                    project_id=project_id,
+                )
+            )
         release_projects[None] = projects
         return release_projects
 
     for release_dir in children:
-        projects: list[str] = []
+        projects: list[ReferenceProject] = []
         for project_dir in sorted(path for path in release_dir.iterdir() if path.is_dir()):
             site_dir = project_dir / "html-multi"
             if not site_dir.exists():
                 continue
-            shutil.copytree(site_dir, publish_reference_root / release_dir.name / project_dir.name)
-            projects.append(project_dir.name)
+            project_id = reference_project_id(project_dir)
+            projects.append(
+                copy_reference_project(
+                    project_dir,
+                    publish_reference_root / release_dir.name / project_id,
+                    project_id=project_id,
+                )
+            )
         if projects:
             release_projects[release_dir.name] = projects
     return release_projects
@@ -251,7 +303,7 @@ def main() -> int:
                 *(
                     [
                         "<ul>",
-                        *[html_link(project_id) for project_id in release_projects[None]],
+                        *[html_link(project) for project in release_projects[None]],
                         "</ul>",
                     ]
                     if None in release_projects

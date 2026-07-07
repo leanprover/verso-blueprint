@@ -155,6 +155,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(parser.parse_args(["generate", "--reference-package-mode", "move"]).reference_package_mode, "move")
         self.assertEqual(parser.parse_args(["validate", "--reference-package-mode", "move"]).reference_package_mode, "move")
 
+    def test_reference_generate_parses_pdf(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        self.assertFalse(parser.parse_args(["generate"]).pdf)
+        self.assertTrue(parser.parse_args(["generate", "--pdf"]).pdf)
+
     def test_reference_projects_parses_release_filter(self) -> None:
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["projects", "--release", "v4.29.0"])
@@ -1050,6 +1055,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             project=None,
             release=None,
             skip_build=False,
+            pdf=False,
             allow_unsafe_root_release=False,
             serial=False,
             allow_local_build=False,
@@ -1082,6 +1088,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             project=None,
             release="v4.28.0",
             skip_build=False,
+            pdf=False,
             allow_unsafe_root_release=False,
             serial=False,
             allow_local_build=False,
@@ -1933,7 +1940,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with patched_attrs(
             reference_harness_mod,
             ensure_prebuilt_executable=lambda _package_root, _exe_name: Path("/tmp/demo"),
-            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial: None,
+            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, *, pdf=False: None,
         ):
             generate_projects(
                 layout,
