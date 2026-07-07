@@ -15,8 +15,11 @@ open Verso.Output
 open Verso.Output.Html
 
 def RelatedEntry.displayLabel (entry : RelatedEntry) : String :=
-  let label := entry.label.toString
-  if label.isEmpty then entry.previewKey else label
+  let label := labelString entry.label |>.trimAscii.toString
+  if !label.isEmpty then
+    label
+  else
+    entry.previewKey.map (toString ·) |>.getD "unlabeled relation"
 
 def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
   let title := entry.title.trimAscii.toString

@@ -15,14 +15,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   previewId := "preview"
-  previewKey := "preview-key"
+  previewKey := Informal.PreviewKey.ofString? "preview-key"
   previewTitle := "Target"
   label := Lean.Name.mkSimple "target"
 }
 
 private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry := {
   previewId := "missing-preview"
-  previewKey := ""
   previewTitle := "Missing Preview"
   label := Lean.Name.mkSimple "missing.preview"
 }
@@ -34,7 +33,7 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
     let entry : Informal.PreviewManifest.RelatedEntry := {
       label := Lean.Name.mkSimple "target"
       title := "Target"
-      previewKey := "informal:target:statement"
+      previewKey := Informal.PreviewKey.ofString? "informal:target:statement"
       axes := #[.statement, .proof]
     }
     let badges := entry.badgesHtml.asString
@@ -42,6 +41,27 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       hasSubstr badges "bp_relation_badge_proof" &&
       hasSubstr badges "title=\"Declared in the statement\"" &&
       hasSubstr badges "title=\"Declared in the proof\""
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let punctuatedLabel : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "Chapter2:Introduction"
+      title := "Introduction"
+    }
+    let unlabeledWithPreview : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple ""
+      title := ""
+      previewKey := Informal.PreviewKey.ofString? "externalMarkup:Chapter2"
+    }
+    let unlabeledWithoutPreview : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple ""
+      title := ""
+    }
+    punctuatedLabel.displayLabel == "Chapter2:Introduction" &&
+      unlabeledWithPreview.displayLabel == "externalMarkup:Chapter2" &&
+      unlabeledWithoutPreview.displayLabel == "unlabeled relation"
 
 /-- info: true -/
 #guard_msgs in
