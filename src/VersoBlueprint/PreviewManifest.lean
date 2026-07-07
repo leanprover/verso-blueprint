@@ -36,15 +36,22 @@ open Lean Elab Command Term Meta
 open Verso Doc
 open Verso.Genre Manual
 
-private def readJsonFileAs [FromJson α] (path : System.FilePath) (description : String) :
-    IO α := do
+private def readJsonFile (path : System.FilePath) (description : String) : IO Json := do
   let json ←
     match Json.parse (← IO.FS.readFile path) with
     | .ok json => pure json
     | .error err => throw <| IO.userError s!"could not parse {description} {path}: {err}"
+  pure json
+
+private def decodeJsonAs [FromJson α] (path : System.FilePath) (description : String)
+    (json : Json) : IO α := do
   match fromJson? (α := α) json with
   | .ok value => pure value
   | .error err => throw <| IO.userError s!"could not decode {description} {path}: {err}"
+
+private def readJsonFileAs [FromJson α] (path : System.FilePath) (description : String) :
+    IO α := do
+  decodeJsonAs path description (← readJsonFile path description)
 
 private def buildMetadataCss : String := r##"
 .bp_build_metadata {
@@ -558,6 +565,20 @@ def manifestFilename : String := "blueprint-manifest.json"
 
 def htmlCacheFilename : String := "blueprint-html-cache.json"
 
+/--
+Internal schema marker for generated Blueprint manifests.
+
+This is a VBP stale-artifact diagnostic marker, not a public interchange
+version. It may change whenever the generated-data reader needs a clean
+incompatibility boundary.
+-/
+def manifestInternalSchemaVersion : Nat := 1
+
+def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
+
+def manifestRegenerationHint : String :=
+  "run `lake exe vbp build` to regenerate generated data with this VBP version"
+
 def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
 
 def graphCoreModuleFilename : String := "blueprint-graph-core.mjs"
@@ -884,6 +905,11 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
   { caption, label }
 
 structure File where
+  /--
+  Internal generated-data schema marker for VBP tooling; not a public
+  compatibility promise.
+  -/
+  vbpInternalSchemaVersion : Nat := manifestInternalSchemaVersion
   /--
   Semantic manifest entries keyed by `PreviewCache`, `externalMarkupEntryKey`,
   Lean preview key, or citation key.
@@ -1236,8 +1262,33 @@ key order while keeping display-level rendered-HTML deduplication in
 def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
   entry.leanCodePreviewKeys.filterMap index.findEntry?
 
+private def unsupportedManifestSchemaMessage (detail : String) : String :=
+  s!"unsupported internal Blueprint manifest schema: {detail}; {manifestRegenerationHint}"
+
+private def checkManifestInternalSchema (json : Json) : Except String Unit := do
+  let versionJson ←
+    match json.getObjVal? manifestInternalSchemaVersionField with
+    | .ok value => pure value
+    | .error _ =>
+        .error <| unsupportedManifestSchemaMessage
+          s!"missing `{manifestInternalSchemaVersionField}`"
+  let version ←
+    match fromJson? (α := Nat) versionJson with
+    | .ok version => pure version
+    | .error _ =>
+        .error <| unsupportedManifestSchemaMessage
+          s!"invalid `{manifestInternalSchemaVersionField}`; expected natural-number marker {manifestInternalSchemaVersion}"
+  if version == manifestInternalSchemaVersion then
+    pure ()
+  else
+    .error <| unsupportedManifestSchemaMessage
+      s!"found `{manifestInternalSchemaVersionField}` {version}, expected {manifestInternalSchemaVersion}"
+
 def readFile (path : System.FilePath) : IO File := do
-  readJsonFileAs path "Blueprint manifest"
+  let json ← readJsonFile path "Blueprint manifest"
+  match checkManifestInternalSchema json with
+  | .ok () => decodeJsonAs path "Blueprint manifest" json
+  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}
