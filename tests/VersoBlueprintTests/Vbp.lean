@@ -200,6 +200,26 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
     (dataDir / Informal.PreviewManifest.manifestFilename)
     (toJson sampleManifest).compress
 
+private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Json) : IO Unit := do
+  let dataDir := site / "html-multi" / "-verso-data"
+  IO.FS.createDirAll dataDir
+  IO.FS.writeFile
+    (dataDir / Informal.PreviewManifest.manifestFilename)
+    manifestJson.compress
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let json := toJson sampleManifest
+    match
+      jsonNatField? json Informal.PreviewManifest.manifestInternalSchemaVersionField,
+      jsonArrayField? json "previews" with
+    | some version, some previews =>
+        version == Informal.PreviewManifest.manifestInternalSchemaVersion &&
+          previews.foldl (fun ok entry => ok && (jsonField? entry "sourceLocation").isSome) true
+    | _, _ => false
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -420,6 +440,26 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
       pure <| message.contains "run `lake exe vbp build` first" &&
         !message.contains "vbp check"
   pure (queryOk && cacheMissing)
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  let staleManifestJson := Json.mkObj [
+    ("previews", Json.arr #[]),
+    ("graphs", Json.arr #[]),
+    ("sourceDocuments", Json.arr #[])
+  ]
+  writeRawManifestOnlySite site staleManifestJson
+  try
+    let _ ← VersoBlueprint.Vbp.readManifestForSite site
+    pure false
+  catch err =>
+    let message := IO.Error.toString err
+    pure <|
+      message.contains "unsupported internal Blueprint manifest schema" &&
+        message.contains Informal.PreviewManifest.manifestInternalSchemaVersionField &&
+        message.contains "lake exe vbp build"
 
 /-- info: true -/
 #guard_msgs in
