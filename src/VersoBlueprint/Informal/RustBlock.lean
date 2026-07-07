@@ -14,6 +14,7 @@ import VersoBlueprint.Informal.Code
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Informal.RustPanel
+import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
@@ -27,6 +28,7 @@ def rustBlockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 
 block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) where
   data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some cdata ← ExtensionDecode.decode? (α := Informal.Rust.InlineCodeData) data
         (fun _ => s!"Malformed Rust data: {data}")
@@ -39,7 +41,12 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       modify fun s => Informal.TraversalIndex.RustInlineCode.saveId s cdata.label id
       modify fun s => Informal.TraversalIndex.RustInlineCode.saveData s cdata.label cdata
       pure none
-  toTeX := none
+  toTeX := some <| fun _goI _goB _id data _blocks => do
+      let some cdata ← ExtensionDecode.decode? (α := Informal.Rust.InlineCodeData) data
+          (fun _ => s!"Malformed Rust code data: {data}")
+        | pure .empty
+      let title := s!"Rust code for {cdata.label}"
+      pure <| Informal.TeX.verbatimBlock title cdata.raw
   extraCss := rustBlockAssetBundle.css
   extraJs := rustBlockAssetBundle.js
   toHtml :=

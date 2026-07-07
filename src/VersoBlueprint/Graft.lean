@@ -16,6 +16,7 @@ import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Slides.Node
+import VersoBlueprint.TeX
 
 set_option doc.verso true
 
@@ -146,8 +147,12 @@ private def renderManualGraftNode
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where
   data := toJson cfg
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse _ _ _ := pure none
-  toTeX := none
+  toTeX :=
+    open Verso.Output.TeX in
+    some <| fun _goI _goB _id _data _blocks =>
+      pure <| .text "This Blueprint graft node is available in the HTML output."
   extraCss := manualGraftAssetBundle.css
   extraJs := manualGraftAssetBundle.js
   toHtml :=
@@ -165,8 +170,9 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConf
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideConfig) where
   data := toJson cfg
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse _ _ _ := pure none
-  toTeX := none
+  toTeX := some <| fun _goI goB _id _data blocks => blocks.mapM goB
   extraCss := manualGraftAssetBundle.css
   extraJs := manualGraftAssetBundle.js
   toHtml :=

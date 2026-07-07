@@ -193,6 +193,16 @@ supports:
 lake exe blueprint-gen --output _out/site
 ```
 
+To build a PDF as well as the HTML site, pass `--pdf`:
+
+```bash
+lake exe blueprint-gen --output _out/site --pdf
+```
+
+This writes `_out/site/pdf/main.pdf`. PDF generation requires a local
+`lualatex`-compatible command; use `--pdf-engine <cmd>` if your command has a
+different name.
+
 ## What to change first
 
 After copying the template:

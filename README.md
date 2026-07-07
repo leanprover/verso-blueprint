@@ -41,6 +41,11 @@ For the broader rendered artifact index, including published reference
 blueprints and local test fixtures, see the
 [published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
 
+By default, generators write the HTML site under `_out/site/html-multi/`. Passing
+`--pdf` to `lake exe blueprint-gen` also emits TeX and runs `lualatex` to write
+`_out/site/pdf/main.pdf`; use `--pdf-engine <cmd>` for another
+lualatex-compatible command.
+
 ## Three-Level Blueprint Model
 
 Blueprint keeps three related layers separate:
