@@ -24,6 +24,9 @@ open Informal.PreviewManifest
       let Except.ok entryPropsJson := Json.getObjVal? entrySchema "properties" | return false
       let Except.ok entryProps := entryPropsJson.getObj? | return false
       let schemaText := schema.compress
+      let internalSchemaDesc? := do
+        let internalSchemaJson ← fileProps.get? "vbpInternalSchemaVersion"
+        internalSchemaJson.getObjValAs? String "description" |>.toOption
       let proofUsesDesc? := do
         let proofUsesJson ← entryProps.get? "proofUses"
         proofUsesJson.getObjValAs? String "description" |>.toOption
@@ -53,7 +56,9 @@ open Informal.PreviewManifest
       let entryKindText := (defs.get? "Informal.PreviewManifest.EntryKind").map (·.compress) |>.getD ""
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
         !fileProps.contains "version" &&
+        !fileProps.contains "schemaVersion" &&
         !fileProps.contains "traverseState" &&
+        fileProps.contains "vbpInternalSchemaVersion" &&
         fileProps.contains "previews" &&
         fileProps.contains "sourceDocuments" &&
         entryProps.contains "key" &&
@@ -97,6 +102,8 @@ open Informal.PreviewManifest
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Rendered-fragment cache keys for Lean declaration previews associated with this entry." &&
+        (internalSchemaDesc?.getD "").contains "not a public" &&
+        (internalSchemaDesc?.getD "").contains "compatibility promise" &&
         sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&

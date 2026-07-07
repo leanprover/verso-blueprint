@@ -917,7 +917,9 @@ useful for:
 For informal blocks, these files are the same semantic manifest and opaque
 rendered-fragment cache used by generated previews, grafts, Slides, and custom
 clients. See [`API.md#generated-data-files`](./API.md#generated-data-files)
-for the stable consumer contract.
+for the stable consumer contract. The manifest may also include VBP-internal
+generated-data markers for stale-artifact diagnostics; those markers are not
+public compatibility promises.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
