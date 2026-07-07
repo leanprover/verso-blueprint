@@ -139,11 +139,17 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
   `import` usage.
 
-The manifest is the semantic data contract. Cached HTML is an opaque rendered
-fragment cache that can be inserted and hydrated. The cache also carries the
-Verso hover payloads referenced by those rendered fragments; generated
-Blueprint pages merge them into `-verso-docs.json`, and Slides preloads them
-when rendering a deck.
+The manifest is the semantic data contract for generated-site consumers.
+Cached HTML is an opaque rendered fragment cache that can be inserted and
+hydrated. The cache also carries the Verso hover payloads referenced by those
+rendered fragments; generated Blueprint pages merge them into
+`-verso-docs.json`, and Slides preloads them when rendering a deck.
+
+The manifest may also contain VBP-internal generated-data markers used to
+diagnose stale artifacts. These markers are not public compatibility promises
+and may change whenever VBP needs a new internal reader boundary. Public
+clients should use the semantic entries, graph records, source documents, and
+generated browser APIs described here rather than depending on those markers.
 
 In practice:
 
