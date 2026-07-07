@@ -10,7 +10,6 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
-import VersoBlueprint.PreviewCache
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -65,7 +64,7 @@ private def groupRenderInfo?
 /-- One previewable row in a Blueprint related-entry panel. -/
 structure PanelEntry where
   previewId : String
-  previewKey : String
+  previewKey : Option Informal.PreviewKey := none
   previewTitle : String
   label : Data.Label
   href : Option String := none
@@ -337,13 +336,6 @@ private def usesPreviewId (sourceLabel targetLabel : Data.Label) : String :=
 private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
   s!"bp-group-{Informal.HoverRender.previewKey (toString targetLabel)}-{Informal.HoverRender.previewKey (toString sourceLabel)}"
 
-private def previewLookupKey (source : BlockData) : String :=
-  PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
-
-private def nonEmptyPreviewLookupKey? (key : String) : Option String :=
-  let key := key.trimAscii.toString
-  if key.isEmpty then none else some key
-
 /-- Render a relation-row badge with semantic relation styling classes. -/
 private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
@@ -416,7 +408,7 @@ private def mkBlockEntry {m}
   let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
   pure {
     previewId
-    previewKey := previewLookupKey source
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state source.label
     previewTitle
     label := source.label
     href
@@ -432,7 +424,7 @@ private def mkLabelEntry {m}
   let previewTitle := s!"{label}"
   pure {
     previewId
-    previewKey := (Informal.PreviewSource.traversalLookupKey? ctx.state label).getD ""
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state label
     previewTitle
     label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
@@ -472,7 +464,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
-      (previewLookupKey? := nonEmptyPreviewLookupKey? entry.previewKey)
+      (previewLookupKey? := entry.previewKey.map (toString ·))
       (previewHeaderLabel? := some s!"{entry.label}")
       (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
@@ -505,8 +497,8 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
         ("data-bp-relation-preview-id", entry.previewId),
         ("data-bp-relation-preview-title", entry.previewTitle)
       ]
-      if let some previewKey := nonEmptyPreviewLookupKey? entry.previewKey then
-        attrs := attrs.push ("data-bp-relation-preview-key", previewKey)
+      if let some previewKey := entry.previewKey then
+        attrs := attrs.push ("data-bp-relation-preview-key", toString previewKey)
       for attr in Informal.HoverRender.previewHeaderLinkAttrs (some s!"{entry.label}") entry.href do
         attrs := attrs.push attr
       pure attrs

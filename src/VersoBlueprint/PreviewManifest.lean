@@ -770,11 +770,35 @@ structure RelatedEntry where
   title : String
   /-- Canonical link target for the related informal node, if available. -/
   href : Option String := none
-  /-- Rendered-fragment cache key for this related node's statement preview. -/
-  previewKey : String
+  /-- Rendered-fragment cache key for this related node's preview, if available. -/
+  previewKey : Option Informal.PreviewKey := none
   /-- Statement/proof dependency axes through which this related node is connected. -/
   axes : Array RelationAxis := #[]
-deriving Inhabited, Repr, ToJson, FromJson
+deriving Inhabited, Repr, ToJson
+
+private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback : α) :
+    Except String α :=
+  match json.getObjVal? field with
+  | .ok value => fromJson? value
+  | .error _ => pure fallback
+
+private def previewKeyFromJson? (json : Json) : Except String (Option Informal.PreviewKey) :=
+  match json with
+  | .null => pure none
+  | .str raw => pure (Informal.PreviewKey.ofString? raw)
+  | _ => .error "expected preview key string or null"
+
+instance : FromJson RelatedEntry where
+  fromJson? json := do
+    let label ← json.getObjValAs? Name "label"
+    let title ← json.getObjValAs? String "title"
+    let href ← jsonObjValAsD json "href" (none : Option String)
+    let previewKey ←
+      match json.getObjVal? "previewKey" with
+      | .ok value => previewKeyFromJson? value
+      | .error _ => pure none
+    let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
+    pure { label, title, href, previewKey, axes }
 
 /-- Manifest-owned group metadata for an informal node. -/
 structure GroupRelation where
@@ -1183,6 +1207,12 @@ def Entry.isBlock (entry : Entry) : Bool :=
   | .block => true
   | _ => false
 
+/-- Whether this manifest entry represents a source-backed external-markup node. -/
+def Entry.isExternalMarkup (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .externalMarkup => true
+  | _ => false
+
 /-- Whether this manifest entry represents the statement facet. -/
 def Entry.isStatement (entry : Entry) : Bool :=
   match entry.facet with
@@ -1193,10 +1223,31 @@ def Entry.isStatement (entry : Entry) : Bool :=
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
+/--
+Statement-facet entries that should be visible as Blueprint nodes to query
+clients. Bodyless source-backed nodes are exported as external-markup entries,
+but they still carry the same semantic label, dependency, ownership, and source
+metadata as block entries.
+-/
+def File.queryableStatementEntries (file : File) : Array Entry :=
+  file.previews.filter fun entry =>
+    entry.isStatement && (entry.isBlock || entry.isExternalMarkup)
+
 /-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
     entry.isBlock && entry.authoredLabel == label
+
+/--
+All queryable Blueprint entries matching the authored public label string,
+including non-statement facets for normal blocks.
+-/
+def File.findQueryableEntriesByLabel (file : File) (label : String) : Array Entry :=
+  file.previews.filter fun entry =>
+    if entry.isBlock then
+      entry.authoredLabel == label
+    else
+      entry.isExternalMarkup && entry.isStatement && entry.authoredLabel == label
 
 /--
 Best public block entry for a label.
@@ -1208,26 +1259,37 @@ def File.findPrimaryBlockEntry? (file : File) (label : String) : Option Entry :=
   let entries := file.findBlockEntriesByLabel label
   entries.find? (·.isStatement) <|> entries[0]?
 
+/--
+Best public query entry for a label.
+
+Statement entries are primary because most clients ask for node metadata rather
+than a proof-only rendered facet. Bodyless source-backed nodes are represented
+by statement-facet external-markup entries and participate in the same lookup.
+-/
+def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry :=
+  let entries := file.findQueryableEntriesByLabel label
+  entries.find? (·.isStatement) <|> entries[0]?
+
 private def pushUniqueString (values : Array String) (value : String) : Array String :=
   if values.contains value then values else values.push value
 
-/-- Sorted owner names present on statement-facet block entries. -/
+/-- Sorted owner names present on queryable statement entries. -/
 def File.ownerValues (file : File) : Array String :=
-  let owners := file.blockStatementEntries.foldl (init := #[]) fun owners entry =>
+  let owners := file.queryableStatementEntries.foldl (init := #[]) fun owners entry =>
       match entry.ownerDisplayName with
       | none => owners
       | some owner => pushUniqueString owners owner
   owners.qsort (· < ·)
 
-/-- Sorted tag values present on statement-facet block entries. -/
+/-- Sorted tag values present on queryable statement entries. -/
 def File.tagValues (file : File) : Array String :=
-  let tags := file.blockStatementEntries.foldl (init := #[]) fun tags entry =>
+  let tags := file.queryableStatementEntries.foldl (init := #[]) fun tags entry =>
       entry.tags.foldl pushUniqueString tags
   tags.qsort (· < ·)
 
-/-- Statement-facet block entries carrying work-queue metadata. -/
+/-- Queryable statement entries carrying work-queue metadata. -/
 def File.workQueueEntries (file : File) : Array Entry :=
-  file.blockStatementEntries.filter fun entry =>
+  file.queryableStatementEntries.filter fun entry =>
     entry.ownerDisplayName.isSome || entry.priority.isSome ||
       entry.effort.isSome || !entry.tags.isEmpty
 
@@ -1329,6 +1391,8 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
   | .const ``String _ =>
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Name _ =>
+      pure <| Json.mkObj [("type", Json.str "string")]
+  | .const ``Informal.PreviewKey _ =>
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Bool _ =>
       pure <| Json.mkObj [("type", Json.str "boolean")]
@@ -1625,7 +1689,7 @@ private def relatedEntryForLabel
     label
     title := blockTitle state label .statement blockData?
     href := blockHref state label
-    previewKey := (Informal.PreviewSource.traversalLookupKey? state label).getD ""
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state label
     axes
   }
 
@@ -1637,7 +1701,7 @@ private def relatedEntryForBlock
     label := blockData.label
     title := blockTitle state blockData.label .statement (some blockData)
     href := blockHref state blockData.label
-    previewKey := (Informal.PreviewSource.traversalLookupKey? state blockData.label).getD ""
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state blockData.label
     axes
   }
 

@@ -563,6 +563,8 @@ external markup.
       Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Definition2.3")
     let proposition24Key :=
       Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Proposition2.4")
+    let theorem21PreviewKey := Informal.PreviewKey.ofString? theorem21Key
+    let proposition24PreviewKey := Informal.PreviewKey.ofString? proposition24Key
     let rewriteKey := Informal.PreviewCache.statementKey (Name.mkSimple "showcase.native.rewrite")
     let some nativeEntry := previewEntry? manifest nativeKey
       | return #["missing native entry"]
@@ -639,6 +641,10 @@ external markup.
       ("theorem 2.1 source page", entryHasSourcePage theorem21Entry "imported-paper" "12"),
       ("theorem 2.1 markdown badge", hasSubstr theorem21Html "bp_external_markup_badge_markdown"),
       ("theorem 2.1 source preview", htmlHasSourcePreview theorem21Html "imported-paper" "p. 12"),
+      ("theorem 2.1 used-by external preview key",
+        theorem21Entry.usedBy.any (fun entry =>
+          entry.label == Name.mkSimple "ImportedPaper:Proposition2.4" &&
+            entry.previewKey == proposition24PreviewKey)),
       ("theorem 2.1 rendered markdown", hasSubstr theorem21Html "<h1>Theorem 2.1</h1>")
     ]
     let selectedMarkdownChecks : Array (String × Bool) := #[
@@ -685,6 +691,10 @@ external markup.
       ("proposition 2.4 source page 16", entryHasSourcePage proposition24Entry "imported-paper" "16"),
       ("proposition 2.4 source preview", htmlHasSourcePreview proposition24Html "imported-paper" "pp. 15, 16"),
       ("proposition 2.4 statement use", proposition24Entry.statementUses.any (fun use => use.label == Name.mkSimple "ImportedPaper:Theorem2.1")),
+      ("proposition 2.4 use preview key",
+        proposition24Entry.uses.any (fun entry =>
+          entry.label == Name.mkSimple "ImportedPaper:Theorem2.1" &&
+            entry.previewKey == theorem21PreviewKey)),
       ("proposition 2.4 rendered markdown", hasSubstr proposition24Html "<h3>Proposition 2.4</h3>")
     ]
     let rewriteChecks : Array (String × Bool) := #[
@@ -695,6 +705,10 @@ external markup.
       ("rewrite source page", entryHasSourcePage rewriteEntry "imported-paper" "17"),
       ("rewrite source preview", htmlHasSourcePreview showcaseHtml "imported-paper" "p. 17"),
       ("rewrite statement use", rewriteEntry.statementUses.any (fun use => use.label == Name.mkSimple "ImportedPaper:Theorem2.1")),
+      ("rewrite use preview key",
+        rewriteEntry.uses.any (fun entry =>
+          entry.label == Name.mkSimple "ImportedPaper:Theorem2.1" &&
+            entry.previewKey == theorem21PreviewKey)),
       ("metadata losses", showcaseLosses.isEmpty)
     ]
     pure <| failedCheckLabels <|

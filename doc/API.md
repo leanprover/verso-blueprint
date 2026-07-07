@@ -269,9 +269,14 @@ and Lean-declaration chain without scraping rendered HTML.
 
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
-`blockStatementEntries`, `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`,
-`sourceDocument?`, `entriesWithSource`, `entriesForSourceDocument`,
-`ownerValues`, `tagValues`, and `workQueueEntries`. Entry-level helpers
+`queryableStatementEntries`, `findQueryableEntriesByLabel`,
+`findPrimaryQueryableEntry?`, `blockStatementEntries`,
+`findBlockEntriesByLabel`, `findPrimaryBlockEntry?`, `sourceDocument?`,
+`entriesWithSource`, `entriesForSourceDocument`, `ownerValues`, `tagValues`,
+and `workQueueEntries`. Use the queryable helpers for the same node selection
+as `lake exe vbp query`; use the block-only helpers when a consumer explicitly
+needs rendered block entries and should exclude source-backed bodyless
+external-markup nodes. Entry-level helpers
 `Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
 the same source filtering and search predicates used by the `lake exe vbp query`
 interface.
@@ -282,7 +287,7 @@ import VersoBlueprint.PreviewManifest
 def primaryNodeTitle?
     (manifest : Informal.PreviewManifest.File)
     (label : String) : Option String :=
-  (manifest.findPrimaryBlockEntry? label).map (·.title)
+  (manifest.findPrimaryQueryableEntry? label).map (·.title)
 
 def workQueueLabels
     (manifest : Informal.PreviewManifest.File) : Array String :=
@@ -560,9 +565,11 @@ def renderAuditNode
 
 Use `PreviewManifest.File.findEntry?` and
 `PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. For
-client-facing node lists, prefer `PreviewManifest.File.blockStatementEntries`
-and `findPrimaryBlockEntry?` so label/facet selection matches the generated
-`vbp` query API. Code panels can reuse `HtmlCache.File.codeHtmlBodies`.
+client-facing node lists, prefer
+`PreviewManifest.File.queryableStatementEntries` and
+`findPrimaryQueryableEntry?` so label/facet selection matches the generated
+`vbp` query API, including source-backed bodyless external-markup nodes. Code
+panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `renderNodeFromManifestCache` has three diagnostic branches that custom
 interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:
