@@ -11,6 +11,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
+import VersoBlueprint.Lib.PreviewKey
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 
@@ -167,6 +168,27 @@ def traversalExternalMarkupLookupKey?
     none
   else
     some (externalMarkupKey label)
+
+/--
+Best preview lookup key for relation entries.
+
+Prefer the selected statement/proof traversal preview when one exists. Fall back
+to a source-backed external-markup preview for bodyless Blueprint nodes.
+-/
+private def traversalRelationLookupKey?
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String :=
+  traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
+
+/--
+Best preview key for relation entries.
+
+Prefer the selected statement/proof traversal preview when one exists. Fall back
+to a source-backed external-markup preview for bodyless Blueprint nodes.
+-/
+def traversalRelationPreviewKey?
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
+  let key ← traversalRelationLookupKey? s label
+  PreviewKey.ofString? key
 
 def traversalPreview?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do
