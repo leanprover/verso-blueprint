@@ -50,7 +50,7 @@ private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) 
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
   let href := nodeHref? state node.label <|> node.href
-  let previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state node.label
+  let previewKey := (Informal.PreviewSource.traversalLookupKey? state node.label).getD ""
   { node with title, href, previewKey }
 
 private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
@@ -59,16 +59,57 @@ private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupDat
   | some title => { group with title, declared := true }
   | none => group
 
+private def hasTraversalNode (state : TraverseState) (label : Name) : Bool :=
+  (Informal.TraversalIndex.Nodes.data? state label).isSome
+
+private def hasPreviewKey (node : Informal.Graph.NodeData) : Bool :=
+  !node.previewKey.trimAscii.toString.isEmpty
+
+private def keepFinalNode (state : TraverseState) (node : Informal.Graph.NodeData) : Bool :=
+  hasTraversalNode state node.label ||
+    node.warnings.unknownRef ||
+    node.href.isSome ||
+    hasPreviewKey node
+
+private def labelSet (nodes : Array Informal.Graph.NodeData) : Lean.NameSet :=
+  nodes.foldl (init := {}) fun acc node => acc.insert node.label
+
+private def keepEdge (labels : Lean.NameSet) (edge : Informal.Graph.EdgeData) : Bool :=
+  labels.contains edge.source && labels.contains edge.target
+
+private def filterGroupChildren? (labels : Lean.NameSet) (group : Informal.Graph.GroupData) :
+    Option Informal.Graph.GroupData :=
+  let children := group.children.filter (fun child => labels.contains child)
+  if children.isEmpty then
+    none
+  else
+    some { group with children }
+
+private def filterFinalData
+    (state : TraverseState) (data : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
+  let nodes := data.nodes.filter (keepFinalNode state)
+  let labels := labelSet nodes
+  {
+    data with
+      nodes
+      edges := data.edges.filter (keepEdge labels)
+      groups := data.groups.filterMap (filterGroupChildren? labels)
+  }
+
 /--
 Finalize graph data against a completed traversal state.
 
 This is the single projection from semantic graph data to public graph data:
 rendered page JSON and manifest/cache output both use it so href, title, and
-group metadata stay consistent.
+group metadata stay consistent. The projection keeps nodes that are backed by
+the current traversal, nodes with an explicit href/preview key, and unknown-ref
+diagnostics; imported or code-only semantic nodes with no rendered occurrence in
+the current site are omitted from the public graph.
 -/
 def finalData (state : TraverseState) (data : Informal.Graph.GraphData) :
     Informal.Graph.GraphData :=
-  {
+  filterFinalData state {
     data with
       nodes := data.nodes.map (enrichNode state)
       groups := data.groups.map (enrichGroup state)

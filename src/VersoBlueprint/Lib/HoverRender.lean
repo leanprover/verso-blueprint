@@ -257,8 +257,6 @@ structure InlinePreviewTarget where
   triggerId : String
   title : String
   lookupKey? : Option String := none
-  fallbackLabel? : Option String := none
-  fallbackDetail? : Option String := none
   headerLabel? : Option String := none
   headerHref? : Option String := none
   footerHtml? : Option String := none
@@ -278,8 +276,6 @@ def previewHeaderLinkAttrs
 /-- Build a target whose trigger id and manifest lookup key are the same. -/
 def InlinePreviewTarget.manifestBacked
     (lookupKey title : String)
-    (fallbackLabel? : Option String := none)
-    (fallbackDetail? : Option String := none)
     (headerLabel? : Option String := none)
     (headerHref? : Option String := none)
     (footerHtml? : Option String := none) : InlinePreviewTarget :=
@@ -287,8 +283,6 @@ def InlinePreviewTarget.manifestBacked
     triggerId := lookupKey
     title
     lookupKey? := some lookupKey
-    fallbackLabel?
-    fallbackDetail?
     headerLabel?
     headerHref?
     footerHtml?
@@ -297,8 +291,6 @@ def InlinePreviewTarget.manifestBacked
 /-- Build a target with a distinct trigger id and manifest lookup key. -/
 def InlinePreviewTarget.withLookupKey
     (triggerId title lookupKey : String)
-    (fallbackLabel? : Option String := none)
-    (fallbackDetail? : Option String := none)
     (headerLabel? : Option String := none)
     (headerHref? : Option String := none)
     (footerHtml? : Option String := none) : InlinePreviewTarget :=
@@ -306,8 +298,6 @@ def InlinePreviewTarget.withLookupKey
     triggerId
     title
     lookupKey? := some lookupKey
-    fallbackLabel?
-    fallbackDetail?
     headerLabel?
     headerHref?
     footerHtml?
@@ -316,8 +306,6 @@ def InlinePreviewTarget.withLookupKey
 private def inlinePreviewRefAttrs
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
-    (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none)
     (previewHeaderLabel? : Option String := none)
     (previewHeaderHref? : Option String := none)
     (previewFooterHtml? : Option String := none) :
@@ -329,10 +317,6 @@ private def inlinePreviewRefAttrs
   ]
   if let some previewKey := previewLookupKey? then
     attrs := attrs.push ("data-bp-preview-key", previewKey)
-  if let some label := previewFallbackLabel? then
-    attrs := attrs.push ("data-bp-preview-fallback-label", label)
-  if let some detail := previewFallbackDetail? then
-    attrs := attrs.push ("data-bp-preview-fallback-detail", detail)
   for attr in previewHeaderLinkAttrs previewHeaderLabel? previewHeaderHref? do
     attrs := attrs.push attr
   if let some footerHtml := previewFooterHtml? then
@@ -343,15 +327,13 @@ def inlinePreviewRef
     (node : Verso.Output.Html)
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
-    (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none)
     (previewHeaderLabel? : Option String := none)
     (previewHeaderHref? : Option String := none)
     (previewFooterHtml? : Option String := none) :
     Verso.Output.Html :=
   .tag "span"
-    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewFallbackLabel?
-      previewFallbackDetail? previewHeaderLabel? previewHeaderHref? previewFooterHtml?)
+    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewHeaderLabel?
+      previewHeaderHref? previewFooterHtml?)
     node
 
 /--
@@ -364,19 +346,16 @@ Blueprint no longer emits page-local inline preview templates.
 def inlinePreviewNode (node : Verso.Output.Html)
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
-    (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none)
     (previewHeaderLabel? : Option String := none)
     (previewHeaderHref? : Option String := none)
     (previewFooterHtml? : Option String := none) : Verso.Output.Html :=
-  inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel?
-    previewFallbackDetail? previewHeaderLabel? previewHeaderHref? previewFooterHtml?
+  inlinePreviewRef node previewId previewTitle previewLookupKey? previewHeaderLabel?
+    previewHeaderHref? previewFooterHtml?
 
 /-- Render one inline preview trigger from a bundled preview target. -/
 def inlinePreviewTargetNode
     (node : Verso.Output.Html) (target : InlinePreviewTarget) : Verso.Output.Html :=
   inlinePreviewNode node target.triggerId target.title target.lookupKey?
-    target.fallbackLabel? target.fallbackDetail? target.headerLabel? target.headerHref?
-    target.footerHtml?
+    target.headerLabel? target.headerHref? target.footerHtml?
 
 end Informal.HoverRender

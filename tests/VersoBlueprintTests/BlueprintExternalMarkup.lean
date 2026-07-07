@@ -797,6 +797,19 @@ external markup.
       | return false
     let bodylessLosses :=
       Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessFiles.manifest
+    let collidingLeanEntry : Informal.PreviewManifest.Entry := {
+      bodylessEntry with
+      key := "Informal.LeanCodePreview.external.bodyless.lean"
+      targetKind := .leanDecl
+      leanCodePreviewKeys := #[]
+      codeData := none
+    }
+    let bodylessWithCollidingLeanEntry : Informal.PreviewManifest.File := {
+      bodylessFiles.manifest with
+      previews := #[collidingLeanEntry] ++ bodylessFiles.manifest.previews
+    }
+    let collidingBodylessLosses :=
+      Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessWithCollidingLeanEntry
     let bodylessExternalRefs : Array Name :=
       match bodylessEntry.codeData with
       | some (.external refs) => refs.map (fun ref => ref.canonical)
@@ -868,6 +881,7 @@ external markup.
       punctuationEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
       punctuationExternalRefs.contains `Nat.add &&
       bodylessLosses.isEmpty &&
+      collidingBodylessLosses.isEmpty &&
       brokenBodylessLosses.size == 1 &&
       brokenBodylessLoss.manifestEntryKey? == some bodylessKey &&
       brokenBodylessLoss.missingLeanCodePreviewKeys.any (hasSubstr · "Nat.add") &&

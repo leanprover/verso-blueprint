@@ -177,6 +177,13 @@ private def writeSlidesPreviewDataFiles
 /-- info: true -/
 #guard_msgs in
 #eval
+  let node := blueprintNode "def:code.preview" "def:code.preview--statement"
+  let attrs := node.toAttrs.filter (fun attr => attr.1 != "data-bp-preview-key")
+  Informal.Graft.BlueprintNode.fromAttrs? attrs == none
+
+/-- info: true -/
+#guard_msgs in
+#eval
   let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
     displayLabel? := some "Custom slide label" }
   let attrs := node.toAttrs

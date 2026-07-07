@@ -273,7 +273,7 @@
  * @property {Record<string, unknown>} [options] Rendering options emitted with the variant.
  * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
  * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.
- * @property {unknown[]} [previewKeyByNodeId] SVG node ids mapped to Blueprint preview-cache keys.
+ * @property {unknown[]} [previewKeyByNodeId] SVG node ids mapped to Blueprint preview-cache keys; nodes without renderable previews are omitted.
  */
 
 /**

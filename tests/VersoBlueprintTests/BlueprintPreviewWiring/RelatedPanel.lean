@@ -20,6 +20,13 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   label := Lean.Name.mkSimple "target"
 }
 
+private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry := {
+  previewId := "missing-preview"
+  previewKey := ""
+  previewTitle := "Missing Preview"
+  label := Lean.Name.mkSimple "missing.preview"
+}
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -49,6 +56,20 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       proofCfg.panelTitle 2 == "Proof uses 2" &&
       proofCfg.chipTitle 1 == "Proof dependencies used by source" &&
       proofCfg.singleTitle samplePanelEntry == "Proof dependency: Target"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
+    let inlineOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
+    let panelOut :=
+      (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
+    hasSubstr inlineOut "data-bp-preview-id=\"missing-preview\"" &&
+      !hasSubstr inlineOut "data-bp-preview-key=" &&
+      hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\"" &&
+      !hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\" data-bp-relation-preview-key" &&
+      hasSubstr panelOut "data-bp-relation-preview-key=\"preview-key\""
 
 /-- info: true -/
 #guard_msgs in

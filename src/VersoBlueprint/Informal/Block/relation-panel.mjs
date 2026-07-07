@@ -98,11 +98,23 @@
     async function activate(item, options) {
       if (!(item instanceof Element)) return;
       const opts = options && typeof options === "object" ? options : {};
+      const itemTitle = (item.getAttribute("data-bp-relation-preview-title") || "").trim() || defaultTitle;
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
       const requestToken = ++activateRequestToken;
       selectItem(item);
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
+      }
+      if (!previewKey) {
+        surface.replaceBody({
+          heading: itemTitle,
+          source: item,
+          html: previewUtils.previewMessageHtml(relationPreviewDiagnosticOptions(
+            "This relation target does not have a rendered preview entry."
+          )),
+          renderOptions: { hydrate: false, renderMath: false }
+        });
+        return;
       }
       await previewUtils.renderPreviewIntoSurface(surface, previewKey, {
         loadingHtml: initialLoadingHtml,

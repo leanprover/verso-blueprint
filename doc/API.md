@@ -358,9 +358,14 @@ That finished traversal state is the stable boundary. Consumers should not
 reconstruct graph hrefs or titles from lower-level traversal internals when the
 finalized graph data is available.
 
-Finalized graph node `previewKey` values are selected preview keys: when a
-statement preview is unavailable but a proof preview exists, graph and relation
-UI can point at the proof preview. Use fixed facet keys such as
+Finalized graph data is traversal-backed. Imported semantic nodes or code-only
+nodes that have no rendered occurrence in the current site are omitted from the
+public graph; explicit unknown-reference diagnostics are retained. Finalized
+graph node `previewKey` values are selected preview keys: when a statement
+preview is unavailable but a proof preview exists, graph and relation UI can
+point at the proof preview. When a retained node has no renderable preview, the
+finalized `previewKey` is the empty string and bundled graph variants omit the
+node from `previewKeyByNodeId`. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 
@@ -494,8 +499,10 @@ The useful data boundary is small:
 - `BlueprintNodeConfig.toNode` normalizes that selection into
   `Informal.Graft.BlueprintNode`, including the exact preview `key`.
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
-  neutral DOM shell used by generated interfaces. The shell carries the
-  `bp_graft_manifest_node` class as a stable selector for custom consumers.
+  neutral DOM shell used by generated interfaces. The decoder requires the
+  encoded preview key rather than deriving one from label/facet attributes. The
+  shell carries the `bp_graft_manifest_node` class as a stable selector for
+  custom consumers.
   Slides use `Informal.Slides.blueprintNodeAttrs` and
   `Informal.Slides.renderedBlueprintNodeAttrs` to add slide-specific classes
   without making them part of the generic graft contract.
@@ -1184,7 +1191,7 @@ callbacks, or generated preview code still need them directly.
 
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
-| Template lifecycle | `collectPreviewTemplates` | Graph-local preview stores; summary and code-summary previews use Lean-emitted DOM descriptors that the runtime auto-binds |
+| Template lifecycle | `collectPreviewTemplates` | Template-only code-summary previews; summary preview descriptors switch to manifest/cache lookup when `allow-html-cache` is enabled |
 | Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `renderPreviewIntoSurface`, `resolvePreviewHtml`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
 | Behavior, positioning, and dismissal | `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph popovers, slide-change cleanup, and feature-specific positioning callbacks |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
@@ -1200,9 +1207,13 @@ updates, close-button wiring, trigger binding, dismissal binding, reposition
 binding, pointer checks, and keep-open checks into one controller object.
 `renderPreviewIntoSurface` layers shared preview lookup, diagnostics, loading
 content, stale-request checks, and rendered-fragment insertion on top of that
-surface controller. `resolvePreviewHtml` provides the narrower shared lookup
-path for bundled feature scripts that need to keep feature-specific panel
-rendering or fallback rules. Bundled feature scripts should prefer
+surface controller. It keeps caller-provided headings for loading and local
+diagnostics, then prefers the resolved manifest entry title once lookup reaches
+a manifest entry; header-label provenance remains source-node driven.
+`resolvePreviewHtml` provides the narrower shared lookup
+path for bundled feature scripts that already own their panel rendering but
+still want key-based manifest/cache resolution and generated diagnostics on
+lookup failure. Bundled feature scripts should prefer
 `surface.bindTriggers`, `surface.bindDismissal`, `surface.bindRepositioner`,
 `surface.position`, `surface.pointerWithin`, `surface.shouldKeepOpen`, and
 `renderPreviewIntoSurface` or `resolvePreviewHtml` over direct lifecycle and

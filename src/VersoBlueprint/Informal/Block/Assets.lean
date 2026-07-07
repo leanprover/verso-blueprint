@@ -267,6 +267,26 @@ span[class$="_thmlabel"]::after {
   justify-content: flex-start;
 }
 
+@media (max-width: 700px) {
+  .bp_extras {
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+    margin-left: 0;
+    gap: 0.2rem 0.5rem;
+  }
+
+  .bp_extra_slot {
+    max-width: 100%;
+  }
+
+  .bp_extra_slot_code {
+    margin-left: auto;
+  }
+}
+
 .bp_external_markup_badges {
   display: inline-flex;
   align-items: center;
@@ -712,6 +732,83 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_panel_wrapper .bp_code_block > summary {
   cursor: pointer;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_code_panel_wrapper .bp_code_block > summary::marker {
+  content: "";
+}
+
+.bp_code_panel_wrapper .bp_code_block > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bp_code_panel_wrapper .bp_code_block > summary::before {
+  content: "";
+  flex: 0 0 0.52rem;
+  width: 0.52rem;
+  height: 0.52rem;
+  margin-top: 0.18rem;
+  border-right: 0.12rem solid var(--bp-color-text-faint);
+  border-bottom: 0.12rem solid var(--bp-color-text-faint);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.bp_code_panel_wrapper .bp_code_block[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.bp_code_panel .bp_heading_title_row {
+  min-width: 0;
+}
+
+.bp_code_panel .bp_code_summary_text {
+  color: var(--bp-color-text-strong);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bp_code_panel .bp_code_summary_label {
+  flex: 0 0 auto;
+}
+
+.bp_code_panel .bp_code_summary_indicator {
+  max-width: 100%;
+}
+
+.bp_code_panel .bp_external_decl_rendered .declaration {
+  --bp-box-border-color: var(--bp-color-border-panel);
+  --bp-box-background: var(--bp-color-surface);
+  --bp-box-header-background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
+  --bp-box-radius: var(--bp-radius-lg);
+  --bp-box-shadow: var(--bp-shadow-sm);
+  --bp-box-min-width: 0;
+}
+
+.bp_code_panel .bp_external_decl_kicker {
+  padding: 0.38rem 0.5rem;
+}
+
+.bp_code_panel .bp_external_decl_rendered .bp_external_decl_signature {
+  padding: 0.52rem 0.55rem;
+}
+
+.bp_code_panel .bp_external_decl_rendered .bp_external_decl_body:not(:empty) {
+  padding: 0.5rem 0.55rem;
+}
+
+.bp_code_panel .bp_external_decl_head {
+  min-width: 0;
+}
+
+.bp_code_panel .bp_external_decl_head .bp_inline_preview_ref,
+.bp_code_panel .bp_external_decl_head a,
+.bp_code_panel .bp_external_decl_head code {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bp_decl_target {
@@ -1333,15 +1430,24 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_external_decl_rendered .declaration {
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--bp-color-border-soft);
-  border-left: 0.15rem solid var(--bp-color-border-strong);
-  border-radius: 6px;
-  background: var(--bp-color-surface-muted);
-  background: color-mix(in srgb, var(--bp-color-surface-muted) 54%, transparent);
-  min-width: 100%;
-  overflow: hidden;
+  --bp-box-width: 100%;
+  --bp-box-border-left-width: 0.15rem;
+  --bp-box-border-left-color: var(--bp-color-border-strong);
+  --bp-box-radius: 6px;
+  --bp-box-background: color-mix(in srgb, var(--bp-color-surface-muted) 54%, transparent);
+  box-sizing: border-box;
+  margin: var(--bp-box-margin, 0);
+  padding: var(--bp-box-padding, 0);
+  border: var(--bp-box-border-width, 1px) solid
+    var(--bp-box-border-color, var(--bp-color-border-soft));
+  border-left: var(--bp-box-border-left-width, var(--bp-box-border-width, 1px)) solid
+    var(--bp-box-border-left-color, var(--bp-box-border-color, var(--bp-color-border-soft)));
+  border-radius: var(--bp-box-radius, var(--bp-radius-md));
+  background: var(--bp-box-background, var(--bp-color-surface));
+  box-shadow: var(--bp-box-shadow, none);
+  width: var(--bp-box-width, auto);
+  min-width: var(--bp-box-min-width, 0);
+  overflow: var(--bp-box-overflow, hidden);
 }
 
 .bp_external_decl_kicker {
@@ -1351,8 +1457,9 @@ span[class$="_thmlabel"]::after {
   gap: 0.35rem 0.65rem;
   margin: 0;
   padding: 0.32rem 0.35rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: var(--bp-color-surface-muted);
+  border-bottom: var(--bp-box-header-border-bottom-width, 1px) solid
+    var(--bp-box-divider-color, var(--bp-color-border-soft));
+  background: var(--bp-box-header-background, var(--bp-color-surface-muted));
   color: var(--bp-color-text-muted);
   font-size: 0.74rem;
   line-height: 1.35;

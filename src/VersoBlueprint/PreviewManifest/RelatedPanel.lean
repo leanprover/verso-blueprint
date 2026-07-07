@@ -41,7 +41,6 @@ def RelatedEntry.panelEntry
     label := entry.label
     href := entry.href
     badgesHtml := entry.badgesHtml
-    previewFallbackLabel? := some entry.displayLabel
     active := entry.label == currentLabel
   }
 
