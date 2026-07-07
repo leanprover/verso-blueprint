@@ -134,9 +134,42 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
       text.contains "selectors" &&
       text.contains "all <label>" &&
       text.contains "search <text>" &&
+      text.contains "lake exe vbp build [--output <dir>] [--pdf]" &&
+      text.contains "--pdf builds _out/site/pdf/main.pdf" &&
       text.contains "--serve --port <n>" &&
       text.contains "build writes _out/site" &&
       !text.contains "lake exe vbp query [--site <dir>] node <label>"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let text := Informal.PreviewManifest.helpText
+    text.contains "Blueprint PDF options:" &&
+      text.contains "--pdf" &&
+      text.contains "--pdf-engine <cmd>" &&
+      text.contains "--pdf-runs <n>"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match Informal.PreviewManifest.parsePdfOptions
+        ["--output", "_out/custom", "--pdf", "--pdf-engine", "xelatex", "--pdf-runs", "3", "--verbose"] with
+    | .ok (opts, rest) =>
+        opts.enabled &&
+          opts.engine == "xelatex" &&
+          opts.runs == 3 &&
+          rest == ["--output", "_out/custom", "--verbose"]
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match Informal.PreviewManifest.parsePdfOptions ["--pdf-runs", "0"] with
+    | .ok _ => false
+    | .error err => err.contains "expected a positive integer"
 
 /-- info: true -/
 #guard_msgs in
@@ -423,6 +456,19 @@ private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
     | .ok opts =>
         opts.serve &&
           opts.port? == some 8080
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions
+        ["--output", "_out/custom", "--pdf", "--pdf-engine", "xelatex", "--pdf-runs", "3"] {} with
+    | .ok opts =>
+        opts.output.toString == "_out/custom" &&
+          opts.pdf &&
+          opts.pdfEngine? == some "xelatex" &&
+          opts.pdfRuns? == some 3
     | .error _ => false
 
 /-- info: true -/

@@ -19,6 +19,7 @@ import VersoBlueprint.Lean
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
+import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
@@ -55,6 +56,7 @@ private partial def previewCodeBlocks
 
 block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
         (fun _ => s!"Malformed data: {data}")
@@ -88,7 +90,15 @@ block_extension Block.informalCode (data : InlineCodeData) where
       modify λ s => Informal.TraversalIndex.InlineCode.saveId s label id
       modify λ s => Informal.TraversalIndex.InlineCode.saveData s label (toJson cdata)
       pure none
-  toTeX := none
+  toTeX := some <| fun _goI goB _id data blocks => do
+      let title ←
+        match fromJson? (α := InlineCodeData) data with
+        | .ok cdata => pure s!"Lean code for {cdata.label}"
+        | .error err =>
+          Verso.reportError s!"Malformed data in Block.informalCode.toTeX ({err}): {data}"
+          pure "Lean code"
+      let body ← blocks.mapM goB
+      pure <| Informal.TeX.boldHeadingBlocks title body
   extraCss := Informal.Block.Assets.codeCssAssets
   extraJs := ([] : List String)
   toHtml :=
@@ -253,6 +263,7 @@ deriving Repr, Inhabited, FromJson, ToJson, Quote
 
 block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
         (fun _ => s!"Malformed external markup data: {data}")
@@ -274,7 +285,18 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
       modify fun s => Informal.TraversalIndex.ExternalMarkup.saveId s cdata.label id
       modify fun s => Informal.TraversalIndex.ExternalMarkup.saveData s cdata.label (toJson updated)
     pure none
-  toTeX := none
+  toTeX :=
+    open Verso.Output.TeX in
+    some <| fun _goI _goB _id data _blocks => do
+      let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
+        | Verso.reportError s!"Malformed external markup data in Block.externalMarkup.toTeX: {data}"
+          pure .empty
+      let summary := ExternalMarkupView.displaySummary cdata.markup
+      match cdata.display with
+      | .hidden => pure .empty
+      | .summary => pure <| .text summary
+      | .source =>
+        pure <| Informal.TeX.verbatimBlock summary cdata.markup.raw
   extraCss := ({} : Std.HashSet CSS)
   extraJs := ([] : List String)
   toHtml :=

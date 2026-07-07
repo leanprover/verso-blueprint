@@ -128,6 +128,15 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
+PDF changes can add the optional real-engine smoke check:
+
+```bash
+./scripts/validate-test-blueprints.sh --run-real-pdf-smoke
+```
+
+The smoke check builds `project_template` with `--pdf`, verifies
+`pdf/main.pdf`, and skips itself when `lualatex` is not installed.
+
 Use browser pytest directly only when the patch changes browser runtime or
 interaction behavior:
 

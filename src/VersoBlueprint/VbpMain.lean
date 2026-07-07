@@ -14,13 +14,14 @@ namespace VersoBlueprint.Vbp.Main
 
 private def mainCommandLines : List String := [
   "lake exe vbp discover",
-  "lake exe vbp build [--output <dir>] [--serve] [--port <n>]",
+  "lake exe vbp build [--output <dir>] [--pdf] [--serve] [--port <n>]",
   "lake exe vbp query [--site <dir>] <selector>",
   "lake exe vbp check [--site <dir>]"
 ]
 
 private def defaultHelpLines : List String := [
   "build writes _out/site",
+  "--pdf builds _out/site/pdf/main.pdf from the generated TeX",
   "query and check read _out/site",
   "--serve serves the generated html-multi directory after a successful build",
   "--serve --port <n> serves on a fixed port"
@@ -163,6 +164,9 @@ def discover : IO UInt32 := do
 
 structure BuildOptions where
   output : FilePath := VersoBlueprint.Vbp.defaultOutput
+  pdf : Bool := false
+  pdfEngine? : Option String := none
+  pdfRuns? : Option Nat := none
   serve : Bool := false
   port? : Option Nat := none
 
@@ -182,17 +186,47 @@ private def parseTcpPort (raw : String) : Except String Nat :=
         .error s!"invalid --port value '{raw}'; expected a TCP port between 0 and {maxTcpPort}"
   | none => .error s!"invalid --port value '{raw}'"
 
+private def parsePositiveNatOption (option raw : String) : Except String Nat :=
+  match raw.toNat? with
+  | some n =>
+      if n == 0 then
+        .error s!"invalid {option} value '{raw}'; expected a positive integer"
+      else
+        .ok n
+  | none => .error s!"invalid {option} value '{raw}'"
+
 private partial def parseBuildOptionsCore : List String → BuildOptions → Except String BuildOptions
   | [], opts => .ok opts
   | "--output" :: dir :: args, opts => parseBuildOptionsCore args { opts with output := FilePath.mk dir }
   | "--output" :: [], _ => .error "missing value after --output"
-  | "--serve" :: args, opts => parseBuildOptionsCore args { opts with serve := true }
-  | "--port" :: raw :: args, opts =>
-      match parseTcpPort raw with
-      | .ok port => parseBuildOptionsCore args { opts with port? := some port }
-      | .error err => .error err
-  | "--port" :: [], _ => .error "missing value after --port"
-  | arg :: _, _ => .error s!"unknown build option '{arg}'"
+  | arg :: args, opts =>
+      if arg == Informal.PreviewManifest.pdfFlag then
+        parseBuildOptionsCore args { opts with pdf := true }
+      else if arg == Informal.PreviewManifest.pdfEngineFlag then
+        match args with
+        | engine :: more =>
+            let engine := engine.trimAscii.toString
+            if engine.isEmpty then
+              .error s!"empty value after {Informal.PreviewManifest.pdfEngineFlag}"
+            else
+              parseBuildOptionsCore more { opts with pdf := true, pdfEngine? := some engine }
+        | [] => .error s!"missing value after {Informal.PreviewManifest.pdfEngineFlag}"
+      else if arg == Informal.PreviewManifest.pdfRunsFlag then
+        match args with
+        | raw :: more =>
+            match parsePositiveNatOption Informal.PreviewManifest.pdfRunsFlag raw with
+            | .ok runs => parseBuildOptionsCore more { opts with pdf := true, pdfRuns? := some runs }
+            | .error err => .error err
+        | [] => .error s!"missing value after {Informal.PreviewManifest.pdfRunsFlag}"
+      else
+        match arg, args with
+        | "--serve", args => parseBuildOptionsCore args { opts with serve := true }
+        | "--port", raw :: args =>
+            match parseTcpPort raw with
+            | .ok port => parseBuildOptionsCore args { opts with port? := some port }
+            | .error err => .error err
+        | "--port", [] => .error "missing value after --port"
+        | arg, _ => .error s!"unknown build option '{arg}'"
 
 private def validateBuildOptions (opts : BuildOptions) : Except String BuildOptions :=
   if opts.port?.isSome && !opts.serve then
@@ -253,14 +287,24 @@ private def generatorRunArgs (generatorFile output : FilePath) : Array String :=
   #["lean", generatorFile.toString, "--", "--run", generatorFile.toString,
     "--output", output.toString]
 
-private def buildPlan (output : FilePath) : IO (Except String BuildPlan) := do
+private def pdfGeneratorArgs (opts : BuildOptions) : Array String :=
+  let args := if opts.pdf then #[Informal.PreviewManifest.pdfFlag] else #[]
+  let args :=
+    match opts.pdfEngine? with
+    | some engine => args ++ #[Informal.PreviewManifest.pdfEngineFlag, engine]
+    | none => args
+  match opts.pdfRuns? with
+  | some runs => args ++ #[Informal.PreviewManifest.pdfRunsFlag, toString runs]
+  | none => args
+
+private def buildPlan (opts : BuildOptions) : IO (Except String BuildPlan) := do
   match ← projectInfo with
   | .error err => pure (.error err)
   | .ok info =>
       pure (.ok {
         packageName := info.packageName,
         generatorPrepareArgs := #["lean", info.generatorFile.toString],
-        generatorArgs := generatorRunArgs info.generatorFile output
+        generatorArgs := generatorRunArgs info.generatorFile opts.output ++ pdfGeneratorArgs opts
       })
 
 private def serveScript : String := String.intercalate "\n" [
@@ -301,7 +345,7 @@ def build (args : List String) : IO UInt32 := do
       IO.eprintln err
       pure 2
   | .ok opts =>
-      match ← buildPlan opts.output with
+      match ← buildPlan opts with
       | .error err =>
           IO.eprintln err
           pure 1

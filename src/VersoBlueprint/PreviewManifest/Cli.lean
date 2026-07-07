@@ -87,6 +87,48 @@ def parseExternalMarkupRenderOptionsIO
   | .ok parsed => pure parsed
   | .error err => throw <| IO.userError err
 
+def pdfFlag : String := "--pdf"
+def pdfEngineFlag : String := "--pdf-engine"
+def pdfRunsFlag : String := "--pdf-runs"
+
+structure PdfOptions where
+  enabled : Bool := false
+  engine : String := "lualatex"
+  runs : Nat := 2
+deriving Inhabited, Repr, BEq
+
+private partial def parsePdfOptionsCore :
+    List String → PdfOptions → List String → Except String (PdfOptions × List String)
+  | [], opts, rest => .ok (opts, rest.reverse)
+  | flag :: args, opts, rest =>
+      if flag == pdfFlag then
+        parsePdfOptionsCore args { opts with enabled := true } rest
+      else if flag == pdfEngineFlag then
+        match args with
+        | engine :: more =>
+            let engine := engine.trimAscii.toString
+            if engine.isEmpty then
+              .error s!"empty value after {pdfEngineFlag}"
+            else
+              parsePdfOptionsCore more { opts with enabled := true, engine } rest
+        | [] => .error s!"missing value after {pdfEngineFlag}"
+      else if flag == pdfRunsFlag then
+        match args with
+        | raw :: more =>
+            match raw.toNat? with
+            | some runs =>
+                if runs == 0 then
+                  .error s!"invalid {pdfRunsFlag} value '{raw}'; expected a positive integer"
+                else
+                  parsePdfOptionsCore more { opts with enabled := true, runs } rest
+            | none => .error s!"invalid {pdfRunsFlag} value '{raw}'"
+        | [] => .error s!"missing value after {pdfRunsFlag}"
+      else
+        parsePdfOptionsCore args opts (flag :: rest)
+
+def parsePdfOptions (args : List String) : Except String (PdfOptions × List String) :=
+  parsePdfOptionsCore args {} []
+
 def dumpSchemaFlag : String := "--dump-schema"
 def dumpManifestFlag : String := "--dump-manifest"
 def dumpHtmlCacheFlag : String := "--dump-html-cache"
@@ -99,6 +141,11 @@ def helpText : String := String.intercalate "\n" [
   s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
   s!"  {externalMarkupRenderFlag} <mode>  Render source-backed external fragments in the cache ({Informal.ExternalMarkupRender.Mode.cliValues}; default markdown, rendered by MD4Lean with source fallback).",
   s!"  {helpFlag}              Show this help text and exit.",
+  "",
+  "Blueprint PDF options:",
+  s!"  {pdfFlag}               Emit TeX and build pdf/main.pdf with lualatex.",
+  s!"  {pdfEngineFlag} <cmd>  Use a lualatex-compatible command for PDF builds.",
+  s!"  {pdfRunsFlag} <n>      Number of LaTeX passes for PDF builds, default 2.",
   "",
   "Standard manual rendering options:",
   "  --output <dir>",

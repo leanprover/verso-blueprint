@@ -30,6 +30,7 @@ import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.Source.Metadata
+import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
@@ -61,6 +62,7 @@ block_extension Block.informal (data : BlockData) where
   -- for TOC
   -- localContentItem _ _ _ := none
   data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     -- XXX: (maybe) lift the Except into the main monad error thread
     match ← ExtensionDecode.decode? (α := BlockData) data
@@ -79,7 +81,15 @@ block_extension Block.informal (data : BlockData) where
         | none =>
             modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
       return none
-  toTeX := none
+  toTeX := some <| fun _goI goB _id data blocks => do
+      let .ok data := fromJson? (α := BlockData) data
+        | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
+          pure .empty
+      let st ← Verso.Doc.TeX.state
+      let data := data.withResolvedNumbering st
+      let title := data.displayTitle st
+      let body ← blocks.mapM goB
+      pure <| Informal.TeX.quotedBlock title body
   extraCss := Informal.Block.Assets.blockCssAssets
   extraJs := Informal.Block.Assets.blockJsAssets
   toHtml :=
