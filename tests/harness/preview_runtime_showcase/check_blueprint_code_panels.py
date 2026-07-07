@@ -61,6 +61,19 @@ def check_external_decl_section_label(
         fail(f"Missing named external declaration subsection group for {description}: {label}")
 
 
+def has_class_set(html: str, required_classes: tuple[str, ...]) -> bool:
+    required = set(required_classes)
+    return any(
+        required.issubset(set(class_attr.split()))
+        for class_attr in re.findall(r'class="([^"]+)"', html)
+    )
+
+
+def require_class_set(html: str, required_classes: tuple[str, ...], description: str) -> None:
+    if not has_class_set(html, required_classes):
+        fail(f"{description} missing classes: {' '.join(required_classes)}")
+
+
 def check_issue_130_external_decl_headings(out_root: Path) -> tuple[Path, list[str]]:
     issue_page, issue_html = find_issue_130_page(out_root)
     expected_labels = ["Fields", "Methods", "Constructors", "Extends"]
@@ -160,10 +173,49 @@ def main() -> int:
         fail("rendered declaration header still displays uninformative docstring metadata")
     if "bp_external_decl_header_status" not in code_panels:
         fail("missing compact rendered declaration status marker")
-    if "border-left: 0.15rem solid var(--bp-color-border-strong)" not in code_panels:
-        fail("rendered declaration left rail no longer matches theorem-scale padding")
-    if "padding: 0.32rem 0.35rem" not in code_panels or "background: var(--bp-color-surface-muted)" not in code_panels:
-        fail("missing solid rendered declaration header band styling")
+    require_class_set(code_panels, ("declaration", "decl"), "rendered external declarations")
+    require_class_set(code_panels, ("bp_external_decl_kicker",), "rendered external declaration header")
+    if has_class_set(code_panels, ("bp_box",)) or has_class_set(code_panels, ("bp_box_header",)):
+        fail("generic box utility classes should not be part of rendered declaration markup")
+    if has_class_set(code_panels, ("bp_external_decl_box",)):
+        fail("rendered declaration markup should keep the original declaration class contract")
+    if (
+        ".bp_external_decl_rendered .declaration {" not in code_panels
+        or "border: var(--bp-box-border-width, 1px) solid" not in code_panels
+    ):
+        fail("missing scoped rendered declaration box primitive")
+    if "border-left: var(--bp-box-border-left-width, var(--bp-box-border-width, 1px)) solid" not in code_panels:
+        fail("missing reusable box left-border override primitive")
+    if (
+        "width: var(--bp-box-width, auto)" not in code_panels
+        or "min-width: var(--bp-box-min-width, 0)" not in code_panels
+    ):
+        fail("missing reusable box sizing primitive")
+    if "overflow: var(--bp-box-overflow, hidden)" not in code_panels:
+        fail("missing reusable box overflow primitive")
+    if "--bp-box-width: 100%" not in code_panels:
+        fail("rendered declaration boxes should opt into full-width layout")
+    if "--bp-box-border-left-width: 0.15rem" not in code_panels:
+        fail("rendered declaration box left rail no longer matches theorem-scale width")
+    if "--bp-box-border-left-color: var(--bp-color-border-strong)" not in code_panels:
+        fail("rendered declaration box left rail no longer uses theorem-scale color")
+    if ".bp_external_decl_kicker {" not in code_panels or (
+        "background: var(--bp-box-header-background, var(--bp-color-surface-muted))" not in code_panels
+    ):
+        fail("missing reusable rendered declaration header band styling")
+    if (
+        ".bp_code_panel .bp_external_decl_rendered .declaration" not in code_panels
+        or "--bp-box-shadow: var(--bp-shadow-sm)" not in code_panels
+    ):
+        fail("missing code-panel-specific single-box treatment for external declarations")
+    if ".bp_code_panel_wrapper .bp_code_block > summary::before" not in code_panels:
+        fail("missing code-panel collapse indicator")
+    if ".bp_code_panel_wrapper .bp_code_block[open] > summary::before" not in code_panels:
+        fail("missing open-state code-panel collapse indicator")
+    if ".bp_code_panel_wrapper .bp_code_block > summary::-webkit-details-marker" not in code_panels:
+        fail("missing native marker suppression for code-panel collapse indicator")
+    if "padding: 0.32rem 0.35rem" not in code_panels:
+        fail("missing compact rendered declaration header padding")
     if "padding: 0.4rem 0.35rem" not in code_panels:
         fail("missing compact rendered declaration signature padding")
     if "bp_external_decl_kicker_status" not in code_panels:
@@ -257,8 +309,7 @@ def main() -> int:
     )
     if abbrev_panel is None:
         fail("missing external abbrev code panel")
-    if 'class="declaration decl def abbrev"' not in abbrev_panel:
-        fail("external abbrev panel missing definition-compatible abbrev styling classes")
+    require_class_set(abbrev_panel, ("declaration", "decl", "def", "abbrev"), "external abbrev panel")
     if 'data-kind="abbrev"' not in abbrev_panel:
         fail("external abbrev panel missing abbrev kind marker")
     if '<span class="keyword token">abbrev</span>' not in abbrev_panel:
@@ -340,8 +391,7 @@ def main() -> int:
     )
     if inductive_panel is None:
         fail("missing external inductive code panel")
-    if 'class="declaration decl inductive"' not in inductive_panel:
-        fail("external inductive panel missing inductive styling classes")
+    require_class_set(inductive_panel, ("declaration", "decl", "inductive"), "external inductive panel")
     if 'data-kind="inductive"' not in inductive_panel:
         fail("external inductive panel missing inductive kind marker")
     if '<span class="bp_external_decl_kind">inductive</span>' not in inductive_panel:
@@ -366,8 +416,7 @@ def main() -> int:
     )
     if class_panel is None:
         fail("missing external class code panel")
-    if 'class="declaration decl class"' not in class_panel:
-        fail("external class panel missing class styling classes")
+    require_class_set(class_panel, ("declaration", "decl", "class"), "external class panel")
     if 'data-kind="class"' not in class_panel:
         fail("external class panel missing class kind marker")
     if '<span class="bp_external_decl_kind">class</span>' not in class_panel:
@@ -392,8 +441,7 @@ def main() -> int:
     )
     if structure_panel is None:
         fail("missing external structure code panel")
-    if 'class="declaration decl structure"' not in structure_panel:
-        fail("external structure panel missing structure styling classes")
+    require_class_set(structure_panel, ("declaration", "decl", "structure"), "external structure panel")
     if 'data-kind="structure"' not in structure_panel:
         fail("external structure panel missing structure kind marker")
     if '<span class="bp_external_decl_kind">structure</span>' not in structure_panel:

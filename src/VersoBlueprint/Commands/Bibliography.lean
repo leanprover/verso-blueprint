@@ -104,7 +104,6 @@ block_extension Block.bibliography (biblio : BibliographyData) where
                     s!"bp-bib-use-{Informal.HoverRender.previewKey use.href}"
                   let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
                     previewId summaryText previewKey
-                    (fallbackLabel? := some s!"{theoremCtx.label}")
                   Informal.HoverRender.inlinePreviewTargetNode lineNode previewTarget
                 | Option.none => lineNode
               {{<li class="bp_bibliography_use_item">

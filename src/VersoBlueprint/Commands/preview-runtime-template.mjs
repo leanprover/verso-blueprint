@@ -1,7 +1,6 @@
 import { collectPreviewTemplates, readElementOption, readFunctionOption, readHtml, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
-import { resolveBlueprintPreview } from "./preview-runtime-render.mjs";
 import { setTemplatePreviewDescriptorBinder } from "./preview-runtime-hydration.mjs";
-import { createPreviewSurface } from "./preview-runtime-surface.mjs";
+import { createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./preview-runtime-surface.mjs";
 
   // Template preview binding adapts the shared helpers to concrete surfaces.
 
@@ -71,14 +70,23 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       activeTrigger = null;
     }
 
-    async function resolveTriggerHtml(trigger, key) {
-      const localEntry = previewMap.get(key);
-      const localHtml = readHtml(localEntry);
-      if (localHtml) return localHtml;
-      if (!allowHtmlCache) return "";
-      const lookupKey = readLookupKey(trigger, key, localEntry);
-      const result = await resolveBlueprintPreview(lookupKey, opts);
-      if (result && result.ok) return result.html;
+    async function resolveTriggerPreview(trigger, key) {
+      if (!allowHtmlCache) {
+        const localEntry = previewMap.get(key);
+        return {
+          html: readHtml(localEntry),
+          title: ""
+        };
+      }
+      const lookupKey = readLookupKey(trigger, key, null);
+      const resolved = await resolvePreviewHtml(lookupKey, opts);
+      if (resolved && resolved.ok) {
+        return {
+          html: resolved.html,
+          title: previewResultTitle(resolved.result)
+        };
+      }
+      const result = resolved ? resolved.result : null;
       const diagnosticHtml =
         result && typeof result.diagnosticHtml === "string" ? result.diagnosticHtml : "";
       const dataApi = opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
@@ -86,21 +94,25 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
         dataApi && typeof dataApi.htmlCacheDiagnosticHtml === "function"
           ? dataApi.htmlCacheDiagnosticHtml(lookupKey || key)
           : "";
-      return diagnosticHtml || htmlCacheDiagnosticHtml;
+      return {
+        html: diagnosticHtml || htmlCacheDiagnosticHtml,
+        title: previewResultTitle(result)
+      };
     }
 
     async function showFromTrigger(trigger) {
       if (!(trigger instanceof Element)) return;
       const key = readKey(trigger);
       const requestToken = ++showRequestToken;
-      const html = await resolveTriggerHtml(trigger, key);
+      const resolved = await resolveTriggerPreview(trigger, key);
+      const html = resolved.html || "";
       if (requestToken !== showRequestToken) return;
       if (!key || !html) {
         hidePanel();
         return;
       }
       activeTrigger = trigger;
-      const heading = readTitle(trigger, key);
+      const heading = resolved.title || readTitle(trigger, key);
       previewSurface.showContent({
         heading: heading,
         html: html,
@@ -158,6 +170,7 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       triggerBoundAttr: readTemplateDescriptorString(root, "trigger-bound-attr", "data-bp-bound")
     };
     if ("fetchJson" in opts) bindOptions.fetchJson = opts.fetchJson;
+    if ("dataApi" in opts) bindOptions.dataApi = opts.dataApi;
     if (mode.length > 0 || placement.length > 0) {
       bindOptions.defaults = {
         mode: mode.length > 0 ? mode : "hover",

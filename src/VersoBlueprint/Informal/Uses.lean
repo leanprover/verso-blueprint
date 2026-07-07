@@ -112,7 +112,6 @@ private def wrapUseLinkPreview (node : Verso.Output.Html)
   let ptitle := blockHoverTitle state block
   let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
     pid ptitle pkey
-    (fallbackLabel? := some s!"{label}")
   Informal.HoverRender.inlinePreviewTargetNode node previewTarget
 
 inline_extension Inline.informal (data : InlineData) where

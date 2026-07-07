@@ -1,32 +1,5 @@
 export const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
-// Fallback markup is only for explicit fallback attributes on non-cache
-// inline references. Manifest-backed previews should resolve through
-// previewUtils.resolvePreview and should not rely on this path.
-export function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
-  if (!(trigger instanceof Element)) return "";
-  const title = (trigger.getAttribute("data-bp-preview-title") || key || "").trim();
-  const label = (trigger.getAttribute("data-bp-preview-fallback-label") || "").trim();
-  const detail = (trigger.getAttribute("data-bp-preview-fallback-detail") || "").trim();
-  const text = (trigger.textContent || "").trim();
-  let html = '<div class="bp_code_hover" role="tooltip">';
-  html += '<div class="bp_code_hover_title">' + escapeHtml(title || "Preview") + "</div>";
-  if (text.length > 0) {
-    html += '<div class="bp_code_hover_section"><span class="bp_code_hover_label">Reference</span><ul class="bp_code_hover_list"><li>' +
-      escapeHtml(text) + "</li></ul></div>";
-  }
-  if (label.length > 0) {
-    html += '<div class="bp_code_hover_section"><span class="bp_code_hover_label">Blueprint label</span><ul class="bp_code_hover_list"><li><code>' +
-      escapeHtml(label) + "</code></li></ul></div>";
-  }
-  if (detail.length > 0) {
-    html += '<div class="bp_code_hover_section"><span class="bp_code_hover_label">Detail</span><ul class="bp_code_hover_list"><li>' +
-      escapeHtml(detail) + "</li></ul></div>";
-  }
-  html += "</div>";
-  return html;
-}
-
 export function getPanel(previewUtils, id, extraClass) {
   const existing = document.getElementById(id);
   if (existing instanceof Element) return existing;
@@ -92,7 +65,6 @@ export function bindInlinePreview(previewUtils) {
   if (document.body.getAttribute("data-bp-inline-preview-bound") === "1") return;
   document.body.setAttribute("data-bp-inline-preview-bound", "1");
 
-  const escapeHtml = previewUtils.escapeHtml;
   const previewDebug = previewUtils.previewDebug;
   const previewDebugLabel = previewUtils.previewDebugLabel;
 
@@ -242,14 +214,9 @@ export function bindInlinePreview(previewUtils) {
       trigger instanceof Element
         ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
         : "";
-    const fallbackHtml = fallbackInlinePreviewHtml(trigger, key, escapeHtml);
-    if (previewLookupKey) {
-      const resolved = await previewUtils.resolvePreviewHtml(previewLookupKey, {
-        fallbackHtml: fallbackHtml
-      });
-      return resolved.html || "";
-    }
-    return fallbackHtml;
+    if (!previewLookupKey) return "";
+    const resolved = await previewUtils.resolvePreviewHtml(previewLookupKey);
+    return resolved.html || "";
   }
 
   async function showChildFromTrigger(trigger) {
@@ -457,7 +424,6 @@ export function startInlinePreview(previewUtils) {
 
 export const inlinePreviewRuntime = {
   triggerSelector,
-  fallbackInlinePreviewHtml,
   getPanel,
   defaultInlinePreviewHostPolicies,
   readInlinePreviewHost,

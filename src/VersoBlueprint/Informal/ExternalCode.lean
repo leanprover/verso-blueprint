@@ -305,7 +305,8 @@ private def externalDeclRowDataWith [Monad m]
   let status := externalDeclStatusView item
   if !item.decl.present then
     pure {
-      liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
+      liAttrs := #[("class", "bp_external_decl_item")] ++
+        item.anchorAttrs
       head := externalDeclHead item status
       body := missingExternalDeclBody
     }
@@ -313,7 +314,8 @@ private def externalDeclRowDataWith [Monad m]
     let body ← renderBody item
     if (externalRenderFailure? item.decl).isSome then
       pure {
-        liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
+        liAttrs := #[("class", "bp_external_decl_item")] ++
+          item.anchorAttrs
         head := externalDeclHead item status
         body
         footer := externalDeclRenderedMeta item status

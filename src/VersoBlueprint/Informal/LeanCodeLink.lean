@@ -27,14 +27,13 @@ private def previewLookupKey (decl : Name) : String :=
   Informal.LeanDeclPreviewKey.lookupKey decl
 
 private def previewTarget
-    (decl : Name) (previewTitle : String) (previewDetail? : Option String) :
+    (decl : Name) (previewTitle : String) :
     Informal.HoverRender.InlinePreviewTarget :=
   let lookupKey := previewLookupKey decl
   {
     triggerId := s!"bp-lean-code-{Informal.HoverRender.previewKey lookupKey}"
     title := previewTitle
     lookupKey? := some lookupKey
-    fallbackDetail? := previewDetail?
   }
 
 private def renderLinkNode
@@ -59,11 +58,10 @@ def renderResolved
     (className : String := "")
     (href? : Option String := none)
     (linkTitle? : Option String := none)
-    (previewTitle : String := s!"Lean declaration {decl}")
-    (previewDetail? : Option String := none) : Verso.Output.Html :=
+    (previewTitle : String := s!"Lean declaration {decl}") : Verso.Output.Html :=
   let linkNode := renderLinkNode node href? className linkTitle?
   Informal.HoverRender.inlinePreviewTargetNode
     linkNode
-    (previewTarget decl previewTitle previewDetail?)
+    (previewTarget decl previewTitle)
 
 end Informal.LeanCodeLink

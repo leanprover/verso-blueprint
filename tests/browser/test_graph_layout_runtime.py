@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -182,6 +183,12 @@ def assert_graph_is_well_placed(page: Page):
 
 def first_preview_node(page: Page):
     node = page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first
+    node.wait_for()
+    return node
+
+
+def preview_node_by_label(page: Page, label: str):
+    node = page.locator(".bp_graph_canvas svg g.node[tabindex='0']").filter(has_text=label).first
     node.wait_for()
     return node
 
@@ -489,7 +496,7 @@ class TestGraphLayoutRuntime:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 58"
+            "Nodes 57"
         )
 
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
@@ -640,13 +647,41 @@ class TestGraphLayoutRuntime:
         assert switched["width"] > switched["height"]
         assert_graph_is_well_placed(page)
 
+    def test_graph_options_popover_uses_readable_mobile_width(self, server: str, page: Page):
+        page.set_viewport_size({"width": 390, "height": 844})
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        page.locator(".bp_graph_options_button").first.click()
+        metrics = page.evaluate(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                if (!block || !panel) return null;
+                const blockRect = block.getBoundingClientRect();
+                const panelRect = panel.getBoundingClientRect();
+                return {
+                    hidden: panel.hidden,
+                    blockWidth: blockRect.width,
+                    panelWidth: panelRect.width,
+                    leftDelta: Math.abs(panelRect.left - blockRect.left),
+                    rightDelta: Math.abs(panelRect.right - blockRect.right)
+                };
+            }"""
+        )
+
+        assert metrics is not None
+        assert metrics["hidden"] is False
+        assert metrics["panelWidth"] >= min(280, metrics["blockWidth"] * 0.75)
+        assert metrics["leftDelta"] <= 1
+
     def test_graph_preview_defaults_to_pinned(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         panel = page.locator(".bp_graph_preview").first
-        node = first_preview_node(page)
+        node = preview_node_by_label(page, "used_target")
 
         assert panel.get_attribute("data-bp-preview-mode") == "pinned"
         assert panel.get_attribute("data-bp-preview-placement") == "docked"
@@ -662,9 +697,54 @@ class TestGraphLayoutRuntime:
                 return !!panel && !panel.hidden && panel.getAttribute("data-bp-preview-mode") === "pinned";
             }"""
         )
+        title_link = panel.locator(".bp_graph_preview_title a").first
+        expect(title_link).to_contain_text("Definition")
+        expect(title_link).to_have_attribute(
+            "href", re.compile(r"Preview-Relationships/#--informal-preview-used_target--statement$")
+        )
+        expect(title_link).to_have_attribute("title", "used_target")
+        options_button = page.locator(".bp_graph_options_button").first
+        options_button.click()
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector(".bp_graph_options_button");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                const preview = document.querySelector(".bp_graph_preview");
+                return (
+                    !!button &&
+                    !!panel &&
+                    !!preview &&
+                    !preview.hidden &&
+                    !panel.hidden &&
+                    button.getAttribute("aria-expanded") === "true"
+                );
+            }"""
+        )
+        page.locator(".bp_graph_options_popover_close").first.click()
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector(".bp_graph_options_button");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                return !!button && !!panel && panel.hidden && button.getAttribute("aria-expanded") === "false";
+            }"""
+        )
         page.mouse.move(20, 20)
         page.wait_for_timeout(250)
         assert panel.evaluate("el => el.hidden") is False
+
+        title_link.click()
+        page.wait_for_url(re.compile(r".*/Preview-Relationships/#--informal-preview-used_target--statement$"))
+        page.go_back()
+        wait_for_graph(page)
+        panel = page.locator(".bp_graph_preview").first
+        node = preview_node_by_label(page, "used_target")
+        node.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                return !!panel && !panel.hidden && panel.getAttribute("data-bp-preview-mode") === "pinned";
+            }"""
+        )
 
         page.locator(".bp_graph_preview_close").first.click()
         page.wait_for_function(
@@ -707,6 +787,17 @@ class TestGraphLayoutRuntime:
                 const defaultBehavior = surface.behavior;
                 const panelBehavior = surface.setBehavior({ mode: "hover", placement: "docked" });
                 const fallbackBehavior = surface.setBehavior({ mode: "invalid", placement: "invalid" });
+                const linkedTitleOk = surface.showContent({
+                    heading: "Linked title",
+                    headingHref: "Preview-Relationships/#--informal-preview-used_target--statement",
+                    headingTitle: "Definition 6.1",
+                    html: "<p>Preview body</p>",
+                    allowEmpty: true
+                }) && panel.querySelector(".bp_test_title a") &&
+                    panel.querySelector(".bp_test_title a").getAttribute("href") ===
+                        "Preview-Relationships/#--informal-preview-used_target--statement" &&
+                    panel.querySelector(".bp_test_title a").getAttribute("title") === "Definition 6.1" &&
+                    panel.querySelector(".bp_test_title a").textContent === "Linked title";
                 panel.remove();
                 return (
                     defaultBehavior.mode === "pinned" &&
@@ -720,7 +811,8 @@ class TestGraphLayoutRuntime:
                     fallbackBehavior.mode === "hover" &&
                     fallbackBehavior.placement === "docked" &&
                     fallbackBehavior.isHover &&
-                    fallbackBehavior.isDocked
+                    fallbackBehavior.isDocked &&
+                    linkedTitleOk
                 );
                 """
             )

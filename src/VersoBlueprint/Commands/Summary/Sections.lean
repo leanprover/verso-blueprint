@@ -378,7 +378,10 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
       match Informal.PreviewSource.traversalSelection? s label with
       | some selection => keys.insert label selection.key
-      | Option.none => keys
+      | Option.none =>
+        match Informal.PreviewSource.traversalExternalMarkupLookupKey? s label with
+        | some key => keys.insert label key
+        | Option.none => keys
     let ctx : SummaryHtmlContext := {
       entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
       declHref? := fun label decl =>
