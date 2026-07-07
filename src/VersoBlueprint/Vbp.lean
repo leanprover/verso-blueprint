@@ -97,7 +97,7 @@ private def relatedEntryJson (entry : RelatedEntry) : Json :=
     ("label", nameJson entry.label),
     ("title", Json.str entry.title),
     ("href", optionStringJson entry.href),
-    ("previewKey", Json.str entry.previewKey),
+    ("previewKey", toJson entry.previewKey),
     ("axes", Json.arr (entry.axes.map relationAxisJson))
   ]
 
@@ -193,7 +193,7 @@ private def countsJson (counts : Array (String × Nat)) : Json :=
   Json.mkObj (counts.toList.map fun (key, count) => (key, Json.num count))
 
 private def statsJson (manifest : ManifestFile) : Json :=
-  let entries := manifest.blockStatementEntries
+  let entries := manifest.queryableStatementEntries
   let byKind := entries.foldl (fun counts entry => incrementCount counts (kindString entry.kind)) #[]
   let byOwner := entries.foldl
     (fun counts entry => entry.ownerDisplayName.map (incrementCount counts ·) |>.getD counts)
@@ -216,7 +216,7 @@ private def missingLabelJson (label : String) : Json :=
 
 private def withPrimaryEntry
     (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Except String Json :=
-  match manifest.findPrimaryBlockEntry? label with
+  match manifest.findPrimaryQueryableEntry? label with
   | some entry => .ok (mkJson entry)
   | none => .ok (missingLabelJson label)
 
@@ -226,7 +226,7 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok querySelectorsJson
   | ["labels"] =>
       .ok <| responseJson [
-        ("labels", Json.arr (manifest.blockStatementEntries.map entrySummaryJson))
+        ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
       ]
   | ["node", label] =>
       withPrimaryEntry manifest label entryResponseJson
@@ -263,12 +263,12 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
   | ["search", text] =>
       .ok <| responseJson [
         ("query", Json.str text),
-        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
       ]
   | ["code", decl] =>
       .ok <| responseJson [
         ("query", Json.str decl),
-        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
       ]
   | ["stats"] =>
       .ok (statsJson manifest)
@@ -314,9 +314,12 @@ private def checkRelatedEntries
     (errors : Array String) : Array String :=
   entries.foldl
     (fun errors entry =>
-      pushMissingCacheKey cacheKeys errors
-        s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
-        entry.previewKey)
+      match entry.previewKey with
+      | none => errors
+      | some key =>
+        pushMissingCacheKey cacheKeys errors
+          s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
+          key.value)
     errors
 
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=

@@ -16,7 +16,15 @@ private def related (value title key : String) : RelatedEntry :=
   {
     label := label value
     title := title
-    previewKey := key
+    previewKey := Informal.PreviewKey.ofString? key
+    axes := #[.statement]
+  }
+
+private def relatedWithoutPreview (value title : String) : RelatedEntry :=
+  {
+    label := label value
+    title := title
+    href := some s!"{value}/"
     axes := #[.statement]
   }
 
@@ -54,6 +62,43 @@ private def sampleManifest : ManifestFile := {
       facet := .statement
       title := "Nat.add_assoc"
     }
+  ]
+}
+
+private def sampleExternalManifest : ManifestFile := {
+  previews := sampleManifest.previews.push {
+    key := Informal.PreviewManifest.externalMarkupEntryKey (label "external_bodyless")
+    targetKind := .externalMarkup
+    label := label "external_bodyless"
+    facet := .statement
+    kind := some .corollary
+    title := "Corollary 3"
+    statementUses := #[{ label := label "addition_spec" }]
+    uses := #[related "addition_spec" "Definition 1" "informal:addition_spec:statement"]
+    leanCodePreviewKeys := #["lean:Nat.mul_assoc"]
+    ownerDisplayName := some "Source Author"
+    tags := #["external-source", "starter"]
+    priority := some "medium"
+  }
+}
+
+private def sampleEmptyRelationManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:relation_source:statement"
+      targetKind := .block
+      label := label "relation_source"
+      facet := .statement
+      kind := some .theorem
+      title := "Theorem 1"
+      uses := #[relatedWithoutPreview "relation_target" "Target without preview"]
+    }
+  ]
+}
+
+private def sampleEmptyRelationCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:relation_source:statement", html := "<div>relation source</div>" }
   ]
 }
 
@@ -103,6 +148,11 @@ private def jsonBoolField? (json : Json) (field : String) : Option Bool :=
   | .ok value => some value
   | .error _ => none
 
+private def jsonNullField (json : Json) (field : String) : Bool :=
+  match jsonField? json field with
+  | some .null => true
+  | _ => false
+
 private def jsonNatField? (json : Json) (field : String) : Option Nat :=
   match json.getObjValAs? Nat field with
   | .ok value => some value
@@ -123,6 +173,9 @@ private def jsonArrayContainsString (values : Array Json) (expected : String) : 
 
 private def jsonArrayHasStringField (values : Array Json) (field expected : String) : Bool :=
   values.any (fun json => jsonStringField? json field == some expected)
+
+private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool :=
+  values.any (fun json => jsonNullField json field)
 
 /-- info: true -/
 #guard_msgs in
@@ -176,8 +229,11 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
 #eval
   show Bool from
     sampleManifest.blockStatementEntries.size == 2 &&
+      sampleExternalManifest.queryableStatementEntries.size == 3 &&
       (sampleManifest.findPrimaryBlockEntry? "addition_assoc").map (·.key) ==
         some "informal:addition_assoc:statement" &&
+      (sampleExternalManifest.findPrimaryQueryableEntry? "external_bodyless").map (·.key) ==
+        some (Informal.PreviewManifest.externalMarkupEntryKey (label "external_bodyless")) &&
       sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
       sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
       sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
@@ -256,6 +312,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["labels"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonHasApiStability json &&
+              jsonArrayHasStringField labels "label" "external_bodyless" &&
+              jsonArrayHasStringField labels "authoredLabel" "external_bodyless" &&
+              !jsonArrayHasStringField labels "label" "Nat.add_assoc"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     match VersoBlueprint.Vbp.queryJson sampleManifest ["node", "addition_assoc"] with
     | .ok json =>
         match jsonArrayField? json "statementUses" with
@@ -273,6 +344,22 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["node", "external_bodyless"] with
+    | .ok json =>
+        match jsonArrayField? json "statementUses" with
+        | some statementUses =>
+            jsonHasApiStability json &&
+              jsonStringField? json "targetKind" == some "externalMarkup" &&
+              jsonStringField? json "label" == some "external_bodyless" &&
+              jsonStringField? json "ownerDisplayName" == some "Source Author" &&
+              jsonArrayHasStringField statementUses "label" "addition_spec"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     match VersoBlueprint.Vbp.queryJson sampleManifest ["used-by", "addition_spec"] with
     | .ok json =>
         match jsonArrayField? json "usedBy" with
@@ -281,6 +368,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
               jsonStringField? json "label" == some "addition_spec" &&
               jsonArrayHasStringField usedBy "label" "addition_assoc" &&
               jsonArrayHasStringField usedBy "previewKey" "informal:addition_assoc:statement"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleEmptyRelationManifest ["uses", "relation_source"] with
+    | .ok json =>
+        match jsonArrayField? json "uses" with
+        | some uses =>
+            jsonHasApiStability json &&
+              jsonArrayHasStringField uses "label" "relation_target" &&
+              jsonArrayHasNullField uses "previewKey" &&
+              !jsonArrayHasStringField uses "previewKey" ""
         | none => false
     | .error _ => false
 
@@ -346,6 +448,19 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["code", "Nat.mul_assoc"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonStringField? json "query" == some "Nat.mul_assoc" &&
+              jsonArrayHasStringField labels "label" "external_bodyless"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     match VersoBlueprint.Vbp.queryJson sampleManifest ["stats"] with
     | .ok json =>
         match jsonField? json "byKind", jsonField? json "byTag" with
@@ -355,6 +470,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
               jsonNatField? byKind "definition" == some 1 &&
               jsonNatField? byKind "theorem" == some 1 &&
               jsonNatField? byTag "starter" == some 2
+        | _, _ => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["stats"] with
+    | .ok json =>
+        match jsonField? json "byKind", jsonField? json "byTag" with
+        | some byKind, some byTag =>
+            jsonHasApiStability json &&
+              jsonNatField? json "statements" == some 3 &&
+              jsonNatField? byKind "corollary" == some 1 &&
+              jsonNatField? byTag "external-source" == some 1
         | _, _ => false
     | .error _ => false
 
@@ -390,6 +520,12 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData sampleManifest sampleCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData sampleEmptyRelationManifest sampleEmptyRelationCache |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
