@@ -719,6 +719,11 @@ class TestPreviewRuntimeRegressions:
                         }
                     );
                     const customCalls = [];
+                    const unavailableSourceLocation = {
+                        ok: false,
+                        location: null,
+                        error: "source location unavailable"
+                    };
                     const customFetchJson = function (url) {
                         customCalls.push(url);
                         if (url.endsWith("blueprint-manifest.json")) {
@@ -728,7 +733,8 @@ class TestPreviewRuntimeRegressions:
                                         key: "custom_loader--statement",
                                         label: "custom_loader",
                                         facet: "statement",
-                                        title: "Custom loader"
+                                        title: "Custom loader",
+                                        sourceLocation: unavailableSourceLocation
                                     }
                                 ],
                                 graphs: [
@@ -1185,6 +1191,48 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_public_data_api_requires_manifest_source_location(
+        self, server: str, page: Page
+    ):
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                const data = createPreviewData({
+                    fetchJson(url) {
+                        if (url.endsWith("blueprint-manifest.json")) {
+                            return Promise.resolve({
+                                previews: [
+                                    {
+                                        key: "legacy_loader--statement",
+                                        label: "legacy_loader",
+                                        facet: "statement",
+                                        title: "Legacy loader"
+                                    }
+                                ],
+                                graphs: []
+                            });
+                        }
+                        throw new Error("Unexpected custom loader URL: " + url);
+                    }
+                });
+                const manifest = await data.loadManifest();
+                const status = data.readManifestStatus();
+                return {
+                    state: status.state,
+                    message: status.lastError,
+                    manifestSize: manifest.size
+                };
+                """
+            )
+        )
+
+        assert result["state"] == "error"
+        assert result["manifestSize"] == 0
+        assert "missing sourceLocation" in result["message"]
+
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
@@ -1510,6 +1558,11 @@ class TestPreviewRuntimeRegressions:
                 const dataCalls = [];
                 const moduleCalls = [];
                 const previewCalls = [];
+                const unavailableSourceLocation = {
+                    ok: false,
+                    location: null,
+                    error: "source location unavailable"
+                };
                 const manifestPayload = {
                     sourceDocuments: [
                         {
@@ -1527,6 +1580,7 @@ class TestPreviewRuntimeRegressions:
                             label: "sample_node",
                             authoredLabel: "sample_node",
                             facet: "statement",
+                            sourceLocation: unavailableSourceLocation,
                             sources: [
                                 {
                                     document: "paper",
@@ -1648,6 +1702,11 @@ class TestPreviewRuntimeRegressions:
                 """
                 const { createPreview } = await import(api.previewApiModuleUrl());
                 const calls = [];
+                const unavailableSourceLocation = {
+                    ok: false,
+                    location: null,
+                    error: "source location unavailable"
+                };
                 const manifestPayload = {
                     sourceDocuments: [
                         {
@@ -1665,6 +1724,7 @@ class TestPreviewRuntimeRegressions:
                             label: "sample_node",
                             authoredLabel: "sample_node",
                             facet: "statement",
+                            sourceLocation: unavailableSourceLocation,
                             sources: [
                                 {
                                     document: "paper",
@@ -1700,6 +1760,7 @@ class TestPreviewRuntimeRegressions:
                             key: "externalMarkup:external_node",
                             label: "external_node",
                             authoredLabel: "external_node",
+                            sourceLocation: unavailableSourceLocation,
                             externalMarkup: [
                                 {
                                     language: "markdown",
@@ -1725,13 +1786,15 @@ class TestPreviewRuntimeRegressions:
                             key: "unsourced--statement",
                             label: "unsourced",
                             authoredLabel: "unsourced",
-                            facet: "statement"
+                            facet: "statement",
+                            sourceLocation: unavailableSourceLocation
                         },
                         {
                             key: "unknown_source_document--statement",
                             label: "unknown_source_document",
                             authoredLabel: "unknown_source_document",
                             facet: "statement",
+                            sourceLocation: unavailableSourceLocation,
                             sources: [
                                 {
                                     document: "missing-paper",
