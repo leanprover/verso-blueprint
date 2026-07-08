@@ -192,6 +192,9 @@ private def outputDirNameForMode : Mode → String
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / outputDirNameForMode mode
 
+private def htmlStringIsBlank (html : String) : Bool :=
+  html.all Char.isWhitespace
+
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
     let msg := Verso.LogMessage.format { severity, text, loc }
@@ -1693,6 +1696,17 @@ private def sourceRefsForBlockLabel (state : TraverseState) (label : Name) :
   | some sourceRef => #[sourceRef]
   | none => #[]
 
+private def sourceRefsByCanonicalLabel (state : TraverseState) :
+    Std.HashMap String Informal.Source.Ref := Id.run do
+  let mut refs : Std.HashMap String Informal.Source.Ref := {}
+  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
+    match decoded with
+    | .ok stored =>
+        refs := refs.insert stored.canonicalName stored.data
+    | .error _ =>
+        pure ()
+  refs
+
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
   match Informal.TraversalIndex.Groups.data? state parent with
   | some groupData =>
@@ -1750,10 +1764,11 @@ private def blockCodeData?
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
   let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
+  let sourceRefsByLabel := sourceRefsByCanonicalLabel state
   for decoded in Informal.PreviewSource.traversalStoredEntries state do
     match decoded with
     | .ok stored =>
-        if let some sourceRef := sourceRef? state stored.entry.label then
+        if let some sourceRef := sourceRefsByLabel.get? stored.entry.label.toString then
           for key in stored.entry.leanCodePreviewKeys do
             let current := (sources.get? key).getD #[]
             sources := sources.insert key (pushUnique current sourceRef)
@@ -1925,7 +1940,7 @@ private def buildTraversalEntries
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString
-      if html.trimAscii.isEmpty then
+      if htmlStringIsBlank html then
         continue
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
@@ -2003,6 +2018,27 @@ private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entr
   | .externalDecl decl => externalDeclSourceLocation decl
   | .inlineBlocks _ sourceLocation => sourceLocation
 
+private def leanCodePreviewManifestEntry
+    (state : TraverseState)
+    (sourceRefs : Std.HashMap String (Array Informal.Source.Ref))
+    (key : String)
+    (entry : Informal.LeanCodePreview.Entry) : Entry := {
+  key
+  targetKind :=
+    match entry.source with
+    | .inlineBlocks .. => .inlineLeanCode
+    | .externalDecl _ => .leanDecl
+  label := entry.target
+  facet := .statement
+  title :=
+    match entry.source with
+    | .inlineBlocks .. => s!"Lean code for {entry.target}"
+    | .externalDecl _ => Informal.LeanCodePreview.title entry.target
+  sources := (sourceRefs.get? key).getD #[]
+  href := Informal.TraversalIndex.LeanCodePreviews.href? state key
+  sourceLocation := leanCodePreviewSourceLocation entry
+}
+
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
@@ -2019,29 +2055,14 @@ private def buildLeanCodeEntries
       logError s!"Blueprint manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.data
+      let key := stored.canonicalName
       let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString
-      if html.trimAscii.isEmpty then
+      if htmlStringIsBlank html then
         continue
-      let key := stored.canonicalName
-      let manifestEntry : Entry := {
-        key
-        targetKind :=
-          match entry.source with
-          | .inlineBlocks .. => .inlineLeanCode
-          | .externalDecl _ => .leanDecl
-        label := entry.target
-        facet := .statement
-        title :=
-          match entry.source with
-          | .inlineBlocks .. => s!"Lean code for {entry.target}"
-          | .externalDecl _ => Informal.LeanCodePreview.title entry.target
-        sources := (sourceRefs.get? key).getD #[]
-        href := Informal.TraversalIndex.LeanCodePreviews.href? state key
-        sourceLocation := leanCodePreviewSourceLocation entry
-      }
+      let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries, hoverState)
@@ -2076,7 +2097,7 @@ private def buildCitationEntries
       let citation := stored.data
       let (html, hoverState') ← renderCitationEntryHtml impls logError state citation hoverState
       hoverState := hoverState'
-      if html.trimAscii.isEmpty then
+      if htmlStringIsBlank html then
         continue
       let manifestEntry : Entry := {
         key := citation.key

@@ -204,6 +204,9 @@ private def htmlTestContext :
       | .error _ => none)
       | return false
     let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.asString
+    let (cacheHtml, cacheHoverState) :=
+      Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[ref, ref] {}
+    let cacheHtml := cacheHtml.asString
     let renderPage :
         Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Informal.ExternalCode.RenderParts :=
       Informal.ExternalCode.renderPartsWithPageHovers
@@ -221,10 +224,15 @@ private def htmlTestContext :
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
+      cacheHoverState.dedup.contentId.size == payloadCount &&
       pageHtml.contains "data-verso-hover=\"" &&
+      cacheHtml.contains "data-verso-hover=\"" &&
       !pageHtml.contains "data-bp-external-hover-local=\"" &&
       !pageHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !pageHtml.contains "class=\"hover-info\"" &&
+      !cacheHtml.contains "data-bp-external-hover-local=\"" &&
+      !cacheHtml.contains "data-bp-external-hover-inline-local=\"" &&
+      !cacheHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
       !previewHtml.contains "data-bp-external-hover-local=\"" &&
       !previewHtml.contains "data-bp-external-hover-inline-local=\""

@@ -277,6 +277,10 @@ private def writeSlidesPreviewDataFiles
         blockEntry.codeData.isSome &&
         hasSubstr blockHtml "Statement with an associated Lean declaration link" &&
         hasSubstr codeHtml "bp_external_decl_rendered" &&
+        hasSubstr codeHtml "data-verso-hover=" &&
+        !hasSubstr codeHtml "class=\"hover-info\"" &&
+        !cache.hoverDocs.isEmpty &&
+        cache.hoverDocs.all (fun doc => doc.id >= Informal.PreviewManifest.HtmlCache.hoverIdStart) &&
         blockEntry.displayCaption == some "Definition" &&
         blockEntry.displayLabel.any (fun label => !label.trimAscii.isEmpty) &&
         file.previews.any (fun entry =>
