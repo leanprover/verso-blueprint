@@ -192,4 +192,27 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
             variant.previewKeyByNodeId.any (fun (_, key) => key == externalKey))
       | none => false
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupGraphPreviewSourceDoc
+    let label := Name.mkSimple "preview.external_graph_bodyless"
+    let externalKey := Informal.PreviewSource.externalMarkupKey label
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) st
+      ({ mode := .none } : Informal.ExternalMarkupRender.Config)
+    let some entry := files.manifest.previews.find? (fun entry => entry.key == externalKey)
+      | return false
+    let some graph := files.manifest.graphs[0]?
+      | return false
+    let some node := graph.nodes.find? (fun node => node.label == label)
+      | return false
+    pure <|
+      entry.targetKind == .externalMarkup &&
+        (files.htmlCache.findHtml? externalKey).isNone &&
+        node.previewKey.isNone &&
+        graph.variants.all (fun variant =>
+          variant.previewKeyByNodeId.all (fun (_, key) => key != externalKey))
+
 end Verso.VersoBlueprintTests.BlueprintPreviewSource

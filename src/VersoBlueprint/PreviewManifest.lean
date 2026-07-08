@@ -774,7 +774,7 @@ structure RelatedEntry where
   title : String
   /-- Canonical link target for the related informal node, if available. -/
   href : Option String := none
-  /-- Rendered-fragment cache key for this related node's preview, if available. -/
+  /-- Manifest/cache-backed preview key for this related node, if available. -/
   previewKey : Option Informal.PreviewKey := none
   /-- Statement/proof dependency axes through which this related node is connected. -/
   axes : Array RelationAxis := #[]
@@ -786,24 +786,12 @@ private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback
   | .ok value => fromJson? value
   | .error _ => pure fallback
 
-private def previewKeyFromJson? (json : Json) : Except String (Option Informal.PreviewKey) :=
-  match json with
-  | .null => pure none
-  | .str raw =>
-      match Informal.PreviewKey.ofString? raw with
-      | some key => pure (some key)
-      | none => .error "expected non-empty preview key string or null"
-  | _ => .error "expected non-empty preview key string or null"
-
 instance : FromJson RelatedEntry where
   fromJson? json := do
     let label ← json.getObjValAs? Name "label"
     let title ← json.getObjValAs? String "title"
     let href ← jsonObjValAsD json "href" (none : Option String)
-    let previewKey ←
-      match json.getObjVal? "previewKey" with
-      | .ok value => previewKeyFromJson? value
-      | .error _ => pure none
+    let previewKey ← jsonObjValAsD json "previewKey" (none : Option Informal.PreviewKey)
     let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
     pure { label, title, href, previewKey, axes }
 
@@ -859,7 +847,7 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
-  /-- Rendered-fragment cache keys for Lean declaration previews associated with this entry. -/
+  /-- Manifest/cache-backed preview keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
@@ -1115,6 +1103,90 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
+
+/--
+Indexes over the generated manifest/cache pair used to decide whether a
+serialized preview reference can render.
+-/
+structure PreviewArtifactIndex where
+  manifestIndex : Index := {}
+  htmlCacheIndex : HtmlCache.Index := {}
+
+def PreviewArtifactIndex.ofFiles (manifest : File) (htmlCache : HtmlCache.File) :
+    PreviewArtifactIndex := {
+  manifestIndex := manifest.index
+  htmlCacheIndex := htmlCache.index
+}
+
+def PreviewArtifactIndex.hasManifestKey
+    (index : PreviewArtifactIndex) (key : String) : Bool :=
+  (index.manifestIndex.findEntry? key).isSome
+
+def PreviewArtifactIndex.hasCacheKey
+    (index : PreviewArtifactIndex) (key : String) : Bool :=
+  (index.htmlCacheIndex.findEntry? key).isSome
+
+def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
+    Bool :=
+  index.hasManifestKey key && index.hasCacheKey key
+
+private def PreviewArtifactIndex.previewKey?
+    (index : PreviewArtifactIndex) (key? : Option Informal.PreviewKey) :
+    Option Informal.PreviewKey :=
+  key?.filter fun key => index.resolves key.value
+
+private def PreviewArtifactIndex.previewKeyString?
+    (index : PreviewArtifactIndex) (key : String) : Option String :=
+  if index.resolves key then some key else none
+
+private def RelatedEntry.finalizePreviewReferences
+    (index : PreviewArtifactIndex) (entry : RelatedEntry) : RelatedEntry :=
+  { entry with previewKey := index.previewKey? entry.previewKey }
+
+private def GroupRelation.finalizePreviewReferences
+    (index : PreviewArtifactIndex) (group : GroupRelation) : GroupRelation :=
+  { group with entries := group.entries.map (RelatedEntry.finalizePreviewReferences index) }
+
+private def Entry.finalizePreviewReferences
+    (index : PreviewArtifactIndex) (entry : Entry) : Entry :=
+  {
+    entry with
+      leanCodePreviewKeys := entry.leanCodePreviewKeys.filter index.resolves
+      uses := entry.uses.map (RelatedEntry.finalizePreviewReferences index)
+      usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
+      group := entry.group.map (GroupRelation.finalizePreviewReferences index)
+  }
+
+private def graphNodeFinalizePreviewReferences
+    (index : PreviewArtifactIndex) (node : Informal.Graph.NodeData) :
+    Informal.Graph.NodeData :=
+  { node with previewKey := index.previewKey? node.previewKey }
+
+private def graphVariantFinalizePreviewReferences
+    (index : PreviewArtifactIndex) (variant : Informal.Graph.GraphRenderVariant) :
+    Informal.Graph.GraphRenderVariant :=
+  {
+    variant with
+      previewKeyByNodeId := variant.previewKeyByNodeId.filterMap fun (nodeId, key) =>
+        (index.previewKeyString? key).map fun key => (nodeId, key)
+  }
+
+private def graphFinalizePreviewReferences
+    (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
+  {
+    graph with
+      nodes := graph.nodes.map (graphNodeFinalizePreviewReferences index)
+      variants := graph.variants.map (graphVariantFinalizePreviewReferences index)
+  }
+
+private def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
+  let index := PreviewArtifactIndex.ofFiles file htmlCache
+  {
+    file with
+      previews := file.previews.map (Entry.finalizePreviewReferences index)
+      graphs := file.graphs.map (graphFinalizePreviewReferences index)
+  }
 
 /-- Manifest metadata that was present during traversal but is absent from export. -/
 structure PreviewMetadataLoss where
@@ -2055,13 +2127,12 @@ def buildPreviewDataFiles
   let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   let htmlEntries := (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   let graphs := Informal.GraphApi.cachedData state
-  pure {
-    manifest := { previews, graphs, sourceDocuments }
-    htmlCache := {
-      entries := htmlEntries
-      hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
-    }
+  let htmlCache : HtmlCache.File := {
+    entries := htmlEntries
+    hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
   }
+  let manifest : File := { previews, graphs, sourceDocuments }
+  pure { manifest := manifest.finalizePreviewReferences htmlCache, htmlCache }
 
 private def dumpManifest
     (text : Part Manual)

@@ -50,7 +50,7 @@ private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) 
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
   let href := nodeHref? state node.label <|> node.href
-  let previewKey := Informal.PreviewSource.traversalRenderablePreviewKey? state node.label
+  let previewKey := Informal.PreviewSource.traversalPreviewCandidateKey? state node.label
   { node with title, href, previewKey }
 
 private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
@@ -62,14 +62,14 @@ private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupDat
 private def hasTraversalNode (state : TraverseState) (label : Name) : Bool :=
   (Informal.TraversalIndex.Nodes.data? state label).isSome
 
-private def hasPreviewKey (node : Informal.Graph.NodeData) : Bool :=
+private def hasPreviewCandidate (node : Informal.Graph.NodeData) : Bool :=
   node.previewKey.isSome
 
 private def keepFinalNode (state : TraverseState) (node : Informal.Graph.NodeData) : Bool :=
   hasTraversalNode state node.label ||
     node.warnings.unknownRef ||
     node.href.isSome ||
-    hasPreviewKey node
+    hasPreviewCandidate node
 
 private def labelSet (nodes : Array Informal.Graph.NodeData) : Lean.NameSet :=
   nodes.foldl (init := {}) fun acc node => acc.insert node.label
@@ -103,9 +103,10 @@ Finalize graph data against a completed traversal state.
 This is the single projection from semantic graph data to public graph data:
 rendered page JSON and manifest/cache output both use it so href, title, and
 group metadata stay consistent. The projection keeps nodes that are backed by
-the current traversal, nodes with an explicit href/preview key, and unknown-ref
-diagnostics; imported or code-only semantic nodes with no rendered occurrence in
-the current site are omitted from the public graph.
+the current traversal, nodes with an explicit href or traversal preview
+candidate, and unknown-ref diagnostics; imported or code-only semantic nodes
+with no rendered occurrence in the current site are omitted from the public
+graph.
 -/
 def finalData (state : TraverseState) (data : Informal.Graph.GraphData) :
     Informal.Graph.GraphData :=

@@ -30,6 +30,21 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
 #guard_msgs in
 #eval
   show Bool from
+    let decoded := Lean.fromJson? (α := Informal.PreviewKey) (Lean.Json.str "  externalMarkup:Chapter2  ")
+    let emptyRejected := Lean.fromJson? (α := Informal.PreviewKey) (Lean.Json.str "")
+    let whitespaceRejected := Lean.fromJson? (α := Informal.PreviewKey) (Lean.Json.str "   ")
+    match decoded, emptyRejected, whitespaceRejected with
+    | .ok key, .error emptyMessage, .error whitespaceMessage =>
+        toString key == "externalMarkup:Chapter2" &&
+          Lean.toJson key == Lean.Json.str "externalMarkup:Chapter2" &&
+          emptyMessage.contains "expected non-empty preview key" &&
+          whitespaceMessage.contains "expected non-empty preview key"
+    | _, _, _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     let entry : Informal.PreviewManifest.RelatedEntry := {
       label := Lean.Name.mkSimple "target"
       title := "Target"

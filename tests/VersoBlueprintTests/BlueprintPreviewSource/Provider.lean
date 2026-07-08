@@ -42,4 +42,16 @@ External-markup body for a graph preview.
 ```
 :::::::
 
+#docs (Genre.Manual) externalMarkupGraphPreviewSourceDoc "External Markup Graph Preview Source" :=
+:::::::
+:::theorem "preview.external_graph_bodyless"
+:::
+
+```md "preview.external_graph_bodyless" (slot := statement)
+External-markup body for a generated graph preview.
+```
+
+{blueprint_graph}
+:::::::
+
 end Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider

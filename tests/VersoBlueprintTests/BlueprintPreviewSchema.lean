@@ -135,7 +135,7 @@ open Informal.PreviewManifest
         authoredLabelDesc? == some "Authored/display label text, preserving string-authored punctuation without pretty-name quoting." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
-        leanCodePreviewKeysDesc? == some "Rendered-fragment cache keys for Lean declaration previews associated with this entry." &&
+        leanCodePreviewKeysDesc? == some "Manifest/cache-backed preview keys for Lean declaration previews associated with this entry." &&
         (internalSchemaDesc?.getD "").contains "not a public" &&
         (internalSchemaDesc?.getD "").contains "compatibility promise" &&
         sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&
