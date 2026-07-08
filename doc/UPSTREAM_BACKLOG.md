@@ -65,14 +65,8 @@ pull requests unless that upstream write action is explicitly requested.
 - [ ] [Provide an upstream way to resolve package-owned runtime assets during
   elaboration.](./roadmap/cards/UPC-0010-package-runtime-asset-resolution/README.md)
 
-- [ ] Support list-valued directive arguments in Verso.
-  - current Blueprint workaround:
-    `DirectiveArgParsing.splitCommaSeparatedList` splits directive-string
-    options such as `(lean := "...")`, `(uses := "...")`, and
-    `(tags := "...")` by comma
-  - desired upstream behavior:
-    directive parsers can accept real list-valued arguments without downstream
-    packages inventing ad hoc string splitting
+- [ ] [Support list-valued directive arguments in
+  Verso.](./roadmap/cards/UPC-0011-list-valued-directive-arguments/README.md)
 
 ## Lake and Package Management
 
