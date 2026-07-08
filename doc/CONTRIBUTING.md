@@ -57,13 +57,15 @@ a period. Avoid generic subjects such as `Update files` or `misc cleanup`.
 
 ## Verso Upstream Backlog
 
-This repository tracks eventual upstream work in
+This repository tracks eventual upstream work with `UPC-*` cards under
+[`doc/roadmap/cards/`](./roadmap/cards/) and a short index in
 [`doc/UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
 
 When a maintainer or agent says "add this to the Verso upstream backlog",
 "register this in the Verso upstream backlog", or similar, that means:
 
-- add or update an item in `doc/UPSTREAM_BACKLOG.md`
+- add or update a `UPC-*` card under `doc/roadmap/cards/`
+- link that card from `doc/UPSTREAM_BACKLOG.md`
 
 It does not mean:
 
