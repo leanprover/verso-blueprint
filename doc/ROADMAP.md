@@ -125,6 +125,13 @@ Work:
    follow-up should either pass preview availability into page-local relation
    and graph rendering or make the browser runtimes disable semantic-only
    missing-cache previews without reporting them as broken generated data.
+12. upstream follow-up: propose a Verso portable-hover-fragment helper for the
+   current external-declaration bridge. The target shape is a Verso-owned API
+   that renders highlighted snippets with local hover ids, carries the local
+   hover payloads as side data, registers those payloads into a destination
+   hover table, and rewrites local ids to final `data-verso-hover` ids. Once
+   available, replace Blueprint's `ExternalDeclRenderedHtml` marker/rewrite
+   machinery with that upstream helper.
 
 ### Data Model and Status Semantics
 
