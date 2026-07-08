@@ -1206,10 +1206,10 @@ class TestPreviewRuntimeRegressions:
                             return Promise.resolve({
                                 previews: [
                                     {
-                                        key: "legacy_loader--statement",
-                                        label: "legacy_loader",
+                                        key: "missing_source_location--statement",
+                                        label: "missing_source_location",
                                         facet: "statement",
-                                        title: "Legacy loader"
+                                        title: "Missing source location"
                                     }
                                 ],
                                 graphs: []
