@@ -113,18 +113,19 @@ Work:
    source previews into fuller VBP-rendered review interfaces that consume
    manifest `sourceDocuments` and `entry.sources`; keep PDF viewers, text
    excerpts, and crop overlays out of the browser API contract
-10. scheduled follow-up: deduplicate the source metadata resolver with
-   manifest/data lookup helpers now that both `api/data.mjs` and
-   `api/preview.mjs` expose it. The target shape is one data-layer primitive for
-   preview-key/manifest-entry input normalization, missing-entry reasons,
-   source-document joins, and source-ref normalization semantics.
-11. scheduled follow-up: align page-local preview triggers with finalized
-   manifest/cache preview availability. Today generated JSON clears traversal
-   preview candidates that lack cache bodies, but page-local relation-panel
-   markup and embedded graph-block JSON are still derived during traversal. The
-   follow-up should either pass preview availability into page-local relation
-   and graph rendering or make the browser runtimes disable semantic-only
-   missing-cache previews without reporting them as broken generated data.
+10. keep the landed source metadata resolver on the data-layer path:
+   `api/preview.mjs` delegates source-provenance lookup through the same data API
+   primitive as `api/data.mjs`, so preview-key/manifest-entry input
+   normalization, missing-entry reasons, source-document joins, and source-ref
+   normalization semantics have one runtime owner.
+11. keep the landed runtime-side semantic-only preview handling aligned with
+   generated-data finalization. Generated JSON clears traversal preview
+   candidates that lack cache bodies; page-local relation-panel markup and
+   embedded graph-block JSON are still derived during traversal, so browser
+   runtimes distinguish `semantic-preview-body-missing` from stale or broken
+   cache loads. A later Lean-side pass may pass preview availability into
+   page-local relation and graph rendering earlier, but should preserve this
+   runtime distinction.
 12. upstream follow-up: propose a Verso portable-hover-fragment helper for the
    current external-declaration bridge. The target shape is a Verso-owned API
    that renders highlighted snippets with local hover ids, carries the local
@@ -140,9 +141,11 @@ model instead of recomputing similar facts in several layers.
 
 Work:
 
-1. prioritize a deduplication pass after source provenance lands, starting with
-   repeated traversal-store decoding, manifest filtering, and validation-message
-   assembly patterns that now exist across preview, source, and status data
+1. continue the deduplication pass after source provenance lands. The first
+   cleanup moved shared manifest-entry predicates, queryability, and rendered-body
+   requirements onto `PreviewManifest.Entry`; remaining candidates include
+   repeated traversal-store decoding and validation-message assembly patterns
+   across preview, source, and status data
 2. revisit `Informal.Environment.InProgress` after the widget path no longer
    needs elaboration-time syntax; today it remains separate from `Data.Node`
    because it owns directive-stack state, preview blocks, and `elabStx`

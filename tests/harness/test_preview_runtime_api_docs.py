@@ -352,6 +352,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("function sourceMetadataHtml", source_metadata)
         self.assertIn("export const previewRuntimeSourceMetadata = {", source_metadata)
         self.assertNotIn("function sourceMetadataHtml(result, options)", render)
+        self.assertNotIn('from "./preview-runtime-source-metadata.mjs";', api)
+        self.assertIn("return dataApi.resolveSourceMetadata(", api)
         self.assertIn("function hydrateRenderedPreview(root, options)", hydration)
         self.assertIn("function renderBlueprintMath(root)", hydration)
         self.assertIn("function registerPreviewHydrator(name, fn)", hydration)

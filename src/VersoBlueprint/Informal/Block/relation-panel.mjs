@@ -127,6 +127,9 @@
         fallbackDiagnostic: relationPreviewDiagnosticOptions(
           "The preview cache content could not be loaded."
         ),
+        semanticOnlyDiagnostic: relationPreviewDiagnosticOptions(
+          "This relation target does not have a rendered preview entry."
+        ),
         exceptionDiagnostic: relationPreviewDiagnosticOptions(
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
         )

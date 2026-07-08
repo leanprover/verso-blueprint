@@ -312,6 +312,10 @@ source; `.none` keeps
 external-markup entries semantic-only with no generated HTML-cache fragment.
 Relation, graph, and Lean-code preview references are serialized only when the
 referenced preview key resolves through both the manifest and HTML cache.
+Page-local relation panels and graph widgets that are rendered before generated
+data finalization may still start from traversal preview candidates; browser
+preview APIs report semantic-only missing bodies as
+`semantic-preview-body-missing` rather than as stale cache data.
 Set `showSourceNotice := false` when an embedding context should omit the
 visible source-backed notice from generated fragments.
 
@@ -1131,6 +1135,7 @@ The most common failure `reason` values are:
 - `declaration-entry-missing`
 - `manifest-entry-missing`
 - `html-cache-entry-missing`
+- `semantic-preview-body-missing`
 - `canonical-href-missing`
 - `canonical-preview-node-missing`
 - `canonical-preview-load-failed`
@@ -1141,6 +1146,11 @@ The most common failure `reason` values are:
 - `external-markup-node-shell-missing`
 - `external-markup-node-shell-load-failed`
 - `source-missing`
+
+`semantic-preview-body-missing` means the manifest entry exists and the HTML
+cache is loaded, but the entry is semantic-only in this artifact set and has no
+rendered preview body. This is distinct from `html-cache-entry-missing`, which
+signals a preview key that should have a cache fragment but does not.
 
 Treat `html` and `canonicalHtml` as opaque rendered fragments. Use
 `manifestEntry` for semantic facts such as labels, titles, dependency metadata,

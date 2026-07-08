@@ -46,6 +46,35 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return requireBlueprintDataApi(options).htmlCacheDiagnosticHtml(previewKey);
   }
 
+  function htmlCacheReady(options) {
+    const dataApi = requireBlueprintDataApi(options);
+    if (typeof dataApi.readHtmlCacheStatus !== "function") return false;
+    const status = dataApi.readHtmlCacheStatus();
+    return !!(status && status.state === "ready");
+  }
+
+  function semanticOnlyPreviewBodyMissing(entry, options) {
+    return !!(
+      entry &&
+      typeof entry === "object" &&
+      entry.targetKind === "externalMarkup" &&
+      htmlCacheReady(options)
+    );
+  }
+
+  function semanticOnlyPreviewDiagnosticHtml(previewKey) {
+    const key = typeof previewKey === "string" ? previewKey.trim() : "";
+    const keyHtml = key ? "<p>Requested preview: <code>" + escapeHtml(key) + "</code></p>" : "";
+    return (
+      "<div class=\"bp_html_cache_preview_notice\">" +
+      "<p><strong>Preview body unavailable.</strong></p>" +
+      "<p>This Blueprint entry is present in the manifest, but this generated artifact set " +
+      "does not include a rendered preview body for it.</p>" +
+      keyHtml +
+      "</div>"
+    );
+  }
+
   export async function resolveBlueprintPreview(previewKey, options) {
     const key = typeof previewKey === "string" ? previewKey.trim() : "";
     if (!key) {
@@ -78,6 +107,17 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       };
     }
     if (!html) {
+      if (semanticOnlyPreviewBodyMissing(manifestEntry, options)) {
+        return {
+          ok: false,
+          key: key,
+          reason: "semantic-preview-body-missing",
+          manifestEntry: manifestEntry,
+          htmlCacheEntry: htmlCacheEntry,
+          html: "",
+          diagnosticHtml: semanticOnlyPreviewDiagnosticHtml(key)
+        };
+      }
       return {
         ok: false,
         key: key,
