@@ -67,6 +67,38 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
 #guard_msgs in
 #eval
   show Bool from
+    let baseFields := [
+      ("label", Lean.toJson (Lean.Name.mkSimple "target")),
+      ("title", Lean.Json.str "Target")
+    ]
+    let decode (previewKey? : Option Lean.Json) :=
+      let fields :=
+        match previewKey? with
+        | none => baseFields
+        | some previewKey => baseFields ++ [("previewKey", previewKey)]
+      Lean.fromJson? (α := Informal.PreviewManifest.RelatedEntry) (Lean.Json.mkObj fields)
+    let missingOk :=
+      match decode none with
+      | .ok entry => entry.previewKey.isNone
+      | .error _ => false
+    let nullOk :=
+      match decode (some Lean.Json.null) with
+      | .ok entry => entry.previewKey.isNone
+      | .error _ => false
+    let stringOk :=
+      match decode (some (Lean.Json.str "externalMarkup:Chapter2")) with
+      | .ok entry => entry.previewKey == Informal.PreviewKey.ofString? "externalMarkup:Chapter2"
+      | .error _ => false
+    let emptyRejected :=
+      match decode (some (Lean.Json.str "")) with
+      | .ok _ => false
+      | .error message => message.contains "expected non-empty preview key"
+    missingOk && nullOk && stringOk && emptyRejected
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     let source := Lean.Name.mkSimple "source"
     let statementCfg := Informal.RelatedPanel.statementUsesPanelConfig source
     let proofCfg := Informal.RelatedPanel.proofUsesPanelConfig source

@@ -32,7 +32,10 @@ open Informal.PreviewManifest
       let some relatedEntrySchema := defs.get? "Informal.PreviewManifest.RelatedEntry" | return false
       let some graphNodeSchema := defs.get? "Informal.Graph.NodeData" | return false
       let schemaText := schema.compress
-      let previewKeySchemaHasStringNull (schema : Json) : Bool :=
+      let stringSchemaHasMinLengthOne (schema : Json) : Bool :=
+        (schema.getObjValAs? String "type" |>.toOption) == some "string" &&
+          (schema.getObjValAs? Nat "minLength" |>.toOption) == some 1
+      let previewKeySchemaHasNonEmptyStringNull (schema : Json) : Bool :=
         match Json.getObjVal? schema "properties" with
         | Except.error _ => false
         | Except.ok propsJson =>
@@ -48,8 +51,7 @@ open Informal.PreviewManifest
                         match anyOfJson.getArr? with
                         | Except.error _ => false
                         | Except.ok schemas =>
-                            schemas.any (fun (schema : Json) =>
-                              (schema.getObjValAs? String "type" |>.toOption) == some "string") &&
+                            schemas.any stringSchemaHasMinLengthOne &&
                             schemas.any (fun (schema : Json) =>
                               (schema.getObjValAs? String "type" |>.toOption) == some "null")
       let internalSchemaDesc? := do
@@ -140,8 +142,8 @@ open Informal.PreviewManifest
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         entryKindText.contains "externalMarkup" &&
-        previewKeySchemaHasStringNull relatedEntrySchema &&
-        previewKeySchemaHasStringNull graphNodeSchema &&
+        previewKeySchemaHasNonEmptyStringNull relatedEntrySchema &&
+        previewKeySchemaHasNonEmptyStringNull graphNodeSchema &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
         defs.contains "Informal.Data.UseOrigin" &&
