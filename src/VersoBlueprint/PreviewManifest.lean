@@ -192,6 +192,110 @@ private def outputDirNameForMode : Mode → String
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / outputDirNameForMode mode
 
+private def htmlModeDescription : Mode → String
+  | .single => "single-page"
+  | .multi => "multi-page"
+
+private def elapsedMsText (ms : Nat) : String :=
+  s!"{ms}ms"
+
+private def writeBuildProgress (message : String) : IO Unit := do
+  IO.println s!"Blueprint: {message}"
+  (← IO.getStdout).flush
+
+private def logBuildProgress (verbose : Bool) (message : String) : IO Unit := do
+  if verbose then
+    writeBuildProgress message
+
+private def withTimedBuildProgress
+    {m : Type → Type} [Monad m] [MonadLiftT BaseIO m] [MonadLiftT IO m] {α : Type}
+    (verbose : Bool) (label : String) (action : m α) : m α := do
+  if !verbose then
+    action
+  else
+    liftM (m := m) <| writeBuildProgress s!"starting {label}"
+    let start ← liftM (m := m) IO.monoMsNow
+    let result ← action
+    let finish ← liftM (m := m) IO.monoMsNow
+    liftM (m := m) <|
+      writeBuildProgress s!"finished {label} in {elapsedMsText (finish - start)}"
+    pure result
+
+private structure LeanCodePreviewTiming where
+  key : String
+  kind : String
+  totalMs : Nat
+  renderMs : Nat
+  stringifyMs : Nat
+  blankCheckMs : Nat
+  bytesMs : Nat
+  metadataMs : Nat
+  storeMs : Nat
+  htmlBytes : Nat
+
+private structure LeanCodePreviewTimingTotals where
+  count : Nat := 0
+  totalMs : Nat := 0
+  renderMs : Nat := 0
+  stringifyMs : Nat := 0
+  blankCheckMs : Nat := 0
+  bytesMs : Nat := 0
+  metadataMs : Nat := 0
+  storeMs : Nat := 0
+  htmlBytes : Nat := 0
+
+private def LeanCodePreviewTimingTotals.push
+    (totals : LeanCodePreviewTimingTotals) (timing : LeanCodePreviewTiming) :
+    LeanCodePreviewTimingTotals :=
+  { count := totals.count + 1
+    totalMs := totals.totalMs + timing.totalMs
+    renderMs := totals.renderMs + timing.renderMs
+    stringifyMs := totals.stringifyMs + timing.stringifyMs
+    blankCheckMs := totals.blankCheckMs + timing.blankCheckMs
+    bytesMs := totals.bytesMs + timing.bytesMs
+    metadataMs := totals.metadataMs + timing.metadataMs
+    storeMs := totals.storeMs + timing.storeMs
+    htmlBytes := totals.htmlBytes + timing.htmlBytes }
+
+private def leanCodePreviewTimingKind (entry : Informal.LeanCodePreview.Entry) : String :=
+  match entry.source with
+  | .inlineBlocks .. => "inline"
+  | .externalDecl .. => "external"
+
+private def describeLeanCodePreviewTiming
+    (label : String) (totals : LeanCodePreviewTimingTotals) : String :=
+  s!"{label}: {totals.count} entries, total {elapsedMsText totals.totalMs} " ++
+    s!"(render {elapsedMsText totals.renderMs}, stringify {elapsedMsText totals.stringifyMs}, " ++
+    s!"blank {elapsedMsText totals.blankCheckMs}, bytes {elapsedMsText totals.bytesMs}, " ++
+    s!"metadata {elapsedMsText totals.metadataMs}, store {elapsedMsText totals.storeMs}), " ++
+    s!"{totals.htmlBytes} HTML bytes"
+
+private def logLeanCodePreviewTimings
+    (verbose : Bool) (timings : Array LeanCodePreviewTiming) : IO Unit := do
+  if !verbose then
+    return
+  let (inlineTotals, externalTotals) :=
+    timings.foldl
+      (init := (({} : LeanCodePreviewTimingTotals), ({} : LeanCodePreviewTimingTotals)))
+      fun (inlineTotals, externalTotals) timing =>
+        if timing.kind == "inline" then
+          (inlineTotals.push timing, externalTotals)
+        else
+          (inlineTotals, externalTotals.push timing)
+  logBuildProgress true <|
+    "Lean code preview breakdown: " ++
+      describeLeanCodePreviewTiming "inline" inlineTotals ++ "; " ++
+      describeLeanCodePreviewTiming "external" externalTotals
+  let slowest := timings.qsort (fun a b => a.totalMs > b.totalMs)
+  for timing in slowest.extract 0 (Nat.min 5 slowest.size) do
+    logBuildProgress true <|
+      s!"slow Lean code preview: {timing.totalMs}ms " ++
+      s!"(render {timing.renderMs}ms, stringify {timing.stringifyMs}ms, " ++
+      s!"blank {timing.blankCheckMs}ms, bytes {timing.bytesMs}ms, " ++
+      s!"metadata {timing.metadataMs}ms, store {timing.storeMs}ms), " ++
+      s!"{timing.htmlBytes} HTML bytes, " ++
+      s!"{timing.kind}, {timing.key}"
+
 private def htmlStringIsBlank (html : String) : Bool :=
   html.all Char.isWhitespace
 
@@ -2043,28 +2147,98 @@ private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (hoverState : Verso.Code.Hover.State Output.Html) :
+    (hoverState : Verso.Code.Hover.State Output.Html)
+    (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  let sourceRefs := leanCodePreviewSourceRefs state
-  for decoded in Informal.TraversalIndex.LeanCodePreviews.entries state do
+  let mut timings := #[]
+  let sourceRefs ←
+    if verbose then
+      let sourceRefsStart ← IO.monoMsNow
+      let sourceRefs := leanCodePreviewSourceRefs state
+      let sourceRefsFinish ← IO.monoMsNow
+      logBuildProgress true
+        s!"Lean code preview source refs built in {elapsedMsText (sourceRefsFinish - sourceRefsStart)}"
+      pure sourceRefs
+    else
+      pure <| leanCodePreviewSourceRefs state
+  let decodedEntries ←
+    if verbose then
+      let decodeStart ← IO.monoMsNow
+      let decodedEntries := Informal.TraversalIndex.LeanCodePreviews.entries state
+      let decodeFinish ← IO.monoMsNow
+      logBuildProgress true <|
+        s!"Lean code preview entries decoded in {elapsedMsText (decodeFinish - decodeStart)} " ++
+        s!"({decodedEntries.size} stored entries)"
+      pure decodedEntries
+    else
+      pure <| Informal.TraversalIndex.LeanCodePreviews.entries state
+  for decoded in decodedEntries do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.data
       let key := stored.canonicalName
-      let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
-        (logError := logError) (hoverState := hoverState)
-      hoverState := rendered.hoverState
-      let html := rendered.html.asString
-      if htmlStringIsBlank html then
-        continue
-      let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
-      entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+      if verbose then
+        let start ← IO.monoMsNow
+        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
+          (logError := logError) (hoverState := hoverState)
+        let renderFinish ← IO.monoMsNow
+        hoverState := rendered.hoverState
+        let html := rendered.html.asString
+        let stringifyFinish ← IO.monoMsNow
+        let htmlIsEmpty := htmlStringIsBlank html
+        let blankCheckFinish ← IO.monoMsNow
+        let htmlBytes := html.utf8ByteSize
+        let bytesFinish ← IO.monoMsNow
+        if htmlIsEmpty then
+          timings := timings.push {
+            key
+            kind := leanCodePreviewTimingKind entry
+            totalMs := bytesFinish - start
+            renderMs := renderFinish - start
+            stringifyMs := stringifyFinish - renderFinish
+            blankCheckMs := blankCheckFinish - stringifyFinish
+            bytesMs := bytesFinish - blankCheckFinish
+            metadataMs := 0
+            storeMs := 0
+            htmlBytes
+          }
+          continue
+        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
+        let metadataFinish ← IO.monoMsNow
+        entries := entries.push manifestEntry
+        htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+        let storeFinish ← IO.monoMsNow
+        timings := timings.push {
+          key
+          kind := leanCodePreviewTimingKind entry
+          totalMs := storeFinish - start
+          renderMs := renderFinish - start
+          stringifyMs := stringifyFinish - renderFinish
+          blankCheckMs := blankCheckFinish - stringifyFinish
+          bytesMs := bytesFinish - blankCheckFinish
+          metadataMs := metadataFinish - bytesFinish
+          storeMs := storeFinish - metadataFinish
+          htmlBytes
+        }
+      else
+        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
+          (logError := logError) (hoverState := hoverState)
+        hoverState := rendered.hoverState
+        let html := rendered.html.asString
+        if htmlStringIsBlank html then
+          continue
+        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
+        entries := entries.push manifestEntry
+        htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+  if verbose then
+    logBuildProgress true <|
+      s!"Lean code preview emitted {entries.size} manifest entries"
+  logLeanCodePreviewTimings verbose timings
   pure (entries, htmlEntries, hoverState)
 
 private def renderCitationEntryHtml
@@ -2148,18 +2322,36 @@ def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO Files := do
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
+    (verbose : Bool := false) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
-  let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
+  let (traversalPreviews, traversalHtml, hoverState) ←
+    withTimedBuildProgress verbose "building traversal preview entries" <|
+      buildTraversalEntries impls logError state hoverState
   let (externalMarkupPreviews, externalMarkupHtml) ←
-    buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
-  let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
-  let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
-  let sourceDocuments ← buildSourceDocuments logError state
-  validateSourceRefs logError sourceDocuments state
-  let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
-  let htmlEntries := (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
-  let graphs := Informal.GraphApi.cachedData state
+    withTimedBuildProgress verbose "building external markup manifest entries" <|
+      buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
+  let (leanCodePreviews, leanCodeHtml, hoverState) ←
+    withTimedBuildProgress verbose "building Lean code preview entries" <|
+      buildLeanCodeEntries impls logError state hoverState (verbose := verbose)
+  let (citationPreviews, citationHtml, hoverState) ←
+    withTimedBuildProgress verbose "building citation preview entries" <|
+      buildCitationEntries impls logError state hoverState
+  let sourceDocuments ←
+    withTimedBuildProgress verbose "building source document catalog" <|
+      buildSourceDocuments logError state
+  withTimedBuildProgress verbose "validating source references" <|
+    validateSourceRefs logError sourceDocuments state
+  let (previews, htmlEntries, graphs) ←
+    withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
+      let previews :=
+        (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort
+          (fun a b => a.key < b.key)
+      let htmlEntries :=
+        (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
+          (fun a b => a.key < b.key)
+      let graphs := Informal.GraphApi.cachedData state
+      pure (previews, htmlEntries, graphs)
   let htmlCache : HtmlCache.File := {
     entries := htmlEntries
     hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
@@ -2184,10 +2376,12 @@ private def dumpManifest
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
+  let traverseCfg := { cfg with verbose := false }
   let (_text, traverseState) ←
-    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+    (verbose := cfg.verbose)
   let logger := callbackLogger logError
   reportPreviewMetadataLossWarnings logger traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.manifest
@@ -2210,10 +2404,12 @@ private def dumpHtmlCache
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
+  let traverseCfg := { cfg with verbose := false }
   let (_text, traverseState) ←
-    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+    (verbose := cfg.verbose)
   let logger := callbackLogger logError
   reportPreviewMetadataLossWarnings logger traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.htmlCache
@@ -2250,16 +2446,28 @@ def emitBlueprintPreviewData
     ExtraStep := fun mode cfg state _text => do
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
+  let modeDescription := htmlModeDescription mode
   let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
+    (verbose := cfg.verbose)
   reportPreviewMetadataLossWarnings logger state files.manifest
+  let countSummary :=
+    s!"{files.manifest.previews.size} previews, " ++
+    s!"{files.htmlCache.entries.size} HTML cache entries, " ++
+    s!"{files.manifest.sourceDocuments.size} source documents, " ++
+    s!"{files.manifest.graphs.size} graphs"
+  logBuildProgress cfg.verbose s!"{modeDescription} preview data contains {countSummary}"
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
-  IO.FS.createDirAll dataDir
-  IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
-  IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
-  writeBlueprintRuntimeModules dataDir
-  mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
-  emitPublicXref mode logError cfg state
+  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} Blueprint manifest/cache files" <| do
+    IO.FS.createDirAll dataDir
+    IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
+    IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
+  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} Blueprint runtime modules" <|
+    writeBlueprintRuntimeModules dataDir
+  withTimedBuildProgress cfg.verbose s!"merging {modeDescription} hover docs" <|
+    mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
+  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} public xref" <|
+    emitPublicXref mode logError cfg state
 
 def handleDumpSchemaFlag (args : List String) : IO (Option UInt32 × List String) := do
   if args.contains dumpSchemaFlag then
@@ -2310,27 +2518,37 @@ private def emitBlueprintHtml
     (traverse : HtmlTraverse)
     (emit : HtmlEmitter) :
     EmitM Unit := do
+  let modeDescription := htmlModeDescription mode
   let outDir := outputDirNameForMode mode
   match how with
   | .no => pure ()
   | .immediately =>
-      if cfg.verbose then
-        IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
-      let (text', traverseState) ← traverse cfg text
+      let (text', traverseState) ←
+        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
+          traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
-      emitXrefsJson (cfg.destination / outDir) traverseState
-      emit cfg text' traverseState
+      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
+        emitXrefsJson (cfg.destination / outDir) traverseState
+      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
+        emit cfg text' traverseState
       for step in extraSteps do
         step mode cfg.toConfig traverseState text'
   | .delay f =>
-      let (text', traverseState) ← traverse cfg text
+      let (text', traverseState) ←
+        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
+          traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
-      emitXrefsJson (cfg.destination / outDir) traverseState
-      SavedState.mk text' traverseState |>.save f
+      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
+        emitXrefsJson (cfg.destination / outDir) traverseState
+      withTimedBuildProgress cfg.verbose s!"saving {modeDescription} traversal state to {f}" <|
+        SavedState.mk text' traverseState |>.save f
   | .resumeFrom f =>
-      let { text, traverseState } ← SavedState.load f
+      let { text, traverseState } ←
+        withTimedBuildProgress cfg.verbose s!"loading {modeDescription} traversal state from {f}" <|
+          SavedState.load f
       let traverseState := patchBlueprintTraverseState traverseState
-      emit cfg text traverseState
+      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
+        emit cfg text traverseState
       for step in extraSteps do
         step mode cfg.toConfig traverseState text
 
@@ -2351,10 +2569,9 @@ where
 
     let action : ReaderT ExtensionImpls (BuildLogT IO) Unit := do
       if cfg.emitTeX then
-        if cfg.verbose then
-          IO.println "Saving TeX"
-        emitTeX cfg.toConfig text
-        Informal.TeX.Cleanup.patchFile cfg.toConfig text
+        withTimedBuildProgress cfg.verbose "TeX emission" <| do
+          emitTeX cfg.toConfig text
+          Informal.TeX.Cleanup.patchFile cfg.toConfig text
 
       emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single cfg text
         traverseHtmlSingle emitHtmlSingle
@@ -2362,9 +2579,8 @@ where
         traverseHtmlMulti emitHtmlMulti
 
       if let some wcFile := cfg.wordCount then
-        if cfg.verbose then
-          IO.println s!"Saving word counts to {wcFile}"
-        wordCount wcFile cfg.toConfig text
+        withTimedBuildProgress cfg.verbose s!"word count emission to {wcFile}" <|
+          wordCount wcFile cfg.toConfig text
       if pdfOptions.enabled then
         Informal.TeX.Pdf.compile pdfOptions cfg.toConfig
     Verso.runWithLogger (action.run extensionImpls)
