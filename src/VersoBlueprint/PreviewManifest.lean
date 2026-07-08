@@ -523,6 +523,12 @@ private def replaceRequiredHighlightedJs
   | none =>
     panic! s!"Blueprint highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
 
+private def replaceOptionalHighlightedJs
+    (beforeOptions : List String) (after source : String) : String :=
+  match replaceFirstHighlightedJs? beforeOptions after source with
+  | some source => source
+  | none => source
+
 private def patchHighlightedStartupJs (js : JS) : JS :=
   if !isHighlightedStartupJs js.js then
     js
@@ -533,12 +539,10 @@ private def patchHighlightedStartupJs (js : JS) : JS :=
           "docstring textContent read"
           [highlightedDocstringInnerTextRead]
           highlightedDocstringTextContentRead
-      |> replaceRequiredHighlightedJs
-          "tactic show guard"
+      |> replaceOptionalHighlightedJs
           [highlightedTacticShowToggleRead]
           highlightedTacticShowGuardedToggleRead
-      |> replaceRequiredHighlightedJs
-          "tactic content guard"
+      |> replaceOptionalHighlightedJs
           [highlightedTacticContentCloneRead]
           highlightedTacticContentGuardedCloneRead
   { js with js := patched }
