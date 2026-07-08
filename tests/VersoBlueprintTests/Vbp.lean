@@ -82,6 +82,24 @@ private def sampleExternalManifest : ManifestFile := {
   }
 }
 
+private def sampleInlineCodeManifest : ManifestFile := {
+  previews := sampleManifest.previews.push {
+    key := "informal:inline_code_label:statement"
+    targetKind := .block
+    label := label "inline_code_label"
+    facet := .statement
+    kind := some .definition
+    title := "Inline code label"
+    leanCodePreviewKeys := #["Informal.LeanCodePreview.Inline.inline_code_label"]
+    codeData := some <| .inline {
+      label := label "inline_code_label"
+      definedDefs := #[{
+        name := Name.str (Name.str .anonymous "Inline") "localDef"
+      }]
+    }
+  }
+}
+
 private def sampleEmptyRelationManifest : ManifestFile := {
   previews := #[
     {
@@ -529,6 +547,19 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
         | some labels =>
             jsonStringField? json "query" == some "Nat.mul_assoc" &&
               jsonArrayHasStringField labels "label" "external_bodyless"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleInlineCodeManifest ["code", "Inline.localDef"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonStringField? json "query" == some "Inline.localDef" &&
+              jsonArrayHasStringField labels "label" "inline_code_label"
         | none => false
     | .error _ => false
 

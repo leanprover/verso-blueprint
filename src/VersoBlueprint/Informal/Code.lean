@@ -74,11 +74,17 @@ block_extension Block.informalCode (data : InlineCodeData) where
           }
           modify fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson updated)
       let previewBlocks := previewCodeBlocks id _contents
-      for decl in cdata.declarations do
-        let target := decl.name
-        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey target
+      let declarations := cdata.declarations
+      if !declarations.isEmpty then
+        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label
+        let sourceLocation :=
+          match declarations[0]? with
+          | some decl => decl.sourceLocation
+          | none =>
+              Informal.Data.SourceLocationResult.unavailable
+                "inline Lean preview source location unavailable"
         let previewData := toJson
-          (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks decl.sourceLocation)
+          (LeanCodePreview.Entry.ofInlineBlocks label previewBlocks sourceLocation)
         let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
         modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
         if existingPreview?.isNone then

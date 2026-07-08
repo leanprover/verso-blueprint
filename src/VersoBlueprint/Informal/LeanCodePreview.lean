@@ -20,17 +20,18 @@ open Lean
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 
 /--
-Dedicated traversal domain for Lean declaration previews emitted as preview data.
+Dedicated traversal domain for Lean code previews emitted as preview data.
 
-Unlike `PreviewCache`, this domain is only for previews attached to links that
-target Lean declarations/definitions.
+Unlike `PreviewCache`, this domain is only for Lean-code preview bodies.
+External entries target Lean declarations; inline entries target the owning
+Blueprint code label.
 -/
 def domainName : Name := Informal.LeanDeclPreviewKey.domainName
 /--
-Canonical internal preview target for one Lean declaration.
+Canonical internal preview target for one external Lean declaration.
 
-The preview namespace mirrors regular Lean names so the preview-data keys stay
-declaration-centric rather than blueprint-label-centric.
+The external preview namespace mirrors regular Lean names so declaration
+previews can be shared across references.
 -/
 def targetName (decl : Name) : Name :=
   Informal.LeanDeclPreviewKey.targetName decl
@@ -44,10 +45,11 @@ inductive Source where
 deriving Inhabited, Repr, ToJson, FromJson
 
 /--
-Canonical declaration-preview payload.
+Canonical Lean-code preview payload.
 
-Multiple Lean declaration names may legitimately point to the same inline code
-block preview body, but each declaration keeps its own manifest key.
+External declaration previews use the declaration name as the target. Inline
+code previews use the inline Blueprint code label as the target, so multiple
+declarations from the same inline block share one preview entry.
 -/
 structure Entry where
   target : Name
