@@ -62,9 +62,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
   }
 
   function manifestEntrySourceLocation(entry) {
-    return entry && entry.sourceLocation
-      ? entry.sourceLocation
-      : sourceLocationUnavailable(sourceLocationMessages.unavailable);
+    return entry.sourceLocation;
   }
 
   function missingPreviewLookupResult(fields, message) {
@@ -636,7 +634,16 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       objectMessage: "Blueprint manifest must be an object with a previews array",
       missingArrayMessage: "Blueprint manifest is missing previews array",
       entryName: "Blueprint manifest entry",
-      duplicateMessage: "Blueprint manifest contains duplicate key "
+      duplicateMessage: "Blueprint manifest contains duplicate key ",
+      validateEntry(entry, index) {
+        const sourceLocation = entry.sourceLocation;
+        if (!sourceLocation || typeof sourceLocation !== "object" || Array.isArray(sourceLocation)) {
+          throw new Error("Blueprint manifest entry " + index + " is missing sourceLocation");
+        }
+        if (typeof sourceLocation.ok !== "boolean") {
+          throw new Error("Blueprint manifest entry " + index + " sourceLocation.ok must be boolean");
+        }
+      }
     });
   }
 
