@@ -341,9 +341,9 @@ private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=
 Render external declaration rows while leaving the declaration body strategy
 abstract.
 
-Preview and manifest rendering pass the self-contained body renderer. Normal
-page rendering passes the page-hover body renderer, but both paths share the row
-status, anchors, and footer layout.
+Isolated preview rendering passes the self-contained body renderer. Normal page
+rendering and generated-cache rendering pass hover-table body renderers, but all
+paths share the row status, anchors, and footer layout.
 -/
 private def renderExternalDeclRowsWith [Monad m]
     (renderBody : LinkedExternalDecl → m Output.Html)
@@ -359,6 +359,37 @@ private def renderExternalDeclList (rows : Array Output.Html) : Output.Html :=
   open Verso.Output.Html in
   {{<ul class="bp_code_hover_list bp_external_decl_list">{{.seq rows}}</ul>}}
 
+private abbrev ExternalDeclCacheHoverRender :=
+  StateM (Verso.Code.Hover.State Output.Html)
+
+private def registerCacheHoverPayload (payload : ExternalDeclHoverPayload) :
+    ExternalDeclCacheHoverRender Nat :=
+  modifyGet fun st =>
+    let (id, dedup) := st.dedup.insert (.text false payload.html)
+    (id, { st with dedup })
+
+private def renderedHtmlWithCacheHovers
+    (renderedHtml : ExternalDeclRenderedHtml) :
+    ExternalDeclCacheHoverRender String := do
+  let mut html := renderedHtml.html
+  for payload in renderedHtml.hoverPayloads do
+    let cacheId ← registerCacheHoverPayload payload
+    html := html.replace (externalDeclHoverLocalAttr payload.localId) s!"data-verso-hover=\"{cacheId}\""
+    html := html.replace (externalDeclHoverInlineMarker payload.localId) ""
+  return html
+
+private def externalDeclRenderedWithCacheHovers
+    (item : LinkedExternalDecl) :
+    ExternalDeclCacheHoverRender Output.Html := do
+  match item.decl.render with
+  | .ok renderedHtml =>
+    let renderedHtml ← renderedHtmlWithCacheHovers renderedHtml
+    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
+  | .error err =>
+    pure <| .tag "pre"
+      #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
+      (.text true s!"Render failed: {err.message}")
+
 /--
 Rendered fragments produced by `ExternalCode.renderParts` for external panel content.
 -/
@@ -368,10 +399,9 @@ structure RenderParts where
 /--
 Render the canonical hover-preview body for external Lean code references.
 
-This is shared by the external code panel and the HTML-cache-backed code-preview
-path used by explicit Lean-code links. It deliberately uses self-contained
-declaration snippets because preview payloads may be consumed outside the page
-that originally generated them.
+This is the standalone variant for callers that do not have a page or generated
+cache hover table. Generated HTML-cache entries should use
+`renderPreviewHtmlWithCacheHovers` instead.
 -/
 def renderPreviewHtml
     (externalDecls : Array Data.ExternalRef)
@@ -383,11 +413,32 @@ def renderPreviewHtml
     renderExternalDeclList <| renderExternalDeclRows linkedDecls
 
 /--
+Render the canonical hover-preview body for external Lean code references into
+the generated HTML-cache hover table.
+
+Unlike `renderPreviewHtml`, this does not expand isolated hover payloads inline.
+Generated cache entries carry normal `data-verso-hover` attributes and the
+payloads live in `HtmlCache.hoverDocs`, matching other cached Lean fragments.
+-/
+def renderPreviewHtmlWithCacheHovers
+    (externalDecls : Array Data.ExternalRef)
+    (hoverState : Verso.Code.Hover.State Output.Html)
+    (getDeclHref : Name → Option String := fun _ => none) :
+    Output.Html × Verso.Code.Hover.State Output.Html :=
+  if externalDecls.isEmpty then
+    (.empty, hoverState)
+  else
+    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref (fun _ => #[]))
+    let (rows, hoverState) :=
+      (renderExternalDeclRowsWith externalDeclRenderedWithCacheHovers linkedDecls).run hoverState
+    (renderExternalDeclList rows, hoverState)
+
+/--
 Render external-code UI fragments for an informal block.
 
-This self-contained variant is kept for callers that do not have access to the
-page `Html.State`, such as preview and manifest generation. Page rendering
-should use `renderPartsWithPageHovers` so repeated hover payloads deduplicate.
+This self-contained variant is kept for callers that do not have access to a
+page or generated-cache hover table. Page rendering should use
+`renderPartsWithPageHovers` so repeated hover payloads deduplicate.
 -/
 def renderParts (panelHeader : CodePanelHeader)
     (summaryTitle : String) (indicator : Output.Html)

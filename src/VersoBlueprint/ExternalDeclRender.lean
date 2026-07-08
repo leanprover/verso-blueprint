@@ -53,9 +53,10 @@ Rendered external declaration HTML in both forms needed by Blueprint.
 
 `html` is a compact template: it uses Blueprint-local hover ids, carries hover
 bodies separately in `hoverPayloads`, and contains a tiny marker where the
-standalone hover body should be reinserted. The final page renderer rewrites the
-local ids into Verso page hover ids and removes the markers; preview and
-manifest paths inline the payloads at the markers to recover standalone HTML.
+standalone hover body should be reinserted. The final page and generated-cache
+renderers rewrite the local ids into Verso hover ids and remove the markers;
+isolated preview paths inline the payloads at the markers to recover standalone
+HTML.
 
 The local ids in `html` are not stable semantic ids. They are only positions in
 the isolated highlighted-code hover table produced while rendering this snippet.
@@ -143,8 +144,8 @@ Run isolated highlighted-code rendering and preserve both useful outcomes.
 
 The compact template is what normal pages should use: hover references are kept
 as local ids so repeated payloads can be registered once in the page hover
-table. The same template also reconstructs self-contained snippets for previews,
-where there is no surrounding page table to consult. Keeping one template avoids
+table. The same template also reconstructs self-contained snippets for isolated
+previews, where there is no surrounding page table to consult. Keeping one template avoids
 holding both full HTML forms for every external declaration while a large
 blueprint page is generated.
 
