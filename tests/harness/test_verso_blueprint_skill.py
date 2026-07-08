@@ -26,6 +26,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX.", text)
         self.assertIn("`build --verbose` passes `--verbose` through to the generator run", text)
         self.assertIn("lake exe vbp query [--site <dir>] <selector>", text)
+        self.assertIn("lake exe vbp check [--site <dir>]", text)
         self.assertIn("lake lean <GeneratorMain>.lean", text)
         self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
         self.assertIn("selectors`: query selector forms", text)
@@ -44,6 +45,8 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("Query reads the semantic manifest only", text)
         self.assertIn("topLevelBlueprintModuleGuess", text)
         self.assertIn("chapterCandidateGuesses", text)
+        self.assertIn("print compact JSON to stdout on success", text)
+        self.assertIn("writes `vbp build: <stage> failed ...` to stderr", text)
         self.assertIn("fully unstable", text)
         self.assertIn("Fallback Without `vbp`", text)
 

@@ -364,6 +364,12 @@ you want to enable it.
 ## Reference Blueprints
 
 The repository also tracks a current, release-versioned reference catalog.
+The published catalog is selected from `branch-policy.json` and
+`tests/harness/projects.json`; those files are the source of truth for which
+reference projects publish on each Lean release line. Maintainers can inspect
+the current checkout's selected projects with
+`python3 -m scripts.blueprint_reference_harness projects`.
+
 Each external Blueprint is published only for its intended current release:
 Noperthedron and FLT on `v4.32.0`, and Sphere Packing and Carleson on
 `v4.31.0`. The in-repo starter template is a CI fixture rather than a public
