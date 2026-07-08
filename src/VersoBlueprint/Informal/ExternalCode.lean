@@ -256,6 +256,18 @@ private def registerPageHoverPayload [Monad m]
     let (id, dedup) := st.dedup.insert (.text false payload.html)
     (id, { st with dedup })
 
+private def renderedHtmlWithHoverTable [Monad m]
+    (registerHoverPayload : ExternalDeclHoverPayload → m Nat)
+    (renderedHtml : ExternalDeclRenderedHtml) : m String := do
+  let rewrites ← renderedHtml.hoverPayloads.mapM fun payload => do
+    let hoverId ← registerHoverPayload payload
+    pure {
+      localId := payload.localId
+      attrReplacement := s!"data-verso-hover=\"{hoverId}\""
+      inlineReplacement := ""
+    }
+  pure <| renderedHtml.rewriteHovers rewrites
+
 /--
 Convert compact external declaration HTML into normal page HTML.
 
@@ -272,15 +284,7 @@ Verso's normal dedup table before the page id is emitted.
 private def renderedHtmlWithPageHovers [Monad m]
     (renderedHtml : ExternalDeclRenderedHtml) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m String := do
-  let mut rewrites := #[]
-  for payload in renderedHtml.hoverPayloads do
-    let pageId ← registerPageHoverPayload payload
-    rewrites := rewrites.push {
-      localId := payload.localId
-      attrReplacement := s!"data-verso-hover=\"{pageId}\""
-      inlineReplacement := ""
-    }
-  return renderedHtml.rewriteHovers rewrites
+  renderedHtmlWithHoverTable registerPageHoverPayload renderedHtml
 
 private def externalDeclRenderedWithPageHovers [Monad m]
     (item : LinkedExternalDecl) :
@@ -374,15 +378,7 @@ private def registerCacheHoverPayload (payload : ExternalDeclHoverPayload) :
 private def renderedHtmlWithCacheHovers
     (renderedHtml : ExternalDeclRenderedHtml) :
     ExternalDeclCacheHoverRender String := do
-  let mut rewrites := #[]
-  for payload in renderedHtml.hoverPayloads do
-    let cacheId ← registerCacheHoverPayload payload
-    rewrites := rewrites.push {
-      localId := payload.localId
-      attrReplacement := s!"data-verso-hover=\"{cacheId}\""
-      inlineReplacement := ""
-    }
-  return renderedHtml.rewriteHovers rewrites
+  renderedHtmlWithHoverTable registerCacheHoverPayload renderedHtml
 
 private def externalDeclRenderedWithCacheHovers
     (item : LinkedExternalDecl) :
