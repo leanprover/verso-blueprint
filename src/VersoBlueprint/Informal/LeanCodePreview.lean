@@ -80,7 +80,8 @@ def renderWithState
     Informal.renderManualBlocksHtmlWithStateAndHovers blocks impls state
       (logError := logError) (hoverState := hoverState)
   | .externalDecl decl =>
-    pure { html := Informal.ExternalCode.renderPreviewHtml #[decl], hoverState }
+    let (html, hoverState) := Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[decl] hoverState
+    pure { html, hoverState }
 
 def renderHtmlWithState
     (entry : Entry)
