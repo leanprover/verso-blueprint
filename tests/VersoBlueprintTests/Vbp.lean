@@ -102,6 +102,81 @@ private def sampleEmptyRelationCache : HtmlCacheFile := {
   ]
 }
 
+private def sampleSemanticOnlyExternalManifest : ManifestFile := {
+  previews := #[
+    {
+      key := Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_only_external")
+      targetKind := .externalMarkup
+      label := label "semantic_only_external"
+      facet := .statement
+      kind := some .theorem
+      title := "Semantic-only external theorem"
+    }
+  ]
+}
+
+private def sampleSemanticOnlyExternalCache : HtmlCacheFile := {
+  entries := #[]
+}
+
+private def sampleCacheOnlyRelationManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:relation_source:statement"
+      targetKind := .block
+      label := label "relation_source"
+      facet := .statement
+      kind := some .theorem
+      title := "Theorem 1"
+      uses := #[related "cache_only_relation" "Cache-only relation" "informal:cache_only_relation:statement"]
+    }
+  ]
+}
+
+private def sampleCacheOnlyRelationCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:relation_source:statement", html := "<div>relation source</div>" },
+    { key := "informal:cache_only_relation:statement", html := "<div>cache only</div>" }
+  ]
+}
+
+private def sampleGraphReferenceManifest : ManifestFile := {
+  previews := #[
+    {
+      key := Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target")
+      targetKind := .externalMarkup
+      label := label "semantic_graph_target"
+      facet := .statement
+      kind := some .theorem
+      title := "Semantic graph target"
+    }
+  ]
+  graphs := #[{
+    key := "graph-fixture"
+    nodes := #[{
+      label := label "semantic_graph_target"
+      title := "Semantic graph target"
+      displayLabel := "Semantic graph target"
+      previewKey :=
+        Informal.PreviewKey.ofString?
+          (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))
+      visual := { fillcolor := "#ffffff" }
+    }]
+    variants := #[{
+      key := "full"
+      label := "Full"
+      dot := "digraph {}"
+      previewKeyByNodeId := #[("node-1", "informal:cache_only_graph:statement")]
+    }]
+  }]
+}
+
+private def sampleGraphReferenceCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:cache_only_graph:statement", html := "<div>cache only graph</div>" }
+  ]
+}
+
 private def sampleCache : HtmlCacheFile := {
   entries := #[
     { key := "informal:addition_spec:statement", html := "<div>addition spec</div>" },
@@ -526,6 +601,42 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData sampleEmptyRelationManifest sampleEmptyRelationCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData
+      sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let errors := VersoBlueprint.Vbp.checkGeneratedData
+      sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
+    errors.any (fun err =>
+      err.contains "missing manifest entry for uses of informal:relation_source:statement relation cache_only_relation" &&
+        err.contains "informal:cache_only_relation:statement") &&
+      !errors.any (fun err =>
+        err.contains "missing HTML cache entry" &&
+          err.contains "informal:cache_only_relation:statement")
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let errors := VersoBlueprint.Vbp.checkGeneratedData
+      sampleGraphReferenceManifest sampleGraphReferenceCache
+    errors.any (fun err =>
+      err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
+        err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
+      errors.any (fun err =>
+        err.contains "missing manifest entry for graph graph-fixture variant full node node-1" &&
+          err.contains "informal:cache_only_graph:statement") &&
+      !errors.any (fun err =>
+        err.contains "missing HTML cache entry for graph graph-fixture variant full node node-1" &&
+          err.contains "informal:cache_only_graph:statement")
 
 /-- info: true -/
 #guard_msgs in

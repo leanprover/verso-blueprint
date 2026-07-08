@@ -240,14 +240,14 @@
 /**
  * Related Blueprint node reference attached to a manifest entry.
  *
- * `previewKey` is `null` when the related node has no renderable manifest/cache
- * preview. Non-empty strings are exact rendered-fragment cache keys.
+ * `previewKey` is `null` when the related node has no manifest/cache-backed
+ * preview. Non-empty strings are exact preview keys.
  *
  * @typedef {Object} BlueprintRelatedEntry
  * @property {string} label Canonical Blueprint node label.
  * @property {string} title Resolved display title for the related node.
  * @property {string | null} href Link to the canonical generated node, when available.
- * @property {string | null} previewKey Rendered-fragment cache key for this related node's preview, when available.
+ * @property {string | null} previewKey Manifest/cache-backed preview key for this related node, when available.
  * @property {string[]} axes Statement/proof dependency axes connecting the related node.
  */
 
@@ -341,8 +341,8 @@
 /**
  * Public graph node payload.
  *
- * `previewKey` is the selected best renderable preview for this label. It is
- * `null` when the retained graph node has no manifest/cache preview.
+ * `previewKey` is the finalized manifest/cache-backed preview key for this
+ * label. It is `null` when the retained graph node has no generated preview.
  *
  * @typedef {Object} BlueprintGraphNode
  * @property {string} label Canonical Blueprint node label.
@@ -351,7 +351,7 @@
  * @property {string | null} kind Node kind, when available.
  * @property {string | null} parent Parent/group label, when available.
  * @property {string | null} href Link to the canonical generated node, when available.
- * @property {string | null} previewKey Selected rendered-fragment cache key, when available.
+ * @property {string | null} previewKey Finalized manifest/cache-backed preview key, when available.
  * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
  * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
  * @property {string} statementStatus Statement-track status.
@@ -382,7 +382,7 @@
  * @property {Record<string, unknown>} [options] Rendering options emitted with the variant.
  * @property {BlueprintGraphNodeIdPair[]} selectOnNodeId Two-item `[svgNodeId, variantKey]` pairs selected when the variant is active.
  * @property {BlueprintGraphNodeIdPair[]} hoverOnNodeId Two-item `[svgNodeId, variantKey]` pairs highlighted on hover.
- * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; nodes without renderable previews are omitted.
+ * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; nodes without manifest/cache-backed previews are omitted.
  */
 
 /**

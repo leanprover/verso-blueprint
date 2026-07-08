@@ -170,31 +170,35 @@ def traversalExternalMarkupLookupKey?
     some (externalMarkupKey label)
 
 /--
-Best renderable preview lookup key for a Blueprint label in finished traversal
+Best preview candidate lookup key for a Blueprint label in finished traversal
 state.
 
 Prefer the selected statement/proof traversal preview when one exists. Fall back
-to a source-backed external-markup preview for bodyless Blueprint nodes.
+to a source-backed external-markup preview for bodyless Blueprint nodes. Final
+generated data still checks whether the candidate has both a manifest entry and
+rendered-fragment cache body before serializing it as a `previewKey`.
 -/
-private def traversalRenderableLookupKey?
+private def traversalPreviewCandidateLookupKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String :=
   traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
 
 /--
-Best renderable preview key for a Blueprint label in finished traversal state.
+Best preview candidate key for a Blueprint label in finished traversal state.
 
 Prefer the selected statement/proof traversal preview when one exists. Fall back
-to a source-backed external-markup preview for bodyless Blueprint nodes.
+to a source-backed external-markup preview for bodyless Blueprint nodes. Final
+generated data still checks whether the candidate has both a manifest entry and
+rendered-fragment cache body before serializing it as a `previewKey`.
 -/
-def traversalRenderablePreviewKey?
+def traversalPreviewCandidateKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← traversalRenderableLookupKey? s label
+  let key ← traversalPreviewCandidateLookupKey? s label
   PreviewKey.ofString? key
 
-/-- Best preview key for relation entries. -/
+/-- Best preview candidate key for relation entries. -/
 def traversalRelationPreviewKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey :=
-  traversalRenderablePreviewKey? s label
+  traversalPreviewCandidateKey? s label
 
 def traversalPreview?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do

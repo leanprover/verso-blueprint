@@ -156,7 +156,7 @@ One rendered graph view.
 The bundled renderer uses variants for the full graph, the synthetic group
 overview, and per-group subgraphs. The `selectOnNodeId` and `hoverOnNodeId`
 arrays describe variant transitions keyed by SVG node id, and
-`previewKeyByNodeId` maps SVG nodes to preview-cache keys.
+`previewKeyByNodeId` maps SVG nodes to manifest/cache-backed preview keys.
 -/
 structure GraphRenderVariant where
   /-- Stable key used by the graph view selector and variant links. -/
@@ -171,7 +171,7 @@ structure GraphRenderVariant where
   selectOnNodeId : Array (String × String) := #[]
   /-- Node ids that preview another variant on hover. -/
   hoverOnNodeId : Array (String × String) := #[]
-  /-- Node ids that open Blueprint preview-cache entries. Nodes without renderable previews are omitted. -/
+  /-- Node ids that open manifest/cache-backed previews; nodes without such previews are omitted. -/
   previewKeyByNodeId : Array (String × String) := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
@@ -243,7 +243,7 @@ structure NodeData where
   kind : Option Data.NodeKind := none
   parent : Option Name := none
   href : Option String := none
-  /-- Selected preview-cache key for this node, if a renderable traversal preview exists. -/
+  /-- Selected manifest/cache-backed preview key for this node, if available. -/
   previewKey : Option PreviewKey := none
   statementUses : Array Data.UseRef := #[]
   proofUses : Array Data.UseRef := #[]

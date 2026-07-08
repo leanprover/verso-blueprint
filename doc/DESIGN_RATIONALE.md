@@ -599,8 +599,9 @@ the manifest owns semantics, and the cache owns presentation. The manifest is
 the authoritative source for labels, authored/display label strings, facets,
 titles, hrefs, group membership, relation topology, Lean-code associations,
 ownership metadata, tags, priority, effort, and external markup metadata. The
-rendered-fragment cache stores opaque HTML bodies keyed by the same preview keys,
-plus the Verso hover payloads needed by those bodies.
+rendered-fragment cache stores opaque HTML bodies keyed by preview keys for
+entries that have generated preview bodies, plus the Verso hover payloads
+needed by those bodies.
 
 Consumers should join the two files by preview key at the last responsible
 moment. A renderer may use the manifest entry to decide what the object means
@@ -625,12 +626,14 @@ rendering of manifest semantics, not a second data source.
 
 Source-backed external-markup fragments follow the same split. The manifest
 entry owns the label, facet, Lean preview keys, code data, source language,
-slot, and optional source range. The cache entry owns only the generated body
-fragment: MD4Lean-rendered Markdown with raw HTML disabled by default, or
-escaped source text for TeX and `--external-markup-render source`. Shared
-source summaries and escaped source blocks live in `Informal.ExternalMarkupView`,
-so source-location display and preview-cache rendering do not grow separate
-escaping or range-formatting rules.
+slot, and optional source range. When external markup rendering is enabled, the
+cache entry owns only the generated body fragment: MD4Lean-rendered Markdown
+with raw HTML disabled by default, or escaped source text for TeX and
+`--external-markup-render source`. With `--external-markup-render none`, the
+manifest entry remains semantic and intentionally has no rendered-fragment cache
+body. Shared source summaries and escaped source blocks live in
+`Informal.ExternalMarkupView`, so source-location display and external-markup
+body rendering do not grow separate escaping or range-formatting rules.
 
 The generation boundary is:
 
@@ -652,6 +655,13 @@ that boundary loses semantic data such as Lean preview keys, downstream
 fallbacks should report or copy the existing traversal metadata rather than
 reconstruct it from rendered markup.
 
+Serialized preview references are finalized at this boundary. Relation entries,
+graph nodes, graph variants, and Lean-code associations may start from
+traversal-time preview candidates, but the generated JSON keeps a `previewKey`
+only when that key resolves through both the manifest and rendered-fragment
+cache. Semantic manifest entries without cache bodies remain queryable without
+advertising a missing rendered preview.
+
 ### Body Fragments vs Full Node Wrappers
 
 The rendered-fragment cache should not grow into a second node-wrapper cache
@@ -662,7 +672,9 @@ intentional:
   are small enough to use in hovers, relation panels, custom cards, Slides, and
   generated consumers that provide their own wrapper.
 - `blueprint-manifest.json` stores the semantic entry, including the generated
-  page `href` and preview key needed to find the canonical page occurrence.
+  page `href` and the entry key used as its stable manifest identity. Separate
+  relation, graph, and Lean-code `previewKey` references are emitted only when
+  the target key resolves through both the manifest and rendered-fragment cache.
 - the generated HTML page remains the owner of the exact page-level node shell:
   heading layout, wrapper attributes, relation-panel placement, code extras,
   folded state, and any future page-local affordances.
@@ -953,13 +965,15 @@ manifest/cache lookup key, and the phase-local preview payload together, so
 environment-time and traversal-time callers share the same statement-then-proof
 fallback rule without learning each other's storage details.
 
-Callers should distinguish selected preview keys from fixed facet keys. Browser
-surfaces such as graph node hovers, summary previews, and relation-panel entries
-should use `PreviewSource.Selection` when traversal state is available, because
-they want the best rendered preview for a label. Code that is explicitly naming
-a facet, such as grafting `statement` or `proof` from a manifest/cache pair,
-should use `PreviewCache.statementKey` or `PreviewCache.proofKey` so the fixed
-identity is visible at the call site.
+Callers should distinguish selected preview candidates from fixed facet keys.
+Browser surfaces such as graph node hovers, summary previews, and relation-panel
+entries should use `PreviewSource.Selection` when traversal state is available,
+because they want the best candidate preview for a label in that phase. Public
+generated JSON must still finalize those candidates against the manifest/cache
+coverage before exposing them as `previewKey` values. Code that is explicitly
+naming a facet, such as grafting `statement` or `proof` from a manifest/cache
+pair, should use `PreviewCache.statementKey` or `PreviewCache.proofKey` so the
+fixed identity is visible at the call site.
 
 Manifest construction is still a whole-domain consumer rather than a
 one-label selection caller. It asks `PreviewSource` to enumerate decoded
@@ -1089,8 +1103,8 @@ callers.
 Some previews are rendered inside a full page, while others are rendered in
 isolated contexts such as editor or LSP hovers. Isolated renderers therefore
 cannot rely on page-global hover tables. That is why Blueprint sometimes
-rewrites hover payloads into self-contained HTML. Generated preview-cache
-fragments are not treated as isolated snippets: they keep normal
+rewrites hover payloads into self-contained HTML. Generated cache fragments are
+not treated as isolated snippets: they keep normal
 `data-verso-hover` attributes and carry hover payloads as cache side data, so
 generated pages and Slides can use the standard Verso hover path without
 duplicating hover HTML into every fragment.
