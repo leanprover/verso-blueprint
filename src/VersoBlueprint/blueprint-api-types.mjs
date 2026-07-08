@@ -229,7 +229,40 @@
  */
 
 /**
- * Semantic manifest entry emitted for a rendered Blueprint preview or an
+ * Structured dependency reference between Blueprint nodes.
+ *
+ * @typedef {Object} BlueprintUseRef
+ * @property {string} label Target Blueprint node label.
+ * @property {string} origin Dependency origin, such as `manual` or `automatic`.
+ * @property {string} intent Dependency intent, such as `regular`, `auxiliary`, or `technical`.
+ */
+
+/**
+ * Related Blueprint node reference attached to a manifest entry.
+ *
+ * `previewKey` is `null` when the related node has no renderable manifest/cache
+ * preview. Non-empty strings are exact rendered-fragment cache keys.
+ *
+ * @typedef {Object} BlueprintRelatedEntry
+ * @property {string} label Canonical Blueprint node label.
+ * @property {string} title Resolved display title for the related node.
+ * @property {string | null} href Link to the canonical generated node, when available.
+ * @property {string | null} previewKey Rendered-fragment cache key for this related node's preview, when available.
+ * @property {string[]} axes Statement/proof dependency axes connecting the related node.
+ */
+
+/**
+ * Group relation metadata attached to a manifest entry.
+ *
+ * @typedef {Object} BlueprintGroupRelation
+ * @property {string} label Canonical group label.
+ * @property {string} title Resolved display title for the group.
+ * @property {boolean} declared Whether the group was explicitly declared.
+ * @property {BlueprintRelatedEntry[]} entries Related entries in the group.
+ */
+
+/**
+ * Semantic manifest entry emitted for a rendered Blueprint preview or a
  * source-backed external-markup node.
  *
  * @typedef {Object} BlueprintManifestEntry
@@ -241,6 +274,11 @@
  * @property {BlueprintSourceLocationResult} sourceLocation Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
+ * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
+ * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
+ * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
+ * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
+ * @property {BlueprintGroupRelation | null} group Group relation data, when available.
  */
 
 /**
@@ -252,14 +290,85 @@
  */
 
 /**
+ * Graph warning flags attached to a finalized node.
+ *
+ * @typedef {Object} BlueprintGraphWarningFlags
+ * @property {boolean} unknownRef The node refers to a label missing from traversal.
+ * @property {boolean} leanOnlyNoStatement The node has Lean data but no statement entry.
+ * @property {boolean} missingExternalDecl The node refers to a missing external declaration.
+ */
+
+/**
+ * Visual metadata for renderers that reuse Blueprint's graph styling.
+ *
+ * @typedef {Object} BlueprintGraphNodeVisual
+ * @property {string} shape Graphviz node shape.
+ * @property {string} style Graphviz node style.
+ * @property {string} fillcolor Fill color.
+ * @property {string} color Border color.
+ * @property {string} penwidth Border width.
+ * @property {string} fontcolor Font color.
+ * @property {number} peripheries Number of node outlines.
+ * @property {string | null} gradientangle Graphviz gradient angle, when present.
+ * @property {string | null} tooltip Tooltip text, when present.
+ */
+
+/**
+ * Public graph dependency edge payload.
+ *
+ * @typedef {Object} BlueprintGraphEdge
+ * @property {string} source Dependency source label.
+ * @property {string} target Dependent target label.
+ * @property {string[]} axes Statement/proof axes carried by this edge.
+ */
+
+/**
+ * Public graph group payload.
+ *
+ * @typedef {Object} BlueprintGraphGroup
+ * @property {string} label Canonical group label.
+ * @property {string} title Resolved group title.
+ * @property {boolean} declared Whether the group was explicitly declared.
+ * @property {string[]} children Child node labels.
+ */
+
+/**
+ * Two-item graph-renderer mapping emitted as `[svgNodeId, value]`.
+ *
+ * @typedef {Array.<string>} BlueprintGraphNodeIdPair
+ */
+
+/**
+ * Public graph node payload.
+ *
+ * `previewKey` is the selected best renderable preview for this label. It is
+ * `null` when the retained graph node has no manifest/cache preview.
+ *
+ * @typedef {Object} BlueprintGraphNode
+ * @property {string} label Canonical Blueprint node label.
+ * @property {string} title Resolved display title.
+ * @property {string} displayLabel Short display label.
+ * @property {string | null} kind Node kind, when available.
+ * @property {string | null} parent Parent/group label, when available.
+ * @property {string | null} href Link to the canonical generated node, when available.
+ * @property {string | null} previewKey Selected rendered-fragment cache key, when available.
+ * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
+ * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
+ * @property {string} statementStatus Statement-track status.
+ * @property {string} proofStatus Proof-track status.
+ * @property {BlueprintGraphWarningFlags} warnings Graph warning flags.
+ * @property {BlueprintGraphNodeVisual} visual Current Blueprint graph styling metadata.
+ */
+
+/**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
  * @typedef {Object} BlueprintGraphData
  * @property {number} schemaVersion Graph payload schema version; version 2 uses string-or-null node preview keys.
  * @property {string} key Variant key.
- * @property {unknown[]} nodes Graph node payloads.
- * @property {unknown[]} edges Graph edge payloads.
- * @property {unknown[]} groups Optional graph grouping payloads.
+ * @property {BlueprintGraphNode[]} nodes Graph node payloads.
+ * @property {BlueprintGraphEdge[]} edges Graph edge payloads.
+ * @property {BlueprintGraphGroup[]} groups Graph grouping payloads.
  * @property {BlueprintGraphVariant[]} [variants] Precomputed DOT variants for the bundled graph renderer.
  */
 
@@ -271,9 +380,9 @@
  * @property {string} label Human-readable variant label.
  * @property {string} dot DOT source.
  * @property {Record<string, unknown>} [options] Rendering options emitted with the variant.
- * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
- * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.
- * @property {unknown[]} [previewKeyByNodeId] SVG node ids mapped to Blueprint preview-cache keys; nodes without renderable previews are omitted.
+ * @property {BlueprintGraphNodeIdPair[]} selectOnNodeId Two-item `[svgNodeId, variantKey]` pairs selected when the variant is active.
+ * @property {BlueprintGraphNodeIdPair[]} hoverOnNodeId Two-item `[svgNodeId, variantKey]` pairs highlighted on hover.
+ * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; nodes without renderable previews are omitted.
  */
 
 /**

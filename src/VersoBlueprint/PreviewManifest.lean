@@ -576,7 +576,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 incompatibility boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 1
+def manifestInternalSchemaVersion : Nat := 2
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -789,8 +789,11 @@ private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback
 private def previewKeyFromJson? (json : Json) : Except String (Option Informal.PreviewKey) :=
   match json with
   | .null => pure none
-  | .str raw => pure (Informal.PreviewKey.ofString? raw)
-  | _ => .error "expected preview key string or null"
+  | .str raw =>
+      match Informal.PreviewKey.ofString? raw with
+      | some key => pure (some key)
+      | none => .error "expected non-empty preview key string or null"
+  | _ => .error "expected non-empty preview key string or null"
 
 instance : FromJson RelatedEntry where
   fromJson? json := do
@@ -1116,7 +1119,7 @@ def File.findEntry? (file : File) (key : String) : Option Entry :=
 /-- Manifest metadata that was present during traversal but is absent from export. -/
 structure PreviewMetadataLoss where
   /-- Traversal-preview cache key whose metadata was not fully represented. -/
-  previewKey : String
+  traversalPreviewKey : Informal.PreviewKey
   /-- Blueprint label recorded by traversal. -/
   label : Name
   /-- Preview facet recorded by traversal. -/
@@ -1125,7 +1128,7 @@ structure PreviewMetadataLoss where
   manifestEntryKey? : Option String := none
   /-- Lean declaration preview keys present during traversal but missing from the manifest entry. -/
   missingLeanCodePreviewKeys : Array String := #[]
-deriving Inhabited, Repr, ToJson, FromJson
+deriving Repr, ToJson, FromJson
 
 /--
 Find the manifest entry that should carry metadata for a traversal preview.
@@ -1162,16 +1165,17 @@ def previewMetadataLosses (state : TraverseState) (file : File) : Array PreviewM
       | .ok stored =>
           let metadata := stored.data.metadata
           if !metadata.leanCodePreviewKeys.isEmpty then
-            let manifestEntry? := file.findPreviewMetadataEntry? metadata
-            let missing := missingPreviewLeanCodeKeys manifestEntry? metadata
-            if !missing.isEmpty then
-              losses := losses.push {
-                previewKey := stored.canonicalName
-                label := metadata.label
-                facet := metadata.facet
-                manifestEntryKey? := manifestEntry?.map (·.key)
-                missingLeanCodePreviewKeys := missing
-              }
+            if let some traversalPreviewKey := Informal.PreviewKey.ofString? stored.canonicalName then
+              let manifestEntry? := file.findPreviewMetadataEntry? metadata
+              let missing := missingPreviewLeanCodeKeys manifestEntry? metadata
+              if !missing.isEmpty then
+                losses := losses.push {
+                  traversalPreviewKey
+                  label := metadata.label
+                  facet := metadata.facet
+                  manifestEntryKey? := manifestEntry?.map (·.key)
+                  missingLeanCodePreviewKeys := missing
+                }
     losses
 
 /-- Human-facing warning text for one manifest metadata-loss audit result. -/
@@ -1181,7 +1185,7 @@ def PreviewMetadataLoss.warningMessage (loss : PreviewMetadataLoss) : String :=
     | some key => s!"manifest entry {key}"
     | none => "no matching manifest entry"
   let missing := String.intercalate ", " loss.missingLeanCodePreviewKeys.toList
-  s!"Blueprint manifest: traversal preview {loss.previewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
+  s!"Blueprint manifest: traversal preview {loss.traversalPreviewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
 
 /-- Report non-fatal generator warnings for traversal metadata lost during manifest export. -/
 def reportPreviewMetadataLossWarnings
@@ -1397,7 +1401,7 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
   | .const ``Name _ =>
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Informal.PreviewKey _ =>
-      pure <| Json.mkObj [("type", Json.str "string")]
+      pure <| Json.mkObj [("type", Json.str "string"), ("minLength", Json.num 1)]
   | .const ``Bool _ =>
       pure <| Json.mkObj [("type", Json.str "boolean")]
   | .const ``Nat _ =>
