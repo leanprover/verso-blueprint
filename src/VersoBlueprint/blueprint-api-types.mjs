@@ -267,6 +267,7 @@
  *
  * @typedef {Object} BlueprintManifestEntry
  * @property {string} key Stable manifest key.
+ * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
  * @property {string} [label] Canonical Blueprint node label when available.
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
@@ -474,7 +475,8 @@
  */
 
 /**
- * Result of resolving a Lean declaration name.
+ * Result of resolving a Lean declaration name to a declaration-keyed preview
+ * entry.
  *
  * @typedef {Object} BlueprintResolveDeclarationResult
  * @property {boolean} ok Whether the declaration resolved to a manifest entry.
