@@ -6,9 +6,8 @@ This file is the repository's local "Verso upstream backlog" index: a queue of
 changes that would be better solved in upstream `verso`, Lake, Lean, or a
 related upstream package once the Blueprint split stabilizes.
 
-Actionable upstream asks should normally live as `UPC-*` cards under
-[`roadmap/cards/`](./roadmap/cards/). Keep this file as the short index while
-older inline items are migrated.
+Actionable upstream asks live as `UPC-*` cards under
+[`roadmap/cards/`](./roadmap/cards/). Keep this file as the short index.
 
 When a maintainer or agent says "add this to the Verso upstream backlog" or
 "register this in the Verso upstream backlog", the default meaning is:
@@ -75,10 +74,5 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Manual Content Cleanup
 
-- [ ] Revisit bibliography formatting in `VersoManual/Bibliography.lean`.
-  - current Blueprint question:
-    decide whether the local bibliography formatting cleanup belongs upstream
-    or should remain Blueprint-specific
-  - desired outcome:
-    either upstream a general formatting improvement or document why Blueprint
-    should keep a local presentation layer
+- [ ] [Revisit bibliography formatting in
+  `VersoManual/Bibliography.lean`.](./roadmap/cards/UPC-0013-bibliography-formatting-boundary/README.md)

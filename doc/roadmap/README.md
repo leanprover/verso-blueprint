@@ -39,6 +39,7 @@ or release notes.
 - [`UPC-0010 Package Runtime Asset Resolution`](./cards/UPC-0010-package-runtime-asset-resolution/README.md)
 - [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md)
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
+- [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
 
 ## Card Rules
 
@@ -54,7 +55,6 @@ or release notes.
 
 ## Migration Status
 
-The upstream backlog is being converted gradually. New actionable upstream asks
-should normally be `UPC-*` cards linked from
-[`../UPSTREAM_BACKLOG.md`](../UPSTREAM_BACKLOG.md). Existing inline backlog
-items can remain inline until they receive fresh review.
+The upstream backlog has been migrated to `UPC-*` cards. New actionable upstream
+asks should be cards linked from
+[`../UPSTREAM_BACKLOG.md`](../UPSTREAM_BACKLOG.md).
