@@ -120,7 +120,7 @@ def graphDataStatus : GraphData :=
   hasGraphDataNodeWith graphDataStatus `def_formal (fun n =>
     n.title == "Definition 1" &&
     n.href == some "#def-formal" &&
-    n.previewKey == "def_formal--statement" &&
+    n.previewKey == PreviewKey.ofString? "def_formal--statement" &&
     n.kind == some Data.NodeKind.definition &&
     n.statementStatus == .formalized &&
     n.proofStatus == .formalizedWithAncestors &&

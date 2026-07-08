@@ -4,15 +4,18 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean.Data.Json
+import Lean
 
 namespace Informal
 
+open Lean
+
 /-- Non-empty rendered-fragment lookup key for manifest/cache-backed previews. -/
 structure PreviewKey where
+  private mk ::
   /-- Serialized preview key value. -/
   value : String
-deriving Inhabited, Repr, BEq
+deriving Repr, BEq
 
 namespace PreviewKey
 
@@ -25,6 +28,9 @@ instance : ToString PreviewKey where
 
 instance : Lean.ToJson PreviewKey where
   toJson key := Lean.Json.str key.value
+
+instance : Quote PreviewKey where
+  quote key := Syntax.mkCApp ``PreviewKey.mk #[quote key.value]
 
 instance : Lean.FromJson PreviewKey where
   fromJson? json := do

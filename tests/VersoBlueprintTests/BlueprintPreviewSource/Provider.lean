@@ -32,4 +32,14 @@ Proof fallback body.
 :::
 :::::::
 
+#docs (Genre.Manual) externalMarkupPreviewSourceDoc "External Markup Preview Source" :=
+:::::::
+:::theorem "preview.external_bodyless"
+:::
+
+```md "preview.external_bodyless" (slot := statement)
+External-markup body for a graph preview.
+```
+:::::::
+
 end Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider
