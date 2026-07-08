@@ -671,8 +671,14 @@ it to inspect the source document id, page summary, and recorded text/PDF span
 details.
 
 Manifest clients should read `entry.sources`; there is no singular
-`entry.source` field. Lean declaration entries may contain multiple refs when
-several sourced Blueprint nodes share the same Lean declaration preview.
+`entry.source` field. Lean code preview entries may contain multiple refs when
+several sourced Blueprint nodes share the same rendered Lean preview. External
+declaration previews are keyed by canonical declaration, while inline code
+previews are keyed by the inline Blueprint code label and use
+`targetKind: "inlineLeanCode"`. Declaration-specific inline identity is the
+owning inline code label plus the declaration's position in the owning block
+entry's ordered inline code metadata (`definedDefs` followed by
+`definedTheorems`).
 Browser clients can resolve those document ids with `loadSourceDocument` or
 read the complete catalog with `loadSourceDocuments`.
 
@@ -682,9 +688,11 @@ render result. The API returns structured source-document metadata and recorded
 text/PDF spans.
 Manifest entries also include `sourceLocation`, a lookup result for the authored
 Blueprint label/facet location or Lean declaration source. Browser clients that
-start from semantic names can call `resolveLabel` or `resolveDeclaration` from
-`api/data.mjs` or `api/preview.mjs` to get the generated link and source
-location together.
+start from semantic names can call `resolveLabel`, or `resolveDeclaration` for
+declaration-keyed previews, from `api/data.mjs` or `api/preview.mjs` to get the
+generated link and source location together. Inline code previews are keyed by
+the inline Blueprint code label and should be loaded through the explicit key in
+`leanCodePreviewKeys`.
 Use the data API for metadata-only audit or dashboard clients; use the preview
 API when the same client also renders Blueprint nodes or cached previews.
 The built-in source preview is intentionally lightweight; richer PDF page

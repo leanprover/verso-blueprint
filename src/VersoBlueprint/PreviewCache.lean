@@ -44,13 +44,13 @@ def proofKey (label : Name) : String :=
 Semantic preview metadata stored during traversal.
 
 This metadata is meaningful even when a node has no rendered body blocks. For
-example, a bodyless imported theorem may still carry Lean declaration preview
-keys from `(lean := ...)`.
+example, a bodyless imported theorem may still carry Lean code preview keys
+from `(lean := ...)`.
 -/
 structure Metadata where
   label : Name
   facet : Facet
-  /-- HTML-cache keys for associated Lean declaration previews. -/
+  /-- HTML-cache keys for associated Lean code previews. -/
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -81,7 +81,7 @@ structure Entry where
   /-- Source location result for the source that produced this preview facet. -/
   sourceLocation : Informal.Data.SourceLocationResult :=
     Informal.Data.SourceLocationResult.unavailable "preview source location unavailable"
-  /-- HTML-cache keys for associated Lean declaration previews. -/
+  /-- HTML-cache keys for associated Lean code previews. -/
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 

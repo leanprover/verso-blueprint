@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 
-namespace Informal.LeanDeclPreviewKey
+namespace Informal.LeanCodePreviewKey
 
 open Lean
 
@@ -14,6 +14,9 @@ def domainName : Name := Name.mkSimple "Informal.LeanCodePreview"
 
 private def namespaceRoot : Name :=
   Name.str (Name.str .anonymous "Informal") "LeanCodePreview"
+
+private def inlineNamespaceRoot : Name :=
+  Name.str namespaceRoot "Inline"
 
 private partial def appendName (rootName : Name) (suffixName : Name) : Name :=
   match suffixName with
@@ -27,4 +30,10 @@ def targetName (decl : Name) : Name :=
 def lookupKey (decl : Name) : String :=
   (targetName decl).toString
 
-end Informal.LeanDeclPreviewKey
+def inlineTargetName (label : Name) : Name :=
+  appendName inlineNamespaceRoot label.eraseMacroScopes
+
+def inlineLookupKey (label : Name) : String :=
+  (inlineTargetName label).toString
+
+end Informal.LeanCodePreviewKey

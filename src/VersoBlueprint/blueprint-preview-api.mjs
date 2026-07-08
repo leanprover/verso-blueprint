@@ -293,12 +293,17 @@ export function resolveLabel(label, options) {
 }
 
 /**
- * Resolve a Lean declaration name to its manifest entry and source location.
+ * Resolve a Lean declaration name to a declaration-keyed manifest entry and
+ * source location.
  *
  * `sourceLocation` points to the Lean declaration source. Use the returned
  * `manifestEntry` or `resolveSourceMetadata` for Blueprint provenance records.
  *
- * @param {string} declName Lean declaration name.
+ * Inline code previews are keyed by the inline Blueprint code label, not by
+ * each declaration in the code block. Load those previews through the explicit
+ * key in the owning manifest entry's `leanCodePreviewKeys`.
+ *
+ * @param {string} declName Lean declaration name for a declaration-keyed preview.
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<BlueprintResolveDeclarationResult>}
  *

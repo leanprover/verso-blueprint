@@ -173,7 +173,9 @@ class TestBlueprintSlidesRuntime:
         }
         assert [entry["label"] for entry in collatz_entry["usedBy"]] == ["collatz_conjecture"]
         assert collatz_entry["group"]["label"] == "collatz_core"
-        assert len(collatz_entry["leanCodePreviewKeys"]) == 2
+        assert collatz_entry["leanCodePreviewKeys"] == [
+            "Informal.LeanCodePreview.Inline.collatz_step"
+        ]
         assert collatz_entry["codeData"]
         assert "blocks" not in collatz_entry
         assert "html" not in collatz_entry
@@ -191,7 +193,7 @@ class TestBlueprintSlidesRuntime:
         assert multiplication_entry["title"] == "Theorem 2.2"
         assert multiplication_proof_entry["title"] == "Proof for Theorem 2.2"
         assert multiplication_entry["leanCodePreviewKeys"] == [
-            "Informal.LeanCodePreview.multiplication_one_right"
+            "Informal.LeanCodePreview.Inline.multiplication_one_right"
         ]
         assert (
             multiplication_proof_entry["leanCodePreviewKeys"]
@@ -207,7 +209,8 @@ class TestBlueprintSlidesRuntime:
             for entry in manifest["previews"]
             if entry["key"] in collatz_entry["leanCodePreviewKeys"]
         ]
-        assert len(code_entries) == 2
+        assert len(code_entries) == 1
+        assert code_entries[0]["targetKind"] == "inlineLeanCode"
         assert all("leanCode" not in entry for entry in code_entries)
         assert all("class=\"hl lean block\"" in html_by_key[entry["key"]] for entry in code_entries)
         assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)

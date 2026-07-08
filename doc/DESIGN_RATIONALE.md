@@ -225,7 +225,7 @@ The same flow can be read as four contracts:
    render-time indexes into `TraverseState` through `TraversalIndex`. This is
    where site-local facts are created: rendered anchors, numbering caches,
    code-panel destinations, group and reverse-use panels, citation use sites,
-   statement/proof preview entries, Lean declaration preview entries,
+   statement/proof preview entries, Lean code preview entries,
    public graph data records, and external declaration row anchors. These
    facts are intentionally not pushed back into `Environment.State`, because
    their values depend on the current rendered document and output mode.
@@ -277,7 +277,7 @@ that owner.
 | Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
 | Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphData` cached in `TraversalIndex.Graphs`, then finalized through `Informal.GraphApi.finalData` for `blueprint-manifest.json.graphs`, page JSON, and bundled graph rendering | graph command rendering, browser runtime, custom graph consumers |
-| Lean declaration preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
+| Lean code preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
 | Rendered preview bodies | Preview-data emission | `blueprint-html-cache.json` | browser runtime, Slides, custom generated consumers |
 | Semantic preview/catalog entries | Preview-data emission | `blueprint-manifest.json` | browser runtime, Slides, audit/custom UIs |
 | Interaction state | Browser runtime | DOM state only | previews, panels, graph controls, custom wrappers |
@@ -614,7 +614,7 @@ referenced from it; do not encode it only in rendered HTML.
 
 Manifest links and source locations deliberately answer different questions.
 `Entry.href` points at a generated Blueprint occurrence, suitable for jumping to
-the statement/proof/declaration preview in the site. `Entry.sourceLocation`
+the statement, proof, or Lean-code preview in the site. `Entry.sourceLocation`
 points back to the source file and range that produced the entry, and carries an
 explicit success/error result so missing source data is visible to clients.
 
@@ -924,22 +924,26 @@ That runtime boundary is now explicit:
 ### Separate Informal and Lean-Code Preview Identities
 
 Statement and proof previews are keyed by `(label, facet)`. Lean-code previews
-use `Informal.LeanCodePreview` under a Lean-name-oriented namespace. Citation
-previews use a citation-oriented key containing the citation label, citation
-style, and optional locator.
+use `Informal.LeanCodePreview` under code-oriented namespaces: external
+declaration previews are keyed by canonical Lean name, while inline Lean code
+previews are keyed by the inline Blueprint code label and expose their
+declarations as ordered rows. Citation previews use a citation-oriented key
+containing the citation label, citation style, and optional locator.
 
 That split is deliberate:
 
 - statement/proof previews are blueprint-entry overviews
-- Lean-code previews are declaration-centric navigation
+- external Lean-code previews are declaration-centric navigation
+- inline Lean-code previews are block-level snippets whose declaration rows are
+  identified by the owning informal label plus row index when needed
 - citation previews are bibliography-entry hovers parameterized by rendered
   citation form and locator
 - external-markup entries are semantic import witnesses and may intentionally
   have no rendered preview body
 
 The UI can converge while the identity schemes remain distinct. Manifest entries
-therefore carry a `targetKind` tag (`block`, `leanDecl`, `citation`, or
-`externalMarkup`) instead of relying on every preview key to mean
+therefore carry a `targetKind` tag (`block`, `leanDecl`, `inlineLeanCode`,
+`citation`, or `externalMarkup`) instead of relying on every preview key to mean
 `(label, facet)`. They also carry `authoredLabel` next to the canonical `label`
 so review clients can present labels exactly enough for authored markup sources
 without treating Lean pretty-name syntax as a UI contract.
@@ -1054,7 +1058,7 @@ the operational detail that is easier to read in prose.
 | `ExternalMarkup` | semantic domain | informal label -> `ExternalMarkupSet` plus markup block anchor ids | Raw imported TeX/Markdown attachments keyed by language and slot, with optional project-relative LSP ranges for source comparison tooling. |
 | `Groups` | semantic domain | group label -> `GroupBlockData` | Declared group metadata for a parent/group label, currently its display header. Group membership itself is stored on `Nodes` through each node's `parent`. |
 | `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and preview-data emission. Entries may also carry HTML-cache keys for associated Lean-code previews; the code preview payloads themselves remain in `LeanCodePreviews`. |
-| `LeanCodePreviews` | runtime cache | Lean declaration name -> `LeanCodePreview.Entry` plus declaration-preview anchor ids | Preview payloads for Lean declaration links, either from inline code blocks or external declaration snapshots. |
+| `LeanCodePreviews` | runtime cache | external Lean declaration name or inline-code label -> `LeanCodePreview.Entry` plus code-preview anchor ids | Preview payloads for external Lean declaration links and inline code blocks. Inline declarations inherit row-level identity from `(informal label, declaration index)` inside the owning block metadata. |
 | `ExternalDeclAnchors` | internal index | `(informal label, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
 | `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into preview data. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
@@ -1070,7 +1074,7 @@ reasons:
 | `RustInlineCode` | `Block.informalRustCode.traverse` | `TraversalIndex.RustInlineCode.object?`, `TraversalIndex.RustInlineCode.data?`, and Rust code-panel rendering | Store Rust code-panel payloads outside `Nodes` so the semantic node index stays language-neutral while renderers still get a typed code-panel source. |
 | `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, `Informal.ExternalMarkupView`, preview-manifest construction, `PreviewManifest/ExternalMarkupRender.lean`, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies selected by `Informal.ExternalMarkupRender.Config`. |
 | `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?`, `PreviewSource.traversalEntryByKey?`, `PreviewSource.traversalStoredEntries`, and preview-data construction | Store preview metadata and rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys even when the rendered body is empty; empty body blocks are not a signal that the semantic preview metadata is empty. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
-| `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | `TraversalIndex.LeanCodePreviews.entry?`, `TraversalIndex.LeanCodePreviews.decodedEntry?`, `TraversalIndex.LeanCodePreviews.entries`, preview-data construction, same-document grafts, and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
+| `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | `TraversalIndex.LeanCodePreviews.entry?`, `TraversalIndex.LeanCodePreviews.decodedEntry?`, `TraversalIndex.LeanCodePreviews.entries`, preview-data construction, same-document grafts, and Lean declaration links via the shared lookup key | Store external declaration previews by canonical Lean declaration target and inline code previews by inline Blueprint code label. This keeps external declaration previews shared across references while avoiding duplicate inline preview bodies for multiple declarations from the same code block; declaration-specific inline identity lives in the owning block's ordered inline code metadata. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |

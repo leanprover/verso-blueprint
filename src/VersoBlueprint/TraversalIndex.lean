@@ -8,7 +8,7 @@ import Lean
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.GroupData
-import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
@@ -406,17 +406,20 @@ end TraversalPreviews
 namespace LeanCodePreviews
 
 def spec : StoreSpec := {
-  name := Informal.LeanDeclPreviewKey.domainName
+  name := Informal.LeanCodePreviewKey.domainName
   kind := .runtimeCache
-  key := "Lean declaration name"
-  value := "LeanCodePreview.Entry plus declaration-preview anchor ids"
-  summary := "Traversal-cached Lean declaration preview payloads keyed by declaration name."
+  key := "external Lean declaration name or inline-code label"
+  value := "LeanCodePreview.Entry plus code-preview anchor ids"
+  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or shared inline-code label."
 }
 
 def domainName : Name := spec.name
 
 def lookupKey (decl : Name) : String :=
-  Informal.LeanDeclPreviewKey.lookupKey decl
+  Informal.LeanCodePreviewKey.lookupKey decl
+
+def lookupInlineKey (label : Name) : String :=
+  Informal.LeanCodePreviewKey.inlineLookupKey label
 
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey

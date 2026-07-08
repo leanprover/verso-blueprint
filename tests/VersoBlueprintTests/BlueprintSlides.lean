@@ -291,8 +291,8 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor usedByPreviewDoc
     let cache := files.htmlCache
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
-      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
+      (Lean.Name.mkSimple "def:used.target")
     let some codeHtml := cache.findHtml? codeKey
       | return false
     pure <|
@@ -310,11 +310,17 @@ private def writeSlidesPreviewDataFiles
     let files ← buildPreviewDataFor usedByPreviewDoc
     let file := files.manifest
     let blockKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target")
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
-      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
+      (Lean.Name.mkSimple "def:used.target")
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
-    pure <| blockEntry.leanCodePreviewKeys.contains codeKey
+    pure <|
+      blockEntry.leanCodePreviewKeys.contains codeKey &&
+        file.previews.any (fun entry =>
+          entry.key == codeKey &&
+            match entry.targetKind with
+            | .inlineLeanCode => true
+            | _ => false)
 
 /-- info: true -/
 #guard_msgs in
