@@ -715,6 +715,48 @@ external markup.
       narrativeChecks ++ nativeChecks ++ theorem21Checks ++ selectedMarkdownChecks ++ theorem22Checks ++
         definition23Checks ++ proposition24Checks ++ rewriteChecks
 
+/-- info: #[] -/
+#guard_msgs in
+#eval
+  show IO (Array String) from do
+    let (_showcaseHtml, showcaseState) ←
+      renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
+    let showcaseFiles ←
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) showcaseState
+        ({ mode := .none } : Informal.ExternalMarkupRender.Config)
+    let theorem21Label := Name.mkSimple "ImportedPaper:Theorem2.1"
+    let proposition24Label := Name.mkSimple "ImportedPaper:Proposition2.4"
+    let rewriteLabel := Name.mkSimple "showcase.native.rewrite"
+    let theorem21Key := Informal.PreviewManifest.externalMarkupEntryKey theorem21Label
+    let proposition24Key := Informal.PreviewManifest.externalMarkupEntryKey proposition24Label
+    let rewriteKey := Informal.PreviewCache.statementKey rewriteLabel
+    let some theorem21Entry := previewEntry? showcaseFiles.manifest theorem21Key
+      | return #["missing theorem 2.1 no-render entry"]
+    let some proposition24Entry := previewEntry? showcaseFiles.manifest proposition24Key
+      | return #["missing proposition 2.4 no-render entry"]
+    let some rewriteEntry := previewEntry? showcaseFiles.manifest rewriteKey
+      | return #["missing native rewrite no-render entry"]
+    let checks : Array (String × Bool) := #[
+      ("theorem 2.1 semantic entry", entryIsExternalMarkup theorem21Entry),
+      ("theorem 2.1 no HTML", (showcaseFiles.htmlCache.findHtml? theorem21Key).isNone),
+      ("theorem 2.1 keeps Lean keys",
+        theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
+          theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul")),
+      ("proposition 2.4 use preview cleared",
+        proposition24Entry.uses.any (fun entry =>
+          entry.label == theorem21Label &&
+            entry.previewKey.isNone)),
+      ("theorem 2.1 used-by preview cleared",
+        theorem21Entry.usedBy.any (fun entry =>
+          entry.label == proposition24Label &&
+            entry.previewKey.isNone)),
+      ("native rewrite external use preview cleared",
+        rewriteEntry.uses.any (fun entry =>
+          entry.label == theorem21Label &&
+            entry.previewKey.isNone))
+    ]
+    pure <| failedCheckLabels checks
+
 /-- info: true -/
 #guard_msgs in
 #eval

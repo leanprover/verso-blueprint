@@ -18,6 +18,7 @@ abbrev Entry := Informal.PreviewManifest.Entry
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
+abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
 
 def defaultSite : FilePath := "_out" / "site"
 
@@ -296,53 +297,102 @@ def readGeneratedData (site : FilePath) : IO GeneratedData := do
   let htmlCache ← readHtmlCacheForSite site
   pure { manifest, htmlCache }
 
-def cacheKeySet (cache : HtmlCacheFile) : Std.HashSet String :=
-  cache.entries.foldl (fun keys entry => keys.insert entry.key) {}
-
-def manifestKeySet (manifest : ManifestFile) : Std.HashSet String :=
-  manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
-
 private def pushMissingCacheKey
-    (keys : Std.HashSet String) (errors : Array String) (context key : String) : Array String :=
-  if keys.contains key then
+    (index : PreviewArtifactIndex) (errors : Array String) (context key : String) :
+    Array String :=
+  if index.hasCacheKey key then
     errors
   else
     errors.push s!"missing HTML cache entry for {context}: {key}"
 
+private def pushMissingManifestKey
+    (index : PreviewArtifactIndex) (errors : Array String) (context key : String) :
+    Array String :=
+  if index.hasManifestKey key then
+    errors
+  else
+    errors.push s!"missing manifest entry for {context}: {key}"
+
+private def checkPreviewReference
+    (index : PreviewArtifactIndex) (context key : String) (errors : Array String) :
+    Array String :=
+  let errors := pushMissingManifestKey index errors context key
+  pushMissingCacheKey index errors context key
+
 private def checkRelatedEntries
-    (cacheKeys : Std.HashSet String) (context : String) (entries : Array RelatedEntry)
+    (index : PreviewArtifactIndex) (context : String) (entries : Array RelatedEntry)
     (errors : Array String) : Array String :=
   entries.foldl
     (fun errors entry =>
       match entry.previewKey with
       | none => errors
       | some key =>
-        pushMissingCacheKey cacheKeys errors
-          s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
-          key.value)
+        let context := s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
+        checkPreviewReference index context key.value errors)
     errors
 
+private def checkGraphNodePreviewKey
+    (index : PreviewArtifactIndex) (graphKey : String) (node : Informal.Graph.NodeData)
+    (errors : Array String) : Array String :=
+  match node.previewKey with
+  | none => errors
+  | some key =>
+      checkPreviewReference index
+        s!"graph {graphKey} node {Informal.PreviewManifest.labelString node.label}"
+        key.value errors
+
+private def checkGraphVariantPreviewKeys
+    (index : PreviewArtifactIndex) (graphKey : String)
+    (variant : Informal.Graph.GraphRenderVariant) (errors : Array String) : Array String :=
+  variant.previewKeyByNodeId.foldl
+    (fun errors (nodeId, key) =>
+      checkPreviewReference index
+        s!"graph {graphKey} variant {variant.key} node {nodeId}"
+        key errors)
+    errors
+
+private def checkGraphPreviewKeys
+    (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData)
+    (errors : Array String) : Array String :=
+  let errors :=
+    graph.nodes.foldl (fun errors node => checkGraphNodePreviewKey index graph.key node errors) errors
+  graph.variants.foldl
+    (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
+    errors
+
+private def entryRequiresRenderedBody (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .externalMarkup => false
+  | .block | .leanDecl | .citation => true
+
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
-  let manifestKeys := manifestKeySet manifest
-  let cacheKeys := cacheKeySet htmlCache
-  manifest.previews.foldl
+  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
+  let errors := manifest.previews.foldl
     (fun errors entry =>
-      let errors := pushMissingCacheKey cacheKeys errors s!"entry {entry.key}" entry.key
+      let errors :=
+        if entryRequiresRenderedBody entry then
+          pushMissingCacheKey index errors s!"entry {entry.key}" entry.key
+        else
+          errors
       let errors := entry.leanCodePreviewKeys.foldl
         (fun errors key =>
           let errors :=
-            if manifestKeys.contains key then errors else errors.push s!"missing manifest entry for Lean preview key {key}"
-          pushMissingCacheKey cacheKeys errors s!"Lean preview key on {entry.key}" key)
+            if index.hasManifestKey key then
+              errors
+            else
+              errors.push s!"missing manifest entry for Lean preview key {key}"
+          pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
         errors
-      let errors := checkRelatedEntries cacheKeys s!"uses of {entry.key}" entry.uses errors
-      let errors := checkRelatedEntries cacheKeys s!"used-by of {entry.key}" entry.usedBy errors
+      let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
+      let errors := checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors
       match entry.group with
       | none => errors
       | some group =>
-          checkRelatedEntries cacheKeys
+          checkRelatedEntries index
             s!"group {Informal.PreviewManifest.labelString group.label} on {entry.key}"
             group.entries errors)
     #[]
+  manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 def checkJsonFromErrors
     (manifest : ManifestFile) (htmlCache : HtmlCacheFile) (errors : Array String) : Json :=

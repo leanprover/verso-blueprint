@@ -10,7 +10,7 @@ namespace Informal
 
 open Lean
 
-/-- Non-empty rendered-fragment lookup key for manifest/cache-backed previews. -/
+/-- Non-empty serialized preview-key value. -/
 structure PreviewKey where
   private mk ::
   /-- Serialized preview key value. -/

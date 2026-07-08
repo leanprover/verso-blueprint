@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-07-07
+Last reviewed: 2026-07-08
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Requests that should eventually move into upstream `verso`, Lake, or Lean live
@@ -116,6 +116,13 @@ Work:
 10. deduplicate the source metadata resolver with manifest/data lookup helpers
    once more source consumers exist, so missing-entry, missing-document, and
    source-ref normalization semantics have one implementation
+11. scheduled follow-up: align page-local preview triggers with finalized
+   manifest/cache preview availability. Today generated JSON clears traversal
+   preview candidates that lack cache bodies, but page-local relation-panel
+   markup and embedded graph-block JSON are still derived during traversal. The
+   follow-up should either pass preview availability into page-local relation
+   and graph rendering or make the browser runtimes disable semantic-only
+   missing-cache previews without reporting them as broken generated data.
 
 ### Data Model and Status Semantics
 
@@ -189,7 +196,7 @@ Work:
    diagnostics
 3. keep reference blueprint generation and validation distinct from small
    browser-regression fixtures
-4. add direct regression coverage for preview-cache keying and JSON roundtrips
+4. add direct regression coverage for preview-key normalization and JSON roundtrips
 5. add low-cost Python coverage for harness manifest, path, and worktree logic
    so routine harness changes do not require full example rebuilds
 6. add PR preview deployment that reuses the assembled reference `_site`
