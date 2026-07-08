@@ -318,6 +318,11 @@ Manifest entries serialize several label-like fields with distinct roles:
   should prefer it when presenting or round-tripping labels that contain
   punctuation.
 
+Relation entries in `uses`, `usedBy`, and `group.entries` carry their own
+`previewKey` field. That field is either a non-empty manifest/cache key or
+`null` when the related node has no rendered preview. Fresh generated data does
+not use an empty string as a no-preview sentinel.
+
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty
 result means a traversal preview, such as a bodyless directive carrying
