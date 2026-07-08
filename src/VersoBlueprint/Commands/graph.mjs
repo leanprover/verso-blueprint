@@ -404,6 +404,7 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
     if (!previewKey) return;
     const resolved = await previewUtils.resolvePreviewHtml(previewKey);
+    if (resolved && resolved.reason === "semantic-preview-body-missing") return;
     const html = resolved.html || "";
     if (requestToken !== graphState.previewRequestToken) return;
     if (!html) return;
