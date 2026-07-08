@@ -61,8 +61,14 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     return entry && typeof entry.href === "string" ? entry.href : "";
   }
 
-  function manifestEntrySourceLocation(entry) {
-    return entry.sourceLocation;
+  function validateManifestEntrySourceLocation(entry, index) {
+    const sourceLocation = entry.sourceLocation;
+    if (!sourceLocation || typeof sourceLocation !== "object" || Array.isArray(sourceLocation)) {
+      throw new Error("Blueprint manifest entry " + index + " is missing sourceLocation");
+    }
+    if (typeof sourceLocation.ok !== "boolean") {
+      throw new Error("Blueprint manifest entry " + index + " sourceLocation.ok must be boolean");
+    }
   }
 
   function missingPreviewLookupResult(fields, message) {
@@ -80,7 +86,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       reason: "",
       manifestEntry: manifestEntry,
       href: manifestEntryHref(manifestEntry),
-      sourceLocation: manifestEntrySourceLocation(manifestEntry)
+      sourceLocation: manifestEntry.sourceLocation
     }, fields || {});
   }
 
@@ -636,13 +642,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       entryName: "Blueprint manifest entry",
       duplicateMessage: "Blueprint manifest contains duplicate key ",
       validateEntry(entry, index) {
-        const sourceLocation = entry.sourceLocation;
-        if (!sourceLocation || typeof sourceLocation !== "object" || Array.isArray(sourceLocation)) {
-          throw new Error("Blueprint manifest entry " + index + " is missing sourceLocation");
-        }
-        if (typeof sourceLocation.ok !== "boolean") {
-          throw new Error("Blueprint manifest entry " + index + " sourceLocation.ok must be boolean");
-        }
+        validateManifestEntrySourceLocation(entry, index);
       }
     });
   }
