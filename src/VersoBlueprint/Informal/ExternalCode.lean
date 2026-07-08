@@ -263,7 +263,7 @@ Each snippet-local hover payload is inserted into the real Verso page hover
 table. Identical payloads therefore share a page hover id, while preview-only
 HTML can still remain self-contained through `externalDeclRendered`.
 
-The string replacement is deliberately only an id-scope translation:
+The template rewrite is deliberately only an id-scope translation:
 `data-bp-external-hover-local` means "this id is valid only for the external
 declaration snapshot", and `data-verso-hover` means "this id is valid in the
 current page's Verso hover table". The payload body is registered through
@@ -272,12 +272,15 @@ Verso's normal dedup table before the page id is emitted.
 private def renderedHtmlWithPageHovers [Monad m]
     (renderedHtml : ExternalDeclRenderedHtml) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m String := do
-  let mut html := renderedHtml.html
+  let mut rewrites := #[]
   for payload in renderedHtml.hoverPayloads do
     let pageId ← registerPageHoverPayload payload
-    html := html.replace (externalDeclHoverLocalAttr payload.localId) s!"data-verso-hover=\"{pageId}\""
-    html := html.replace (externalDeclHoverInlineMarker payload.localId) ""
-  return html
+    rewrites := rewrites.push {
+      localId := payload.localId
+      attrReplacement := s!"data-verso-hover=\"{pageId}\""
+      inlineReplacement := ""
+    }
+  return renderedHtml.rewriteHovers rewrites
 
 private def externalDeclRenderedWithPageHovers [Monad m]
     (item : LinkedExternalDecl) :
@@ -371,12 +374,15 @@ private def registerCacheHoverPayload (payload : ExternalDeclHoverPayload) :
 private def renderedHtmlWithCacheHovers
     (renderedHtml : ExternalDeclRenderedHtml) :
     ExternalDeclCacheHoverRender String := do
-  let mut html := renderedHtml.html
+  let mut rewrites := #[]
   for payload in renderedHtml.hoverPayloads do
     let cacheId ← registerCacheHoverPayload payload
-    html := html.replace (externalDeclHoverLocalAttr payload.localId) s!"data-verso-hover=\"{cacheId}\""
-    html := html.replace (externalDeclHoverInlineMarker payload.localId) ""
-  return html
+    rewrites := rewrites.push {
+      localId := payload.localId
+      attrReplacement := s!"data-verso-hover=\"{cacheId}\""
+      inlineReplacement := ""
+    }
+  return renderedHtml.rewriteHovers rewrites
 
 private def externalDeclRenderedWithCacheHovers
     (item : LinkedExternalDecl) :
