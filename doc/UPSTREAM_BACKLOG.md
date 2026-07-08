@@ -70,20 +70,8 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Lake and Package Management
 
-- [ ] Honor package overrides during `lake update` bootstrap.
-  - confirmed locally on Lean `v4.29.0`
-  - current limitation:
-    `loadWorkspace` passes `packageOverrides` only to `materializeDeps`, while
-    `updateManifest` calls `updateAndMaterialize` without threading overrides
-  - practical effect:
-    `.lake/package-overrides.json` and `lake --packages ... update` do not stop
-    an initial upstream clone when a fresh external project has no manifest yet
-  - desired behavior:
-    `lake update` should apply workspace and CLI package overrides during the
-    initial dependency-resolution/materialization path
-  - current Blueprint workaround:
-    the harness rewrites cloned `lakefile.lean` dependencies before running
-    `lake update`
+- [ ] [Honor package overrides during `lake update`
+  bootstrap.](./roadmap/cards/UPC-0012-lake-update-package-overrides/README.md)
 
 ## Manual Content Cleanup
 
