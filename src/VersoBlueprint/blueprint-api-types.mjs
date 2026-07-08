@@ -238,7 +238,7 @@
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
- * @property {BlueprintSourceLocationResult} [sourceLocation] Original source location lookup result for this entry.
+ * @property {BlueprintSourceLocationResult} sourceLocation Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
  */
