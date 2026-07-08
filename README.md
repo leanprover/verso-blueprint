@@ -17,9 +17,7 @@ A Blueprint project combines:
 
 ## Start Here
 
-### Start a project
-
-If you want to start a Blueprint project today, start here:
+If you want to start a Blueprint project today, read these in order:
 
 1. [project_template/README.md](./project_template/README.md)
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)
@@ -27,23 +25,6 @@ If you want to start a Blueprint project today, start here:
 4. [doc/API.md](./doc/API.md) when you need stable Lean, generated-data, or
    browser integration APIs; start with
    [Choosing an API](./doc/API.md#choosing-an-api)
-
-To copy and smoke-test the starter before renaming the package and modules:
-
-```bash
-cp -R project_template my-blueprint
-cd my-blueprint
-lake update
-./scripts/ci-pages.sh
-```
-
-This builds the starter library, runs the generator file, and writes the HTML
-site under `_out/site/html-multi/`. After that, follow the template README to
-rename `ProjectTemplate` to your project name and replace the starter chapters.
-
-### See real examples
-
-For larger Blueprints in use, see [Reference Blueprints](#reference-blueprints).
 
 ## Current Project Shape
 
@@ -57,6 +38,9 @@ Today a Blueprint project usually owns three things:
 `verso-blueprint` provides the Blueprint directives, rendering commands, preview
 runtime, and support library code. The starter layout in
 [project_template/](./project_template/) shows the recommended shape.
+For the broader rendered artifact index, including published reference
+blueprints and local test fixtures, see the
+[published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
 
 By default, generators write the HTML site under `_out/site/html-multi/`. Passing
 `--pdf` to `lake exe blueprint-gen` also emits TeX and runs `lualatex` to write
@@ -88,7 +72,7 @@ provenance metadata.
 
 ## Core Features
 
-### Labeled nodes and rich directives
+### Labelled nodes and rich directives
 
 Every Blueprint node is identified by a label such as `addition_spec` or
 `addition_right_identity`. Those labels drive cross-references, graph nodes,
@@ -294,7 +278,7 @@ Blueprint can dump structured metadata for other tools, including the semantic
 manifest, its schema, and the rendered-fragment cache
 (`blueprint-html-cache.json`) used by preview consumers. The cache includes the
 hover payloads needed by cached Lean fragments. These are command-line flags
-passed to the generator entry point, such as
+passed to the generator binary, such as
 `--dump-manifest`, `--dump-html-cache`, and `--dump-schema`. See
 [doc/API.md](./doc/API.md) for the stable generated-data contract.
 
