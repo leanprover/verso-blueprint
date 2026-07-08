@@ -860,11 +860,11 @@ class TestPreviewRuntimeRegressions:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-key", re.compile(r"^graph:#<"))
-        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "57")
+        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "58")
         expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "15")
         expect(graph_card).to_have_attribute("data-bp-graph-group-count", "4")
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 57"
+            "Nodes 58"
         )
         used_target_link = graph_card.locator('[data-bp-graph-node-label="used_target"]').first
         expect(used_target_link).to_have_text(re.compile(r"Definition"))

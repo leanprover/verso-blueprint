@@ -255,7 +255,7 @@
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {number} schemaVersion Graph payload schema version.
+ * @property {number} schemaVersion Graph payload schema version; version 2 uses string-or-null node preview keys.
  * @property {string} key Variant key.
  * @property {unknown[]} nodes Graph node payloads.
  * @property {unknown[]} edges Graph edge payloads.
