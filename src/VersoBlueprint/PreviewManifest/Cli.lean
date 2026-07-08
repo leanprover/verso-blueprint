@@ -155,7 +155,7 @@ def helpText : String := String.intercalate "\n" [
   "  --with-html-multi | --delay-html-multi <file> | --resume-html-multi <file> | --without-html-multi",
   "  --with-word-count <file> | --without-word-count",
   "  --draft",
-  "  --verbose",
+  "  --verbose                  Show phase timing and progress diagnostics.",
   "  --remote-config <file>"
 ]
 
