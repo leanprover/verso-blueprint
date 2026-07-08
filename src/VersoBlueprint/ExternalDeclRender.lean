@@ -62,20 +62,117 @@ def externalDeclHoverLocalAttrName : String := "data-bp-external-hover-local"
 
 def externalDeclHoverInlineMarkerAttrName : String := "data-bp-external-hover-inline-local"
 
-def externalDeclHoverLocalAttr (localId : Nat) : String :=
-  s!"{externalDeclHoverLocalAttrName}=\"{localId}\""
+/--
+Replacement pair for one snippet-local external-declaration hover id.
+-/
+structure ExternalDeclHoverRewrite where
+  localId : Nat
+  attrReplacement : String
+  inlineReplacement : String
+deriving Repr, Inhabited
 
-def externalDeclHoverInlineMarker (localId : Nat) : String :=
-  s!"<span {externalDeclHoverInlineMarkerAttrName}=\"{localId}\"></span>"
+private def externalDeclHoverLocalAttrPrefix : String :=
+  s!"{externalDeclHoverLocalAttrName}=\""
+
+private def externalDeclHoverInlineMarkerPrefix : String :=
+  s!"<span {externalDeclHoverInlineMarkerAttrName}=\""
+
+private def externalDeclHoverInlineMarkerSuffix : String :=
+  "></span>"
+
+private inductive ExternalDeclHoverMarkerKind where
+  | attr
+  | inline
+
+private def findExternalDeclHoverRewrite?
+    (rewrites : Array ExternalDeclHoverRewrite) (localId : Nat) :
+    Option ExternalDeclHoverRewrite :=
+  rewrites.find? (fun rewrite => rewrite.localId == localId)
+
+private def parseExternalDeclHoverMarker?
+    (html : String) (markerPrefix : String) (start : html.Pos) :
+    Option (Nat × html.Pos) := do
+  let idStart := start.nextn markerPrefix.length
+  let quotePos ← idStart.find? "\""
+  let localId ← (html.extract idStart quotePos).toNat?
+  let afterQuote ← quotePos.next?
+  some (localId, afterQuote)
+
+private def parseExternalDeclHoverInlineMarker?
+    (html : String) (start : html.Pos) : Option (Nat × html.Pos) := do
+  let (localId, afterQuote) ←
+    parseExternalDeclHoverMarker? html externalDeclHoverInlineMarkerPrefix start
+  let markerEnd := afterQuote.nextn externalDeclHoverInlineMarkerSuffix.length
+  if html.extract afterQuote markerEnd == externalDeclHoverInlineMarkerSuffix then
+    some (localId, markerEnd)
+  else
+    none
+
+private def findNextExternalDeclHoverMarker?
+    (html : String) (pos : html.Pos) :
+    Option (ExternalDeclHoverMarkerKind × html.Pos) :=
+  let attrPos? := pos.find? externalDeclHoverLocalAttrPrefix
+  let inlinePos? := pos.find? externalDeclHoverInlineMarkerPrefix
+  match attrPos?, inlinePos? with
+  | none, none => none
+  | some attrPos, none => some (.attr, attrPos)
+  | none, some inlinePos => some (.inline, inlinePos)
+  | some attrPos, some inlinePos =>
+      if attrPos <= inlinePos then
+        some (.attr, attrPos)
+      else
+        some (.inline, inlinePos)
+
+private partial def rewriteExternalDeclHoverTemplateLoop
+    (html : String)
+    (rewrites : Array ExternalDeclHoverRewrite)
+    (pos : html.Pos)
+    (parts : Array String) : Array String :=
+  match findNextExternalDeclHoverMarker? html pos with
+  | none =>
+      parts.push (html.extract pos html.endPos)
+  | some (kind, markerPos) =>
+      let parts := parts.push (html.extract pos markerPos)
+      let fallback : Unit → Array String := fun _ =>
+        match markerPos.next? with
+        | some nextPos =>
+            rewriteExternalDeclHoverTemplateLoop html rewrites nextPos
+              (parts.push (html.extract markerPos nextPos))
+        | none =>
+            parts.push (html.extract markerPos html.endPos)
+      let parsed? :=
+        match kind with
+        | .attr =>
+            parseExternalDeclHoverMarker? html externalDeclHoverLocalAttrPrefix markerPos
+        | .inline =>
+            parseExternalDeclHoverInlineMarker? html markerPos
+      match parsed? with
+      | none => fallback ()
+      | some (localId, nextPos) =>
+          match findExternalDeclHoverRewrite? rewrites localId with
+          | none => fallback ()
+          | some rewrite =>
+              let replacement :=
+                match kind with
+                | .attr => rewrite.attrReplacement
+                | .inline => rewrite.inlineReplacement
+              let parts :=
+                if replacement.isEmpty then parts else parts.push replacement
+              rewriteExternalDeclHoverTemplateLoop html rewrites nextPos parts
+
+def ExternalDeclRenderedHtml.rewriteHovers
+    (rendered : ExternalDeclRenderedHtml)
+    (rewrites : Array ExternalDeclHoverRewrite) : String :=
+  String.join <|
+    (rewriteExternalDeclHoverTemplateLoop rendered.html rewrites rendered.html.startPos #[]).toList
 
 def ExternalDeclRenderedHtml.selfContained (rendered : ExternalDeclRenderedHtml) : String :=
-  rendered.hoverPayloads.foldl
-    (init := rendered.html)
-    (fun html payload =>
-      html
-        |>.replace (externalDeclHoverLocalAttr payload.localId) ""
-        |>.replace (externalDeclHoverInlineMarker payload.localId)
-          s!"<span class=\"hover-info\">{payload.html}</span>")
+  rendered.rewriteHovers <|
+    rendered.hoverPayloads.map fun payload => {
+      localId := payload.localId
+      attrReplacement := ""
+      inlineReplacement := s!"<span class=\"hover-info\">{payload.html}</span>"
+    }
 
 abbrev ExternalDeclRenderResult := Except ExternalDeclRenderError ExternalDeclRenderedHtml
 
