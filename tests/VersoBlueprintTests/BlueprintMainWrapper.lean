@@ -17,6 +17,11 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 This tiny document exercises PDF engine invocation.
 :::::::
 
+#docs (Manual) highlightedStartupPatchDoc "Highlighted Startup Patch" :=
+:::::::
+This tiny document exercises highlighted-code startup asset normalization.
+:::::::
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -113,16 +118,54 @@ This tiny document exercises PDF engine invocation.
         appearsBefore out "class=\"bp_build_metadata\"" "class=\"authors\""
   | none => false
 
-private partial def freshPdfSmokeRoot : IO System.FilePath := do
+private partial def freshBlueprintMainWrapperRoot (testName : String) : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
   let cwd ← IO.currentDir
   let root :=
     cwd / ".lake" / "build" / "tmp" /
-      "verso-blueprint-pdf-smoke-test" / toString suffix
+      testName / toString suffix
   if ← root.pathExists then
-    freshPdfSmokeRoot
+    freshBlueprintMainWrapperRoot testName
   else
     pure root
+
+private def freshPdfSmokeRoot : IO System.FilePath :=
+  freshBlueprintMainWrapperRoot "verso-blueprint-pdf-smoke-test"
+
+private def highlightedStartupWithoutTacticsJs : JS := r#"/* Render docstrings */
+for (const d of document.querySelectorAll("code.docstring, pre.docstring")) {
+  const str = d.innerText;
+}
+const defaultTippyProps = {
+  allowHTML: true
+};
+"#
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let root ← freshBlueprintMainWrapperRoot "verso-blueprint-highlighted-startup-patch-test"
+    let outDir := root / "site"
+    let config : RenderConfig := Informal.PreviewManifest.withBlueprintAssets {
+      toHtmlConfig := {
+        extraJs := [highlightedStartupWithoutTacticsJs]
+      }
+    }
+    let code ←
+      Informal.PreviewManifest.blueprintMain
+        highlightedStartupPatchDoc.toPart
+        (extensionImpls := by exact extension_impls%)
+        (options := [
+          "--output", outDir.toString,
+          "--without-html-single"
+        ])
+        (config := config)
+    let html ← IO.FS.readFile (outDir / "html-multi" / "index.html")
+    pure <|
+      code == 0 &&
+        hasSubstr html "const str = d.textContent || \"\";" &&
+        !hasSubstr html "const str = d.innerText;"
 
 private def fakePdfEngineScript : String := r#"#!/bin/sh
 set -eu
