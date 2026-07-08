@@ -182,8 +182,8 @@ looks like this:
 
 Clients should read `entry.sources`; the manifest does not emit a singular
 `entry.source` field. Most block and external-markup entries have at most one
-source ref, while `.leanDecl` entries can aggregate refs from multiple sourced
-Blueprint nodes that share the same Lean declaration preview.
+source ref, while Lean-code preview entries can aggregate refs from multiple
+sourced Blueprint nodes that share the same rendered Lean preview.
 
 Generated browser APIs expose the same split. Use `loadManifestEntry` or
 `resolvePreview` to read `entry.sources`, then use `loadSourceDocument` or
@@ -257,10 +257,15 @@ those assets or decide how a richer source review interface should look.
 }
 ```
 
-When a sourced Blueprint node has associated Lean declaration previews, the
-corresponding `.leanDecl` manifest entries also expose every owning ref in
-`sources`. This lets audit clients follow the source-document, Blueprint-node,
-and Lean-declaration chain without scraping rendered HTML.
+When a sourced Blueprint node has associated Lean code previews, the
+corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every
+owning ref in `sources`. External declaration previews are keyed by canonical
+Lean declaration; inline-code previews are keyed by the inline Blueprint code
+label, so all declarations from one inline block share one rendered preview
+entry. Declaration-specific inline identity is the owning inline code label plus
+the declaration's array index in the owning block entry's
+`codeData.declarations`. This lets audit clients follow the source-document,
+Blueprint-node, and Lean-code chain without scraping rendered HTML.
 
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
@@ -309,7 +314,7 @@ Manifest entries serialize several label-like fields with distinct roles:
   contain a target-family prefix such as `externalMarkup:` and should not be
   treated as display text.
 - `targetKind` says how to interpret the key namespace: `block`, `leanDecl`,
-  `citation`, or `externalMarkup`.
+  `inlineLeanCode`, `citation`, or `externalMarkup`.
 - `label` is the canonical target label used for semantic identity.
 - `authoredLabel` is the authored/display string form. UI and review clients
   should prefer it when presenting or round-tripping labels that contain
@@ -921,11 +926,14 @@ if (result.ok) {
 }
 ```
 
-Use `resolveDeclaration` when the client starts from a Lean declaration name. It
-resolves Lean-declaration manifest entries and returns both the generated
-Blueprint occurrence `href` and the manifest `sourceLocation` result. The
-`href` points to the generated Blueprint preview occurrence; the
-`sourceLocation` points to the Lean source definition:
+Use `resolveDeclaration` when the client starts from a Lean declaration name and
+needs a declaration-keyed preview entry. It resolves external/declaration-keyed
+manifest entries and returns both the generated Blueprint occurrence `href` and
+the manifest `sourceLocation` result. Inline-code previews are keyed by the
+inline Blueprint code label; clients that start from an inline block should read
+that block entry's `leanCodePreviewKeys` or call `resolvePreview` with the
+explicit preview key. The `href` points to the generated Blueprint preview
+occurrence; the `sourceLocation` points to the Lean source definition:
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";
@@ -1074,7 +1082,7 @@ reference.
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
 | `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
-| `api.resolveDeclaration(declName, options)` | Resolve a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. |
+| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their inline Blueprint code label and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
@@ -1143,11 +1151,12 @@ namespace as `window.VersoBlueprint.slides`. That bridge is for the generated
 slide asset and does not expose the general render API; custom preview clients should use the stable render API table
 above unless a slide-specific hook is explicitly documented there.
 
-For semantic queries, use `resolveLabel`, `resolveDeclaration`, or use the
-manifest entry returned by `resolvePreview` or `loadManifestEntry`. Do not parse
-inserted or cached fragments to rediscover labels, source locations,
-dependencies, group membership, Lean-code associations, or status metadata. The
-cached fragment is presentation: it may display those facts, but the manifest
+For semantic queries, use `resolveLabel`, `resolveDeclaration` for
+declaration-keyed previews, or use the manifest entry returned by
+`resolvePreview` or `loadManifestEntry`. Do not parse inserted or cached
+fragments to rediscover labels, source locations, dependencies, group
+membership, Lean-code associations, or status metadata. The cached fragment is
+presentation: it may display those facts, but the manifest
 is the data contract.
 
 ### Component-Framework Pattern

@@ -408,15 +408,18 @@ namespace LeanCodePreviews
 def spec : StoreSpec := {
   name := Informal.LeanDeclPreviewKey.domainName
   kind := .runtimeCache
-  key := "Lean declaration name"
-  value := "LeanCodePreview.Entry plus declaration-preview anchor ids"
-  summary := "Traversal-cached Lean declaration preview payloads keyed by declaration name."
+  key := "external Lean declaration name or inline-code label"
+  value := "LeanCodePreview.Entry plus code-preview anchor ids"
+  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or shared inline-code label."
 }
 
 def domainName : Name := spec.name
 
 def lookupKey (decl : Name) : String :=
   Informal.LeanDeclPreviewKey.lookupKey decl
+
+def lookupInlineKey (label : Name) : String :=
+  Informal.LeanDeclPreviewKey.inlineLookupKey label
 
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey

@@ -182,7 +182,7 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     slug := "lean-code-link-preview"
     title := "Blueprint Lean Code Link Preview Wiring"
     category := "Preview"
-    summary := "Inline Lean declaration preview links inside the summary."
+    summary := "Inline Lean code preview links inside the summary."
     tags := #["preview", "inline", "lean"]
     kind := "curated_doc"
   },

@@ -87,6 +87,7 @@ abbrev SummaryHtmlM := HtmlT Manual (ReaderT AllRemotes (ReaderT ExtensionImpls 
 structure SummaryHtmlContext where
   entryHref? : Name → Option String
   declHref? : Name → Name → Option String
+  declPreviewLookupKey? : Name → Name → Option String
   previewLookupKey? : Name → Option String
 
 structure SummaryRows where
@@ -119,12 +120,14 @@ structure SummaryRows where
   blockerRows : Array Output.Html := #[]
 
 private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
-    (href? : Option String) (linkTitle? : Option String := Option.none) : Output.Html :=
+    (href? : Option String) (linkTitle? : Option String := Option.none)
+    (previewLookupKey? : Option String := Option.none) : Output.Html :=
   match href? with
   | some href =>
     Informal.LeanCodeLink.renderResolved
       target node "" (some href) linkTitle?
       (previewTitle := Informal.LeanCodePreview.title target)
+      (previewLookupKey? := previewLookupKey?)
   | Option.none => node
 
 private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name) : Output.Html :=
@@ -139,7 +142,8 @@ private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name
 private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Name)
     (decls : List Name) : Array Output.Html :=
   decls.toArray.map fun decl =>
-    let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}} (ctx.declHref? label decl)
+    let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}}
+      (ctx.declHref? label decl) (previewLookupKey? := ctx.declPreviewLookupKey? label decl)
     {{ <li>{{declNode}}</li> }}
 
 private def summaryBadgeClass : String := "bp_summary_badge"
@@ -361,7 +365,9 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     SummaryHtmlM Output.Html := do
   let entryRef := ctx.entryRef item.label
   let declLink :=
-    summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}} (ctx.declHref? item.label item.decl)
+    summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}}
+      (ctx.declHref? item.label item.decl)
+      (previewLookupKey? := ctx.declPreviewLookupKey? item.label item.decl)
   let view := item.status.presentation
   let declPrefix ←
     match item.status with
@@ -407,6 +413,7 @@ private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (labe
       canonical
       {{<code>s!"{canonical}"</code>}}
       (ctx.declHref? label canonical)
+      (previewLookupKey? := ctx.declPreviewLookupKey? label canonical)
   if written == canonical then
     canonicalNode
   else

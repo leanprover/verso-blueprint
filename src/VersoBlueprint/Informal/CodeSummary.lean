@@ -9,6 +9,7 @@ import Verso
 import VersoManual
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Lib.HoverRender
 
@@ -80,12 +81,14 @@ structure DeclSummaryItem where
   /-- Name shown in the code-summary panel. -/
   displayName : Name
   /--
-  Canonical declaration name used to look up the shared Lean-code preview.
+  Canonical declaration name used for the default Lean-code preview lookup.
 
   External references may be written with an opened or namespace-local name, but
   traversal stores rendered Lean-code previews under the resolved canonical name.
   -/
   previewName : Name
+  /-- Explicit HTML-cache preview lookup key, when it differs from `previewName`. -/
+  previewLookupKey? : Option String := none
   href : Option String := none
   kind : DeclSummaryKind := .definition
   status : Data.ProvedStatus := .proved
@@ -113,6 +116,7 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
         Informal.LeanCodeLink.renderResolved
           item.previewName txt "" (some href)
           (previewTitle := s!"{item.displayName}")
+          (previewLookupKey? := item.previewLookupKey?)
       | none => txt
     {{
       <li class="bp_code_decl_item">
@@ -163,11 +167,13 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
     }}
 
 private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDeclData)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (previewLookupKey? : Option String := none) :
+    Array DeclSummaryItem :=
   let defs := definedDefs.map fun decl =>
     {
       displayName := decl.name
       previewName := decl.name
+      previewLookupKey?
       href := hrefOf decl.name
       kind := .definition
       status := decl.provedStatus
@@ -176,6 +182,7 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
     {
       displayName := decl.name
       previewName := decl.name
+      previewLookupKey?
       href := hrefOf decl.name
       kind := .theoremLike
       status := decl.provedStatus
@@ -221,11 +228,12 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
       present := decl.present
     }
 
-private def summaryPreviewItems (cdata : ComputedData)
+private def summaryPreviewItems (label : Data.Label) (cdata : ComputedData)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   match cdata.source with
   | some (.inline codeData) =>
     inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf
+      (some <| Informal.LeanDeclPreviewKey.inlineLookupKey label)
   | some (.external decls) =>
     externalDeclSummaryItems decls hrefOf
   | none =>
@@ -234,9 +242,9 @@ private def summaryPreviewItems (cdata : ComputedData)
 private def summaryPreviewEmptyText (_cdata : ComputedData) : String :=
   "No associated Lean code or declarations."
 
-private def renderSummaryPreview (_label : Data.Label) (cdata : ComputedData)
+private def renderSummaryPreview (label : Data.Label) (cdata : ComputedData)
     (hrefOf : Name → Option String) : Output.Html :=
-  let items := summaryPreviewItems cdata hrefOf
+  let items := summaryPreviewItems label cdata hrefOf
   let sectionTitle :=
     if items.isEmpty then "Lean status" else "Associated Lean declarations"
   let sections := #[{
