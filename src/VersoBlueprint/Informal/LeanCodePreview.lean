@@ -8,7 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Data
-import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.TraversalIndex
@@ -26,7 +26,7 @@ Unlike `PreviewCache`, this domain is only for Lean-code preview bodies.
 External entries target Lean declarations; inline entries target the owning
 Blueprint code label.
 -/
-def domainName : Name := Informal.LeanDeclPreviewKey.domainName
+def domainName : Name := Informal.LeanCodePreviewKey.domainName
 /--
 Canonical internal preview target for one external Lean declaration.
 
@@ -34,10 +34,10 @@ The external preview namespace mirrors regular Lean names so declaration
 previews can be shared across references.
 -/
 def targetName (decl : Name) : Name :=
-  Informal.LeanDeclPreviewKey.targetName decl
+  Informal.LeanCodePreviewKey.targetName decl
 
 def lookupKey (decl : Name) : String :=
-  Informal.LeanDeclPreviewKey.lookupKey decl
+  Informal.LeanCodePreviewKey.lookupKey decl
 
 inductive Source where
   | inlineBlocks (blocks : Array ManualBlock) (sourceLocation : Informal.Data.SourceLocationResult)

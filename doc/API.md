@@ -263,9 +263,10 @@ owning ref in `sources`. External declaration previews are keyed by canonical
 Lean declaration; inline-code previews are keyed by the inline Blueprint code
 label, so all declarations from one inline block share one rendered preview
 entry. Declaration-specific inline identity is the owning inline code label plus
-the declaration's array index in the owning block entry's
-`codeData.declarations`. This lets audit clients follow the source-document,
-Blueprint-node, and Lean-code chain without scraping rendered HTML.
+the declaration's position in the owning block entry's ordered inline code
+metadata (`definedDefs` followed by `definedTheorems`). This lets audit clients
+follow the source-document, Blueprint-node, and Lean-code chain without
+scraping rendered HTML.
 
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:

@@ -676,8 +676,9 @@ several sourced Blueprint nodes share the same rendered Lean preview. External
 declaration previews are keyed by canonical declaration, while inline code
 previews are keyed by the inline Blueprint code label and use
 `targetKind: "inlineLeanCode"`. Declaration-specific inline identity is the
-owning inline code label plus the declaration's array index in the owning block
-entry's `codeData.declarations`.
+owning inline code label plus the declaration's position in the owning block
+entry's ordered inline code metadata (`definedDefs` followed by
+`definedTheorems`).
 Browser clients can resolve those document ids with `loadSourceDocument` or
 read the complete catalog with `loadSourceDocuments`.
 

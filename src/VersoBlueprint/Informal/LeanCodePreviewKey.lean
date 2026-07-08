@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 
-namespace Informal.LeanDeclPreviewKey
+namespace Informal.LeanCodePreviewKey
 
 open Lean
 
@@ -36,4 +36,4 @@ def inlineTargetName (label : Name) : Name :=
 def inlineLookupKey (label : Name) : String :=
   (inlineTargetName label).toString
 
-end Informal.LeanDeclPreviewKey
+end Informal.LeanCodePreviewKey

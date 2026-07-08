@@ -8,7 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Data
-import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Lib.HoverRender
 
 namespace Informal.LeanCodeLink
@@ -24,7 +24,7 @@ It intentionally does not compute blueprint/code-status summaries; that remains
 the responsibility of `Informal.CodeSummary`.
 -/
 private def previewLookupKey (decl : Name) : String :=
-  Informal.LeanDeclPreviewKey.lookupKey decl
+  Informal.LeanCodePreviewKey.lookupKey decl
 
 private def previewTarget
     (decl : Name) (previewTitle : String) (lookupKey? : Option String := none) :

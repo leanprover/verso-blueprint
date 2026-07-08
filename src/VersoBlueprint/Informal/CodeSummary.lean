@@ -9,7 +9,7 @@ import Verso
 import VersoManual
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Lib.HoverRender
 
@@ -233,7 +233,7 @@ private def summaryPreviewItems (label : Data.Label) (cdata : ComputedData)
   match cdata.source with
   | some (.inline codeData) =>
     inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf
-      (some <| Informal.LeanDeclPreviewKey.inlineLookupKey label)
+      (some <| Informal.LeanCodePreviewKey.inlineLookupKey label)
   | some (.external decls) =>
     externalDeclSummaryItems decls hrefOf
   | none =>
