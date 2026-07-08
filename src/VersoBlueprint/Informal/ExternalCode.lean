@@ -259,6 +259,8 @@ private def registerPageHoverPayload [Monad m]
 private def renderedHtmlWithHoverTable [Monad m]
     (registerHoverPayload : ExternalDeclHoverPayload → m Nat)
     (renderedHtml : ExternalDeclRenderedHtml) : m String := do
+  -- This is the local version of the future upstream Verso helper described in
+  -- doc/ROADMAP.md: register portable fragment hovers, then remap local ids.
   let rewrites ← renderedHtml.hoverPayloads.mapM fun payload => do
     let hoverId ← registerHoverPayload payload
     pure {
