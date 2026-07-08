@@ -1083,7 +1083,10 @@ the stable render API table.
   `previewManifest?` to `slidesMainWithBlueprintPreviews`.
 - `Blueprint HTML cache entry not found` means the manifest entry was found, but
   the matching rendered-fragment body was not in `blueprint-html-cache.json`.
-  Keep the manifest and cache from the same Blueprint render.
+  Keep the manifest and cache from the same Blueprint render. For source-backed
+  external-markup entries generated with `--external-markup-render none`, a
+  semantic manifest entry without a cache body is expected; custom renderers
+  should treat those entries as metadata-only.
 - `siteBase` only affects Slides link rewriting. Manual grafts resolve from the
   current document traversal state and do not need it.
 - `-header`, `+compact`, and `+boxed` are presentation options only. They do not

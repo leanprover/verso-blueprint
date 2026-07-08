@@ -128,9 +128,12 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
   generated-page hrefs, graph records, labels, dependency data, Lean-code
   associations, group data, ownership, tags, priority, effort, status metadata,
   and display metadata.
-- `blueprint-html-cache.json` contains rendered body fragments keyed by the
-  same preview keys. It is presentation data; do not parse it to rediscover
-  graph topology, labels, statuses, or dependency relationships.
+- `blueprint-html-cache.json` contains rendered body fragments keyed by
+  preview keys for entries that have generated preview bodies. Some semantic
+  entries, such as source-backed external markup generated with
+  `--external-markup-render none`, intentionally have no cache fragment. The
+  cache is presentation data; do not parse it to rediscover graph topology,
+  labels, statuses, or dependency relationships.
 - `api/graph.mjs` exposes graph-data helpers for ordinary browser `import`
   usage, plus graph-block rendering helpers for pages that carry generated
   graph markup.
@@ -301,6 +304,8 @@ raw HTML disabled and falls back to escaped source if MD4Lean cannot render the
 fragment; TeX falls back to escaped source. `.source` always emits escaped
 source; `.none` keeps
 external-markup entries semantic-only with no generated HTML-cache fragment.
+Relation, graph, and Lean-code preview references are serialized only when the
+referenced preview key resolves through both the manifest and HTML cache.
 Set `showSourceNotice := false` when an embedding context should omit the
 visible source-backed notice from generated fragments.
 
@@ -319,9 +324,10 @@ Manifest entries serialize several label-like fields with distinct roles:
   punctuation.
 
 Relation entries in `uses`, `usedBy`, and `group.entries` carry their own
-`previewKey` field. That field is either a non-empty manifest/cache key or
-`null` when the related node has no rendered preview. Fresh generated data does
-not use an empty string as a no-preview sentinel.
+`previewKey` field. That field is either a non-empty key that resolves through
+both the manifest and rendered-fragment cache, or `null` when the related node
+has no manifest/cache-backed preview in the generated artifact set. Fresh
+generated data does not use an empty string as a no-preview sentinel.
 
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty
@@ -385,19 +391,22 @@ finalized graph data is available.
 
 Finalized graph data is traversal-backed. Imported semantic nodes or code-only
 nodes that have no rendered occurrence in the current site are omitted from the
-public graph; explicit unknown-reference diagnostics are retained. Finalized
-graph node `previewKey` values are selected preview keys: when a statement
-preview is unavailable but a proof preview exists, graph and relation UI can
-point at the proof preview. Bodyless source-backed nodes can point at their
-`externalMarkup:<label>` preview. When a retained node has no renderable
-preview, the finalized `previewKey` is `null` and bundled graph variants omit
-the node from `previewKeyByNodeId`. Use fixed facet keys such as
+public graph; explicit unknown-reference diagnostics are retained. Graph node
+`previewKey` values are selected preview keys finalized against the generated
+manifest/cache pair: when a statement preview is unavailable but a proof preview
+exists, graph and relation UI can point at the proof preview. Bodyless
+source-backed nodes can point at their `externalMarkup:<label>` preview only
+when that key has a manifest entry and rendered cache body. When a retained node
+has no manifest/cache-backed preview in the generated artifact set, the finalized
+`previewKey` is `null` and bundled graph variants omit the node from
+`previewKeyByNodeId`. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 
 | Need | Use |
 | --- | --- |
-| Best rendered preview for one label from finished traversal state | `PreviewSource.Selection` or the finalized node `previewKey` |
+| Best preview candidate for one label from finished traversal state | `PreviewSource.Selection` |
+| Manifest/cache-backed preview key in generated data | Finalized relation or graph node `previewKey` |
 | Explicit statement facet identity | `PreviewCache.statementKey label` |
 | Explicit proof facet identity | `PreviewCache.proofKey label` |
 
