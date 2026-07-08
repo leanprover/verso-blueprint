@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Commands.Summary.Order
@@ -76,13 +77,13 @@ def Summary.previewLabels (data : Summary) : Array Name :=
 def summaryCss := include_str "../summary.css"
 
 def summaryAssetBundle : BlueprintAssetBundle :=
-  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss]) (jsBefore := [openTargetDetailsJs])
+  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss])
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
 open Verso.Multi (AllRemotes)
 
-abbrev SummaryHtmlM := HtmlT Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO)))
+abbrev SummaryHtmlM := HtmlT Manual (ReaderT AllRemotes (ReaderT ExtensionImpls IO))
 
 structure SummaryHtmlContext where
   entryHref? : Name → Option String

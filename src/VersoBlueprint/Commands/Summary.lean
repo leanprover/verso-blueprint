@@ -28,7 +28,7 @@ def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedP
     logInfo m!"Blueprint summary for {summary.totalEntries} entries"
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.summary $(quote summary)) #[])
   let subParts := #[]
-  pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
+  pure <| FinishedPart.mk stx expandedTitle titlePreview metadata #[block] subParts endPos
 
 open Verso Doc Elab Syntax PartElabM in
 @[part_command Lean.Doc.Syntax.command]

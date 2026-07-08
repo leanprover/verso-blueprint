@@ -366,7 +366,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
             "bp_summary_subsection bp_summary_subsection_warn"}}
       }}
 
-private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls IO)) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
         Informal.ExtensionDecode.decode?
