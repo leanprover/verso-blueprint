@@ -21,7 +21,8 @@ End-user onboarding lives in
 [`GETTING_STARTED.md`](./GETTING_STARTED.md), [`MANUAL.md`](./MANUAL.md), and
 [`API.md`](./API.md).
 Architecture background lives in [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
-Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md).
+Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md) and the
+card index under [`roadmap/`](./roadmap/).
 
 ## Scope
 
@@ -877,4 +878,5 @@ Current project-specific reference:
    local coordination conventions.
 6. Read [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md) before touching
    architecture boundaries.
-7. Read [`ROADMAP.md`](./ROADMAP.md) before starting structural cleanup.
+7. Read [`ROADMAP.md`](./ROADMAP.md) and [`roadmap/`](./roadmap/) before
+   starting structural cleanup.

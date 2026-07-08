@@ -222,10 +222,13 @@
 - `doc/MAINTAINER_GUIDE.md`: maintainer-oriented harness workflow
 - `doc/DESIGN_RATIONALE.md`: architecture rationale
 - `doc/ROADMAP.md`: planned cleanup and follow-up work
-- `doc/UPSTREAM_BACKLOG.md`: the local backlog of items that should eventually
-  be upstreamed to `verso`, Lake, or Lean; requests to add something to the
-  "Verso upstream backlog" mean updating this file unless the user explicitly
-  asks to open or update an upstream GitHub issue
+- `doc/roadmap/README.md`: roadmap card rules, template, and ownership
+  boundaries
+- `doc/UPSTREAM_BACKLOG.md`: the local index of items that should eventually be
+  upstreamed to `verso`, Lake, or Lean; requests to add something to the "Verso
+  upstream backlog" mean adding or updating a `UPC-*` card under
+  `doc/roadmap/cards/` and linking it from `doc/UPSTREAM_BACKLOG.md` unless the
+  user explicitly asks to open or update an upstream GitHub issue
 
 ## General Recommendations
 

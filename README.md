@@ -438,8 +438,10 @@ Read these in order:
 9. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
    boundaries
 10. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
-11. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
-   back into `verso`, Lake, or Lean
+11. [doc/roadmap/README.md](./doc/roadmap/README.md): scoped maintainer planning
+   cards and card template
+12. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
+   back into `verso`, Lake, Lean, or related upstream packages
 
 ### Agent Helper Skill
 

@@ -3,8 +3,9 @@
 Last reviewed: 2026-07-08
 
 This document tracks repository-local engineering work for `verso-blueprint`.
-Requests that should eventually move into upstream `verso`, Lake, or Lean live
-in [`UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
+Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
+eventually move into upstream `verso`, Lake, Lean, or a related upstream package
+are indexed in [`UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
 
 This is not the place for operational commands, option reference material, or
 architecture narrative. Those live in

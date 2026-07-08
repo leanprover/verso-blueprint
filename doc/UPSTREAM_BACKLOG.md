@@ -1,58 +1,41 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-06-26
+Last reviewed: 2026-07-08
 
-This file is the repository's local "Verso upstream backlog": a queue of
-changes that would be better solved in upstream `verso`, Lake, or Lean once the
-Blueprint split stabilizes.
+This file is the repository's local "Verso upstream backlog" index: a queue of
+changes that would be better solved in upstream `verso`, Lake, Lean, or a
+related upstream package once the Blueprint split stabilizes.
+
+Actionable upstream asks should normally live as `UPC-*` cards under
+[`roadmap/cards/`](./roadmap/cards/). Keep this file as the short index while
+older inline items are migrated.
 
 When a maintainer or agent says "add this to the Verso upstream backlog" or
 "register this in the Verso upstream backlog", the default meaning is:
 
-- record the item here
+- add or update a `UPC-*` card under [`roadmap/cards/`](./roadmap/cards/)
+- link that card from this index
 
 That phrase does not authorize opening or editing upstream GitHub issues or
 pull requests unless that upstream write action is explicitly requested.
 
 ## Triage Rules
 
-1. Keep concrete upstream asks here; keep Blueprint-local implementation work in
-   [`ROADMAP.md`](./ROADMAP.md).
+1. Keep concrete upstream asks here or in linked `UPC-*` cards; keep
+   Blueprint-local implementation work in [`ROADMAP.md`](./ROADMAP.md).
 2. Prefer one item per upstream API or behavior change.
-3. Record the local workaround that can be removed when the upstream work lands.
+3. Record the local workaround that can be removed when the upstream work lands;
+   migrated items should record that detail in their card.
 4. Link an upstream issue or PR when one exists, but do not create or mutate
    upstream GitHub state unless explicitly asked.
 
 ## Manual Rendering and Cross-References
 
-- [ ] Support private or filtered xref-domain export for Manual HTML output.
-  - upstream issue:
-    `leanprover/verso#840`
-  - current Blueprint workaround:
-    `PreviewManifest.publicXrefJson` filters traversal domains after traversal,
-    and `PreviewManifest.filterPublicXrefOutput` rewrites `xref.json` plus the
-    generated find page after Verso HTML emission
-  - desired upstream behavior:
-    extensions should be able to mark domains as public xref data or private
-    traversal-local storage before `xref.json` and the find page are emitted
-  - secondary upstream improvement:
-    emit compressed/minified `xref.json` when appropriate
+- [ ] [Support private or filtered xref-domain export for Manual HTML
+  output.](./roadmap/cards/UPC-0001-private-xref-domain-export/README.md)
 
-- [ ] Add Manual HTML extension hooks around traversal and emission.
-  - current Blueprint workaround:
-    `PreviewManifest.blueprintMain` mirrors Verso's top-level single-page and
-    multi-page dispatcher while still delegating to Verso traversal and HTML
-    emitters
-  - needed hook shape:
-    a post-traversal/pre-HTML-emission transform for `TraverseState` and
-    `HtmlAssets`, plus a way to customize the xref payload used by both
-    `xref.json` and the find page
-  - still-useful lower-priority hook:
-    a post-emit extra step for downstream files such as Blueprint preview data
-  - preserved branch:
-    `ejgallego/verso-manual-extra-step-upstream-20260313`
-  - PR shortcut:
-    `https://github.com/ejgallego/verso/pull/new/verso-manual-extra-step-upstream-20260313`
+- [ ] [Add Manual HTML extension hooks around traversal and
+  emission.](./roadmap/cards/UPC-0002-manual-html-extension-hooks/README.md)
 
 - [ ] Add a generic wide-content page mode for Manual pages.
   - current Blueprint workaround:
