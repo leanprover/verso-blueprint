@@ -152,8 +152,8 @@
   generator projects from silently serving stale embedded assets when only the
   asset files changed.
 - Keep the two generated artifact families distinct:
-  - Reference blueprints are the release-facing validation catalog built by
-    `./scripts/generate-reference-blueprints.sh`,
+  - Reference blueprints are known Blueprint projects built or validated as
+    release examples by `./scripts/generate-reference-blueprints.sh`,
     `./scripts/validate-reference-blueprints.sh`, or
     `python3 -m scripts.blueprint_reference_harness {generate,validate}`.
   - Test blueprints are the in-repo rendering and browser-regression fixtures

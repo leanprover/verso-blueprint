@@ -64,9 +64,10 @@ selector lists or JSON shapes into long-lived docs.
 
 The two generated artifact families serve different purposes:
 
-- reference blueprints are the release-facing validation catalog selected from
-  release targets in `branch-policy.json` and project targets in
-  `tests/harness/projects.json`
+- reference blueprints are known Blueprint projects built and published as
+  release validation examples; release targets in `branch-policy.json` and
+  project targets in `tests/harness/projects.json` decide which projects are
+  built and published for each Lean release line
 - test blueprints are local rendering and browser-regression fixtures declared
   in `tests/VersoBlueprintTests/TestBlueprintRegistry.lean` and
   `tests/harness/test_blueprints.json`
@@ -744,7 +745,9 @@ includes:
 - `_site/index.html`
 - `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
-  reference target across all deployable release slices
+  reference target across all deployable release targets
+- `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
+  selected reference target whose deploy matrix entry enables `publish_pdf`
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`

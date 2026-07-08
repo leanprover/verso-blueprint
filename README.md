@@ -364,8 +364,12 @@ you want to enable it.
 
 ## Reference Blueprints
 
-The repository also tracks a current, release-versioned reference catalog.
-The published catalog is selected from `branch-policy.json` and
+Reference blueprints are known Blueprint projects that this repository builds
+and publishes as release validation examples. They are useful for checking that
+the renderer still works on real projects and for inspecting representative
+generated output; they are not the starter template contract for new projects.
+
+The current published catalog is selected from `branch-policy.json` and
 `tests/harness/projects.json`; those files are the source of truth for which
 reference projects publish on each Lean release line. Maintainers can inspect
 the current checkout's selected projects with
