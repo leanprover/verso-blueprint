@@ -10,7 +10,7 @@ Run `lake exe vbp --help` for complete local CLI usage. The main command forms a
 lake exe vbp discover
 lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]
 lake exe vbp query [--site <dir>] <selector>
-lake exe vbp check
+lake exe vbp check [--site <dir>]
 ```
 
 Query selectors:
@@ -59,8 +59,18 @@ The explicit `:olean` facet is important for Mathlib consumers: Lake's default
 dependency rebuild.
 
 `build --verbose` passes `--verbose` through to the generator run, enabling Blueprint generation phase progress after the Lake package build completes.
+Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX output.
+`--pdf-engine <cmd>` and `--pdf-runs <n>` are forwarded to the generator when
+the local project's `vbp` binary supports them; run `lake exe vbp --help` for the
+exact local flag surface.
 
 `build --serve` builds once, then serves `<output>/html-multi` with a local static server and keeps running. Without `--port`, it tries port `8000` and falls back to an available port. With `--serve --port <n>`, it fails if the requested port is unavailable. `--port` is accepted only with `--serve`. The command prints the actual preview URL.
+
+`discover`, `query`, and `check` print compact JSON to stdout on success.
+`build` streams the attached Lake/generator stdout and stderr. If a build stage
+fails, `vbp` writes `vbp build: <stage> failed ...` to stderr and exits nonzero.
+Argument errors print to stderr and exit with code 2. Missing or inconsistent
+generated data also prints an error to stderr and exits nonzero.
 
 ## Query Output
 

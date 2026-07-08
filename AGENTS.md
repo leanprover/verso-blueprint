@@ -90,6 +90,10 @@
   `ejgallego/verso-flt`, and `ejgallego/verso-carleson`.
 - A smaller starter example, a reusable template, and `lake exe bp new` are
   planned but not landed yet.
+- Published reference-blueprint project/release targets are declared in
+  `tests/harness/projects.json`; use
+  `python3 -m scripts.blueprint_reference_harness projects` instead of
+  hardcoding the active catalog.
 - End-user docs should treat `lake exe vbp build` as the preferred Blueprint
   generation interface.
 - End-user docs should not require Python helper scripts or a system Graphviz
