@@ -38,6 +38,7 @@ or release notes.
 - [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
 - [`UPC-0010 Package Runtime Asset Resolution`](./cards/UPC-0010-package-runtime-asset-resolution/README.md)
 - [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md)
+- [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 
 ## Card Rules
 
