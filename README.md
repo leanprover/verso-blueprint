@@ -17,13 +17,33 @@ A Blueprint project combines:
 
 ## Start Here
 
-If you want to start a Blueprint project today, read these in order:
+### Start a project
+
+If you want to start a Blueprint project today, start here:
 
 1. [project_template/README.md](./project_template/README.md)
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)
 3. [doc/MANUAL.md](./doc/MANUAL.md)
 4. [doc/API.md](./doc/API.md) when you need stable Lean, generated-data, or
    browser integration APIs
+
+To copy the starter and build its rendered output before renaming the package
+and modules:
+
+```bash
+cp -R project_template my-blueprint
+cd my-blueprint
+lake exe vbp build
+```
+
+This uses the checked-in Lake manifest and writes the HTML site under
+`_out/site/html-multi/`. To preview the site locally, run
+`lake exe vbp build --serve`. After that, follow the template README to rename
+`ProjectTemplate` to your project name and replace the starter chapters.
+
+### See real examples
+
+For larger Blueprints in use, see [Reference Blueprints](#reference-blueprints).
 
 ## Current Project Shape
 
@@ -71,7 +91,7 @@ provenance metadata.
 
 ## Core Features
 
-### Labelled nodes and rich directives
+### Labeled nodes and rich directives
 
 Every Blueprint node is identified by a label such as `addition_spec` or
 `addition_right_identity`. Those labels drive cross-references, graph nodes,
@@ -277,7 +297,7 @@ Blueprint can dump structured metadata for other tools, including the semantic
 manifest, its schema, and the rendered-fragment cache
 (`blueprint-html-cache.json`) used by preview consumers. The cache includes the
 hover payloads needed by cached Lean fragments. These are command-line flags
-passed to the generator binary, such as
+passed to the generator entry point, such as
 `--dump-manifest`, `--dump-html-cache`, and `--dump-schema`. See
 [doc/API.md](./doc/API.md) for the stable generated-data contract.
 
