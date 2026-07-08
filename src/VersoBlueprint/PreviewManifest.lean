@@ -1712,8 +1712,7 @@ private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array
   match Informal.TraversalIndex.InlineCode.data? state label with
   | none => #[]
   | some codeData =>
-    let decls := (codeData.definedDefs.map (·.name)) ++ (codeData.definedTheorems.map (·.name))
-    if decls.isEmpty then
+    if codeData.declarations.isEmpty then
       #[]
     else
       #[Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label]

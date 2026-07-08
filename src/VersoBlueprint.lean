@@ -41,7 +41,7 @@ import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.MetadataView
-import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.Group
