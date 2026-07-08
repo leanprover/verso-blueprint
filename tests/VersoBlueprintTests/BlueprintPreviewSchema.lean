@@ -23,6 +23,12 @@ open Informal.PreviewManifest
       let Except.ok fileProps := filePropsJson.getObj? | return false
       let Except.ok entryPropsJson := Json.getObjVal? entrySchema "properties" | return false
       let Except.ok entryProps := entryPropsJson.getObj? | return false
+      let fileRequired? := do
+        let requiredJson ← fileSchema.getObjVal? "required" |>.toOption
+        fromJson? (α := Array String) requiredJson |>.toOption
+      let entryRequired? := do
+        let requiredJson ← entrySchema.getObjVal? "required" |>.toOption
+        fromJson? (α := Array String) requiredJson |>.toOption
       let schemaText := schema.compress
       let internalSchemaDesc? := do
         let internalSchemaJson ← fileProps.get? "vbpInternalSchemaVersion"
@@ -49,6 +55,8 @@ open Informal.PreviewManifest
       let authoredLabelDesc? := do
         let authoredLabelJson ← entryProps.get? "authoredLabel"
         authoredLabelJson.getObjValAs? String "description" |>.toOption
+      let some fileRequired := fileRequired? | return false
+      let some entryRequired := entryRequired? | return false
       let some useRefProps := useRefProps? | return false
       let displayCaptionDesc? := do
         let displayCaptionJson ← entryProps.get? "displayCaption"
@@ -59,6 +67,7 @@ open Informal.PreviewManifest
         !fileProps.contains "schemaVersion" &&
         !fileProps.contains "traverseState" &&
         fileProps.contains "vbpInternalSchemaVersion" &&
+        fileRequired.contains manifestInternalSchemaVersionField &&
         fileProps.contains "previews" &&
         fileProps.contains "sourceDocuments" &&
         entryProps.contains "key" &&
@@ -72,6 +81,7 @@ open Informal.PreviewManifest
         entryProps.contains "displayLabel" &&
         entryProps.contains "href" &&
         entryProps.contains "sourceLocation" &&
+        entryRequired.contains "sourceLocation" &&
         entryProps.contains "parent" &&
         entryProps.contains "parentTitle" &&
         entryProps.contains "statementUses" &&
