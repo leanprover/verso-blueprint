@@ -97,7 +97,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         label
         title := "Proof fallback"
         displayLabel := "Proof fallback"
-        previewKey := statementKey
+        previewKey := PreviewKey.ofString? statementKey
         visual := { fillcolor := "#ffffff" }
       }]
     }
@@ -106,7 +106,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       match finalized.nodes[0]? with
       | some node =>
-        node.previewKey == proofKey &&
+        node.previewKey == PreviewKey.ofString? proofKey &&
         variants.any (fun variant =>
           variant.previewKeyByNodeId.any (fun (_, key) => key == proofKey))
       | none => false
@@ -124,7 +124,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         label
         title := "Missing preview"
         displayLabel := "Missing preview"
-        previewKey := statementKey
+        previewKey := PreviewKey.ofString? statementKey
         visual := { fillcolor := "#ffffff" }
       }]
     }
@@ -150,7 +150,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         label
         title := "Unknown preview"
         displayLabel := "Unknown preview"
-        previewKey := PreviewCache.statementKey label
+        previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
         warnings := { unknownRef := true }
         visual := { fillcolor := "#ffffff" }
       }]
@@ -162,8 +162,34 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
       | some node =>
         node.label == label &&
         node.warnings.unknownRef &&
-        node.previewKey.isEmpty &&
+        node.previewKey.isNone &&
         variants.all (fun variant => variant.previewKeyByNodeId.isEmpty)
+      | none => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupPreviewSourceDoc
+    let label := Name.mkSimple "preview.external_bodyless"
+    let externalKey := Informal.PreviewSource.externalMarkupKey label
+    let semantic : Informal.Graph.GraphData := {
+      nodes := #[{
+        label
+        title := "External bodyless"
+        displayLabel := "External bodyless"
+        visual := { fillcolor := "#ffffff" }
+      }]
+    }
+    let finalized := Informal.GraphApi.finalData st semantic
+    let variants := finalized.renderVariants {}
+    pure <|
+      match finalized.nodes[0]? with
+      | some node =>
+        node.previewKey == PreviewKey.ofString? externalKey &&
+          variants.any (fun variant =>
+            variant.previewKeyByNodeId.any (fun (_, key) => key == externalKey))
       | none => false
 
 end Verso.VersoBlueprintTests.BlueprintPreviewSource

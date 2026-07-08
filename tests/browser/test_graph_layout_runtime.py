@@ -496,7 +496,7 @@ class TestGraphLayoutRuntime:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 57"
+            "Nodes 58"
         )
 
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
