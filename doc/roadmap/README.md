@@ -1,6 +1,6 @@
 # Blueprint Roadmap Cards
 
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-09
 
 This directory tracks maintainer planning cards for scoped implementation and
 upstream follow-up work. Cards are not end-user setup docs, option references,
@@ -36,6 +36,7 @@ or release notes.
 - [`UPC-0007 Page-Level KaTeX Preludes`](./cards/UPC-0007-page-level-katex-preludes/README.md)
 - [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md)
 - [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
+- [`UPC-0010 Package Runtime Asset Resolution`](./cards/UPC-0010-package-runtime-asset-resolution/README.md)
 
 ## Card Rules
 

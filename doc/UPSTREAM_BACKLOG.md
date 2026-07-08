@@ -1,6 +1,6 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-09
 
 This file is the repository's local "Verso upstream backlog" index: a queue of
 changes that would be better solved in upstream `verso`, Lake, Lean, or a
@@ -62,19 +62,8 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Elaboration and Directive APIs
 
-- [ ] Provide an upstream way to resolve package-owned runtime assets during
-  elaboration.
-  - current Blueprint workaround:
-    `MathLint.lean` walks upward from module source or `.olean` locations to
-    recover package roots for `static-web/katex-lint.mjs` and Verso's vendored
-    KaTeX module
-  - desired upstream behavior:
-    expose stable package-root/package-asset lookup in the elaboration context,
-    or provide a Verso-owned helper entry point that hides vendored asset
-    layout from downstream packages
-  - local coverage already in place:
-    fresh consumer smoke tests cover root checkouts, dependency checkouts, and
-    non-default Lake `packagesDir`
+- [ ] [Provide an upstream way to resolve package-owned runtime assets during
+  elaboration.](./roadmap/cards/UPC-0010-package-runtime-asset-resolution/README.md)
 
 - [ ] Support list-valued directive arguments in Verso.
   - current Blueprint workaround:
