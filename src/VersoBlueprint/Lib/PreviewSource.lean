@@ -170,25 +170,31 @@ def traversalExternalMarkupLookupKey?
     some (externalMarkupKey label)
 
 /--
-Best preview lookup key for relation entries.
+Best renderable preview lookup key for a Blueprint label in finished traversal
+state.
 
 Prefer the selected statement/proof traversal preview when one exists. Fall back
 to a source-backed external-markup preview for bodyless Blueprint nodes.
 -/
-private def traversalRelationLookupKey?
+private def traversalRenderableLookupKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String :=
   traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
 
 /--
-Best preview key for relation entries.
+Best renderable preview key for a Blueprint label in finished traversal state.
 
 Prefer the selected statement/proof traversal preview when one exists. Fall back
 to a source-backed external-markup preview for bodyless Blueprint nodes.
 -/
-def traversalRelationPreviewKey?
+def traversalRenderablePreviewKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← traversalRelationLookupKey? s label
+  let key ← traversalRenderableLookupKey? s label
   PreviewKey.ofString? key
+
+/-- Best preview key for relation entries. -/
+def traversalRelationPreviewKey?
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey :=
+  traversalRenderablePreviewKey? s label
 
 def traversalPreview?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do

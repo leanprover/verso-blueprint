@@ -363,7 +363,8 @@ def allRenderedGraphs
 Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, and `groups`, with status enums,
 dependency axes, preview keys, hrefs when traversal resolved them, and visual
-metadata for renderers that want Blueprint's default styling.
+metadata for renderers that want Blueprint's default styling. Graph schema
+version 2 serializes each node `previewKey` as a string or `null`.
 
 That finished traversal state is the stable boundary. Consumers should not
 reconstruct graph hrefs or titles from lower-level traversal internals when the
@@ -374,9 +375,10 @@ nodes that have no rendered occurrence in the current site are omitted from the
 public graph; explicit unknown-reference diagnostics are retained. Finalized
 graph node `previewKey` values are selected preview keys: when a statement
 preview is unavailable but a proof preview exists, graph and relation UI can
-point at the proof preview. When a retained node has no renderable preview, the
-finalized `previewKey` is the empty string and bundled graph variants omit the
-node from `previewKeyByNodeId`. Use fixed facet keys such as
+point at the proof preview. Bodyless source-backed nodes can point at their
+`externalMarkup:<label>` preview. When a retained node has no renderable
+preview, the finalized `previewKey` is `null` and bundled graph variants omit
+the node from `previewKeyByNodeId`. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 

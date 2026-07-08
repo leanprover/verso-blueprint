@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Lib.HtmlId
+import VersoBlueprint.Lib.PreviewKey
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.ProvedStatus
 
@@ -242,8 +243,8 @@ structure NodeData where
   kind : Option Data.NodeKind := none
   parent : Option Name := none
   href : Option String := none
-  /-- Selected preview-cache key for this node, or the empty string when no traversal preview exists. -/
-  previewKey : String
+  /-- Selected preview-cache key for this node, if a renderable traversal preview exists. -/
+  previewKey : Option PreviewKey := none
   statementUses : Array Data.UseRef := #[]
   proofUses : Array Data.UseRef := #[]
   statementStatus : StatementStatus := .blocked
@@ -258,7 +259,7 @@ Stable graph data shared by Lean, generated manifests, and browser runtime code.
 `schemaVersion` is bumped only for incompatible public-shape changes.
 -/
 structure GraphData where
-  schemaVersion : Nat := 1
+  schemaVersion : Nat := 2
   key : String := "graph"
   nodes : Array NodeData := #[]
   edges : Array EdgeData := #[]
@@ -944,7 +945,7 @@ def nodeDataWithExternal
       kind := some node.kind
       parent := node.parent
       href := resolveHref? label
-      previewKey := PreviewCache.statementKey label
+      previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
       statementUses := statementUses node
       proofUses := proofUses node
       statementStatus := statement
@@ -960,7 +961,7 @@ def nodeDataWithExternal
       kind := none
       parent := none
       href := resolveHref? label
-      previewKey := PreviewCache.statementKey label
+      previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
       statementUses := #[]
       proofUses := #[]
       statementStatus := .blocked
@@ -1426,15 +1427,12 @@ per parent group.
 -/
 def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
-    (previewKeyForLabel : Name → String := fun _ => "") :
+    (previewKeyForLabel : Name → Option PreviewKey := fun _ => none) :
     Array GraphRenderVariant :=
   let previewKeyByNodeId (graph : Graph String) : Array (String × String) :=
     graph.filterMap fun node =>
-      let previewKey := (previewKeyForLabel node.label).trimAscii.toString
-      if previewKey.isEmpty then
-        none
-      else
-        some (graphNodeSvgId node.label, previewKey)
+      previewKeyForLabel node.label |>.map fun previewKey =>
+        (graphNodeSvgId node.label, toString previewKey)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
   let parentChildren := graphParentChildren graph
@@ -1492,7 +1490,7 @@ def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array
   let previewKeyForLabel label :=
     match data.nodes.find? (fun node => node.label == label) with
     | some node => node.previewKey
-    | none => ""
+    | none => none
   mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
 
 end Informal.Graph

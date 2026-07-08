@@ -29,7 +29,29 @@ open Informal.PreviewManifest
       let entryRequired? := do
         let requiredJson ← entrySchema.getObjVal? "required" |>.toOption
         fromJson? (α := Array String) requiredJson |>.toOption
+      let some relatedEntrySchema := defs.get? "Informal.PreviewManifest.RelatedEntry" | return false
+      let some graphNodeSchema := defs.get? "Informal.Graph.NodeData" | return false
       let schemaText := schema.compress
+      let previewKeySchemaHasStringNull (schema : Json) : Bool :=
+        match Json.getObjVal? schema "properties" with
+        | Except.error _ => false
+        | Except.ok propsJson =>
+            match propsJson.getObj? with
+            | Except.error _ => false
+            | Except.ok props =>
+                match props.get? "previewKey" with
+                | none => false
+                | some previewKeyJson =>
+                    match Json.getObjVal? previewKeyJson "anyOf" with
+                    | Except.error _ => false
+                    | Except.ok anyOfJson =>
+                        match anyOfJson.getArr? with
+                        | Except.error _ => false
+                        | Except.ok schemas =>
+                            schemas.any (fun (schema : Json) =>
+                              (schema.getObjValAs? String "type" |>.toOption) == some "string") &&
+                            schemas.any (fun (schema : Json) =>
+                              (schema.getObjValAs? String "type" |>.toOption) == some "null")
       let internalSchemaDesc? := do
         let internalSchemaJson ← fileProps.get? "vbpInternalSchemaVersion"
         internalSchemaJson.getObjValAs? String "description" |>.toOption
@@ -118,6 +140,8 @@ open Informal.PreviewManifest
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         entryKindText.contains "externalMarkup" &&
+        previewKeySchemaHasStringNull relatedEntrySchema &&
+        previewKeySchemaHasStringNull graphNodeSchema &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
         defs.contains "Informal.Data.UseOrigin" &&
