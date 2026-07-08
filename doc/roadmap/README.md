@@ -29,6 +29,13 @@ or release notes.
 
 - [`UPC-0001 Private Xref Domain Export`](./cards/UPC-0001-private-xref-domain-export/README.md)
 - [`UPC-0002 Manual HTML Extension Hooks`](./cards/UPC-0002-manual-html-extension-hooks/README.md)
+- [`UPC-0003 Wide Content Page Mode`](./cards/UPC-0003-wide-content-page-mode/README.md)
+- [`UPC-0004 Structured Runtime Assets`](./cards/UPC-0004-structured-runtime-assets/README.md)
+- [`UPC-0005 Verso Slides Extra Head`](./cards/UPC-0005-verso-slides-extra-head/README.md)
+- [`UPC-0006 Slides Quiet Hover Hooks`](./cards/UPC-0006-slides-quiet-hover-hooks/README.md)
+- [`UPC-0007 Page-Level KaTeX Preludes`](./cards/UPC-0007-page-level-katex-preludes/README.md)
+- [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md)
+- [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
 
 ## Card Rules
 

@@ -37,102 +37,28 @@ pull requests unless that upstream write action is explicitly requested.
 - [ ] [Add Manual HTML extension hooks around traversal and
   emission.](./roadmap/cards/UPC-0002-manual-html-extension-hooks/README.md)
 
-- [ ] Add a generic wide-content page mode for Manual pages.
-  - current Blueprint workaround:
-    graph pages carry Blueprint-local page-shell CSS/runtime behavior to escape
-    the normal `.content-wrapper` / `main section` max-width assumptions
-  - desired upstream behavior:
-    a page-level or section-level opt-in that widens the content frame while
-    preserving the shared Manual shell and ToC semantics
-  - removable Blueprint code:
-    graph-specific page-shell overrides that are not about graph layout itself
+- [ ] [Add a generic wide-content page mode for Manual
+  pages.](./roadmap/cards/UPC-0003-wide-content-page-mode/README.md)
 
 ## Runtime Assets and Browser Rendering
 
-- [ ] Add first-class structured runtime assets, including ESM module scripts.
-  - current Blueprint workaround:
-    Blueprint package assets are embedded through package-owned Lean modules and
-    emitted through Blueprint-local `-verso-data/` writers; regular Manual
-    pages and slide decks inject their ESM entrypoints with `extraHead`
-  - desired upstream behavior:
-    downstream packages should be able to declare emitted runtime assets with
-    stable output URLs, explicit asset kinds such as stylesheet, classic script,
-    and `type="module"` script, and dependency/order metadata that lets ESM
-    entrypoints import package-owned modules without string-concatenated
-    bundles
-  - removable Blueprint code:
-    ad hoc `include_str` asset assembly, `extraJs` compatibility wrappers, and
-    local owner-module invalidation rules whose only job is keeping embedded
-    browser assets fresh
+- [ ] [Add first-class structured runtime assets, including ESM module
+  scripts.](./roadmap/cards/UPC-0004-structured-runtime-assets/README.md)
 
-- [x] Add module-script/head injection support to Verso Slides.
-  - upstream status:
-    leanprover/verso-slides#59 added `Config.extraHead` on the upstream
-    `verso-slides` main line.
-  - Blueprint status:
-    Blueprint slide decks now write the normal preview ESM support files, load a
-    slide-specific `blueprint-slide-runtime.mjs` entrypoint, pass the preview
-    renderer explicitly to slide hydration, and no longer build a de-ESMified
-    `blueprint-slides.js` bundle. The slide runtime tag is supplied through
-    Slides `extraHead`.
-  - release-line note:
-    the current `v4.30.0` release-line pin does not yet include Slides
-    `extraHead`, so Blueprint temporarily pins `ejgallego/verso-slides` to the
-    v4.30-compatible slide pin plus a minimal `extraHead` commit. Once a
-    supported `verso-slides` release line contains `extraHead`, replace the
-    temporary fork pin with the normal upstream release pin.
+- [x] [Add module-script/head injection support to Verso
+  Slides.](./roadmap/cards/UPC-0005-verso-slides-extra-head/README.md)
 
-- [ ] Expose Verso Slides hooks for quiet rendering and initial hover state.
-  - current Blueprint workaround:
-    `VersoBlueprint.Slides.slidesMainWithBlueprintPreviews` supplies a local
-    `GenreHtml Slides IO` instance so slide graft blocks elaborated through
-    `{blueprint_node}` render from the Blueprint manifest/cache data before the
-    HTML document is serialized; because `VersoSlides.slidesMain` owns both
-    rendering and file emission, Blueprint also mirrors the small config-asset
-    plan and write loop
-  - desired upstream behavior:
-    downstream packages should be able to elaborate a slide block to an
-    already-rendered HTML body, while reusing the upstream `slidesMain` asset
-    validation and output writer
-  - removable Blueprint code:
-    local `SlideAssetPayload`, `recordSlideAsset`, `collectSlideAssets`, and
-    the copied `slidesMain` output loop in `VersoBlueprint.Slides`
+- [ ] [Expose Verso Slides hooks for quiet rendering and initial hover
+  state.](./roadmap/cards/UPC-0006-slides-quiet-hover-hooks/README.md)
 
-- [ ] Decide whether page-level KaTeX preludes belong in core `verso`.
-  - current Blueprint workaround:
-    Blueprint owns page-level math assets and prelude injection for Blueprint
-    math surfaces
-  - desired upstream behavior:
-    either a generic Manual hook for page-level math preludes or an explicit
-    decision that downstream packages should continue owning this layer
+- [ ] [Decide whether page-level KaTeX preludes belong in core
+  `verso`.](./roadmap/cards/UPC-0007-page-level-katex-preludes/README.md)
 
-- [ ] Upstream the `Verso.Code.Highlighted` docstring rerender performance fix.
-  - current Blueprint workaround:
-    `PreviewManifest.patchHighlightedDocstringStartupJs` rewrites generated
-    highlighted-code JavaScript to read docstring source via `textContent`
-  - desired upstream change:
-    use `textContent || ""` instead of layout-sensitive `innerText` when
-    reading `code.docstring, pre.docstring` before `marked.parse`
-  - rationale:
-    these nodes contain raw markdown source and often live under hidden
-    `.hover-info` containers; `innerText` can be slow and can return empty text
-    for hidden payloads
-  - observed Blueprint impact:
-    the Noperthedron `The-Local-Theorem` reference page dropped from a roughly
-    14 second highlighted-code startup task to under 0.5 seconds after the
-    local rewrite
-  - upstream code points at Verso commit
-    `7ae82ac2ae54ae5dcc9948a701669e9b596e5cae`:
-    - `src/verso/Verso/Code/Highlighted.lean#L1377-L1384`
-    - `src/verso/Verso/Code/Highlighted.lean#L1460-L1467`
+- [ ] [Upstream the `Verso.Code.Highlighted` docstring rerender performance
+  fix.](./roadmap/cards/UPC-0008-highlighted-docstring-performance/README.md)
 
-- [ ] Upstream the separate `Verso.Code.Highlighted` hover robustness guards.
-  - current Blueprint pressure point:
-    Blueprint generated pages exercise hidden and dynamically hydrated hover
-    payloads more heavily than normal pages
-  - desired upstream behavior:
-    highlighted-code hover rendering should tolerate missing or delayed DOM
-    nodes without downstream packages patching the emitted asset
+- [ ] [Upstream the separate `Verso.Code.Highlighted` hover robustness
+  guards.](./roadmap/cards/UPC-0009-highlighted-hover-robustness/README.md)
 
 ## Elaboration and Directive APIs
 
