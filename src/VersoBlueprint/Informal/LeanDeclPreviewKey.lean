@@ -15,6 +15,9 @@ def domainName : Name := Name.mkSimple "Informal.LeanCodePreview"
 private def namespaceRoot : Name :=
   Name.str (Name.str .anonymous "Informal") "LeanCodePreview"
 
+private def inlineNamespaceRoot : Name :=
+  Name.str namespaceRoot "Inline"
+
 private partial def appendName (rootName : Name) (suffixName : Name) : Name :=
   match suffixName with
   | .anonymous => rootName
@@ -26,5 +29,11 @@ def targetName (decl : Name) : Name :=
 
 def lookupKey (decl : Name) : String :=
   (targetName decl).toString
+
+def inlineTargetName (label : Name) : Name :=
+  appendName inlineNamespaceRoot label.eraseMacroScopes
+
+def inlineLookupKey (label : Name) : String :=
+  (inlineTargetName label).toString
 
 end Informal.LeanDeclPreviewKey

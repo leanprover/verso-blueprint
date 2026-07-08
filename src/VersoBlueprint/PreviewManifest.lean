@@ -732,6 +732,7 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
 inductive EntryKind where
   | block
   | leanDecl
+  | inlineLeanCode
   | citation
   | externalMarkup
 deriving Inhabited, Repr, BEq, ToJson, FromJson
@@ -839,7 +840,7 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
-  /-- Manifest/cache-backed preview keys for Lean declaration previews associated with this entry. -/
+  /-- Manifest/cache-backed preview keys for Lean code previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
@@ -1190,7 +1191,7 @@ structure PreviewMetadataLoss where
   facet : PreviewCache.Facet
   /-- Matching manifest entry key, if the manifest contains one. -/
   manifestEntryKey? : Option String := none
-  /-- Lean declaration preview keys present during traversal but missing from the manifest entry. -/
+  /-- Lean code preview keys present during traversal but missing from the manifest entry. -/
   missingLeanCodePreviewKeys : Array String := #[]
 deriving Repr, ToJson, FromJson
 
@@ -1377,9 +1378,16 @@ def Entry.matchesText (entry : Entry) (query : String) : Bool :=
     entry.tags.any (containsSearchText text) ||
     entry.ownerDisplayName.any (containsSearchText text)
 
-/-- Search whether the entry references a Lean-code preview key containing `decl`. -/
+/-- Search whether the entry references Lean code whose key or declaration text contains `decl`. -/
 def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
-  entry.leanCodePreviewKeys.any (fun key => key.contains decl)
+  entry.leanCodePreviewKeys.any (fun key => key.contains decl) ||
+    match entry.codeData with
+    | some (.inline codeData) =>
+        codeData.declarations.any (fun candidate => candidate.name.toString.contains decl)
+    | some (.external decls) =>
+        decls.any fun externalRef =>
+          externalRef.canonical.toString.contains decl || externalRef.written.toString.contains decl
+    | none => false
 
 def externalMarkupEntryKey (label : Name) : String :=
   Informal.PreviewSource.externalMarkupKey label
@@ -1388,11 +1396,7 @@ def externalMarkupEntryKey (label : Name) : String :=
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
   (entry.leanCodePreviewKeys.filterMap index.findEntry?).size
 
-/--
-Lean-code preview keys are declaration-granular. Return the semantic entries in
-key order while keeping display-level rendered-HTML deduplication in
-`HtmlCache.Index.codeHtmlBodies`.
--/
+/-- Return associated Lean-code preview entries in key order. -/
 def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
   entry.leanCodePreviewKeys.filterMap index.findEntry?
 
@@ -1701,7 +1705,10 @@ private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array
   | none => #[]
   | some codeData =>
     let decls := (codeData.definedDefs.map (·.name)) ++ (codeData.definedTheorems.map (·.name))
-    decls.map Informal.TraversalIndex.LeanCodePreviews.lookupKey
+    if decls.isEmpty then
+      #[]
+    else
+      #[Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label]
 
 private def blockLeanCodePreviewKeys
     (state : TraverseState)
@@ -2011,15 +2018,21 @@ private def buildLeanCodeEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
-      let key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
+      let key := stored.canonicalName
       let manifestEntry : Entry := {
         key
-        targetKind := .leanDecl
+        targetKind :=
+          match entry.source with
+          | .inlineBlocks .. => .inlineLeanCode
+          | .externalDecl _ => .leanDecl
         label := entry.target
         facet := .statement
-        title := Informal.LeanCodePreview.title entry.target
+        title :=
+          match entry.source with
+          | .inlineBlocks .. => s!"Lean code for {entry.target}"
+          | .externalDecl _ => Informal.LeanCodePreview.title entry.target
         sources := (sourceRefs.get? key).getD #[]
-        href := Informal.TraversalIndex.LeanCodePreviews.hrefFor? state entry.target
+        href := Informal.TraversalIndex.LeanCodePreviews.href? state key
         sourceLocation := leanCodePreviewSourceLocation entry
       }
       entries := entries.push manifestEntry
