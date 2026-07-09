@@ -332,16 +332,24 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 #guard_msgs in
 #eval
   show Bool from
-    sampleManifest.blockStatementEntries.size == 2 &&
-      sampleExternalManifest.queryableStatementEntries.size == 3 &&
-      (sampleManifest.findPrimaryBlockEntry? "addition_assoc").map (·.key) ==
-        some "informal:addition_assoc:statement" &&
-      (sampleExternalManifest.findPrimaryQueryableEntry? "external_bodyless").map (·.key) ==
-        some (Informal.PreviewManifest.externalMarkupEntryKey (label "external_bodyless")) &&
-      sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
-      sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
-      sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
-        #["zeta_statement", "alpha_statement"]
+    match
+      sampleExternalManifest.findPrimaryQueryableEntry? "external_bodyless",
+      sampleManifest.findPrimaryQueryableEntry? "addition_assoc" with
+    | some externalEntry, some blockEntry =>
+        sampleManifest.blockStatementEntries.size == 2 &&
+          sampleExternalManifest.queryableStatementEntries.size == 3 &&
+          (sampleManifest.findPrimaryBlockEntry? "addition_assoc").map (·.key) ==
+            some "informal:addition_assoc:statement" &&
+          externalEntry.key ==
+            Informal.PreviewManifest.externalMarkupEntryKey (label "external_bodyless") &&
+          externalEntry.isQueryableStatement &&
+          !externalEntry.requiresRenderedBody &&
+          blockEntry.requiresRenderedBody &&
+          sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
+          sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
+          sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
+            #["zeta_statement", "alpha_statement"]
+    | _, _ => false
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
