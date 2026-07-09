@@ -12,9 +12,12 @@ open System
 
 namespace VersoBlueprint.Vbp.Main
 
+private def buildUsageLine : String :=
+  "lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]"
+
 private def mainCommandLines : List String := [
   "lake exe vbp discover",
-  "lake exe vbp build [--output <dir>] [--pdf] [--serve] [--port <n>]",
+  buildUsageLine,
   "lake exe vbp query [--site <dir>] <selector>",
   "lake exe vbp check [--site <dir>]"
 ]
@@ -22,9 +25,20 @@ private def mainCommandLines : List String := [
 private def defaultHelpLines : List String := [
   "build writes _out/site",
   "--pdf builds _out/site/pdf/main.pdf from the generated TeX",
+  "--verbose shows Blueprint generation phase progress during build",
   "query and check read _out/site",
   "--serve serves the generated html-multi directory after a successful build",
   "--serve --port <n> serves on a fixed port"
+]
+
+private def buildOptionLines : List String := [
+  "--output <dir>      Write generated output under <dir> instead of _out/site",
+  "--pdf               Build _out/site/pdf/main.pdf from the generated TeX",
+  "--pdf-engine <cmd>  Use <cmd> for PDF compilation",
+  "--pdf-runs <n>      Run the PDF engine <n> times",
+  "--verbose           Show Blueprint generation phase progress",
+  "--serve             Serve the generated html-multi directory after build",
+  "--port <n>          Serve on a fixed TCP port; requires --serve"
 ]
 
 private def indentHelpLine (line : String) : String :=
@@ -42,6 +56,16 @@ def helpText : String := String.intercalate "\n" <|
     "",
     "Defaults:"
   ] ++ defaultHelpLines.map indentHelpLine
+
+def buildHelpText : String := String.intercalate "\n" <|
+  [
+  "vbp build - build a Verso Blueprint site",
+  "",
+  "Usage:",
+  indentHelpLine buildUsageLine,
+  "",
+  "Options:"
+  ] ++ buildOptionLines.map indentHelpLine
 
 private def printJson (json : Json) : IO Unit :=
   IO.println json.compress
@@ -167,6 +191,7 @@ structure BuildOptions where
   pdf : Bool := false
   pdfEngine? : Option String := none
   pdfRuns? : Option Nat := none
+  verbose : Bool := false
   serve : Bool := false
   port? : Option Nat := none
 
@@ -220,6 +245,7 @@ private partial def parseBuildOptionsCore : List String → BuildOptions → Exc
         | [] => .error s!"missing value after {Informal.PreviewManifest.pdfRunsFlag}"
       else
         match arg, args with
+        | "--verbose", args => parseBuildOptionsCore args { opts with verbose := true }
         | "--serve", args => parseBuildOptionsCore args { opts with serve := true }
         | "--port", raw :: args =>
             match parseTcpPort raw with
@@ -283,9 +309,14 @@ The raw environment-wrapped Lean interpreter form does not load package native
 libraries such as MD4Lean. The `lake lean Foo.lean -- --run Foo.lean ...` form
 does, while still avoiding the generator executable build path.
 -/
-private def generatorRunArgs (generatorFile output : FilePath) : Array String :=
-  #["lean", generatorFile.toString, "--", "--run", generatorFile.toString,
-    "--output", output.toString]
+private def generatorRunArgs (generatorFile output : FilePath) (verbose : Bool) : Array String :=
+  let args :=
+    #["lean", generatorFile.toString, "--", "--run", generatorFile.toString,
+      "--output", output.toString]
+  if verbose then
+    args ++ #["--verbose"]
+  else
+    args
 
 private def pdfGeneratorArgs (opts : BuildOptions) : Array String :=
   let args := if opts.pdf then #[Informal.PreviewManifest.pdfFlag] else #[]
@@ -304,7 +335,7 @@ private def buildPlan (opts : BuildOptions) : IO (Except String BuildPlan) := do
       pure (.ok {
         packageName := info.packageName,
         generatorPrepareArgs := #["lean", info.generatorFile.toString],
-        generatorArgs := generatorRunArgs info.generatorFile opts.output ++ pdfGeneratorArgs opts
+        generatorArgs := generatorRunArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
       })
 
 private def serveScript : String := String.intercalate "\n" [
@@ -340,27 +371,32 @@ private def serve (output : FilePath) (port? : Option Nat) : IO UInt32 := do
     runAttached "python3" #["-c", serveScript, mode, toString port, htmlDir.toString]
 
 def build (args : List String) : IO UInt32 := do
-  match parseBuildOptions args {} with
-  | .error err =>
-      IO.eprintln err
-      pure 2
-  | .ok opts =>
-      match ← buildPlan opts with
+  match args with
+  | ["--help"] | ["-h"] | ["help"] =>
+      IO.println buildHelpText
+      pure 0
+  | _ =>
+      match parseBuildOptions args {} with
       | .error err =>
           IO.eprintln err
-          pure 1
-      | .ok plan =>
-          let code ← runBuildStages [
-            { stage := "package build", cmd := "lake", args := #["build", plan.packageName] },
-            { stage := "generator preparation", cmd := "lake", args := plan.generatorPrepareArgs },
-            { stage := "generator run", cmd := "lake", args := plan.generatorArgs }
-          ]
-          if code != 0 then
-            pure code
-          else if opts.serve then
-            serve opts.output opts.port?
-          else
-            pure 0
+          pure 2
+      | .ok opts =>
+          match ← buildPlan opts with
+          | .error err =>
+              IO.eprintln err
+              pure 1
+          | .ok plan =>
+              let code ← runBuildStages [
+                { stage := "package build", cmd := "lake", args := #["build", plan.packageName] },
+                { stage := "generator preparation", cmd := "lake", args := plan.generatorPrepareArgs },
+                { stage := "generator run", cmd := "lake", args := plan.generatorArgs }
+              ]
+              if code != 0 then
+                pure code
+              else if opts.serve then
+                serve opts.output opts.port?
+              else
+                pure 0
 
 def query (args : List String) : IO UInt32 := do
   match parseSiteOptions args {} with

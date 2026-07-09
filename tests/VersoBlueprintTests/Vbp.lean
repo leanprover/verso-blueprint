@@ -280,11 +280,22 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
       text.contains "selectors" &&
       text.contains "all <label>" &&
       text.contains "search <text>" &&
-      text.contains "lake exe vbp build [--output <dir>] [--pdf]" &&
+      text.contains "lake exe vbp build [--output <dir>] [--pdf] [--verbose]" &&
       text.contains "--pdf builds _out/site/pdf/main.pdf" &&
+      text.contains "--verbose shows Blueprint generation phase progress during build" &&
       text.contains "--serve --port <n>" &&
       text.contains "build writes _out/site" &&
       !text.contains "lake exe vbp query [--site <dir>] node <label>"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let text := VersoBlueprint.Vbp.Main.buildHelpText
+    text.contains "lake exe vbp build [--output <dir>] [--pdf] [--verbose]" &&
+      text.contains "--verbose" &&
+      text.contains "Show Blueprint generation phase progress" &&
+      text.contains "--port <n>"
 
 /-- info: true -/
 #guard_msgs in
@@ -781,12 +792,14 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     match VersoBlueprint.Vbp.Main.parseBuildOptions
-        ["--output", "_out/custom", "--pdf", "--pdf-engine", "xelatex", "--pdf-runs", "3"] {} with
+        ["--output", "_out/custom", "--pdf", "--pdf-engine", "xelatex", "--pdf-runs", "3",
+          "--verbose"] {} with
     | .ok opts =>
         opts.output.toString == "_out/custom" &&
           opts.pdf &&
           opts.pdfEngine? == some "xelatex" &&
-          opts.pdfRuns? == some 3
+          opts.pdfRuns? == some 3 &&
+          opts.verbose
     | .error _ => false
 
 /-- info: true -/
