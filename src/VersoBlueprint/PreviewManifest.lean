@@ -207,6 +207,15 @@ private def logBuildProgress (verbose : Bool) (message : String) : IO Unit := do
   if verbose then
     writeBuildProgress message
 
+private def storedEntryCountText (count : Nat) : String :=
+  if count == 1 then
+    "1 stored entry"
+  else
+    s!"{count} stored entries"
+
+private def logBuildProgressItemCount (verbose : Bool) (label : String) (count : Nat) : IO Unit :=
+  logBuildProgress verbose s!"{label}: {storedEntryCountText count}"
+
 private def withTimedBuildProgress
     {m : Type → Type} [Monad m] [MonadLiftT BaseIO m] [MonadLiftT IO m] {α : Type}
     (verbose : Bool) (label : String) (action : m α) : m α := do
@@ -2040,12 +2049,15 @@ private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (hoverState : Verso.Code.Hover.State Output.Html) :
+    (hoverState : Verso.Code.Hover.State Output.Html)
+    (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  for decoded in Informal.PreviewSource.traversalStoredEntries state do
+  let decodedEntries := Informal.PreviewSource.traversalStoredEntries state
+  logBuildProgressItemCount verbose "traversal preview entries" decodedEntries.size
+  for decoded in decodedEntries do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
@@ -2072,11 +2084,14 @@ private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (previewBackedEntries : Array Entry)
-    (renderConfig : Informal.ExternalMarkupRender.Config := {}) :
+    (renderConfig : Informal.ExternalMarkupRender.Config := {})
+    (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
-  for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
+  let decodedEntries := Informal.TraversalIndex.ExternalMarkup.entries state
+  logBuildProgressItemCount verbose "external markup manifest entries" decodedEntries.size
+  for decoded in decodedEntries do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
@@ -2183,8 +2198,8 @@ private def buildLeanCodeEntries
       let decodedEntries := Informal.TraversalIndex.LeanCodePreviews.entries state
       let decodeFinish ← IO.monoMsNow
       logBuildProgress true <|
-        s!"Lean code preview entries decoded in {elapsedMsText (decodeFinish - decodeStart)} " ++
-        s!"({decodedEntries.size} stored entries)"
+        s!"Lean code preview entries: {storedEntryCountText decodedEntries.size}; " ++
+        s!"decoded in {elapsedMsText (decodeFinish - decodeStart)}"
       pure decodedEntries
     else
       pure <| Informal.TraversalIndex.LeanCodePreviews.entries state
@@ -2340,10 +2355,10 @@ def buildPreviewDataFiles
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ←
     withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state hoverState
+      buildTraversalEntries impls logError state hoverState (verbose := verbose)
   let (externalMarkupPreviews, externalMarkupHtml) ←
     withTimedBuildProgress verbose "building external markup manifest entries" <|
-      buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig
+      buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig (verbose := verbose)
   let (leanCodePreviews, leanCodeHtml, hoverState) ←
     withTimedBuildProgress verbose "building Lean code preview entries" <|
       buildLeanCodeEntries impls logError state hoverState (verbose := verbose)
