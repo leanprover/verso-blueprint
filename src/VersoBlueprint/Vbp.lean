@@ -360,17 +360,12 @@ private def checkGraphPreviewKeys
     (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
     errors
 
-private def entryRequiresRenderedBody (entry : Entry) : Bool :=
-  match entry.targetKind with
-  | .externalMarkup => false
-  | .block | .leanDecl | .inlineLeanCode | .citation => true
-
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
-        if entryRequiresRenderedBody entry then
+        if entry.requiresRenderedBody then
           pushMissingCacheKey index errors s!"entry {entry.key}" entry.key
         else
           errors

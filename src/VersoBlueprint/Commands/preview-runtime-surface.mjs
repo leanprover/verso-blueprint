@@ -448,8 +448,16 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
           ? result.diagnosticHtml
           : "";
         const resultTitle = previewResultTitle(result);
+        const semanticOnlyDiagnostic =
+          result && result.reason === "semantic-preview-body-missing"
+            ? fallbackDiagnostic(
+                "semanticOnlyDiagnostic",
+                "This preview target does not have a rendered preview entry."
+              )
+            : "";
         replaceBody(
-          diagnosticHtml ||
+          semanticOnlyDiagnostic ||
+            diagnosticHtml ||
             fallbackDiagnostic("fallbackDiagnostic", "The preview cache content could not be loaded."),
           diagnosticRenderOptions,
           resultTitle
@@ -485,6 +493,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       return {
         ok: false,
         key: result && typeof result.key === "string" ? result.key : previewKey,
+        reason: result && typeof result.reason === "string" ? result.reason : "",
         html: result && typeof result.diagnosticHtml === "string" ? result.diagnosticHtml : "",
         result: result || null
       };
@@ -492,6 +501,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       return {
         ok: false,
         key: previewKey,
+        reason: "preview-load-failed",
         html: previewMessageHtml({
           kind: "error",
           title: "Preview unavailable",

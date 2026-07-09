@@ -1310,6 +1310,46 @@ structure PreviewMetadataLoss where
   missingLeanCodePreviewKeys : Array String := #[]
 deriving Repr, ToJson, FromJson
 
+/-- Whether this manifest entry represents an informal Blueprint block. -/
+def Entry.isBlock (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .block => true
+  | _ => false
+
+/-- Whether this manifest entry represents a source-backed external-markup node. -/
+def Entry.isExternalMarkup (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .externalMarkup => true
+  | _ => false
+
+/-- Whether this manifest entry represents an informal Blueprint node target. -/
+def Entry.isBlueprintNodeTarget (entry : Entry) : Bool :=
+  entry.isBlock || entry.isExternalMarkup
+
+/-- Whether this manifest entry represents the statement facet. -/
+def Entry.isStatement (entry : Entry) : Bool :=
+  match entry.facet with
+  | .statement => true
+  | _ => false
+
+/-- Whether this manifest entry is a statement-facet Blueprint node query row. -/
+def Entry.isQueryableStatement (entry : Entry) : Bool :=
+  entry.isStatement && entry.isBlueprintNodeTarget
+
+/-- Whether this manifest entry's authored public label matches `label`. -/
+def Entry.matchesAuthoredLabel (entry : Entry) (label : String) : Bool :=
+  entry.authoredLabel == label
+
+/--
+Whether generated-data consistency checks require a rendered-fragment cache body
+for this manifest entry.
+
+External-markup entries can be intentionally semantic-only when source-backed
+nodes are generated without cache fragments.
+-/
+def Entry.requiresRenderedBody (entry : Entry) : Bool :=
+  !entry.isExternalMarkup
+
 /--
 Find the manifest entry that should carry metadata for a traversal preview.
 
@@ -1319,7 +1359,7 @@ than as ordinary block entries, but the label/facet provenance is still the same
 def File.findPreviewMetadataEntry? (file : File) (metadata : PreviewCache.Metadata) :
     Option Entry :=
   file.previews.find? fun entry =>
-    (entry.targetKind == .block || entry.targetKind == .externalMarkup) &&
+    entry.isBlueprintNodeTarget &&
       entry.label == metadata.label && entry.facet == metadata.facet
 
 private def missingPreviewLeanCodeKeys (entry? : Option Entry)
@@ -1389,24 +1429,6 @@ def File.entriesWithSource (file : File) : Array Entry :=
 def File.entriesForSourceDocument (file : File) (id : String) : Array Entry :=
   file.previews.filter fun entry => entry.hasSourceDocument id
 
-/-- Whether this manifest entry represents an informal Blueprint block. -/
-def Entry.isBlock (entry : Entry) : Bool :=
-  match entry.targetKind with
-  | .block => true
-  | _ => false
-
-/-- Whether this manifest entry represents a source-backed external-markup node. -/
-def Entry.isExternalMarkup (entry : Entry) : Bool :=
-  match entry.targetKind with
-  | .externalMarkup => true
-  | _ => false
-
-/-- Whether this manifest entry represents the statement facet. -/
-def Entry.isStatement (entry : Entry) : Bool :=
-  match entry.facet with
-  | .statement => true
-  | _ => false
-
 /-- Statement-facet block entries, the primary row set for client label queries. -/
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
@@ -1418,13 +1440,12 @@ but they still carry the same semantic label, dependency, ownership, and source
 metadata as block entries.
 -/
 def File.queryableStatementEntries (file : File) : Array Entry :=
-  file.previews.filter fun entry =>
-    entry.isStatement && (entry.isBlock || entry.isExternalMarkup)
+  file.previews.filter (·.isQueryableStatement)
 
 /-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
-    entry.isBlock && entry.authoredLabel == label
+    entry.isBlock && entry.matchesAuthoredLabel label
 
 /--
 All queryable Blueprint entries matching the authored public label string,
@@ -1433,9 +1454,9 @@ including non-statement facets for normal blocks.
 def File.findQueryableEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
     if entry.isBlock then
-      entry.authoredLabel == label
+      entry.matchesAuthoredLabel label
     else
-      entry.isExternalMarkup && entry.isStatement && entry.authoredLabel == label
+      entry.isExternalMarkup && entry.isStatement && entry.matchesAuthoredLabel label
 
 /--
 Best public block entry for a label.

@@ -2027,6 +2027,74 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] > 1
         assert_no_runtime_errors(errors)
 
+    def test_semantic_only_external_markup_preview_has_explicit_reason(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreview } = await import(api.previewApiModuleUrl());
+                const unavailableSourceLocation = {
+                    ok: false,
+                    location: null,
+                    error: "source location unavailable"
+                };
+                const manifestPayload = {
+                    sourceDocuments: [],
+                    previews: [
+                        {
+                            key: "externalMarkup:semantic_only_external",
+                            targetKind: "externalMarkup",
+                            label: "semantic_only_external",
+                            authoredLabel: "semantic_only_external",
+                            facet: "statement",
+                            title: "Semantic-only external theorem",
+                            sourceLocation: unavailableSourceLocation,
+                            externalMarkup: [],
+                            sources: []
+                        }
+                    ],
+                    graphs: []
+                };
+                const htmlCachePayload = { entries: [] };
+                const preview = createPreview({
+                    fetchJson(url) {
+                        return String(url).includes("blueprint-html-cache.json")
+                            ? htmlCachePayload
+                            : manifestPayload;
+                    }
+                });
+                const host = document.createElement("div");
+                document.body.appendChild(host);
+                const key = "externalMarkup:semantic_only_external";
+                const resolved = await preview.resolvePreview(key);
+                const rendered = await preview.renderPreviewInto(host, key);
+                return {
+                    resolvedOk: resolved.ok,
+                    resolvedReason: resolved.reason,
+                    renderedOk: rendered.ok,
+                    renderedReason: rendered.reason,
+                    manifestStatus: preview.readManifestStatus(),
+                    htmlCacheStatus: preview.readHtmlCacheStatus(),
+                    html: host.innerHTML
+                };
+                """
+            )
+        )
+
+        assert result["resolvedOk"] is False
+        assert result["resolvedReason"] == "semantic-preview-body-missing"
+        assert result["renderedOk"] is False
+        assert result["renderedReason"] == "semantic-preview-body-missing"
+        assert result["manifestStatus"]["state"] == "ready"
+        assert result["htmlCacheStatus"]["state"] == "ready"
+        assert "Preview body unavailable" in result["html"]
+        assert "Preview HTML cache unavailable" not in result["html"]
+        assert_no_runtime_errors(errors)
+
     def test_used_by_panel_loads_html_cache_backed_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
