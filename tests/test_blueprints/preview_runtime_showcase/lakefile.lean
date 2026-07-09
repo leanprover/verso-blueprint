@@ -9,6 +9,3 @@ package PreviewRuntimeShowcase where
 
 @[default_target]
 lean_lib PreviewRuntimeShowcase where
-
-lean_exe «blueprint-gen» where
-  root := `PreviewRuntimeShowcaseMain
