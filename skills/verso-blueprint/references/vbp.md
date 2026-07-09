@@ -8,7 +8,7 @@ Run `lake exe vbp --help` for complete local CLI usage. The main command forms a
 
 ```bash
 lake exe vbp discover
-lake exe vbp build [--output <dir>] [--serve] [--port <n>]
+lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]
 lake exe vbp query [--site <dir>] <selector>
 lake exe vbp check
 ```
@@ -36,6 +36,8 @@ Defaults:
 - `build` writes `_out/site`.
 - `query` and `check` read `_out/site`.
 - Pass `--output <dir>` only to choose where `build` writes generated output.
+- Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX.
+- Pass `--verbose` to show Blueprint generation phase progress while building.
 - Pass `--site <dir>` to `query` or `check` only when reading a non-default site.
 
 ## Build And Serve
@@ -48,6 +50,8 @@ Defaults:
 lake lean <GeneratorMain>.lean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
 ```
+
+`build --verbose` passes `--verbose` through to the generator run, enabling Blueprint generation phase progress after the Lake package build completes.
 
 `build --serve` builds once, then serves `<output>/html-multi` with a local static server and keeps running. Without `--port`, it tries port `8000` and falls back to an available port. With `--serve --port <n>`, it fails if the requested port is unavailable. `--port` is accepted only with `--serve`. The command prints the actual preview URL.
 

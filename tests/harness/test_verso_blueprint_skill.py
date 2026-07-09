@@ -22,7 +22,9 @@ class VersoBlueprintSkillTests(unittest.TestCase):
 
     def test_vbp_reference_documents_public_surface(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
-        self.assertIn("lake exe vbp build [--output <dir>] [--serve] [--port <n>]", text)
+        self.assertIn("lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]", text)
+        self.assertIn("Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX.", text)
+        self.assertIn("`build --verbose` passes `--verbose` through to the generator run", text)
         self.assertIn("lake exe vbp query [--site <dir>] <selector>", text)
         self.assertIn("lake lean <GeneratorMain>.lean", text)
         self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
