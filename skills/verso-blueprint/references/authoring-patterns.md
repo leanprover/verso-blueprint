@@ -7,7 +7,6 @@ A standard project has:
 - chapter modules with `#doc (Manual) ...` content
 - a top-level Blueprint module that includes chapters and overview pages
 - a generator entry point, usually `<Project>Main.lean`
-- a `blueprint-gen` executable in `lakefile.lean`
 
 Keep this structure unless the user asks for a project reorganization.
 

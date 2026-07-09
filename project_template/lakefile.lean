@@ -9,6 +9,3 @@ package ProjectTemplate where
 
 @[default_target]
 lean_lib ProjectTemplate where
-
-lean_exe «blueprint-gen» where
-  root := `ProjectTemplateMain

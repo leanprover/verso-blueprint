@@ -227,7 +227,7 @@ Work:
    truth for project shape, authoring patterns, and generator wiring
 2. land the planned smaller starter example and reusable template
 3. land `lake exe bp new` as the user-facing project creation command
-4. keep `lake exe blueprint-gen` as the documented generation interface for
+4. keep `lake exe vbp build` as the documented generation interface for
    existing projects
 5. add a template-owned GitHub Pages workflow and local CI script, then test the
    template as a fresh standalone repository

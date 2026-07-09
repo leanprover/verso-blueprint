@@ -17,6 +17,7 @@ from scripts.blueprint_harness_project_commands import (
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+VBP_BUILD_COMMAND = ("lake", "exe", "vbp", "build")
 
 
 class BlueprintHarnessProjectCommandTests(unittest.TestCase):
@@ -261,7 +262,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     project_dir,
                     update_project=lambda: commands.append(["lake", "update"]),
                     build_command=("lake", "build"),
-                    generate_command=("lake", "exe", "blueprint-gen"),
+                    generate_command=VBP_BUILD_COMMAND,
                     format_command=lambda command: [*command, "--formatted"],
                     skip_build=False,
                 )
@@ -276,7 +277,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 ["lake", "update"],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "build", "--formatted"],
                 ["ensure", str(package_root)],
-                [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen", "--formatted"],
+                [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND, "--formatted"],
             ],
         )
 
@@ -305,7 +306,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     project_dir,
                     update_project=lambda: commands.append(["lake", "update"]),
                     build_command=("lake", "build"),
-                    generate_command=("lake", "exe", "blueprint-gen"),
+                    generate_command=VBP_BUILD_COMMAND,
                     format_command=list,
                     skip_build=True,
                 )
@@ -319,6 +320,6 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             [
                 ["lake", "update"],
                 ["ensure", str(package_root)],
-                [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen"],
+                [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND],
             ],
         )

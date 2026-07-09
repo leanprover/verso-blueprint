@@ -130,7 +130,7 @@ The role of each file is:
   intentionally unfinished open problem
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the renderer entry point
-- `lakefile.lean`: the package definition and optional generator executable
+- `lakefile.lean`: the package definition
 
 ## The Blueprint Top-Level File
 
@@ -1153,37 +1153,26 @@ forwarder to the canonical function until those projects migrate. Do not add
 forwarders for undocumented internals or convenience aliases. New generators
 should call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
 
-Recommended CI usage builds the Lean library or formalization targets needed by
-the document, then runs the generator file directly:
+For normal local and CI usage, prefer the project helper:
+
+```bash
+lake exe vbp build
+lake exe vbp build --serve
+```
+
+It performs the package build, generator preparation, generator run, and
+optional local serving. When a maintainer harness or advanced CI job must drive
+those stages explicitly, the equivalent lower-level shape is:
 
 ```bash
 lake build <library-or-formalization-target>
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 ```
 
-That path still checks the Blueprint document and writes the same HTML output,
-but it does not force Lake to compile the generator executable and its
-transitive native artifacts. In Mathlib-heavy projects this is often faster for
-cold CI jobs, even though the interpreted generator step itself can be a little
-slower than a compiled executable.
-
-Projects may also declare a `lean_exe` for repeated local runs:
-
-```lean
-lean_exe «blueprint-gen» where
-  root := `ProjectTemplateMain
-```
-
-Then the compiled-executable path remains available:
+The project helper can emit TeX and compile a PDF in the same run:
 
 ```bash
-lake exe blueprint-gen --output _out/site
-```
-
-To emit TeX and compile a PDF in the same run, pass `--pdf`:
-
-```bash
-lake exe blueprint-gen --output _out/site --pdf
+lake exe vbp build --pdf
 ```
 
 The PDF is written to `_out/site/pdf/main.pdf`. The default engine is

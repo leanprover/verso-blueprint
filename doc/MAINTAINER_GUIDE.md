@@ -50,11 +50,11 @@ python3 -m scripts.blueprint_test_blueprints --help
 
 ### Agent-Facing `vbp` Helper
 
-`lake exe vbp ...` and `skills/verso-blueprint/` are maintained as an
-agent-facing helper surface for local coding agents. They do not replace the
-user-facing Blueprint generation path: end-user docs should continue to present
-`lake exe blueprint-gen ...` and the project generator entry point as the
-normal rendering workflow.
+`lake exe vbp ...` and `skills/verso-blueprint/` are maintained as the
+project-facing helper surface for Blueprint generation and local coding-agent
+queries. End-user docs should present `lake exe vbp build` as the normal
+rendering workflow; it discovers the project generator entry point and invokes
+it internally.
 
 Treat `vbp` JSON as fully unstable. It may change within this repository as
 agent workflows evolve, and should not be documented as a public compatibility
@@ -776,11 +776,11 @@ The harness is now project-driven rather than hardcoded to one project.
   generation commands needed after checkout
 - each project target owns its release ref, optional RC metadata, and
   `publish_reference: true` marker for the release-facing published catalog
-- prefer a build command that targets only the Lean library or formalization
-  artifacts needed by the document, followed by a
-  `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...` generation
-  command; do not build the generator executable unless that native executable
-  is the behavior under review
+- prefer `lake exe vbp build` for package-local generation, or a build command
+  that targets only the Lean library or formalization artifacts needed by the
+  document followed by
+  `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...` when the
+  harness must drive an external project explicitly
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
