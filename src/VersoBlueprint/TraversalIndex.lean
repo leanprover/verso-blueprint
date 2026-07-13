@@ -544,6 +544,34 @@ def hrefs (state : TraverseState) (label : String) : Array String :=
 
 end CitationUsages
 
+namespace RelatedPanelUsedByCache
+
+def spec : StoreSpec := {
+  name := `_versoBlueprintRelationUsedByCache
+  kind := .internalIndex
+  key := "informal label"
+  value := "precomputed reverse-dependency relation-panel entries"
+  summary := "Traversal-local render cache for Blueprint relation-panel reverse dependencies."
+}
+
+def domainName : Name := spec.name
+
+end RelatedPanelUsedByCache
+
+namespace RelatedPanelGroupMembersCache
+
+def spec : StoreSpec := {
+  name := `_versoBlueprintRelationGroupMembersCache
+  kind := .internalIndex
+  key := "group label"
+  value := "precomputed group-member relation-panel entries"
+  summary := "Traversal-local render cache for Blueprint relation-panel group membership."
+}
+
+def domainName : Name := spec.name
+
+end RelatedPanelGroupMembersCache
+
 /--
 Code-side inventory of the traversal indexes owned by Blueprint.
 
@@ -565,7 +593,9 @@ def allSpecs : Array StoreSpec := #[
   ExternalDeclAnchors.spec,
   CitationPreviews.spec,
   Bibliography.spec,
-  CitationUsages.spec
+  CitationUsages.spec,
+  RelatedPanelUsedByCache.spec,
+  RelatedPanelGroupMembersCache.spec
 ]
 
 end Informal.TraversalIndex

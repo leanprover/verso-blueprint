@@ -9,6 +9,55 @@
     };
   }
 
+  let relationPanelCounter = 0;
+
+  function relationBadgeSpec(code) {
+    switch (code) {
+      case "s":
+        return {
+          className: "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_statement",
+          title: "Declared in the statement",
+          text: "statement"
+        };
+      case "p":
+        return {
+          className: "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_proof",
+          title: "Declared in the proof",
+          text: "proof"
+        };
+      case "oa":
+        return {
+          className: "bp_relation_axis_badge bp_relation_badge_origin bp_relation_badge_origin_automatic",
+          title: "Origin: automatic",
+          text: "automatic"
+        };
+      case "ia":
+        return {
+          className: "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_auxiliary",
+          title: "Intent: auxiliary",
+          text: "auxiliary"
+        };
+      case "it":
+        return {
+          className: "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_technical",
+          title: "Intent: technical",
+          text: "technical"
+        };
+      default:
+        return null;
+    }
+  }
+
+  function appendRelationBadge(parent, code) {
+    const spec = relationBadgeSpec(code);
+    if (!spec) return;
+    const badge = document.createElement("span");
+    badge.className = spec.className;
+    badge.title = spec.title;
+    badge.textContent = spec.text;
+    parent.appendChild(badge);
+  }
+
   export function bindRelationPanel(previewUtils, panel) {
     if (!(panel instanceof Element)) return;
     if (panel.getAttribute("data-bp-bound") === "1") return;
@@ -27,7 +76,11 @@
 
     const defaultTitle = (surface.title.textContent || "").trim() || "Relation preview";
     const initialLoadingHtml = (surface.body.innerHTML || "").trim();
-    const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
+    const list = panel.querySelector(".bp_relation_list");
+    const relationPanelId = ++relationPanelCounter;
+    let items = [];
+    let hydratedItems = false;
+    let parsedEntryData = null;
     let activateRequestToken = 0;
     let relationLifecycle = null;
 
@@ -41,10 +94,101 @@
       if (relationLifecycle) relationLifecycle.cancelHide();
     }
 
-    function activeItem() {
-      return items.find(function (item) {
+    function relationEntryData() {
+      if (parsedEntryData !== null) return parsedEntryData;
+      parsedEntryData = [];
+      if (!(list instanceof Element)) return parsedEntryData;
+      const dataScript = list.querySelector("script.bp-relation-entries");
+      const rawData = dataScript ? (dataScript.textContent || "").trim() : "";
+      if (!rawData) return parsedEntryData;
+      try {
+        const parsed = JSON.parse(rawData);
+        if (Array.isArray(parsed)) parsedEntryData = parsed;
+      } catch (_err) {
+        parsedEntryData = [];
+      }
+      return parsedEntryData;
+    }
+
+    // Must match RelatedPanel.panelEntryDataJson; kept positional because large
+    // blueprints can have thousands of relation rows.
+    function createRelationItem(entry, index) {
+      if (!Array.isArray(entry)) return null;
+      const title = typeof entry[0] === "string" && entry[0] ? entry[0] : defaultTitle;
+      const previewKey = typeof entry[1] === "string" ? entry[1] : "";
+      const label = typeof entry[2] === "string" ? entry[2] : "";
+      const href = typeof entry[3] === "string" ? entry[3] : "";
+      const badgeCodes = Array.isArray(entry[4]) ? entry[4] : [];
+      const active = entry[5] === true;
+      const item = document.createElement("li");
+      item.className = active ? "bp_relation_item bp_relation_item_active" : "bp_relation_item";
+      item.setAttribute("data-bp-relation-preview-id", "bp-relation-" + relationPanelId + "-" + index);
+      item.setAttribute("data-bp-relation-preview-title", title);
+      if (previewKey) item.setAttribute("data-bp-relation-preview-key", previewKey);
+      if (label) item.setAttribute("data-bp-preview-header-label", label);
+      if (href) item.setAttribute("data-bp-preview-header-href", href);
+
+      const target = document.createElement(href ? "a" : "span");
+      target.className = "bp_relation_target";
+      if (href) target.setAttribute("href", href);
+
+      const titleNode = document.createElement("span");
+      titleNode.className = "bp_relation_target_title";
+      titleNode.textContent = title;
+      target.appendChild(titleNode);
+
+      const meta = document.createElement("span");
+      meta.className = "bp_relation_target_meta";
+      const code = document.createElement("code");
+      code.textContent = label;
+      meta.appendChild(code);
+      badgeCodes.forEach(function (badgeCode) {
+        if (typeof badgeCode === "string") appendRelationBadge(meta, badgeCode);
+      });
+      target.appendChild(meta);
+      item.appendChild(target);
+      return item;
+    }
+
+    function bindRelationItem(item) {
+      if (!(item instanceof Element)) return;
+      if (item.getAttribute("data-bp-relation-item-bound") === "1") return;
+      item.setAttribute("data-bp-relation-item-bound", "1");
+      item.addEventListener("mouseenter", function () {
+        activate(item);
+      });
+      item.addEventListener("focusin", function () {
+        activate(item);
+      });
+    }
+
+    function ensureItems() {
+      if (hydratedItems) return items;
+      hydratedItems = true;
+      if (!(list instanceof Element)) return items;
+      const fragment = document.createDocumentFragment();
+      relationEntryData().forEach(function (entry, index) {
+        const item = createRelationItem(entry, index);
+        if (item instanceof Element) {
+          bindRelationItem(item);
+          items.push(item);
+          fragment.appendChild(item);
+        }
+      });
+      list.appendChild(fragment);
+      if (!items.some(function (item) {
         return item instanceof Element && item.classList.contains("bp_relation_item_active");
-      }) || items[0] || null;
+      }) && items[0] instanceof Element) {
+        items[0].classList.add("bp_relation_item_active");
+      }
+      return items;
+    }
+
+    function activeItem() {
+      const currentItems = ensureItems();
+      return currentItems.find(function (item) {
+        return item instanceof Element && item.classList.contains("bp_relation_item_active");
+      }) || currentItems[0] || null;
     }
 
     function selectItem(item) {
@@ -134,22 +278,6 @@
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
         )
       });
-    }
-
-    items.forEach(function (item) {
-      if (!(item instanceof Element)) return;
-      item.addEventListener("mouseenter", function () {
-        activate(item);
-      });
-      item.addEventListener("focusin", function () {
-        activate(item);
-      });
-    });
-    const initialItem = items.find(function (item) {
-      return item instanceof Element && item.classList.contains("bp_relation_item_active");
-    }) || items[0];
-    if (initialItem instanceof Element) {
-      selectItem(initialItem);
     }
 
     if (wrap instanceof Element && chip instanceof Element) {
