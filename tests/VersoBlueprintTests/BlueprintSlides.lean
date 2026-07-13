@@ -398,7 +398,8 @@ private def writeSlidesPreviewDataFiles
         hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
         hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
         hasSubstr rendered "Group: Preview group title. (2)" &&
-        hasSubstr rendered "bp_relation_item_active" &&
+        hasSubstr rendered "class=\"bp-relation-entries\"" &&
+        !hasSubstr rendered "bp_relation_item_active" &&
         !hasSubstr rendered "Loading Blueprint node"
 
 /-- info: true -/
