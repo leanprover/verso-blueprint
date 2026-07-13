@@ -62,7 +62,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
     def test_readme_marks_vbp_json_unstable(self) -> None:
         text = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Treat `vbp` query JSON as an unstable", text)
-        self.assertIn("not a public compatibility contract", text)
+        self.assertIn("not a public compatibility contract", " ".join(text.split()))
 
     def test_maintainer_guide_records_vbp_boundary(self) -> None:
         text = (PACKAGE_ROOT / "doc" / "MAINTAINER_GUIDE.md").read_text(encoding="utf-8")

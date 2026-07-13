@@ -179,24 +179,20 @@ Run `lake update` once after copying the template. After that, run
 that the included GitHub Pages workflow uses. Internally that script uses:
 
 ```bash
-lake build ProjectTemplate
+lake exe vbp build
+```
+
+The project helper builds the Lean library artifacts, prepares the generator
+file, and then runs the generator through Lake's Lean wrapper:
+
+```bash
 lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
 ```
 
-This path avoids building the generator executable and its transitive native
-artifacts, which is usually the better tradeoff for CI and Mathlib-heavy
-projects. If you repeatedly run the same generator locally and want a compiled
-executable, the `blueprint-gen` executable declared in `lakefile.lean` still
-supports:
+To build a PDF as well as the HTML site, pass `--pdf` to the project helper:
 
 ```bash
-lake exe blueprint-gen --output _out/site
-```
-
-To build a PDF as well as the HTML site, pass `--pdf`:
-
-```bash
-lake exe blueprint-gen --output _out/site --pdf
+lake exe vbp build --pdf
 ```
 
 This writes `_out/site/pdf/main.pdf`. PDF generation requires a local

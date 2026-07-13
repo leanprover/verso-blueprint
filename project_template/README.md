@@ -11,7 +11,7 @@ project that already has the right moving parts:
 - a GitHub Pages workflow under `.github/workflows/`
 - chapter files with real Blueprint blocks
 - a Blueprint top-level file
-- a generator entry point, plus an optional `blueprint-gen` executable
+- a generator entry point
 - a local CI script for build-and-render checks
 - rendered graph and summary pages
 
@@ -50,8 +50,7 @@ The important files are:
 - `ProjectTemplateMain.lean`: the rendering entry point
 - `source/addition-source.pdf`: a tiny committed source-document fixture used
   by the addition chapter's source chip and preview
-- `lakefile.lean`: the package definition and optional `blueprint-gen`
-  executable
+- `lakefile.lean`: the package definition
 - `.github/workflows/blueprint-pages.yml`: copyable reusable Pages workflow
   used by the template
 - `.github/workflows/pages.yml`: thin caller into the local reusable workflow
@@ -89,23 +88,21 @@ lake update
 
 Run `lake update` once after copying the template. After that, use
 `./scripts/ci-pages.sh` whenever you want the same local build-and-render check
-that the included GitHub Pages workflow runs. The script builds the Lean library
-artifacts and then runs the generator file directly:
+that the included GitHub Pages workflow runs. The script delegates to the
+project helper:
 
 ```bash
-lake build ProjectTemplate
-lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
+lake exe vbp build
 ```
 
-This avoids compiling a generator executable and its transitive native artifacts,
-which is especially helpful in cold CI jobs and Mathlib-heavy projects. If you
-want a compiled executable for repeated local runs,
-`lake exe blueprint-gen --output _out/site` still works.
+`vbp build` builds the Lean library artifacts, prepares the generator file, and
+then runs the generator through Lake's Lean wrapper without relying on a
+separate Lake executable target.
 
 To build a PDF locally, run:
 
 ```bash
-lake exe blueprint-gen --output _out/site --pdf
+lake exe vbp build --pdf
 ```
 
 This writes `_out/site/pdf/main.pdf` and requires a `lualatex`-compatible

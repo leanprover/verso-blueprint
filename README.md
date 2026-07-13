@@ -61,9 +61,9 @@ For the broader rendered artifact index, including published reference
 blueprints and local test fixtures, see the
 [published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
 
-By default, generators write the HTML site under `_out/site/html-multi/`. Passing
-`--pdf` to `lake exe blueprint-gen` also emits TeX and runs `lualatex` to write
-`_out/site/pdf/main.pdf`; use `--pdf-engine <cmd>` for another
+By default, `lake exe vbp build` writes the HTML site under
+`_out/site/html-multi/`. Passing `--pdf` also emits TeX and runs `lualatex` to
+write `_out/site/pdf/main.pdf`; use `--pdf-engine <cmd>` for another
 lualatex-compatible command.
 
 ## Three-Level Blueprint Model
@@ -433,10 +433,10 @@ local coding agents. The skill teaches agents to use `lake exe vbp ...` for
 project discovery, build/serve previews, generated-data queries, and
 post-edit checks.
 
-This helper does not replace the normal Blueprint generation interface for
-projects. `lake exe blueprint-gen ...` and the generator entry point remain the
-documented user-facing rendering path. Treat `vbp` query JSON as an unstable
-agent interface, not a public compatibility contract.
+`lake exe vbp build` is the normal Blueprint generation interface for projects.
+It discovers the project generator entry point and runs it through Lake's Lean
+wrapper internally. Treat `vbp` query JSON as an unstable agent interface, not a
+public compatibility contract.
 
 ### Maintainer CLI Split
 

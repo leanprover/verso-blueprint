@@ -472,7 +472,8 @@ def run_real_pdf_smoke_check(package_root: Path, output_root: Path) -> StepFailu
                 generate_command=(
                     "lake",
                     "exe",
-                    "blueprint-gen",
+                    "vbp",
+                    "build",
                     "--output",
                     "{output_dir}",
                     "--pdf",
