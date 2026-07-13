@@ -383,11 +383,17 @@ def graphForRenderedBlock
     (semantic : Informal.Graph.GraphData) : Informal.Graph.GraphData :=
   Informal.GraphApi.finalDataForBlock state blockId semantic
 
-def allRenderedGraphs
+def allRenderedGraphEntries
     (state : Verso.Genre.Manual.TraverseState) :
-    Array Informal.Graph.GraphData :=
-  Informal.GraphApi.cachedData state
+    Array (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.Graph.GraphData)) :=
+  Informal.GraphApi.cachedEntries state
 ```
+
+`cachedEntries` preserves malformed traversal-cache records as `DecodeError`
+values and successful records as canonical-name/data pairs, so callers can
+report corruption instead of silently omitting graphs. The generated-manifest
+path reports those errors and continues with valid graph entries.
 
 Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, and `groups`, with status enums,

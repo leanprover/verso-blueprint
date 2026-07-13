@@ -176,4 +176,23 @@ Base statement for graph preview mode option coverage.
       !hasSubstr out "dotByDirection"
     )
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_, state) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
+    let malformedKey := "graph:malformed"
+    let state :=
+      Informal.TraversalIndex.Graphs.saveId state malformedKey default
+        |>.saveDomainObjectData
+          Informal.TraversalIndex.Graphs.domainName malformedKey (Lean.Json.str "malformed")
+    let errors ← IO.mkRef #[]
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls
+      (fun msg => errors.modify (·.push msg)) state
+    let errors ← errors.get
+    pure <|
+      !files.manifest.graphs.isEmpty &&
+        errors.any fun msg =>
+          hasSubstr msg "Blueprint manifest: malformed graph entry graph:malformed:"
+
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph
