@@ -200,9 +200,9 @@ export function getGraphData(root) {
  * @returns {BlueprintGraphVariant[]}
  */
 export function getGraphVariants(root) {
-  const parsed = readGraphJsonScript(root || currentDocument(), "script.bp-graph-variants");
-  if (Array.isArray(parsed) && parsed.length > 0) {
-    return /** @type {BlueprintGraphVariant[]} */ (parsed);
+  const data = getGraphData(root || currentDocument());
+  if (data && Array.isArray(data.variants) && data.variants.length > 0) {
+    return /** @type {BlueprintGraphVariant[]} */ (data.variants);
   }
   return [];
 }

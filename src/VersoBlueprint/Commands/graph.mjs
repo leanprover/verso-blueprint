@@ -23,8 +23,11 @@ function readPublicGraphData(root) {
   return coreGetGraphData(root);
 }
 
-function readPublicGraphVariants(root) {
-  const variants = coreGetGraphVariants(root);
+function readPublicGraphVariants(root, graphData) {
+  const variants =
+    graphData && Array.isArray(graphData.variants)
+      ? graphData.variants
+      : coreGetGraphVariants(root);
   if (Array.isArray(variants) && variants.length > 0) {
     return variants;
   }
@@ -299,8 +302,7 @@ export function createGraphBlock(graphData, options) {
     "data-bp-graph-direction": graphOptions.direction,
     "data-bp-graph-pack": graphPackAttr(graphOptions.pack)
   });
-  appendJsonScript(doc, canvas, "bp-graph-data", data);
-  appendJsonScript(doc, canvas, "bp-graph-variants", variants);
+  appendJsonScript(doc, canvas, "bp-graph-data", Object.assign({}, data, { variants: variants }));
   block.appendChild(canvas);
   block.appendChild(createPreviewPanel(
     doc,
@@ -713,7 +715,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         { keepOpen: true }
       );
 
-      const rawVariants = readPublicGraphVariants(graphBlock);
+      const rawVariants = readPublicGraphVariants(graphBlock, graphApiData);
       if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
       const variantsByKey = new Map();
       rawVariants.forEach(function (variant) {

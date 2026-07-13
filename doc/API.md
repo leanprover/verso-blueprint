@@ -438,10 +438,10 @@ const graph = getGraphData(document);
 ```
 
 For rendering new graph blocks, prefer `loadGraphs()` and the manifest graph
-record's Lean-emitted `variants` field. The embedded
-`script.bp-graph-data` and `script.bp-graph-variants` payloads are for reading
-back graph blocks that already exist on a generated page, and for compatibility
-with the page renderer.
+record's Lean-emitted `variants` field. Generated graph blocks embed one
+`script.bp-graph-data` payload that carries both the graph data and its render
+variants for reading back graph blocks that already exist on a generated page,
+including markup emitted by the page renderer.
 
 The same module can render a graph from finalized manifest data. Rendering also
 needs the Blueprint browser render runtime for preview surfaces, popovers, and
@@ -473,7 +473,7 @@ rendered in one call. Both helpers consume the graph record's precomputed
 The module can also initialize an existing graph block. That compatibility path
 is for markup that is already present, such as the standard
 `.bp_graph_fullwidth` markup emitted by `{blueprint_graph}`, including its
-embedded `script.bp-graph-data` and `script.bp-graph-variants` payloads.
+embedded `script.bp-graph-data` payload.
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";
