@@ -188,7 +188,7 @@ CI uses the generated docs in two places:
   [leanprover.github.io/verso-blueprint/js-api/](https://leanprover.github.io/verso-blueprint/js-api/).
 - `ci.yml` uploads `_out/jsdoc-api` as the `js-api-docs` artifact for direct
   inspection from pull requests and branch runs. Those artifact URLs are
-  run-specific, so use the Pages deployment as the stable documentation link.
+  run-specific, so use the Pages deployment as the canonical documentation link.
 
 For the curated integration guide that also covers Lean APIs, generated data
-files, and stability policy, see `doc/API.md` in the source repository.
+files, and compatibility policy, see `doc/API.md` in the source repository.

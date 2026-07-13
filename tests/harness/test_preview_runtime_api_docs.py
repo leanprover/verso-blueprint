@@ -20,7 +20,7 @@ from tests.preview_runtime_api import (
     blueprint_js_files,
     blueprint_js_source,
     documented_bundled_helper_methods,
-    documented_stable_api_methods,
+    documented_public_api_methods,
     esm_named_exports,
     js_object_keys,
     js_object_methods,
@@ -159,22 +159,22 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("api/data.mjs", js_api_docs)
         self.assertIn("api/graph.mjs", js_api_docs)
 
-    def test_api_stable_api_table_matches_runtime_source(self) -> None:
+    def test_api_public_api_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
         api_doc = API_DOC.read_text(encoding="utf-8")
 
-        source_methods = js_object_methods(runtime, "stableCustomClientApi")
-        documented_methods = documented_stable_api_methods(api_doc)
+        source_methods = js_object_methods(runtime, "publicCustomClientApi")
+        documented_methods = documented_public_api_methods(api_doc)
 
         self.assertEqual(documented_methods, source_methods)
         self.assertIn("`createPreview()`", api_doc)
         self.assertNotIn("namespace.onRenderReady = onRenderReady", runtime)
 
-    def test_api_stable_api_table_excludes_bundled_feature_helpers(self) -> None:
+    def test_api_public_api_table_excludes_bundled_feature_helpers(self) -> None:
         runtime = blueprint_js_source()
         api_doc = API_DOC.read_text(encoding="utf-8")
 
-        documented_methods = documented_stable_api_methods(api_doc)
+        documented_methods = documented_public_api_methods(api_doc)
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(documented_methods & helper_methods)
@@ -191,21 +191,21 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_runtime_api_tiers_remain_disjoint(self) -> None:
         runtime = blueprint_js_source()
 
-        source_methods = js_object_methods(runtime, "stableCustomClientApi")
+        source_methods = js_object_methods(runtime, "publicCustomClientApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(source_methods & helper_methods)
 
-    def test_preview_esm_exports_stable_custom_client_api(self) -> None:
+    def test_preview_esm_exports_public_custom_client_api(self) -> None:
         runtime = blueprint_js_source()
         source = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(encoding="utf-8")
 
-        stable_methods = js_object_methods(runtime, "stableCustomClientApi")
+        public_methods = js_object_methods(runtime, "publicCustomClientApi")
         named_exports = esm_named_exports(source)
         default_methods = js_object_keys(source, "previewApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
-        self.assertLessEqual(stable_methods, PUBLIC_PREVIEW_API_EXPORTS)
+        self.assertLessEqual(public_methods, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertEqual(named_exports, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertEqual(default_methods, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertFalse(named_exports & helper_methods)
@@ -233,7 +233,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_internal_runtime_helpers_are_not_exported(self) -> None:
         runtime = blueprint_js_source()
 
-        source_methods = js_object_methods(runtime, "stableCustomClientApi")
+        source_methods = js_object_methods(runtime, "publicCustomClientApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(INTERNAL_ONLY_HELPERS & source_methods)
@@ -378,7 +378,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             "setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors)",
             template,
         )
-        self.assertIn("const stableCustomClientApi = {", api)
+        self.assertIn("const publicCustomClientApi = {", api)
         self.assertIn("export function createPreviewRuntimeApi(options)", api)
         self.assertNotIn("export function installPreviewRuntimeApi(options)", api)
         self.assertNotIn("function onRenderReady(fn)", api)

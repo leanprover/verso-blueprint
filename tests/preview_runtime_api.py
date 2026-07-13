@@ -137,19 +137,17 @@ def runtime_api_methods(name: str) -> list[str]:
     return sorted(js_object_methods(blueprint_js_source(), name))
 
 
-def documented_stable_api_methods(source: str) -> set[str]:
-    start_marker = "### Stable Custom-Client API"
-    end_marker = "Blueprint's bundled graph"
-    start = source.index(start_marker) + len(start_marker)
-    end = source.index(end_marker, start)
-    section = source[start:end]
-    return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", section))
+def markdown_table(source: str, header: str) -> str:
+    start = source.index(header)
+    end = source.find("\n\n", start)
+    return source[start:] if end < 0 else source[start:end]
+
+
+def documented_public_api_methods(source: str) -> set[str]:
+    table = markdown_table(source, "| Entry point | Use |")
+    return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", table))
 
 
 def documented_bundled_helper_methods(source: str) -> set[str]:
-    start_marker = "| Helper family | Helpers | Bundled consumers |"
-    end_marker = "For new custom interfaces"
-    start = source.index(start_marker)
-    end = source.index(end_marker, start)
-    section = source[start:end]
-    return set(re.findall(r"`([A-Za-z][A-Za-z0-9_]*)`", section))
+    table = markdown_table(source, "| Helper family | Helpers | Bundled consumers |")
+    return set(re.findall(r"`([A-Za-z][A-Za-z0-9_]*)`", table))

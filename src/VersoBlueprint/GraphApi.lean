@@ -12,7 +12,7 @@ import VersoBlueprint.TraversalIndex
 /-!
 Public graph-data helpers.
 
-`Informal.Graph` owns the stable graph data structures and the semantic
+`Informal.Graph` owns the public graph data structures and the semantic
 environment builder. This module adds the traversal-state bridge: graph blocks
 store semantic `GraphData` plus render options during traversal, and
 renderers/manifests finalize that cached object against the completed traversal

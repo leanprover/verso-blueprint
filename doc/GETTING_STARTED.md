@@ -219,7 +219,7 @@ After copying the template:
 After the first site renders:
 
 1. read [doc/MANUAL.md](./MANUAL.md) for the full authoring surface
-2. read [doc/API.md](./API.md) when you need stable Lean, generated-data, or
+2. read [doc/API.md](./API.md) when you need documented Lean, generated-data, or
    browser integration APIs; start with
    [Choosing an API](./API.md#choosing-an-api)
 3. jump directly to [Browser ESM APIs](./API.md#browser-esm-apis) for regular

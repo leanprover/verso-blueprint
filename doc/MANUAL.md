@@ -1,7 +1,7 @@
 # Blueprint Manual
 
 This document is the current reference for Blueprint authoring and rendering.
-For stable Lean, generated-data, and browser integration APIs, see
+For documented Lean, generated-data, and browser integration APIs, see
 [`API.md`](./API.md).
 
 If you are starting a first project, read
@@ -812,7 +812,7 @@ The command-side options and the runtime graph controls are compatible:
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
 
-Graph data is also available through stable Lean, manifest, and browser APIs.
+Graph data is also available through documented Lean, manifest, and browser APIs.
 Lean callers can build semantic graph data before traversal or finalized graph
 records after traversal, while browser clients can read generated manifest graph
 records or data embedded in a rendered graph block. See
@@ -925,9 +925,9 @@ useful for:
 For informal blocks, these files are the same semantic manifest and opaque
 rendered-fragment cache used by generated previews, grafts, Slides, and custom
 clients. See [`API.md#generated-data-files`](./API.md#generated-data-files)
-for the stable consumer contract. The manifest may also include VBP-internal
+for the current consumer contract. The manifest may also include VBP-internal
 generated-data markers for stale-artifact diagnostics; those markers are not
-public compatibility promises.
+part of the public interface.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
@@ -1078,7 +1078,7 @@ the generated ESM modules and Lean-side graft helpers.
 See [`API.md#browser-esm-apis`](./API.md#browser-esm-apis) for ordinary
 `import { ... } from ...` usage, module path rules, and copyable inline
 examples. See [`API.md#browser-runtime-api`](./API.md#browser-runtime-api) for
-the stable render API table.
+the public render API table.
 
 ### Troubleshooting Grafts
 
@@ -1112,7 +1112,7 @@ The detailed public API reference lives in [`API.md`](./API.md). It covers:
   for custom generators
 - [generated ESM modules](./API.md#browser-esm-apis) such as `api/preview.mjs`
   and `api/graph.mjs`
-- [the stable browser runtime API](./API.md#browser-runtime-api) and the
+- [the public browser runtime API](./API.md#browser-runtime-api) and the
   boundary around bundled helper APIs
 
 ## The Generator Entry Point
@@ -1145,13 +1145,12 @@ Blueprint-specific rendered surfaces, applies Blueprint's preview-data and
 public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 
-Blueprint does not keep broad compatibility layers for internal helper names,
-read-through aliases, command aliases, or old rendering paths. Documented public
-entry points that real Blueprint projects already use are different: if such an
-entry point is renamed, keep the old exported name only as a deprecated thin
-forwarder to the canonical function until those projects migrate. Do not add
-forwarders for undocumented internals or convenience aliases. New generators
-should call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
+Blueprint does not keep compatibility layers for renamed helpers, documented
+public entry points, read-through aliases, command aliases, or old rendering
+paths. When an interface changes, update the in-repository callers, tests,
+examples, and documentation together; downstream projects can migrate when
+they update their pinned Blueprint revision. New generators should call
+`Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
 
 Recommended CI usage builds the Lean library or formalization targets needed by
 the document, then runs the generator file directly:

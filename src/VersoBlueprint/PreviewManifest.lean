@@ -681,7 +681,7 @@ Internal schema marker for generated Blueprint manifests.
 
 This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
-incompatibility boundary.
+validation boundary.
 -/
 def manifestInternalSchemaVersion : Nat := 2
 
@@ -1033,8 +1033,8 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
 
 structure File where
   /--
-  Internal generated-data schema marker for VBP tooling; not a public
-  compatibility promise.
+  Internal generated-data schema marker for VBP tooling; not part of the public
+  interface.
   -/
   vbpInternalSchemaVersion : Nat := manifestInternalSchemaVersion
   /--

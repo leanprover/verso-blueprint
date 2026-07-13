@@ -146,7 +146,7 @@ export function readGraphJsonScript(root, selector) {
 }
 
 /**
- * Normalize raw graph JSON into the stable graph payload shape.
+ * Normalize raw graph JSON into the current graph payload shape.
  *
  * @param {unknown} rawData Parsed graph JSON.
  * @returns {BlueprintGraphData | null}

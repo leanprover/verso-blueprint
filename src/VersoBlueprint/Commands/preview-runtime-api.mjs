@@ -178,7 +178,7 @@ export function createPreviewRuntimeApi(options) {
     previewDebugLabel: previewDebugLabel
   };
 
-  const stableCustomClientApi = {
+  const publicCustomClientApi = {
     dataUrl: previewDataApi.dataUrl,
     manifestUrl: previewDataApi.manifestUrl,
     htmlCacheUrl: previewDataApi.htmlCacheUrl,
@@ -234,7 +234,7 @@ export function createPreviewRuntimeApi(options) {
 
   const renderApi = Object.assign(
     {},
-    stableCustomClientApi,
+    publicCustomClientApi,
     bundledFeatureRenderHelpers
   );
 

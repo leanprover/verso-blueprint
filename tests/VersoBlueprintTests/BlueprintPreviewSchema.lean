@@ -136,8 +136,7 @@ open Informal.PreviewManifest
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Manifest/cache-backed preview keys for Lean code previews associated with this entry." &&
-        (internalSchemaDesc?.getD "").contains "not a public" &&
-        (internalSchemaDesc?.getD "").contains "compatibility promise" &&
+        (internalSchemaDesc?.getD "").contains "Internal generated-data schema marker" &&
         sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&

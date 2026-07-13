@@ -59,20 +59,4 @@ public def renderBlueprintSlideNode
     (node : Informal.Graft.BlueprintNode) : IO Html := do
   Informal.Graft.renderNodeFromManifestCache slideManifestRenderConfig ctx node
 
-/--
-Render a Blueprint slide node from the structured attributes carried by the
-legacy `VersoSlides.BlockExt.wrap` carrier emitted by `blueprint_node`.
-
-The Lean 4.31 slide path rewrites these carriers to
-`VersoSlides.BlockExt.ofHtml` during Slides traversal; the 4.30 maintenance line
-keeps the older HTML-renderer interception path.
-
-Remove this helper once the 4.30 maintenance line is retired.
--/
-public def renderBlueprintSlideNodeFromAttrs?
-    (ctx : Informal.Graft.RenderContext)
-    (attrs : Array (String × String)) : Option (IO Html) := do
-  let node ← Informal.Graft.BlueprintNode.fromAttrs? attrs
-  some (renderBlueprintSlideNode ctx node)
-
 end Informal.Slides

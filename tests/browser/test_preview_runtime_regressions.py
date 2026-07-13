@@ -1405,7 +1405,7 @@ class TestPreviewRuntimeRegressions:
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
 
-        stable_client_methods = runtime_api_methods("stableCustomClientApi")
+        public_client_methods = runtime_api_methods("publicCustomClientApi")
         bundled_helper_methods = runtime_api_methods("bundledFeatureRenderHelpers")
         rendered = page.evaluate(
             blueprint_render_api_script(
@@ -1417,12 +1417,12 @@ class TestPreviewRuntimeRegressions:
                 const mutatedHtmlCacheStatus = api.readHtmlCacheStatus();
                 mutatedManifestStatus.state = "mutated";
                 mutatedHtmlCacheStatus.state = "mutated";
-                const stableClientMethods = __STABLE_CLIENT_METHODS__;
+                const publicClientMethods = __PUBLIC_CLIENT_METHODS__;
                 const bundledHelperMethods = __BUNDLED_HELPER_METHODS__;
                 return {
                     hasApi: true,
-                    stableClientApiTypes: Object.fromEntries(
-                        stableClientMethods.map((name) => [name, typeof api[name]])
+                    publicClientApiTypes: Object.fromEntries(
+                        publicClientMethods.map((name) => [name, typeof api[name]])
                     ),
                     bundledHelperApiTypes: Object.fromEntries(
                         bundledHelperMethods.map((name) => [name, typeof api[name]])
@@ -1458,13 +1458,13 @@ class TestPreviewRuntimeRegressions:
                     htmlCacheStatusAfterMutation: api.readHtmlCacheStatus()
                 };
                 """
-                .replace("__STABLE_CLIENT_METHODS__", json.dumps(stable_client_methods))
+                .replace("__PUBLIC_CLIENT_METHODS__", json.dumps(public_client_methods))
                 .replace("__BUNDLED_HELPER_METHODS__", json.dumps(bundled_helper_methods))
             )
         )
 
         assert rendered["hasApi"]
-        assert set(rendered["stableClientApiTypes"].values()) == {"function"}
+        assert set(rendered["publicClientApiTypes"].values()) == {"function"}
         assert set(rendered["bundledHelperApiTypes"].values()) == {"function"}
         assert rendered["publicSurface"] == {
             "hasReadPreviewTemplate": False,

@@ -103,7 +103,8 @@ def GraphDirection.parse? (s : String) : Option GraphDirection :=
 Options that affect Graphviz layout for rendered Blueprint graphs.
 
 These options are stored in graph block payloads and serialized with render
-variants, so keep changes compatible with existing generated sites.
+variants, so update Lean producers and browser consumers together when their
+shape changes.
 -/
 structure GraphOptions where
   /-- Graphviz rank direction. -/
@@ -179,7 +180,7 @@ deriving Inhabited, Repr, ToJson, FromJson, Quote
 def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
 
 /--
-Stable visual metadata for a graph node.
+Public visual metadata for a graph node.
 
 This mirrors the render-facing DOT attributes without exposing the generic
 `GraphNode Ref` type in cached/public JSON schemas.
@@ -230,7 +231,7 @@ structure GroupData where
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
 /--
-Stable per-node graph data for Lean, manifest, and browser consumers.
+Public per-node graph data for Lean, manifest, and browser consumers.
 
 Use `statementStatus`, `proofStatus`, and `warnings` for semantics. `visual`
 is provided only for renderers that want to reuse Blueprint's current graph
@@ -254,7 +255,7 @@ structure NodeData where
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /--
-Stable graph data shared by Lean, generated manifests, and browser runtime code.
+Public graph data shared by Lean, generated manifests, and browser runtime code.
 
 `schemaVersion` is bumped only for incompatible public-shape changes.
 -/
@@ -268,8 +269,8 @@ structure GraphData where
   Precomputed DOT render variants for the bundled browser graph renderer.
 
   Manifest clients should use these variants instead of re-deriving DOT from
-  graph topology in JavaScript. The semantic fields above remain the stable
-  data contract for dashboards and audits.
+  graph topology in JavaScript. The semantic fields above are the current data
+  interface for dashboards and audits.
   -/
   variants : Array GraphRenderVariant := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote

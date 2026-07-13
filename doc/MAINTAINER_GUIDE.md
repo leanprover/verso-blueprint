@@ -57,8 +57,8 @@ user-facing Blueprint generation path: end-user docs should continue to present
 normal rendering workflow.
 
 Treat `vbp` JSON as fully unstable. It may change within this repository as
-agent workflows evolve, and should not be documented as a public compatibility
-contract. Prefer in-band discovery through `lake exe vbp --help`,
+agent workflows evolve, and is not part of the documented integration API.
+Prefer in-band discovery through `lake exe vbp --help`,
 `lake exe vbp discover`, and `lake exe vbp query selectors` instead of copying
 selector lists or JSON shapes into long-lived docs.
 
@@ -871,7 +871,7 @@ Current project-specific reference:
    [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the user-facing project
    shape.
 2. Read [`MANUAL.md`](./MANUAL.md) for authoring, rendering, and options.
-3. Read [`API.md`](./API.md) for stable Lean, generated-data, and browser APIs.
+3. Read [`API.md`](./API.md) for documented Lean, generated-data, and browser APIs.
 4. Return here for repository-local commands, outputs, and worktree behavior.
 5. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branch, commit, PR, and
    local coordination conventions.

@@ -12,7 +12,7 @@ For exact JavaScript signatures, typedefs, return shapes, and module-level
 examples, use the
 [generated JavaScript API reference](https://leanprover.github.io/verso-blueprint/js-api/).
 This source document is the curated integration guide: it explains which API
-surface to choose and where the stability boundaries are.
+surface to choose and where the public/internal boundaries are.
 
 If you are not sure where to start, read [Choosing an API](#choosing-an-api)
 first. The short version is:
@@ -33,7 +33,7 @@ first. The short version is:
 
 ## Contents
 
-- [Stability Policy](#stability-policy)
+- [API Scope and Compatibility](#api-scope-and-compatibility)
 - [Choosing an API](#choosing-an-api)
 - [Rendering Path Map](#rendering-path-map)
 - [Generated Data Files](#generated-data-files)
@@ -45,16 +45,18 @@ first. The short version is:
 - [Bundled Helper Boundary](#bundled-helper-boundary)
 - [Standalone Example](#standalone-example)
 
-## Stability Policy
+## API Scope and Compatibility
 
-Stable APIs are the documented Lean names, generated data files, generated ESM
-modules, and browser runtime entrypoints listed here. They are intended for
-custom generators, dashboards, audit pages, slide adapters, and standalone
-browser clients.
+This document describes the current public integration surface. It does not
+promise compatibility across versions: documented Lean names, generated data
+files, generated ESM modules, and browser runtime entrypoints may change when a
+different design improves the project. They are intended for custom generators,
+dashboards, audit pages, slide adapters, and standalone browser clients that pin
+the Blueprint version they use.
 
 Bundled helper APIs are narrower. They exist so Blueprint's own graph, summary,
 relation-panel, inline-preview, and slide scripts can share runtime mechanics.
-They are not a custom-client contract unless they are promoted into the stable
+They are not part of the public custom-client surface unless promoted into the
 tables below.
 
 Browser clients should use the generated ESM modules. `api/preview.mjs` imports
@@ -114,11 +116,11 @@ or is part of Blueprint's generated slide runtime.
 | Blueprint-owned panels in generated pages | Renderer bundled helpers | Panel slots, content updates, trigger lifetime, dismissal, repositioning, diagnostics, and shared preview lookup. | Feature scripts use `createPreviewSurface`, `renderPreviewIntoSurface`, or `resolvePreviewHtml`; custom clients should not import these helpers directly. |
 | Summary and code-summary previews | Lean-emitted template descriptors plus `preview-runtime-template.mjs` | Selector configuration and binding for preview templates. | Emit descriptor attributes from Lean; no feature-specific startup script is needed. |
 
-The stable data boundary is the generated manifest/cache pair. The stable
-browser module boundary is `api/data.mjs`, `api/preview.mjs`, and
+The current public data boundary is the generated manifest/cache pair. The
+public browser module boundary is `api/data.mjs`, `api/preview.mjs`, and
 `api/graph.mjs`. Files under `src/VersoBlueprint/Commands/` are implementation
 chunks for Blueprint's own runtime unless this document lists a generated
-module that re-exports a stable API.
+module that re-exports a public API.
 
 ## Generated Data Files
 
@@ -142,14 +144,14 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
   `import` usage.
 
-The manifest is the semantic data contract for generated-site consumers.
+The manifest is the current semantic data contract for generated-site consumers.
 Cached HTML is an opaque rendered fragment cache that can be inserted and
 hydrated. The cache also carries the Verso hover payloads referenced by those
 rendered fragments; generated Blueprint pages merge them into
 `-verso-docs.json`, and Slides preloads them when rendering a deck.
 
 The manifest may also contain VBP-internal generated-data markers used to
-diagnose stale artifacts. These markers are not public compatibility promises
+diagnose stale artifacts. These markers are not part of the public interface
 and may change whenever VBP needs a new internal reader boundary. Public
 clients should use the semantic entries, graph records, source documents, and
 generated browser APIs described here rather than depending on those markers.
@@ -323,7 +325,7 @@ visible source-backed notice from generated fragments.
 
 Manifest entries serialize several label-like fields with distinct roles:
 
-- `key` is the stable lookup/cache identifier for a manifest entry. It may
+- `key` is the canonical lookup/cache identifier for a manifest entry. It may
   contain a target-family prefix such as `externalMarkup:` and should not be
   treated as display text.
 - `targetKind` says how to interpret the key namespace: `block`, `leanDecl`,
@@ -395,9 +397,9 @@ dependency axes, preview keys, hrefs when traversal resolved them, and visual
 metadata for renderers that want Blueprint's default styling. Graph schema
 version 2 serializes each node `previewKey` as a string or `null`.
 
-That finished traversal state is the stable boundary. Consumers should not
-reconstruct graph hrefs or titles from lower-level traversal internals when the
-finalized graph data is available.
+That finished traversal state is the appropriate public boundary. Consumers
+should not reconstruct graph hrefs or titles from lower-level traversal
+internals when the finalized graph data is available.
 
 Finalized graph data is traversal-backed. Imported semantic nodes or code-only
 nodes that have no rendered occurrence in the current site are omitted from the
@@ -442,8 +444,8 @@ const graph = getGraphData(document);
 For rendering new graph blocks, prefer `loadGraphs()` and the manifest graph
 record's Lean-emitted `variants` field. The embedded
 `script.bp-graph-data` and `script.bp-graph-variants` payloads are for reading
-back graph blocks that already exist on a generated page, and for compatibility
-with the page renderer.
+back graph blocks that already exist on a generated page, including markup
+emitted by the page renderer.
 
 The same module can render a graph from finalized manifest data. Rendering also
 needs the Blueprint browser render runtime for preview surfaces, popovers, and
@@ -472,8 +474,8 @@ rendered in one call. Both helpers consume the graph record's precomputed
 `variants` array, or an explicit `options.variants` override. They return
 `null` when neither source provides render variants.
 
-The module can also initialize an existing graph block. That compatibility path
-is for markup that is already present, such as the standard
+The module can also initialize an existing graph block. That existing-markup
+path is for markup that is already present, such as the standard
 `.bp_graph_fullwidth` markup emitted by `{blueprint_graph}`, including its
 embedded `script.bp-graph-data` and `script.bp-graph-variants` payloads.
 
@@ -546,7 +548,7 @@ The useful data boundary is small:
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
   neutral DOM shell used by generated interfaces. The decoder requires the
   encoded preview key rather than deriving one from label/facet attributes. The
-  shell carries the `bp_graft_manifest_node` class as a stable selector for
+  shell carries the `bp_graft_manifest_node` class as a documented selector for
   custom consumers.
   Slides use `Informal.Slides.blueprintNodeAttrs` and
   `Informal.Slides.renderedBlueprintNodeAttrs` to add slide-specific classes
@@ -642,7 +644,7 @@ Generated sites also emit root implementation modules,
 `-verso-data/blueprint-data-api.mjs`,
 `-verso-data/blueprint-preview-api.mjs`, and
 `-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
-those implementations from stable, shorter import paths. The generated data
+those implementations from shorter public import paths. The generated data
 directory also contains internal support files used by those modules, such as
 `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
 `blueprint-api-common.mjs`, the `Commands/preview-runtime-*.mjs` renderer
@@ -737,7 +739,7 @@ Render the full generated Blueprint node from a module path and key:
 </script>
 ```
 
-Create an explicit renderer object and call the stable methods from it:
+Create an explicit renderer object and call the public methods from it:
 
 ```javascript
 import {
@@ -1031,7 +1033,7 @@ A complete standalone version of this pattern is available in
 It does not use the showcase card UI: it binds one target element, calls
 `renderNode`, and renders Markdown into the body slot supplied by VBP.
 
-Graph rendering lives in `api/graph.mjs`, not on the stable preview API. Pass an
+Graph rendering lives in `api/graph.mjs`, not on the public preview API. Pass an
 explicit preview renderer when the graph block needs preview panels or
 hydration. This keeps the dependency visible at the render site while still
 using the same graph runtime as generated graph pages:
@@ -1061,8 +1063,8 @@ Manual's `extraHead` as:
 That module imports `api/preview.mjs`, constructs the page renderer with
 `createPreview()`, installs target-detail opening, and starts Blueprint's
 inline-preview, relation-panel, graph, and template-preview bindings. Command
-renderers still contribute markup, CSS, and stable data attributes, but they no
-longer inject preview-runtime startup JavaScript into Manual `extraJs`.
+renderers still contribute markup, CSS, and documented data attributes, but
+they no longer inject preview-runtime startup JavaScript into Manual `extraJs`.
 `withBlueprintAssets` also includes the CSS needed for manifest-backed block
 shells and source-backed external-markup fragments; feature-specific JavaScript
 continues to be registered by the renderers that emit those interactive
@@ -1073,14 +1075,14 @@ Generated slide decks load one slide-specific module entrypoint:
 it with Slides `extraHead`. New custom clients should import the ESM modules
 directly.
 
-### Stable Custom-Client API
+### Public Custom-Client API
 
-External clients should start from the stable API below. These entry points are
-the contract for audit interfaces, dashboards, slide adapters, comparison
-views, and browser-only examples. This table is a compact stability index used
-by the docs tests to keep the public method set aligned with the runtime source;
-the generated JavaScript API reference remains the detailed signature and type
-reference.
+External clients should start from the public API below. These entry points are
+the current interface for audit tools, dashboards, slide adapters, comparison
+views, and browser-only examples. This table is a compact public-surface index
+used by the docs tests to keep the documented method set aligned with the
+runtime source; the generated JavaScript API reference remains the detailed
+signature and type reference.
 
 | Entry point | Use |
 | --- | --- |
@@ -1167,8 +1169,9 @@ globals.
 
 Slide decks keep their slide-specific rehydration bridge under the same
 namespace as `window.VersoBlueprint.slides`. That bridge is for the generated
-slide asset and does not expose the general render API; custom preview clients should use the stable render API table
-above unless a slide-specific hook is explicitly documented there.
+slide asset and does not expose the general render API; custom preview clients
+should use the public render API table above unless a slide-specific hook is
+explicitly documented there.
 
 For semantic queries, use `resolveLabel`, `resolveDeclaration` for
 declaration-keyed previews, or use the manifest entry returned by
@@ -1216,7 +1219,7 @@ The current private source chunks are:
 | `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
 | `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
 | `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots. |
-| `preview-runtime-api.mjs` | Stable render API assembly and `createPreviewRuntimeApi`. |
+| `preview-runtime-api.mjs` | Public render API assembly and `createPreviewRuntimeApi`. |
 
 Two adjacent implementation files are shared by bundled pages and generated ESM
 modules:
@@ -1236,11 +1239,12 @@ custom clients should use `api/graph.mjs` or the render API instead.
 
 ## Bundled Helper Boundary
 
-Bundled-feature helper APIs are intentionally narrower than the stable API.
+Bundled-feature helper APIs are intentionally narrower than the public API.
 They are present on the renderer returned by `createPreview()` so Blueprint's
 own feature scripts can share runtime mechanics without duplicating them. A
-helper is not a custom-client contract unless it is promoted into the stable
+helper is not a custom-client interface unless it is promoted into the public
 table above.
+
 The intended path for Blueprint-owned panels is `createPreviewSurface`; it owns
 content updates plus trigger, dismissal, and reposition lifetimes. Lower-level
 helpers remain exported only where bundled graph popovers, positioning
@@ -1275,7 +1279,7 @@ lookup failure. Bundled feature scripts should prefer
 `surface.position`, `surface.pointerWithin`, `surface.shouldKeepOpen`, and
 `renderPreviewIntoSurface` or `resolvePreviewHtml` over direct lifecycle and
 cache-resolution helpers.
-External clients should stay on the stable custom-client API above.
+External clients should stay on the public custom-client API above.
 
 Inline-preview nesting is configured by private host policies in
 `inline-preview.mjs`. Today those policies recognize relation panels, graph
@@ -1286,12 +1290,11 @@ add an explicit host policy instead of adding more ad hoc ancestor checks.
 For new custom interfaces, prefer the highest-level entry point that fits the
 job; see [Choosing an API](#choosing-an-api).
 
-Future public browser APIs should be added to the stable custom-client table
+Future public browser APIs should be added to the public custom-client table
 when they are intended for external clients such as audits, dashboards, slide
 adapters, or comparison views. Bundled helpers can still exist for Blueprint's
 own JavaScript, but they should stay outside the public table until their
-argument shape and compatibility expectations are ready to support those
-clients.
+argument shape is suitable for those clients.
 
 ## Standalone Example
 

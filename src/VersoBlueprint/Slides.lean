@@ -26,7 +26,7 @@ into already-rendered HTML blocks.
 `blueprint_node` elaboration only knows the requested label/options, so it emits
 a `BlockExt.wrap` placeholder. At `slidesMainWithBlueprintPreviews` time we also
 have the Blueprint manifest/cache and can render that placeholder to static
-Blueprint HTML. `BlockExt.ofHtml` is the 4.31 handoff back to the normal Slides
+Blueprint HTML. `BlockExt.ofHtml` hands the result back to the normal Slides
 renderer.
 -/
 @[reducible] private def blueprintSlidesTraverse
@@ -50,12 +50,11 @@ renderer.
 Render Blueprint slide-node carriers to `VersoSlides.BlockExt.ofHtml` during
 the normal Verso Slides traversal.
 
-Release-line note: the supported 4.30 branch must keep its older
+Backport note: the supported 4.30 branch keeps its older
 `GenreHtml.block` override because `verso-slides` 4.30 does not provide
-`BlockExt.ofHtml`. On the 4.31 line, this implementation should stay on the
-`BlockExt.ofHtml` path while still mirroring the small `slidesMain` output loop
-so `quiet := true` remains supported and the rendered-fragment cache can seed
-the generated hover table.
+`BlockExt.ofHtml`. The current implementation uses `BlockExt.ofHtml` while
+still mirroring the small `slidesMain` output loop so `quiet := true` remains
+supported and the rendered-fragment cache can seed the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)

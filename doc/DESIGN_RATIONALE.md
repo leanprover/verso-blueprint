@@ -242,8 +242,8 @@ The same flow can be read as four contracts:
 
 4. **Artifacts to runtime and external consumers.**
    Browser code should treat the generated artifacts as immutable inputs. Page
-   markup carries stable lookup keys and lightweight data attributes. Generated
-   ESM clients that only need data import `api/data.mjs`, call
+   markup carries canonical lookup keys and lightweight data attributes.
+   Generated ESM clients that only need data import `api/data.mjs`, call
    `createPreviewData()`, and receive manifest/cache/graph loaders without DOM
    rendering dependencies. ESM clients that need rendering import
    `api/preview.mjs`, call `createPreview()`, and receive a renderer assembled
@@ -375,7 +375,7 @@ runtime hook or moving code between feature modules.
 | Path | Startup owner | Semantic source | Rendering and interaction owner |
 | --- | --- | --- | --- |
 | Regular generated Manual pages | `blueprint-page-runtime.mjs` imported from `extraHead` | `blueprint-manifest.json`, `blueprint-html-cache.json`, graph JSON embedded in graph blocks | One `createPreview()` renderer starts inline previews, relation panels, graph blocks, and template-preview descriptor binding. |
-| Custom ESM preview clients | `api/preview.mjs` and caller-created `createPreview()` renderer | Manifest/cache plus optional canonical generated pages | The stable preview API loads data, inserts rendered fragments or canonical nodes, runs math, and hydrates nested Blueprint widgets. |
+| Custom ESM preview clients | `api/preview.mjs` and caller-created `createPreview()` renderer | Manifest/cache plus optional canonical generated pages | The public preview API loads data, inserts rendered fragments or canonical nodes, runs math, and hydrates nested Blueprint widgets. |
 | Data-only clients | `api/data.mjs` and caller-created `createPreviewData()` data API | Manifest/cache, source metadata, and manifest graph records | No DOM rendering; callers own all UI and use the data API for URL construction, loading, status, source-metadata resolution, and single-entry lookup. |
 | Graph clients | `api/graph.mjs` | Finalized graph records from the manifest or graph data embedded beside a graph block | Data helpers stay graph-only; render helpers can construct a standard graph block from manifest data or initialize existing graph markup, lazy-load `Commands/graph.mjs`, and require an explicit preview renderer for graph preview panels. |
 | Blueprint-owned panel features | `blueprint-page-runtime.mjs` or `blueprint-slide-runtime.mjs` passes a renderer into feature startup | Manifest/cache entries and feature-owned Lean-emitted attributes | Feature scripts adapt `createPreviewSurface`, `renderPreviewIntoSurface`, `resolvePreviewHtml`, and lifecycle helpers to concrete panel UIs. |
@@ -473,10 +473,10 @@ The workflow implies a few constraints for renderers:
 
 - **The browser render API has two tiers.**
   Data-only clients should treat `createPreviewData()` from `api/data.mjs` as
-  the stable manifest/cache/graph-loading surface. Render clients should treat
+  the public manifest/cache/graph-loading surface. Render clients should treat
   `createPreview()`, manifest/cache loading and status readers, keyed lookup,
   `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`,
-  `renderCanonicalPreviewInto`, `renderNode`, and `hydrate` as the stable
+  `renderCanonicalPreviewInto`, `renderNode`, and `hydrate` as the public
   integration surface. `resolvePreview` and
   `renderPreviewInto` expose body fragments for clients that own their wrapper.
   The canonical-preview helpers follow the manifest entry's generated-page
@@ -499,10 +499,10 @@ The workflow implies a few constraints for renderers:
   inline-preview, and slide scripts on one runtime path. `createPreviewSurface` is the
   component-shaped helper in this tier: it groups panel slots, behavior state,
   custom body rendering, content updates, trigger binding, dismissal binding,
-  reposition binding, pointer checks, and keep-open checks without exposing a
-  stable external contract. These helpers are not a public custom-client
-  contract unless promoted into the API reference's stable API table. New public
-  browser APIs should start as stable custom-client entries only when an
+  reposition binding, pointer checks, and keep-open checks without making it a
+  documented custom-client interface. These helpers are not part of the public
+  custom-client surface unless promoted into the API reference's public API
+  table. New public browser APIs should enter that table only when an
   external interface can describe its responsibility without depending on
   Blueprint-owned DOM structure; otherwise they should remain bundled helpers
   until the argument shape is clearer.
@@ -547,13 +547,14 @@ The workflow implies a few constraints for renderers:
   Blueprint relation topology, ownership, status, or code associations from
   HTML markup.
 
-  Future splits should preserve the current public API while moving private
-  helpers behind files that match their responsibility:
+  Future splits should keep the public API and its implementation internally
+  coherent while moving private helpers behind files that match their
+  responsibility:
 
   | Boundary | Current responsibility | Split target |
   | --- | --- | --- |
   | Page runtime entrypoint | Construct one renderer for regular generated Manual pages and start the page-owned feature hydrators without a global window hook. | `blueprint-page-runtime.mjs` emitted as a module script through Manual `extraHead` |
-  | API assembly | Assemble the stable render API for `createPreviewRuntimeApi`. | `Commands/preview-runtime-api.mjs` emitted as an ESM support module |
+  | API assembly | Assemble the public render API for `createPreviewRuntimeApi`. | `Commands/preview-runtime-api.mjs` emitted as an ESM support module |
   | Preview URL/key primitives | Resolve `-verso-data` URLs and normalize preview keys for page-runtime and custom ESM clients. | `blueprint-preview-core.mjs` shared implementation file |
   | Generated ESM wrapper mechanics | Share default `dataBaseUrl` setup, URL/key forwarding, default API handles, fallback statuses, and method dispatch across public ESM entrypoints without sharing their stores. | `blueprint-api-common.mjs` internal support file emitted for `api/data.mjs` and `api/preview.mjs` |
   | Preview data access | Load manifest/cache JSON through the configured `fetchJson` or ambient `fetch`, keep load status, delegate graph data to graph core, and look up entries plus source documents and source metadata. | `Commands/preview-runtime-data.mjs` emitted as an ESM support module |
@@ -578,10 +579,10 @@ The workflow implies a few constraints for renderers:
   Regular Manual feature JavaScript must start from `blueprint-page-runtime.mjs`;
   slide feature JavaScript must start from `blueprint-slide-runtime.mjs`; and
   bundled feature modules should receive an explicit renderer instead of reading
-  page-global render hooks. Stable render API additions must be reflected in the API
-  reference's custom-client table, while bundled helper additions stay out of
+  page-global render hooks. Public render API additions must be reflected in the
+  API reference's custom-client table, while bundled helper additions stay out of
   that table unless intentionally promoted. Lean rendering tests should assert
-  emitted markup, stable API wiring, and removed legacy paths; source-level
+  emitted markup, public API wiring, and removed legacy paths; source-level
   guards and browser tests own private JavaScript helper shape. The harness test
   `tests/harness/test_preview_runtime_api_docs.py` owns these source-level
   guardrails so Lean rendering tests can focus on emitted markup, assets, and
@@ -648,7 +649,7 @@ Lean/Verso source modules
 Traversal domains are richer than rendered page HTML. They carry semantic
 payloads for the current generator process, including bodyless directives whose
 visible text comes from an external source. `buildPreviewDataFiles` is the
-normalization point where those traversal facts become public, stable generated
+normalization point where those traversal facts become documented generated
 data. It must therefore decide from traversal metadata, not from whether a
 rendered block body is empty, whether a preview entry is semantically real. If
 that boundary loses semantic data such as Lean preview keys, downstream
@@ -672,7 +673,7 @@ intentional:
   are small enough to use in hovers, relation panels, custom cards, Slides, and
   generated consumers that provide their own wrapper.
 - `blueprint-manifest.json` stores the semantic entry, including the generated
-  page `href` and the entry key used as its stable manifest identity. Separate
+  page `href` and the entry key used as its canonical manifest identity. Separate
   relation, graph, and Lean-code `previewKey` references are emitted only when
   the target key resolves through both the manifest and rendered-fragment cache.
 - the generated HTML page remains the owner of the exact page-level node shell:
@@ -714,7 +715,7 @@ When adding a new Blueprint surface, choose its data boundary explicitly:
 
 External Lean declarations are handled in stages.
 
-1. A `(lean := "...")` reference first becomes a stable record saying "this
+1. A `(lean := "...")` reference first becomes a persistent record saying "this
    Blueprint object points at this Lean declaration."
 2. That record is then enriched with facts such as whether the declaration is
    present, where it came from, whether a source link is available, and what
@@ -832,7 +833,7 @@ rather than page-local template bodies:
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
-stable lookup key, while the preview body comes from the rendered-fragment
+canonical lookup key, while the preview body comes from the rendered-fragment
 cache. Those surfaces deliberately avoid page-local fallback templates so
 preview content has one generated source of truth. If the cache is unavailable
 or missing an entry, the browser renders a local diagnostic message instead of
@@ -1010,7 +1011,7 @@ rendering:
 That mix is intentional, but the roles should stay explicit:
 
 - semantic domains:
-  stable document-level objects or declarations, whether or not the current
+  document-level objects or declarations, whether or not the current
   renderer gives each one its own public anchor
 - internal indexes:
   traversal-local lookup tables that support rendering but are not themselves

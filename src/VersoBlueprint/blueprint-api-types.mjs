@@ -170,7 +170,7 @@
  * Original source document declared by a Blueprint site.
  *
  * @typedef {Object} BlueprintSourceDocument
- * @property {string} id Stable source-document id.
+ * @property {string} id Canonical source-document id.
  * @property {string} title Human-readable source title.
  * @property {"pdf" | "text" | string} kind Broad source-document kind.
  * @property {string} [pdf] Source PDF path, when the document is PDF-backed.
@@ -266,7 +266,7 @@
  * source-backed external-markup node.
  *
  * @typedef {Object} BlueprintManifestEntry
- * @property {string} key Stable manifest key.
+ * @property {string} key Canonical manifest key.
  * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
  * @property {string} [label] Canonical Blueprint node label when available.
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
@@ -286,7 +286,7 @@
  * Rendered-fragment cache entry.
  *
  * @typedef {Object} BlueprintHtmlCacheEntry
- * @property {string} key Stable cache key.
+ * @property {string} key Canonical cache key.
  * @property {string} html Rendered HTML fragment.
  */
 
