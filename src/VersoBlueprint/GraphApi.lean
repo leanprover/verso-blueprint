@@ -153,7 +153,7 @@ def finalDataForBlockWithOptions
 Store graph block data during traversal.
 
 The cached payload deliberately remains semantic data plus the stable block key;
-call `cachedData` after traversal finishes to read the public, finalized form.
+call `cachedEntries` after traversal finishes to read the public, finalized form.
 -/
 def saveData
     (state : TraverseState)
@@ -168,13 +168,22 @@ def saveData
     |> (fun state => Informal.TraversalIndex.Graphs.saveData state key cached)
 
 /--
-Read every traversal-cached graph and finalize it for public manifest/API use.
+Decode every traversal-cached graph and finalize valid entries for public
+manifest/API use while preserving malformed-entry diagnostics.
 
 Call this only with the completed traversal state for the document/site being
-emitted.
+emitted. The consumer owns error reporting because it defines the generation
+boundary and its diagnostic context.
 -/
-def cachedData (state : TraverseState) : Array Informal.Graph.GraphData :=
-  Informal.TraversalIndex.Graphs.allData state |>.map fun cached =>
-    finalDataWithVariants state cached.data cached.options
+def cachedEntries (state : TraverseState) :
+    Array (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.Graph.GraphData)) :=
+  Informal.TraversalIndex.Graphs.entries state |>.map fun
+    | .error err => .error err
+    | .ok stored =>
+        .ok {
+          canonicalName := stored.canonicalName
+          data := finalDataWithVariants state stored.data.data stored.data.options
+        }
 
 end Informal.GraphApi

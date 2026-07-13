@@ -2378,7 +2378,14 @@ def buildPreviewDataFiles
       let htmlEntries :=
         (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
           (fun a b => a.key < b.key)
-      let graphs := Informal.GraphApi.cachedData state
+      let mut graphEntries := #[]
+      for decoded in Informal.GraphApi.cachedEntries state do
+        match decoded with
+        | .error err =>
+            logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
+        | .ok stored =>
+            graphEntries := graphEntries.push stored.data
+      let graphs := graphEntries.qsort (fun a b => a.key < b.key)
       pure (previews, htmlEntries, graphs)
   let htmlCache : HtmlCache.File := {
     entries := htmlEntries
