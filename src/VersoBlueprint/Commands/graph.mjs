@@ -1,5 +1,5 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
-import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants } from "../blueprint-graph-core.mjs";
+import { getGraphData as coreGetGraphData } from "../blueprint-graph-core.mjs";
 
 const {
   debounce,
@@ -23,15 +23,8 @@ function readPublicGraphData(root) {
   return coreGetGraphData(root);
 }
 
-function readPublicGraphVariants(root, graphData) {
-  const variants =
-    graphData && Array.isArray(graphData.variants)
-      ? graphData.variants
-      : coreGetGraphVariants(root);
-  if (Array.isArray(variants) && variants.length > 0) {
-    return variants;
-  }
-  return [];
+function readPublicGraphVariants(graphData) {
+  return graphData && Array.isArray(graphData.variants) ? graphData.variants : [];
 }
 
 function dotWithGraphAttribute(dot, name, value) {
@@ -715,7 +708,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         { keepOpen: true }
       );
 
-      const rawVariants = readPublicGraphVariants(graphBlock, graphApiData);
+      const rawVariants = readPublicGraphVariants(graphApiData);
       if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
       const variantsByKey = new Map();
       rawVariants.forEach(function (variant) {

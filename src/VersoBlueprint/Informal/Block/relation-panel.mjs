@@ -167,7 +167,8 @@
       hydratedItems = true;
       if (!(list instanceof Element)) return items;
       const fragment = document.createDocumentFragment();
-      relationEntryData().forEach(function (entry, index) {
+      const entryData = relationEntryData();
+      entryData.forEach(function (entry, index) {
         const item = createRelationItem(entry, index);
         if (item instanceof Element) {
           bindRelationItem(item);
@@ -175,6 +176,9 @@
           fragment.appendChild(item);
         }
       });
+      parsedEntryData = [];
+      const dataScript = list.querySelector("script.bp-relation-entries");
+      if (dataScript instanceof Element) dataScript.remove();
       list.appendChild(fragment);
       if (!items.some(function (item) {
         return item instanceof Element && item.classList.contains("bp_relation_item_active");

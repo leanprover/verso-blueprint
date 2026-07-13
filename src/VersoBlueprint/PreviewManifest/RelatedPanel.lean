@@ -25,13 +25,18 @@ def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
   let title := entry.title.trimAscii.toString
   if title.isEmpty then entry.displayLabel else title
 
-def RelationAxis.badgeHtml (axis : RelationAxis) : Html :=
+/-- Compact browser-runtime code for one manifest relation axis. -/
+def RelationAxis.badgeCode (axis : RelationAxis) : String :=
   match axis with
-  | .statement => Informal.RelatedPanel.statementAxisBadge
-  | .proof => Informal.RelatedPanel.proofAxisBadge
+  | .statement => Informal.RelatedPanel.statementAxisBadgeCode
+  | .proof => Informal.RelatedPanel.proofAxisBadgeCode
+
+/-- Compact browser-runtime badge codes for one manifest relation entry. -/
+def RelatedEntry.badgeCodes (entry : RelatedEntry) : Array String :=
+  entry.axes.map RelationAxis.badgeCode
 
 def RelatedEntry.badgesHtml (entry : RelatedEntry) : Html :=
-  .seq <| entry.axes.map RelationAxis.badgeHtml
+  Informal.RelatedPanel.renderRelationBadgeCodes entry.badgeCodes
 
 def RelatedEntry.panelEntry
     (entry : RelatedEntry)
@@ -43,7 +48,7 @@ def RelatedEntry.panelEntry
     previewTitle := entry.displayTitle
     label := entry.label
     href := entry.href
-    badgesHtml := entry.badgesHtml
+    badgeCodes := entry.badgeCodes
     active := entry.label == currentLabel
   }
 
