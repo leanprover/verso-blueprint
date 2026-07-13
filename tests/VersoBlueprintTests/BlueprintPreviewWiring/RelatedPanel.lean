@@ -26,6 +26,23 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
   label := Lean.Name.mkSimple "missing.preview"
 }
 
+private def cachedRelationArraySize?
+    (state : Verso.Genre.Manual.TraverseState) (domainName label : Lean.Name) : Option Nat := do
+  let obj ← state.getDomainObject? domainName label.toString
+  match obj.data with
+  | .arr entries => some entries.size
+  | _ => none
+
+private def cachedStatement
+    (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[]) :
+    Informal.StoredBlockData :=
+  {
+    kind := .statement .definition
+    label
+    count
+    statementUses
+  }
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -52,10 +69,63 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       axes := #[.statement, .proof]
     }
     let badges := entry.badgesHtml.asString
-    hasSubstr badges "bp_relation_badge_statement" &&
+    entry.badgeCodes == #["s", "p"] &&
+      hasSubstr badges "bp_relation_badge_statement" &&
       hasSubstr badges "bp_relation_badge_proof" &&
       hasSubstr badges "title=\"Declared in the statement\"" &&
       hasSubstr badges "title=\"Declared in the proof\""
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let target := Lean.Name.mkSimple "cache.target"
+    let source := Lean.Name.mkSimple "cache.source"
+    let empty := Lean.Name.mkSimple "cache.empty"
+    let targetData := cachedStatement target 0 #[{ label := target }]
+    let sourceData := cachedStatement source 1 #[{ label := target }]
+    let emptyData := cachedStatement empty 2
+    let state : Verso.Genre.Manual.TraverseState := .initialize {}
+    let state := Informal.TraversalIndex.Nodes.saveData state target (Lean.toJson targetData)
+    let state := Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceData)
+    let state := Informal.TraversalIndex.Nodes.saveData state empty (Lean.toJson emptyData)
+    let state := Informal.RelatedPanel.patchRelationCaches state
+    cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName target == some 1 &&
+      cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName source == some 0 &&
+      cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName empty == some 0
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let statementEntry : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "manifest.statement"
+      title := "Manifest statement"
+      axes := #[.statement]
+    }
+    let proofEntry : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "manifest.proof"
+      title := "Manifest proof"
+      axes := #[.proof]
+    }
+    let panelEntries := Informal.PreviewManifest.relatedPanelEntries
+      #[statementEntry, proofEntry]
+      statementEntry.label
+      "manifest-relation"
+    let rendered := Informal.RelatedPanel.renderPanel
+      (Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "manifest.source"))
+      panelEntries
+      |>.asString
+    match panelEntries[0]?, panelEntries[1]? with
+    | some statementPanelEntry, some proofPanelEntry =>
+        statementPanelEntry.badgeCodes == #["s"] &&
+          proofPanelEntry.badgeCodes == #["p"] &&
+          hasSubstr rendered "\"s\"" &&
+          hasSubstr rendered "\"p\""
+    | _, _ => false
 
 /-- info: true -/
 #guard_msgs in
@@ -139,6 +209,20 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       hasSubstr panelOut "preview-key" &&
       !hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\"" &&
       !hasSubstr panelOut "data-bp-relation-preview-key=\"preview-key\""
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
+    let unsafeEntry : Informal.RelatedPanel.PanelEntry := {
+      previewId := "unsafe-preview"
+      previewTitle := "</script><script>unsafeRelationPayload()"
+      label := Lean.Name.mkSimple "unsafe.payload"
+    }
+    let out := Informal.RelatedPanel.renderPanel cfg #[unsafeEntry, samplePanelEntry] |>.asString
+    hasSubstr out "\\u003c/script>\\u003cscript>unsafeRelationPayload()" &&
+      !hasSubstr out "</script><script>unsafeRelationPayload()"
 
 /-- info: true -/
 #guard_msgs in

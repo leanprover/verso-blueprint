@@ -2078,35 +2078,45 @@ class TestPreviewRuntimeRegressions:
         assert "bp_relation_preview_fallback_tpl" not in page.content()
 
         chip = wrap.locator(".bp_relation_chip").first
-        chip.hover()
-
-        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
-            "Reverse dependency previews"
+        panel = wrap.locator(":scope > .bp_relation_panel")
+        relation_list = panel.locator(":scope > .bp_relation_panel_body > .bp_relation_list")
+        preview_surface = panel.locator(
+            ":scope > .bp_relation_panel_body > .bp_relation_preview_surface"
         )
-        expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
+        payload = relation_list.locator(":scope > script.bp-relation-entries")
+        expect(payload).to_have_count(1)
+        chip.hover()
+        expect(payload).to_have_count(0)
 
-        statement_item = wrap.locator(
-            '.bp_relation_item[data-bp-relation-preview-key="used_statement--statement"]'
+        expect(
+            panel.locator(":scope > .bp_relation_panel_header > .bp_relation_panel_meta")
+        ).to_have_text("Reverse dependency previews")
+        expect(
+            relation_list.locator(":scope > .bp_relation_item.bp_relation_item_active")
+        ).to_have_count(1)
+
+        statement_item = relation_list.locator(
+            ':scope > .bp_relation_item[data-bp-relation-preview-key="used_statement--statement"]'
         ).first
         expect(statement_item).to_be_visible()
         statement_item.hover()
         expect(statement_item).to_have_class(re.compile(r"bp_relation_item_active"))
 
-        header_label = wrap.locator(".bp_relation_preview_header_label")
+        header_label = preview_surface.locator(".bp_relation_preview_header_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_statement")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_statement"))
 
-        body = wrap.locator(".bp_relation_preview_body")
+        body = preview_surface.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
-        expect(wrap.locator(".bp_relation_preview_title")).to_have_text("Lemma 6.3")
+        expect(preview_surface.locator(".bp_relation_preview_title")).to_have_text("Lemma 6.3")
         expect(body).to_contain_text("Statement depends on")
 
-        proof_item = wrap.locator(
-            '.bp_relation_item[data-bp-relation-preview-key="used_proof--statement"]'
+        proof_item = relation_list.locator(
+            ':scope > .bp_relation_item[data-bp-relation-preview-key="used_proof--statement"]'
         ).first
         proof_item.hover()
         expect(proof_item).to_have_class(re.compile(r"bp_relation_item_active"))
@@ -2116,7 +2126,7 @@ class TestPreviewRuntimeRegressions:
             "(el) => !!el && el.textContent.includes('Statement facet marker for preview relationships.')",
             arg=body.element_handle(),
         )
-        expect(wrap.locator(".bp_relation_preview_title")).to_have_text("Theorem 6.4")
+        expect(preview_surface.locator(".bp_relation_preview_title")).to_have_text("Theorem 6.4")
         expect(body).to_contain_text("Statement facet marker for preview relationships.")
 
         assert_no_runtime_errors(errors)

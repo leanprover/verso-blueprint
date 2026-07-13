@@ -67,7 +67,6 @@ structure PanelEntry where
   previewTitle : String
   label : Data.Label
   href : Option String := none
-  badgesHtml : Output.Html := .empty
   badgeCodes : Array String := #[]
   active : Bool := false
 
@@ -271,13 +270,21 @@ private def saveCachedDomainData [ToJson α]
 private def addUsedByCacheEntry
     (cache : Data.LabelMap (Array UsedByEntry)) (source : BlockData)
     (useRef : Data.UseRef) (isProof : Bool) : Data.LabelMap (Array UsedByEntry) :=
-  let entries := cache.find? useRef.label |>.getD #[]
-  cache.insert useRef.label (addUsedByEntry entries source useRef isProof useRef.label)
+  if source.label == useRef.label then
+    cache
+  else
+    let entries := cache.find? useRef.label |>.getD #[]
+    cache.insert useRef.label (addUsedByEntry entries source useRef isProof useRef.label)
 
 private def buildUsedByCache (blocks : Array BlockData) :
     Data.LabelMap (Array UsedByEntry) :=
+  let seeded := blocks.foldl
+      (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache block =>
+    match block.kind with
+    | .statement _ => cache.insert block.label #[]
+    | .proof => cache
   let unsorted := blocks.foldl
-      (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache source =>
+      (init := seeded) fun cache source =>
     let cache := source.statementUses.foldl (init := cache) fun cache useRef =>
       addUsedByCacheEntry cache source useRef false
     source.proofUses.foldl (init := cache) fun cache useRef =>
@@ -423,9 +430,11 @@ private def useIntentBadgeClass : Data.UseIntent → String
   | .auxiliary => relationScopedBadgeClass "intent" "auxiliary"
   | .technical => relationScopedBadgeClass "intent" "technical"
 
-private def statementAxisBadgeCode : String := "s"
+/-- Compact relation-row payload code for a statement dependency axis. -/
+def statementAxisBadgeCode : String := "s"
 
-private def proofAxisBadgeCode : String := "p"
+/-- Compact relation-row payload code for a proof dependency axis. -/
+def proofAxisBadgeCode : String := "p"
 
 private def useOriginBadgeCode? : Data.UseOrigin → Option String
   | .manual => none
@@ -470,7 +479,8 @@ private def relationBadgeHtml? : String → Option Output.Html
         "technical"
   | _ => none
 
-private def renderRelationBadgeCodes (codes : Array String) : Output.Html :=
+/-- Render compact relation-row badge codes for inline, server-rendered relation chips. -/
+def renderRelationBadgeCodes (codes : Array String) : Output.Html :=
   .seq <| codes.filterMap relationBadgeHtml?
 
 private def axisBadgeCodes (inStatement inProof : Bool) : Array String :=
@@ -504,7 +514,6 @@ private def mkBlockEntry {m}
     previewTitle
     label := source.label
     href
-    badgesHtml := renderRelationBadgeCodes badgeCodes
     badgeCodes
   }
 
@@ -521,7 +530,6 @@ private def mkLabelEntry {m}
     previewTitle
     label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
-    badgesHtml := renderRelationBadgeCodes badgeCodes
     badgeCodes
   }
 
@@ -588,7 +596,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     let previewFooterHtml? :=
-      let html := entry.badgesHtml.asString
+      let html := renderRelationBadgeCodes entry.badgeCodes |>.asString
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
