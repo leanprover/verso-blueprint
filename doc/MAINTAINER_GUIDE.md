@@ -213,6 +213,9 @@ python3 -m scripts.blueprint_reference_harness generate --project noperthedron
 python3 -m scripts.blueprint_reference_harness validate --project project-template --run-lean-tests
 ```
 
+Pass `--verbose` to `generate` or `validate` when you want each Blueprint
+generator to print its own progress diagnostics during HTML emission.
+
 When editing an external reference repository, use an editable clone rather
 than the disposable validation clones:
 
