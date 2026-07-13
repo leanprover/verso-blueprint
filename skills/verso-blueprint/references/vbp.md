@@ -42,9 +42,9 @@ Defaults:
 
 ## Build And Serve
 
-`discover` reports the Lake-backed package, generator executable, generator root, generator source file, and default output paths. Fields ending in `Guess`, such as `topLevelBlueprintModuleGuess` and `chapterCandidateGuesses`, are convention-based hints for agents and may be null or incomplete. The JSON includes `"apiStability":"unstable"` and a `discoveryErrors` array. When Lake workspace discovery fails, package and generator fields are null and `discoveryErrors` explains why.
+`discover` reports the Lake-backed package, generator entry point, generator module, generator source file, and default output paths. Fields ending in `Guess`, such as `topLevelBlueprintModuleGuess` and `chapterCandidateGuesses`, are convention-based hints for agents and may be null or incomplete. The JSON includes `"apiStability":"unstable"` and a `discoveryErrors` array. When Lake workspace discovery fails or no generator entry point can be found, package and generator fields are null and `discoveryErrors` explains why.
 
-`build` asks Lake for the configured `blueprint-gen` executable root, runs `lake build <package>`, prepares/elaborates the generator file with Lake so imported OLeans are materialized, then runs the generator through Lean's interpreter:
+`build` discovers the generator entry point directly, runs `lake build <package>`, prepares/elaborates the generator file with Lake so imported OLeans are materialized, then runs the generator through Lean's interpreter:
 
 ```bash
 lake lean <GeneratorMain>.lean

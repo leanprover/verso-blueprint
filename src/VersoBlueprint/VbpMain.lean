@@ -73,13 +73,22 @@ private def printJson (json : Json) : IO Unit :=
 private def firstToken? (text : String) : Option String :=
   text.trimAscii.toString.splitOn " " |>.filter (!·.isEmpty) |>.head?
 
-private def blueprintGenName : Name :=
-  .str .anonymous "blueprint-gen"
+def conventionalGeneratorFiles (packageName : String) : Array FilePath :=
+  #[FilePath.mk s!"{packageName}Main.lean", FilePath.mk "Main.lean", FilePath.mk "BlueprintMain.lean"]
+
+def generatorModuleFromFile (path : FilePath) : String :=
+  let text := path.toString
+  let text :=
+    if text.endsWith ".lean" then
+      (text.dropEnd ".lean".length).toString
+    else
+      text
+  text.replace "/" "."
 
 structure ProjectInfo where
   packageName : String
-  generatorRoot : Name
   generatorFile : FilePath
+  generatorModule : String
 
 private def loadWorkspace : IO (Except String Lake.Workspace) := do
   let cwd ← IO.currentDir
@@ -99,18 +108,6 @@ private def loadWorkspace : IO (Except String Lake.Workspace) := do
       match ← (Lake.loadWorkspace config).toBaseIO with
       | some workspace => pure (.ok workspace)
       | none => pure (.error "could not load Lake workspace")
-
-private def projectInfo : IO (Except String ProjectInfo) := do
-  match ← loadWorkspace with
-  | .error err => pure (.error err)
-  | .ok workspace =>
-      let some generator := workspace.findLeanExe? blueprintGenName
-        | pure (.error "could not find a `blueprint-gen` executable in the Lake workspace")
-      pure (.ok {
-        packageName := workspace.root.prettyName,
-        generatorRoot := generator.config.root,
-        generatorFile := generator.root.leanFile
-      })
 
 private def lineImportModule? (line : String) : Option String :=
   let line := line.trimAscii.toString
@@ -138,6 +135,56 @@ private def topLevelBlueprintModule? (cwd generator : FilePath) : IO (Option Str
 private def pathString (path : FilePath) : String :=
   path.toString
 
+private def rootLeanFiles (cwd : FilePath) : IO (Array FilePath) := do
+  let mut files := #[]
+  for entry in ← cwd.readDir do
+    let name := entry.path.fileName.getD ""
+    if name != "lakefile.lean" && name.endsWith ".lean" then
+      files := files.push (FilePath.mk name)
+  pure <| files.qsort (fun left right => pathString left < pathString right)
+
+private def looksLikeBlueprintGenerator (cwd file : FilePath) : IO Bool := do
+  try
+    let text ← IO.FS.readFile (cwd / file)
+    pure <|
+      text.contains "def main" &&
+        (text.contains "blueprintMain" || text.contains "PreviewManifest")
+  catch _ =>
+    pure false
+
+private partial def firstGeneratorLikeFile? (cwd : FilePath) : List FilePath → IO (Option FilePath)
+  | [] => pure none
+  | file :: rest => do
+      if ← looksLikeBlueprintGenerator cwd file then
+        pure (some file)
+      else
+        firstGeneratorLikeFile? cwd rest
+
+private def findGeneratorFile? (cwd : FilePath) (packageName : String) : IO (Option FilePath) := do
+  match ← firstGeneratorLikeFile? cwd (conventionalGeneratorFiles packageName).toList with
+  | some file => pure (some file)
+  | none =>
+      let rootFiles ← rootLeanFiles cwd
+      firstGeneratorLikeFile? cwd rootFiles.toList
+
+private def projectInfo : IO (Except String ProjectInfo) := do
+  let cwd ← IO.currentDir
+  match ← loadWorkspace with
+  | .error err => pure (.error err)
+  | .ok workspace =>
+      let packageName := workspace.root.prettyName
+      match ← findGeneratorFile? cwd packageName with
+      | none =>
+          let candidates :=
+            String.intercalate ", " ((conventionalGeneratorFiles packageName).toList.map pathString)
+          pure (.error s!"could not find a Blueprint generator entry point; expected one of {candidates} or a root-level Lean file with `def main` using VersoBlueprint.PreviewManifest")
+      | some generatorFile =>
+          pure (.ok {
+            packageName,
+            generatorFile,
+            generatorModule := generatorModuleFromFile generatorFile
+          })
+
 private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : IO (Array String) := do
   match packageName? with
   | none => pure #[]
@@ -159,11 +206,11 @@ private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : 
 def discover : IO UInt32 := do
   let cwd ← IO.currentDir
   let info? ← projectInfo
-  let (packageName?, generatorExecutable?, generator?, generatorRoot?, discoveryErrors) :=
+  let (packageName?, generator?, generatorModule?, discoveryErrors) :=
     match info? with
     | .ok info =>
-        (some info.packageName, some "blueprint-gen", some info.generatorFile, some info.generatorRoot.toString, #[])
-    | .error err => (none, none, none, none, #[err])
+        (some info.packageName, some info.generatorFile, some info.generatorModule, #[])
+    | .error err => (none, none, none, #[err])
   let topLevel? ←
     match generator? with
     | none => pure none
@@ -174,8 +221,7 @@ def discover : IO UInt32 := do
   printJson <| VersoBlueprint.Vbp.responseJson [
     ("projectRoot", Json.str cwd.toString),
     ("packageName", packageName?.map Json.str |>.getD Json.null),
-    ("generatorExecutable", generatorExecutable?.map Json.str |>.getD Json.null),
-    ("generatorRoot", generatorRoot?.map Json.str |>.getD Json.null),
+    ("generatorModule", generatorModule?.map Json.str |>.getD Json.null),
     ("generator", generator?.map (Json.str ∘ pathString) |>.getD Json.null),
     ("topLevelBlueprintModuleGuess", topLevel?.map Json.str |>.getD Json.null),
     ("defaultOutput", Json.str VersoBlueprint.Vbp.defaultOutput.toString),
@@ -307,7 +353,7 @@ Run a generator through Lake's Lean wrapper.
 
 The raw environment-wrapped Lean interpreter form does not load package native
 libraries such as MD4Lean. The `lake lean Foo.lean -- --run Foo.lean ...` form
-does, while still avoiding the generator executable build path.
+does, while still using the package environment that the entry point needs.
 -/
 private def generatorRunArgs (generatorFile output : FilePath) (verbose : Bool) : Array String :=
   let args :=

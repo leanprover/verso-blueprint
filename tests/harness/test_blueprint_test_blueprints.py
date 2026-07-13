@@ -25,6 +25,7 @@ import scripts.blueprint_test_blueprints as test_blueprints_mod
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+VBP_BUILD_OUTPUT_COMMAND = ("lake", "exe", "vbp", "build", "--output", "{output_dir}")
 
 
 class StandaloneTestBlueprintTests(unittest.TestCase):
@@ -84,7 +85,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                     "category": "Runtime",
                     "summary": "First",
                     "project_root": "tests/test_blueprints/one",
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                 },
                 {
                     "slug": "dup",
@@ -92,7 +93,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                     "category": "Runtime",
                     "summary": "Second",
                     "project_root": "tests/test_blueprints/two",
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                 },
             ],
             "categories": ["Runtime"],
@@ -134,7 +135,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                     "category": "Runtime",
                     "summary": "Bad fixture",
                     "project_root": "tests/test_blueprints/bad",
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                 }
             ],
         }
@@ -156,7 +157,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                     "summary": "Bad fixture",
                     "tags": ["not valid"],
                     "project_root": "tests/test_blueprints/bad",
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                 }
             ],
         }
@@ -195,7 +196,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             tags=("preview", "runtime"),
             project_root="tests/test_blueprints/preview_runtime_showcase",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             panel_regression_script=None,
             browser_tests_path=None,
         )
@@ -292,7 +293,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             tags=(),
             project_root="tests/test_blueprints/runtime-showcase",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             panel_regression_script=None,
             browser_tests_path=None,
         )
@@ -314,7 +315,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             tags=(),
             project_root="tests/test_blueprints/runtime-showcase",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             panel_regression_script=None,
             browser_tests_path=None,
         )
@@ -374,7 +375,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             tags=(),
             project_root="tests/test_blueprints/runtime-showcase",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             panel_regression_script="tests/harness/runtime/check.py",
             browser_tests_path="tests/browser",
         )
@@ -424,7 +425,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             tags=(),
             project_root="tests/test_blueprints/runtime-showcase",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             panel_regression_script="tests/harness/runtime/check.py",
             browser_tests_path="tests/browser",
         )
