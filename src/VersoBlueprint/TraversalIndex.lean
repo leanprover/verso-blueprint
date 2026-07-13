@@ -353,9 +353,6 @@ def entries (state : TraverseState) :
     Array (Except DecodeError (StoredEntry Informal.Graph.CachedGraphData)) :=
   decodeStoreEntries state domainName
 
-def allData (state : TraverseState) : Array Informal.Graph.CachedGraphData :=
-  entries state |>.filterMap (·.toOption.map (·.data)) |>.qsort (fun a b => a.data.key < b.data.key)
-
 end Graphs
 
 namespace TraversalPreviews
