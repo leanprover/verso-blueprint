@@ -161,9 +161,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_releases = {
-            "noperthedron": "v4.31.0",
+            "noperthedron": "v4.32.0",
             "spherepackingblueprint": "v4.30.0",
-            "verso-flt": "v4.31.0",
+            "verso-flt": "v4.32.0",
             "verso-carleson": "v4.30.0",
         }
         self.assertTrue(projects[1].git_checkout)
@@ -171,7 +171,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assert_single_current_release_target(
             projects[1], expected_external_releases[projects[1].project_id], publish_reference=True
         )
-        self.assertIsNone(projects[1].targets[0].rc)
+        self.assertEqual(projects[1].targets[0].rc, "4.32-rc1")
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
@@ -189,7 +189,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assert_single_current_release_target(
             projects[3], expected_external_releases[projects[3].project_id], publish_reference=True
         )
-        self.assertIsNone(projects[3].targets[0].rc)
+        self.assertEqual(projects[3].targets[0].rc, "4.32-rc1")
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assert_single_current_release_target(
             projects[4], expected_external_releases[projects[4].project_id], publish_reference=True

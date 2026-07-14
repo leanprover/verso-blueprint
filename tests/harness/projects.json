@@ -35,9 +35,10 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "2f2355f7a88c2bc3b74a1dd790df4da018cf6339",
-          "publish_reference": true
+          "release": "v4.32.0",
+          "ref": "ad062f0d06b891fa53db1cfcdc7e39be05c39204",
+          "publish_reference": true,
+          "rc": "4.32-rc1"
         }
       ],
       "build_command": ["lake", "build", "Contents"],
@@ -55,7 +56,7 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "406882e214dfd36614e8681c0406394857fd0af5",
+          "ref": "75cb2fb052fd37a851b6e5d2f89e80c80d5dece3",
           "publish_reference": true
         }
       ],
@@ -73,9 +74,10 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "04ed7e578ab59571e7821f4b21c2e77c4071c18a",
-          "publish_reference": true
+          "release": "v4.32.0",
+          "ref": "3a249321ef38b74fe89b61cbfcde01fae2dc69a7",
+          "publish_reference": true,
+          "rc": "4.32-rc1"
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
@@ -93,7 +95,7 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "fc70036bd3333b3ec8595d067c9b3f960938b78a",
+          "ref": "9c5052bbdac3f3bcecdf988b53e1a1fa10c84f6b",
           "rc": "4.30-rc2",
           "publish_reference": true
         }
