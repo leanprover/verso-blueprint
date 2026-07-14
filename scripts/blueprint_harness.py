@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.blueprint_harness_backports import backport_exemption_violations
 from scripts.blueprint_harness_branches import (
     BranchPolicyReleaseTarget,
     CHECKOUT_ROLE_CHOICES,
@@ -182,6 +183,23 @@ def github_pr_title(repo_root: Path, pr_number: int) -> str | None:
     return title if isinstance(title, str) and title.strip() else None
 
 
+def github_pr_backport_source(repo_root: Path, pr_number: int) -> tuple[str, list[str]] | None:
+    payload = github_pr_view_json(repo_root, pr_number, ("headRefName", "commits"))
+    if payload is None:
+        return None
+    head_ref = payload.get("headRefName")
+    commits = payload.get("commits")
+    if not isinstance(head_ref, str) or not head_ref.strip() or not isinstance(commits, list):
+        return None
+    commit_oids: list[str] = []
+    for commit in commits:
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        if not isinstance(oid, str) or not oid.strip():
+            return None
+        commit_oids.append(oid)
+    return head_ref, commit_oids
+
+
 def branch_name_from_ref(ref: str) -> str:
     for prefix in ("refs/remotes/origin/", "refs/heads/", "origin/"):
         if ref.startswith(prefix):
@@ -257,6 +275,29 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
         capture_output=True,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def source_changed_files(repo_root: Path, source_branch: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", f"{preferred_release_ref(repo_root)}...{source_branch}"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def resolve_backport_source(repo_root: Path, args: argparse.Namespace) -> tuple[str, list[str]]:
+    if args.source_branch is not None:
+        return args.source_branch, source_commit_series(repo_root, args.source_branch)
+    source = github_pr_backport_source(repo_root, args.main_pr)
+    if source is None:
+        raise SystemExit(
+            "[blueprint-harness] unable to read the default-development PR head and commits from GitHub; "
+            "pass `--source-branch <branch>` explicitly."
+        )
+    return source
 
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
@@ -673,6 +714,8 @@ def print_public_pr_message_scaffold(
     print("- Follow Lean upstream title style: `<type>: <subject>`, without type scopes such as `feat(entry): ...`.")
     print("- Do not add generator or tool prefixes such as `[codex]` to the public PR title.")
     print("- Do not add routine validation transcripts to the PR body; CI is the default validation record.")
+    if any(": exempt:" in line for line in backport_lines):
+        print("- Use backport exemptions only for documentation and repository metadata changes; CI checks the PR file list.")
     print()
     print("## PR Title")
     print(title)
@@ -845,6 +888,13 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
     source_branch = args.source_branch or current_branch_name(layout.package_root)
     if not source_branch:
         raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
+    if exemptions:
+        violations = backport_exemption_violations(source_changed_files(layout.package_root, source_branch))
+        if violations:
+            raise SystemExit(
+                "[blueprint-harness] backport exemptions are limited to documentation and repository metadata; "
+                "paired backports are required for: " + ", ".join(violations)
+            )
 
     title = validate_public_pr_title(args.title or current_commit_subject(layout.package_root))
     print_public_pr_message_scaffold(
@@ -862,12 +912,8 @@ def command_prepare_backport_pr(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_checkout_role(layout.package_root, required_role="default_dev", operation="prepare-backport-pr")
     targets = prepare_backport_targets(layout, args)
-    source_branch = args.source_branch or current_branch_name(layout.package_root)
-    if not source_branch:
-        raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
-
     main_title = resolve_main_pr_title(layout.package_root, args)
-    source_commits = source_commit_series(layout.package_root, source_branch)
+    source_branch, source_commits = resolve_backport_source(layout.package_root, args)
     default_dev = default_dev_branch(layout.package_root)
 
     for index, backport_release in enumerate(targets):
@@ -1288,7 +1334,7 @@ def add_pr_preparation_commands(subparsers) -> None:
         "--exempt",
         action="append",
         default=None,
-        help="Pre-fill one required branch as `exempt: <reason>` using `--exempt <branch>=<reason>`. Repeat as needed.",
+        help="Pre-fill one documentation/metadata-only exemption using `--exempt <branch>=<reason>`. Repeat as needed.",
     )
     prepare_backports.set_defaults(func=command_prepare_backports)
 
@@ -1321,7 +1367,7 @@ def add_pr_preparation_commands(subparsers) -> None:
         "--exempt",
         action="append",
         default=None,
-        help="Pre-fill one required backport branch as `exempt: <reason>`. Repeat as needed.",
+        help="Pre-fill one documentation/metadata-only backport exemption. Repeat as needed.",
     )
     prepare_pr.set_defaults(func=command_prepare_pr)
 
@@ -1353,7 +1399,7 @@ def add_pr_preparation_commands(subparsers) -> None:
     prepare_backport_pr.add_argument(
         "--source-branch",
         default=None,
-        help="Override the default-development branch name. Defaults to the current branch.",
+        help="Override the source branch. Defaults to the head branch and commit series of `--main-pr`.",
     )
     prepare_backport_pr.set_defaults(func=command_prepare_backport_pr)
 
