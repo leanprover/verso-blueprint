@@ -65,9 +65,16 @@
   default-development PR ready for review, replace every pending backport line
   with either `Backport <release>: #<pr>` or
   `Backport <release>: exempt: <reason>`.
+- Use exemptions only when every changed file is documentation or repository
+  metadata. Source, scripts, tests, templates, package configuration, and
+  runtime assets require paired backports so later backports do not accumulate
+  avoidable structural conflicts.
 - For changes that need paired backports, open the paired backport PRs before
   the default-development PR leaves draft, then wait for the paired-backport CI
   check to pass before merging.
+- `prepare-backport-pr --main-pr <pr>` derives the source branch and commit
+  series from the PR, including after merge. Use `--source-branch` only as an
+  explicit fallback when GitHub metadata is unavailable.
 - Do not hand-roll PR descriptions from local status notes or validation
   transcripts. Keep routine validation details in local/final reports unless
   they change review risk or CI cannot show them.

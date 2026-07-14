@@ -16,6 +16,7 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.blueprint_harness_branches import load_branch_policy
+from scripts.blueprint_harness_backports import backport_exemption_violations
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +112,24 @@ class GitHubApi:
 
     def commit_diff(self, sha: str) -> str:
         return self.get_text(f"/repos/{self.repo_full_name}/commits/{sha}", accept="application/vnd.github.diff")
+
+    def pull_request_files(self, number: int) -> list[str]:
+        files: list[str] = []
+        page = 1
+        while True:
+            data = self.get_json(f"/repos/{self.repo_full_name}/pulls/{number}/files?per_page=100&page={page}")
+            if not isinstance(data, list):
+                raise BackportCheckError(f"Unexpected file payload for PR #{number}")
+            if not data:
+                return files
+            for item in data:
+                filename = item.get("filename") if isinstance(item, dict) else None
+                if not isinstance(filename, str) or not filename:
+                    raise BackportCheckError(f"Unexpected file payload shape for PR #{number}")
+                files.append(filename)
+            if len(data) < 100:
+                return files
+            page += 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -303,6 +322,22 @@ def verify_backport_pr(
     verify_backport_commit_series(api, source_pr_number, entry.pr_number)
 
 
+def verify_backport_exemptions(
+    api: GitHubApi,
+    source_pr_number: int,
+    entries: dict[str, BackportEntry],
+) -> None:
+    exempt_branches = [entry.branch for entry in entries.values() if entry.exempt_reason is not None]
+    if not exempt_branches:
+        return
+    violations = backport_exemption_violations(api.pull_request_files(source_pr_number))
+    if violations:
+        raise BackportCheckError(
+            "backport exemptions are limited to documentation and repository metadata changes; "
+            "paired backports are required for " + ", ".join(violations)
+        )
+
+
 def event_pull_request(event: dict[str, Any]) -> dict[str, Any]:
     pull_request = event.get("pull_request")
     if not isinstance(pull_request, dict):
@@ -334,6 +369,25 @@ def run(event_path: str | None, token: str | None) -> int:
     draft = bool(pull_request.get("draft"))
     body = str(pull_request.get("body") or "")
     entries = validate_backport_entries(body, policy.required_backport_branches, allow_pending=draft)
+    entries_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].pr_number is not None]
+    exemptions_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].exempt_reason is not None]
+    needs_api = bool(exemptions_to_verify or (not draft and entries_to_verify))
+    if needs_api:
+        repository = event.get("repository")
+        if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
+            raise BackportCheckError("event payload is missing repository.full_name")
+        source_pr_number_raw = pull_request.get("number", event.get("number"))
+        try:
+            source_pr_number = int(source_pr_number_raw)
+        except (TypeError, ValueError) as err:
+            raise BackportCheckError("event payload is missing the default-development PR number") from err
+        if not token:
+            raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
+        api = GitHubApi(repository["full_name"], token)
+        verify_backport_exemptions(api, source_pr_number, entries)
+    else:
+        source_pr_number = 0
+        api = None
     if draft:
         print("[backport-check] draft PR; enforcing declared backport plan only")
         for branch in policy.required_backport_branches:
@@ -349,22 +403,6 @@ def run(event_path: str | None, token: str | None) -> int:
                     "paired PR structure will be verified after ready for review"
                 )
         return 0
-
-    repository = event.get("repository")
-    if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
-        raise BackportCheckError("event payload is missing repository.full_name")
-    entries_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].pr_number is not None]
-    if entries_to_verify:
-        source_pr_number_raw = pull_request.get("number", event.get("number"))
-        try:
-            source_pr_number = int(source_pr_number_raw)
-        except (TypeError, ValueError) as err:
-            raise BackportCheckError("event payload is missing the default-development PR number") from err
-    else:
-        source_pr_number = 0
-    if entries_to_verify and not token:
-        raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
-    api = GitHubApi(repository["full_name"], token) if entries_to_verify else None
 
     for branch in policy.required_backport_branches:
         entry = entries[branch]

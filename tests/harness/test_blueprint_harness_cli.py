@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import scripts.blueprint_harness as harness_mod
 import scripts.blueprint_reference_harness as reference_harness_mod
@@ -587,6 +588,56 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "without type scopes"):
                 harness_mod.command_prepare_pr(args)
 
+    def test_prepare_pr_rejects_source_change_exemptions(self) -> None:
+        args = argparse.Namespace(
+            title="fix: report malformed graph cache entries",
+            summary=None,
+            change=None,
+            source_branch="fix/traversal-decode-errors",
+            exempt=["v4.28.0=no reported release-line regression"],
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            ),
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            source_changed_files=lambda _repo_root, _source_branch: [
+                "src/VersoBlueprint/GraphApi.lean",
+                "doc/API.md",
+            ],
+        ):
+            with self.assertRaisesRegex(SystemExit, "paired backports are required for: src/VersoBlueprint/GraphApi.lean"):
+                harness_mod.command_prepare_pr(args)
+
+    def test_prepare_pr_accepts_documentation_only_exemptions(self) -> None:
+        args = argparse.Namespace(
+            title="doc: clarify backport policy",
+            summary=None,
+            change=None,
+            source_branch="doc/backport-policy",
+            exempt=["v4.28.0=documentation-only change"],
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        out = io.StringIO()
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            ),
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            source_changed_files=lambda _repo_root, _source_branch: ["doc/MAINTAINER_GUIDE.md"],
+        ):
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
+
+        self.assertIn("Backport v4.28.0: exempt: documentation-only change", out.getvalue())
+
     def test_prepare_pr_allows_squash_when_all_backports_are_exempt(self) -> None:
         out = io.StringIO()
         with redirect_stdout(out):
@@ -651,6 +702,104 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("## PR Body", output)
         self.assertIn("Primary review: #11", output)
         self.assertIn("Keep review comments on #11 unless this backport diverges materially.", output)
+
+    def test_prepare_backport_pr_defaults_to_github_pr_title(self) -> None:
+        args = argparse.Namespace(
+            release="v4.28.0",
+            all_required=False,
+            main_pr=11,
+            main_title=None,
+            source_branch="feat/multi-commit-branch",
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        out = io.StringIO()
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            ),
+            default_dev_branch=lambda _checkout_root: "v4.29.0",
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            source_commit_series=lambda _repo_root, _source_branch: ["abc123", "def456"],
+            github_pr_title=lambda _repo_root, _main_pr: "feat: branch-level render API cleanup",
+            current_commit_subject=lambda _checkout_root: "fix: support release-line highlight patches",
+        ):
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
+
+        output = out.getvalue()
+        self.assertIn("paired_title=[backport v4.28.0] feat: branch-level render API cleanup", output)
+        self.assertIn("## PR Title\n[backport v4.28.0] feat: branch-level render API cleanup", output)
+        self.assertNotIn("fix: support release-line highlight patches", output)
+
+    def test_prepare_backport_pr_defaults_source_to_main_pr(self) -> None:
+        args = argparse.Namespace(
+            release="v4.28.0",
+            all_required=False,
+            main_pr=11,
+            main_title="fix: report malformed graph cache entries",
+            source_branch=None,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        out = io.StringIO()
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=("v4.28.0",),
+            ),
+            default_dev_branch=lambda _checkout_root: "v4.29.0",
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            github_pr_backport_source=lambda _repo_root, _main_pr: (
+                "fix/traversal-decode-errors",
+                ["abc123"],
+            ),
+        ):
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
+
+        output = out.getvalue()
+        self.assertIn("source_branch=fix/traversal-decode-errors", output)
+        self.assertIn("source_commits=abc123", output)
+        self.assertIn("paired_branch=fix/backport-v428-traversal-decode-errors", output)
+
+    def test_github_pr_backport_source_reads_head_and_commits(self) -> None:
+        with patched_attrs(
+            harness_mod,
+            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
+                "headRefName": "fix/traversal-decode-errors",
+                "commits": [{"oid": "abc123"}, {"oid": "def456"}],
+            },
+        ):
+            source = harness_mod.github_pr_backport_source(Path("/tmp/worktree"), 11)
+
+        self.assertEqual(source, ("fix/traversal-decode-errors", ["abc123", "def456"]))
+
+    def test_github_pr_title_reads_public_title(self) -> None:
+        with patch(
+            "scripts.blueprint_harness.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout='{"title":"doc: clarify API"}'),
+        ) as run_mock:
+            title = harness_mod.github_pr_title(Path("/tmp/worktree"), 11)
+
+        self.assertEqual(title, "doc: clarify API")
+        run_mock.assert_called_once_with(
+            ["gh", "pr", "view", "11", "--repo", "leanprover/verso-blueprint", "--json", "title"],
+            cwd=Path("/tmp/worktree"),
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+    def test_github_pr_title_returns_none_for_lookup_failure(self) -> None:
+        with patch(
+            "scripts.blueprint_harness.subprocess.run",
+            return_value=SimpleNamespace(returncode=1, stdout=""),
+        ):
+            self.assertIsNone(harness_mod.github_pr_title(Path("/tmp/worktree"), 11))
 
     def test_worktree_merged_pr_validation_accepts_matching_metadata(self) -> None:
         worktree = GitWorktree(
