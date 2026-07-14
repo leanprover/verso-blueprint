@@ -105,6 +105,10 @@ Do those upstream write actions only when they are explicitly requested.
 - Non-draft PRs targeting the default-development branch must replace each
   `pending` entry with a paired backport PR number or an explicit exemption
   reason.
+- Exemptions are limited to changes whose files are all documentation or
+  repository metadata. Source, scripts, tests, templates, package
+  configuration, and runtime assets require paired backports so maintenance
+  lines remain structurally aligned for future cherry-picks.
 - Backported default-development PRs should normally be landed with a merge
   commit rather than squash or rebase, so the source commits recorded by
   `git cherry-pick -x` remain present in default-dev history.
@@ -129,8 +133,9 @@ Do those upstream write actions only when they are explicitly requested.
   - apply the scaffolded release label, for example `backport-v4.30.0`, to the
     paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
-  - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
-    `Backport ...: exempt: <reason>`
+  - replace each `Backport ...: pending` line with `Backport ...: #<pr>`, or
+    use `Backport ...: exempt: <reason>` only for documentation/metadata-only
+    changes
   - wait for CI on the default-development PR and required paired PRs before
     merging the default-development PR
 - Keep review comments and design discussion on the default-dev PR unless the

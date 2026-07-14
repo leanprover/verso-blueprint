@@ -452,13 +452,22 @@ Paste the emitted backport lines into the draft PR body. While the PR is still d
 each required line may remain:
 
 - `Backport v4.30.0: pending`
-- or `Backport v4.30.0: exempt: <reason>`
+- or, for documentation and repository-metadata-only changes,
+  `Backport v4.30.0: exempt: <reason>`
 
 Once the default-development PR is ready for review it must replace each `pending` line
 with either:
 
 - link the paired backport PR in the PR body with `Backport v4.30.0: #<pr>`
-- or record `Backport v4.30.0: exempt: <reason>`
+- or record `Backport v4.30.0: exempt: <reason>` when every changed file is
+  documentation or repository metadata
+
+Keep code-bearing release lines structurally aligned even when compatibility or a
+reported maintenance-line regression is not the motivation. Changes to source,
+scripts, tests, templates, package configuration, and runtime assets require paired
+backports because skipping them makes later cherry-picks harder. The paired-backport
+check reads the PR file list and rejects exemptions for those paths; an exemption
+reason by itself is not sufficient.
 
 Use the default-development PR as the main review surface. The paired backport
 PR is primarily a maintenance-line artifact for CI, merge state, and any
@@ -480,8 +489,14 @@ python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
 
 That helper prints a standardized paired branch name, a title of the form
 `[backport v4.30.0] ...`, a `backport-v4.30.0` release label, and a PR body
-that points back to the primary
-default-development review.
+that points back to the primary default-development review. By default the
+title after the backport prefix is read from the GitHub title of `--main-pr`,
+which keeps multi-commit backports from inheriting the last local commit
+subject. The source branch and exact commit series also come from `--main-pr`,
+so the command remains correct after the default-development PR merges. Use
+`--main-title '<type>: <subject>'` or `--source-branch <branch>` only when the
+GitHub lookup is not available or you intentionally need to override that PR
+metadata.
 
 When several backport releases are required, use:
 
