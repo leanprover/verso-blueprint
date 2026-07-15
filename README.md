@@ -363,19 +363,23 @@ you want to enable it.
 
 ## Reference Blueprints
 
-The repository also tracks larger reference blueprints.
+The repository also tracks a current, release-versioned reference catalog.
+Each external Blueprint is published only for its intended current release:
+Noperthedron and FLT on `v4.32.0`, and Sphere Packing and Carleson on
+`v4.30.0`. The in-repo starter template continues to validate maintained
+release lines.
 
 - [project_template/](./project_template/), the in-repo starter template,
   [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
   and [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/spherepackingblueprint/)
+  [rendered site for v4.30.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/spherepackingblueprint/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/noperthedron/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-flt/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/verso-flt/)
 - [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-carleson/)
+  [rendered site for v4.30.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-carleson/)
 
 ## Rendered Test Blueprints
 

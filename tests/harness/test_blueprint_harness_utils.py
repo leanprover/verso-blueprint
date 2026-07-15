@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import signal
 import subprocess
 import tempfile
 import time
@@ -137,12 +138,40 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
         ):
             run_with_heartbeat(["slow"], cwd=Path("/tmp"), label="external build")
 
-        popen_mock.assert_called_once_with(["slow"], cwd=Path("/tmp"))
+        popen_mock.assert_called_once_with(["slow"], cwd=Path("/tmp"), start_new_session=os.name == "posix")
         output = out.getvalue()
         self.assertIn("[blueprint-harness] $ slow", output)
         self.assertIn("[blueprint-harness] starting external build", output)
         self.assertIn("[blueprint-harness] still running external build after 1m01s", output)
         self.assertIn("[blueprint-harness] finished external build in 1m02s", output)
+
+    @unittest.skipUnless(os.name == "posix", "process-group cleanup is POSIX-specific")
+    def test_run_with_heartbeat_terminates_the_whole_process_group_on_interrupt(self) -> None:
+        class FakeProcess:
+            pid = 4242
+
+            def __init__(self) -> None:
+                self.cleanup_waits: list[int | None] = []
+
+            def wait(self, timeout: int | None = None) -> int:
+                if timeout == 60:
+                    raise KeyboardInterrupt
+                self.cleanup_waits.append(timeout)
+                return -signal.SIGTERM
+
+            def poll(self) -> None:
+                return None
+
+        fake_process = FakeProcess()
+        with (
+            patch("scripts.blueprint_harness_utils.subprocess.Popen", return_value=fake_process),
+            patch("scripts.blueprint_harness_utils.os.killpg") as killpg_mock,
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            run_with_heartbeat(["slow"], cwd=Path("/tmp"), label="external build")
+
+        killpg_mock.assert_called_once_with(fake_process.pid, signal.SIGTERM)
+        self.assertEqual(fake_process.cleanup_waits, [5])
 
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
