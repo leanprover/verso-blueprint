@@ -62,6 +62,21 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             self.assertIn('require VersoBlueprint from "', text)
             self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
 
+    def test_rewrite_local_blueprint_dependency_can_emit_a_portable_relative_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "package"
+            project_dir = package_root / "project_template"
+            project_dir.mkdir(parents=True)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(f"{OFFICIAL_BLUEPRINT_REQUIRE}\n", encoding="utf-8")
+
+            rewrite_local_blueprint_dependency(project_dir, package_root, relative=True)
+
+            self.assertEqual(
+                lakefile.read_text(encoding="utf-8"),
+                'require VersoBlueprint from ".."',
+            )
+
     def test_rewrite_local_blueprint_dependency_disables_mathlib_header_linter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)

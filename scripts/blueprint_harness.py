@@ -415,17 +415,34 @@ def command_sync_root_lake(_: argparse.Namespace) -> int:
 def command_bump_toolchain(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_checkout_role(layout.package_root, required_role="default_dev", operation="bump-toolchain")
+    requested_release_id = release_branch_from_lean_ref(args.toolchain)
+    checkout_release_id = active_release_branch(layout.package_root)
+    if requested_release_id != checkout_release_id:
+        raise SystemExit(
+            f"[blueprint-harness] refusing to bump `{checkout_release_id}` with toolchain `{args.toolchain}`; "
+            f"expected a toolchain on release line `{checkout_release_id}`"
+        )
+
     result = bump_toolchain_checkout(
         layout.package_root,
         args.toolchain,
         verso_ref=args.verso_ref,
         validate=not args.skip_validation,
     )
+    rc = release_candidate_name_or_none(result.lean_ref)
+    manifest_path = resolve_manifest_path(None, layout.package_root)
+    update_release_line_project_manifest(
+        manifest_path,
+        release_id=requested_release_id,
+        rc=rc,
+    )
     print(f"package_root={layout.package_root}")
     print(f"toolchain_ref={result.lean_ref}")
     print(f"toolchain_spec={result.toolchain_spec}")
     print(f"verso_ref={result.verso_ref}")
     print(f"verso_tag_oid={result.verso_tag_oid}")
+    print(f"rc={rc or ''}")
+    print(f"project_manifest={manifest_path}")
     print(f"validated={str(not args.skip_validation).lower()}")
     return 0
 
@@ -449,6 +466,7 @@ def update_release_line_project_manifest(
     manifest_path: Path,
     *,
     release_id: str,
+    rc: str | None,
 ) -> None:
     try:
         raw = load_json_object(manifest_path)
@@ -459,6 +477,7 @@ def update_release_line_project_manifest(
     if not isinstance(projects, list):
         raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected `projects` list")
 
+    changed = False
     for project in projects:
         if not isinstance(project, dict):
             continue
@@ -471,13 +490,29 @@ def update_release_line_project_manifest(
                 f"[blueprint-harness] invalid project manifest `{manifest_path}`: "
                 f"in-repo project `{project.get('id', '<unknown>')}` has no `targets` list"
             )
-        if not any(
-            isinstance(target, dict) and release_branch_from_lean_ref(str(target.get("release", ""))) == release_id
-            for target in targets
-        ):
-            targets.append({"release": release_id})
+        matching_target = next(
+            (
+                target
+                for target in targets
+                if isinstance(target, dict)
+                and release_branch_from_lean_ref(str(target.get("release", ""))) == release_id
+            ),
+            None,
+        )
+        if matching_target is None:
+            matching_target = {"release": release_id}
+            targets.append(matching_target)
+            changed = True
+        if rc is None:
+            if "rc" in matching_target:
+                matching_target.pop("rc")
+                changed = True
+        elif matching_target.get("rc") != rc:
+            matching_target["rc"] = rc
+            changed = True
 
-    write_json(manifest_path, raw)
+    if changed:
+        write_json(manifest_path, raw)
 
 
 def upsert_release_target(
@@ -495,12 +530,25 @@ def upsert_release_target(
 
 def command_start_release_line(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    release_id = release_branch_from_lean_ref(args.toolchain)
+    requested_lean_ref = normalize_lean_release_ref(args.toolchain)
+    release_id = release_branch_from_lean_ref(requested_lean_ref)
     current_branch = current_branch_name(layout.package_root)
     if current_branch != release_id:
         raise SystemExit(
             f"[blueprint-harness] start-release-line must run from local branch `{release_id}`; "
             f"current branch is `{current_branch or '<detached>'}`"
+        )
+
+    requested_rc = release_candidate_name_or_none(requested_lean_ref)
+    requested_verso_ref = (
+        normalize_lean_release_ref(args.verso_ref)
+        if args.verso_ref is not None
+        else requested_lean_ref
+    )
+    if requested_rc is not None and release_branch_from_lean_ref(requested_verso_ref) != release_id:
+        raise SystemExit(
+            f"[blueprint-harness] release candidate `{requested_lean_ref}` expects a matching `verso` release line; "
+            f"got `{requested_verso_ref}`"
         )
 
     old_policy = load_branch_policy(layout.package_root)
@@ -518,11 +566,6 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     release_toolchain = release_branch_from_lean_ref(result.lean_ref)
     release_verso_ref = release_branch_from_lean_ref(result.verso_ref)
     rc = release_candidate_name_or_none(result.lean_ref)
-    if rc is not None and release_verso_ref != release_id:
-        raise SystemExit(
-            f"[blueprint-harness] release candidate `{result.lean_ref}` expects a matching `verso` release line; "
-            f"got `{result.verso_ref}`"
-        )
 
     release_targets = upsert_release_target(
         old_policy.release_targets,
@@ -545,6 +588,7 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     update_release_line_project_manifest(
         manifest_path,
         release_id=release_id,
+        rc=rc,
     )
 
     print(f"package_root={layout.package_root}")

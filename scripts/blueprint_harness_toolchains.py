@@ -112,7 +112,7 @@ def resolve_remote_verso_tag_oid(package_root: Path, ref: str) -> str | None:
 
 
 def refresh_managed_manifest(package_root: Path, project_dir: Path) -> None:
-    with maybe_in_repo_blueprint_dependency_override(project_dir, package_root):
+    with maybe_in_repo_blueprint_dependency_override(project_dir, package_root, relative=True):
         run(lean_low_priority_command(package_root, "lake", "update"), cwd=project_dir)
 
 
