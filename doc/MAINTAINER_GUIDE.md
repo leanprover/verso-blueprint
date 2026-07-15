@@ -322,8 +322,9 @@ Run this from the new local branch, for example `v4.31.0`. The command:
 - updates `branch-policy.json` so the new branch is the default-development
   line, the previous default-development branch becomes a required backport
   target, and the new release target is recorded
-- enables the in-repo reference projects, currently `project-template`, on the
-  new release target
+- adds the new release target to in-repo CI fixtures such as
+  `project-template`; fixtures remain explicitly selectable for validation but
+  are not added to the public reference catalog
 
 For release candidates, use the official short RC name such as `4.31-rc2`.
 The branch name remains the stable release branch, for example `v4.31.0`, while
@@ -732,6 +733,23 @@ default-development catalog and passes it to the release-branch harness with
 so two projects in the same release line can deploy against different release
 candidate tags when needed.
 
+All runs of the deploy workflow share one repository-wide concurrency group
+because every run replaces the same combined Pages site. A deploy matrix entry
+first computes an exact generated-site identity from the release id, project
+id, complete generated one-project manifest, and checked-out release-branch
+commit. The workflow restores only the cache key for that exact identity; it
+does not use prefix or stale fallback keys. On a cache miss, normal generation
+runs and installs the identity metadata before saving the generated site. On a
+cache hit, toolchain installation, dependency restoration, external checkout,
+and generation are skipped.
+
+Before assembling Pages, the staging job independently recomputes the expected
+identities from the current catalog and fetched release-branch heads. It rejects
+missing, unexpected, tampered, or non-matching artifacts and removes the
+identity metadata from the public site. This permits a trusted last-known-good
+generated site to cover a temporary upstream outage only while every relevant
+pin and generator revision remains exactly unchanged.
+
 The current published project/release split is intentionally not duplicated
 here. Read `tests/harness/projects.json`; every project target marked
 `publish_reference: true` is part of the deployed catalog for that target's
@@ -836,18 +854,17 @@ Minimal external catalog entry shape:
           "publish_reference": true
         }
       ],
-      "build_command": ["lake", "build", "SomeUserProject"],
-      "generate_command": ["lake", "lean", "SomeUserProjectMain.lean", "--", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }
   ]
 }
 ```
 
-The `lake lean <file> -- --run <file>` form is intentionally the catalog default
-for reference projects. It still requires the imported Lean modules to have been
-built first, but it avoids Lake's executable build path and the transitive native
-compilation cost that can dominate Mathlib-heavy projects.
+`lake exe vbp build --output <dir>` is the catalog default for external
+Blueprint projects. The project-owned `vbp` configuration is the source of
+truth for its generation instructions; the harness must not replace it with a
+guessed generator entry point or a separate broad build command.
 
 That override policy is now the default maintainer behavior: the external
 projects keep their committed dependency pointed at an approved upstream repo,
