@@ -172,11 +172,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[1], expected_external_releases[projects[1].project_id], publish_reference=True
         )
         self.assertEqual(projects[1].targets[0].rc, "4.32-rc1")
-        self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
-        self.assertEqual(
-            projects[1].generate_command,
-            ("lake", "lean", "Main.lean", "--", "--run", "Main.lean", "--output", "{output_dir}"),
-        )
+        self.assertIsNone(projects[1].build_command)
+        self.assertEqual(projects[1].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
@@ -184,22 +181,22 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[2], expected_external_releases[projects[2].project_id], publish_reference=True
         )
         self.assertIsNone(projects[2].targets[0].rc)
-        self.assertEqual(projects[2].build_command, ("bash", "scripts/ci-reference-build.sh"))
+        self.assertIsNone(projects[2].build_command)
+        self.assertEqual(projects[2].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assert_single_current_release_target(
             projects[3], expected_external_releases[projects[3].project_id], publish_reference=True
         )
         self.assertEqual(projects[3].targets[0].rc, "4.32-rc1")
+        self.assertIsNone(projects[3].build_command)
+        self.assertEqual(projects[3].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assert_single_current_release_target(
             projects[4], expected_external_releases[projects[4].project_id], publish_reference=True
         )
         self.assertIsNotNone(projects[4].targets[0].rc)
-        self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
-        self.assertEqual(
-            projects[4].generate_command,
-            ("lake", "lean", "BlueprintMain.lean", "--", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
-        )
+        self.assertIsNone(projects[4].build_command)
+        self.assertEqual(projects[4].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_project_catalog_requires_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
