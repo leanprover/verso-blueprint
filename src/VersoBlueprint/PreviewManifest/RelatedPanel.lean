@@ -11,8 +11,6 @@ import VersoBlueprint.PreviewManifest
 namespace Informal.PreviewManifest
 
 open Lean
-open Verso.Output
-open Verso.Output.Html
 
 def RelatedEntry.displayLabel (entry : RelatedEntry) : String :=
   let label := labelString entry.label |>.trimAscii.toString
@@ -34,9 +32,6 @@ def RelationAxis.badgeCode (axis : RelationAxis) : String :=
 /-- Compact browser-runtime badge codes for one manifest relation entry. -/
 def RelatedEntry.badgeCodes (entry : RelatedEntry) : Array String :=
   entry.axes.map RelationAxis.badgeCode
-
-def RelatedEntry.badgesHtml (entry : RelatedEntry) : Html :=
-  Informal.RelatedPanel.renderRelationBadgeCodes entry.badgeCodes
 
 def RelatedEntry.panelEntry
     (entry : RelatedEntry)

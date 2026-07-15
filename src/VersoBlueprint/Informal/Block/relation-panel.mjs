@@ -9,8 +9,6 @@
     };
   }
 
-  let relationPanelCounter = 0;
-
   function relationBadgeSpec(code) {
     switch (code) {
       case "s":
@@ -77,10 +75,8 @@
     const defaultTitle = (surface.title.textContent || "").trim() || "Relation preview";
     const initialLoadingHtml = (surface.body.innerHTML || "").trim();
     const list = panel.querySelector(".bp_relation_list");
-    const relationPanelId = ++relationPanelCounter;
-    let items = [];
+    const items = [];
     let hydratedItems = false;
-    let parsedEntryData = null;
     let activateRequestToken = 0;
     let relationLifecycle = null;
 
@@ -95,24 +91,21 @@
     }
 
     function relationEntryData() {
-      if (parsedEntryData !== null) return parsedEntryData;
-      parsedEntryData = [];
-      if (!(list instanceof Element)) return parsedEntryData;
+      if (!(list instanceof Element)) return [];
       const dataScript = list.querySelector("script.bp-relation-entries");
       const rawData = dataScript ? (dataScript.textContent || "").trim() : "";
-      if (!rawData) return parsedEntryData;
+      if (!rawData) return [];
       try {
         const parsed = JSON.parse(rawData);
-        if (Array.isArray(parsed)) parsedEntryData = parsed;
+        return Array.isArray(parsed) ? parsed : [];
       } catch (_err) {
-        parsedEntryData = [];
+        return [];
       }
-      return parsedEntryData;
     }
 
     // Must match RelatedPanel.panelEntryDataJson; kept positional because large
     // blueprints can have thousands of relation rows.
-    function createRelationItem(entry, index) {
+    function createRelationItem(entry) {
       if (!Array.isArray(entry)) return null;
       const title = typeof entry[0] === "string" && entry[0] ? entry[0] : defaultTitle;
       const previewKey = typeof entry[1] === "string" ? entry[1] : "";
@@ -122,7 +115,6 @@
       const active = entry[5] === true;
       const item = document.createElement("li");
       item.className = active ? "bp_relation_item bp_relation_item_active" : "bp_relation_item";
-      item.setAttribute("data-bp-relation-preview-id", "bp-relation-" + relationPanelId + "-" + index);
       item.setAttribute("data-bp-relation-preview-title", title);
       if (previewKey) item.setAttribute("data-bp-relation-preview-key", previewKey);
       if (label) item.setAttribute("data-bp-preview-header-label", label);
@@ -152,8 +144,6 @@
 
     function bindRelationItem(item) {
       if (!(item instanceof Element)) return;
-      if (item.getAttribute("data-bp-relation-item-bound") === "1") return;
-      item.setAttribute("data-bp-relation-item-bound", "1");
       item.addEventListener("mouseenter", function () {
         activate(item);
       });
@@ -168,15 +158,14 @@
       if (!(list instanceof Element)) return items;
       const fragment = document.createDocumentFragment();
       const entryData = relationEntryData();
-      entryData.forEach(function (entry, index) {
-        const item = createRelationItem(entry, index);
+      entryData.forEach(function (entry) {
+        const item = createRelationItem(entry);
         if (item instanceof Element) {
           bindRelationItem(item);
           items.push(item);
           fragment.appendChild(item);
         }
       });
-      parsedEntryData = [];
       const dataScript = list.querySelector("script.bp-relation-entries");
       if (dataScript instanceof Element) dataScript.remove();
       list.appendChild(fragment);

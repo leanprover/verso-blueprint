@@ -446,14 +446,14 @@ private def useIntentBadgeCode? : Data.UseIntent → Option String
   | .technical => some "it"
 
 /-- Statement-axis badge used by normal and manifest-backed relation panels. -/
-def statementAxisBadge : Output.Html :=
+private def statementAxisBadge : Output.Html :=
   relationBadge
     (relationAxisBadgeClass "statement")
     "Declared in the statement"
     "statement"
 
 /-- Proof-axis badge used by normal and manifest-backed relation panels. -/
-def proofAxisBadge : Output.Html :=
+private def proofAxisBadge : Output.Html :=
   relationBadge
     (relationAxisBadgeClass "proof")
     "Declared in the proof"
@@ -480,7 +480,7 @@ private def relationBadgeHtml? : String → Option Output.Html
   | _ => none
 
 /-- Render compact relation-row badge codes for inline, server-rendered relation chips. -/
-def renderRelationBadgeCodes (codes : Array String) : Output.Html :=
+private def renderRelationBadgeCodes (codes : Array String) : Output.Html :=
   .seq <| codes.filterMap relationBadgeHtml?
 
 private def axisBadgeCodes (inStatement inProof : Bool) : Array String :=

@@ -21,7 +21,7 @@ Preview relation group.
 :::
 
 :::lemma_ "used_statement"
-Statement depends on {uses "used_target"}[].
+Statement depends on {uses "used_target" (origin := "automatic") (intent := "technical")}[].
 :::
 
 :::theorem "used_proof"
@@ -29,7 +29,7 @@ Statement facet marker for preview relationships.
 :::
 
 :::proof "used_proof"
-Proof facet marker for preview relationships, depending on {uses "used_target"}[].
+Proof facet marker for preview relationships, depending on {uses "used_target" (intent := "auxiliary")}[].
 :::
 
 :::theorem "used_proof_panel"

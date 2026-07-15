@@ -194,7 +194,8 @@ export function getGraphData(root) {
 }
 
 /**
- * Read graph variants embedded in a generated graph page.
+ * Read the variants carried by graph data embedded in a generated graph page.
+ * This is a convenience projection of {@link getGraphData}.
  *
  * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
  * @returns {BlueprintGraphVariant[]}

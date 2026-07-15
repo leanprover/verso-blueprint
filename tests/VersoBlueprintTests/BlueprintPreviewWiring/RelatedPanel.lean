@@ -68,12 +68,7 @@ private def cachedStatement
       previewKey := Informal.PreviewKey.ofString? "informal:target:statement"
       axes := #[.statement, .proof]
     }
-    let badges := entry.badgesHtml.asString
-    entry.badgeCodes == #["s", "p"] &&
-      hasSubstr badges "bp_relation_badge_statement" &&
-      hasSubstr badges "bp_relation_badge_proof" &&
-      hasSubstr badges "title=\"Declared in the statement\"" &&
-      hasSubstr badges "title=\"Declared in the proof\""
+    entry.badgeCodes == #["s", "p"]
 
 /-- info: true -/
 #guard_msgs in
