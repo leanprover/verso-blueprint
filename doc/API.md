@@ -78,7 +78,7 @@ Start from what you are building:
 | A script loaded by a generated Blueprint page | `createPreview()` from [`api/preview.mjs`](#browser-esm-apis) | The generated module constructs the renderer directly from emitted runtime modules without waiting on a page-global render hook. |
 | A Node-like audit or migration tool that only reads generated data | `createPreviewData()` from [`api/data.mjs`](#browser-esm-apis) | It loads manifest/cache data without importing render, hydration, or DOM surface code. |
 | A graph dashboard or audit page | [`loadGraphs()`](#graph-data-apis) | It reads finalized graph records from `blueprint-manifest.json`, even when the current page has no rendered graph block. |
-| A custom browser widget beside an existing graph block | [`getGraphData(element)`](#graph-data-apis) and `getGraphVariants(element)` | These read the graph data embedded next to a rendered graph. |
+| A custom browser widget beside an existing graph block | [`getGraphData(element)`](#graph-data-apis) | This reads the graph data and its `variants` from the single payload embedded next to a rendered graph. `getGraphVariants(element)` remains a convenience projection. |
 | A custom page or slide that wants to render manifest graph data | [`renderGraphData(host, graph, { previewUtils })`](#graph-data-apis) | It constructs the standard graph block from finalized graph data and initializes the same renderer used by generated graph pages. |
 | A custom page or slide that already has graph-block markup | [`renderGraphBlock(element, { previewUtils })`](#graph-data-apis) | It loads the graph renderer and initializes an existing standard graph block, using an explicit preview renderer for graph popovers. |
 | A custom page that needs a rendered preview body only | [`renderPreviewInto(element, key)`](#browser-esm-apis) or [`api.renderPreviewInto`](#browser-runtime-api) | This inserts the cached rendered fragment into your own wrapper. |
@@ -446,10 +446,10 @@ const graph = getGraphData(document);
 ```
 
 For rendering new graph blocks, prefer `loadGraphs()` and the manifest graph
-record's Lean-emitted `variants` field. The embedded
-`script.bp-graph-data` and `script.bp-graph-variants` payloads are for reading
-back graph blocks that already exist on a generated page, and for compatibility
-with the page renderer.
+record's Lean-emitted `variants` field. Generated graph blocks embed one
+`script.bp-graph-data` payload that carries both the graph data and its render
+variants for reading back graph blocks that already exist on a generated page,
+including markup emitted by the page renderer.
 
 The same module can render a graph from finalized manifest data. Rendering also
 needs the Blueprint browser render runtime for preview surfaces, popovers, and
@@ -481,7 +481,7 @@ rendered in one call. Both helpers consume the graph record's precomputed
 The module can also initialize an existing graph block. That compatibility path
 is for markup that is already present, such as the standard
 `.bp_graph_fullwidth` markup emitted by `{blueprint_graph}`, including its
-embedded `script.bp-graph-data` and `script.bp-graph-variants` payloads.
+embedded `script.bp-graph-data` payload.
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";

@@ -421,8 +421,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("readPublicGraphVariants(graphBlock)", runtime)
-        self.assertIn("coreGetGraphVariants(root)", runtime)
+        self.assertIn("readPublicGraphVariants(graphApiData)", runtime)
+        self.assertNotIn("coreGetGraphVariants", runtime)
         self.assertIn("export function startGraphRuntime(previewUtils, options)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)
 
