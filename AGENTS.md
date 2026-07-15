@@ -85,8 +85,9 @@
 ## Release Status
 
 - The code is near release.
-- The reference blueprints now live in their own repositories:
-  `ejgallego/verso-noperthedron` and `ejgallego/verso-sphere-packing`.
+- The external reference blueprints live in their own repositories:
+  `ejgallego/verso-noperthedron`, `ejgallego/verso-sphere-packing`,
+  `ejgallego/verso-flt`, and `ejgallego/verso-carleson`.
 - A smaller starter example, a reusable template, and `lake exe bp new` are
   planned but not landed yet.
 - End-user docs should treat `lake exe vbp build` as the preferred Blueprint
@@ -168,10 +169,14 @@
     reference-blueprint catalog instead
   - for UI review on a real deliverable, prefer reference blueprints even if a
     smaller test-blueprint fixture also exists
-- Default validation-catalog output in the root checkout:
-  - `_out/reference-blueprints/{project-template,noperthedron,spherepackingblueprint}/`
-- Default validation-catalog output in a linked worktree:
-  - `_out/<worktree>/reference-blueprints/{project-template,noperthedron,spherepackingblueprint}/`
+- Default validation-catalog output on the current `v4.32.0` line in the root
+  checkout:
+  - `_out/reference-blueprints/{noperthedron,verso-flt}/`
+- Default validation-catalog output on the current `v4.32.0` line in a linked
+  worktree:
+  - `_out/<worktree>/reference-blueprints/{noperthedron,verso-flt}/`
+- `project-template` is an explicitly selectable CI fixture for every
+  maintained release, not a default or published reference-catalog entry.
 - Default test-blueprint output in the root checkout:
   - `_out/test-blueprints/{<slug>,preview_runtime_showcase,state-showcase}/`
 - Default test-blueprint output in a linked worktree:

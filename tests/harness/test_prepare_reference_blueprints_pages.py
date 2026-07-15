@@ -271,6 +271,9 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
                 if target.publish_reference:
                     self.assertIn(f"reference-blueprints/{target.release}/{project.project_id}/", readme)
 
+        self.assertNotIn("reference-blueprints/v4.31.0/project-template/", readme)
+        self.assertNotIn("reference-blueprints/v4.32.0/project-template/", readme)
+
     def test_project_template_readme_does_not_link_unpublished_render(self) -> None:
         readme = (PACKAGE_ROOT / "project_template" / "README.md").read_text(encoding="utf-8")
 
