@@ -4,12 +4,13 @@ Status: open
 Kind: upstream-api
 Priority: high
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: https://github.com/ejgallego/verso/pull/new/verso-manual-extra-step-upstream-20260313
 Upstream timing: as soon as possible
 Removal target: `PreviewManifest.blueprintMain`
+Related cards: UPC-0001
 
 ## Summary
 
@@ -39,11 +40,18 @@ The most useful hook is a post-traversal, pre-HTML-emission transform for
 `TraverseState` and `HtmlAssets`. A lower-priority post-emit hook would still be
 useful for downstream files such as Blueprint preview data.
 
+## Scope Boundary
+
+This card owns traversal/emission lifecycle extension points and removal of the
+copied dispatcher. [`UPC-0001`](../UPC-0001-private-xref-domain-export/README.md)
+owns which domains are public and the desired upstream xref API; this hook may
+carry that policy, but does not define it.
+
 ## Expected Behavior
 
-Downstream packages can transform traversal state and HTML assets, customize the
-xref payload used by both `xref.json` and the find page, and optionally write
-extra downstream files without copying the upstream Manual dispatcher.
+Downstream packages can transform traversal state and HTML assets and write
+extra downstream files without copying the upstream Manual dispatcher. The
+hooks are general enough to host a separately defined public-xref policy.
 
 ## Evidence
 

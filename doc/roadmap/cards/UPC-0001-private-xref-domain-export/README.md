@@ -4,12 +4,13 @@ Status: open
 Kind: upstream-api
 Priority: high
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: https://github.com/leanprover/verso/issues/840
 PR: none linked
 Upstream timing: as soon as possible
-Removal target: PreviewManifest public-xref filters
+Removal target: `PreviewManifest.buildPublicXrefJson` and `emitPublicXref`
+Related cards: UPC-0002
 
 ## Summary
 
@@ -40,6 +41,13 @@ The filtering decision belongs before Manual HTML writes public xref artifacts.
 Filtering after emission works, but it forces downstream packages to rewrite
 both `xref.json` and the find page consistently.
 
+## Scope Boundary
+
+This card owns the policy for choosing public domains and the xref payload that
+implements it. [`UPC-0002`](../UPC-0002-manual-html-extension-hooks/README.md)
+owns the Manual pipeline hooks that would let Blueprint stop copying the
+top-level dispatcher; either upstream change is useful without the other.
+
 ## Expected Behavior
 
 Extensions can declare whether traversal domains are public xref data or
@@ -50,10 +58,11 @@ payloads.
 ## Evidence
 
 - Upstream issue: https://github.com/leanprover/verso/issues/840
-- Local workaround: `PreviewManifest.publicXrefJson`
-- Local workaround: `PreviewManifest.filterPublicXrefOutput`
+- Local workaround: `PreviewManifest.buildPublicXrefJson`
+- Local workaround: `PreviewManifest.emitPublicXref`
 
 ## Current Workaround
 
-Blueprint filters traversal domains after traversal, then rewrites the emitted
-`xref.json` and generated find page after Verso HTML emission.
+Blueprint filters traversal domains after traversal, writes the filtered
+`xref.json`, and replaces the xref payload embedded in the generated find page
+after Verso HTML emission.

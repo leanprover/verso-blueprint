@@ -1,15 +1,16 @@
 # UPC-0007 Page-Level KaTeX Preludes
 
-Status: open
+Status: candidate
 Kind: upstream-api
 Priority: low
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
-Removal target: Blueprint page-level math asset and prelude injection layer
+Removal target: conditional; Blueprint page-level prelude injection if upstreamed
+Related cards: UPC-0004
 
 ## Summary
 
@@ -36,6 +37,11 @@ No standalone upstream repro is linked.
 This may be covered by a more general Manual page-level prelude hook. If not,
 Blueprint can continue owning the local math presentation layer.
 
+## Scope Boundary
+
+This card owns content-dependent prelude data attached to math rendering, not
+the declaration and emission of static browser files tracked by UPC-0004.
+
 ## Expected Behavior
 
 Either Verso exposes a generic hook for page-level math preludes, or Blueprint
@@ -43,7 +49,8 @@ documents that downstream packages should continue owning this layer locally.
 
 ## Evidence
 
-- Local pressure point: Blueprint math surfaces.
+- Local pressure points: `Math.mathHtmlAssets`,
+  `Macros.texPreludeTableJs`, and preview-runtime math hydration.
 
 ## Current Workaround
 

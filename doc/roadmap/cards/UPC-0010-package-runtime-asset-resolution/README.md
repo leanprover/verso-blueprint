@@ -1,20 +1,22 @@
-# UPC-0010 Package Runtime Asset Resolution
+# UPC-0010 Package Asset Resolution During Elaboration
 
 Status: open
 Kind: upstream-api
 Priority: medium
-Origin: upstream-verso
-Last reviewed: 2026-07-09
+Origin: upstream-lake
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: `MathLint.lean` package-root walking
+Related cards: UPC-0004
 
 ## Summary
 
-Verso or Lake should provide a stable way to resolve package-owned runtime
-assets during elaboration.
+Lake should provide a stable way for elaborators to resolve package-owned files
+from a module and package-relative path. A Verso helper may additionally hide
+the location of Verso's vendored KaTeX module.
 
 ## Impact
 
@@ -25,9 +27,9 @@ current local search relies on package layout details.
 
 ## Roadmap Decision
 
-Track as an upstream API request. Prefer a Verso-owned helper if that can hide
-vendored asset layout from downstream packages; otherwise track the required
-package-root lookup support in Lake or Lean.
+Track the general package/module lookup as an upstream Lake API request. A
+separate Verso convenience wrapper is useful only for the Verso-owned KaTeX
+path and does not replace lookup of Blueprint's own lint script.
 
 ## Reproduction Status
 
@@ -40,11 +42,16 @@ The local workaround walks upward from module source or `.olean` locations to
 recover package roots. That is serviceable for validation, but it is too
 layout-sensitive for a long-term downstream API.
 
+## Scope Boundary
+
+This card owns filesystem lookup during Lean elaboration. It does not own how
+browser assets are declared or emitted into a generated site; that is UPC-0004.
+
 ## Expected Behavior
 
-Downstream elaborators can resolve package-owned runtime assets through a stable
-package-root or package-asset lookup API, or through a Verso helper that owns the
-vendored asset details.
+Downstream elaborators can resolve a package-owned file through a stable
+module-to-package-root or package-asset lookup API without walking parent
+directories. Verso may wrap that API for its own vendored assets.
 
 ## Evidence
 

@@ -10,6 +10,7 @@ Issue: none linked | https://github.com/org/repo/issues/NNN
 PR: none linked | https://github.com/org/repo/pull/NNN
 Upstream timing: none | as soon as possible | next supported-toolchain bump
 Removal target: none | local file, module, workaround, or doc section to delete
+Related cards: none | PREFIX-0000, PREFIX-0001
 
 ## Summary
 
@@ -31,6 +32,12 @@ Record whether there is a current repro, fixture, test, or external example.
 
 Capture the smallest useful technical analysis. Avoid turning the card into a
 design document.
+
+## Scope Boundary
+
+Name the neighboring work this card does not own. Merge cards when one upstream
+change removes the same local workaround; split them when they can land and be
+removed independently.
 
 ## Expected Behavior
 
