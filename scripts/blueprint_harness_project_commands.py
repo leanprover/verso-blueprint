@@ -28,19 +28,25 @@ OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>[ \t]*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?[ \t]*$',
     re.MULTILINE,
 )
+RELATIVE_BLUEPRINT_REQUIRE_PATTERN = re.compile(
+    r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+"(?P<path>(?:(?:\.\.?)/)+verso-blueprint/?)"\s*$',
+    re.MULTILINE,
+)
 MATHLIB_STANDARD_LINTER_OPTION_PATTERN = re.compile(
     r"^(?P<indent>\s*)⟨`weak\.linter\.mathlibStandardSet,\s*true⟩",
     re.MULTILINE,
 )
 
 
-def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
+def _blueprint_lakefile_text(project_dir: Path) -> tuple[Path, str]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
         raise SystemExit(f"[blueprint-harness] missing lakefile for cloned project: {lakefile}")
+    return lakefile, lakefile.read_text(encoding="utf-8")
 
-    text = lakefile.read_text(encoding="utf-8")
-    match = next(
+
+def _official_blueprint_git_dependency_match(text: str) -> re.Match[str] | None:
+    return next(
         (
             candidate
             for candidate in OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text)
@@ -48,11 +54,31 @@ def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str
         ),
         None,
     )
+
+
+def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
+    lakefile, text = _blueprint_lakefile_text(project_dir)
+    match = _official_blueprint_git_dependency_match(text)
     if match is None:
         raise SystemExit(
             "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
             "`lakefile.lean` from an approved `VersoBlueprint` Git source "
             f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}); cannot {action}."
+        )
+    return lakefile, text, match
+
+
+def _require_approved_local_blueprint_dependency(project_dir: Path) -> tuple[Path, str, re.Match[str]]:
+    lakefile, text = _blueprint_lakefile_text(project_dir)
+    match = _official_blueprint_git_dependency_match(text)
+    if match is None:
+        match = RELATIVE_BLUEPRINT_REQUIRE_PATTERN.search(text)
+    if match is None:
+        raise SystemExit(
+            "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
+            "`lakefile.lean` from an approved `VersoBlueprint` Git source "
+            f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}) or a relative `verso-blueprint` checkout; "
+            "cannot inject the local path override automatically."
         )
     return lakefile, text, match
 
@@ -63,10 +89,7 @@ def rewrite_local_blueprint_dependency(
     *,
     relative: bool = False,
 ) -> Path:
-    lakefile, text, match = _require_official_blueprint_git_dependency(
-        project_dir,
-        action="inject the local path override automatically",
-    )
+    lakefile, text, match = _require_approved_local_blueprint_dependency(project_dir)
     local_path = (
         Path(os.path.relpath(package_root.resolve(), project_dir.resolve())).as_posix()
         if relative

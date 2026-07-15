@@ -36,8 +36,9 @@ modules are the canonical source for flags, path resolution, and orchestration:
 
 - `blueprint_harness` handles worktrees, branch/release checks, PR scaffolds,
   landing, toolchain bumps, and local coordination
-- `blueprint_reference_harness` handles reference-project generation,
-  validation, status, sync, editable checkouts, pin bumps, and pruning
+- `blueprint_reference_harness` composes editable user-provided Blueprints and
+  handles reference-project generation, validation, status, sync, editable
+  checkouts, pin bumps, and pruning
 - `blueprint_test_blueprints` handles local test-blueprint listing,
   generation, and validation
 
@@ -214,6 +215,29 @@ CLI help for the full flag surface:
 python3 -m scripts.blueprint_reference_harness generate --project noperthedron
 python3 -m scripts.blueprint_reference_harness validate --project project-template --run-lean-tests
 ```
+
+To work on this package together with an editable user-provided Blueprint,
+compose the external checkout directly rather than registering it in the
+reference catalog:
+
+```bash
+python3 -m scripts.blueprint_reference_harness compose /path/to/source-checkout \
+  --project-root blueprint \
+  --id local-blueprint
+```
+
+The command builds the editable source against the current `VersoBlueprint`
+checkout, writes `_out/.../reference-blueprints/local-blueprint/`, and runs
+`vbp check`. Each run replaces that generated output so removed pages cannot
+survive from an older composition. It temporarily overrides either an official
+Git dependency or a relative `verso-blueprint` path and restores the source
+checkout's lakefile and manifest afterwards. When the composed Lake graph
+contains Mathlib, the harness runs `lake exe cache get` before the build;
+composing a Blueprint must reuse Mathlib's cache rather than compiling Mathlib.
+
+`compose` is intentionally independent of `tests/harness/projects.json`.
+Projects belong in that manifest only when they are maintained release
+validation or publication inputs.
 
 Pass `--verbose` to `generate` or `validate` when you want each Blueprint
 generator to print its own progress diagnostics during HTML emission.

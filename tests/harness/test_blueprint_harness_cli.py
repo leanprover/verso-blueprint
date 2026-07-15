@@ -122,6 +122,27 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
 
+    def test_reference_compose_parses_editable_source_and_nested_project(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(
+            [
+                "compose",
+                "/tmp/rsk",
+                "--project-root",
+                "blueprint",
+                "--id",
+                "rsk-local",
+                "--output-root",
+                "/tmp/out",
+                "--verbose",
+            ]
+        )
+        self.assertEqual(args.source_checkout, "/tmp/rsk")
+        self.assertEqual(args.project_root, "blueprint")
+        self.assertEqual(args.project_id, "rsk-local")
+        self.assertEqual(selected_output_root(args), "/tmp/out")
+        self.assertTrue(args.verbose)
+
     def test_reference_generate_rejects_allow_unsafe_root_main_alias(self) -> None:
         parser = reference_harness_mod.build_parser()
         self.assertParseFails(parser, ["generate", "--allow-unsafe-root-main"])

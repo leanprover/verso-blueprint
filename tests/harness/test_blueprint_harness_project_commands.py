@@ -77,6 +77,34 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 'require VersoBlueprint from ".."\n',
             )
 
+    def test_rewrite_local_blueprint_dependency_accepts_relative_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                'require VersoBlueprint from "../../verso-blueprint"\n',
+                encoding="utf-8",
+            )
+
+            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
+            self.assertEqual(
+                lakefile.read_text(encoding="utf-8").strip(),
+                f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"',
+            )
+
+    def test_rewrite_local_blueprint_dependency_rejects_absolute_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                'require VersoBlueprint from "/tmp/verso-blueprint"\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, "relative `verso-blueprint` checkout"):
+                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
     def test_rewrite_local_blueprint_dependency_disables_mathlib_header_linter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)

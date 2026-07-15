@@ -54,6 +54,7 @@ python3 -m scripts.blueprint_harness release-status --require-sync
 python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
 python3 -m scripts.blueprint_harness set-default-dev-branch v4.31.0
 python3 -m scripts.blueprint_harness paths
+python3 -m scripts.blueprint_reference_harness compose /path/to/source --project-root blueprint
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status
 python3 -m scripts.blueprint_reference_harness sync
@@ -99,7 +100,11 @@ script map, not a second command reference.
 - `blueprint_harness.py`
   Worktree, branch-landing, and coordination CLI.
 - `blueprint_reference_harness.py`
-  Reference-blueprint generation, validation, and reference-checkout CLI.
+  Editable external Blueprint composition plus reference-blueprint generation,
+  validation, and reference-checkout CLI.
+- `blueprint_harness_composition.py`
+  User-provided Blueprint composition, source-file preservation, toolchain
+  validation, and mandatory Mathlib-cache reuse.
 - `blueprint_test_blueprints.py`
   Local test-blueprint fixture catalog, generation, and validation CLI.
 - `blueprint_harness_cli.py`
