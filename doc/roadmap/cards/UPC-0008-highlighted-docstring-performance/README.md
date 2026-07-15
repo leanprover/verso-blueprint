@@ -4,12 +4,13 @@ Status: open
 Kind: performance
 Priority: high
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: as soon as possible
-Removal target: `PreviewManifest.patchHighlightedDocstringStartupJs`
+Removal target: the required docstring rewrite in `patchHighlightedStartupJs`
+Related cards: UPC-0009
 
 ## Summary
 
@@ -37,6 +38,13 @@ The affected nodes contain raw markdown source and often live under hidden
 `.hover-info` containers. `textContent || ""` is enough for the source read and
 does not require layout-sensitive text extraction.
 
+## Scope Boundary
+
+This card owns only the `innerText` to `textContent` performance substitution.
+The optional missing-tactic-state guards in the same local patch function are
+tracked independently by UPC-0009 because either upstream change can land and
+be removed on its own.
+
 ## Expected Behavior
 
 Verso highlighted-code startup reads `code.docstring, pre.docstring` source via
@@ -54,5 +62,6 @@ Verso highlighted-code startup reads `code.docstring, pre.docstring` source via
 
 ## Current Workaround
 
-`PreviewManifest.patchHighlightedDocstringStartupJs` rewrites generated
-highlighted-code JavaScript to read docstring source via `textContent`.
+`PreviewManifest.patchHighlightedStartupJs` performs a required rewrite of the
+generated highlighted-code JavaScript to read docstring source via
+`textContent`.

@@ -1,33 +1,35 @@
 # UPC-0012 Lake Update Package Overrides
 
-Status: open
+Status: candidate
 Kind: upstream-api
 Priority: medium
 Origin: upstream-lake
-Last reviewed: 2026-07-09
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: harness dependency rewrite before `lake update`
+Related cards: none
 
 ## Summary
 
-Lake should honor package overrides during the initial `lake update` bootstrap
-path.
+Recheck whether Lake honors package overrides during the initial `lake update`
+bootstrap path, and upstream a fix if the v4.29.0 behavior still reproduces.
 
 ## Impact
 
-Blueprint's reference-project harness validates fresh external projects. When a
-fresh checkout has no manifest yet, `.lake/package-overrides.json` and
-`lake --packages ... update` do not currently prevent an initial upstream clone
-in the confirmed local scenario. The harness therefore rewrites cloned
-`lakefile.lean` dependencies before running `lake update`.
+Blueprint's reference-project harness validates fresh external projects. On
+Lean v4.29.0, `.lake/package-overrides.json` and `lake --packages ... update`
+did not prevent an initial upstream clone when no manifest existed. The harness
+still rewrites cloned `lakefile.lean` dependencies before running `lake update`,
+but the current v4.32.0 behavior has not been isolated.
 
 ## Roadmap Decision
 
-Track as an upstream Lake behavior request. Re-check the behavior against the
-active supported Lean release before opening upstream work.
+Keep this as a candidate until the behavior is rechecked against v4.32.0. If it
+still reproduces, promote the card to `open`; otherwise resolve it and decide
+whether the harness rewrite can be simplified safely.
 
 ## Reproduction Status
 
@@ -36,9 +38,15 @@ current supported release before upstreaming.
 
 ## Preliminary Analysis
 
-The observed limitation was that `loadWorkspace` passed `packageOverrides` only
-to `materializeDeps`, while `updateManifest` called `updateAndMaterialize`
-without threading overrides.
+On v4.29.0, `loadWorkspace` passed `packageOverrides` only to
+`materializeDeps`, while `updateManifest` called `updateAndMaterialize` without
+threading overrides. Current Lake sources must be rechecked before treating
+that analysis as current.
+
+## Scope Boundary
+
+This card owns package overrides during initial dependency resolution. It does
+not own the harness's broader reference-project checkout or pinning policy.
 
 ## Expected Behavior
 

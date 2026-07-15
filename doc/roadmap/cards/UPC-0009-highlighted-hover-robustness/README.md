@@ -1,15 +1,16 @@
 # UPC-0009 Highlighted Hover Robustness
 
-Status: open
+Status: candidate
 Kind: bug
 Priority: medium
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
-Removal target: downstream patches to emitted highlighted-code assets
+Removal target: optional tactic-state guards in `patchHighlightedStartupJs`
+Related cards: UPC-0008
 
 ## Summary
 
@@ -29,13 +30,22 @@ performance fix.
 
 ## Reproduction Status
 
-No standalone upstream repro is currently linked.
+The local patch guards two missing `.tactic-state` lookups, but no standalone
+fixture currently demonstrates the unpatched failure. Isolate that case before
+promoting this card to `open`.
 
 ## Preliminary Analysis
 
-This card is intentionally separate from the `innerText` performance issue:
-performance and DOM-availability robustness may need different upstream tests
-and fixes.
+The local substitutions return early when a hover reference has no direct
+`.tactic-state`, and preserve the existing content when the target has no state
+to clone. Those are concrete defensive changes, but the triggering DOM shape
+still needs a focused test.
+
+## Scope Boundary
+
+This card owns only the two missing-tactic-state guards. The required docstring
+source-read performance rewrite in the same local patch function is tracked by
+UPC-0008 and can be upstreamed and removed independently.
 
 ## Expected Behavior
 
@@ -44,9 +54,11 @@ not require downstream packages to patch the emitted asset.
 
 ## Evidence
 
-- Local pressure point: Blueprint hidden and dynamically hydrated hover payloads.
+- Local implementation: `highlightedTacticShowGuardedToggleRead` and
+  `highlightedTacticContentGuardedCloneRead` in `PreviewManifest.lean`.
+- Missing evidence: a focused fixture that fails without those guards.
 
 ## Current Workaround
 
-Blueprint keeps downstream robustness guards for generated highlighted-code
-assets where needed.
+`PreviewManifest.patchHighlightedStartupJs` optionally inserts guards before
+reading or cloning a direct child `.tactic-state` node.

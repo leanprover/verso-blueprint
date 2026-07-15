@@ -4,12 +4,13 @@ Status: open
 Kind: upstream-api
 Priority: medium
 Origin: upstream-verso
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: graph-specific page-shell overrides
+Related cards: none
 
 ## Summary
 
@@ -39,6 +40,11 @@ repro.
 The target should be a generic Manual content-frame option, not a Blueprint
 graph feature. The opt-in needs to preserve normal Manual navigation, headings,
 and table-of-contents behavior.
+
+## Scope Boundary
+
+This card owns only the Manual content-frame opt-in. Graph layout, canvas sizing,
+and graph-specific interactions remain Blueprint concerns.
 
 ## Expected Behavior
 

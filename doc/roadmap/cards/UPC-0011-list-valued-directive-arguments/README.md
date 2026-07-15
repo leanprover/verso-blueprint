@@ -4,12 +4,13 @@ Status: open
 Kind: upstream-api
 Priority: medium
 Origin: upstream-verso
-Last reviewed: 2026-07-09
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: `DirectiveArgParsing.splitCommaSeparatedList`
+Related cards: none
 
 ## Summary
 
@@ -38,6 +39,12 @@ the workaround through normal authoring and validation paths.
 The local helper is intentionally narrow, but every downstream package that
 needs list-like directive arguments would otherwise have to invent similar
 string parsing and diagnostics.
+
+## Scope Boundary
+
+This card owns structured list syntax and parsing in Verso directives. The
+meaning and validation of Blueprint's `lean`, `uses`, and `tags` values remain
+Blueprint concerns.
 
 ## Expected Behavior
 

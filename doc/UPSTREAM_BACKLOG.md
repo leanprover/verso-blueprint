@@ -1,6 +1,6 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-07-09
+Last reviewed: 2026-07-16
 
 This file is the repository's local "Verso upstream backlog" index: a queue of
 changes that would be better solved in upstream `verso`, Lake, Lean, or a
@@ -47,21 +47,21 @@ pull requests unless that upstream write action is explicitly requested.
 - [x] [Add module-script/head injection support to Verso
   Slides.](./roadmap/cards/UPC-0005-verso-slides-extra-head/README.md)
 
-- [ ] [Expose Verso Slides hooks for quiet rendering and initial hover
-  state.](./roadmap/cards/UPC-0006-slides-quiet-hover-hooks/README.md)
+- [ ] [Expose Verso Slides pipeline hooks for downstream traversal, initial
+  hover state, and quiet output.](./roadmap/cards/UPC-0006-slides-quiet-hover-hooks/README.md)
 
-- [ ] [Decide whether page-level KaTeX preludes belong in core
+- [ ] [Candidate: decide whether page-level KaTeX preludes belong in core
   `verso`.](./roadmap/cards/UPC-0007-page-level-katex-preludes/README.md)
 
 - [ ] [Upstream the `Verso.Code.Highlighted` docstring rerender performance
   fix.](./roadmap/cards/UPC-0008-highlighted-docstring-performance/README.md)
 
-- [ ] [Upstream the separate `Verso.Code.Highlighted` hover robustness
-  guards.](./roadmap/cards/UPC-0009-highlighted-hover-robustness/README.md)
+- [ ] [Candidate: isolate and upstream the separate
+  `Verso.Code.Highlighted` hover robustness guards.](./roadmap/cards/UPC-0009-highlighted-hover-robustness/README.md)
 
 ## Elaboration and Directive APIs
 
-- [ ] [Provide an upstream way to resolve package-owned runtime assets during
+- [ ] [Provide an upstream way to resolve package-owned assets during
   elaboration.](./roadmap/cards/UPC-0010-package-runtime-asset-resolution/README.md)
 
 - [ ] [Support list-valued directive arguments in
@@ -69,10 +69,10 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Lake and Package Management
 
-- [ ] [Honor package overrides during `lake update`
+- [ ] [Candidate: recheck package overrides during `lake update`
   bootstrap.](./roadmap/cards/UPC-0012-lake-update-package-overrides/README.md)
 
 ## Manual Content Cleanup
 
-- [ ] [Revisit bibliography formatting in
+- [ ] [Candidate: specify the bibliography formatting change in
   `VersoManual/Bibliography.lean`.](./roadmap/cards/UPC-0013-bibliography-formatting-boundary/README.md)

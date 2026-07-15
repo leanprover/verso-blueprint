@@ -1,21 +1,22 @@
 # UPC-0013 Bibliography Formatting Boundary
 
-Status: open
+Status: candidate
 Kind: cleanup
 Priority: low
 Origin: upstream-verso
-Last reviewed: 2026-07-09
+Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: none until ownership is decided
+Related cards: none
 
 ## Summary
 
-Decide whether the bibliography formatting cleanup in
-`VersoManual/Bibliography.lean` belongs upstream or should remain
-Blueprint-specific presentation code.
+Specify the desired bibliography entry-formatting change before deciding
+whether it belongs in `VersoManual/Bibliography.lean` or in Blueprint-specific
+presentation code.
 
 ## Impact
 
@@ -25,30 +26,41 @@ prevents the cleanup from becoming stale inline roadmap clutter.
 
 ## Roadmap Decision
 
-Track as an upstream-boundary question. Do not open upstream work until the
-formatting change is reviewed as either a general Verso Manual improvement or a
+Keep this as a candidate. Do not open upstream work until the expected output
+delta is stated and reviewed as either a general Verso Manual improvement or a
 Blueprint-only presentation choice.
 
 ## Reproduction Status
 
-No standalone upstream repro is linked.
+No concrete before/after formatting example or standalone repro is linked.
 
 ## Preliminary Analysis
 
-The useful decision is ownership, not implementation mechanics. If the cleanup
-is general Manual behavior, it belongs upstream. If it is specific to Blueprint
-presentation, it should remain local and documented as such.
+Blueprint delegates each entry's core HTML and TeX formatting to upstream
+`Citable.bibHtml` and `Citable.bibTeX`, then owns the Blueprint bibliography
+page shell and citation-backlink UI. That existing division gives a useful
+ownership test once the requested formatting change is made concrete.
+
+## Scope Boundary
+
+This card owns only a possible change to general bibliography-entry formatting.
+Blueprint's bibliography page shell, entry grouping, and citation-backlink UI
+remain local unless a separate reusable upstream contract is identified.
 
 ## Expected Behavior
 
-Maintainers decide whether to upstream a general bibliography formatting
-improvement or document why Blueprint keeps a local presentation layer.
+The card records a concrete before/after example. General entry formatting is
+proposed upstream; Blueprint-only page-shell or backlink presentation remains
+local.
 
 ## Evidence
 
-- Local question: `VersoManual/Bibliography.lean`
+- Upstream formatting owner: `VersoManual/Bibliography.lean`
+- Local presentation owner: `VersoBlueprint/Commands/Bibliography.lean`
+- Missing evidence: a concrete formatting delta.
 
 ## Current Workaround
 
-Blueprint keeps the local bibliography presentation behavior while the upstream
-boundary remains undecided.
+No formatting workaround is currently identified. Blueprint calls upstream
+`Citable.bibHtml` and `Citable.bibTeX` for entry formatting and wraps that output
+with its local bibliography and backlink presentation.
