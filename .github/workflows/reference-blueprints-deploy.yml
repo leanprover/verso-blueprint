@@ -16,12 +16,10 @@ permissions:
   id-token: write
 
 concurrency:
-  group: >-
-    ${{
-      github.event_name == 'workflow_dispatch'
-      && format('{0}-reference-blueprints-pages-dispatch-{1}', github.repository, github.ref_name)
-      || format('{0}-reference-blueprints-pages-release-{1}', github.repository, github.event.workflow_run.head_branch)
-    }}
+  # Every trigger assembles and replaces the same combined Pages site. Keep a
+  # single repository-wide deployment in flight so paired release completions
+  # coalesce instead of rebuilding and racing the full catalog independently.
+  group: ${{ github.repository }}-reference-blueprints-pages
   cancel-in-progress: true
 
 jobs:
@@ -65,11 +63,7 @@ jobs:
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
-      - name: Match reference target toolchain
-        if: ${{ matrix.rc != '' }}
-        run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
-      - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+          echo "publish_pdf=${{ matrix.publish_pdf }}"
       - name: Write deploy project manifest
         env:
           BP_PROJECT_ID: ${{ matrix.project_id }}
@@ -85,11 +79,45 @@ jobs:
           manifest = json.loads(os.environ["BP_DEPLOY_PROJECT_MANIFEST"])
           path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
           PY
+      - name: Create exact reference artifact identity
+        id: artifact-identity
+        run: |
+          python3 scripts/reference_artifact_identity.py create \
+            --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
+            --release-id ${{ matrix.release_id }} \
+            --project-id ${{ matrix.project_id }} \
+            --generator-revision "$(git rev-parse HEAD)" \
+            --output _out/deploy-projects/${{ matrix.project_id }}.identity.json \
+            --github-output >> "$GITHUB_OUTPUT"
+      - name: Report disk usage before cache restore
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+      - name: Restore exact generated reference site
+        id: generated-site-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ matrix.artifact_path }}
+          key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
+      - name: Match reference target toolchain
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.rc != '' }}
+        run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Install elan
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Install PDF toolchain
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.publish_pdf }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-pygments \
+            texlive-fonts-extra \
+            texlive-fonts-recommended \
+            texlive-latex-extra \
+            texlive-luatex \
+            texlive-plain-generic
       - name: Restore Lake package cache
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache@v5
         with:
           path: |
@@ -100,6 +128,7 @@ jobs:
             ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.toolchain }}-
             ${{ runner.os }}-reference-deploy-lake-packages-v2-
       - name: Restore Lake dependency build cache
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache@v5
         with:
           path: |
@@ -110,9 +139,10 @@ jobs:
             ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-
             ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Report disk usage after Lake cache restore
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore external reference dependency cache
-        if: ${{ matrix.reference_cache_key != '' }}
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_cache_key != '' }}
         uses: actions/cache@v5
         with:
           path: |
@@ -122,13 +152,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
           lean --version
           lake --version
+          if [ "${{ matrix.publish_pdf }}" = "true" ]; then
+            lualatex --version | head -n 1
+          fi
           python3 --version
       - name: Generate release reference blueprints
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
           python3 -m scripts.blueprint_reference_harness generate \
             --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
@@ -142,6 +178,23 @@ jobs:
       - name: Report disk usage after reference generation
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+      - name: Install exact reference artifact identity
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
+        run: |
+          python3 scripts/reference_artifact_identity.py install \
+            --identity _out/deploy-projects/${{ matrix.project_id }}.identity.json \
+            --artifact-root ${{ matrix.artifact_path }}
+      - name: Validate exact reference artifact identity
+        run: |
+          python3 scripts/reference_artifact_identity.py validate \
+            --identity _out/deploy-projects/${{ matrix.project_id }}.identity.json \
+            --artifact-root ${{ matrix.artifact_path }}
+      - name: Save exact generated reference site
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ matrix.artifact_path }}
+          key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
       - name: Upload release reference artifact
         uses: actions/upload-artifact@v7
         with:
@@ -204,6 +257,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          fetch-depth: 0
       - name: Show deploy release summary
         run: |
           echo "manifest_path=${{ needs.resolve-deploy-releases.outputs.manifest_path }}"
@@ -225,8 +279,18 @@ jobs:
         with:
           pattern: reference-blueprints-release-*
           path: _out/reference-artifact-downloads
+      - name: Resolve expected reference artifact identities
+        env:
+          BP_DEPLOY_PROJECT_MATRIX: ${{ needs.resolve-deploy-releases.outputs.deployable_project_matrix }}
+        run: |
+          python3 scripts/reference_artifact_identity.py expected-matrix \
+            --matrix-json "$BP_DEPLOY_PROJECT_MATRIX" \
+            --repo-root . \
+            --output _out/expected-reference-artifacts.json
       - name: Stage release reference artifacts
-        run: python3 ./scripts/stage_reference_deploy_artifacts.py
+        run: |
+          python3 ./scripts/stage_reference_deploy_artifacts.py \
+            --expected-identities _out/expected-reference-artifacts.json
       - name: Download test blueprints artifact
         uses: actions/download-artifact@v7
         with:

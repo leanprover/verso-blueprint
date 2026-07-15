@@ -18,7 +18,7 @@
       "toolchain": "v4.31.0",
       "verso_ref": "v4.31.0",
       "branch": "v4.31.0",
-      "deploy_pages": true
+      "deploy_pages": false
     },
     {
       "id": "v4.32.0",
