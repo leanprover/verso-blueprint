@@ -9,13 +9,14 @@ from pathlib import Path
 import tomllib
 
 from scripts.blueprint_harness_releases import (
-    lean_release_order_key,
-    lean_toolchain_spec,
     normalize_lean_release_ref,
     release_branch_from_lean_ref,
-    rewrite_lean_toolchain,
 )
-from scripts.blueprint_harness_projects import HarnessProject, reference_dependency_cache_key
+from scripts.blueprint_harness_projects import (
+    HarnessProject,
+    reference_dependency_cache_key,
+    selected_project_toolchain,
+)
 from scripts.blueprint_harness_project_commands import (
     discard_untracked_project_manifest,
     format_project_command,
@@ -73,28 +74,10 @@ class ReferenceProjectBumpResult:
 
 
 @dataclass(frozen=True)
-class ReferenceToolchainCandidate:
+class ReferenceToolchain:
     path: Path
     lean_ref: str
     release_branch: str
-    order_key: tuple[int, int, int, int]
-
-
-@dataclass(frozen=True)
-class ReferenceToolchainReconciliationResult:
-    selected_ref: str | None
-    release_branch: str | None
-    changed_paths: tuple[Path, ...]
-
-    @property
-    def changed(self) -> bool:
-        return bool(self.changed_paths)
-
-
-@dataclass(frozen=True)
-class ReferenceLakeUpdateResult:
-    command: list[str]
-    reconciliation: ReferenceToolchainReconciliationResult
 
 
 def output_dir_for(project: HarnessProject, output_root: Path) -> Path:
@@ -155,7 +138,7 @@ def lake_build_dir(project_dir: Path) -> Path:
     return project_dir / ".lake" / "build"
 
 
-def read_reference_toolchain_candidate(path: Path) -> ReferenceToolchainCandidate | None:
+def read_reference_toolchain(path: Path) -> ReferenceToolchain | None:
     if not path.exists():
         return None
     try:
@@ -163,72 +146,58 @@ def read_reference_toolchain_candidate(path: Path) -> ReferenceToolchainCandidat
     except SystemExit:
         return None
 
-    order_key = lean_release_order_key(lean_ref)
-    if order_key is None:
-        return None
-    return ReferenceToolchainCandidate(
+    return ReferenceToolchain(
         path=path,
         lean_ref=lean_ref,
         release_branch=release_branch_from_lean_ref(lean_ref),
-        order_key=order_key,
     )
 
 
-def reference_dependency_toolchain_paths(project_dir: Path) -> list[Path]:
-    packages = lake_packages_dir(project_dir)
-    if not packages.exists():
-        return []
-    return sorted(path / "lean-toolchain" for path in packages.iterdir() if (path / "lean-toolchain").exists())
+def validate_reference_toolchain_release_family(
+    package_root: Path,
+    project_dir: Path,
+    *,
+    expected_project_toolchain: str | None = None,
+) -> str | None:
+    """Reject cross-release checks without changing any checkout toolchain.
 
-
-def reconcile_reference_toolchains(package_root: Path, project_dir: Path) -> ReferenceToolchainReconciliationResult:
-    package_candidate = read_reference_toolchain_candidate(package_root / "lean-toolchain")
-    project_candidate = read_reference_toolchain_candidate(project_dir / "lean-toolchain")
-    if package_candidate is None or project_candidate is None:
-        return ReferenceToolchainReconciliationResult(
-            selected_ref=None,
-            release_branch=None,
-            changed_paths=(),
+    The external project owns the compiler used for its build. In particular,
+    an RC-pinned catalog project remains on that RC even when the selected
+    Verso Blueprint checkout has advanced to the final release. Dependency
+    toolchains are immutable inputs and are never inspected or rewritten.
+    """
+    package_toolchain = read_reference_toolchain(package_root / "lean-toolchain")
+    project_toolchain = read_reference_toolchain(project_dir / "lean-toolchain")
+    if expected_project_toolchain is None and (package_toolchain is None or project_toolchain is None):
+        return None
+    if package_toolchain is None:
+        raise SystemExit(
+            "[blueprint-harness] selected Verso Blueprint checkout has no valid `lean-toolchain`: "
+            f"{package_root / 'lean-toolchain'}"
         )
-    if package_candidate.release_branch != project_candidate.release_branch:
+    if project_toolchain is None:
+        raise SystemExit(
+            "[blueprint-harness] external reference project has no valid `lean-toolchain`: "
+            f"{project_dir / 'lean-toolchain'}"
+        )
+    if package_toolchain.release_branch != project_toolchain.release_branch:
         raise SystemExit(
             "[blueprint-harness] reference Blueprint release mismatch: "
-            f"project `{project_dir}` uses Lean `{project_candidate.lean_ref}` "
-            f"({project_candidate.release_branch}), but the selected Verso Blueprint checkout "
-            f"uses Lean `{package_candidate.lean_ref}` ({package_candidate.release_branch}). "
+            f"project `{project_dir}` uses Lean `{project_toolchain.lean_ref}` "
+            f"({project_toolchain.release_branch}), but the selected Verso Blueprint checkout "
+            f"uses Lean `{package_toolchain.lean_ref}` ({package_toolchain.release_branch}). "
             "Catalog each external Blueprint only under its current matching release."
         )
-
-    common_branch = package_candidate.release_branch
-    candidates = [package_candidate, project_candidate]
-    for path in reference_dependency_toolchain_paths(project_dir):
-        candidate = read_reference_toolchain_candidate(path)
-        if candidate is not None and candidate.release_branch == common_branch:
-            candidates.append(candidate)
-
-    selected = max(candidates, key=lambda candidate: candidate.order_key)
-    package_toolchain_path = package_candidate.path.resolve()
-    changed_paths: list[Path] = []
-    for candidate in candidates:
-        # The package checkout is the source for the run; reconcile only the
-        # disposable reference checkout files.
-        if candidate.path.resolve() == package_toolchain_path:
-            continue
-        if candidate.lean_ref == selected.lean_ref:
-            continue
-        rewrite_lean_toolchain(candidate.path, selected.lean_ref)
-        changed_paths.append(candidate.path)
-
-    if changed_paths:
-        print(
-            "[blueprint-harness] reconciled reference Lean toolchain to "
-            f"{lean_toolchain_spec(selected.lean_ref)} for {len(changed_paths)} file(s) sharing {common_branch}"
-        )
-    return ReferenceToolchainReconciliationResult(
-        selected_ref=selected.lean_ref,
-        release_branch=common_branch,
-        changed_paths=tuple(changed_paths),
-    )
+    if expected_project_toolchain is not None:
+        expected_ref = normalize_lean_release_ref(expected_project_toolchain)
+        if project_toolchain.lean_ref != expected_ref:
+            raise SystemExit(
+                "[blueprint-harness] reference Blueprint toolchain mismatch: "
+                f"catalog target expects Lean `{expected_ref}`, but project `{project_dir}` "
+                f"uses Lean `{project_toolchain.lean_ref}`. Update the external project ref "
+                "or keep its explicit project-target RC metadata."
+            )
+    return project_toolchain.lean_ref
 
 
 def validate_reference_package_mode(mode: str) -> str:
@@ -602,20 +571,18 @@ def run_reference_lake_update(
     package_root: Path,
     project_dir: Path,
     *,
-    reconcile_toolchains: bool = True,
-) -> ReferenceLakeUpdateResult:
-    reconciliation = (
-        reconcile_reference_toolchains(package_root, project_dir)
-        if reconcile_toolchains
-        else ReferenceToolchainReconciliationResult(
-            selected_ref=None,
-            release_branch=None,
-            changed_paths=(),
+    validate_toolchain_release: bool = True,
+    expected_project_toolchain: str | None = None,
+) -> list[str]:
+    if validate_toolchain_release:
+        validate_reference_toolchain_release_family(
+            package_root,
+            project_dir,
+            expected_project_toolchain=expected_project_toolchain,
         )
-    )
     command = project_lake_update_command(package_root, project_dir)
     run(command, cwd=project_dir)
-    return ReferenceLakeUpdateResult(command=command, reconciliation=reconciliation)
+    return command
 
 
 def project_checkout_pathspec(checkout_root: Path, project_dir: Path) -> str:
@@ -731,7 +698,11 @@ def bump_reference_project(
 
     project_dir = edit_dir / project.project_root
     _lakefile, previous_ref = rewrite_pinned_blueprint_dependency(project_dir, ref)
-    run_reference_lake_update(layout.package_root, project_dir)
+    run_reference_lake_update(
+        layout.package_root,
+        project_dir,
+        expected_project_toolchain=selected_project_toolchain(project),
+    )
 
     generated_output: Path | None = None
     command_output_root = output_root or (layout.artifact_root / "reference-blueprints-edit")
@@ -861,7 +832,11 @@ def sync_reference_cache_checkout(
     seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
     try:
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=True):
-            run_reference_lake_update(layout.package_root, project_dir)
+            run_reference_lake_update(
+                layout.package_root,
+                project_dir,
+                expected_project_toolchain=selected_project_toolchain(project),
+            )
             seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
             if warm_build and project.build_command is not None:
                 command = lean_low_priority_command(layout.package_root, *project.build_command)
@@ -964,7 +939,7 @@ def generate_in_repo_command_project(
                 update_project=lambda: run_reference_lake_update(
                     layout.package_root,
                     project_dir,
-                    reconcile_toolchains=False,
+                    validate_toolchain_release=False,
                 ),
                 build_command=project.build_command,
                 generate_command=generate_command,
@@ -1009,7 +984,8 @@ def generate_git_project(
             run_reference_lake_update(
                 layout.package_root,
                 project_dir,
-                reconcile_toolchains=True,
+                validate_toolchain_release=True,
+                expected_project_toolchain=selected_project_toolchain(project),
             )
             seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
 

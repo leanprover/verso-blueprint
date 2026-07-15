@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -59,12 +60,21 @@ def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str
     return lakefile, text, match
 
 
-def rewrite_local_blueprint_dependency(project_dir: Path, package_root: Path) -> Path:
+def rewrite_local_blueprint_dependency(
+    project_dir: Path,
+    package_root: Path,
+    *,
+    relative: bool = False,
+) -> Path:
     lakefile, text, match = _require_official_blueprint_git_dependency(
         project_dir,
         action="inject the local path override automatically",
     )
-    local_path = str(package_root.resolve())
+    local_path = (
+        Path(os.path.relpath(package_root.resolve(), project_dir.resolve())).as_posix()
+        if relative
+        else str(package_root.resolve())
+    )
     replacement = f'{match.group("indent")}require VersoBlueprint from "{local_path}"'
     rewritten = text[: match.start()] + replacement + text[match.end() :]
     rewritten = disable_header_linter_for_mathlib_blueprint_lakefile(rewritten)
@@ -166,7 +176,12 @@ def run_project_lake_update(package_root: Path, project_dir: Path) -> list[str]:
     return command
 
 
-def maybe_rewrite_in_repo_blueprint_dependency(project_dir: Path, package_root: Path) -> tuple[Path | None, str | None]:
+def maybe_rewrite_in_repo_blueprint_dependency(
+    project_dir: Path,
+    package_root: Path,
+    *,
+    relative: bool = False,
+) -> tuple[Path | None, str | None]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
         return None, None
@@ -177,7 +192,7 @@ def maybe_rewrite_in_repo_blueprint_dependency(project_dir: Path, package_root: 
     if "require VersoBlueprint from git" not in text:
         return None, None
 
-    rewrite_local_blueprint_dependency(project_dir, package_root)
+    rewrite_local_blueprint_dependency(project_dir, package_root, relative=relative)
     return lakefile, text
 
 
@@ -187,8 +202,13 @@ def maybe_in_repo_blueprint_dependency_override(
     package_root: Path,
     *,
     log: bool = False,
+    relative: bool = False,
 ):
-    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, package_root)
+    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(
+        project_dir,
+        package_root,
+        relative=relative,
+    )
     if rewritten_lakefile is not None and log:
         print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
     try:

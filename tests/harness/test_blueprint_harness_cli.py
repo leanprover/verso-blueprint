@@ -1218,6 +1218,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     "operation": operation,
                 }
             ),
+            active_release_branch=lambda _package_root: "v4.29.0",
             bump_toolchain_checkout=lambda package_root, toolchain, *, verso_ref, validate: seen.update(
                 {
                     "package_root": package_root,
@@ -1232,6 +1233,14 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 verso_ref="v4.29.0",
                 verso_tag_oid="deadbeef",
             ),
+            resolve_manifest_path=lambda _path, _package_root: Path("/tmp/projects.json"),
+            update_release_line_project_manifest=lambda manifest_path, *, release_id, rc: seen.update(
+                {
+                    "manifest_path": manifest_path,
+                    "manifest_release_id": release_id,
+                    "manifest_rc": rc,
+                }
+            ),
         ):
             self.assertEqual(harness_mod.command_bump_toolchain(args), 0)
 
@@ -1242,6 +1251,86 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
         self.assertTrue(seen["validate"])
+        self.assertEqual(seen["manifest_path"], Path("/tmp/projects.json"))
+        self.assertEqual(seen["manifest_release_id"], "v4.29.0")
+        self.assertIsNone(seen["manifest_rc"])
+
+    def test_bump_toolchain_rejects_a_different_release_line_before_mutation(self) -> None:
+        args = argparse.Namespace(toolchain="4.30-rc2", verso_ref=None, skip_validation=True)
+        layout = SimpleNamespace(package_root=Path("/tmp/package"))
+        called = False
+
+        def unexpected_bump(*_args, **_kwargs):
+            nonlocal called
+            called = True
+
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            require_checkout_role=lambda _checkout_root, *, required_role, operation: None,
+            active_release_branch=lambda _package_root: "v4.29.0",
+            bump_toolchain_checkout=unexpected_bump,
+        ):
+            with self.assertRaisesRegex(SystemExit, "expected a toolchain on release line `v4.29.0`"):
+                harness_mod.command_bump_toolchain(args)
+
+        self.assertFalse(called)
+
+    def test_update_release_line_project_manifest_tracks_in_repo_rc_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "projects.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "projects": [
+                            {
+                                "id": "template",
+                                "source": {"kind": "in_repo_project"},
+                                "targets": [{"release": "v4.29.0"}],
+                            },
+                            {
+                                "id": "external",
+                                "source": {"kind": "git_checkout"},
+                                "targets": [{"release": "v4.30.0", "ref": "abc", "rc": "4.30-rc1"}],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            original_text = manifest_path.read_text(encoding="utf-8")
+
+            harness_mod.update_release_line_project_manifest(
+                manifest_path,
+                release_id="v4.29.0",
+                rc=None,
+            )
+            self.assertEqual(manifest_path.read_text(encoding="utf-8"), original_text)
+
+            harness_mod.update_release_line_project_manifest(
+                manifest_path,
+                release_id="v4.30.0",
+                rc="4.30-rc2",
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["projects"][0]["targets"],
+                [
+                    {"release": "v4.29.0"},
+                    {"release": "v4.30.0", "rc": "4.30-rc2"},
+                ],
+            )
+            self.assertEqual(manifest["projects"][1]["targets"][0]["rc"], "4.30-rc1")
+
+            harness_mod.update_release_line_project_manifest(
+                manifest_path,
+                release_id="v4.30.0",
+                rc=None,
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertNotIn("rc", manifest["projects"][0]["targets"][1])
+            self.assertEqual(manifest["projects"][1]["targets"][0]["rc"], "4.30-rc1")
 
     def test_start_release_line_updates_policy_and_in_repo_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1365,14 +1454,42 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertNotIn("release_targets", manifest)
             self.assertEqual(
-                [target["release"] for target in manifest["projects"][0]["targets"]],
-                ["v4.29.0", "v4.30.0"],
+                manifest["projects"][0]["targets"],
+                [
+                    {"release": "v4.29.0"},
+                    {"release": "v4.30.0", "rc": "4.30-rc2"},
+                ],
             )
             self.assertEqual(
                 [target["release"] for target in manifest["projects"][1]["targets"]],
                 ["v4.29.0"],
             )
             self.assertIn("set-default-dev-branch v4.30.0", out.getvalue())
+
+    def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
+        args = argparse.Namespace(
+            toolchain="4.30-rc2",
+            verso_ref="v4.29.0",
+            deploy_pages=False,
+            skip_validation=True,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/package"))
+        called = False
+
+        def unexpected_bump(*_args, **_kwargs):
+            nonlocal called
+            called = True
+
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            current_branch_name=lambda _checkout_root: "v4.30.0",
+            bump_toolchain_checkout=unexpected_bump,
+        ):
+            with self.assertRaisesRegex(SystemExit, "expects a matching `verso` release line"):
+                harness_mod.command_start_release_line(args)
+
+        self.assertFalse(called)
 
     def test_set_default_dev_branch_preserves_required_backports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

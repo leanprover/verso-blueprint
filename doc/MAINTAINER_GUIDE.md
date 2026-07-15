@@ -298,9 +298,12 @@ That command rewrites the managed `lean-toolchain` files, rewrites the root
 package's direct `require verso` pin, refreshes the committed manifests for the
 root package, `project_template`, and
 `tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
-build/test validation pass that maintainers would otherwise do manually. Release
+build/test validation pass that maintainers would otherwise do manually. It
+also synchronizes the current release target's RC metadata for in-repo
+reference projects; external project RC overrides remain explicit. Release
 candidates use the official short RC name, for example `4.31-rc2`; the harness
 writes the corresponding Lean and `verso` tag ref, such as `v4.31.0-rc2`.
+The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ.
 
@@ -323,8 +326,9 @@ Run this from the new local branch, for example `v4.31.0`. The command:
   line, the previous default-development branch becomes a required backport
   target, and the new release target is recorded
 - adds the new release target to in-repo CI fixtures such as
-  `project-template`; fixtures remain explicitly selectable for validation but
-  are not added to the public reference catalog
+  `project-template` and records their RC override while the root package is on
+  a release candidate; fixtures remain explicitly selectable for validation
+  but are not added to the public reference catalog
 
 For release candidates, use the official short RC name such as `4.31-rc2`.
 The branch name remains the stable release branch, for example `v4.31.0`, while
@@ -655,9 +659,10 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --merged-pr <number>
   `VersoBlueprint` resolves to the checkout under test before running
   `lake update`
 - external reference repositories should commit `lake-manifest.json`; when that
-  tracked manifest is present, the harness updates only `VersoBlueprint` so
-  transitive dependencies such as `verso` stay pinned to the project's tested
-  revisions
+  tracked manifest is present, the harness runs a full update from those
+  committed pins, so fixed direct inputs remain pinned while the local
+  `VersoBlueprint` dependency and its transitive graph are refreshed
+- project and dependency `lean-toolchain` files are immutable harness inputs
 - the Python harness is maintainer tooling for those validations, not the main
   package-facing authoring interface
 
@@ -821,8 +826,10 @@ The harness is now project-driven rather than hardcoded to one project.
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
-- the external checkout's Lean release family must match its catalog target;
-  the harness rejects cross-release combinations before running `lake update`
+- the external project's top-level `lean-toolchain` selects its compiler; the
+  harness validates that it exactly matches the project target's final/RC
+  metadata and belongs to the same Lean release family as the VBP checkout, but
+  never promotes an RC project or rewrites dependency toolchains
 - the current local override injection expects a `lakefile.lean` project that
   declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
   repository, and it tolerates different Git refs and URL spellings for that

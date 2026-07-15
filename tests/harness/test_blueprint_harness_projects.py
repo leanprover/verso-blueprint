@@ -34,14 +34,15 @@ from scripts.blueprint_harness_references import (
     default_reference_edit_base,
     generate_git_project,
     reference_submodule_update_command,
-    reconcile_reference_toolchains,
     require_reference_harness_layout,
+    run_reference_lake_update,
     seed_lake_path_builds_from_dependency_cache,
     seed_reference_edit_checkout_lake,
     seed_lake_packages_from_dependency_cache,
     store_lake_path_builds_in_dependency_cache,
     store_lake_packages_in_dependency_cache,
     update_git_checkout,
+    validate_reference_toolchain_release_family,
 )
 
 
@@ -1116,7 +1117,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "chore/bump-verso-blueprint-9b50e39c1743",
         )
 
-    def test_reconcile_reference_toolchains_promotes_same_release_branch_to_newest_ref(self) -> None:
+    def test_validate_reference_toolchains_preserves_rc_project_and_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package_root = root / "pkg"
@@ -1131,32 +1132,27 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.30.0-rc2", encoding="utf-8")
             (other_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
 
-            result = reconcile_reference_toolchains(package_root, project_dir)
-
-            self.assertTrue(result.changed)
-            self.assertEqual(result.selected_ref, "v4.30.0")
-            self.assertEqual(result.release_branch, "v4.30.0")
-            self.assertEqual(
-                set(result.changed_paths),
-                {
-                    project_dir / "lean-toolchain",
-                    mathlib_dir / "lean-toolchain",
-                },
+            selected_ref = validate_reference_toolchain_release_family(
+                package_root,
+                project_dir,
+                expected_project_toolchain="4.30-rc1",
             )
+
+            self.assertEqual(selected_ref, "v4.30.0-rc1")
             self.assertEqual(
                 (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
-                "leanprover/lean4:v4.30.0\n",
+                "leanprover/lean4:4.30-rc1\n",
             )
             self.assertEqual(
                 (mathlib_dir / "lean-toolchain").read_text(encoding="utf-8"),
-                "leanprover/lean4:v4.30.0",
+                "leanprover/lean4:v4.30.0-rc2",
             )
             self.assertEqual(
                 (other_dir / "lean-toolchain").read_text(encoding="utf-8"),
                 "leanprover/lean4:v4.29.0\n",
             )
 
-    def test_reconcile_reference_toolchains_rejects_different_release_branches(self) -> None:
+    def test_validate_reference_toolchains_rejects_different_release_branches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package_root = root / "pkg"
@@ -1172,7 +1168,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 SystemExit,
                 "reference Blueprint release mismatch.*Catalog each external Blueprint only under its current matching release",
             ):
-                reconcile_reference_toolchains(package_root, project_dir)
+                validate_reference_toolchain_release_family(package_root, project_dir)
 
             self.assertEqual(
                 (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
@@ -1182,6 +1178,109 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 (mathlib_dir / "lean-toolchain").read_text(encoding="utf-8"),
                 "leanprover/lean4:v4.29.0\n",
             )
+
+    def test_reference_lake_update_rejects_missing_toolchain_before_update(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            package_root.mkdir()
+            project_dir.mkdir()
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+            update_called = False
+
+            original_run = refs_mod.run
+            try:
+                def unexpected_run(_command, *, cwd):
+                    nonlocal update_called
+                    update_called = True
+
+                refs_mod.run = unexpected_run
+                with self.assertRaisesRegex(SystemExit, "external reference project has no valid `lean-toolchain`"):
+                    run_reference_lake_update(
+                        package_root,
+                        project_dir,
+                        expected_project_toolchain="v4.30.0",
+                    )
+            finally:
+                refs_mod.run = original_run
+
+            self.assertFalse(update_called)
+
+    def test_reference_lake_update_rejects_catalog_toolchain_drift_before_update(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            package_root.mkdir()
+            project_dir.mkdir()
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+            (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.30.0-rc1\n", encoding="utf-8")
+            update_called = False
+
+            original_run = refs_mod.run
+            try:
+                def unexpected_run(_command, *, cwd):
+                    nonlocal update_called
+                    update_called = True
+
+                refs_mod.run = unexpected_run
+                with self.assertRaisesRegex(
+                    SystemExit,
+                    "catalog target expects Lean `v4.30.0`.*keep its explicit project-target RC metadata",
+                ):
+                    run_reference_lake_update(
+                        package_root,
+                        project_dir,
+                        expected_project_toolchain="v4.30.0",
+                    )
+            finally:
+                refs_mod.run = original_run
+
+            self.assertFalse(update_called)
+
+    def test_reference_lake_update_never_mutates_project_or_dependency_toolchains(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            dependency_dir = project_dir / ".lake" / "packages" / "verso-slides"
+            package_root.mkdir()
+            dependency_dir.mkdir(parents=True)
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+            (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.30.0-rc1\n", encoding="utf-8")
+            dependency_toolchain = dependency_dir / "lean-toolchain"
+            dependency_toolchain.write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+
+            original_run = refs_mod.run
+            original_update_command = refs_mod.project_lake_update_command
+            seen: dict[str, str] = {}
+
+            def fake_run(command, *, cwd):
+                self.assertEqual(command, ["lake", "update"])
+                self.assertEqual(cwd, project_dir)
+                seen["project"] = (project_dir / "lean-toolchain").read_text(encoding="utf-8")
+                seen["dependency"] = dependency_toolchain.read_text(encoding="utf-8")
+
+            try:
+                refs_mod.run = fake_run
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update"]
+                result = run_reference_lake_update(package_root, project_dir)
+            finally:
+                refs_mod.run = original_run
+                refs_mod.project_lake_update_command = original_update_command
+
+            self.assertEqual(seen["project"], "leanprover/lean4:v4.30.0-rc1\n")
+            self.assertEqual(seen["dependency"], "leanprover/lean4:v4.30.0\n")
+            self.assertEqual((project_dir / "lean-toolchain").read_text(encoding="utf-8"), seen["project"])
+            self.assertEqual(dependency_toolchain.read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0\n")
+            self.assertEqual(result, ["lake", "update"])
 
     def test_reference_cache_checkout_uses_current_package_root_override(self) -> None:
         import scripts.blueprint_harness_project_commands as commands_mod
