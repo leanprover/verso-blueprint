@@ -107,6 +107,14 @@ def _short_reference_cache_ref(ref: str) -> str:
     return ref
 
 
+def selected_project_toolchain(project: HarnessProject) -> str | None:
+    if project.selected_rc is not None:
+        return release_candidate_ref(project.selected_rc)
+    if project.selected_release is not None:
+        return normalize_lean_release_ref(project.selected_release)
+    return None
+
+
 def reference_dependency_cache_key(project: HarnessProject) -> str:
     """Key dependency cache state for one external project source ref.
 
