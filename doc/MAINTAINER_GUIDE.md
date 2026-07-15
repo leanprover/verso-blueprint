@@ -791,6 +791,9 @@ The harness is now project-driven rather than hardcoded to one project.
   generation commands needed after checkout
 - each project target owns its release ref, optional RC metadata, and
   `publish_reference: true` marker for the release-facing published catalog
+- keep each external Blueprint on its one intended current release target;
+  move that target when the project advances instead of retaining published
+  legacy targets for older releases
 - prefer `lake exe vbp build` for package-local generation, or a build command
   that targets only the Lean library or formalization artifacts needed by the
   document followed by
@@ -799,6 +802,8 @@ The harness is now project-driven rather than hardcoded to one project.
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
+- the external checkout's Lean release family must match its catalog target;
+  the harness rejects cross-release combinations before running `lake update`
 - the current local override injection expects a `lakefile.lean` project that
   declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
   repository, and it tolerates different Git refs and URL spellings for that
