@@ -1155,13 +1155,13 @@ lake exe vbp build
 lake exe vbp build --serve
 ```
 
-It builds the generator module's OLean dependency closure, prepares and runs
+It builds the Blueprint library's OLean dependency closure, prepares and runs
 the generator, and optionally serves the result. When a maintainer harness or
 advanced CI job must drive those stages explicitly, the equivalent lower-level
 shape is:
 
 ```bash
-lake build +<GeneratorModule>:olean
+lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 ```
 

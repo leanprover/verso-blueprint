@@ -795,8 +795,8 @@ The harness is now project-driven rather than hardcoded to one project.
   move that target when the project advances instead of retaining published
   legacy targets for older releases
 - prefer `lake exe vbp build` for package-local generation; if the harness must
-  drive an external project explicitly, build only the generator module's OLean
-  dependency closure with `lake build +<GeneratorModule>:olean`, followed by
+  drive an external project explicitly, build only the Blueprint library's OLean
+  dependency closure with `lake build +<BlueprintLibrary>:olean`, followed by
   `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...` when the
   harness must drive an external project explicitly; do not use Lake's default
   `leanArts` facet because it also emits C
