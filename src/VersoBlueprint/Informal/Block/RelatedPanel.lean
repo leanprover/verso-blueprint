@@ -7,7 +7,6 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Group
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.TraversalIndex
