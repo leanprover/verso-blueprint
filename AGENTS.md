@@ -169,12 +169,12 @@
     reference-blueprint catalog instead
   - for UI review on a real deliverable, prefer reference blueprints even if a
     smaller test-blueprint fixture also exists
-- Default validation-catalog output on the current `v4.32.0` line in the root
-  checkout:
-  - `_out/reference-blueprints/{noperthedron,verso-flt}/`
-- Default validation-catalog output on the current `v4.32.0` line in a linked
-  worktree:
-  - `_out/<worktree>/reference-blueprints/{noperthedron,verso-flt}/`
+- Default reference-project selection follows the active checkout release:
+  - `v4.32.0`: `noperthedron`, `verso-flt`
+  - `v4.31.0`: no public reference project by default
+  - `v4.30.0`: `spherepackingblueprint`, `verso-carleson`
+- Validation output lives under `_out/reference-blueprints/` in the root
+  checkout and `_out/<worktree>/reference-blueprints/` in a linked worktree.
 - `project-template` is an explicitly selectable CI fixture for every
   maintained release, not a default or published reference-catalog entry.
 - Default test-blueprint output in the root checkout:
