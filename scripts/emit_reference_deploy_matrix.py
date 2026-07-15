@@ -10,6 +10,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.blueprint_harness_paths import detect_harness_layout
+from scripts.blueprint_harness_branches import load_branch_policy
 from scripts.blueprint_harness_projects import (
     deploy_matrix_from_controller_catalog,
     load_project_catalog,
@@ -43,7 +44,12 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
         for target in catalog.release_targets
         if target.deploy_pages
     )
-    matrix = deploy_matrix_from_controller_catalog(catalog, deployable_targets)
+    policy = load_branch_policy(layout.package_root)
+    matrix = deploy_matrix_from_controller_catalog(
+        catalog,
+        deployable_targets,
+        pdf_release_id=policy.default_dev_branch,
+    )
     deployable_release_count = len({entry["release_id"] for entry in matrix["include"]})
     return {
         "manifest_path": str(manifest_path),
