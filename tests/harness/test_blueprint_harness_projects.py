@@ -1084,7 +1084,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "leanprover/lean4:v4.29.0\n",
             )
 
-    def test_reconcile_reference_toolchains_leaves_different_release_branches_alone(self) -> None:
+    def test_reconcile_reference_toolchains_rejects_different_release_branches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package_root = root / "pkg"
@@ -1096,12 +1096,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
             (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
 
-            result = reconcile_reference_toolchains(package_root, project_dir)
+            with self.assertRaisesRegex(
+                SystemExit,
+                "reference Blueprint release mismatch.*Catalog each external Blueprint only under its current matching release",
+            ):
+                reconcile_reference_toolchains(package_root, project_dir)
 
-            self.assertFalse(result.changed)
-            self.assertIsNone(result.selected_ref)
-            self.assertIsNone(result.release_branch)
-            self.assertEqual(result.changed_paths, ())
             self.assertEqual(
                 (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
                 "leanprover/lean4:v4.29.0\n",
