@@ -85,12 +85,12 @@ def generatorModuleFromFile (path : FilePath) : String :=
       text
   text.replace "/" "."
 
-/-- Build only the generator module's OLean dependency closure.
+/-- Build only the Blueprint library's OLean dependency closure.
 
 The default `leanArts` facet also emits C, which can turn a Blueprint build in
 a Mathlib consumer into an accidental native rebuild of Mathlib. -/
-def generatorOLeanTarget (generatorModule : String) : String :=
-  s!"+{generatorModule}:olean"
+def packageOLeanTarget (packageName : String) : String :=
+  s!"+{packageName}:olean"
 
 structure ProjectInfo where
   packageName : String
@@ -249,7 +249,7 @@ structure BuildOptions where
   port? : Option Nat := none
 
 structure BuildPlan where
-  generatorOLeanTarget : String
+  packageOLeanTarget : String
   generatorPrepareArgs : Array String
   generatorArgs : Array String
 
@@ -386,7 +386,7 @@ private def buildPlan (opts : BuildOptions) : IO (Except String BuildPlan) := do
   | .error err => pure (.error err)
   | .ok info =>
       pure (.ok {
-        generatorOLeanTarget := generatorOLeanTarget info.generatorModule,
+        packageOLeanTarget := packageOLeanTarget info.packageName,
         generatorPrepareArgs := #["lean", info.generatorFile.toString],
         generatorArgs := generatorRunArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
       })
@@ -440,7 +440,7 @@ def build (args : List String) : IO UInt32 := do
               pure 1
           | .ok plan =>
               let code ← runBuildStages [
-                { stage := "generator OLean build", cmd := "lake", args := #["build", plan.generatorOLeanTarget] },
+                { stage := "package OLean build", cmd := "lake", args := #["build", plan.packageOLeanTarget] },
                 { stage := "generator preparation", cmd := "lake", args := plan.generatorPrepareArgs },
                 { stage := "generator run", cmd := "lake", args := plan.generatorArgs }
               ]

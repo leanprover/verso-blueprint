@@ -45,11 +45,11 @@ Defaults:
 `discover` reports the Lake-backed package, generator entry point, generator module, generator source file, and default output paths. Fields ending in `Guess`, such as `topLevelBlueprintModuleGuess` and `chapterCandidateGuesses`, are convention-based hints for agents and may be null or incomplete. The JSON includes `"apiStability":"unstable"` and a `discoveryErrors` array. When Lake workspace discovery fails or no generator entry point can be found, package and generator fields are null and `discoveryErrors` explains why.
 
 `build` discovers the generator entry point directly, builds only the
-generator module's OLean dependency closure, prepares/elaborates the generator
+Blueprint library's OLean dependency closure, prepares/elaborates the generator
 file with Lake, then runs the generator through Lean's interpreter:
 
 ```bash
-lake build +<GeneratorModule>:olean
+lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
 ```
@@ -96,7 +96,7 @@ The command exits nonzero when generated data is missing, malformed, or internal
 For older projects, inspect the generator entry point, then use:
 
 ```bash
-lake build +<GeneratorModule>:olean
+lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
