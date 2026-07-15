@@ -158,16 +158,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIsNotNone(default_template_target)
         self.assertFalse(default_template_target.publish_reference)
         self.assertFalse(any(target.publish_reference for target in projects[0].targets))
-        self.assertFalse(catalog.release_target("v4.31.0").deploy_pages)
+        self.assertFalse(catalog.release_target("v4.30.0").deploy_pages)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_releases = {
             "noperthedron": "v4.32.0",
-            "spherepackingblueprint": "v4.30.0",
+            "spherepackingblueprint": "v4.31.0",
             "verso-flt": "v4.32.0",
-            "verso-carleson": "v4.30.0",
+            "verso-carleson": "v4.31.0",
         }
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
@@ -197,7 +197,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assert_single_current_release_target(
             projects[4], expected_external_releases[projects[4].project_id], publish_reference=True
         )
-        self.assertIsNotNone(projects[4].targets[0].rc)
+        self.assertIsNone(projects[4].targets[0].rc)
         self.assertIsNone(projects[4].build_command)
         self.assertEqual(projects[4].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
@@ -778,21 +778,21 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             set(rows),
             {
-                ("v4.30.0", "spherepackingblueprint"),
-                ("v4.30.0", "verso-carleson"),
+                ("v4.31.0", "spherepackingblueprint"),
+                ("v4.31.0", "verso-carleson"),
                 ("v4.32.0", "noperthedron"),
                 ("v4.32.0", "verso-flt"),
             },
         )
-        self.assertFalse(rows[("v4.30.0", "spherepackingblueprint")]["publish_pdf"])
-        self.assertFalse(rows[("v4.30.0", "verso-carleson")]["publish_pdf"])
+        self.assertFalse(rows[("v4.31.0", "spherepackingblueprint")]["publish_pdf"])
+        self.assertFalse(rows[("v4.31.0", "verso-carleson")]["publish_pdf"])
         self.assertNotIn(
             "--pdf",
-            rows[("v4.30.0", "spherepackingblueprint")]["project_manifest"]["projects"][0]["generate_command"],
+            rows[("v4.31.0", "spherepackingblueprint")]["project_manifest"]["projects"][0]["generate_command"],
         )
         self.assertNotIn(
             "--pdf",
-            rows[("v4.30.0", "verso-carleson")]["project_manifest"]["projects"][0]["generate_command"],
+            rows[("v4.31.0", "verso-carleson")]["project_manifest"]["projects"][0]["generate_command"],
         )
 
         current_release_projects = [

@@ -11,14 +11,14 @@
       "toolchain": "v4.30.0",
       "verso_ref": "v4.30.0",
       "branch": "v4.30.0",
-      "deploy_pages": true
+      "deploy_pages": false
     },
     {
       "id": "v4.31.0",
       "toolchain": "v4.31.0",
       "verso_ref": "v4.31.0",
       "branch": "v4.31.0",
-      "deploy_pages": false
+      "deploy_pages": true
     },
     {
       "id": "v4.32.0",
