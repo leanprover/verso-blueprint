@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -90,6 +91,35 @@ def timed_step(label: str):
         print(f"[blueprint-harness] finished {label} in {elapsed}", flush=True)
 
 
+def spawn_managed_process(command: list[str], *, cwd: Path) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(command, cwd=cwd, start_new_session=os.name == "posix")
+
+
+def terminate_managed_process(proc: subprocess.Popen[bytes], *, timeout_seconds: int = 5) -> None:
+    if proc.poll() is not None:
+        return
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    else:
+        proc.terminate()
+    try:
+        proc.wait(timeout=timeout_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    else:
+        proc.kill()
+    proc.wait()
+
+
 def run_with_heartbeat(
     command: list[str],
     *,
@@ -100,7 +130,7 @@ def run_with_heartbeat(
     print(f"[blueprint-harness] $ {format_command(command)}")
     with timed_step(label):
         start = time.monotonic()
-        proc = subprocess.Popen(command, cwd=cwd)
+        proc = spawn_managed_process(command, cwd=cwd)
         try:
             while True:
                 try:
@@ -115,9 +145,7 @@ def run_with_heartbeat(
             if returncode != 0:
                 raise subprocess.CalledProcessError(returncode, command)
         except BaseException:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+            terminate_managed_process(proc)
             raise
 
 

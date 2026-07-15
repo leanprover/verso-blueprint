@@ -191,10 +191,12 @@ def reconcile_reference_toolchains(package_root: Path, project_dir: Path) -> Ref
             changed_paths=(),
         )
     if package_candidate.release_branch != project_candidate.release_branch:
-        return ReferenceToolchainReconciliationResult(
-            selected_ref=None,
-            release_branch=None,
-            changed_paths=(),
+        raise SystemExit(
+            "[blueprint-harness] reference Blueprint release mismatch: "
+            f"project `{project_dir}` uses Lean `{project_candidate.lean_ref}` "
+            f"({project_candidate.release_branch}), but the selected Verso Blueprint checkout "
+            f"uses Lean `{package_candidate.lean_ref}` ({package_candidate.release_branch}). "
+            "Catalog each external Blueprint only under its current matching release."
         )
 
     common_branch = package_candidate.release_branch

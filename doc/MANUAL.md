@@ -1160,14 +1160,19 @@ lake exe vbp build
 lake exe vbp build --serve
 ```
 
-It performs the package build, generator preparation, generator run, and
-optional local serving. When a maintainer harness or advanced CI job must drive
-those stages explicitly, the equivalent lower-level shape is:
+It builds the Blueprint library's OLean dependency closure, prepares and runs
+the generator, and optionally serves the result. When a maintainer harness or
+advanced CI job must drive those stages explicitly, the equivalent lower-level
+shape is:
 
 ```bash
-lake build <library-or-formalization-target>
+lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 ```
+
+Keep the explicit `:olean` facet. The default `leanArts` facet also emits C and
+can accidentally turn a Blueprint generation run into a native dependency
+build.
 
 The project helper can emit TeX and compile a PDF in the same run:
 

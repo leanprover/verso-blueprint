@@ -68,6 +68,8 @@ from scripts.blueprint_harness_utils import (
     print_failure_summary,
     run,
     run_capturing_failure,
+    spawn_managed_process,
+    terminate_managed_process,
 )
 from scripts.blueprint_harness_validation import SiteValidationCheck, run_site_validation_checks
 from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts, worktree_is_clean
@@ -670,7 +672,7 @@ def render_in_repo_projects(
                 *reference_executable_args(package_root, project, output_dir, verbose=verbose),
             )
             print(f"[blueprint-reference-harness] launching {project.project_id} -> {output_dir}", flush=True)
-            procs.append((project.project_id, subprocess.Popen(command, cwd=package_root)))
+            procs.append((project.project_id, spawn_managed_process(command, cwd=package_root)))
 
         failures: list[str] = []
         for project_id, proc in procs:
@@ -682,8 +684,7 @@ def render_in_repo_projects(
             raise SystemExit(f"[blueprint-reference-harness] project render failed: {', '.join(failures)}")
     finally:
         for _, proc in procs:
-            if proc.poll() is None:
-                proc.kill()
+            terminate_managed_process(proc)
 
 
 def generate_projects(

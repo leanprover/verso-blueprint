@@ -161,9 +161,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_releases = {
-            "noperthedron": "v4.31.0",
+            "noperthedron": "v4.32.0",
             "spherepackingblueprint": "v4.30.0",
-            "verso-flt": "v4.31.0",
+            "verso-flt": "v4.32.0",
             "verso-carleson": "v4.30.0",
         }
         self.assertTrue(projects[1].git_checkout)
@@ -171,12 +171,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assert_single_current_release_target(
             projects[1], expected_external_releases[projects[1].project_id], publish_reference=True
         )
-        self.assertIsNone(projects[1].targets[0].rc)
-        self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
-        self.assertEqual(
-            projects[1].generate_command,
-            ("lake", "lean", "Main.lean", "--", "--run", "Main.lean", "--output", "{output_dir}"),
-        )
+        self.assertEqual(projects[1].targets[0].rc, "4.32-rc1")
+        self.assertIsNone(projects[1].build_command)
+        self.assertEqual(projects[1].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
@@ -184,22 +181,22 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[2], expected_external_releases[projects[2].project_id], publish_reference=True
         )
         self.assertIsNone(projects[2].targets[0].rc)
-        self.assertEqual(projects[2].build_command, ("bash", "scripts/ci-reference-build.sh"))
+        self.assertIsNone(projects[2].build_command)
+        self.assertEqual(projects[2].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assert_single_current_release_target(
             projects[3], expected_external_releases[projects[3].project_id], publish_reference=True
         )
-        self.assertIsNone(projects[3].targets[0].rc)
+        self.assertEqual(projects[3].targets[0].rc, "4.32-rc1")
+        self.assertIsNone(projects[3].build_command)
+        self.assertEqual(projects[3].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assert_single_current_release_target(
             projects[4], expected_external_releases[projects[4].project_id], publish_reference=True
         )
         self.assertIsNotNone(projects[4].targets[0].rc)
-        self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
-        self.assertEqual(
-            projects[4].generate_command,
-            ("lake", "lean", "BlueprintMain.lean", "--", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
-        )
+        self.assertIsNone(projects[4].build_command)
+        self.assertEqual(projects[4].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_project_catalog_requires_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1084,7 +1081,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "leanprover/lean4:v4.29.0\n",
             )
 
-    def test_reconcile_reference_toolchains_leaves_different_release_branches_alone(self) -> None:
+    def test_reconcile_reference_toolchains_rejects_different_release_branches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package_root = root / "pkg"
@@ -1096,12 +1093,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
             (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
 
-            result = reconcile_reference_toolchains(package_root, project_dir)
+            with self.assertRaisesRegex(
+                SystemExit,
+                "reference Blueprint release mismatch.*Catalog each external Blueprint only under its current matching release",
+            ):
+                reconcile_reference_toolchains(package_root, project_dir)
 
-            self.assertFalse(result.changed)
-            self.assertIsNone(result.selected_ref)
-            self.assertIsNone(result.release_branch)
-            self.assertEqual(result.changed_paths, ())
             self.assertEqual(
                 (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
                 "leanprover/lean4:v4.29.0\n",
