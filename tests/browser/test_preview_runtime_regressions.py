@@ -2127,6 +2127,15 @@ class TestPreviewRuntimeRegressions:
         expect(statement_item).to_be_visible()
         statement_item.hover()
         expect(statement_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(statement_item.locator(".bp_relation_badge_statement")).to_have_text(
+            "statement"
+        )
+        expect(
+            statement_item.locator(".bp_relation_badge_origin_automatic")
+        ).to_have_attribute("title", "Origin: automatic")
+        expect(
+            statement_item.locator(".bp_relation_badge_intent_technical")
+        ).to_have_attribute("title", "Intent: technical")
 
         header_label = preview_surface.locator(".bp_relation_preview_header_label")
         expect(header_label).to_be_visible()
@@ -2146,6 +2155,10 @@ class TestPreviewRuntimeRegressions:
         ).first
         proof_item.hover()
         expect(proof_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(proof_item.locator(".bp_relation_badge_proof")).to_have_text("proof")
+        expect(
+            proof_item.locator(".bp_relation_badge_intent_auxiliary")
+        ).to_have_attribute("title", "Intent: auxiliary")
         expect(header_label).to_contain_text("used_proof")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_proof"))
         page.wait_for_function(

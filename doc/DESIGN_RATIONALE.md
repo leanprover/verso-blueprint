@@ -363,8 +363,10 @@ block shell is assembled the same way.
 
 Traversal-time relation panels use `Informal.RelatedPanel.RelationContext`,
 which is deliberately narrower than the graft manifest/cache context: it only
-packages the live traversal state and stored informal blocks needed to compute
-group, uses, and used-by panel rows.
+packages the live traversal state. Forward dependencies resolve through the
+canonical node index, while precomputed traversal indexes provide group members
+and reverse dependencies without rescanning every stored informal block for
+each rendered panel.
 
 ### Browser Rendering Path Inventory
 
@@ -403,7 +405,8 @@ hydration.
 | Node wrapper, heading, title row, label, body container, and folded/open details shape | `Informal.Block.Render.renderInformalBlockModel` through `renderInformalBlockShell` | normal Manual blocks, manifest/cache rendering, grafted nodes, Slides nodes | single Lean owner |
 | Statement metadata panel for owner, effort, priority, tags, and PR link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
 | Header-extra slot ordering and wrapper classes | `Informal.Block.Render.renderHeaderExtras` | group, uses, used-by, code, and custom extras in normal and manifest-backed nodes | single layout owner |
-| Relation panel/chip markup and relation-row badges | `Informal.RelatedPanel.renderPanel`, with shared axis-badge fragments from `Informal.RelatedPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | single Lean owner for panel markup and statement/proof badge vocabulary |
+| Relation panel shell, chip configuration, compact row payloads, and single-entry inline badges | `Informal.RelatedPanel.renderPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | Lean owns semantic entry selection, compact badge codes, the panel shell, and inline-preview footer rendering |
+| Multi-entry relation-row DOM and badge presentation | `Informal/Block/relation-panel.mjs` | compact relation payloads emitted by normal, grafted, Slides, and custom generated nodes | one browser hydration owner; its positional row schema and badge-code vocabulary must stay aligned with `Informal.RelatedPanel` |
 | Relation panel browser activation, selection state, and loading/error messages | `Informal/Block/relation-panel.mjs` configured with `Commands/preview-runtime-surface.mjs` `createPreviewSurface` and `renderPreviewIntoSurface` | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single module-shaped owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and manifest/cache lookup plus stale-request replacement go through the runtime helper |
 | Code-summary trigger, template, and preview panel shell | `Informal.HoverRender.templatePreviewRoot`, configured by `Informal.CodeSummary.renderCodeSummaryPreview` | heading code badges and code-panel indicators | shared wrapper helper, code-summary-specific selectors |
 | Declaration-level Lean status labels, classes, and symbols | `Informal.Data.ProvedStatus.presentation` | code-summary declaration rows, summary detail rows, heading status marks, heading code-entry icons, external-code rows/footers, rendered external declaration header badges | single presentation owner for declaration status; renderers still own their surrounding HTML |
@@ -1063,6 +1066,8 @@ the operational detail that is easier to read in prose.
 | `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into preview data. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
 | `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
+| `RelatedPanelUsedByCache` | internal index | informal label -> precomputed reverse-dependency entries | Reverse-dependency rows grouped by target label so each rendered used-by panel avoids a full node scan. |
+| `RelatedPanelGroupMembersCache` | internal index | group label -> precomputed statement members | Group members collected once by parent label so each rendered group panel avoids a full node scan. |
 
 The auxiliary indexes above are normalized out of `Nodes` for different
 reasons:
@@ -1078,6 +1083,8 @@ reasons:
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
+| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | used-by relation-panel rendering | Precompute merged reverse-dependency entries once per target label, including statement/proof axes and non-default origin or intent metadata. |
+| `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | group relation-panel rendering | Precompute statement members once per parent label while leaving canonical node metadata in `Nodes`. |
 
 In particular, the main Blueprint node index is now intentionally slimmer than
 the full `BlockData` payload used by block rendering. Code-specific
