@@ -112,7 +112,6 @@ block_extension Block.graph (graphData : GraphBlockData) where
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
-      let graphVariantJson : String := Lean.Json.compress (toJson graphVariants)
       let graphVariantOptions : Array Output.Html :=
         graphVariants.map fun variant => {{
           <option value={{variant.key}}>{{variant.label}}</option>
@@ -325,9 +324,6 @@ block_extension Block.graph (graphData : GraphBlockData) where
           >
             <script type="application/json" class="bp-graph-data">
               {{.text false s!"{publicGraphDataJson}"}}
-            </script>
-            <script type="application/json" class="bp-graph-variants">
-              {{.text false s!"{graphVariantJson}"}}
             </script>
           </div>
           {{previewPanel}}

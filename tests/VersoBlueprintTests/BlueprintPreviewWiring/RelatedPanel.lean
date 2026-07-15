@@ -26,6 +26,23 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
   label := Lean.Name.mkSimple "missing.preview"
 }
 
+private def cachedRelationArraySize?
+    (state : Verso.Genre.Manual.TraverseState) (domainName label : Lean.Name) : Option Nat := do
+  let obj ← state.getDomainObject? domainName label.toString
+  match obj.data with
+  | .arr entries => some entries.size
+  | _ => none
+
+private def cachedStatement
+    (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[]) :
+    Informal.StoredBlockData :=
+  {
+    kind := .statement .definition
+    label
+    count
+    statementUses
+  }
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -51,11 +68,59 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       previewKey := Informal.PreviewKey.ofString? "informal:target:statement"
       axes := #[.statement, .proof]
     }
-    let badges := entry.badgesHtml.asString
-    hasSubstr badges "bp_relation_badge_statement" &&
-      hasSubstr badges "bp_relation_badge_proof" &&
-      hasSubstr badges "title=\"Declared in the statement\"" &&
-      hasSubstr badges "title=\"Declared in the proof\""
+    entry.badgeCodes == #["s", "p"]
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let target := Lean.Name.mkSimple "cache.target"
+    let source := Lean.Name.mkSimple "cache.source"
+    let empty := Lean.Name.mkSimple "cache.empty"
+    let targetData := cachedStatement target 0 #[{ label := target }]
+    let sourceData := cachedStatement source 1 #[{ label := target }]
+    let emptyData := cachedStatement empty 2
+    let state : Verso.Genre.Manual.TraverseState := .initialize {}
+    let state := Informal.TraversalIndex.Nodes.saveData state target (Lean.toJson targetData)
+    let state := Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceData)
+    let state := Informal.TraversalIndex.Nodes.saveData state empty (Lean.toJson emptyData)
+    let state := Informal.RelatedPanel.patchRelationCaches state
+    cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName target == some 1 &&
+      cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName source == some 0 &&
+      cachedRelationArraySize? state
+        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName empty == some 0
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let statementEntry : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "manifest.statement"
+      title := "Manifest statement"
+      axes := #[.statement]
+    }
+    let proofEntry : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "manifest.proof"
+      title := "Manifest proof"
+      axes := #[.proof]
+    }
+    let panelEntries := Informal.PreviewManifest.relatedPanelEntries
+      #[statementEntry, proofEntry]
+      statementEntry.label
+      "manifest-relation"
+    let rendered := Informal.RelatedPanel.renderPanel
+      (Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "manifest.source"))
+      panelEntries
+      |>.asString
+    match panelEntries[0]?, panelEntries[1]? with
+    | some statementPanelEntry, some proofPanelEntry =>
+        statementPanelEntry.badgeCodes == #["s"] &&
+          proofPanelEntry.badgeCodes == #["p"] &&
+          hasSubstr rendered "\"s\"" &&
+          hasSubstr rendered "\"p\""
+    | _, _ => false
 
 /-- info: true -/
 #guard_msgs in
@@ -134,9 +199,25 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
     hasSubstr inlineOut "data-bp-preview-id=\"missing-preview\"" &&
       !hasSubstr inlineOut "data-bp-preview-key=" &&
-      hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\"" &&
-      !hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\" data-bp-relation-preview-key" &&
-      hasSubstr panelOut "data-bp-relation-preview-key=\"preview-key\""
+      hasSubstr panelOut "class=\"bp-relation-entries\"" &&
+      hasSubstr panelOut "Missing Preview" &&
+      hasSubstr panelOut "preview-key" &&
+      !hasSubstr panelOut "data-bp-relation-preview-id=\"missing-preview\"" &&
+      !hasSubstr panelOut "data-bp-relation-preview-key=\"preview-key\""
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
+    let unsafeEntry : Informal.RelatedPanel.PanelEntry := {
+      previewId := "unsafe-preview"
+      previewTitle := "</script><script>unsafeRelationPayload()"
+      label := Lean.Name.mkSimple "unsafe.payload"
+    }
+    let out := Informal.RelatedPanel.renderPanel cfg #[unsafeEntry, samplePanelEntry] |>.asString
+    hasSubstr out "\\u003c/script>\\u003cscript>unsafeRelationPayload()" &&
+      !hasSubstr out "</script><script>unsafeRelationPayload()"
 
 /-- info: true -/
 #guard_msgs in
@@ -151,7 +232,8 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       hasSubstr out "class=\"bp_relation_wrap\"" &&
       hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
+      hasSubstr out "class=\"bp-relation-entries\"" &&
+      !hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
       !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
       hasSubstr out "class=\"bp_relation_preview_message\"" &&
       hasSubstr out "Loading preview" &&
@@ -159,20 +241,13 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       !hasSubstr out "Hover a use site to preview it." &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
       hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
-      hasSubstr out "data-bp-relation-preview-id" &&
-      hasSubstr out "data-bp-relation-preview-key" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
-      hasSubstr out ">statement</span>" &&
-      hasSubstr out ">proof</span>" &&
-      hasSubstr out ">automatic</span>" &&
-      hasSubstr out ">technical</span>" &&
-      hasSubstr out ">auxiliary</span>" &&
-      hasSubstr out "bp_relation_badge_statement" &&
-      hasSubstr out "bp_relation_badge_proof" &&
-      hasSubstr out "bp_relation_badge_origin_automatic" &&
-      hasSubstr out "bp_relation_badge_intent_technical" &&
-      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      !hasSubstr out "data-bp-relation-preview-id" &&
+      !hasSubstr out "data-bp-relation-preview-key=" &&
+      hasSubstr out "\"s\"" &&
+      hasSubstr out "\"p\"" &&
+      hasSubstr out "\"oa\"" &&
+      hasSubstr out "\"it\"" &&
+      hasSubstr out "\"ia\"" &&
       !hasSubstr out "bp_uses_chip" &&
       !hasSubstr out "bp_uses_origin_badge" &&
       !hasSubstr out "bp_uses_intent_badge" &&
@@ -230,23 +305,17 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       hasSubstr out "Proof dependency previews" &&
       !hasSubstr out "Hover a dependency to preview it." &&
       hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
-      hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
+      hasSubstr out "class=\"bp-relation-entries\"" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
       hasSubstr out "def:uses.proof" &&
       hasSubstr out "def:uses.proof.extra" &&
-      hasSubstr out ">statement</span>" &&
-      hasSubstr out ">proof</span>" &&
-      hasSubstr out ">automatic</span>" &&
-      hasSubstr out ">technical</span>" &&
-      hasSubstr out ">auxiliary</span>" &&
-      hasSubstr out "bp_relation_badge_statement" &&
-      hasSubstr out "bp_relation_badge_proof" &&
-      hasSubstr out "bp_relation_badge_origin_automatic" &&
-      hasSubstr out "bp_relation_badge_intent_technical" &&
-      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      hasSubstr out "\"s\"" &&
+      hasSubstr out "\"p\"" &&
+      hasSubstr out "\"oa\"" &&
+      hasSubstr out "\"it\"" &&
+      hasSubstr out "\"ia\"" &&
       !hasSubstr out "bp_uses_chip" &&
       !hasSubstr out "bp_uses_origin_badge" &&
       !hasSubstr out "bp_uses_intent_badge" &&
@@ -270,12 +339,13 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       hasSubstr out "Group member previews" &&
       !hasSubstr out "Hover another entry in this group to preview it." &&
-      hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
+      hasSubstr out "class=\"bp-relation-entries\"" &&
+      !hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
       hasSubstr out "class=\"bp_relation_preview_message\"" &&
       hasSubstr out "Loading preview" &&
       !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
       hasSubstr out "Preview group title." &&
       hasSubstr out "used by 1" &&
       relationJs?.isNone

@@ -671,7 +671,9 @@ private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
   }
 
 private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
-  state.modifyHtmlAssets patchBlueprintHtmlAssets
+  state
+    |>.modifyHtmlAssets patchBlueprintHtmlAssets
+    |> Informal.RelatedPanel.patchRelationCaches
 
 def manifestFilename : String := "blueprint-manifest.json"
 

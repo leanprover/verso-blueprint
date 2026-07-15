@@ -65,7 +65,8 @@ export function getGraphData(root) {
 }
 
 /**
- * Read embedded graph variants from the current graph page or supplied root.
+ * Read the variants carried by embedded graph data from the current graph page
+ * or supplied root. This is a convenience projection of {@link getGraphData}.
  *
  * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
  * @returns {BlueprintGraphVariant[]}

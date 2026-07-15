@@ -97,7 +97,9 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "class=\"bp_group_hover_preview_close bp_preview_panel_close\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_graph bp_preview_panel_body\"" &&
       hasSubstr out "aria-label=\"Close group preview\"" &&
-      hasSubstr out "class=\"bp-graph-variants\"" &&
+      hasSubstr out "class=\"bp-graph-data\"" &&
+      hasSubstr out "\"variants\":" &&
+      !hasSubstr out "class=\"bp-graph-variants\"" &&
       !hasSubstr out "dot-source" &&
       hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
       hasSubstr out "class=\"bp_graph_options_popover\"" &&
