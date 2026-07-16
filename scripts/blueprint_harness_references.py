@@ -372,7 +372,12 @@ def reference_command_placeholders(
 
 
 def reference_submodule_update_command() -> list[str]:
+    # Reference generation does not need large source-data objects stored in
+    # external projects' Git LFS. Leave their pointers intact so an upstream
+    # quota outage cannot prevent the formalization submodule from checking out.
     return [
+        "env",
+        "GIT_LFS_SKIP_SMUDGE=1",
         "git",
         *GITHUB_SUBMODULE_URL_REWRITE_ARGS,
         "submodule",

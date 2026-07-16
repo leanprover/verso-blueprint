@@ -1793,6 +1793,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "warm",
             )
 
+    def test_reference_submodule_update_skips_lfs_smudge(self) -> None:
+        self.assertEqual(
+            reference_submodule_update_command()[:3],
+            ["env", "GIT_LFS_SKIP_SMUDGE=1", "git"],
+        )
+
     def test_bootstrap_reference_checkout_requires_harness_layout(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
 
