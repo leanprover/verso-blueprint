@@ -90,6 +90,10 @@
   `ejgallego/verso-flt`, and `ejgallego/verso-carleson`.
 - A smaller starter example, a reusable template, and `lake exe bp new` are
   planned but not landed yet.
+- Published reference-blueprint project/release targets are declared in
+  `tests/harness/projects.json`; use
+  `python3 -m scripts.blueprint_reference_harness projects` instead of
+  hardcoding the active catalog.
 - End-user docs should treat `lake exe vbp build` as the preferred Blueprint
   generation interface.
 - End-user docs should not require Python helper scripts or a system Graphviz
@@ -148,8 +152,8 @@
   generator projects from silently serving stale embedded assets when only the
   asset files changed.
 - Keep the two generated artifact families distinct:
-  - Reference blueprints are the release-facing validation catalog built by
-    `./scripts/generate-reference-blueprints.sh`,
+  - Reference blueprints are known Blueprint projects built or validated as
+    release examples by `./scripts/generate-reference-blueprints.sh`,
     `./scripts/validate-reference-blueprints.sh`, or
     `python3 -m scripts.blueprint_reference_harness {generate,validate}`.
   - Test blueprints are the in-repo rendering and browser-regression fixtures
@@ -169,9 +173,6 @@
     reference-blueprint catalog instead
   - for UI review on a real deliverable, prefer reference blueprints even if a
     smaller test-blueprint fixture also exists
-- Default reference-project selection follows the active checkout release:
-  - `v4.32.0`: `noperthedron`, `verso-flt`
-  - `v4.31.0`: `spherepackingblueprint`, `verso-carleson`
 - Validation output lives under `_out/reference-blueprints/` in the root
   checkout and `_out/<worktree>/reference-blueprints/` in a linked worktree.
 - `project-template` is an explicitly selectable CI fixture for every
@@ -218,10 +219,12 @@
 - `doc/MAINTAINER_GUIDE.md`: maintainer-oriented harness workflow
 - `doc/DESIGN_RATIONALE.md`: architecture rationale
 - `doc/ROADMAP.md`: planned cleanup and follow-up work
-- `doc/UPSTREAM_BACKLOG.md`: the local backlog of items that should eventually
-  be upstreamed to `verso`, Lake, or Lean; requests to add something to the
-  "Verso upstream backlog" mean updating this file unless the user explicitly
-  asks to open or update an upstream GitHub issue
+- `doc/roadmap/README.md`: roadmap card rules, template, ownership boundaries,
+  and the index of work that should eventually be upstreamed to `verso`, Lake,
+  Lean, or a related package; requests to add something to the "Verso upstream
+  backlog" mean adding or updating a `UPC-*` card under `doc/roadmap/cards/`
+  and linking it from this index unless the user explicitly asks to open or
+  update an upstream GitHub issue
 
 ## General Recommendations
 

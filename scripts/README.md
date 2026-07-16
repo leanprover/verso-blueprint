@@ -62,8 +62,9 @@ python3 -m scripts.blueprint_test_blueprints list-json  # standalone fixtures on
 
 Reference blueprints and test blueprints are distinct artifact families:
 
-- reference blueprints are the release-facing validation catalog selected from
-  release targets in [`branch-policy.json`](../branch-policy.json) and
+- reference blueprints are known Blueprint projects built and published as
+  release validation examples; they are selected from release targets in
+  [`branch-policy.json`](../branch-policy.json) and
   `publish_reference: true` project targets in
   [`tests/harness/projects.json`](../tests/harness/projects.json)
 - test blueprints are local rendering/browser fixtures selected from

@@ -21,7 +21,8 @@ End-user onboarding lives in
 [`GETTING_STARTED.md`](./GETTING_STARTED.md), [`MANUAL.md`](./MANUAL.md), and
 [`API.md`](./API.md).
 Architecture background lives in [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
-Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md).
+Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md) and the
+card index under [`roadmap/`](./roadmap/).
 
 ## Scope
 
@@ -64,9 +65,10 @@ selector lists or JSON shapes into long-lived docs.
 
 The two generated artifact families serve different purposes:
 
-- reference blueprints are the release-facing validation catalog selected from
-  release targets in `branch-policy.json` and project targets in
-  `tests/harness/projects.json`
+- reference blueprints are known Blueprint projects built and published as
+  release validation examples; release targets in `branch-policy.json` and
+  project targets in `tests/harness/projects.json` decide which projects are
+  built and published for each Lean release line
 - test blueprints are local rendering and browser-regression fixtures declared
   in `tests/VersoBlueprintTests/TestBlueprintRegistry.lean` and
   `tests/harness/test_blueprints.json`
@@ -417,64 +419,33 @@ python3 -m scripts.blueprint_harness require-branch-role default_dev
 Use `require-branch-role default_dev` when a script or agent should refuse to
 do non-backport work from a backport-only checkout.
 
-Default-development PRs also follow a paired-backport gate. In this repository
-that means draft default-development PRs must still declare one line per required
-backport target. For a new public PR, generate the public-facing scaffold with:
+PR title/body, backport, and landing policy lives in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md#pull-request-conventions). This section is
+only the maintainer command reference for producing the scaffolded text and
+checking the generated backport plan.
+
+For a new default-development PR, generate the public-facing scaffold with:
 
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 ```
 
-That helper prints the public repository, base branch, PR title, and PR body.
-It keeps local worktree and write-scope notes out of the body unless they
-materially help review. The generated body is intentionally reviewer-oriented:
-start with a short `This PR ...` paragraph that is suitable for permanent
-history, keep implementation inventory out of the opening summary, and do not
-include routine validation transcripts that CI already records. For PRs that
-need paired backports, use a Lean-style title of the form `type: summary`
-without a type scope such as `feat(entry): ...`, and use a merge commit when
-landing so the `cherry-pick -x` source commits remain in default-development
-history. For an
-existing PR where only the backport lines need a refresh, run:
+The helper prints the public repository, base branch, PR title, and PR body. Use
+that output as the source of truth for the public PR description; keep local
+worktree notes and routine validation transcripts out of the body unless they
+change review risk.
+
+For an existing PR where only the backport lines need a refresh, run:
 
 ```bash
 python3 -m scripts.blueprint_harness prepare-backports
 ```
 
-Paste the emitted backport lines into the draft PR body. While the PR is still draft,
-each required line may remain:
+Paste the emitted backport lines into the PR body. `CONTRIBUTING.md` owns which
+lines may remain `pending`, when to replace them with paired PR numbers, and when
+an exemption is acceptable.
 
-- `Backport v4.31.0: pending`
-- or, for documentation and repository-metadata-only changes,
-  `Backport v4.31.0: exempt: <reason>`
-
-Once the default-development PR is ready for review it must replace each `pending` line
-with either:
-
-- link the paired backport PR in the PR body with `Backport v4.31.0: #<pr>`
-- or record `Backport v4.31.0: exempt: <reason>` when every changed file is
-  documentation or repository metadata
-
-Keep code-bearing release lines structurally aligned even when compatibility or a
-reported maintenance-line regression is not the motivation. Changes to source,
-scripts, tests, templates, package configuration, and runtime assets require paired
-backports because skipping them makes later cherry-picks harder. The paired-backport
-check reads the PR file list and rejects exemptions for those paths; an exemption
-reason by itself is not sufficient.
-
-Use the default-development PR as the main review surface. The paired backport
-PR is primarily a maintenance-line artifact for CI, merge state, and any
-release-specific conflict resolution. Unless the backport diverges materially,
-keep review comments and substantive discussion on the default-development PR.
-
-When you do open the paired backport branch, keep the same top-level branch
-prefix and reuse the default-development slug with a release marker. For
-example:
-
-- default-development branch: `fix/backport-discipline`
-- paired `v4.31.0` branch: `fix/backport-v431-backport-discipline`
-
-To keep paired backport PRs consistent, scaffold them with:
+To create one paired backport scaffold, run:
 
 ```bash
 python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
@@ -502,16 +473,10 @@ paired worktree name, branch name, release label, and the exact
 `git cherry-pick -x ...` series to apply. An agent can then create each
 worktree, apply the series, and resolve conflicts release by release.
 
-When populating the paired backport branch itself, use `git cherry-pick -x` so
-each backport commit records `(cherry picked from commit <sha>)`. The
-paired-backport check verifies those recorded source SHAs, commit count, and
-commit order; it does not compare patch IDs because release-line conflict
-resolution can legitimately change the exact diff.
-
-CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
-is part of PR health, and once the PR is ready it additionally checks that the
-paired PR targets the required backport branch and that its checks are green
-before the default-development PR can merge.
+The `Paired Backport` CI check consumes those scaffolded links and
+`git cherry-pick -x` provenance. It verifies the paired PR target branch,
+non-draft status, source commit SHAs, commit count, commit order, and paired PR
+check state; it deliberately does not compare patch IDs.
 
 To land one reviewed branch onto the active release branch safely from the root
 checkout, use:
@@ -781,7 +746,9 @@ includes:
 - `_site/index.html`
 - `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
-  reference target across all deployable release slices
+  reference target across all deployable release targets
+- `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
+  selected reference target whose deploy matrix entry enables `publish_pdf`
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -911,4 +878,5 @@ Current project-specific reference:
    local coordination conventions.
 6. Read [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md) before touching
    architecture boundaries.
-7. Read [`ROADMAP.md`](./ROADMAP.md) before starting structural cleanup.
+7. Read [`ROADMAP.md`](./ROADMAP.md) and [`roadmap/`](./roadmap/) before
+   starting structural cleanup.

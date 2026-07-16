@@ -364,7 +364,17 @@ you want to enable it.
 
 ## Reference Blueprints
 
-The repository also tracks a current, release-versioned reference catalog.
+Reference blueprints are known Blueprint projects that this repository builds
+and publishes as release validation examples. They are useful for checking that
+the renderer still works on real projects and for inspecting representative
+generated output; they are not the starter template contract for new projects.
+
+The current published catalog is selected from `branch-policy.json` and
+`tests/harness/projects.json`; those files are the source of truth for which
+reference projects publish on each Lean release line. Maintainers can inspect
+the current checkout's selected projects with
+`python3 -m scripts.blueprint_reference_harness projects`.
+
 Each external Blueprint is published only for its intended current release:
 Noperthedron and FLT on `v4.32.0`, and Sphere Packing and Carleson on
 `v4.31.0`. The in-repo starter template is a CI fixture rather than a public
@@ -428,8 +438,8 @@ Read these in order:
 9. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
    boundaries
 10. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
-11. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
-   back into `verso`, Lake, or Lean
+11. [doc/roadmap/README.md](./doc/roadmap/README.md): scoped maintainer planning
+   cards, upstream follow-up index, and card template
 
 ### Agent Helper Skill
 

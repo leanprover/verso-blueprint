@@ -57,13 +57,15 @@ a period. Avoid generic subjects such as `Update files` or `misc cleanup`.
 
 ## Verso Upstream Backlog
 
-This repository tracks eventual upstream work in
-[`doc/UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
+This repository tracks eventual upstream work with `UPC-*` cards under
+[`doc/roadmap/cards/`](./roadmap/cards/) and the maturity-grouped index in
+[`doc/roadmap/README.md`](./roadmap/README.md).
 
 When a maintainer or agent says "add this to the Verso upstream backlog",
 "register this in the Verso upstream backlog", or similar, that means:
 
-- add or update an item in `doc/UPSTREAM_BACKLOG.md`
+- add or update a `UPC-*` card under `doc/roadmap/cards/`
+- link that card from the appropriate section of `doc/roadmap/README.md`
 
 It does not mean:
 
@@ -171,18 +173,10 @@ python3 -m scripts.blueprint_harness worktree-release
 ```
 
 `worktree-list` already refreshes local metadata before printing the dashboard.
+For exact output paths, metadata-file roles, retire conditions, and reference
+cache behavior, see
+[`MAINTAINER_GUIDE.md#parallel-worktree-coordination`](./MAINTAINER_GUIDE.md#parallel-worktree-coordination).
 
 By default, only clean up worktrees or branches created or landed by the
 current session. Do not retire or delete unrelated local worktrees unless the
 owner or the user explicitly asks for that cleanup.
-
-Local metadata lives under ignored `.worktrees/` paths:
-
-- `.worktrees/registry.json`
-- `.worktrees/_meta/_root.json`
-- `.worktrees/_meta/<name>.json`
-
-Treat `.worktrees/_meta/*.json` as the source of truth for local coordination
-fields such as owner, lock state, priority, summary, status, and write scope. Treat
-`.worktrees/registry.json` as a generated dashboard snapshot that combines that
-local metadata with live Git state. None of that data is tracked in Git.
