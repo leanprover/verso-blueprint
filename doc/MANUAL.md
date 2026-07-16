@@ -879,6 +879,9 @@ Some summary sections use deliberately practical project-management terms:
 
 - **Actionable** entries are not locally formalized yet, and their statement or
   proof status says there is work that can start now.
+- **Actionable priorities** are the actionable entries that also unlock
+  downstream work. The broader **Ready now** count, quick wins, and owner/tag
+  rollups still include actionable leaf entries with no dependents.
 - **Quick wins** are actionable entries marked with high priority and small
   effort metadata.
 - **Direct uses** count immediate statement or proof dependency edges into an

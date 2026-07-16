@@ -178,7 +178,7 @@ structure Summary where
   theoremLikeIndex : List IndexItem := []
   axiomIndex : List IndexItem := []
   theoremLikeByParent : List ParentTheoremGroup := []
-  topPriorities : List PriorityItem := []
+  actionablePriorities : List PriorityItem := []
   mostUsed : List UsageItem := []
   groupHealth : List GroupHealthItem := []
   coverageSplit : CoverageSplit := {}

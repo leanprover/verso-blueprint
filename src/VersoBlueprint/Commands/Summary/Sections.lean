@@ -44,7 +44,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
             (Option.some "Local code and prerequisite closure are both complete.")}}
         {{summaryCard
             "Actionable priorities"
-            (toString data.topPriorities.length)
+            (toString data.actionablePriorities.length)
             (Option.some "Entries ready now and already unlocking downstream work.")}}
         {{summaryOptionalWarnCard
             showBlockers
@@ -66,9 +66,9 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
           {{<p class="bp_summary_empty">"No blueprint entries were registered in the current document."</p>}}
         else .empty}}
       {{summaryOptionalCappedDetailsList
-          (!rows.topPriorityRows.isEmpty)
-          s!"Actionable priorities ({data.topPriorities.length})"
-          rows.topPriorityRows
+          (!rows.actionablePriorityRows.isEmpty)
+          s!"Actionable priorities ({data.actionablePriorities.length})"
+          rows.actionablePriorityRows
           "priorities"
           "bp_summary_subsection"
           true}}

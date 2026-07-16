@@ -271,7 +271,7 @@ above until the semantics are clearer.
 2. keep the default summary focused on progress, blockers, and next ready work;
    move owner/tag rollups, dependency insights, and metadata audit to the
    maintainer view
-3. use compact status chips after the status source of truth is centralized
+3. use compact status chips in summary and work-queue rows
 4. revisit graph layout with a CSS-first page architecture so canvas sizing is
    less runtime-driven
 5. improve the default font family used by generated Blueprint output

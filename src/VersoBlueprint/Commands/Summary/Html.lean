@@ -53,7 +53,7 @@ def Summary.previewLabels (data : Summary) : Array Name :=
     data.renderFailures.map (·.label) ++
     data.definitionIndex.map (·.label) ++
     data.theoremLikeIndex.map (·.label) ++
-    data.topPriorities.map (·.label) ++
+    data.actionablePriorities.map (·.label) ++
     data.quickWins.map (·.label) ++
     data.mostUsed.map (·.label) ++
     data.heaviestPrerequisites.map (·.label) ++
@@ -95,7 +95,7 @@ structure SummaryRows where
   sorryRows : Array Output.Html := #[]
   missingRows : Array Output.Html := #[]
   renderFailureRows : Array Output.Html := #[]
-  topPriorityRows : Array Output.Html := #[]
+  actionablePriorityRows : Array Output.Html := #[]
   quickWinRows : Array Output.Html := #[]
   statementUsedItems : Array UsageItem := #[]
   proofUsedItems : Array UsageItem := #[]
@@ -614,7 +614,7 @@ private def SummaryRows.withOverviewRows
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
   let sorryRows ← data.sorryDetails.toArray.mapM ctx.sorryRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
-  let topPriorityRows := data.topPriorities.toArray.map ctx.priorityRow
+  let actionablePriorityRows := data.actionablePriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
   let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
   let blockerRows := missingRows ++ sorryRows
@@ -623,7 +623,7 @@ private def SummaryRows.withOverviewRows
     pendingInformalRows
     sorryRows
     missingRows
-    topPriorityRows
+    actionablePriorityRows
     quickWinRows
     blockerCount
     blockerRows

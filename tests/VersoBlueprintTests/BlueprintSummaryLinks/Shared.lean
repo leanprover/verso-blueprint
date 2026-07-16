@@ -131,6 +131,10 @@ Definition 11.
 Definition 12.
 :::
 
+:::definition "def:triage.leaf" (parent := "triage.group") (owner := "bob") (tags := "critical, leaf-quick-win") (effort := "small") (priority := "high")
+Actionable leaf definition with no downstream users.
+:::
+
 :::theorem "thm:triage.main" (parent := "triage.group") (owner := "alice") (tags := "critical") (effort := "large")
 Depends on
 {uses "def:triage.01"}[],

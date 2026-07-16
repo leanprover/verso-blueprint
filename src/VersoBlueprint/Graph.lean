@@ -38,7 +38,12 @@ inductive ProofStatus where
   | formalizedWithAncestors
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
-/-- The formalization track whose next step is currently unblocked. -/
+/--
+The formalization track whose next step is currently actionable.
+
+For theorem-like nodes, ready or incomplete proof work takes precedence over a
+ready statement. Other node kinds expose only a ready statement step.
+-/
 def actionableStageForStatuses? (kind : Data.NodeKind)
     (statementStatus : StatementStatus) (proofStatus : ProofStatus) : Option String :=
   if kind.isTheoremLike then
