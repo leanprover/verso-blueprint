@@ -171,8 +171,7 @@
     smaller test-blueprint fixture also exists
 - Default reference-project selection follows the active checkout release:
   - `v4.32.0`: `noperthedron`, `verso-flt`
-  - `v4.31.0`: no public reference project by default
-  - `v4.30.0`: `spherepackingblueprint`, `verso-carleson`
+  - `v4.31.0`: `spherepackingblueprint`, `verso-carleson`
 - Validation output lives under `_out/reference-blueprints/` in the root
   checkout and `_out/<worktree>/reference-blueprints/` in a linked worktree.
 - `project-template` is an explicitly selectable CI fixture for every

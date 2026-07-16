@@ -28,21 +28,6 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
         self.assertEqual(releases_mod.normalize_lean_release_ref(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC_REF)
         self.assertEqual(releases_mod.release_branch_from_lean_ref(lean_toolchain(SAMPLE_NEXT_RC_REF)), SAMPLE_NEXT_RELEASE)
 
-    def test_lean_release_order_key_orders_release_candidates_before_final_release(self) -> None:
-        self.assertLess(
-            releases_mod.lean_release_order_key("v4.30.0-rc1"),
-            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
-        )
-        self.assertLess(
-            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
-            releases_mod.lean_release_order_key(SAMPLE_NEXT_RELEASE),
-        )
-        self.assertEqual(
-            releases_mod.lean_release_order_key("v4.30-rc2"),
-            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
-        )
-        self.assertIsNone(releases_mod.lean_release_order_key("nightly-testing"))
-
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

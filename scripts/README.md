@@ -57,7 +57,7 @@ python3 -m scripts.blueprint_harness paths
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status
 python3 -m scripts.blueprint_reference_harness sync
-python3 -m scripts.blueprint_test_blueprints list-json
+python3 -m scripts.blueprint_test_blueprints list-json  # standalone fixtures only
 ```
 
 Reference blueprints and test blueprints are distinct artifact families:
@@ -156,12 +156,16 @@ lives in [`tests/harness/projects.json`](../tests/harness/projects.json). The
 current workflow and flag semantics live in
 [`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md).
 
-The local HTML-producing test fixtures use a second metadata source:
+The local HTML-producing test fixtures use two metadata sources:
 
 - curated doc fixtures in
   [`tests/VersoBlueprintTests/TestBlueprintRegistry.lean`](../tests/VersoBlueprintTests/TestBlueprintRegistry.lean)
 - standalone test package fixtures in
   [`tests/harness/test_blueprints.json`](../tests/harness/test_blueprints.json)
+
+The Python `list` and `list-json` commands report only the standalone manifest
+and do not invoke Lean. Full test-blueprint generation reads and validates the
+curated Lean registry once before rendering either fixture family.
 
 ## Read Next
 

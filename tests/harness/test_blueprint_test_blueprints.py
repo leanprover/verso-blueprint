@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 
 from scripts.blueprint_test_blueprints import (
-    TAG_PATTERN,
     StandaloneTestBlueprint,
     default_test_blueprint_manifest,
     find_test_blueprint,
     generate_test_blueprint_outputs,
+    blueprint_meta_by_slug,
     load_test_blueprint_categories,
     load_test_blueprints_manifest,
     render_test_blueprint_index_html,
     split_generation_targets,
+    validate_curated_test_doc_meta,
     validate_test_blueprint_outputs,
     write_test_blueprint_index,
 )
@@ -167,25 +167,45 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid tag"):
                 load_test_blueprints_manifest(manifest)
 
-    def test_curated_docs_follow_shared_category_vocabulary(self) -> None:
+    def test_curated_doc_metadata_uses_the_shared_catalog_vocabulary(self) -> None:
         manifest = default_test_blueprint_manifest(PACKAGE_ROOT)
-        categories = set(load_test_blueprint_categories(manifest))
-        result = subprocess.run(
-            ["./scripts/lean-low-priority", "lake", "exe", "blueprint-test-docs", "--list-json"],
-            cwd=PACKAGE_ROOT,
-            check=True,
-            text=True,
-            capture_output=True,
+        categories = load_test_blueprint_categories(manifest)
+        entries = [
+            {
+                "slug": "demo",
+                "title": "Demo",
+                "category": "Runtime",
+                "summary": "Demo entry",
+                "tags": ["preview", "runtime"],
+                "kind": "curated_doc",
+            }
+        ]
+
+        self.assertEqual(validate_curated_test_doc_meta(entries, categories), entries)
+
+    def test_curated_doc_metadata_rejects_invalid_catalog_fields(self) -> None:
+        categories = ("Runtime",)
+        valid = {
+            "slug": "demo",
+            "title": "Demo",
+            "category": "Runtime",
+            "summary": "Demo entry",
+            "tags": ["preview", "runtime"],
+            "kind": "curated_doc",
+        }
+        invalid_entries = (
+            ({**valid, "title": ""}, "expected non-empty string field `title`"),
+            ({**valid, "category": "Unknown"}, "unknown category"),
+            ({**valid, "summary": None}, "expected non-empty string field `summary`"),
+            ({**valid, "kind": "standalone_project"}, "expected kind `curated_doc`"),
+            ({**valid, "tags": ["not valid"]}, "invalid tag"),
+            ({**valid, "tags": ["preview", "preview"]}, "duplicate values"),
         )
-        entries = json.loads(result.stdout)
-        self.assertTrue(entries)
-        for entry in entries:
-            self.assertIn(entry["category"], categories)
-            self.assertEqual(entry["kind"], "curated_doc")
-            self.assertIsInstance(entry.get("tags"), list)
-            self.assertTrue(all(isinstance(tag, str) and tag for tag in entry["tags"]))
-            self.assertEqual(len(entry["tags"]), len(set(entry["tags"])))
-            self.assertTrue(all(TAG_PATTERN.fullmatch(tag) for tag in entry["tags"]))
+
+        for entry, message in invalid_entries:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_curated_test_doc_meta([entry], categories)
 
     def test_meta_uses_unified_shape(self) -> None:
         fixture = StandaloneTestBlueprint(
@@ -298,13 +318,49 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             browser_tests_path=None,
         )
         doc_slugs, fixtures = split_generation_targets(
-            PACKAGE_ROOT,
+            [
+                {
+                    "slug": "summary-doc",
+                    "title": "Summary",
+                    "category": "Runtime",
+                    "summary": "Summary fixture",
+                    "tags": [],
+                    "kind": "curated_doc",
+                }
+            ],
             [fixture],
             ["summary-doc", "runtime-showcase"],
         )
 
         self.assertEqual(doc_slugs, ["summary-doc"])
         self.assertEqual([entry.slug for entry in fixtures], ["runtime-showcase"])
+
+    def test_test_blueprint_catalog_rejects_cross_catalog_slug_collisions(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="shared",
+            title="Standalone",
+            category="Runtime",
+            summary="Standalone fixture",
+            tags=(),
+            project_root="tests/test_blueprints/shared",
+            build_command=None,
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
+            panel_regression_script=None,
+            browser_tests_path=None,
+        )
+        curated = [
+            {
+                "slug": "shared",
+                "title": "Curated",
+                "category": "Runtime",
+                "summary": "Curated fixture",
+                "tags": [],
+                "kind": "curated_doc",
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "declared by both"):
+            blueprint_meta_by_slug(curated, [fixture])
 
     def test_generate_test_blueprint_outputs_prunes_only_full_generation(self) -> None:
         fixture = StandaloneTestBlueprint(
@@ -320,31 +376,33 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             browser_tests_path=None,
         )
         originals = {
-            "list_curated_test_doc_slugs": test_blueprints_mod.list_curated_test_doc_slugs,
+            "list_curated_test_doc_meta": test_blueprints_mod.list_curated_test_doc_meta,
             "generate_curated_test_doc": test_blueprints_mod.generate_curated_test_doc,
             "generate_standalone_test_blueprint": test_blueprints_mod.generate_standalone_test_blueprint,
-            "test_blueprint_index_entries": test_blueprints_mod.test_blueprint_index_entries,
         }
         generated: list[tuple[str, str]] = []
+        metadata_calls: list[Path] = []
         try:
-            test_blueprints_mod.list_curated_test_doc_slugs = lambda _package_root: ["summary-doc"]
+            def fake_curated_meta(package_root, _categories):
+                metadata_calls.append(package_root)
+                return [
+                    {
+                        "slug": "summary-doc",
+                        "title": "summary-doc",
+                        "category": "Runtime",
+                        "summary": "summary",
+                        "tags": [],
+                        "kind": "curated_doc",
+                    }
+                ]
+
+            test_blueprints_mod.list_curated_test_doc_meta = fake_curated_meta
             test_blueprints_mod.generate_curated_test_doc = (
                 lambda _package_root, slug, _output_dir: generated.append(("doc", slug))
             )
             test_blueprints_mod.generate_standalone_test_blueprint = (
                 lambda _package_root, standalone, _output_dir: generated.append(("standalone", standalone.slug))
             )
-            test_blueprints_mod.test_blueprint_index_entries = lambda _package_root, _fixtures, selected: [
-                {
-                    "slug": slug,
-                    "title": slug,
-                    "category": "Runtime",
-                    "summary": "summary",
-                    "tags": [],
-                    "kind": "curated_doc",
-                }
-                for slug in selected
-            ]
 
             with tempfile.TemporaryDirectory() as tmp:
                 output_root = Path(tmp) / "test-blueprints"
@@ -358,6 +416,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                 )
 
                 self.assertFalse((output_root / "stale-fixture").exists())
+                self.assertEqual(metadata_calls, [PACKAGE_ROOT])
                 self.assertEqual(generated, [("doc", "summary-doc"), ("standalone", "runtime-showcase")])
                 html = (output_root / "index.html").read_text(encoding="utf-8")
                 self.assertIn("./summary-doc/html-multi/", html)

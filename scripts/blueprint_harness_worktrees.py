@@ -329,7 +329,7 @@ def collect_worktree_facts(repo_root: Path, git_wt: GitWorktree) -> dict[str, ob
 def sync_worktree_registry(repo_root: Path) -> tuple[list[WorktreeRecord], Path]:
     now = utc_now()
     records: list[WorktreeRecord] = []
-    git_wt_list = git_worktrees(repo_root)
+    git_wt_list = [worktree for worktree in git_worktrees(repo_root) if worktree.path.exists()]
     active_names = {git_wt.name for git_wt in git_wt_list}
     for git_wt in git_wt_list:
         path = metadata_path(repo_root, git_wt.name)

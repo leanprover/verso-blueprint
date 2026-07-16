@@ -18,9 +18,6 @@ from scripts.blueprint_harness_utils import (
 
 
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
-OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.31.0"'
-)
 OFFICIAL_BLUEPRINT_URL_PATTERNS = (
     rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
     rf"git@github\.com:{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
@@ -28,7 +25,7 @@ OFFICIAL_BLUEPRINT_URL_PATTERNS = (
 )
 OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = f"`{OFFICIAL_BLUEPRINT_REPOSITORY}`"
 OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
-    r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
+    r'^(?P<indent>[ \t]*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?[ \t]*$',
     re.MULTILINE,
 )
 MATHLIB_STANDARD_LINTER_OPTION_PATTERN = re.compile(
@@ -161,12 +158,11 @@ def project_lake_update_command(package_root: Path, project_dir: Path) -> list[s
             "[blueprint-harness] committed lake-manifest.json detected; "
             "running full `lake update` from committed pins"
         )
-        return lean_low_priority_command(package_root, "lake", "update")
-
-    print(
-        "[blueprint-harness] no committed lake-manifest.json detected; "
-        "falling back to full `lake update`"
-    )
+    else:
+        print(
+            "[blueprint-harness] no committed lake-manifest.json detected; "
+            "falling back to full `lake update`"
+        )
     return lean_low_priority_command(package_root, "lake", "update")
 
 
