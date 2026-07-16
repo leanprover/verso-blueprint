@@ -352,10 +352,10 @@ clients can use `PreviewManifest.File.groupForEntry?` when they need the current
 entry filtered out of the member list.
 
 Relation entries in `uses`, `usedBy`, and top-level `groups[*].entries` carry
-their own `previewKey` field. That field is either a non-empty key that resolves through
-both the manifest and rendered-fragment cache, or `null` when the related node
-has no manifest/cache-backed preview in the generated artifact set. Fresh
-generated data does not use an empty string as a no-preview sentinel.
+their own `previewKey` field. That field is either a non-empty key that resolves
+through both the manifest and rendered-fragment cache, or `null` when the
+related node has no manifest/cache-backed preview in the generated artifact
+set. Fresh generated data does not use an empty string as a no-preview sentinel.
 
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty

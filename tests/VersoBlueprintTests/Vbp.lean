@@ -124,6 +124,47 @@ private def sampleEmptyRelationCache : HtmlCacheFile := {
   ]
 }
 
+private def sampleGroupManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:group_member:statement"
+      targetKind := .block
+      label := label "group_member"
+      facet := .statement
+      kind := some .theorem
+      title := "Group member"
+      parent := some (label "sample_group")
+      parentTitle := some "Sample group"
+    },
+    {
+      key := "informal:group_peer:statement"
+      targetKind := .block
+      label := label "group_peer"
+      facet := .statement
+      kind := some .theorem
+      title := "Group peer"
+      parent := some (label "sample_group")
+      parentTitle := some "Sample group"
+    }
+  ]
+  groups := #[{
+    label := label "sample_group"
+    title := "Sample group"
+    declared := true
+    entries := #[
+      relatedWithoutPreview "group_member" "Group member",
+      relatedWithoutPreview "group_peer" "Group peer"
+    ]
+  }]
+}
+
+private def sampleGroupCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:group_member:statement", html := "<div>group member</div>" },
+    { key := "informal:group_peer:statement", html := "<div>group peer</div>" }
+  ]
+}
+
 private def sampleSemanticOnlyExternalManifest : ManifestFile := {
   previews := #[
     {
@@ -925,6 +966,39 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData sampleEmptyRelationManifest sampleEmptyRelationCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData sampleGroupManifest sampleGroupCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let orphanedManifest := { sampleGroupManifest with groups := #[] }
+    let group := sampleGroupManifest.groups[0]!
+    let duplicateGroupManifest := {
+      sampleGroupManifest with groups := sampleGroupManifest.groups.push group
+    }
+    let firstMember := group.entries[0]!
+    let duplicateMemberManifest := {
+      sampleGroupManifest with
+        groups := #[{ group with entries := group.entries.push firstMember }]
+    }
+    let orphanErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData orphanedManifest sampleGroupCache
+    let duplicateGroupErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData duplicateGroupManifest sampleGroupCache
+    let duplicateMemberErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData duplicateMemberManifest sampleGroupCache
+    orphanErrors.any (fun err =>
+      err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
+      duplicateGroupErrors.any (fun err =>
+        err == "duplicate manifest group label: sample_group") &&
+      duplicateMemberErrors.any (fun err =>
+        err == "duplicate member group_member in manifest group sample_group")
 
 /-- info: true -/
 #guard_msgs in

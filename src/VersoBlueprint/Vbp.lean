@@ -179,14 +179,15 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
   responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
 
 private def entryAllJson (manifest : ManifestFile) (label : String) (entry : Entry) : Json :=
+  let group? := manifest.groupForEntry? entry
   responseJson [
     ("label", Json.str label),
-    ("node", entryJson entry (manifest.groupForEntry? entry)),
+    ("node", entryJson entry group?),
     ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
     ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", entryGroupJson manifest entry)
+    ("group", group?.map groupRelationJson |>.getD Json.null)
   ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
@@ -375,6 +376,34 @@ private def checkGraphPreviewKeys
     (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
     errors
 
+private def checkManifestGroupIntegrity
+    (manifest : ManifestFile) (errors : Array String) : Array String := Id.run do
+  let mut errors := errors
+  let mut groupLabels : NameSet := {}
+  for group in manifest.groups do
+    if groupLabels.contains group.label then
+      errors := errors.push
+        s!"duplicate manifest group label: {Informal.PreviewManifest.labelString group.label}"
+    else
+      groupLabels := groupLabels.insert group.label
+    let mut memberLabels : NameSet := {}
+    for member in group.entries do
+      if memberLabels.contains member.label then
+        errors := errors.push <|
+          s!"duplicate member {Informal.PreviewManifest.labelString member.label} " ++
+            s!"in manifest group {Informal.PreviewManifest.labelString group.label}"
+      else
+        memberLabels := memberLabels.insert member.label
+  for entry in manifest.previews do
+    match entry.parent with
+    | some parent =>
+        unless groupLabels.contains parent do
+          errors := errors.push <|
+            s!"entry {entry.key} references missing manifest group: " ++
+              Informal.PreviewManifest.labelString parent
+    | none => pure ()
+  return errors
+
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
   let errors := manifest.previews.foldl
@@ -402,6 +431,7 @@ def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : A
         s!"group {Informal.PreviewManifest.labelString group.label}"
         group.entries errors)
     errors
+  let errors := checkManifestGroupIntegrity manifest errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 def checkJsonFromErrors
