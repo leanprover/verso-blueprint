@@ -19,6 +19,7 @@ abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
+abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
 
 def defaultSite : FilePath := "_out" / "site"
 
@@ -131,15 +132,12 @@ private def entrySummaryFields (entry : Entry) : List (String × Json) := [
 private def entrySummaryJson (entry : Entry) : Json :=
   Json.mkObj (entrySummaryFields entry)
 
-private def workQueueEntryJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  match manifest.actionableGraphNode? entry.label with
-  | none => entrySummaryJson entry
-  | some node =>
-      Json.mkObj <| entrySummaryFields entry ++ [
-        ("nextStep", optionStringJson node.actionableStage?),
-        ("statementStatus", Json.str node.statementStatus.toText),
-        ("proofStatus", Json.str node.proofStatus.toText)
-      ]
+private def workQueueItemJson (item : WorkQueueItem) : Json :=
+  Json.mkObj <| entrySummaryFields item.entry ++ [
+    ("nextStep", Json.str item.nextStep),
+    ("statementStatus", Json.str item.graphNode.statementStatus.toText),
+    ("proofStatus", Json.str item.graphNode.proofStatus.toText)
+  ]
 
 private def entryGroupJson (manifest : ManifestFile) (entry : Entry) : Json :=
   match manifest.groupForEntry? entry with
@@ -272,7 +270,7 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok <| responseJson [("tags", stringArrayJson manifest.tagValues)]
   | ["work-queue"] =>
       .ok <| responseJson [
-        ("entries", Json.arr (manifest.workQueueEntries.map (workQueueEntryJson manifest)))
+        ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
       ]
   | ["metadata"] =>
       .ok <| responseJson [

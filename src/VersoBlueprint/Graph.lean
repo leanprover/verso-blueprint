@@ -273,7 +273,7 @@ structure NodeData where
   visual : NodeVisual
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-/-- The next unblocked formalization stage represented by this finalized graph node. -/
+/-- The next actionable formalization stage represented by this finalized graph node. -/
 def NodeData.actionableStage? (node : NodeData) : Option String := do
   let kind ← node.kind
   actionableStageForStatuses? kind node.statementStatus node.proofStatus

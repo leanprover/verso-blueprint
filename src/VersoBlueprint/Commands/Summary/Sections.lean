@@ -27,6 +27,9 @@ open Verso Doc Html Genre Manual
 open Verso.Output.Html
 open Verso.Multi (AllRemotes)
 
+private def actionableEntryDescription : String :=
+  "Entries with an actionable next formalization step."
+
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showBlockers := rows.blockerCount > 0
   let showPendingInformal := !rows.pendingInformalRows.isEmpty
@@ -37,7 +40,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
         {{summaryCard
             "Ready now"
             (toString data.coverageSplit.readyToFormalize)
-            (Option.some "Entries whose next formalization step is currently unblocked.")}}
+            (Option.some actionableEntryDescription)}}
         {{summaryCard
             "Fully closed"
             (toString data.coverageSplit.fullyClosed)
@@ -327,7 +330,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (data.coverageSplit.readyToFormalize > 0)
               "Ready to formalize"
               (toString data.coverageSplit.readyToFormalize)
-              (Option.some "Entries whose next step is currently unblocked.")}}
+              (Option.some actionableEntryDescription)}}
           {{summaryOptionalCard
               (data.coverageSplit.formalizedWithoutAncestors > 0)
               "Formalized, ancestors open"
