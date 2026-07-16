@@ -694,7 +694,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 incompatibility boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 2
+def manifestInternalSchemaVersion : Nat := 3
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -914,7 +914,7 @@ instance : FromJson RelatedEntry where
     let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
     pure { label, title, href, previewKey, axes }
 
-/-- Manifest-owned group metadata for an informal node. -/
+/-- Manifest-owned group metadata shared by all informal nodes in the group. -/
 structure GroupRelation where
   /-- Parent/group label. -/
   label : Name
@@ -922,7 +922,7 @@ structure GroupRelation where
   title : String
   /-- Whether a matching `:::group` declaration was present. -/
   declared : Bool := false
-  /-- Traversal-ordered statement siblings in this group, excluding the current node. -/
+  /-- Traversal-ordered statement members in this group. -/
   entries : Array RelatedEntry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -978,8 +978,6 @@ structure Entry where
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
   usedBy : Array RelatedEntry := #[]
-  /-- Group declaration status and traversal-ordered sibling statement entries. -/
-  group : Option GroupRelation := none
   /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
   /-- Normalized tags attached to this informal node. -/
@@ -1053,6 +1051,11 @@ structure File where
   Lean preview key, or citation key.
   -/
   previews : Array Entry := #[]
+  /--
+  Group metadata keyed by `GroupRelation.label`. Entries refer to this catalog
+  through `Entry.parent`; each group stores its statement members once.
+  -/
+  groups : Array GroupRelation := #[]
   /--
   Public graph data captured from rendered `{blueprint_graph}` blocks.
 
@@ -1208,10 +1211,12 @@ deriving Inhabited, Repr
 
 structure Index where
   entriesByKey : Std.HashMap String Entry := {}
+  groupsByLabel : Std.HashMap Name GroupRelation := {}
 deriving Inhabited
 
 def Index.ofFile (file : File) : Index := {
   entriesByKey := file.previews.foldl (fun entries entry => entries.insert entry.key entry) {}
+  groupsByLabel := file.groups.foldl (fun groups group => groups.insert group.label group) {}
 }
 
 def File.index (file : File) : Index :=
@@ -1222,6 +1227,22 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
+
+def Index.findGroup? (index : Index) (label : Name) : Option GroupRelation :=
+  index.groupsByLabel.get? label
+
+def File.findGroup? (file : File) (label : Name) : Option GroupRelation :=
+  file.index.findGroup? label
+
+/-- Group metadata for an entry, with the current node removed from the member list. -/
+def Index.groupForEntry? (index : Index) (entry : Entry) : Option GroupRelation := do
+  let parent ← entry.parent
+  let group ← index.findGroup? parent
+  pure { group with entries := group.entries.filter (fun member => member.label != entry.label) }
+
+/-- Group metadata for an entry, with the current node removed from the member list. -/
+def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation :=
+  file.index.groupForEntry? entry
 
 /--
 Indexes over the generated manifest/cache pair used to decide whether a
@@ -1273,7 +1294,6 @@ private def Entry.finalizePreviewReferences
       leanCodePreviewKeys := entry.leanCodePreviewKeys.filter index.resolves
       uses := entry.uses.map (RelatedEntry.finalizePreviewReferences index)
       usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
-      group := entry.group.map (GroupRelation.finalizePreviewReferences index)
   }
 
 private def graphNodeFinalizePreviewReferences
@@ -1304,6 +1324,7 @@ private def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.
   {
     file with
       previews := file.previews.map (Entry.finalizePreviewReferences index)
+      groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
   }
 
@@ -1982,33 +2003,49 @@ private def buildUsedByRelations
       else
         some <| relatedEntryForBlock state source axes
 
-private def buildGroupRelation?
+private def groupRelationHeader
     (state : TraverseState)
-    (storedBlocks : Array Informal.BlockData)
-    (blockData : Informal.BlockData) : Option GroupRelation := do
-  let parent ← blockData.parent
-  let groupData? := Informal.TraversalIndex.Groups.data? state parent
-  let title :=
-    match groupData? with
-    | some groupData =>
+    (parent : Name) : String × Bool :=
+  match Informal.TraversalIndex.Groups.data? state parent with
+  | some groupData =>
       let header := groupData.header.trimAscii.toString
-      if header.isEmpty then parent.toString else header
-    | none => parent.toString
-  let entries := storedBlocks.filterMap fun source =>
-    if source.label == blockData.label then
-      none
-    else if source.parent == some parent then
-      match source.kind with
-      | .statement _ => some <| relatedEntryForBlock state source
-      | .proof => none
+      (if header.isEmpty then parent.toString else header, true)
+  | none => (parent.toString, false)
+
+private def statementGroupParent? (blockData : Informal.BlockData) : Option Name := do
+  let parent ← blockData.parent
+  let .statement _ := blockData.kind
+    | none
+  pure parent
+
+/-- Build each group relation once, preserving traversal order for its statement members. -/
+private def buildGroupRelations (state : TraverseState) : Array GroupRelation := Id.run do
+  let mut groups : Array GroupRelation := #[]
+  let mut groupIndexes : Std.HashMap Name Nat := {}
+  for blockData in Informal.collectStoredBlocks state do
+    let some parent := statementGroupParent? blockData
+      | continue
+    let member := relatedEntryForBlock state blockData
+    match groupIndexes.get? parent with
+    | some index =>
+        let group := groups[index]!
+        groups := groups.set! index { group with entries := group.entries.push member }
+    | none =>
+        let (title, declared) := groupRelationHeader state parent
+        groupIndexes := groupIndexes.insert parent groups.size
+        groups := groups.push { label := parent, title, declared, entries := #[member] }
+  return groups
+
+/-- Resolve traversal-backed group metadata for one entry without storing it per entry. -/
+def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option GroupRelation := do
+  let parent ← entry.parent
+  let entries := Informal.collectStoredBlocks state |>.filterMap fun blockData =>
+    if statementGroupParent? blockData == some parent && blockData.label != entry.label then
+      some <| relatedEntryForBlock state blockData
     else
       none
-  some {
-    label := parent
-    title
-    declared := groupData?.isSome
-    entries
-  }
+  let (title, declared) := groupRelationHeader state parent
+  pure { label := parent, title, declared, entries }
 
 /--
 Construct the metadata shell used by source-backed external-markup entries when
@@ -2055,7 +2092,6 @@ private def blockSemanticManifestEntry
     sources := sourceRefsForBlockLabel state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-    group := blockData?.bind (buildGroupRelation? state storedBlocks)
     ownerDisplayName := blockData?.bind (·.ownerDisplayName)
     tags := blockData?.map (·.tags) |>.getD #[]
     priority := blockData?.bind (·.priority)
@@ -2397,11 +2433,12 @@ def buildPreviewDataFiles
       buildSourceDocuments logError state
   withTimedBuildProgress verbose "validating source references" <|
     validateSourceRefs logError sourceDocuments state
-  let (previews, htmlEntries, graphs) ←
+  let (previews, groups, htmlEntries, graphs) ←
     withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
       let previews :=
         (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort
           (fun a b => a.key < b.key)
+      let groups := buildGroupRelations state
       let htmlEntries :=
         (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
           (fun a b => a.key < b.key)
@@ -2413,12 +2450,12 @@ def buildPreviewDataFiles
         | .ok stored =>
             graphEntries := graphEntries.push stored.data
       let graphs := graphEntries.qsort (fun a b => a.key < b.key)
-      pure (previews, htmlEntries, graphs)
+      pure (previews, groups, htmlEntries, graphs)
   let htmlCache : HtmlCache.File := {
     entries := htmlEntries
     hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
   }
-  let manifest : File := { previews, graphs, sourceDocuments }
+  let manifest : File := { previews, groups, graphs, sourceDocuments }
   pure { manifest := manifest.finalizePreviewReferences htmlCache, htmlCache }
 
 private def dumpManifest

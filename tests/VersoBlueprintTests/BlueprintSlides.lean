@@ -374,7 +374,7 @@ private def writeSlidesPreviewDataFiles
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
-      match entry.group with
+      match file.groupForEntry? entry with
       | some group =>
         group.declared &&
           group.entries.size == 2 &&
@@ -412,7 +412,7 @@ private def writeSlidesPreviewDataFiles
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
-      match entry.group with
+      match file.groupForEntry? entry with
       | some group => !group.declared && group.entries.size == 1
       | none => false
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)

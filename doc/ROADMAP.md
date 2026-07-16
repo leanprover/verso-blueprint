@@ -57,8 +57,10 @@ Work:
    model is genuinely shared; the current surfaces, descriptors, trigger
    binding, dismissal, popover, slide cleanup, and resize/scroll lifecycles
    already use shared runtime helpers
-5. evaluate a lighter preview delivery path so a page does not always fetch and
-   decode the full shared manifest for a small number of previews
+5. continue toward a lighter preview delivery path so a page does not always
+   fetch and decode the full shared manifest for a small number of previews;
+   group membership is already normalized into one shared catalog, so the next
+   high-value split is lazily delivered Lean `codeData`
 6. remove remaining browser timing workarounds only after targeted browser tests
    prove the replacement path; panel lifecycle workarounds should stay behind
    runtime helpers rather than feature-local listeners

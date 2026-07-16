@@ -4,6 +4,45 @@ from support import assert_no_runtime_errors, record_runtime_errors
 
 
 class TestBlueprintGroupPreview:
+    def test_manifest_uses_shared_group_catalog(self, server: str, page: Page):
+        page.goto(f"{server}/Group-Previews/")
+
+        result = page.evaluate(
+            """
+            async () => {
+              const data = await import("../-verso-data/api/data.mjs");
+              const entry = await data.loadManifestEntry(
+                data.statementPreviewKey("group_target")
+              );
+              const groups = await data.loadGroups();
+              const group = await data.loadGroup(entry.parent);
+              return {
+                parent: entry.parent,
+                hasEmbeddedGroup: Object.prototype.hasOwnProperty.call(entry, "group"),
+                groupCount: groups.length,
+                matchingGroupCount: groups.filter(
+                  (candidate) => candidate.label === entry.parent
+                ).length,
+                groupLabel: group && group.label,
+                groupTitle: group && group.title,
+                memberLabels: group ? group.entries.map((member) => member.label) : []
+              };
+            }
+            """
+        )
+
+        assert result["parent"] == "preview_group"
+        assert result["hasEmbeddedGroup"] is False
+        assert result["groupCount"] >= 1
+        assert result["matchingGroupCount"] == 1
+        assert result["groupLabel"] == "preview_group"
+        assert result["groupTitle"] == "Preview group title."
+        assert result["memberLabels"] == [
+            "group_target",
+            "group_peer_one",
+            "group_peer_two",
+        ]
+
     def test_group_chip_opens_panel_and_updates_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Group-Previews/")

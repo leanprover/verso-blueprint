@@ -145,6 +145,7 @@ private def renderManualGraftNode
           node
           entry
           content
+          (Informal.PreviewManifest.groupRelationForEntry? state entry)
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where

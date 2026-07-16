@@ -79,12 +79,14 @@ const data = createPreviewData();
 // Load semantic manifest data and build the same preview key Blueprint uses.
 const manifest = await data.loadManifest();
 const entry = manifest.get(data.statementPreviewKey("Chapter2:Problem2.11.6"));
+const group = entry?.parent ? await data.loadGroup(entry.parent) : null;
 const labelResult = await resolveLabel("Chapter2:Problem2.11.6");
 const sourceMetadata = await data.resolveSourceMetadata(entry);
 const sameSourceMetadata = await resolveSourceMetadata(entry);
 
 if (entry) {
   console.log(entry.href, entry.label, entry.facet, sourceMetadata.sources[0]?.document?.title);
+  console.log(group?.title, group?.entries.length);
   console.log(labelResult.sourceLocation);
   console.log(sameSourceMetadata.sources[0]?.document?.title);
 }

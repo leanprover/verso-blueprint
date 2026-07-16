@@ -93,6 +93,7 @@ open Informal.PreviewManifest
         fileProps.contains "vbpInternalSchemaVersion" &&
         fileRequired.contains manifestInternalSchemaVersionField &&
         fileProps.contains "previews" &&
+        fileProps.contains "groups" &&
         fileProps.contains "sourceDocuments" &&
         entryProps.contains "key" &&
         entryProps.contains "targetKind" &&
@@ -125,7 +126,7 @@ open Informal.PreviewManifest
         !entryProps.contains "leanCode" &&
         entryProps.contains "uses" &&
         entryProps.contains "usedBy" &&
-        entryProps.contains "group" &&
+        !entryProps.contains "group" &&
         entryProps.contains "ownerDisplayName" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&

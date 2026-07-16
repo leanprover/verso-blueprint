@@ -606,6 +606,12 @@ rendered-fragment cache stores opaque HTML bodies keyed by preview keys for
 entries that have generated preview bodies, plus the Verso hover payloads
 needed by those bodies.
 
+Group membership is normalized inside the manifest itself. Entries carry only
+their optional `parent` label, while the top-level `groups` catalog stores each
+group's title, declaration state, and traversal-ordered statement members once.
+Lean and browser consumers join through the parent label instead of copying the
+same sibling array into every preview entry.
+
 Consumers should join the two files by preview key at the last responsible
 moment. A renderer may use the manifest entry to decide what the object means
 and how to wrap it, then use the cached fragment as the already-rendered body.
@@ -795,8 +801,8 @@ rather than page-local template bodies:
    the rendered-fragment cache. The cache stores rendered fragments plus their
    Verso hover side table, while generated pages merge those hover payloads into
    `-verso-docs.json`. It also emits informal-block relationship topology,
-   including uses, reverse uses, and group panel entries, while traversal state
-   is still available. `Informal/ExternalMarkupRender.lean` owns the
+   including uses and reverse uses on entries plus a shared group catalog,
+   while traversal state is still available. `Informal/ExternalMarkupRender.lean` owns the
    source-backed external-markup fragment renderer so source selection,
    MD4Lean Markdown rendering, fallback source rendering, and the source-backed
    notice shell stay out of manifest entry construction.

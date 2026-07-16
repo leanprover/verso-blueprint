@@ -21,7 +21,7 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * @module blueprint-data-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintGroupRelation, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -235,6 +235,29 @@ export function loadManifestEntry(key, options) {
 }
 
 /**
+ * Load the shared group catalog from the Blueprint manifest.
+ *
+ * Manifest entries refer to this catalog through their `parent` label.
+ *
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintGroupRelation[]>}
+ */
+export function loadGroups(options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "loadGroups", [options]);
+}
+
+/**
+ * Load one shared group record by label.
+ *
+ * @param {string} label Group label.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintGroupRelation | null>}
+ */
+export function loadGroup(label, options) {
+  return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "loadGroup", [label, options]);
+}
+
+/**
  * Load source-document declarations from the Blueprint manifest.
  *
  * Use these records to resolve `entry.sources[*].document` ids to display
@@ -348,6 +371,8 @@ const dataApi = {
   loadManifest,
   readManifestStatus,
   loadManifestEntry,
+  loadGroups,
+  loadGroup,
   loadSourceDocuments,
   loadSourceDocument,
   resolveLabel,

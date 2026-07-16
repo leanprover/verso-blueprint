@@ -141,12 +141,14 @@ private def workQueueEntryJson (manifest : ManifestFile) (entry : Entry) : Json 
         ("proofStatus", Json.str node.proofStatus.toText)
       ]
 
-private def entryGroupJson (entry : Entry) : Json :=
-  match entry.group with
+private def entryGroupJson (manifest : ManifestFile) (entry : Entry) : Json :=
+  match manifest.groupForEntry? entry with
   | none => Json.null
   | some group => groupRelationJson group
 
-private def entryDetailFields (entry : Entry) : List (String × Json) := [
+private def entryDetailFields
+    (entry : Entry)
+    (group? : Option GroupRelation := none) : List (String × Json) := [
     ("key", Json.str entry.key),
     ("targetKind", toJson entry.targetKind),
     ("label", nameJson entry.label),
@@ -165,28 +167,28 @@ private def entryDetailFields (entry : Entry) : List (String × Json) := [
     ("codeData", toJson entry.codeData),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", entryGroupJson entry),
+    ("group", group?.map groupRelationJson |>.getD Json.null),
     ("ownerDisplayName", optionStringJson entry.ownerDisplayName),
     ("tags", stringArrayJson entry.tags),
     ("priority", optionStringJson entry.priority),
     ("effort", optionStringJson entry.effort)
   ]
 
-def entryJson (entry : Entry) : Json :=
-  Json.mkObj (entryDetailFields entry)
+def entryJson (entry : Entry) (group? : Option GroupRelation := none) : Json :=
+  Json.mkObj (entryDetailFields entry group?)
 
-private def entryResponseJson (entry : Entry) : Json :=
-  responseJson (entryDetailFields entry)
+private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :=
+  responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
 
-private def entryAllJson (label : String) (entry : Entry) : Json :=
+private def entryAllJson (manifest : ManifestFile) (label : String) (entry : Entry) : Json :=
   responseJson [
     ("label", Json.str label),
-    ("node", entryJson entry),
+    ("node", entryJson entry (manifest.groupForEntry? entry)),
     ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
     ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", entryGroupJson entry)
+    ("group", entryGroupJson manifest entry)
   ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
@@ -241,9 +243,9 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
         ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
       ]
   | ["node", label] =>
-      withPrimaryEntry manifest label entryResponseJson
+      withPrimaryEntry manifest label (entryResponseJson manifest)
   | ["all", label] =>
-      withPrimaryEntry manifest label (entryAllJson label)
+      withPrimaryEntry manifest label (entryAllJson manifest label)
   | ["uses", label] =>
       withPrimaryEntry manifest label fun entry =>
         responseJson [
@@ -262,7 +264,7 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       withPrimaryEntry manifest label fun entry =>
         responseJson [
           ("label", Json.str label),
-          ("group", entryGroupJson entry)
+          ("group", entryGroupJson manifest entry)
         ]
   | ["owners"] =>
       .ok <| responseJson [("owners", stringArrayJson manifest.ownerValues)]
@@ -394,14 +396,14 @@ def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : A
           pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
-      let errors := checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors
-      match entry.group with
-      | none => errors
-      | some group =>
-          checkRelatedEntries index
-            s!"group {Informal.PreviewManifest.labelString group.label} on {entry.key}"
-            group.entries errors)
+      checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)
     #[]
+  let errors := manifest.groups.foldl
+    (fun errors group =>
+      checkRelatedEntries index
+        s!"group {Informal.PreviewManifest.labelString group.label}"
+        group.entries errors)
+    errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 def checkJsonFromErrors

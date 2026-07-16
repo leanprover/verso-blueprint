@@ -252,13 +252,13 @@
  */
 
 /**
- * Group relation metadata attached to a manifest entry.
+ * Shared group relation metadata from the manifest's top-level group catalog.
  *
  * @typedef {Object} BlueprintGroupRelation
  * @property {string} label Canonical group label.
  * @property {string} title Resolved display title for the group.
  * @property {boolean} declared Whether the group was explicitly declared.
- * @property {BlueprintRelatedEntry[]} entries Related entries in the group.
+ * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members in the group.
  */
 
 /**
@@ -272,6 +272,8 @@
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
+ * @property {string | null} parent Parent group label, used to join against the shared group catalog.
+ * @property {string | null} parentTitle Resolved display title for the parent group.
  * @property {BlueprintSourceLocationResult} sourceLocation Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
@@ -279,7 +281,6 @@
  * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
  * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
  * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
- * @property {BlueprintGroupRelation | null} group Group relation data, when available.
  */
 
 /**
@@ -604,6 +605,8 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGroupRelation[]>} loadGroups
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintGroupRelation | null)>} loadGroup
  * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintLabelResolveOptions=): Promise<BlueprintResolveLabelResult>} resolveLabel
@@ -629,6 +632,8 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGroupRelation[]>} loadGroups
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintGroupRelation | null)>} loadGroup
  * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry

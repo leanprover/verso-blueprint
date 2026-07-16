@@ -34,7 +34,7 @@ import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
  * @module blueprint-preview-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintLabelResolveOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintGroupRelation, BlueprintSourceDocument, BlueprintHtmlCacheEntry, BlueprintResolveLabelResult, BlueprintResolveDeclarationResult, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult, BlueprintSourceMetadataInput, BlueprintSourceMetadataResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -242,6 +242,27 @@ export function loadHtmlCache(options) {
  */
 export function loadManifestEntry(key, options) {
   return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadManifestEntry", [key, options]);
+}
+
+/**
+ * Load the shared group catalog from the Blueprint manifest.
+ *
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintGroupRelation[]>}
+ */
+export function loadGroups(options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadGroups", [options]);
+}
+
+/**
+ * Load one shared group record by label.
+ *
+ * @param {string} label Group label.
+ * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
+ * @returns {Promise<BlueprintGroupRelation | null>}
+ */
+export function loadGroup(label, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadGroup", [label, options]);
 }
 
 /**
@@ -483,6 +504,8 @@ const previewApi = {
   loadManifest,
   readManifestStatus,
   loadManifestEntry,
+  loadGroups,
+  loadGroup,
   loadSourceDocuments,
   loadSourceDocument,
   loadHtmlCache,
