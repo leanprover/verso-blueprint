@@ -34,20 +34,44 @@ private def ClickableGraphviz : Component ClickableGraphviz.Props where
     import { EditorContext } from '@leanprover/infoview'
     import GraphvizDisplay from 'widget_module:hash,GRAPHVIZ_DISPLAY_HASH'
 
+    function equalLspPosition(p1, p2) {
+      return p1.line === p2.line && p1.character === p2.character
+    }
+    function equalLspRange(r1, r2) {
+      return equalLspPosition(r1.start, r2.start) && equalLspPosition(r1.end, r2.end)
+    }
+    function equalLocs(l1, l2) {
+      if ((!l1 || !l2) && l1 !== l2) return false
+      return l1.length === l2.length && l1.every(([n1, [u1, r1]], i) => {
+        const [n2, [u2, r2]] = l2[i]
+        return n1 === n2 && u1 === u2 && equalLspRange(r1, r2)
+      })
+    }
+
     export default function({ locs, ...props }) {
       const ec = React.useContext(EditorContext)
-      const locMap = new Map(locs)
+
+      // Memoize locs modulo deep equality
+      const locRef = React.useRef(locs)
+      const locMapRef = React.useRef(new Map(locs))
+      if (!equalLocs(locRef.current, locs)) {
+        locRef.current = locs
+        locMapRef.current = new Map(locs)
+      }
+      const locMap = locMapRef.current
 
       const attributer = React.useCallback(function(d) {
-        if (d.tag !== 'g' || d.attributes.class !== 'node') return
+        if (d.tag !== 'g' || !d.attributes
+          || !String(d.attributes.class ?? '').split(/\s+/).includes('node')
+          || !('key' in d) || !locMap.has(d.key)) return
         d.attributes.cursor = 'pointer'
-      }, [])
+      }, [locMap])
 
       const onClickNode = React.useCallback((_ev, d) => {
-        if (!('key' in d) || !locMap.has(d.key)) return
+        if (!d || !('key' in d) || !locMap.has(d.key)) return
         const [uri, range] = locMap.get(d.key)
         ec.revealLocation({ uri, range })
-      }, [])
+      }, [ec, locMap])
 
       return React.createElement(GraphvizDisplay, {
         ...props,
@@ -141,6 +165,7 @@ private def mergeGraphData (disk live : Informal.Graph.GraphData) (importedMods 
 open Server in
 @[server_rpc_method]
 def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
+    -- FIXME: cache this rather than reading on every render.
     let manifestTask ← ServerTask.IO.asTask do
       let dataDir : System.FilePath := "_out" / "html-multi" / "-verso-data"
       PreviewManifest.readFile (dataDir / PreviewManifest.manifestFilename)
@@ -172,12 +197,14 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
         let liveRoots := state.data.toArray.map fun (label, _) => label
         let liveGraphData := Informal.Graph.buildData state liveRoots (groupTitles := state.groups.toArray)
 
+        -- Map as 'cheap' since `bindWaitFindSnap` already spawns a dedicated thread.
         RequestM.mapTaskCheap manifestTask fun manifest? => do
           let mut graphData := liveGraphData
-          let mut manifestWarning : Option String := none
+          let mut manifestWarning? : Option Html := none
           let mut locs := #[]
 
-          if let .ok manifest := manifest? then
+          match manifest? with
+          | .ok manifest =>
             let manifestIndex := manifest.index
 
             -- If on-disk graph is present, merge nodes in non-imported modules from there.
@@ -185,20 +212,24 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
               graphData ← mergeGraphData diskGraphData liveGraphData importedMods manifestIndex
 
             for node in graphData.nodes do
-              -- FIXME: Find srcLoc for imported entries via env instead of via manifest?
+              -- FIXME: Find srcLoc for imported entries via env instead of via manifest, for freshness?
               -- Might need ilean-like data.
               let some srcLoc := (manifestIndex.findEntry? node.previewKey).bind (·.sourceLocation.location)
                 | continue
-              locs := locs.push (node.label, (s!"file://{srcLoc.path}", srcLoc.range))
-          else
-            manifestWarning := some "Blueprint hasn't been built - please build it to see the whole graph."
+              locs := locs.push (node.label, (System.Uri.pathToUri srcLoc.path, srcLoc.range))
+          | .error e =>
+            manifestWarning? :=
+              some <p className="warning">
+                Could not load blueprint - please rebuild it to see the whole graph.<br />
+                {.text e.toString}
+              </p>
 
           let dot := Informal.Graph.graphToDot graphData.toGraph { direction := .TB }
             graphData.groupTitleMap.get?
           return <Maximizable>
               <ClickableGraphviz locs={locs} dot={dot} centerOnVertex?={currLabel} />
-              {match manifestWarning with
-                | some warning => <p className="warning">{.text warning}</p>
+              {match manifestWarning? with
+                | some w => w
                 | none => <span />}
             </Maximizable>
 
