@@ -1905,6 +1905,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"reference-edit": detached},
+            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.29.0",
             ref_merged_into_worktree_base=lambda _repo_root, ref, _path: ref == "abc123",
             worktree_is_clean=lambda _path: True,
@@ -1914,6 +1915,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
             git_worktrees=lambda _repo_root: [],
             reference_prune_plan=lambda *_args, **_kwargs: [],
+            sync_worktree_registry=lambda _repo_root: ([], Path("/tmp/registry.json")),
         ):
             self.assertEqual(harness_mod.command_worktree_retire(args), 0)
 
@@ -1937,6 +1939,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             root_checkout=False,
         )
         commands: list[list[str]] = []
+        sync_calls: list[Path] = []
         with patched_attrs(
             harness_mod,
             detect_harness_layout=lambda _start=None: layout,
@@ -1950,6 +1953,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"backport-demo": backport},
+            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.28.0",
             ref_merged_into_worktree_base=lambda _repo_root, ref, _path: ref == "fix/backport-demo",
             worktree_is_clean=lambda _path: True,
@@ -1959,6 +1963,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
             git_worktrees=lambda _repo_root: [],
             reference_prune_plan=lambda *_args, **_kwargs: [],
+            sync_worktree_registry=lambda repo_root: sync_calls.append(repo_root) or ([], Path("/tmp/registry.json")),
         ):
             self.assertEqual(harness_mod.command_worktree_retire(args), 0)
 
@@ -1969,6 +1974,152 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ["git", "branch", "-d", backport.branch],
             ],
         )
+        self.assertEqual(sync_calls, [layout.repo_root])
+
+    def test_worktree_retire_validates_cleanup_inputs_before_removal(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+            reference_source_cache_root=Path("/tmp/cache"),
+            reference_dependency_cache_root=Path("/tmp/deps"),
+            reference_project_root=Path("/tmp/reference-root"),
+        )
+        demo = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/demo"),
+            head="abc123",
+            branch="fix/demo",
+            root_checkout=False,
+        )
+        commands: list[list[str]] = []
+
+        def invalid_catalog(_manifest_path):
+            raise ValueError("invalid project catalog")
+
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            local_release_ref=lambda _repo_root: "v4.32.0",
+            git_worktree_map=lambda _repo_root: {"demo": demo},
+            worktree_path_exists=lambda _path: True,
+            worktree_record_map=lambda _repo_root: (
+                {"demo": SimpleNamespace(name="demo", locked=False)},
+                Path("/tmp/registry.json"),
+            ),
+            preferred_worktree_base_ref=lambda _path: "origin/v4.32.0",
+            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: True,
+            worktree_is_clean=lambda _path: True,
+            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
+            load_project_catalog_manifest=invalid_catalog,
+            run=lambda command, *, cwd: commands.append(command),
+        ):
+            with self.assertRaisesRegex(SystemExit, "invalid project catalog"):
+                harness_mod.command_worktree_retire(args)
+
+        self.assertEqual(commands, [])
+
+    def test_worktree_retire_recovers_when_git_still_records_a_missing_path(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=319)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+            reference_source_cache_root=Path("/tmp/cache"),
+            reference_dependency_cache_root=Path("/tmp/deps"),
+            reference_project_root=Path("/tmp/reference-root"),
+        )
+        stale = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/missing-demo"),
+            head="abc123",
+            branch="fix/demo",
+            root_checkout=False,
+        )
+        commands: list[list[str]] = []
+        sync_calls: list[Path] = []
+
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            local_release_ref=lambda _repo_root: "v4.32.0",
+            git_worktree_map=lambda _repo_root: {"demo": stale},
+            worktree_path_exists=lambda _path: False,
+            load_record=lambda _path: SimpleNamespace(locked=False),
+            worktree_merged_pr_base_ref=lambda _repo_root, _pr, _worktree: ("origin/v4.32.0", None),
+            ref_merged_into_base=lambda _repo_root, _ref, _base_ref: False,
+            run=lambda command, *, cwd: commands.append(command),
+            sync_worktree_registry=lambda repo_root: sync_calls.append(repo_root) or ([], Path("/tmp/registry.json")),
+            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
+            load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
+            git_worktrees=lambda _repo_root: [],
+            reference_prune_plan=lambda *_args, **_kwargs: [],
+        ):
+            self.assertEqual(harness_mod.command_worktree_retire(args), 0)
+
+        self.assertEqual(
+            commands,
+            [
+                ["git", "worktree", "prune", "--expire", "now"],
+                ["git", "branch", "-D", "fix/demo"],
+            ],
+        )
+        self.assertEqual(sync_calls, [layout.repo_root])
+
+    def test_worktree_retire_requires_merged_pr_to_recover_a_missing_path(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=None)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+        )
+        stale = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/missing-demo"),
+            head="abc123",
+            branch="fix/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            local_release_ref=lambda _repo_root: "v4.32.0",
+            git_worktree_map=lambda _repo_root: {"demo": stale},
+            worktree_path_exists=lambda _path: False,
+            load_record=lambda _path: SimpleNamespace(locked=False),
+        ):
+            with self.assertRaisesRegex(SystemExit, "pass `--merged-pr <number>`"):
+                harness_mod.command_worktree_retire(args)
+
+    def test_worktree_retire_rejects_unverified_missing_path_recovery(self) -> None:
+        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=319)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+        )
+        stale = GitWorktree(
+            name="demo",
+            path=Path("/tmp/repo/.worktrees/missing-demo"),
+            head="abc123",
+            branch="fix/demo",
+            root_checkout=False,
+        )
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            local_release_ref=lambda _repo_root: "v4.32.0",
+            git_worktree_map=lambda _repo_root: {"demo": stale},
+            worktree_path_exists=lambda _path: False,
+            load_record=lambda _path: SimpleNamespace(locked=False),
+            worktree_merged_pr_base_ref=lambda _repo_root, _pr, _worktree: (
+                None,
+                "GitHub PR #319 head does not match worktree head",
+            ),
+        ):
+            with self.assertRaisesRegex(SystemExit, "head does not match worktree head"):
+                harness_mod.command_worktree_retire(args)
 
     def test_worktree_retire_accepts_verified_squash_merged_pr(self) -> None:
         args = argparse.Namespace(name="demo", dry_run=False, merged_pr=152)
@@ -2009,6 +2160,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"demo": demo},
+            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
             ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
             worktree_merged_pr_validation_error=fake_pr_validation,
@@ -2019,6 +2171,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
             git_worktrees=lambda _repo_root: [],
             reference_prune_plan=lambda *_args, **_kwargs: [],
+            sync_worktree_registry=lambda _repo_root: ([], Path("/tmp/registry.json")),
         ):
             self.assertEqual(harness_mod.command_worktree_retire(args), 0)
 
@@ -2058,6 +2211,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"demo": demo},
+            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
             ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
             worktree_merged_pr_validation_error=lambda *_args: "GitHub PR #152 is not merged",
@@ -2093,6 +2247,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"demo": demo},
+            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
             ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
             local_release_ref=lambda _repo_root: "v4.31.0",
@@ -2129,6 +2284,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     root_checkout=False,
                 )
             },
+            worktree_path_exists=lambda _path: True,
         ):
             with self.assertRaisesRegex(SystemExit, "is locked; unlock it before retiring"):
                 harness_mod.command_worktree_retire(args)

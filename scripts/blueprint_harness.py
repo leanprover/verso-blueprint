@@ -61,7 +61,10 @@ from scripts.blueprint_harness_worktrees import (
     GitWorktree,
     git_worktree_map,
     git_worktrees,
+    load_record,
+    metadata_path,
     normalize_priority,
+    ref_merged_into_base,
     resolve_worktree_name,
     sync_worktree_registry,
     update_worktree_record,
@@ -213,26 +216,49 @@ def worktree_merged_pr_validation_error(
     worktree: GitWorktree,
     base_ref: str,
 ) -> str | None:
+    actual_base_ref, error = worktree_merged_pr_base_ref(repo_root, pr_number, worktree)
+    if error is not None:
+        return error
+    assert actual_base_ref is not None
+    if branch_name_from_ref(actual_base_ref) != branch_name_from_ref(base_ref):
+        return (
+            f"GitHub PR #{pr_number} base `{branch_name_from_ref(actual_base_ref)}` "
+            f"does not match `{base_ref}`"
+        )
+    return None
+
+
+def worktree_merged_pr_base_ref(
+    repo_root: Path,
+    pr_number: int,
+    worktree: GitWorktree,
+) -> tuple[str | None, str | None]:
     payload = github_pr_view_json(
         repo_root,
         pr_number,
         ("state", "baseRefName", "headRefName", "headRefOid"),
     )
     if payload is None:
-        return f"unable to read GitHub PR #{pr_number}"
+        return None, f"unable to read GitHub PR #{pr_number}"
     state = payload.get("state")
     if state != "MERGED":
-        return f"GitHub PR #{pr_number} is not merged"
+        return None, f"GitHub PR #{pr_number} is not merged"
     base_ref_name = payload.get("baseRefName")
-    if base_ref_name != branch_name_from_ref(base_ref):
-        return f"GitHub PR #{pr_number} base `{base_ref_name}` does not match `{base_ref}`"
+    if not isinstance(base_ref_name, str) or not base_ref_name:
+        return None, f"GitHub PR #{pr_number} has no base branch"
     head_ref_oid = payload.get("headRefOid")
     if head_ref_oid != worktree.head:
-        return f"GitHub PR #{pr_number} head `{head_ref_oid}` does not match worktree head `{worktree.head}`"
+        return None, (
+            f"GitHub PR #{pr_number} head `{head_ref_oid}` "
+            f"does not match worktree head `{worktree.head}`"
+        )
     head_ref_name = payload.get("headRefName")
     if worktree.branch is not None and head_ref_name != worktree.branch:
-        return f"GitHub PR #{pr_number} head branch `{head_ref_name}` does not match `{worktree.branch}`"
-    return None
+        return None, (
+            f"GitHub PR #{pr_number} head branch `{head_ref_name}` "
+            f"does not match `{worktree.branch}`"
+        )
+    return f"origin/{base_ref_name}", None
 
 
 def resolve_main_pr_title(repo_root: Path, args: argparse.Namespace) -> str:
@@ -326,6 +352,10 @@ def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
 
 def preferred_worktree_base_ref(path: Path) -> str:
     return preferred_release_ref(path)
+
+
+def worktree_path_exists(path: Path) -> bool:
+    return path.exists()
 
 
 def ref_merged_into_worktree_base(repo_root: Path, ref: str, worktree_path: Path) -> bool:
@@ -1128,17 +1158,15 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     release_branch = local_release_ref(layout.repo_root)
     name = resolve_worktree_name(layout.worktree_name, args.name)
-    records, _registry = worktree_record_map(layout.repo_root)
-    if name not in records:
-        raise SystemExit(f"[blueprint-harness] unknown worktree `{name}`")
-    record = records[name]
     worktrees = git_worktree_map(layout.repo_root)
     if name not in worktrees:
         raise SystemExit(f"[blueprint-harness] unknown worktree `{name}`")
     worktree = worktrees[name]
     path = worktree.path
     branch = worktree.branch
-    if record.locked:
+    path_exists = worktree_path_exists(path)
+    metadata = load_record(metadata_path(layout.repo_root, name))
+    if metadata is not None and metadata.locked:
         raise SystemExit(f"[blueprint-harness] worktree `{name}` is locked; unlock it before retiring")
     if worktree.root_checkout:
         raise SystemExit("[blueprint-harness] cannot retire the root checkout")
@@ -1146,13 +1174,34 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         raise SystemExit("[blueprint-harness] cannot retire the current active worktree from inside itself")
     if branch == release_branch:
         raise SystemExit(f"[blueprint-harness] cannot retire a linked worktree attached to `{release_branch}`")
-    merge_subject = branch or worktree.head
-    base_ref = preferred_worktree_base_ref(path)
-    merged_by_ancestry = ref_merged_into_worktree_base(layout.repo_root, merge_subject, path)
     merged_pr = getattr(args, "merged_pr", None)
     merge_mode = "ancestry"
     branch_delete_flag = "-d"
-    if not merged_by_ancestry:
+    merge_subject = branch or worktree.head
+    if path_exists:
+        records, _registry = worktree_record_map(layout.repo_root)
+        if name not in records:
+            raise SystemExit(f"[blueprint-harness] unknown worktree `{name}`")
+        if records[name].locked:
+            raise SystemExit(f"[blueprint-harness] worktree `{name}` is locked; unlock it before retiring")
+        base_ref = preferred_worktree_base_ref(path)
+        merged_by_ancestry = ref_merged_into_worktree_base(layout.repo_root, merge_subject, path)
+    else:
+        if merged_pr is None:
+            raise SystemExit(
+                f"[blueprint-harness] worktree `{name}` path is missing; "
+                "pass `--merged-pr <number>` to verify and finish a partial retirement"
+            )
+        base_ref, validation_error = worktree_merged_pr_base_ref(layout.repo_root, merged_pr, worktree)
+        if validation_error is not None:
+            raise SystemExit(f"[blueprint-harness] cannot retire worktree `{name}`: {validation_error}")
+        assert base_ref is not None
+        merged_by_ancestry = ref_merged_into_base(layout.repo_root, merge_subject, base_ref)
+        merge_mode = f"recovered-github-pr-{merged_pr}"
+        if not merged_by_ancestry:
+            branch_delete_flag = "-D"
+
+    if not merged_by_ancestry and path_exists:
         if merged_pr is not None:
             validation_error = worktree_merged_pr_validation_error(layout.repo_root, merged_pr, worktree, base_ref)
             if validation_error is None:
@@ -1170,20 +1219,8 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
             raise SystemExit(
                 f"[blueprint-harness] branch `{branch}` is not merged into `{base_ref}`{squash_hint}"
             )
-    if not worktree_is_clean(path):
+    if path_exists and not worktree_is_clean(path):
         raise SystemExit(f"[blueprint-harness] worktree `{name}` has local modifications")
-
-    print(f"name={name}")
-    print(f"path={path}")
-    print(f"branch={branch or ''}")
-    print(f"head={worktree.head}")
-    print(f"merge_mode={merge_mode}")
-    if args.dry_run:
-        return 0
-
-    run(["git", "worktree", "remove", str(path)], cwd=layout.repo_root)
-    if branch is not None:
-        run(["git", "branch", branch_delete_flag, branch], cwd=layout.repo_root)
 
     manifest_path = resolve_manifest_path(None, layout.package_root)
     try:
@@ -1191,8 +1228,9 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
     except (FileNotFoundError, ValueError) as err:
         raise SystemExit(f"[blueprint-harness] {err}") from err
     active_names = {
-        root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
-        for worktree in git_worktrees(layout.repo_root)
+        root_checkout_namespace(layout.repo_root) if candidate.root_checkout else candidate.name
+        for candidate in git_worktrees(layout.repo_root)
+        if candidate.name != name and candidate.path.exists()
     }
     cache_keys = reference_dependency_cache_keys(projects)
     removals = reference_prune_plan(
@@ -1202,6 +1240,22 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         layout.reference_project_root / "by-worktree",
         layout.reference_dependency_cache_root,
     )
+
+    print(f"name={name}")
+    print(f"path={path}")
+    print(f"branch={branch or ''}")
+    print(f"head={worktree.head}")
+    print(f"merge_mode={merge_mode}")
+    if args.dry_run:
+        return 0
+
+    if path_exists:
+        run(["git", "worktree", "remove", str(path)], cwd=layout.repo_root)
+    else:
+        run(["git", "worktree", "prune", "--expire", "now"], cwd=layout.repo_root)
+    sync_worktree_registry(layout.repo_root)
+    if branch is not None:
+        run(["git", "branch", branch_delete_flag, branch], cwd=layout.repo_root)
     for stale_path in removals:
         shutil.rmtree(stale_path)
     print(f"[blueprint-harness] retired worktree `{name}`")
@@ -1308,7 +1362,7 @@ def add_release_management_commands(subparsers) -> None:
     )
     bump_toolchain.add_argument(
         "toolchain",
-        help="Lean toolchain ref such as `v4.29.0`, `4.29.0`, `4.30-rc2`, or `leanprover/lean4:v4.30.0-rc2`.",
+        help="Lean toolchain ref such as `v4.32.0`, `4.33-rc1`, or `leanprover/lean4:v4.33.0-rc1`.",
     )
     bump_toolchain.add_argument(
         "--verso-ref",
@@ -1328,7 +1382,7 @@ def add_release_management_commands(subparsers) -> None:
     )
     start_release_line.add_argument(
         "toolchain",
-        help="Lean toolchain ref for the new line, such as `v4.30.0` or official RC name `4.30-rc2`.",
+        help="Lean toolchain ref for the new line, such as `v4.33.0` or official RC name `4.33-rc1`.",
     )
     start_release_line.add_argument(
         "--verso-ref",
@@ -1353,7 +1407,7 @@ def add_release_management_commands(subparsers) -> None:
     )
     set_default_dev_branch.add_argument(
         "branch",
-        help="New default development branch, such as `v4.30.0`.",
+        help="New default development branch, such as `v4.32.0`.",
     )
     set_default_dev_branch.set_defaults(func=command_set_default_dev_branch)
 

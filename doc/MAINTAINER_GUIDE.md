@@ -248,6 +248,11 @@ The generated test-blueprint output has a browsable index:
 
 In a linked worktree, the same tree lives under `_out/<worktree>/test-blueprints/`.
 
+`python3 -m scripts.blueprint_test_blueprints list-json` reports the standalone
+fixture manifest without invoking Lean. Curated-document metadata comes from
+the Lean registry and is validated once, before `generate-test-blueprints.sh`
+starts rendering artifacts.
+
 ### Prepare or Land PRs
 
 Use the harness to generate public PR/backport scaffolds:
@@ -255,7 +260,7 @@ Use the harness to generate public PR/backport scaffolds:
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
@@ -265,7 +270,7 @@ check intentionally does not require patch-id equality, because release-line
 conflict resolution often changes the exact diff while preserving provenance.
 
 Each paired backport PR should carry the scaffolded release label, such as
-`backport-v4.30.0`, so release-specific queues remain visible when several
+`backport-v4.31.0`, so release-specific queues remain visible when several
 maintenance lines are active.
 
 Land reviewed local work from the clean root checkout:
@@ -346,11 +351,11 @@ policy metadata on each older release branch so the harness recognizes them as
 backport-only:
 
 ```bash
-python3 -m scripts.blueprint_harness set-default-dev-branch v4.31.0
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.32.0
 ```
 
 Commit that metadata-only change separately on each older branch that still
-carries `branch-policy.json`, such as `v4.30.0`. Preserve their own Lean
+carries `branch-policy.json`, such as `v4.31.0`. Preserve their own Lean
 toolchain pins.
 
 To remove stale harness-managed reference caches and orphaned local clones:
@@ -384,23 +389,6 @@ locations used by the harness.
 
 It also prints the shared reference checkout cache root, dependency package
 cache root, and the current checkout's local clone root.
-
-To generate local test-blueprint fixtures, run:
-
-```bash
-./scripts/generate-test-blueprints.sh
-```
-
-By default that renders all local test-blueprint sites under the current
-checkout's worktree-aware `test-blueprints/` output root. Pass one or more
-slugs to render only a subset:
-
-```bash
-./scripts/generate-test-blueprints.sh state-showcase summary-blockers
-```
-
-Use `python3 -m scripts.blueprint_test_blueprints list-json` when you need the
-current slug list and metadata.
 
 ## Working from Linked Worktrees
 
@@ -456,15 +444,15 @@ python3 -m scripts.blueprint_harness prepare-backports
 Paste the emitted backport lines into the draft PR body. While the PR is still draft,
 each required line may remain:
 
-- `Backport v4.30.0: pending`
+- `Backport v4.31.0: pending`
 - or, for documentation and repository-metadata-only changes,
-  `Backport v4.30.0: exempt: <reason>`
+  `Backport v4.31.0: exempt: <reason>`
 
 Once the default-development PR is ready for review it must replace each `pending` line
 with either:
 
-- link the paired backport PR in the PR body with `Backport v4.30.0: #<pr>`
-- or record `Backport v4.30.0: exempt: <reason>` when every changed file is
+- link the paired backport PR in the PR body with `Backport v4.31.0: #<pr>`
+- or record `Backport v4.31.0: exempt: <reason>` when every changed file is
   documentation or repository metadata
 
 Keep code-bearing release lines structurally aligned even when compatibility or a
@@ -484,16 +472,16 @@ prefix and reuse the default-development slug with a release marker. For
 example:
 
 - default-development branch: `fix/backport-discipline`
-- paired `v4.30.0` branch: `fix/backport-v430-backport-discipline`
+- paired `v4.31.0` branch: `fix/backport-v431-backport-discipline`
 
 To keep paired backport PRs consistent, scaffold them with:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.30.0] ...`, a `backport-v4.30.0` release label, and a PR body
+`[backport v4.31.0] ...`, a `backport-v4.31.0` release label, and a PR body
 that points back to the primary default-development review. By default the
 title after the backport prefix is read from the GitHub title of `--main-pr`,
 which keeps multi-commit backports from inheriting the last local commit
@@ -534,7 +522,7 @@ python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
 `land-release` refuses to proceed unless the root checkout is on a clean,
-in-sync local release branch such as `v4.30.0`, and it only accepts
+in-sync local release branch such as `v4.32.0`, and it only accepts
 fast-forward source refs. With `--cleanup`, it also removes the source worktree
 and deletes the source branch when that can be done safely.
 
@@ -600,6 +588,10 @@ The local coordination layer is now machine-readable and untracked.
 - after a GitHub squash merge, pass `--merged-pr <number>` so `worktree-retire`
   can verify that the merged PR head SHA, head branch, and base branch match the
   local worktree before force-deleting the local branch
+- if an interrupted retirement removed the checkout directory but left Git's
+  worktree metadata behind, rerun it with `--merged-pr <number>`; the harness
+  verifies the merged PR, prunes the stale worktree entry, and finishes branch
+  and reference-cache cleanup
 - by default, each session should only retire or delete worktrees and branches
   it created or landed itself; broader cleanup should be explicit
 
@@ -662,7 +654,10 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --merged-pr <number>
   tracked manifest is present, the harness runs a full update from those
   committed pins, so fixed direct inputs remain pinned while the local
   `VersoBlueprint` dependency and its transitive graph are refreshed
-- project and dependency `lean-toolchain` files are immutable harness inputs
+- the selected package and external project's `lean-toolchain` files are
+  immutable harness inputs; external-project flows reject missing toolchains,
+  cross-release pairs, and catalog/toolchain mismatches instead of rewriting
+  either file
 - the Python harness is maintainer tooling for those validations, not the main
   package-facing authoring interface
 
@@ -695,18 +690,24 @@ The repository includes these GitHub Actions workflows:
 - `.github/workflows/reference-blueprints-deploy.yml`
 
 `ci.yml` is the main verification workflow. It keeps the always-on checks for
-pull requests and pushes to release branches named like `v4.30.0`:
+pull requests and pushes to release branches named like `v4.32.0`:
 
 - `Blueprint Build`
 - `Blueprint Tests`
 - `Harness Tests`
+
+`Harness Tests` is intentionally Python-only: ordinary `unittest` discovery
+must not invoke Lean or Lake. `Blueprint Tests` owns explicit Lean execution
+smokes, while the Lean-backed curated-document registry is exercised and
+checked against the shared test-blueprint category/tag vocabulary by `Build
+Test Blueprints` before it generates the artifact catalog.
 
 On pull requests it also runs `Project Template Fresh Repo`, which materializes
 the in-repo template as a fresh standalone repository and smoke-tests the
 template-owned CI path.
 
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
-pushes to release branches named like `v4.30.0`, and manual dispatch, it:
+pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 
 - resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
@@ -725,7 +726,7 @@ pushes to release branches named like `v4.30.0`, and manual dispatch, it:
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.30.0`, checks out the repository default-development branch as the source
+`v4.32.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with
 `deploy_pages: true`, selects project targets marked `publish_reference: true`,
 rebuilds those selected blueprints in isolation, and assembles one combined
@@ -836,9 +837,9 @@ The harness is now project-driven rather than hardcoded to one project.
   source
 - local worktree bookkeeping is intentionally not tracked in the repository
 
-For example, the release id may remain `v4.30.0` while a specific published
-project target records `"rc": "4.30-rc2"`. That row then builds with
-`leanprover/lean4:v4.30.0-rc2` and pins `verso` to `v4.30.0-rc2`, while another
+For example, the release id may remain `v4.32.0` while a specific published
+project target records `"rc": "4.32-rc1"`. That row then builds with
+`leanprover/lean4:v4.32.0-rc1` and pins `verso` to `v4.32.0-rc1`, while another
 project target on the same release id can use a different RC or the final
 release tag.
 
@@ -856,7 +857,7 @@ Minimal external catalog entry shape:
       },
       "targets": [
         {
-          "release": "v4.30.0",
+          "release": "v4.32.0",
           "ref": "0123456789abcdef0123456789abcdef01234567",
           "publish_reference": true
         }

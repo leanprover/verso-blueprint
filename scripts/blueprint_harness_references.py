@@ -75,7 +75,6 @@ class ReferenceProjectBumpResult:
 
 @dataclass(frozen=True)
 class ReferenceToolchain:
-    path: Path
     lean_ref: str
     release_branch: str
 
@@ -147,18 +146,17 @@ def read_reference_toolchain(path: Path) -> ReferenceToolchain | None:
         return None
 
     return ReferenceToolchain(
-        path=path,
         lean_ref=lean_ref,
         release_branch=release_branch_from_lean_ref(lean_ref),
     )
 
 
-def validate_reference_toolchain_release_family(
+def validate_external_reference_toolchain(
     package_root: Path,
     project_dir: Path,
     *,
-    expected_project_toolchain: str | None = None,
-) -> str | None:
+    expected_project_toolchain: str,
+) -> str:
     """Reject cross-release checks without changing any checkout toolchain.
 
     The external project owns the compiler used for its build. In particular,
@@ -168,8 +166,6 @@ def validate_reference_toolchain_release_family(
     """
     package_toolchain = read_reference_toolchain(package_root / "lean-toolchain")
     project_toolchain = read_reference_toolchain(project_dir / "lean-toolchain")
-    if expected_project_toolchain is None and (package_toolchain is None or project_toolchain is None):
-        return None
     if package_toolchain is None:
         raise SystemExit(
             "[blueprint-harness] selected Verso Blueprint checkout has no valid `lean-toolchain`: "
@@ -188,15 +184,14 @@ def validate_reference_toolchain_release_family(
             f"uses Lean `{package_toolchain.lean_ref}` ({package_toolchain.release_branch}). "
             "Catalog each external Blueprint only under its current matching release."
         )
-    if expected_project_toolchain is not None:
-        expected_ref = normalize_lean_release_ref(expected_project_toolchain)
-        if project_toolchain.lean_ref != expected_ref:
-            raise SystemExit(
-                "[blueprint-harness] reference Blueprint toolchain mismatch: "
-                f"catalog target expects Lean `{expected_ref}`, but project `{project_dir}` "
-                f"uses Lean `{project_toolchain.lean_ref}`. Update the external project ref "
-                "or keep its explicit project-target RC metadata."
-            )
+    expected_ref = normalize_lean_release_ref(expected_project_toolchain)
+    if project_toolchain.lean_ref != expected_ref:
+        raise SystemExit(
+            "[blueprint-harness] reference Blueprint toolchain mismatch: "
+            f"catalog target expects Lean `{expected_ref}`, but project `{project_dir}` "
+            f"uses Lean `{project_toolchain.lean_ref}`. Update the external project ref "
+            "or keep its explicit project-target RC metadata."
+        )
     return project_toolchain.lean_ref
 
 
@@ -570,19 +565,24 @@ def prepare_reference_edit_checkout(
 def run_reference_lake_update(
     package_root: Path,
     project_dir: Path,
-    *,
-    validate_toolchain_release: bool = True,
-    expected_project_toolchain: str | None = None,
 ) -> list[str]:
-    if validate_toolchain_release:
-        validate_reference_toolchain_release_family(
-            package_root,
-            project_dir,
-            expected_project_toolchain=expected_project_toolchain,
-        )
     command = project_lake_update_command(package_root, project_dir)
     run(command, cwd=project_dir)
     return command
+
+
+def run_external_reference_lake_update(
+    package_root: Path,
+    project_dir: Path,
+    *,
+    expected_project_toolchain: str,
+) -> list[str]:
+    validate_external_reference_toolchain(
+        package_root,
+        project_dir,
+        expected_project_toolchain=expected_project_toolchain,
+    )
+    return run_reference_lake_update(package_root, project_dir)
 
 
 def project_checkout_pathspec(checkout_root: Path, project_dir: Path) -> str:
@@ -698,7 +698,7 @@ def bump_reference_project(
 
     project_dir = edit_dir / project.project_root
     _lakefile, previous_ref = rewrite_pinned_blueprint_dependency(project_dir, ref)
-    run_reference_lake_update(
+    run_external_reference_lake_update(
         layout.package_root,
         project_dir,
         expected_project_toolchain=selected_project_toolchain(project),
@@ -832,7 +832,7 @@ def sync_reference_cache_checkout(
     seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
     try:
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=True):
-            run_reference_lake_update(
+            run_external_reference_lake_update(
                 layout.package_root,
                 project_dir,
                 expected_project_toolchain=selected_project_toolchain(project),
@@ -939,7 +939,6 @@ def generate_in_repo_command_project(
                 update_project=lambda: run_reference_lake_update(
                     layout.package_root,
                     project_dir,
-                    validate_toolchain_release=False,
                 ),
                 build_command=project.build_command,
                 generate_command=generate_command,
@@ -981,10 +980,9 @@ def generate_git_project(
         output_dir.mkdir(parents=True, exist_ok=True)
         bootstrap_reference_checkout(project_dir=project_dir)
         def update_reference_project() -> None:
-            run_reference_lake_update(
+            run_external_reference_lake_update(
                 layout.package_root,
                 project_dir,
-                validate_toolchain_release=True,
                 expected_project_toolchain=selected_project_toolchain(project),
             )
             seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)

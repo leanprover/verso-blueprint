@@ -107,12 +107,12 @@ def _short_reference_cache_ref(ref: str) -> str:
     return ref
 
 
-def selected_project_toolchain(project: HarnessProject) -> str | None:
+def selected_project_toolchain(project: HarnessProject) -> str:
     if project.selected_rc is not None:
         return release_candidate_ref(project.selected_rc)
     if project.selected_release is not None:
         return normalize_lean_release_ref(project.selected_release)
-    return None
+    raise ValueError(f"project `{project.project_id}` has no selected release target")
 
 
 def reference_dependency_cache_key(project: HarnessProject) -> str:

@@ -174,18 +174,39 @@ def load_test_blueprints_manifest(manifest_path: Path) -> list[StandaloneTestBlu
     return fixtures
 
 
-def list_curated_test_doc_slugs(package_root: Path) -> list[str]:
-    result = subprocess.run(
-        lean_low_priority_command(package_root, "lake", "exe", "blueprint-test-docs", "--list"),
-        cwd=package_root,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+def validate_curated_test_doc_meta(
+    entries: list[dict[str, object]],
+    categories: tuple[str, ...],
+) -> list[dict[str, object]]:
+    if not entries:
+        raise ValueError("expected `blueprint-test-docs --list-json` to emit at least one entry")
+
+    seen_slugs: set[str] = set()
+    for index, entry in enumerate(entries, start=1):
+        context = f"blueprint-test-docs entry {index}"
+        slug = _require_string(entry, "slug", context=context)
+        if slug in seen_slugs:
+            raise ValueError(f"{context}: duplicate slug `{slug}`")
+        seen_slugs.add(slug)
+
+        _require_string(entry, "title", context=context)
+        category = _require_string(entry, "category", context=context)
+        if category not in categories:
+            raise ValueError(f"{context}: unknown category `{category}`")
+        _require_string(entry, "summary", context=context)
+        kind = _require_string(entry, "kind", context=context)
+        if kind != "curated_doc":
+            raise ValueError(f"{context}: expected kind `curated_doc`, got `{kind}`")
+        if not isinstance(entry.get("tags"), list):
+            raise ValueError(f"{context}: expected list field `tags`")
+        _optional_tags(entry, "tags", context=context)
+    return entries
 
 
-def list_curated_test_doc_meta(package_root: Path) -> list[dict[str, object]]:
+def list_curated_test_doc_meta(
+    package_root: Path,
+    categories: tuple[str, ...],
+) -> list[dict[str, object]]:
     result = subprocess.run(
         lean_low_priority_command(package_root, "lake", "exe", "blueprint-test-docs", "--list-json"),
         cwd=package_root,
@@ -196,22 +217,29 @@ def list_curated_test_doc_meta(package_root: Path) -> list[dict[str, object]]:
     data = json.loads(result.stdout)
     if not isinstance(data, list):
         raise ValueError("expected `blueprint-test-docs --list-json` to emit a JSON list")
-    return [entry for entry in data if isinstance(entry, dict)]
+    if not all(isinstance(entry, dict) for entry in data):
+        raise ValueError("expected every `blueprint-test-docs --list-json` entry to be an object")
+    entries: list[dict[str, object]] = data
+    return validate_curated_test_doc_meta(entries, categories)
 
 
-def test_blueprint_index_entries(
-    package_root: Path,
+def blueprint_meta_by_slug(
+    curated_entries: list[dict[str, object]],
     fixtures: list[StandaloneTestBlueprint],
-    selected_slugs: list[str],
-) -> list[dict[str, object]]:
+) -> dict[str, dict[str, object]]:
     meta_by_slug = {
         str(entry["slug"]): entry
-        for entry in list_curated_test_doc_meta(package_root)
+        for entry in curated_entries
         if isinstance(entry.get("slug"), str)
     }
     for fixture in fixtures:
+        if fixture.slug in meta_by_slug:
+            raise ValueError(
+                f"test blueprint slug `{fixture.slug}` is declared by both "
+                "the curated-document registry and the standalone fixture manifest"
+            )
         meta_by_slug[fixture.slug] = fixture.meta
-    return [meta_by_slug[slug] for slug in selected_slugs if slug in meta_by_slug]
+    return meta_by_slug
 
 
 def render_test_blueprint_tag_list(tags: object) -> str:
@@ -321,23 +349,28 @@ def write_test_blueprint_index(output_root: Path, category_order: tuple[str, ...
 
 
 def split_generation_targets(
-    package_root: Path,
+    curated_entries: list[dict[str, object]],
     fixtures: list[StandaloneTestBlueprint],
     requested_slugs: list[str],
 ) -> tuple[list[str], list[StandaloneTestBlueprint]]:
+    doc_slugs = [str(entry["slug"]) for entry in curated_entries]
     if not requested_slugs:
-        return list_curated_test_doc_slugs(package_root), fixtures
+        return doc_slugs, fixtures
 
+    doc_slug_set = set(doc_slugs)
     fixture_by_slug = {fixture.slug: fixture for fixture in fixtures}
-    doc_slugs: list[str] = []
+    selected_doc_slugs: list[str] = []
     standalone_fixtures: list[StandaloneTestBlueprint] = []
     for target in requested_slugs:
         fixture = fixture_by_slug.get(target)
-        if fixture is None:
-            doc_slugs.append(target)
-        else:
+        if fixture is not None:
             standalone_fixtures.append(fixture)
-    return doc_slugs, standalone_fixtures
+        elif target in doc_slug_set:
+            selected_doc_slugs.append(target)
+        else:
+            known = ", ".join(sorted({*doc_slug_set, *fixture_by_slug}))
+            raise ValueError(f"unknown test blueprint `{target}`; known fixtures: {known}")
+    return selected_doc_slugs, standalone_fixtures
 
 
 def prune_stale_test_blueprint_outputs(output_root: Path, expected_slugs: set[str]) -> None:
@@ -370,7 +403,9 @@ def generate_test_blueprint_outputs(
     output_root: Path,
     requested_slugs: list[str],
 ) -> None:
-    doc_slugs, standalone_fixtures = split_generation_targets(package_root, fixtures, requested_slugs)
+    curated_entries = list_curated_test_doc_meta(package_root, category_order)
+    meta_by_slug = blueprint_meta_by_slug(curated_entries, fixtures)
+    doc_slugs, standalone_fixtures = split_generation_targets(curated_entries, fixtures, requested_slugs)
     standalone_slugs = [fixture.slug for fixture in standalone_fixtures]
 
     if not requested_slugs:
@@ -386,7 +421,7 @@ def generate_test_blueprint_outputs(
     write_test_blueprint_index(
         output_root,
         category_order,
-        test_blueprint_index_entries(package_root, fixtures, selected_slugs),
+        [meta_by_slug[slug] for slug in selected_slugs],
     )
 
 

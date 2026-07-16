@@ -23,4 +23,3 @@ This PR <short summary of the problem solved and useful outcome>.
 maintainer-visible changes. Avoid module-by-module implementation inventory.>
 
 Backport v4.31.0: pending
-Backport v4.30.0: pending

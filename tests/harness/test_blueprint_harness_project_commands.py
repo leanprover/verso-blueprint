@@ -6,7 +6,6 @@ import tempfile
 import unittest
 
 from scripts.blueprint_harness_project_commands import (
-    OFFICIAL_BLUEPRINT_REQUIRE,
     discard_untracked_project_manifest,
     project_lake_update_command,
     rewrite_local_blueprint_dependency,
@@ -14,6 +13,7 @@ from scripts.blueprint_harness_project_commands import (
     run_project_update_build_generate,
     tracked_project_manifest_path,
 )
+from tests.harness.project_fixtures import TEST_OFFICIAL_BLUEPRINT_REQUIRE
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +33,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     [
                         "import Lake",
                         "open Lake DSL",
-                        OFFICIAL_BLUEPRINT_REQUIRE,
+                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
                         "",
                     ]
                 ),
@@ -44,7 +44,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
 
             self.assertEqual(result, lakefile)
             text = lakefile.read_text(encoding="utf-8")
-            self.assertNotIn(OFFICIAL_BLUEPRINT_REQUIRE, text)
+            self.assertNotIn(TEST_OFFICIAL_BLUEPRINT_REQUIRE, text)
             self.assertIn(f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"', text)
 
     def test_rewrite_local_blueprint_dependency_accepts_official_repo_with_non_main_ref(self) -> None:
@@ -68,13 +68,13 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir = package_root / "project_template"
             project_dir.mkdir(parents=True)
             lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(f"{OFFICIAL_BLUEPRINT_REQUIRE}\n", encoding="utf-8")
+            lakefile.write_text(f"{TEST_OFFICIAL_BLUEPRINT_REQUIRE}\n", encoding="utf-8")
 
             rewrite_local_blueprint_dependency(project_dir, package_root, relative=True)
 
             self.assertEqual(
                 lakefile.read_text(encoding="utf-8"),
-                'require VersoBlueprint from ".."',
+                'require VersoBlueprint from ".."\n',
             )
 
     def test_rewrite_local_blueprint_dependency_disables_mathlib_header_linter(self) -> None:
@@ -86,7 +86,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     [
                         "import Lake",
                         "open Lake DSL",
-                        OFFICIAL_BLUEPRINT_REQUIRE,
+                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
                         "",
                         "package Blueprint where",
                         "  leanOptions := #[",
@@ -112,7 +112,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             lakefile.write_text(
                 "\n".join(
                     [
-                        OFFICIAL_BLUEPRINT_REQUIRE,
+                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
                         "package Blueprint where",
                         "  leanOptions := #[",
                         "    ⟨`weak.linter.style.header, false⟩,",
