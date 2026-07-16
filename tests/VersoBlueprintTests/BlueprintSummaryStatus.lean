@@ -45,6 +45,7 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
   actionableStageForStatuses? .definition .ready .ready == some "statement" &&
     actionableStageForStatuses? .definition .blocked .incomplete == none &&
     actionableStageForStatuses? .theorem .ready .none == some "statement" &&
+    actionableStageForStatuses? .theorem .ready .incomplete == some "proof" &&
     actionableStageForStatuses? .theorem .formalized .ready == some "proof" &&
     actionableStageForStatuses? .theorem .blocked .incomplete == some "proof" &&
     actionableStageForStatuses? .theorem .formalized .formalized == none &&

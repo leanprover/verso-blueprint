@@ -283,17 +283,17 @@ methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `findPrimaryQueryableEntry?`, `blockStatementEntries`,
 `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`, `sourceDocument?`,
 `entriesWithSource`, `entriesForSourceDocument`, `ownerValues`, `tagValues`,
-`metadataEntries`, `actionableGraphNode?`, and `workQueueEntries`.
+`metadataEntries`, `actionableGraphNode?`, and `workQueueItems`.
 `metadataEntries` selects nodes with owner, tag, priority, or effort metadata.
-`workQueueEntries` selects nodes whose finalized graph status exposes an
-actionable statement or proof step; `actionableGraphNode?` returns that status
-record for clients that need the step and its statement/proof states. Finalized
-graph data is the generated planning source of truth: these helpers do not infer
-readiness from tags or other entry metadata, and return no work-queue item when
-no matching graph node is present. Use the queryable helpers for the same node
-selection as `lake exe vbp query`; use the block-only helpers when a consumer
-explicitly needs rendered block entries and should exclude source-backed
-bodyless external-markup nodes. Entry-level helpers
+`workQueueItems` pairs each selected entry with its actionable graph node and
+next step (`"statement"` or `"proof"`).
+`actionableGraphNode?` performs the corresponding lookup for one label.
+Finalized graph data is the generated planning source of truth: these helpers do
+not infer readiness from tags or other entry metadata, and return no work-queue
+item when no matching graph node is present. Use the queryable helpers for the
+same node selection as `lake exe vbp query`; use the block-only helpers when a
+consumer explicitly needs rendered block entries and should exclude
+source-backed bodyless external-markup nodes. Entry-level helpers
 `Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
 the same source filtering and search predicates used by the `lake exe vbp query`
 interface.
@@ -308,10 +308,8 @@ def primaryNodeTitle?
 
 def workQueueNextSteps
     (manifest : Informal.PreviewManifest.File) : Array (String × String) :=
-  manifest.workQueueEntries.filterMap fun entry => do
-    let node ← manifest.actionableGraphNode? entry.label
-    let nextStep ← node.actionableStage?
-    pure (entry.authoredLabel, nextStep)
+  manifest.workQueueItems.map fun item =>
+    (item.entry.authoredLabel, item.nextStep)
 ```
 
 Generator-side Lean callers can configure source-backed external-source cache

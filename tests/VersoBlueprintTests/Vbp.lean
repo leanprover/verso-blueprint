@@ -385,7 +385,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 #guard_msgs in
 #eval
   show Bool from
-    sampleManifest.graphs.isEmpty && sampleManifest.workQueueEntries.isEmpty
+    sampleManifest.graphs.isEmpty && sampleManifest.workQueueItems.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -407,10 +407,17 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
           sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
           sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
           sampleMetadataManifest.metadataEntries.map (·.authoredLabel) ==
-            #["zeta_statement", "alpha_statement"] &&
-          sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
-            #["zeta_statement", "proof_statement"]
+            #["zeta_statement", "alpha_statement"]
     | _, _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let items := sampleMetadataManifest.workQueueItems
+    items.map (fun item => (item.entry.authoredLabel, item.nextStep)) ==
+        #[("zeta_statement", "statement"), ("proof_statement", "proof")] &&
+      items.all fun item => item.graphNode.actionableStage? == some item.nextStep
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
