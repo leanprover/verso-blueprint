@@ -10,9 +10,8 @@ or release notes.
 
 - [`../ROADMAP.md`](../ROADMAP.md) owns the narrative roadmap for
   repository-local workstreams.
-- [`../UPSTREAM_BACKLOG.md`](../UPSTREAM_BACKLOG.md) owns the short index of
-  upstream asks that should eventually move into `verso`, Lake, Lean, or a
-  related upstream package.
+- This file owns the short, maturity-grouped index of upstream asks that should
+  eventually move into `verso`, Lake, Lean, or a related upstream package.
 - [`cards/`](./cards/) owns actionable card details: status, evidence,
   workaround, and the local code or docs that can be removed after the work
   lands.
@@ -77,5 +76,4 @@ work.
 ## Migration Status
 
 The upstream backlog has been migrated to `UPC-*` cards. New actionable upstream
-asks should be cards linked from
-[`../UPSTREAM_BACKLOG.md`](../UPSTREAM_BACKLOG.md).
+asks should be cards linked from the appropriate maturity section above.

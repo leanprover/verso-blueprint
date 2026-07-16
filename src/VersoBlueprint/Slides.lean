@@ -35,7 +35,7 @@ open Verso Doc Elab
 
 /--
 Local upstream workaround pending the Verso Slides `Block.ofHtml` constructor
-tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream `slidesMain`
+tracked in `doc/roadmap/README.md`: keep this close to upstream `slidesMain`
 so the copied asset/write loop can disappear.
 -/
 private def slidesMainWithBlueprintRenderer
