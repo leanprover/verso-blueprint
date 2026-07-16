@@ -126,8 +126,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 
 - `blueprint-manifest.json` contains semantic entries keyed by preview key,
   generated-page hrefs, graph records, labels, dependency data, Lean-code
-  associations, group data, ownership, tags, priority, effort, status metadata,
-  and display metadata.
+  associations, a shared group catalog, ownership, tags, priority, effort,
+  status metadata, and display metadata.
 - `blueprint-html-cache.json` contains rendered body fragments keyed by
   preview keys for entries that have generated preview bodies. Some semantic
   entries, such as source-backed external markup generated with
@@ -187,8 +187,9 @@ sourced Blueprint nodes that share the same rendered Lean preview.
 
 Generated browser APIs expose the same split. Data-only clients should use
 `api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
-`loadSourceDocument`, `loadSourceDocuments`, and `resolveSourceMetadata` do not
-import DOM rendering code. Render-capable clients should use `api/preview.mjs`
+`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
+`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
+should use `api/preview.mjs`
 when they also need `resolvePreview`, `renderNode`, canonical node loading, or
 hydration. Both entrypoints reuse the cached manifest load; resolving source
 metadata does not fetch a second JSON file.
@@ -343,8 +344,15 @@ Manifest entries serialize several label-like fields with distinct roles:
   should prefer it when presenting or round-tripping labels that contain
   punctuation.
 
-Relation entries in `uses`, `usedBy`, and `group.entries` carry their own
-`previewKey` field. That field is either a non-empty key that resolves through
+Group membership is normalized: a block entry's optional `parent` names one
+record in the manifest's top-level `groups` array. Each group stores its
+traversal-ordered statement members once. Browser clients can join these records
+with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
+clients can use `PreviewManifest.File.groupForEntry?` when they need the current
+entry filtered out of the member list.
+
+Relation entries in `uses`, `usedBy`, and top-level `groups[*].entries` carry
+their own `previewKey` field. That field is either a non-empty key that resolves through
 both the manifest and rendered-fragment cache, or `null` when the related node
 has no manifest/cache-backed preview in the generated artifact set. Fresh
 generated data does not use an empty string as a no-preview sentinel.
@@ -1105,6 +1113,7 @@ reference.
 | `api.loadManifest(options)` / `api.loadHtmlCache(options)` | Load the generated `Map` values keyed by preview key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key, options)` / `api.loadHtmlCacheEntry(key, options)` | Read one generated entry by key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
+| `api.loadGroups(options)` / `api.loadGroup(label, options)` | Read the shared group catalog or one group by its label. Manifest entries join to this catalog through `entry.parent`. |
 | `api.loadSourceDocuments(options)` / `api.loadSourceDocument(id, options)` | Read declared source-document metadata from the manifest, either as the full list or by source-document id. |
 | `api.dataApiModuleUrl()` | Resolve the generated ESM data API module URL for dynamic imports from custom clients. |
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |

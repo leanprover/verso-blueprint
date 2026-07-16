@@ -449,9 +449,23 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       await loadBlueprintManifestForApi(options);
       return blueprintManifestStoreForApi.decodedFile || {
         previews: new Map(),
+        groups: [],
+        groupsByLabel: new Map(),
         sourceDocuments: [],
         sourceDocumentsById: new Map()
       };
+    }
+
+    async function loadBlueprintGroupsForApi(options) {
+      const file = await loadBlueprintManifestFileForApi(options);
+      return file.groups;
+    }
+
+    async function loadBlueprintGroupForApi(label, options) {
+      const groupLabel = typeof label === "string" ? label.trim() : "";
+      if (!groupLabel) return null;
+      const file = await loadBlueprintManifestFileForApi(options);
+      return file.groupsByLabel.get(groupLabel) || null;
     }
 
     async function loadBlueprintSourceDocumentsForApi(options) {
@@ -586,6 +600,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       fetchStoreData: fetchBlueprintStoreDataForApi,
       loadStore: loadBlueprintStoreForApi,
       loadManifest: loadBlueprintManifestForApi,
+      loadGroups: loadBlueprintGroupsForApi,
+      loadGroup: loadBlueprintGroupForApi,
       loadSourceDocuments: loadBlueprintSourceDocumentsForApi,
       loadSourceDocument: loadBlueprintSourceDocumentForApi,
       loadHtmlCache: loadBlueprintHtmlCacheForApi,
@@ -647,6 +663,34 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     });
   }
 
+  export function decodeBlueprintGroups(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Blueprint manifest must be an object with a groups array");
+    }
+    const groups = data.groups;
+    if (!Array.isArray(groups)) {
+      throw new Error("Blueprint manifest is missing groups array");
+    }
+    const groupsByLabel = new Map();
+    groups.forEach(function (group, index) {
+      if (!group || typeof group !== "object" || Array.isArray(group)) {
+        throw new Error("Blueprint manifest group " + index + " must be an object");
+      }
+      const label = typeof group.label === "string" ? group.label.trim() : "";
+      if (!label) {
+        throw new Error("Blueprint manifest group " + index + " is missing label");
+      }
+      if (!Array.isArray(group.entries)) {
+        throw new Error("Blueprint manifest group " + label + " is missing entries array");
+      }
+      if (groupsByLabel.has(label)) {
+        throw new Error("Blueprint manifest contains duplicate group " + label);
+      }
+      groupsByLabel.set(label, group);
+    });
+    return { groups: groups, groupsByLabel: groupsByLabel };
+  }
+
   export function decodeBlueprintSourceDocuments(data) {
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Blueprint manifest must be an object with a sourceDocuments array");
@@ -680,9 +724,12 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
 
   export function decodeBlueprintManifestFile(data, previews) {
     const previewMap = previews instanceof Map ? previews : decodeBlueprintManifest(data);
+    const groupData = decodeBlueprintGroups(data);
     const sourceData = decodeBlueprintSourceDocuments(data);
     return {
       previews: previewMap,
+      groups: groupData.groups,
+      groupsByLabel: groupData.groupsByLabel,
       sourceDocuments: sourceData.sourceDocuments,
       sourceDocumentsById: sourceData.sourceDocumentsById
     };
@@ -728,6 +775,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     createBlueprintDataApi,
     decodeBlueprintKeyedEntries,
     decodeBlueprintManifest,
+    decodeBlueprintGroups,
     decodeBlueprintSourceDocuments,
     decodeBlueprintManifestFile,
     decodeBlueprintHtmlCache,

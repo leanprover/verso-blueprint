@@ -126,9 +126,10 @@ private def renderRelatedPanelExtra?
 
 private def renderGroupExtra?
     (cfg : RelationPanelsConfig)
-    (entry : Entry) :
+    (entry : Entry)
+    (group? : Option GroupRelation) :
     Option Informal.HeaderExtra :=
-  match entry.group with
+  match group? with
   | none => none
   | some group =>
     renderRelatedPanelExtra?
@@ -185,10 +186,11 @@ private def renderUsedByExtra?
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
     (entry : Entry)
-    (blockData : Informal.BlockData) :
+    (blockData : Informal.BlockData)
+    (group? : Option GroupRelation) :
     Informal.HeaderExtras :=
   {
-    group? := renderGroupExtra? cfg entry
+    group? := renderGroupExtra? cfg entry group?
     uses? := renderUsesExtra? cfg entry
     code? := renderCodeExtra? entry blockData
     usedBy? := renderUsedByExtra? cfg entry
@@ -224,6 +226,7 @@ def renderWithRenderedContent
     (cfg : RenderConfig)
     (entry : Entry)
     (content : RenderedContent)
+    (group? : Option GroupRelation := none)
     (opts : RenderOptions := {}) :
     Html :=
     let blockData := entry.blockData
@@ -240,7 +243,7 @@ def renderWithRenderedContent
         (statementCaption? := some title.caption)
         (proofCaption? := some entry.title)
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
-        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData)
+        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group?)
         (sourceRefs := entry.sources)
       content := #[content.body]
       companionPanels := #[codePanel]

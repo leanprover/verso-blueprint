@@ -443,11 +443,17 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     let json := toJson sampleManifest
     match
       jsonNatField? json Informal.PreviewManifest.manifestInternalSchemaVersionField,
-      jsonArrayField? json "previews" with
-    | some version, some previews =>
+      jsonArrayField? json "previews",
+      jsonArrayField? json "groups" with
+    | some version, some previews, some groups =>
         version == Informal.PreviewManifest.manifestInternalSchemaVersion &&
-          previews.foldl (fun ok entry => ok && (jsonField? entry "sourceLocation").isSome) true
-    | _, _ => false
+          previews.foldl
+            (fun ok entry =>
+              ok && (jsonField? entry "sourceLocation").isSome &&
+                (jsonField? entry "group").isNone)
+            true &&
+          groups == sampleManifest.groups.map toJson
+    | _, _, _ => false
 
 /-- info: true -/
 #guard_msgs in

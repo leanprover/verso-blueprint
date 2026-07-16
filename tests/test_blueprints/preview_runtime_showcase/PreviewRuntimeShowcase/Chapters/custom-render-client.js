@@ -113,7 +113,7 @@
     appendFact(facts, "Kind", entry.kind);
     appendFact(facts, "Facet", entry.facet);
     appendFact(facts, "Label", entry.label);
-    appendFact(facts, "Group", entry.group ? entry.group.title : "");
+    appendFact(facts, "Group", entry.parentTitle || "");
     appendFact(facts, "Statement uses", Array.isArray(entry.statementUses) ? entry.statementUses.length : 0);
     appendFact(facts, "Proof uses", Array.isArray(entry.proofUses) ? entry.proofUses.length : 0);
     appendFact(facts, "Used by", Array.isArray(entry.usedBy) ? entry.usedBy.length : 0);

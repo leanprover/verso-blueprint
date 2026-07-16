@@ -737,6 +737,7 @@ class TestPreviewRuntimeRegressions:
                                         sourceLocation: unavailableSourceLocation
                                     }
                                 ],
+                                groups: [],
                                 graphs: [
                                     {
                                         schemaVersion: 1,
@@ -1212,6 +1213,7 @@ class TestPreviewRuntimeRegressions:
                                         title: "Missing source location"
                                     }
                                 ],
+                                groups: [],
                                 graphs: []
                             });
                         }
@@ -1597,6 +1599,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    groups: [],
                     graphs: []
                 };
                 const data = createPreviewData({
@@ -1807,6 +1810,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    groups: [],
                     graphs: []
                 };
                 const preview = createPreview({
@@ -2057,6 +2061,7 @@ class TestPreviewRuntimeRegressions:
                             sources: []
                         }
                     ],
+                    groups: [],
                     graphs: []
                 };
                 const htmlCachePayload = { entries: [] };
