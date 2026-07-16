@@ -42,6 +42,14 @@ This uses the checked-in Lake manifest and writes the HTML site under
 `lake exe vbp build --serve`. After that, follow the template README to rename
 `ProjectTemplate` to your project name and replace the starter chapters.
 
+After building, query the generated planning data through `vbp` rather than
+reading generated JSON files directly:
+
+```bash
+lake exe vbp query work-queue
+lake exe vbp query metadata
+```
+
 ### See real examples
 
 For larger Blueprints in use, see [Reference Blueprints](#reference-blueprints).
@@ -294,7 +302,8 @@ contribute automatically to the reported progress state.
 
 ### Metadata export
 
-Blueprint can dump structured metadata for other tools, including the semantic
+For common label, dependency, planning, and metadata queries, use
+`lake exe vbp query`. Lower-level tools can also dump the complete semantic
 manifest, its schema, and the rendered-fragment cache
 (`blueprint-html-cache.json`) used by preview consumers. The cache includes the
 hover payloads needed by cached Lean fragments. These are command-line flags

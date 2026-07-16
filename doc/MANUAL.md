@@ -867,8 +867,8 @@ For routine project work, read the summary from top to bottom:
 
 1. Start with **Current blockers**. Missing external declarations and incomplete
    Lean declarations usually explain why apparently small tasks are not ready.
-2. Use **Ready next** for work that can start now and already unlocks downstream
-   entries.
+2. Use **Actionable priorities** for work that can start now and already
+   unlocks downstream entries.
 3. Check **Quick wins** when you want small high-priority tasks.
 4. Use **Dependency insights** and **Structure and coverage** when planning a
    larger batch of work or reviewing the shape of a Blueprint.
@@ -879,6 +879,9 @@ Some summary sections use deliberately practical project-management terms:
 
 - **Actionable** entries are not locally formalized yet, and their statement or
   proof status says there is work that can start now.
+- **Actionable priorities** are the actionable entries that also unlock
+  downstream work. The broader **Ready now** count, quick wins, and owner/tag
+  rollups still include actionable leaf entries with no dependents.
 - **Quick wins** are actionable entries marked with high priority and small
   effort metadata.
 - **Direct uses** count immediate statement or proof dependency edges into an

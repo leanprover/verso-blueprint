@@ -44,7 +44,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
             (Option.some "Local code and prerequisite closure are both complete.")}}
         {{summaryCard
             "Actionable priorities"
-            (toString data.topPriorities.length)
+            (toString data.actionablePriorities.length)
             (Option.some "Entries ready now and already unlocking downstream work.")}}
         {{summaryOptionalWarnCard
             showBlockers
@@ -66,9 +66,9 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
           {{<p class="bp_summary_empty">"No blueprint entries were registered in the current document."</p>}}
         else .empty}}
       {{summaryOptionalCappedDetailsList
-          (!rows.topPriorityRows.isEmpty)
-          s!"Ready next ({data.topPriorities.length})"
-          rows.topPriorityRows
+          (!rows.actionablePriorityRows.isEmpty)
+          s!"Actionable priorities ({data.actionablePriorities.length})"
+          rows.actionablePriorityRows
           "priorities"
           "bp_summary_subsection"
           true}}
@@ -307,7 +307,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
   let showNoDependents := !rows.noDependentRows.isEmpty
   let showProofDebtHotspots := !rows.proofDebtHotspotRows.isEmpty
   let showStructureCards :=
-    data.coverageSplit.informalOnly > 0 ||
+    data.informalOnlyEntries > 0 ||
     data.coverageSplit.readyToFormalize > 0 ||
     data.coverageSplit.formalizedWithoutAncestors > 0 ||
     data.coverageSplit.fullyClosed > 0 ||
@@ -319,9 +319,9 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
     summarySection "Structure and coverage" {{
         <div class="bp_summary_grid">
           {{summaryOptionalCard
-              (data.coverageSplit.informalOnly > 0)
+              (data.informalOnlyEntries > 0)
               "Informal-only"
-              (toString data.coverageSplit.informalOnly)
+              (toString data.informalOnlyEntries)
               (Option.some "Statements with no associated Lean code yet.")}}
           {{summaryOptionalCard
               (data.coverageSplit.readyToFormalize > 0)

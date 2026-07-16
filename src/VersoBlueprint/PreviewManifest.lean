@@ -1507,11 +1507,28 @@ def File.tagValues (file : File) : Array String :=
       entry.tags.foldl pushUniqueString tags
   tags.qsort (· < ·)
 
-/-- Queryable statement entries carrying work-queue metadata. -/
-def File.workQueueEntries (file : File) : Array Entry :=
+/-- Queryable statement entries carrying owner, tag, priority, or effort metadata. -/
+def File.metadataEntries (file : File) : Array Entry :=
   file.queryableStatementEntries.filter fun entry =>
     entry.ownerDisplayName.isSome || entry.priority.isSome ||
       entry.effort.isSome || !entry.tags.isEmpty
+
+/-- First finalized graph node showing an unblocked next step for `label`. -/
+def File.actionableGraphNode? (file : File) (label : Name) : Option Informal.Graph.NodeData :=
+  file.graphs.findSome? fun graph =>
+    graph.nodes.find? fun node =>
+      node.label == label && node.actionableStage?.isSome
+
+/--
+Queryable statement entries whose next formalization stage is unblocked.
+
+Finalized graph nodes are the generated planning source of truth. This query
+does not infer readiness from entry metadata; a manifest without matching graph
+nodes therefore has an empty work queue.
+-/
+def File.workQueueEntries (file : File) : Array Entry :=
+  file.queryableStatementEntries.filter fun entry =>
+    (file.actionableGraphNode? entry.label).isSome
 
 private def containsSearchText (text value : String) : Bool :=
   value.toLower.contains text

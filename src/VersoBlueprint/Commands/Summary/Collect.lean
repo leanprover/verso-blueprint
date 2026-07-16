@@ -78,20 +78,6 @@ partial def downstreamUseCount (reverseMap : NameMap (Array Name))
       let next := (reverseMap.getD label #[]).toList
       downstreamUseCount reverseMap (next ++ rest) (visited.insert label) (count + 1)
 
-private def actionableStage? (node : Data.Node)
-    (statementStatus : Informal.Graph.StatementStatus) (proofStatus : Informal.Graph.ProofStatus) : Option String :=
-  if node.kind.isTheoremLike then
-    if proofStatus == .ready || proofStatus == .incomplete then
-      some "proof"
-    else if statementStatus == .ready then
-      some "statement"
-    else
-      none
-  else if statementStatus == .ready then
-    some "statement"
-  else
-    none
-
 private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags) : EntryStatusCounts :=
   {
     completed := acc.completed + (if flags.completed then 1 else 0)
@@ -272,13 +258,13 @@ private def metadataEntryItem (state : Environment.State) (label : Name) (node :
     leanObjects := nodeLeanObjects node
   }
 
-private def priorityItem? (state : Environment.State) (external : Informal.Graph.ExternalCodeStatus)
+private def mkActionableItem? (state : Environment.State) (external : Informal.Graph.ExternalCodeStatus)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
     (label : Name) (node : Data.Node) : Option PriorityItem :=
   let statementStatus := Informal.Graph.statementStatus external state label node
   let proofStatus := Informal.Graph.proofStatus external state label node
   let localFormalized := Informal.Graph.nodeLocalFormalized external node
-  match actionableStage? node statementStatus proofStatus with
+  match Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus with
   | Option.none => Option.none
   | Option.some stage =>
     if localFormalized then
@@ -286,33 +272,27 @@ private def priorityItem? (state : Environment.State) (external : Informal.Graph
     else
       let usage := usageMap.getD label {}
       let downstreamUses := downstreamUseCount reverseMap (reverseMap.getD label #[]).toList
-      if downstreamUses == 0 then
-        Option.none
-      else
-        Option.some {
-          label
-          kind := toString node.kind
-          stage
-          priority := node.priority
-          ownerDisplayName := ownerDisplayName state node
-          effort := node.effort
-          prUrl := node.prUrl
-          tags := node.tags.toList
-          statementStatus := Informal.Graph.StatementStatus.toText statementStatus
-          proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""
-          directUses := usage.directUses
-          downstreamUses
-          leanObjects := nodeLeanObjects node
-        }
+      Option.some {
+        label
+        kind := toString node.kind
+        stage
+        priority := node.priority
+        ownerDisplayName := ownerDisplayName state node
+        effort := node.effort
+        prUrl := node.prUrl
+        tags := node.tags.toList
+        statementStatus := Informal.Graph.StatementStatus.toText statementStatus
+        proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""
+        directUses := usage.directUses
+        downstreamUses
+        leanObjects := nodeLeanObjects node
+      }
 
 private def metadataIsQuickWin (priority effort : Option String) : Bool :=
   priority == some "high" && effort == some "small"
 
 private def priorityItemIsQuickWin (item : PriorityItem) : Bool :=
   metadataIsQuickWin item.priority item.effort
-
-private def nodeIsQuickWin (node : Data.Node) (actionable : Bool) : Bool :=
-  actionable && metadataIsQuickWin node.priority node.effort
 
 private def addParentTheoremLikeItem (groups : NameMap (List IndexItem)) (parent : Name) (item : IndexItem) :
     NameMap (List IndexItem) :=
@@ -345,9 +325,9 @@ private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildCont
 private def SummaryBuildContext.downstreamUses (ctx : SummaryBuildContext) (label : Name) : Nat :=
   downstreamUseCount ctx.reverseMap (ctx.reverseMap.getD label #[]).toList
 
-private def SummaryBuildContext.priorityEntry? (ctx : SummaryBuildContext)
+private def SummaryBuildContext.actionableItem? (ctx : SummaryBuildContext)
     (label : Name) (node : Data.Node) : Option PriorityItem :=
-  priorityItem? ctx.state ctx.external ctx.usageMap ctx.reverseMap label node
+  mkActionableItem? ctx.state ctx.external ctx.usageMap ctx.reverseMap label node
 
 private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (children : Array Name) :
     Array (Name × Data.Node) :=
@@ -502,9 +482,9 @@ private def collectTheoremLikeByParent (ctx : SummaryBuildContext) : List Parent
       let header := ctx.groupHeaders.getD parent parent.toString
       { parent, header, entries := items.reverse } :: acc
 
-private def collectPriorityItems (ctx : SummaryBuildContext) : List PriorityItem :=
+private def collectActionableItems (ctx : SummaryBuildContext) : List PriorityItem :=
   let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
-    match ctx.priorityEntry? label node with
+    match ctx.actionableItem? label node with
     | none => acc
     | some item => acc.push item
   (sortPriorityItems items).toList
@@ -547,7 +527,7 @@ private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
   let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
   let readyNow :=
     !Informal.Graph.nodeLocalFormalized ctx.external node &&
-      (actionableStage? node statementStatus proofStatus).isSome
+      (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome
   let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
   let incompleteLeanNow :=
     Informal.Graph.nodeHasAssociatedCode node &&
@@ -573,7 +553,7 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
         counts.addEntry ctx child node
       let nextPriority? :=
         let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
-          match ctx.priorityEntry? child node with
+          match ctx.actionableItem? child node with
           | none => acc
           | some item => acc.push item
         let sorted := sortPriorityItems candidates
@@ -597,18 +577,14 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
 
 private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
   ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
-    let hasStatement := node.statement.isSome
-    let hasCode := Informal.Graph.nodeHasAssociatedCode node
     let statusFlags := entryStatusFlags ctx.state ctx.external node
     let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
     let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
-    if hasStatement && !hasCode then
-      { acc with informalOnly := acc.informalOnly + 1 }
-    else if statusFlags.completed then
+    if statusFlags.completed then
       { acc with fullyClosed := acc.fullyClosed + 1 }
     else if statusFlags.completedDepsNo then
       { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
-    else if (actionableStage? node statementStatus proofStatus).isSome then
+    else if (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome then
       { acc with readyToFormalize := acc.readyToFormalize + 1 }
     else
       { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }
@@ -688,8 +664,9 @@ private def collectOwnerRollups (ctx : SummaryBuildContext) : List OwnerRollupIt
     match node.owner with
     | none => acc
     | some owner =>
-      let actionable := (ctx.priorityEntry? label node).isSome
-      let quickWin := nodeIsQuickWin node actionable
+      let actionableItem? := ctx.actionableItem? label node
+      let actionable := actionableItem?.isSome
+      let quickWin := actionableItem?.map priorityItemIsQuickWin |>.getD false
       let linkedPr := node.prUrl.isSome
       let displayName := (ownerDisplayName ctx.state node).getD owner.toString
       let cur := acc.getD owner { owner, displayName }
@@ -704,8 +681,9 @@ private def collectOwnerRollups (ctx : SummaryBuildContext) : List OwnerRollupIt
 
 private def collectTagRollups (ctx : SummaryBuildContext) : List TagRollupItem :=
   let rollups := ctx.entries.foldl (init := ({} : Std.HashMap String TagRollupItem)) fun acc (label, node) =>
-    let actionable := (ctx.priorityEntry? label node).isSome
-    let quickWin := nodeIsQuickWin node actionable
+    let actionableItem? := ctx.actionableItem? label node
+    let actionable := actionableItem?.isSome
+    let quickWin := actionableItem?.map priorityItemIsQuickWin |>.getD false
     let linkedPr := node.prUrl.isSome
     node.tags.foldl (init := acc) fun acc tag =>
       let cur := acc.getD tag { tag }
@@ -728,13 +706,14 @@ def buildSummary : CoreM Summary := do
   let state := informalExt.getState env
   let ctx := mkSummaryBuildContext state
   let summary := collectSummaryOverview ctx
-  let topPriorities := collectPriorityItems ctx
+  let actionableItems := collectActionableItems ctx
+  let actionablePriorities := actionableItems.filter (·.downstreamUses > 0)
   let metadataAudit := collectMetadataAudit ctx
   return {
     summary with
       showDebugDiagnostics := showDebugDiagnostics
       theoremLikeByParent := collectTheoremLikeByParent ctx
-      topPriorities := topPriorities
+      actionablePriorities := actionablePriorities
       mostUsed := collectUsageItems ctx
       groupHealth := collectGroupHealth ctx
       coverageSplit := collectCoverageSplit ctx
@@ -744,7 +723,7 @@ def buildSummary : CoreM Summary := do
       noDependents := collectIndexItems ctx fun label _ =>
         (ctx.usageMap.getD label {}).directUses == 0
       proofDebtHotspots := collectProofDebtHotspots ctx
-      quickWins := topPriorities.filter priorityItemIsQuickWin
+      quickWins := actionableItems.filter priorityItemIsQuickWin
       ownerRollups := collectOwnerRollups ctx
       tagRollups := collectTagRollups ctx
       linkedPrs := metadataAudit.sortedLinkedPrs

@@ -19,10 +19,11 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
     pure (
       hasSubstr out ">Overview</summary>" &&
       hasSubstr out "Dependency insights" &&
+      hasSummaryCardValue out "Ready now" "16" &&
       hasSummaryCardValue out "Actionable priorities" "12" &&
       hasSummaryCardValue out "Statement-used entries" "12" &&
       hasSummaryCardValue out "Proof-used entries" "2" &&
-      hasSubstr out "Ready next (12)" &&
+      hasSubstr out "Actionable priorities (12)" &&
       hasSubstr out "Show all 2 more priorities" &&
       hasSubstr out "Most used in statements (12)" &&
       hasSubstr out "Show all 2 more statement-used entries" &&
@@ -31,7 +32,7 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "Group health (1)" &&
       hasSubstr out "By parent groups (1)" &&
       hasSubstr out "Metadata" &&
-      hasSubstr out "Quick wins (1)" &&
+      hasSubstr out "Quick wins (2)" &&
       hasSubstr out "Owner rollups (2)" &&
       hasSubstr out "Tag rollups (" &&
       hasSubstr out "Linked PRs (2)" &&
@@ -46,16 +47,20 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "Bob Example" &&
       hasSubstr out "https://example.com/pr/12" &&
       hasSubstr out "quick-win" &&
+      hasSubstr out "leaf-quick-win" &&
+      hasSubstr out "def:triage.leaf" &&
+      hasSubstr out "downstream unlocks: 0" &&
+      hasSummaryMetricBadge out "quick wins" "2" &&
       hasSubstr out "Structure and coverage" &&
       hasSubstr out "Heaviest prerequisites (" &&
       hasSubstr out "No prerequisites (" &&
       hasSubstr out "No dependents (" &&
       !hasSubstr out "Proof debt hotspots (0)" &&
       hasSubstr out "Next:" &&
-      hasSummaryMetricBadge out "total" "14" &&
+      hasSummaryMetricBadge out "total" "15" &&
       hasSummaryMetricBadge out "closed" "0" &&
       hasSummaryMetricBadge out "local-only" "0" &&
-      hasSummaryMetricBadge out "ready" "13" &&
+      hasSummaryMetricBadge out "ready" "14" &&
       hasSummaryMetricBadge out "blocked" "1" &&
       hasSummaryMetricBadge out "incomplete Lean" "0" &&
       hasSummaryMetricBadge out "unlock score" "14" &&

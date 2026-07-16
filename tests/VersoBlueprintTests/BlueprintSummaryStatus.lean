@@ -35,6 +35,24 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
 /-- info: true -/
 #guard_msgs in
 #eval
+  let unknownKindNode : NodeData := {
+    label := `unknown_kind
+    title := "Unknown kind"
+    displayLabel := "Unknown kind"
+    statementStatus := .ready
+    visual := { fillcolor := "#ffffff" }
+  }
+  actionableStageForStatuses? .definition .ready .ready == some "statement" &&
+    actionableStageForStatuses? .definition .blocked .incomplete == none &&
+    actionableStageForStatuses? .theorem .ready .none == some "statement" &&
+    actionableStageForStatuses? .theorem .formalized .ready == some "proof" &&
+    actionableStageForStatuses? .theorem .blocked .incomplete == some "proof" &&
+    actionableStageForStatuses? .theorem .formalized .formalized == none &&
+    unknownKindNode.actionableStage?.isNone
+
+/-- info: true -/
+#guard_msgs in
+#eval
   let provedStatus := ProvedStatus.proved
   let stmtGap := ProvedStatus.ofRefCounts 1 0
   let proofGap := ProvedStatus.ofRefCounts 0 1

@@ -993,12 +993,21 @@ entries without knowing each traversal domain's raw JSON decoding details.
 
 Finished manifest files also own the reusable query helpers for downstream
 Lean clients. `Informal.PreviewManifest.File` provides block-entry filtering,
-primary label lookup, owner/tag/work-queue extraction, and entry search
+primary label lookup, owner/tag/metadata extraction, graph-status-backed work
+queues, and entry search
 predicates. `Informal.PreviewManifest.previewMetadataLosses` audits whether
 traversal-preview Lean metadata, including bodyless `(lean := ...)` payloads,
 survived manifest construction. Preview-data generation reports non-empty audit
 results as warnings, while `VersoBlueprint.Vbp` formats those results as JSON
 for stricter review workflows; neither should own a parallel selector model.
+
+The semantic environment remains the build-time source of truth for authored
+nodes, dependencies, and Lean status. Once generation finishes, finalized graph
+data is the public planning projection of that state. Work-queue consumers read
+those graph statuses directly and must not reinterpret tags such as
+`formalized` or infer readiness from the presence of owner, priority, or effort
+metadata. If a generated manifest contains no matching graph node, the node has
+no generated planning status and is omitted from the work queue.
 
 ### Traversal Storage Roles
 

@@ -96,7 +96,6 @@ structure GroupHealthItem where
 deriving Inhabited, FromJson, ToJson, Quote
 
 structure CoverageSplit where
-  informalOnly : Nat := 0
   readyToFormalize : Nat := 0
   formalizedWithoutAncestors : Nat := 0
   fullyClosed : Nat := 0
@@ -179,7 +178,7 @@ structure Summary where
   theoremLikeIndex : List IndexItem := []
   axiomIndex : List IndexItem := []
   theoremLikeByParent : List ParentTheoremGroup := []
-  topPriorities : List PriorityItem := []
+  actionablePriorities : List PriorityItem := []
   mostUsed : List UsageItem := []
   groupHealth : List GroupHealthItem := []
   coverageSplit : CoverageSplit := {}

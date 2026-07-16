@@ -38,6 +38,26 @@ inductive ProofStatus where
   | formalizedWithAncestors
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
+/--
+The formalization track whose next step is currently actionable.
+
+For theorem-like nodes, ready or incomplete proof work takes precedence over a
+ready statement. Other node kinds expose only a ready statement step.
+-/
+def actionableStageForStatuses? (kind : Data.NodeKind)
+    (statementStatus : StatementStatus) (proofStatus : ProofStatus) : Option String :=
+  if kind.isTheoremLike then
+    if proofStatus == .ready || proofStatus == .incomplete then
+      some "proof"
+    else if statementStatus == .ready then
+      some "statement"
+    else
+      none
+  else if statementStatus == .ready then
+    some "statement"
+  else
+    none
+
 structure WarningFlags where
   unknownRef : Bool := false
   leanOnlyNoStatement : Bool := false
@@ -252,6 +272,11 @@ structure NodeData where
   warnings : WarningFlags := {}
   visual : NodeVisual
 deriving Inhabited, Repr, ToJson, FromJson, Quote
+
+/-- The next unblocked formalization stage represented by this finalized graph node. -/
+def NodeData.actionableStage? (node : NodeData) : Option String := do
+  let kind ← node.kind
+  actionableStageForStatuses? kind node.statementStatus node.proofStatus
 
 /--
 Stable graph data shared by Lean, generated manifests, and browser runtime code.
