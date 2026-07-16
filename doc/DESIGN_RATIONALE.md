@@ -366,7 +366,7 @@ which is deliberately narrower than the graft manifest/cache context: it only
 packages the live traversal state. Forward dependencies resolve through the
 canonical node index, while precomputed traversal indexes provide group members
 and reverse dependencies without rescanning every stored informal block for
-each rendered panel.
+each rendered panel, manifest entry, or same-document graft.
 
 ### Browser Rendering Path Inventory
 
@@ -1081,8 +1081,8 @@ the operational detail that is easier to read in prose.
 | `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into preview data. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
 | `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
-| `RelatedPanelUsedByCache` | internal index | informal label -> ordered reverse-dependency metadata keyed by source label | Compact reverse-dependency facts grouped by target label so each rendered used-by panel avoids a full node scan; canonical source-node data remains in `Nodes`. |
-| `RelatedPanelGroupMembersCache` | internal index | group label -> ordered statement labels | Group-member labels collected once by parent label so each rendered group panel avoids a full node scan; canonical member data remains in `Nodes`. |
+| `RelatedPanelUsedByCache` | internal index | informal label -> ordered reverse-dependency metadata keyed by source label | Compact reverse-dependency facts grouped by target label so used-by panels and manifest entries avoid a full node scan; canonical source-node data remains in `Nodes`. |
+| `RelatedPanelGroupMembersCache` | internal index | group label -> ordered statement labels | Group-member labels collected once by parent label so group panels and same-document grafts avoid a full node scan; canonical member data remains in `Nodes`. |
 
 The auxiliary indexes above are normalized out of `Nodes` for different
 reasons:
@@ -1098,8 +1098,8 @@ reasons:
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
-| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?` and used-by relation-panel rendering | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
-| `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelGroupMembersCache.data?` and group relation-panel rendering | Store ordered statement labels once per parent label. Resolve canonical member data through `Nodes` instead of copying full statement records into the group cache. |
+| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
+| `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelGroupMembersCache.data?`, group relation-panel rendering, and same-document graft construction | Store ordered statement labels once per parent label. Resolve canonical member data through `Nodes` instead of copying full statement records into the group cache. |
 
 In particular, the main Blueprint node index is now intentionally slimmer than
 the full `BlockData` payload used by block rendering. Code-specific
