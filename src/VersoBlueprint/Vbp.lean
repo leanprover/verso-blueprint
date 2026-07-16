@@ -37,6 +37,7 @@ def querySelectorLines : List String := [
   "owners",
   "tags",
   "work-queue",
+  "metadata",
   "search <text>",
   "code <decl>",
   "stats"
@@ -129,6 +130,16 @@ private def entrySummaryFields (entry : Entry) : List (String × Json) := [
 
 private def entrySummaryJson (entry : Entry) : Json :=
   Json.mkObj (entrySummaryFields entry)
+
+private def workQueueEntryJson (manifest : ManifestFile) (entry : Entry) : Json :=
+  match manifest.actionableGraphNode? entry.label with
+  | none => entrySummaryJson entry
+  | some node =>
+      Json.mkObj <| entrySummaryFields entry ++ [
+        ("nextStep", optionStringJson node.actionableStage?),
+        ("statementStatus", Json.str node.statementStatus.toText),
+        ("proofStatus", Json.str node.proofStatus.toText)
+      ]
 
 private def entryGroupJson (entry : Entry) : Json :=
   match entry.group with
@@ -259,7 +270,11 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok <| responseJson [("tags", stringArrayJson manifest.tagValues)]
   | ["work-queue"] =>
       .ok <| responseJson [
-        ("entries", Json.arr (manifest.workQueueEntries.map entrySummaryJson))
+        ("entries", Json.arr (manifest.workQueueEntries.map (workQueueEntryJson manifest)))
+      ]
+  | ["metadata"] =>
+      .ok <| responseJson [
+        ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
       ]
   | ["search", text] =>
       .ok <| responseJson [

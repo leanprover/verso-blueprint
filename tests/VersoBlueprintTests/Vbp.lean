@@ -224,6 +224,27 @@ private def sampleMetadataManifest : ManifestFile := {
       tags := #["beta"]
     }
   ]
+  graphs := #[{
+    key := "metadata-status"
+    nodes := #[
+      {
+        label := label "zeta_statement"
+        title := "Zeta"
+        displayLabel := "Zeta"
+        kind := some .definition
+        statementStatus := .ready
+        visual := { fillcolor := "#ffffff" }
+      },
+      {
+        label := label "alpha_statement"
+        title := "Alpha"
+        displayLabel := "Alpha"
+        kind := some .definition
+        statementStatus := .blocked
+        visual := { fillcolor := "#ffffff" }
+      }
+    ]
+  }]
 }
 
 private def jsonField? (json : Json) (field : String) : Option Json :=
@@ -346,6 +367,12 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 #guard_msgs in
 #eval
   show Bool from
+    sampleManifest.graphs.isEmpty && sampleManifest.workQueueEntries.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     match
       sampleExternalManifest.findPrimaryQueryableEntry? "external_bodyless",
       sampleManifest.findPrimaryQueryableEntry? "addition_assoc" with
@@ -361,8 +388,10 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
           blockEntry.requiresRenderedBody &&
           sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
           sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
+          sampleMetadataManifest.metadataEntries.map (·.authoredLabel) ==
+            #["zeta_statement", "alpha_statement"] &&
           sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
-            #["zeta_statement", "alpha_statement"]
+            #["zeta_statement"]
     | _, _ => false
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
@@ -413,7 +442,38 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
             jsonHasApiStability json &&
               jsonArrayContainsString selectors "selectors" &&
               jsonArrayContainsString selectors "all <label>" &&
+              jsonArrayContainsString selectors "work-queue" &&
+              jsonArrayContainsString selectors "metadata" &&
               jsonArrayContainsString selectors "search <text>"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleMetadataManifest ["work-queue"] with
+    | .ok json =>
+        match jsonArrayField? json "entries" with
+        | some entries =>
+            entries.size == 1 &&
+              jsonArrayHasStringField entries "label" "zeta_statement" &&
+              jsonArrayHasStringField entries "nextStep" "statement" &&
+              jsonArrayHasStringField entries "statementStatus" "ready to formalize"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleMetadataManifest ["metadata"] with
+    | .ok json =>
+        match jsonArrayField? json "entries" with
+        | some entries =>
+            entries.size == 2 &&
+              jsonArrayHasStringField entries "label" "zeta_statement" &&
+              jsonArrayHasStringField entries "label" "alpha_statement"
         | none => false
     | .error _ => false
 

@@ -26,6 +26,7 @@ group <label>
 owners
 tags
 work-queue
+metadata
 search <text>
 code <decl>
 stats
@@ -84,7 +85,11 @@ All query commands print compact JSON for agent consumption. The JSON shape is f
 - `used-by <label>`: reverse dependencies for one label.
 - `group <label>`: group metadata and sibling entries for one label, when present.
 - `owners` and `tags`: distinct values from statement-level block entries.
-- `work-queue`: statement-level entries with owner, tags, priority, or effort metadata.
+- `work-queue`: statement-level entries with a graph-status-backed unblocked
+  next step; each row includes `nextStep`, `statementStatus`, and `proofStatus`.
+  Graph data is the generated planning source of truth, so no graph status means
+  no work-queue row.
+- `metadata`: statement-level entries with owner, tags, priority, or effort metadata.
 - `search <text>`: statement-level entries whose label, title, owner, tag, or parent title contains the text, case-insensitively.
 - `code <decl>`: statement-level entries with Lean preview keys containing the declaration text.
 - `stats`: counts of statement-level entries by kind, owner, and tag.

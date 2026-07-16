@@ -96,7 +96,6 @@ structure GroupHealthItem where
 deriving Inhabited, FromJson, ToJson, Quote
 
 structure CoverageSplit where
-  informalOnly : Nat := 0
   readyToFormalize : Nat := 0
   formalizedWithoutAncestors : Nat := 0
   fullyClosed : Nat := 0

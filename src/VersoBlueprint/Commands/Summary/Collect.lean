@@ -78,20 +78,6 @@ partial def downstreamUseCount (reverseMap : NameMap (Array Name))
       let next := (reverseMap.getD label #[]).toList
       downstreamUseCount reverseMap (next ++ rest) (visited.insert label) (count + 1)
 
-private def actionableStage? (node : Data.Node)
-    (statementStatus : Informal.Graph.StatementStatus) (proofStatus : Informal.Graph.ProofStatus) : Option String :=
-  if node.kind.isTheoremLike then
-    if proofStatus == .ready || proofStatus == .incomplete then
-      some "proof"
-    else if statementStatus == .ready then
-      some "statement"
-    else
-      none
-  else if statementStatus == .ready then
-    some "statement"
-  else
-    none
-
 private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags) : EntryStatusCounts :=
   {
     completed := acc.completed + (if flags.completed then 1 else 0)
@@ -278,7 +264,7 @@ private def priorityItem? (state : Environment.State) (external : Informal.Graph
   let statementStatus := Informal.Graph.statementStatus external state label node
   let proofStatus := Informal.Graph.proofStatus external state label node
   let localFormalized := Informal.Graph.nodeLocalFormalized external node
-  match actionableStage? node statementStatus proofStatus with
+  match Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus with
   | Option.none => Option.none
   | Option.some stage =>
     if localFormalized then
@@ -547,7 +533,7 @@ private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
   let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
   let readyNow :=
     !Informal.Graph.nodeLocalFormalized ctx.external node &&
-      (actionableStage? node statementStatus proofStatus).isSome
+      (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome
   let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
   let incompleteLeanNow :=
     Informal.Graph.nodeHasAssociatedCode node &&
@@ -597,18 +583,14 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
 
 private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
   ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
-    let hasStatement := node.statement.isSome
-    let hasCode := Informal.Graph.nodeHasAssociatedCode node
     let statusFlags := entryStatusFlags ctx.state ctx.external node
     let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
     let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
-    if hasStatement && !hasCode then
-      { acc with informalOnly := acc.informalOnly + 1 }
-    else if statusFlags.completed then
+    if statusFlags.completed then
       { acc with fullyClosed := acc.fullyClosed + 1 }
     else if statusFlags.completedDepsNo then
       { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
-    else if (actionableStage? node statementStatus proofStatus).isSome then
+    else if (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome then
       { acc with readyToFormalize := acc.readyToFormalize + 1 }
     else
       { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }

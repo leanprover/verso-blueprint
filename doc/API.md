@@ -282,10 +282,15 @@ methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `findPrimaryQueryableEntry?`, `blockStatementEntries`,
 `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`, `sourceDocument?`,
 `entriesWithSource`, `entriesForSourceDocument`, `ownerValues`, `tagValues`,
-and `workQueueEntries`. Use the queryable helpers for the same node selection
-as `lake exe vbp query`; use the block-only helpers when a consumer explicitly
-needs rendered block entries and should exclude source-backed bodyless
-external-markup nodes. Entry-level helpers
+`metadataEntries`, and `workQueueEntries`. `metadataEntries` selects nodes with
+owner, tag, priority, or effort metadata. `workQueueEntries` selects nodes whose
+finalized graph status exposes an unblocked statement or proof step. Finalized
+graph data is the generated planning source of truth: the helper does not infer
+readiness from tags or other entry metadata, and returns an empty queue when no
+matching graph nodes are present. Use the queryable helpers for the same node
+selection as `lake exe vbp query`; use the block-only helpers when a consumer
+explicitly needs rendered block entries and should exclude source-backed
+bodyless external-markup nodes. Entry-level helpers
 `Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
 the same source filtering and search predicates used by the `lake exe vbp query`
 interface.

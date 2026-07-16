@@ -19,10 +19,11 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
     pure (
       hasSubstr out ">Overview</summary>" &&
       hasSubstr out "Dependency insights" &&
+      hasSummaryCardValue out "Ready now" "15" &&
       hasSummaryCardValue out "Actionable priorities" "12" &&
       hasSummaryCardValue out "Statement-used entries" "12" &&
       hasSummaryCardValue out "Proof-used entries" "2" &&
-      hasSubstr out "Ready next (12)" &&
+      hasSubstr out "Actionable priorities (12)" &&
       hasSubstr out "Show all 2 more priorities" &&
       hasSubstr out "Most used in statements (12)" &&
       hasSubstr out "Show all 2 more statement-used entries" &&
