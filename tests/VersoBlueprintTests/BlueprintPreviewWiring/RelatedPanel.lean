@@ -26,21 +26,16 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
   label := Lean.Name.mkSimple "missing.preview"
 }
 
-private def cachedRelationArraySize?
-    (state : Verso.Genre.Manual.TraverseState) (domainName label : Lean.Name) : Option Nat := do
-  let obj ← state.getDomainObject? domainName label.toString
-  match obj.data with
-  | .arr entries => some entries.size
-  | _ => none
-
 private def cachedStatement
-    (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[]) :
+    (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[])
+    (parent : Option Informal.Data.Parent := none) :
     Informal.StoredBlockData :=
   {
     kind := .statement .definition
     label
     count
     statementUses
+    parent
   }
 
 /-- info: true -/
@@ -77,20 +72,34 @@ private def cachedStatement
     let target := Lean.Name.mkSimple "cache.target"
     let source := Lean.Name.mkSimple "cache.source"
     let empty := Lean.Name.mkSimple "cache.empty"
+    let group := Lean.Name.mkSimple "cache.group"
     let targetData := cachedStatement target 0 #[{ label := target }]
-    let sourceData := cachedStatement source 1 #[{ label := target }]
+    let sourceData := cachedStatement source 1
+      #[{ label := target, origin := .automatic, intent := .auxiliary }] (some group)
     let emptyData := cachedStatement empty 2
     let state : Verso.Genre.Manual.TraverseState := .initialize {}
     let state := Informal.TraversalIndex.Nodes.saveData state target (Lean.toJson targetData)
     let state := Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceData)
     let state := Informal.TraversalIndex.Nodes.saveData state empty (Lean.toJson emptyData)
     let state := Informal.RelatedPanel.patchRelationCaches state
-    cachedRelationArraySize? state
-        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName target == some 1 &&
-      cachedRelationArraySize? state
-        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName source == some 0 &&
-      cachedRelationArraySize? state
-        Informal.TraversalIndex.RelatedPanelUsedByCache.domainName empty == some 0
+    let targetEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target
+    let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source
+    let emptyEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state empty
+    let groupMembers := Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state group
+    match targetEntries with
+    | some #[entry] =>
+        let rawEntry := Lean.toJson entry |>.compress
+        match entry.origins, entry.intents with
+        | #[.automatic], #[.auxiliary] =>
+            entry.sourceLabel == source &&
+              entry.inStatement && !entry.inProof &&
+              !hasSubstr rawEntry "\"count\"" &&
+              !hasSubstr rawEntry "\"statementUses\"" &&
+              sourceEntries.map Array.isEmpty == some true &&
+              emptyEntries.map Array.isEmpty == some true &&
+              groupMembers == some #[source]
+        | _, _ => false
+    | _ => false
 
 /-- info: true -/
 #guard_msgs in
