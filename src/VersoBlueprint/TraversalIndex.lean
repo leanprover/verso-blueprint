@@ -546,15 +546,31 @@ end CitationUsages
 
 namespace RelatedPanelUsedByCache
 
+/-- Compact reverse-dependency metadata; canonical source-node data remains in `Nodes`. -/
+structure Entry where
+  sourceLabel : Data.Label
+  inStatement : Bool := false
+  inProof : Bool := false
+  origins : Array Data.UseOrigin := #[]
+  intents : Array Data.UseIntent := #[]
+deriving FromJson, ToJson
+
 def spec : StoreSpec := {
   name := `_versoBlueprintRelationUsedByCache
   kind := .internalIndex
   key := "informal label"
-  value := "precomputed reverse-dependency relation-panel entries"
+  value := "precomputed reverse-dependency metadata keyed by source label"
   summary := "Traversal-local render cache for Blueprint relation-panel reverse dependencies."
 }
 
 def domainName : Name := spec.name
+
+def data? (state : TraverseState) (label : Data.Label) : Option (Array Entry) :=
+  objectData? state domainName label.toString
+
+def saveData (state : TraverseState) (label : Data.Label) (entries : Array Entry) :
+    TraverseState :=
+  saveObjectData state domainName label.toString (toJson entries)
 
 end RelatedPanelUsedByCache
 
@@ -564,11 +580,18 @@ def spec : StoreSpec := {
   name := `_versoBlueprintRelationGroupMembersCache
   kind := .internalIndex
   key := "group label"
-  value := "precomputed group-member relation-panel entries"
+  value := "ordered statement-member labels"
   summary := "Traversal-local render cache for Blueprint relation-panel group membership."
 }
 
 def domainName : Name := spec.name
+
+def data? (state : TraverseState) (label : Data.Label) : Option (Array Data.Label) :=
+  objectData? state domainName label.toString
+
+def saveData (state : TraverseState) (label : Data.Label) (members : Array Data.Label) :
+    TraverseState :=
+  saveObjectData state domainName label.toString (toJson members)
 
 end RelatedPanelGroupMembersCache
 

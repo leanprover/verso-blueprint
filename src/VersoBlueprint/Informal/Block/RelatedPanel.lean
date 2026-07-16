@@ -7,7 +7,6 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Group
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.TraversalIndex
@@ -216,7 +215,27 @@ private structure UsedByEntry where
   inProof : Bool := false
   origins : Array Data.UseOrigin := #[]
   intents : Array Data.UseIntent := #[]
-deriving FromJson, ToJson
+
+private def UsedByEntry.toCacheEntry (entry : UsedByEntry) :
+    Informal.TraversalIndex.RelatedPanelUsedByCache.Entry := {
+  sourceLabel := entry.source.label
+  inStatement := entry.inStatement
+  inProof := entry.inProof
+  origins := entry.origins
+  intents := entry.intents
+}
+
+private def UsedByEntry.ofCacheEntry?
+    (ctx : RelationContext)
+    (entry : Informal.TraversalIndex.RelatedPanelUsedByCache.Entry) : Option UsedByEntry := do
+  let source ← storedBlockByLabel? ctx entry.sourceLabel
+  return {
+    source
+    inStatement := entry.inStatement
+    inProof := entry.inProof
+    origins := entry.origins
+    intents := entry.intents
+  }
 
 private structure UsesEntry where
   label : Data.Label
@@ -257,16 +276,6 @@ private def addUsedByEntry
   else
     acc.push <| mergeUsedByEntry { source } useRef isProof
 
-private def cachedDomainData? [FromJson α]
-    (state : TraverseState) (domainName : Lean.Name) (label : Data.Label) : Option α := do
-  let obj ← state.getDomainObject? domainName label.toString
-  (fromJson? (α := α) obj.data).toOption
-
-private def saveCachedDomainData [ToJson α]
-    (state : TraverseState) (domainName : Lean.Name) (label : Data.Label) (data : α) :
-    TraverseState :=
-  state.saveDomainObjectData domainName label.toString (toJson data)
-
 private def addUsedByCacheEntry
     (cache : Data.LabelMap (Array UsedByEntry)) (source : BlockData)
     (useRef : Data.UseRef) (isProof : Bool) : Data.LabelMap (Array UsedByEntry) :=
@@ -294,13 +303,13 @@ private def buildUsedByCache (blocks : Array BlockData) :
     cache.insert label (sortUsedByEntries entries)
 
 private def buildGroupMembersCache (blocks : Array BlockData) :
-    Data.LabelMap (Array BlockData) :=
+    Data.LabelMap (Array Data.Label) :=
   blocks.foldl
-      (init := (Std.TreeMap.empty : Data.LabelMap (Array BlockData))) fun cache block =>
+      (init := (Std.TreeMap.empty : Data.LabelMap (Array Data.Label))) fun cache block =>
     match block.kind, block.parent with
     | .statement _, some parent =>
         let members := cache.find? parent |>.getD #[]
-        cache.insert parent (members.push block)
+        cache.insert parent (members.push block.label)
     | _, _ => cache
 
 /--
@@ -316,15 +325,15 @@ def patchRelationCaches (state : TraverseState) : TraverseState :=
   let groupMembersCache := buildGroupMembersCache blocks
   let state :=
     usedByCache.foldl (init := state) fun state label entries =>
-      saveCachedDomainData state Informal.TraversalIndex.RelatedPanelUsedByCache.domainName label entries
+      Informal.TraversalIndex.RelatedPanelUsedByCache.saveData state label
+        (entries.map fun entry => entry.toCacheEntry)
   groupMembersCache.foldl (init := state) fun state label entries =>
-    saveCachedDomainData state Informal.TraversalIndex.RelatedPanelGroupMembersCache.domainName label entries
+    Informal.TraversalIndex.RelatedPanelGroupMembersCache.saveData state label entries
 
 private def collectUsedByEntries
     (ctx : RelationContext) (target : Data.Label) : Array UsedByEntry :=
-  match cachedDomainData? (α := Array UsedByEntry) ctx.state
-      Informal.TraversalIndex.RelatedPanelUsedByCache.domainName target with
-  | some entries => entries
+  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? ctx.state target with
+  | some entries => entries.filterMap (UsedByEntry.ofCacheEntry? ctx)
   | none =>
       sortUsedByEntries <| collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
         if source.label == target then
@@ -384,9 +393,9 @@ private def collectUsesEntries
 private def collectGroupEntries
     (ctx : RelationContext) (target : BlockData) (group : GroupRenderInfo) :
     Array BlockData :=
-  match cachedDomainData? (α := Array BlockData) ctx.state
-      Informal.TraversalIndex.RelatedPanelGroupMembersCache.domainName group.label with
-  | some entries => entries.filter (fun source => source.label != target.label)
+  match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? ctx.state group.label with
+  | some labels => labels.filterMap fun label =>
+      if label == target.label then none else storedBlockByLabel? ctx label
   | none =>
       collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
         if source.label == target.label then
