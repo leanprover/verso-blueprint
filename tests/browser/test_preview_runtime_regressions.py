@@ -1235,6 +1235,56 @@ class TestPreviewRuntimeRegressions:
         assert result["manifestSize"] == 0
         assert "missing sourceLocation" in result["message"]
 
+    def test_public_data_api_rejects_invalid_group_catalogs(
+        self, server: str, page: Page
+    ):
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                async function loadStatus(payload) {
+                    const data = createPreviewData({
+                        fetchJson(url) {
+                            if (url.endsWith("blueprint-manifest.json")) {
+                                return Promise.resolve(payload);
+                            }
+                            throw new Error("Unexpected custom loader URL: " + url);
+                        }
+                    });
+                    const groups = await data.loadGroups();
+                    return {
+                        state: data.readManifestStatus().state,
+                        message: data.readManifestStatus().lastError,
+                        groupCount: groups.length
+                    };
+                }
+                const duplicateGroup = {
+                    label: "duplicate_group",
+                    title: "Duplicate group",
+                    declared: true,
+                    entries: []
+                };
+                return {
+                    missing: await loadStatus({ previews: [], graphs: [] }),
+                    duplicate: await loadStatus({
+                        previews: [],
+                        groups: [duplicateGroup, duplicateGroup],
+                        graphs: []
+                    })
+                };
+                """
+            )
+        )
+
+        assert result["missing"]["state"] == "error"
+        assert result["missing"]["groupCount"] == 0
+        assert "missing groups array" in result["missing"]["message"]
+        assert result["duplicate"]["state"] == "error"
+        assert result["duplicate"]["groupCount"] == 0
+        assert "duplicate group duplicate_group" in result["duplicate"]["message"]
+
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
