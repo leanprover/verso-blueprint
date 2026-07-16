@@ -7,7 +7,7 @@ Origin: upstream-verso
 Last reviewed: 2026-07-16
 Owner: none
 Issue: none linked
-PR: https://github.com/ejgallego/verso/pull/new/verso-manual-extra-step-upstream-20260313
+PR: none linked
 Upstream timing: as soon as possible
 Removal target: `PreviewManifest.blueprintMain`
 Related cards: UPC-0001

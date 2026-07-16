@@ -15,6 +15,7 @@ or release notes.
 - [`cards/`](./cards/) owns actionable card details: status, evidence,
   workaround, and the local code or docs that can be removed after the work
   lands.
+- [`TEMPLATE.md`](./TEMPLATE.md) is the starting point for new cards.
 
 ## Card Prefixes
 
@@ -35,9 +36,10 @@ removal target.
 | Manual pipeline | [`UPC-0002 Manual HTML Extension Hooks`](./cards/UPC-0002-manual-html-extension-hooks/README.md) | Verso | high |
 | Manual layout | [`UPC-0003 Wide Content Page Mode`](./cards/UPC-0003-wide-content-page-mode/README.md) | Verso | medium |
 | Browser assets | [`UPC-0004 Structured Runtime Assets`](./cards/UPC-0004-structured-runtime-assets/README.md) | Verso | high |
-| Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-slides-quiet-hover-hooks/README.md) | verso-slides | medium |
+| Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-verso-slides-pipeline-hooks/README.md) | verso-slides | medium |
 | Highlighted code | [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md) | Verso | high |
-| Elaboration | [`UPC-0010 Package Asset Resolution During Elaboration`](./cards/UPC-0010-package-runtime-asset-resolution/README.md) | Lake | medium |
+| Highlighted code | [`UPC-0014 Portable Hover Fragment Transfer`](./cards/UPC-0014-portable-hover-fragment-transfer/README.md) | Verso | medium |
+| Elaboration | [`UPC-0010 Package Asset Resolution During Elaboration`](./cards/UPC-0010-package-asset-resolution-during-elaboration/README.md) | Lake | medium |
 | Directive parsing | [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md) | Verso | medium |
 
 ## Triage Candidates
@@ -72,8 +74,3 @@ work.
 8. Merge cards when the same upstream change removes the same workaround. Keep
    related cards split when either change can land and be removed independently,
    and record that boundary in both cards.
-
-## Migration Status
-
-The upstream backlog has been migrated to `UPC-*` cards. New actionable upstream
-asks should be cards linked from the appropriate maturity section above.

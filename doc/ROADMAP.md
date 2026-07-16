@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-07-08
+Last reviewed: 2026-07-16
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -127,13 +127,10 @@ Work:
    cache loads. A later Lean-side pass may pass preview availability into
    page-local relation and graph rendering earlier, but should preserve this
    runtime distinction.
-12. upstream follow-up: propose a Verso portable-hover-fragment helper for the
-   current external-declaration bridge. The target shape is a Verso-owned API
-   that renders highlighted snippets with local hover ids, carries the local
-   hover payloads as side data, registers those payloads into a destination
-   hover table, and rewrites local ids to final `data-verso-hover` ids. Once
-   available, replace Blueprint's `ExternalDeclRenderedHtml` marker/rewrite
-   machinery with that upstream helper.
+12. keep the external-declaration hover transfer behind its current local
+   bridge until the portable-fragment contract tracked by
+   [`UPC-0014`](./roadmap/cards/UPC-0014-portable-hover-fragment-transfer/README.md)
+   lands upstream; then remove Blueprint's local marker/rewrite machinery.
 
 ### Data Model and Status Semantics
 
