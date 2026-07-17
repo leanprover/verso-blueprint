@@ -215,7 +215,9 @@
  * One original source span attached to a Blueprint node.
  *
  * @typedef {Object} BlueprintSourceSpan
- * @property {string} page Source-local page identifier.
+ * @property {string} [page] Optional source-local page identifier.
+ * @property {string} [anchor] Stable source-native identifier, such as a TeX `\\label`.
+ * @property {string} [citation] Human-readable source-native reference, such as `Lemma 2.1(1)`.
  * @property {BlueprintSourceTextRange} [text] Text location for this span.
  * @property {BlueprintSourcePdfSpan} [pdf] PDF/page-image location for this span.
  */
