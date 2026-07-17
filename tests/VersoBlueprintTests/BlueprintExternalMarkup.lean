@@ -48,7 +48,7 @@ private def entryHasSourcePage
     (entry : Informal.PreviewManifest.Entry) (document page : String) : Bool :=
   entry.sources.any fun sourceRef =>
     sourceRef.document == document &&
-      sourceRef.spans.any (fun span => span.page == page)
+      sourceRef.spans.any (fun span => span.page == some page)
 
 private def htmlHasSourcePreview (html document pageText : String) : Bool :=
   hasSubstr html "bp_extra_slot_source" &&

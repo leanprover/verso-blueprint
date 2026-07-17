@@ -1513,6 +1513,8 @@ class TestPreviewRuntimeRegressions:
         assert entry["label"] == "custom_client_external_markdown_metadata"
         assert source_ref["document"] == "custom-client-paper"
         assert span["page"] == "42"
+        assert span["anchor"] == "thm:custom-client"
+        assert span["citation"] == "Theorem 4.2"
         assert span["text"]["path"] == "source/pages/page-42.md"
         assert span["text"]["startLine"] == 10
         assert span["text"]["endLine"] == 12
@@ -2168,7 +2170,7 @@ class TestPreviewRuntimeRegressions:
         ).first
         source_slot = statement.locator(".bp_extra_slot_source").first
         chip = source_slot.locator(".bp_source_ref_chip").first
-        expect(chip).to_have_text("source 1")
+        expect(chip).to_have_text("source: Theorem 4.2")
 
         uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
         source_box = require_box(chip)
@@ -2190,6 +2192,8 @@ class TestPreviewRuntimeRegressions:
         body = preview.locator(".bp_source_ref_preview_body").first
         expect(body).to_contain_text("custom-client-paper")
         expect(body).to_contain_text("custom-client-paper p. 42")
+        expect(body).to_contain_text("citation Theorem 4.2")
+        expect(body).to_contain_text("anchor thm:custom-client")
         expect(body).to_contain_text("source/pages/page-42.md:10-12")
         expect(body).to_contain_text("source/pages/page-42.pdf")
 
