@@ -67,18 +67,30 @@ def groupedGraphTitleMap : Lean.NameMap String :=
 def groupedOverview : Informal.Graph.Graph String :=
   Informal.Graph.mkParentOverviewGraph groupedGraphInput #[`group_alpha, `group_beta] groupedGraphTitleMap
 
-def groupedGraphData : Informal.Graph.GraphData :=
-  {
-    nodes := #[]
-    edges := Informal.Graph.edgesForGraph groupedGraphInput
-    groups := Informal.Graph.groupDataForGraph groupedGraphInput groupedGraphTitles
+def groupedNodeData (node : Informal.Graph.GraphNode String) : Informal.Graph.NodeData := {
+  label := node.label
+  title := node.displayLabel
+  displayLabel := node.displayLabel
+  parent := node.parent?
+  statementUses := node.deps.map fun label => { label }
+  proofUses := node.proofDeps.map fun label => { label }
+  visual := Informal.Graph.NodeVisual.ofGraphNode node
+}
+
+def groupedGraphModel : Informal.Graph.GraphModel := {
+    nodes := groupedGraphInput.map groupedNodeData
+    groupMetadata := groupedGraphTitles.map fun (label, title) => {
+      label
+      title
+      declared := true
+    }
   }
 
+def groupedGraphData : Informal.Graph.GraphData :=
+  groupedGraphModel.finish "grouped-test" { direction := .TB, pack := true }
+
 def groupedVariants : Array Informal.Graph.GraphRenderVariant :=
-  Informal.Graph.mkGraphVariants
-    groupedGraphInput
-    { direction := .TB, pack := true }
-    groupedGraphTitleMap
+  groupedGraphData.variants
 
 /-- info: true -/
 #guard_msgs in

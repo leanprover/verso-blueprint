@@ -1275,10 +1275,6 @@ private def PreviewArtifactIndex.previewKey?
     Option Informal.PreviewKey :=
   key?.filter fun key => index.resolves key.value
 
-private def PreviewArtifactIndex.previewKeyString?
-    (index : PreviewArtifactIndex) (key : String) : Option String :=
-  if index.resolves key then some key else none
-
 private def RelatedEntry.finalizePreviewReferences
     (index : PreviewArtifactIndex) (entry : RelatedEntry) : RelatedEntry :=
   { entry with previewKey := index.previewKey? entry.previewKey }
@@ -1296,28 +1292,10 @@ private def Entry.finalizePreviewReferences
       usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
   }
 
-private def graphNodeFinalizePreviewReferences
-    (index : PreviewArtifactIndex) (node : Informal.Graph.NodeData) :
-    Informal.Graph.NodeData :=
-  { node with previewKey := index.previewKey? node.previewKey }
-
-private def graphVariantFinalizePreviewReferences
-    (index : PreviewArtifactIndex) (variant : Informal.Graph.GraphRenderVariant) :
-    Informal.Graph.GraphRenderVariant :=
-  {
-    variant with
-      previewKeyByNodeId := variant.previewKeyByNodeId.filterMap fun (nodeId, key) =>
-        (index.previewKeyString? key).map fun key => (nodeId, key)
-  }
-
 private def graphFinalizePreviewReferences
     (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData) :
     Informal.Graph.GraphData :=
-  {
-    graph with
-      nodes := graph.nodes.map (graphNodeFinalizePreviewReferences index)
-      variants := graph.variants.map (graphVariantFinalizePreviewReferences index)
-  }
+  graph.filterPreviewReferences fun key => index.resolves key.value
 
 private def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
   let index := PreviewArtifactIndex.ofFiles file htmlCache

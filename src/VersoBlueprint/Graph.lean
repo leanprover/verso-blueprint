@@ -193,7 +193,7 @@ structure GraphRenderVariant where
   hoverOnNodeId : Array (String × String) := #[]
   /-- Node ids that open manifest/cache-backed previews; nodes without such previews are omitted. -/
   previewKeyByNodeId : Array (String × String) := #[]
-deriving Inhabited, Repr, ToJson, FromJson, Quote
+deriving Inhabited, Repr, BEq, ToJson, FromJson, Quote
 
 /-- Direction order used by the bundled graph controls. -/
 def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
@@ -234,14 +234,21 @@ inductive EdgeAxis where
   | proof
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
-/-- Public dependency edge data. Edges point from dependency source to dependent target. -/
+/-- Finalized public dependency edge data. Edges point from dependency source to dependent target. -/
 structure EdgeData where
   source : Name
   target : Name
   axes : Array EdgeAxis := #[]
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
-/-- Public group/parent metadata for graph consumers. -/
+/-- Group metadata carried by a semantic graph model before membership is derived. -/
+structure GroupMetadata where
+  label : Name
+  title : String
+  declared : Bool := false
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
+
+/-- Finalized public group metadata and its node-derived membership projection. -/
 structure GroupData where
   label : Name
   title : String
@@ -265,7 +272,9 @@ structure NodeData where
   href : Option String := none
   /-- Selected manifest/cache-backed preview key for this node, if available. -/
   previewKey : Option PreviewKey := none
+  /-- Authoritative statement-side dependency data for this graph node. -/
   statementUses : Array Data.UseRef := #[]
+  /-- Authoritative proof-side dependency data for this graph node. -/
   proofUses : Array Data.UseRef := #[]
   statementStatus : StatementStatus := .blocked
   proofStatus : ProofStatus := .none
@@ -278,13 +287,49 @@ def NodeData.actionableStage? (node : NodeData) : Option String := do
   let kind ← node.kind
   actionableStageForStatuses? kind node.statementStatus node.proofStatus
 
-/--
-Stable graph data shared by Lean, generated manifests, and browser runtime code.
+/-- Canonicalize duplicate dependency refs on each dependency axis. -/
+private def NodeData.normalizeDependencies (node : NodeData) : NodeData :=
+  {
+    node with
+      statementUses := Data.UseRef.mergeByLabel #[] node.statementUses
+      proofUses := Data.UseRef.mergeByLabel #[] node.proofUses
+  }
 
-`schemaVersion` is bumped only for incompatible public-shape changes.
+/--
+Semantic graph input used before traversal finishes.
+
+Topology exists only in `nodes`: dependencies live in `statementUses` and
+`proofUses`, and membership lives in `parent`. Group records carry metadata but
+no child projection. Select, filter, or merge this model, then cross the single
+`finish` materialization boundary to obtain immutable public `GraphData`.
+Traversal-aware callers use `GraphApi.finishData`, which enriches the model and
+then delegates to `finish`.
+-/
+structure GraphModel where
+  nodes : Array NodeData := #[]
+  groupMetadata : Array GroupMetadata := #[]
+deriving Inhabited, Repr, ToJson, FromJson, Quote
+
+private def graphDataSchemaVersion : Nat := 3
+
+/--
+Finished graph data shared by Lean, generated manifests, and browser clients.
+
+The private constructor makes this a materialized final value rather than a
+second mutable graph model. `edges`, group `children`, and topology-dependent
+variant data are built together exactly once from a `GraphModel`. Public callers
+can inspect them or convert back to `GraphModel`, but cannot update topology
+while retaining stale projections. Preview keys may subsequently be filtered
+against the emitted manifest/cache pair by `filterPreviewReferences`; that
+synchronized post-pass does not reopen topology or change DOT.
+
+`schemaVersion` is bumped for incompatible public JSON shapes or semantic
+contracts.
 -/
 structure GraphData where
-  schemaVersion : Nat := 2
+  private mk ::
+  schemaVersion : Nat := graphDataSchemaVersion
+  /-- Stable key identifying this graph block. -/
   key : String := "graph"
   nodes : Array NodeData := #[]
   edges : Array EdgeData := #[]
@@ -293,42 +338,52 @@ structure GraphData where
   Precomputed DOT render variants for the bundled browser graph renderer.
 
   Manifest clients should use these variants instead of re-deriving DOT from
-  graph topology in JavaScript. The semantic fields above remain the stable
-  data contract for dashboards and audits.
+  graph topology in JavaScript. The semantic fields above are the current data
+  interface for dashboards and audits. The private `GraphData` constructor ties
+  these variants to the same finalized topology. The first variant is `full`;
+  variant keys are unique, and select/hover mappings target keys in this array.
   -/
   variants : Array GraphRenderVariant := #[]
-deriving Inhabited, Repr, ToJson, FromJson, Quote
+deriving Repr, ToJson
 
 /-- Traversal-time graph cache payload, before href/title finalization. -/
 structure CachedGraphData where
-  data : GraphData := {}
-  options : GraphOptions := {}
+  model : GraphModel
+  options : GraphOptions
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-def NodeData.toGraphNode (node : NodeData) : GraphNode String := {
-  label := node.label
-  displayLabel? := some node.displayLabel
-  deps := node.statementUses.map (fun useRef => (useRef.label : Name))
-  proofDeps := node.proofUses.map (fun useRef => (useRef.label : Name))
-  parent? := node.parent
-  shape := node.visual.shape
-  style := node.visual.style
-  fillcolor := node.visual.fillcolor
-  color := node.visual.color
-  penwidth := node.visual.penwidth
-  fontcolor := node.visual.fontcolor
-  peripheries := node.visual.peripheries
-  gradientangle? := node.visual.gradientangle?
-  tooltip? := node.visual.tooltip?
-  ref? := node.href
+private def NodeData.toGraphNode (node : NodeData) : GraphNode String :=
+  {
+    label := node.label
+    displayLabel? := some node.displayLabel
+    deps := node.statementUses.map (fun useRef => (useRef.label : Name))
+    proofDeps := node.proofUses.map (fun useRef => (useRef.label : Name))
+    parent? := node.parent
+    shape := node.visual.shape
+    style := node.visual.style
+    fillcolor := node.visual.fillcolor
+    color := node.visual.color
+    penwidth := node.visual.penwidth
+    fontcolor := node.visual.fontcolor
+    peripheries := node.visual.peripheries
+    gradientangle? := node.visual.gradientangle?
+    tooltip? := node.visual.tooltip?
+    ref? := node.href
+  }
+
+/-- Build render topology exclusively from the authoritative node fields. -/
+private def GraphModel.toGraph (model : GraphModel) : Graph String :=
+  model.nodes.map NodeData.toGraphNode
+
+/-- Recover a semantic model when finalized graph nodes must be selected or merged again. -/
+def GraphData.toModel (data : GraphData) : GraphModel := {
+  nodes := data.nodes
+  groupMetadata := data.groups.map fun group => {
+    label := group.label
+    title := group.title
+    declared := group.declared
+  }
 }
-
-def GraphData.toGraph (data : GraphData) : Graph String :=
-  data.nodes.map NodeData.toGraphNode
-
-def GraphData.groupTitleMap (data : GraphData) : Lean.NameMap String :=
-  data.groups.foldl (init := ({} : Lean.NameMap String)) fun acc group =>
-    acc.insert group.label group.title
 
 structure LegendSwatch where
   background : String := "#ffffff"
@@ -894,7 +949,7 @@ private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   let axes := if isStatement then axes.push .statement else axes
   if isProof then axes.push .proof else axes
 
-def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
+private def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
   let stmtDeps := eraseDups node.deps
   let proofDeps := eraseDups node.proofDeps
   let deps := proofDeps.foldl (init := stmtDeps) fun deps dep =>
@@ -905,44 +960,146 @@ def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
     axes := edgeAxes (stmtDeps.contains dep) (proofDeps.contains dep)
   }
 
-def edgesForGraph (graph : Graph Ref) : Array EdgeData :=
+/--
+Project the graph's semantic edges, combining duplicate dependencies and
+dropping dependencies whose source endpoint is not present in the graph.
+-/
+private def edgesForGraph (graph : Graph Ref) : Array EdgeData :=
   let known : NameSet := graph.foldl (init := {}) fun acc node => acc.insert node.label
-  graph.foldl (init := #[]) fun edges node =>
-    edges ++ (edgesForNode node).filter (fun edge => known.contains edge.source)
+  let (_, edges) := graph.foldl
+    (init := (({} : Std.HashMap (Name × Name) Nat), (#[] : Array EdgeData)))
+    fun (edgeIndex, edges) node =>
+      (edgesForNode node).foldl (init := (edgeIndex, edges)) fun (edgeIndex, edges) edge =>
+        if !known.contains edge.source then
+          (edgeIndex, edges)
+        else
+          let endpoints := (edge.source, edge.target)
+          match edgeIndex.get? endpoints with
+          | none => (edgeIndex.insert endpoints edges.size, edges.push edge)
+          | some index =>
+            let current := edges[index]!
+            let merged := {
+              current with
+                axes := edgeAxes
+                  (current.axes.contains .statement || edge.axes.contains .statement)
+                  (current.axes.contains .proof || edge.axes.contains .proof)
+            }
+            (edgeIndex, edges.set! index merged)
+  edges
 
-def graphParentChildren (graph : Graph Ref) : Lean.NameMap (Array Name) :=
+private def graphParentChildren (graph : Graph Ref) : Lean.NameMap (Array Name) :=
   graph.foldl (init := ({} : Lean.NameMap (Array Name))) fun acc node =>
     match node.parent? with
     | none => acc
     | some parent =>
       let children := acc.getD parent #[]
-      acc.insert parent (children.push node.label)
+      if children.contains node.label then acc else acc.insert parent (children.push node.label)
 
-def graphNodeParents (graph : Graph Ref) : Lean.NameMap Name :=
+private def graphNodeParents (graph : Graph Ref) : Lean.NameMap Name :=
   graph.foldl (init := ({} : Lean.NameMap Name)) fun acc node =>
     match node.parent? with
     | none => acc
     | some parent => acc.insert node.label parent
 
-private def groupTitleMap (groupTitles : Array (Name × String)) : Lean.NameMap String :=
-  groupTitles.foldl (init := ({} : Lean.NameMap String)) fun acc (group, title) =>
-    acc.insert group title
-
-def groupTitle (groupTitles : Lean.NameMap String) (parent : Name) : String :=
+private def groupTitle (groupTitles : Lean.NameMap String) (parent : Name) : String :=
   let title := (groupTitles.getD parent parent.toString).trimAscii.toString
   if title.isEmpty then parent.toString else title
 
-def groupDataForGraph (graph : Graph Ref) (groupTitles : Array (Name × String) := #[]) :
+private def groupMetadataFromTitles (groupTitles : Array (Name × String)) : Array GroupMetadata :=
+  groupTitles.map fun (label, title) => {
+    label
+    title
+    declared := true
+  }
+
+private def normalizeGroupMetadata (group : GroupMetadata) : GroupMetadata :=
+  let title := group.title.trimAscii.toString
+  {
+    group with
+      title := if title.isEmpty then group.label.toString else title
+  }
+
+/--
+Merge duplicate group metadata records without consulting their derived child
+arrays. The first declared record wins; a later declared record replaces an
+earlier undeclared fallback.
+-/
+private def groupMetadataMap (groups : Array GroupMetadata) : Lean.NameMap GroupMetadata :=
+  groups.foldl (init := ({} : Lean.NameMap GroupMetadata)) fun acc incoming =>
+    let incoming := normalizeGroupMetadata incoming
+    match acc.get? incoming.label with
+    | none => acc.insert incoming.label incoming
+    | some current =>
+      let preferred := if !current.declared && incoming.declared then incoming else current
+      acc.insert incoming.label {
+        preferred with
+          declared := current.declared || incoming.declared
+      }
+
+private def canonicalNodes (nodes : Array NodeData) : Array NodeData :=
+  let (_, nodes) := nodes.foldl
+    (init := (({} : Lean.NameSet), (#[] : Array NodeData))) fun (seen, nodes) node =>
+      if seen.contains node.label then
+        (seen, nodes)
+      else
+        (seen.insert node.label, nodes.push node.normalizeDependencies)
+  nodes
+
+/--
+Canonicalize only the authoritative semantic model before caching or finishing.
+
+The first node for a label is retained, dependency refs are deduplicated, and
+group metadata is merged by label. No edge, child, or render projection exists
+at this stage.
+-/
+def GraphModel.canonicalize (model : GraphModel) : GraphModel := {
+  nodes := canonicalNodes model.nodes
+  groupMetadata := (groupMetadataMap model.groupMetadata).toArray.map (·.2)
+}
+
+/--
+Merge two semantic graph models, selecting the preferred model's complete node
+record whenever both models contain the same label.
+
+Dependencies and parent membership are deliberately not merged field by field:
+they are topology owned by the selected node. Group metadata is combined by
+label, preferring declared metadata over an undeclared fallback, and every
+derived projection is left to the later `finish` boundary.
+-/
+def GraphModel.mergePreferLeft (preferred fallback : GraphModel) : GraphModel :=
+  ({
+    nodes := preferred.nodes ++ fallback.nodes
+    groupMetadata := preferred.groupMetadata ++ fallback.groupMetadata
+  } : GraphModel).canonicalize
+
+private def GraphModel.groupTitleMap (model : GraphModel) : Lean.NameMap String :=
+  (groupMetadataMap model.groupMetadata).foldl (init := ({} : Lean.NameMap String))
+    fun acc label metadata => acc.insert label metadata.title
+
+/--
+Derive group membership from node parents while retaining group title and
+declaration metadata. Metadata for groups with no selected children is omitted.
+-/
+private def groupDataForGraphFromMetadata (graph : Graph Ref) (groups : Array GroupMetadata) :
     Array GroupData :=
-  let titleMap := groupTitleMap groupTitles
+  let metadata := groupMetadataMap groups
   graphParentChildren graph |>.toArray
-    |>.map (fun (parent, children) => {
-      label := parent
-      title := groupTitle titleMap parent
-      declared := titleMap.contains parent
-      children
-    })
-    |>.qsort (fun a b => a.title < b.title)
+    |>.map (fun (parent, children) =>
+      match metadata.get? parent with
+      | some group => {
+          label := group.label
+          title := group.title
+          declared := group.declared
+          children
+        }
+      | none => {
+          label := parent
+          title := parent.toString
+          declared := false
+          children
+        })
+    |>.qsort fun a b =>
+      a.title < b.title || (a.title == b.title && a.label.toString < b.label.toString)
 
 private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) : String :=
   match resolveTitle? label with
@@ -995,27 +1152,26 @@ def nodeDataWithExternal
       visual := NodeVisual.ofGraphNode graphNode
     }
 
-def buildDataWithExternal
+def buildModelWithExternal
     (state : Environment.State)
     (roots : Array Name)
     (external : ExternalCodeStatus)
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphData :=
+    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
   let graph := buildWithExternal state roots external resolveHref?
   {
     nodes := graph.map (nodeDataWithExternal external state resolveHref? resolveTitle?)
-    edges := edgesForGraph graph
-    groups := groupDataForGraph graph groupTitles
+    groupMetadata := groupMetadataFromTitles groupTitles
   }
 
-def buildData
+def buildModel
     (state : Environment.State)
     (roots : Array Name)
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphData :=
-  buildDataWithExternal state roots {} resolveHref? resolveTitle? groupTitles
+    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
+  buildModelWithExternal state roots {} resolveHref? resolveTitle? groupTitles
 
 def escapeDotString (s : String) : String :=
   let s := s.replace "\\" "\\\\"
@@ -1234,10 +1390,11 @@ def graphToDot (g : Graph String) (options : GraphOptions := {})
   graphToDotWith g options {} resolveGroupTitle
     (some fun href => some s!"URL=\"{href}\", target=\"_self\"")
 
-/-- Render finalized graph data to DOT using its href and group-title fields. -/
-def GraphData.toDotWith (data : GraphData) (options : GraphOptions := {})
+/-- Render a semantic graph model directly, for pre-traversal clients such as widgets. -/
+def GraphModel.toDotWith (model : GraphModel) (options : GraphOptions := {})
     (style : GraphDotStyle := {}) : String :=
-  graphToDotWith data.toGraph options style (fun group => data.groupTitleMap.get? group)
+  let model := model.canonicalize
+  graphToDotWith model.toGraph options style (fun group => model.groupTitleMap.get? group)
     (some fun href => some s!"URL=\"{href}\", target=\"_self\"")
 
 /-- Stable key for the synthetic group overview variant. -/
@@ -1450,7 +1607,7 @@ Graphs without multi-child groups produce just the full graph variant. Grouped
 graphs additionally produce a synthetic group overview and one focused subgraph
 per parent group.
 -/
-def mkGraphVariants (graph : Graph String) (options : GraphOptions)
+private def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
     (previewKeyForLabel : Name → Option PreviewKey := fun _ => none) :
     Array GraphRenderVariant :=
@@ -1510,12 +1667,91 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
       }
     #[fullVariant, groupVariant] ++ parentVariants
 
-/-- Build the bundled renderer's DOT variants from finalized public graph data. -/
-def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array GraphRenderVariant :=
-  let previewKeyForLabel label :=
-    match data.nodes.find? (fun node => node.label == label) with
-    | some node => node.previewKey
-    | none => none
-  mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
+/-- Finish a semantic model by materializing every public projection and render variant once. -/
+def GraphModel.finish (model : GraphModel) (key : String) (options : GraphOptions) : GraphData :=
+  let model := model.canonicalize
+  let graph := model.toGraph
+  let groups := groupDataForGraphFromMetadata graph model.groupMetadata
+  let groupTitles := groups.foldl (init := ({} : Lean.NameMap String)) fun acc group =>
+    acc.insert group.label group.title
+  let previewKeys := model.nodes.foldl (init := ({} : Lean.NameMap PreviewKey)) fun acc node =>
+    match node.previewKey with
+    | some key => acc.insert node.label key
+    | none => acc
+  {
+    schemaVersion := graphDataSchemaVersion
+    key
+    nodes := model.nodes
+    edges := edgesForGraph graph
+    groups
+    variants := mkGraphVariants graph options groupTitles previewKeys.get?
+  }
+
+/--
+Filter preview references without reopening finalized topology.
+
+This is the only supported post-finish update: unavailable node preview keys
+and their variant lookup entries are removed together, while topology and DOT
+remain unchanged. Preview keys cannot be rewritten after finalization.
+-/
+def GraphData.filterPreviewReferences
+    (data : GraphData)
+    (keep : PreviewKey → Bool) : GraphData :=
+  {
+    data with
+      nodes := data.nodes.map fun node => { node with previewKey := node.previewKey.filter keep }
+      variants := data.variants.map fun variant => {
+        variant with
+          previewKeyByNodeId := variant.previewKeyByNodeId.filterMap fun (nodeId, key) =>
+            (PreviewKey.ofString? key).filter keep |>.map fun key => (nodeId, toString key)
+      }
+  }
+
+private structure GraphDataJson where
+  schemaVersion : Nat
+  key : String
+  nodes : Array NodeData
+  edges : Array EdgeData
+  groups : Array GroupData
+  variants : Array GraphRenderVariant
+deriving FromJson
+
+/-- Decode only finalized graph records whose materialized projections agree. -/
+instance : FromJson GraphData where
+  fromJson? json := do
+    let decoded ← fromJson? (α := GraphDataJson) json
+    if decoded.schemaVersion != graphDataSchemaVersion then
+      throw s!"unsupported graph schema version {decoded.schemaVersion}; expected {graphDataSchemaVersion}"
+    let metadata : Array GroupMetadata := decoded.groups.map fun group => {
+      label := group.label
+      title := group.title
+      declared := group.declared
+    }
+    let model : GraphModel := { nodes := decoded.nodes, groupMetadata := metadata }
+    let canonical := model.canonicalize
+    if canonical.nodes.size != decoded.nodes.size then
+      throw "finalized graph contains duplicate node labels"
+    let dependenciesAreCanonical := decoded.nodes.all fun node =>
+      let normalized := node.normalizeDependencies
+      node.statementUses == normalized.statementUses && node.proofUses == normalized.proofUses
+    if !dependenciesAreCanonical then
+      throw "finalized graph contains duplicate dependency refs"
+    let some firstVariant := decoded.variants[0]?
+      | throw "finalized graph contains no render variants"
+    let expected := model.finish decoded.key firstVariant.options
+    if decoded.edges != expected.edges then
+      throw "finalized graph edges disagree with node dependencies"
+    if decoded.groups != expected.groups then
+      throw "finalized graph group children disagree with node parents"
+    if decoded.variants != expected.variants then
+      throw "finalized graph variants disagree with node topology or preview references"
+    pure {
+      schemaVersion := decoded.schemaVersion
+      key := decoded.key
+      nodes := decoded.nodes
+      edges := decoded.edges
+      groups := decoded.groups
+      variants := decoded.variants
+    }
 
 end Informal.Graph

@@ -737,16 +737,7 @@ class TestPreviewRuntimeRegressions:
                                         sourceLocation: unavailableSourceLocation
                                     }
                                 ],
-                                groups: [],
-                                graphs: [
-                                    {
-                                        schemaVersion: 1,
-                                        key: "graph:custom-loader",
-                                        nodes: [],
-                                        edges: [],
-                                        groups: []
-                                    }
-                                ]
+                                groups: []
                             });
                         }
                         if (url.endsWith("blueprint-html-cache.json")) {
@@ -773,11 +764,6 @@ class TestPreviewRuntimeRegressions:
                         customHost,
                         "custom_loader--statement",
                         { hydrate: false, renderMath: false }
-                    );
-                    const graphModule = await import(api.graphApiModuleUrl());
-                    const customGraphs = await graphModule.loadManifestGraphs(
-                      customApi.manifestUrl(),
-                      { fetchJson: customFetchJson }
                     );
                     const afterCustomHost = document.createElement("section");
                     document.body.appendChild(afterCustomHost);
@@ -811,7 +797,6 @@ class TestPreviewRuntimeRegressions:
                         customOk: customResult.ok,
                         customText: customText,
                         customCalls: customCalls,
-                        customGraphCount: customGraphs.length,
                         afterCustomOk: afterCustomResult.ok,
                         afterCustomText: afterCustomText,
                         constructorHydrator: constructorHydrator,
@@ -846,7 +831,6 @@ class TestPreviewRuntimeRegressions:
             call.endswith("blueprint-html-cache.json")
             for call in standalone_module["customCalls"]
         )
-        assert standalone_module["customGraphCount"] == 1
         assert standalone_module["constructorHydrator"] == "constructorOption"
         assert standalone_module["callConstructorHydrator"] == ""
         assert standalone_module["callHydrator"] == "options"

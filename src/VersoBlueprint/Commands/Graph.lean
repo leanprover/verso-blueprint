@@ -47,7 +47,7 @@ register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
 }
 
 structure GraphBlockData where
-  semanticGraphData : Informal.Graph.GraphData := {}
+  graphModel : Informal.Graph.GraphModel
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
@@ -87,7 +87,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
           (fun _ => "Malformed data in Block.graph.traverse") with
       | some graphData =>
         modify fun state =>
-          Informal.GraphApi.saveData state id graphData.semanticGraphData graphData.options
+          Informal.GraphApi.saveData state id graphData.graphModel graphData.options
       | Option.none =>
         pure ()
       return none
@@ -103,11 +103,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
         match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
             (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
         | some graphData => pure graphData
-        | Option.none => pure { semanticGraphData := {}, options := {} }
+        | Option.none => pure { graphModel := {}, options := {} }
       let s ← HtmlT.state
       let publicGraphData :=
-        Informal.GraphApi.finalDataForBlockWithOptions
-          s id graphData.semanticGraphData graphData.options
+        Informal.GraphApi.finishDataForBlock
+          s id graphData.graphModel graphData.options
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
@@ -332,14 +332,14 @@ block_extension Block.graph (graphData : GraphBlockData) where
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
 
-def buildAll : CoreM Informal.Graph.GraphData := do
+def buildAll : CoreM Informal.Graph.GraphModel := do
   reportImportedConflicts
   let env ← getEnv
   let state := informalExt.getState env
   let roots : Array Name := state.data.toArray.map (·.1)
   let groupTitles := state.groups.toArray
-  let semanticGraphData := Informal.Graph.buildData state roots (groupTitles := groupTitles)
-  return semanticGraphData
+  let graphModel := Informal.Graph.buildModel state roots (groupTitles := groupTitles)
+  return graphModel
 
 open Verso.ArgParse
 
@@ -470,10 +470,10 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let titleInlines ← `(inline | "Dependency Graph")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
-  let semanticGraphData ← buildAll
+  let graphModel ← buildAll
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    logInfo m!"Adding {semanticGraphData.nodes.size} graph nodes"
-  let graphData : GraphBlockData := { semanticGraphData, options, previewMode, previewPlacement }
+    logInfo m!"Adding {graphModel.nodes.size} graph nodes"
+  let graphData : GraphBlockData := { graphModel, options, previewMode, previewPlacement }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

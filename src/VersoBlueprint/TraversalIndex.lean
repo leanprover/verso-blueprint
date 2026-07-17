@@ -325,7 +325,7 @@ def spec : StoreSpec := {
   name := Resolve.graphDomainName
   kind := .runtimeCache
   key := "graph block key"
-  value := "semantic GraphData, render options, and graph block anchor ids"
+  value := "semantic GraphModel, render options, and graph block anchor ids"
   summary := "Traversal-cached Blueprint graph data finalized by GraphApi for manifest and browser consumers."
 }
 
