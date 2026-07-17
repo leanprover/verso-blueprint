@@ -253,12 +253,13 @@
 
 /**
  * Shared group relation metadata from the manifest's top-level group catalog.
+ * Group labels are unique, and each member label belongs to at most one group.
  *
  * @typedef {Object} BlueprintGroupRelation
  * @property {string} label Canonical group label.
  * @property {string} title Resolved display title for the group.
  * @property {boolean} declared Whether the group was explicitly declared.
- * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members in the group.
+ * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members that join to matching block or external-markup manifest entries.
  */
 
 /**
@@ -272,8 +273,8 @@
  * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
- * @property {string | null} parent Parent group label, used to join against the shared group catalog.
- * @property {string | null} parentTitle Resolved display title for the parent group.
+ * @property {string | null} parent Parent group label, used by block and external-markup entries to join against the shared group catalog.
+ * @property {string | null} parentTitle Resolved display title for the parent group; when `parent` is present, this agrees with the catalog title.
  * @property {BlueprintSourceLocationResult} sourceLocation Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
