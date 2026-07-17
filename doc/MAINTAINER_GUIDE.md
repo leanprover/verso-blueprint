@@ -231,16 +231,24 @@ checkout, writes `_out/.../reference-blueprints/local-blueprint/`, and runs
 `vbp check`. Each run replaces that generated output so removed pages cannot
 survive from an older composition. It temporarily overrides either an official
 Git dependency or a relative `verso-blueprint` path and restores the source
-checkout's lakefile and manifest afterwards. When the composed Lake graph
-contains Mathlib, the harness runs `lake exe cache get` before the build;
-composing a Blueprint must reuse Mathlib's cache rather than compiling Mathlib.
+checkout's lakefile and manifest afterwards. The nearest `lean-toolchain`
+inside the source checkout must select exactly the same Lean release as this
+`VersoBlueprint` checkout; `compose` reports a mismatch without rewriting
+either toolchain.
+
+When the composed Lake graph contains Mathlib, the harness requires a
+successful `lake exe cache get` before starting the build. This guarantees that
+cache retrieval succeeds at command level before composition. Mathlib treats
+individual remote-cache misses as warnings, however, so the harness cannot
+currently prohibit Lake from compiling an unavailable artifact afterwards.
 
 `compose` is intentionally independent of `tests/harness/projects.json`.
 Projects belong in that manifest only when they are maintained release
 validation or publication inputs.
 
-Pass `--verbose` to `generate` or `validate` when you want each Blueprint
-generator to print its own progress diagnostics during HTML emission.
+Pass `--verbose` to `compose`, `generate`, or `validate` when you want each
+Blueprint generator to print its own progress diagnostics during HTML
+emission.
 
 When editing an external reference repository, use an editable clone rather
 than the disposable validation clones:

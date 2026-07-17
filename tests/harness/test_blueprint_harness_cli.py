@@ -127,19 +127,19 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(
             [
                 "compose",
-                "/tmp/rsk",
+                "/tmp/external-blueprint",
                 "--project-root",
                 "blueprint",
                 "--id",
-                "rsk-local",
+                "local-blueprint",
                 "--output-root",
                 "/tmp/out",
                 "--verbose",
             ]
         )
-        self.assertEqual(args.source_checkout, "/tmp/rsk")
+        self.assertEqual(args.source_checkout, "/tmp/external-blueprint")
         self.assertEqual(args.project_root, "blueprint")
-        self.assertEqual(args.project_id, "rsk-local")
+        self.assertEqual(args.project_id, "local-blueprint")
         self.assertEqual(selected_output_root(args), "/tmp/out")
         self.assertTrue(args.verbose)
 

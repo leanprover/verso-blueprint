@@ -29,7 +29,7 @@ OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     re.MULTILINE,
 )
 RELATIVE_BLUEPRINT_REQUIRE_PATTERN = re.compile(
-    r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+"(?P<path>(?:(?:\.\.?)/)+verso-blueprint/?)"\s*$',
+    r'^(?P<indent>[ \t]*)require\s+VersoBlueprint\s+from\s+"(?P<path>(?:(?:\.\.?)/)+verso-blueprint/?)"[ \t]*$',
     re.MULTILINE,
 )
 MATHLIB_STANDARD_LINTER_OPTION_PATTERN = re.compile(
@@ -41,7 +41,7 @@ MATHLIB_STANDARD_LINTER_OPTION_PATTERN = re.compile(
 def _blueprint_lakefile_text(project_dir: Path) -> tuple[Path, str]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
-        raise SystemExit(f"[blueprint-harness] missing lakefile for cloned project: {lakefile}")
+        raise SystemExit(f"[blueprint-harness] missing lakefile for Blueprint project: {lakefile}")
     return lakefile, lakefile.read_text(encoding="utf-8")
 
 
@@ -61,7 +61,7 @@ def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str
     match = _official_blueprint_git_dependency_match(text)
     if match is None:
         raise SystemExit(
-            "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
+            "[blueprint-harness] expected the Blueprint project to declare `VersoBlueprint` in "
             "`lakefile.lean` from an approved `VersoBlueprint` Git source "
             f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}); cannot {action}."
         )
@@ -75,7 +75,7 @@ def _require_approved_local_blueprint_dependency(project_dir: Path) -> tuple[Pat
         match = RELATIVE_BLUEPRINT_REQUIRE_PATTERN.search(text)
     if match is None:
         raise SystemExit(
-            "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
+            "[blueprint-harness] expected the Blueprint project to declare `VersoBlueprint` in "
             "`lakefile.lean` from an approved `VersoBlueprint` Git source "
             f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}) or a relative `verso-blueprint` checkout; "
             "cannot inject the local path override automatically."

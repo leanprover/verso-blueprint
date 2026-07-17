@@ -26,7 +26,6 @@ class ComposedBlueprint:
     source_root: Path
     project_dir: Path
     output_dir: Path
-    site_dir: Path
 
 
 def _project_id(value: str) -> str:
@@ -67,7 +66,6 @@ def resolve_composed_blueprint(
         source_root=source_root,
         project_dir=project_dir,
         output_dir=output_dir,
-        site_dir=output_dir / "html-multi",
     )
 
 

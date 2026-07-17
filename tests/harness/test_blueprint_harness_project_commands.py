@@ -82,15 +82,15 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir = Path(tmp)
             lakefile = project_dir / "lakefile.lean"
             lakefile.write_text(
-                'require VersoBlueprint from "../../verso-blueprint"\n',
+                'import Lake\n\nrequire VersoBlueprint from "../../verso-blueprint"\n\npackage Demo\n',
                 encoding="utf-8",
             )
 
             rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
 
             self.assertEqual(
-                lakefile.read_text(encoding="utf-8").strip(),
-                f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"',
+                lakefile.read_text(encoding="utf-8"),
+                f'import Lake\n\nrequire VersoBlueprint from "{PACKAGE_ROOT.resolve()}"\n\npackage Demo\n',
             )
 
     def test_rewrite_local_blueprint_dependency_rejects_absolute_checkout(self) -> None:

@@ -103,8 +103,8 @@ script map, not a second command reference.
   Editable external Blueprint composition plus reference-blueprint generation,
   validation, and reference-checkout CLI.
 - `blueprint_harness_composition.py`
-  User-provided Blueprint composition, source-file preservation, toolchain
-  validation, and mandatory Mathlib-cache reuse.
+  User-provided Blueprint composition, Lake-configuration preservation,
+  toolchain validation, and mandatory Mathlib-cache retrieval.
 - `blueprint_test_blueprints.py`
   Local test-blueprint fixture catalog, generation, and validation CLI.
 - `blueprint_harness_cli.py`

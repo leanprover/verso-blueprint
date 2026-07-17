@@ -1,15 +1,38 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import scripts.blueprint_harness_composition as composition
 
 
 class BlueprintHarnessCompositionTests(unittest.TestCase):
+    def _make_composed_project(
+        self,
+        root: Path,
+    ) -> tuple[Path, composition.ComposedBlueprint, Path, Path, str, str]:
+        package_root = root / "verso-blueprint"
+        source_root = root / "source"
+        project_dir = source_root / "blueprint"
+        package_root.mkdir()
+        project_dir.mkdir(parents=True)
+        lakefile = project_dir / "lakefile.lean"
+        manifest = project_dir / "lake-manifest.json"
+        lakefile_text = 'require VersoBlueprint from "../../verso-blueprint"\n'
+        manifest_text = '{"packages": []}\n'
+        lakefile.write_text(lakefile_text, encoding="utf-8")
+        manifest.write_text(manifest_text, encoding="utf-8")
+        project = composition.ComposedBlueprint(
+            "demo",
+            source_root,
+            project_dir,
+            root / "out" / "demo",
+        )
+        return package_root, project, lakefile, manifest, lakefile_text, manifest_text
+
     def test_resolve_nested_composed_blueprint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source_root = Path(tmp) / "demo-source"
@@ -50,9 +73,29 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
             project_dir.mkdir(parents=True)
             (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
             (source_root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
-            project = composition.ComposedBlueprint("demo", source_root, project_dir, root / "out", root / "out/html-multi")
+            project = composition.ComposedBlueprint("demo", source_root, project_dir, root / "out")
 
             self.assertEqual(composition.validate_composed_toolchain(package_root, project), "v4.32.0")
+
+    def test_validate_toolchain_rejects_missing_and_mismatched_project_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / "verso-blueprint"
+            source_root = root / "source"
+            project_dir = source_root / "blueprint"
+            package_root.mkdir()
+            project_dir.mkdir(parents=True)
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
+            project_toolchain = source_root / "lean-toolchain"
+            project_toolchain.write_text("leanprover/lean4:v4.31.0\n", encoding="utf-8")
+            project = composition.ComposedBlueprint("demo", source_root, project_dir, root / "out")
+
+            with self.assertRaisesRegex(SystemExit, "toolchain mismatch"):
+                composition.validate_composed_toolchain(package_root, project)
+
+            project_toolchain.unlink()
+            with self.assertRaisesRegex(SystemExit, "no valid lean-toolchain"):
+                composition.validate_composed_toolchain(package_root, project)
 
     def test_manifest_uses_mathlib(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -98,60 +141,101 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
             self.assertEqual(existing.read_text(encoding="utf-8"), "before")
             self.assertFalse(generated.exists())
 
-    def test_compose_builds_and_checks_while_preserving_manifest(self) -> None:
+    def test_compose_orders_steps_and_preserves_lake_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package_root = root / "verso-blueprint"
-            source_root = root / "source"
-            project_dir = source_root / "blueprint"
-            package_root.mkdir()
-            project_dir.mkdir(parents=True)
-            lakefile = project_dir / "lakefile.lean"
-            manifest = project_dir / "lake-manifest.json"
-            lakefile.write_text('require VersoBlueprint from "../../verso-blueprint"\n', encoding="utf-8")
-            manifest.write_text('{"packages": []}\n', encoding="utf-8")
-            project = composition.ComposedBlueprint(
-                "demo",
-                source_root,
-                project_dir,
-                root / "out" / "demo",
-                root / "out" / "demo" / "html-multi",
+            package_root, project, lakefile, manifest, lakefile_text, manifest_text = (
+                self._make_composed_project(root)
             )
             project.output_dir.mkdir(parents=True)
             stale_output = project.output_dir / "stale.html"
             stale_output.write_text("old", encoding="utf-8")
             commands: list[list[str]] = []
+            events: list[str] = []
 
-            @contextmanager
-            def fake_override(*_args, **_kwargs):
-                yield lakefile
+            def fake_update(*_args, **_kwargs) -> None:
+                events.append("update")
+                manifest.write_text("changed", encoding="utf-8")
 
-            originals = {
-                "validate_composed_toolchain": composition.validate_composed_toolchain,
-                "rebuild_and_log_embedded_asset_owners": composition.rebuild_and_log_embedded_asset_owners,
-                "local_blueprint_dependency_override": composition.local_blueprint_dependency_override,
-                "run_project_lake_update": composition.run_project_lake_update,
-                "ensure_composed_mathlib_cache": composition.ensure_composed_mathlib_cache,
-                "ensure_and_log_embedded_asset_owner_outputs": composition.ensure_and_log_embedded_asset_owner_outputs,
-                "run_with_heartbeat": composition.run_with_heartbeat,
-            }
-            try:
-                composition.validate_composed_toolchain = lambda *_args, **_kwargs: "leanprover/lean4:v4.32.0"
-                composition.rebuild_and_log_embedded_asset_owners = lambda *_args, **_kwargs: []
-                composition.local_blueprint_dependency_override = fake_override
-                composition.run_project_lake_update = lambda *_args, **_kwargs: manifest.write_text("changed", encoding="utf-8")
-                composition.ensure_composed_mathlib_cache = lambda *_args, **_kwargs: False
-                composition.ensure_and_log_embedded_asset_owner_outputs = lambda *_args, **_kwargs: []
-                composition.run_with_heartbeat = lambda command, **_kwargs: commands.append(command)
+            def fake_cache(*_args, **_kwargs) -> bool:
+                events.append("cache")
+                return False
+
+            def fake_owner_outputs(*_args, **_kwargs) -> list[str]:
+                events.append("owner outputs")
+                return []
+
+            def fake_run(command: list[str], **_kwargs) -> None:
+                commands.append(command)
+                events.append("build" if "build" in command else "check")
+
+            with patch.multiple(
+                composition,
+                validate_composed_toolchain=lambda *_args, **_kwargs: "v4.32.0",
+                rebuild_and_log_embedded_asset_owners=lambda *_args, **_kwargs: [],
+                run_project_lake_update=fake_update,
+                ensure_composed_mathlib_cache=fake_cache,
+                ensure_and_log_embedded_asset_owner_outputs=fake_owner_outputs,
+                run_with_heartbeat=fake_run,
+            ):
                 composition.compose_blueprint(package_root, project)
-            finally:
-                for name, value in originals.items():
-                    setattr(composition, name, value)
 
-            self.assertEqual(manifest.read_text(encoding="utf-8"), '{"packages": []}\n')
+            self.assertEqual(lakefile.read_text(encoding="utf-8"), lakefile_text)
+            self.assertEqual(manifest.read_text(encoding="utf-8"), manifest_text)
             self.assertFalse(stale_output.exists())
-            self.assertIn([str(package_root / "scripts/lean-low-priority"), "lake", "exe", "vbp", "build", "--output", str(project.output_dir)], commands)
-            self.assertIn([str(package_root / "scripts/lean-low-priority"), "lake", "exe", "vbp", "check", "--site", str(project.output_dir)], commands)
+            self.assertEqual(events, ["update", "cache", "owner outputs", "build", "check"])
+            self.assertEqual(
+                commands,
+                [
+                    [
+                        str(package_root / "scripts/lean-low-priority"),
+                        "lake",
+                        "exe",
+                        "vbp",
+                        "build",
+                        "--output",
+                        str(project.output_dir),
+                    ],
+                    [
+                        str(package_root / "scripts/lean-low-priority"),
+                        "lake",
+                        "exe",
+                        "vbp",
+                        "check",
+                        "--site",
+                        str(project.output_dir),
+                    ],
+                ],
+            )
+
+    def test_compose_restores_lake_files_when_build_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root, project, lakefile, manifest, lakefile_text, manifest_text = (
+                self._make_composed_project(root)
+            )
+
+            def fake_update(*_args, **_kwargs) -> None:
+                manifest.write_text("changed", encoding="utf-8")
+
+            def fail_build(command: list[str], **_kwargs) -> None:
+                if "build" in command:
+                    raise RuntimeError("build failed")
+
+            with patch.multiple(
+                composition,
+                validate_composed_toolchain=lambda *_args, **_kwargs: "v4.32.0",
+                rebuild_and_log_embedded_asset_owners=lambda *_args, **_kwargs: [],
+                run_project_lake_update=fake_update,
+                ensure_composed_mathlib_cache=lambda *_args, **_kwargs: False,
+                ensure_and_log_embedded_asset_owner_outputs=lambda *_args, **_kwargs: [],
+                run_with_heartbeat=fail_build,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "build failed"):
+                    composition.compose_blueprint(package_root, project)
+
+            self.assertEqual(lakefile.read_text(encoding="utf-8"), lakefile_text)
+            self.assertEqual(manifest.read_text(encoding="utf-8"), manifest_text)
 
 
 if __name__ == "__main__":
