@@ -27,7 +27,8 @@ from scripts.blueprint_harness_cli import (
     add_serial_argument,
     selected_output_root,
 )
-from scripts.blueprint_harness_paths import detect_harness_layout, resolve_output_root
+from scripts.blueprint_harness_composition import compose_blueprint, resolve_composed_blueprint
+from scripts.blueprint_harness_paths import detect_harness_layout, resolve_cli_path, resolve_output_root
 from scripts.blueprint_harness_projects import (
     HarnessProject,
     HarnessReleaseTarget,
@@ -1110,7 +1111,48 @@ def command_reference_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_compose(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    require_safe_root_release(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="compose")
+    output_root = resolve_output_root(selected_output_root(args), Path(__file__))
+    project = resolve_composed_blueprint(
+        resolve_cli_path(args.source_checkout),
+        args.project_root,
+        output_root,
+        project_id=args.project_id,
+    )
+    compose_blueprint(layout.package_root, project, verbose=args.verbose)
+    print(f"[blueprint-reference-harness] composed source checkout: {project.source_root}")
+    print(f"[blueprint-reference-harness] composed project root: {project.project_dir}")
+    print(f"[blueprint-reference-harness] composed output: {project.output_dir}")
+    return 0
+
+
 def add_generation_commands(subparsers) -> None:
+    compose = subparsers.add_parser(
+        "compose",
+        help="Build an editable user-provided Blueprint against this Verso Blueprint checkout.",
+    )
+    compose.add_argument(
+        "source_checkout",
+        help="Path to the user-provided source checkout. The harness never registers it in the reference catalog.",
+    )
+    compose.add_argument(
+        "--project-root",
+        default=".",
+        help="Blueprint Lake project root relative to the source checkout. Defaults to the checkout root.",
+    )
+    compose.add_argument(
+        "--id",
+        dest="project_id",
+        default=None,
+        help="Output id. Defaults to the source checkout directory name.",
+    )
+    add_output_root_argument(compose)
+    add_generation_verbose_argument(compose)
+    add_allow_unsafe_root_release_argument(compose)
+    compose.set_defaults(func=command_compose)
+
     generate = subparsers.add_parser(
         "generate",
         help="Build the selected blueprint harness projects.",
@@ -1341,7 +1383,7 @@ def add_prune_command(subparsers) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m scripts.blueprint_reference_harness",
-        description="Reference blueprint generation, validation, and checkout lifecycle CLI.",
+        description="Blueprint composition plus reference generation, validation, and checkout lifecycle CLI.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_generation_commands(subparsers)

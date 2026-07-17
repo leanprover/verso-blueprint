@@ -36,8 +36,9 @@ modules are the canonical source for flags, path resolution, and orchestration:
 
 - `blueprint_harness` handles worktrees, branch/release checks, PR scaffolds,
   landing, toolchain bumps, and local coordination
-- `blueprint_reference_harness` handles reference-project generation,
-  validation, status, sync, editable checkouts, pin bumps, and pruning
+- `blueprint_reference_harness` composes editable user-provided Blueprints and
+  handles reference-project generation, validation, status, sync, editable
+  checkouts, pin bumps, and pruning
 - `blueprint_test_blueprints` handles local test-blueprint listing,
   generation, and validation
 
@@ -215,8 +216,41 @@ python3 -m scripts.blueprint_reference_harness generate --project noperthedron
 python3 -m scripts.blueprint_reference_harness validate --project project-template --run-lean-tests
 ```
 
-Pass `--verbose` to `generate` or `validate` when you want each Blueprint
-generator to print its own progress diagnostics during HTML emission.
+To work on this package together with an editable user-provided Blueprint,
+compose the external checkout directly rather than registering it in the
+reference catalog:
+
+```bash
+python3 -m scripts.blueprint_reference_harness compose /path/to/source-checkout \
+  --project-root blueprint \
+  --id local-blueprint
+```
+
+The command builds the editable source against the current `VersoBlueprint`
+checkout, writes `_out/.../reference-blueprints/local-blueprint/`, and runs
+`vbp check`. Each run replaces that generated output so removed pages cannot
+survive from an older composition. A custom output root must remain disjoint
+from the source checkout; `compose` rejects output directories that contain or
+sit inside that checkout. The command temporarily overrides either an official
+Git dependency or a relative `verso-blueprint` path and restores the source
+checkout's lakefile and manifest afterwards. The nearest `lean-toolchain`
+inside the source checkout must select exactly the same Lean release as this
+`VersoBlueprint` checkout; `compose` reports a mismatch without rewriting
+either toolchain.
+
+When the composed Lake graph contains Mathlib, the harness requires a
+successful `lake exe cache get` before starting the build. This guarantees that
+cache retrieval succeeds at command level before composition. Mathlib treats
+individual remote-cache misses as warnings, however, so the harness cannot
+currently prohibit Lake from compiling an unavailable artifact afterwards.
+
+`compose` is intentionally independent of `tests/harness/projects.json`.
+Projects belong in that manifest only when they are maintained release
+validation or publication inputs.
+
+Pass `--verbose` to `compose`, `generate`, or `validate` when you want each
+Blueprint generator to print its own progress diagnostics during HTML
+emission.
 
 When editing an external reference repository, use an editable clone rather
 than the disposable validation clones:
