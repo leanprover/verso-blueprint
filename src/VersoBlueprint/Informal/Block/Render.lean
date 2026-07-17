@@ -372,8 +372,11 @@ private def sourceSpanPages (spans : Array Source.Span) : Array String :=
   spans.foldl
     (init := #[])
     fun pages span =>
-      let page := span.page.trimAscii.toString
-      if page.isEmpty then pages else pushUniqueString pages page
+      match span.page with
+      | none => pages
+      | some rawPage =>
+          let page := rawPage.trimAscii.toString
+          if page.isEmpty then pages else pushUniqueString pages page
 
 private def sourcePagesSummary (pages : Array String) : String :=
   match pages.toList with
@@ -395,9 +398,25 @@ private def sourcePdfSpanSummary (span : Source.PdfSpan) : String :=
   | Option.none => s!"pdf {span.path}"
 
 private def sourceSpanSummary (span : Source.Span) : String :=
-  let page := span.page.trimAscii.toString
-  let parts : Array String :=
-    if page.isEmpty then #[] else #[s!"page {page}"]
+  let parts : Array String := #[]
+  let parts :=
+    match span.citation with
+    | Option.some citation =>
+        let citation := citation.trimAscii.toString
+        if citation.isEmpty then parts else parts.push s!"citation {citation}"
+    | Option.none => parts
+  let parts :=
+    match span.anchor with
+    | Option.some anchor =>
+        let anchor := anchor.trimAscii.toString
+        if anchor.isEmpty then parts else parts.push s!"anchor {anchor}"
+    | Option.none => parts
+  let parts :=
+    match span.page with
+    | Option.some rawPage =>
+        let page := rawPage.trimAscii.toString
+        if page.isEmpty then parts else parts.push s!"page {page}"
+    | Option.none => parts
   let parts :=
     match span.text with
     | Option.some textRange => parts.push (sourceTextRangeSummary textRange)
@@ -407,6 +426,22 @@ private def sourceSpanSummary (span : Source.Span) : String :=
     | Option.some pdf => parts.push (sourcePdfSpanSummary pdf)
     | Option.none => parts
   String.intercalate "; " parts.toList
+
+private def sourceSpanCitations (spans : Array Source.Span) : Array String :=
+  spans.foldl
+    (init := #[])
+    fun citations span =>
+      match span.citation with
+      | none => citations
+      | some rawCitation =>
+          let citation := rawCitation.trimAscii.toString
+          if citation.isEmpty then citations else pushUniqueString citations citation
+
+private def sourceRefsCitations (sourceRefs : Array Source.Ref) : Array String :=
+  sourceRefs.foldl
+    (init := #[])
+    fun citations sourceRef =>
+      (sourceSpanCitations sourceRef.spans).foldl pushUniqueString citations
 
 private def sourceRefSummary (sourceRef : Source.Ref) : String :=
   let pages := sourceSpanPages sourceRef.spans
@@ -425,10 +460,13 @@ private def sourceRefTitle (sourceRef : Source.Ref) : String :=
     s!"Original source document {sourceRef.document}: {String.intercalate " | " spanSummary}"
 
 private def sourceRefsChipText (sourceRefs : Array Source.Ref) : String :=
-  if sourceRefs.size == 1 then
-    "source 1"
-  else
-    s!"sources {sourceRefs.size}"
+  match sourceRefsCitations sourceRefs |>.toList with
+  | [citation] => s!"source: {citation}"
+  | _ =>
+      if sourceRefs.size == 1 then
+        "source 1"
+      else
+        s!"sources {sourceRefs.size}"
 
 private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
   if sourceRefs.size == 1 then
@@ -452,7 +490,7 @@ private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
 private def sourceSpanPreviewText (span : Source.Span) : String :=
   let summary := sourceSpanSummary span
   if summary.isEmpty then
-    "Source span recorded without page, text, or PDF location"
+    "Source span recorded without page, anchor, text, or PDF location"
   else
     summary
 
