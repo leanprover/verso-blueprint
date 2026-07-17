@@ -60,14 +60,15 @@ def graphStatus : Graph Unit :=
   build stateStatus #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
 
 def graphDataStatus : GraphData :=
-  buildData stateStatus
-    #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
-    (resolveHref? := fun
-      | `def_formal => some "#def-formal"
-      | _ => none)
-    (resolveTitle? := fun
-      | `def_formal => some "Definition 1"
-      | _ => none)
+  buildModel stateStatus
+      #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
+      (resolveHref? := fun
+        | `def_formal => some "#def-formal"
+        | _ => none)
+      (resolveTitle? := fun
+        | `def_formal => some "Definition 1"
+        | _ => none)
+    |>.finish "node-status" {}
 
 /-- info: true -/
 #guard_msgs in

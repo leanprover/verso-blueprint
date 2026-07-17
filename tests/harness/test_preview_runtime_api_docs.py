@@ -53,7 +53,7 @@ GRAPH_CORE_HELPERS = {
     "dataUrl",
     "graphCanvasFor",
     "readGraphJsonScript",
-    "normalizeGraphData",
+    "decodeGraphData",
     "graphsFromManifest",
     "getGraphData",
     "getGraphVariants",
@@ -65,7 +65,7 @@ GRAPH_CORE_IMPLEMENTATION_HELPERS = {
     "dataUrl",
     "graphCanvasFor",
     "readGraphJsonScript",
-    "normalizeGraphData",
+    "decodeGraphData",
     "graphsFromManifest",
     "getGraphData",
     "getGraphVariants",
@@ -416,12 +416,12 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("window.bpSlideNodeRuntime", runtime)
         self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 
-    def test_graph_runtime_uses_structured_variants_only(self) -> None:
+    def test_graph_runtime_has_no_legacy_variant_path(self) -> None:
         runtime = (BLUEPRINT_SRC / "Commands" / "graph.mjs").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("readPublicGraphVariants(graphApiData)", runtime)
+        self.assertNotIn("readPublicGraphVariants", runtime)
         self.assertNotIn("coreGetGraphVariants", runtime)
         self.assertIn("export function startGraphRuntime(previewUtils, options)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)

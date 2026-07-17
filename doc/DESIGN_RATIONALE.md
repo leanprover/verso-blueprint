@@ -50,9 +50,9 @@ rather than invent parallel sources of truth.
 
 Command modules are split by concern:
 
-- `VersoBlueprint/Graph.lean` owns the shared graph data model, finalized
-  `GraphData` projection helpers, DOT rendering helpers, and graph-view
-  variant construction used by page graphs and compact widgets
+- `VersoBlueprint/Graph.lean` owns the semantic and finalized graph types,
+  materialization, DOT rendering helpers, and graph-view variant construction
+  used by page graphs and compact widgets
 - `VersoBlueprint/GraphApi.lean` owns the traversal/cache-facing API for
   storing semantic graph data and finalizing it against completed traversal
   state
@@ -276,7 +276,7 @@ that owner.
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
 | Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
-| Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphData` cached in `TraversalIndex.Graphs`, then finalized through `Informal.GraphApi.finalData` for `blueprint-manifest.json.graphs`, page JSON, and bundled graph rendering | graph command rendering, browser runtime, custom graph consumers |
+| Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphModel` plus options cached in `TraversalIndex.Graphs`, then topology-finalized once through `Informal.GraphApi.finishData` into private-constructor `GraphData`; manifest emission subsequently resolves preview candidates against the artifact index without reopening topology | graph command rendering, browser runtime, custom graph consumers |
 | Lean code preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
 | Rendered preview bodies | Preview-data emission | `blueprint-html-cache.json` | browser runtime, Slides, custom generated consumers |
 | Semantic preview/catalog entries | Preview-data emission | `blueprint-manifest.json` | browser runtime, Slides, audit/custom UIs |
@@ -288,6 +288,46 @@ working set. Manifest state is the serialized interchange artifact for
 generated consumers. A renderer may project traversal state into manifest-shaped
 entries for code reuse, but it should not pretend that generated manifest files
 are the traversal source of truth inside the current generator.
+
+Graph topology follows the same ownership rule. Before traversal completes,
+`GraphModel.nodes` owns dependency and membership semantics through each node's
+`statementUses`, `proofUses`, and `parent`; `groupMetadata` has no child list.
+Selection, filtering, and live/disk overlay happen only on this semantic type.
+`GraphModel.mergePreferLeft` selects one complete node record per label, and
+the traversal cache stores only that model plus render options.
+
+```mermaid
+flowchart LR
+  environment["Environment.State"] --> model["GraphModel<br/>authoritative nodes + group metadata"]
+  model --> cache["Traversal cache<br/>model + options"]
+  cache --> finish["GraphApi.finishData"]
+  finish --> data["GraphData<br/>derived edges + groups + variants"]
+  data --> page["Page JSON"]
+  data --> previewRefs["Preview artifact<br/>reference resolution"]
+  previewRefs --> manifest["Manifest JSON"]
+  page --> consumers["Browser / custom consumers"]
+  manifest --> consumers
+```
+
+`GraphApi.finishData` is the single traversal-aware semantic-to-public
+transition. It enriches the completed traversal model, then delegates to
+`GraphModel.finish`, the core materializer that canonicalizes dependencies,
+derives deduplicated edges while omitting dangling dependencies, derives group
+children while preserving title and declaration metadata, and generates DOT
+variants from the same topology.
+The `GraphData` constructor is private, so its public edges, children, and
+variants form one immutable materialized snapshot rather than another graph
+model. JSON decoding validates the same invariant before constructing it.
+
+Preview-reference resolution is deliberately downstream of topology
+finalization because the manifest/cache artifact index does not exist earlier.
+`GraphData.filterPreviewReferences` removes unavailable node preview keys and
+variant lookup entries together, without changing dependency fields, parents,
+edges, group children, or DOT. It accepts only a retention predicate, so this
+post-pass cannot rewrite preview identities. Thus topology still crosses one
+finalization boundary even though manifest emission later prunes preview
+candidates that did not produce both a manifest entry and a rendered cache
+body.
 
 ### Render Path Inventory
 
@@ -416,13 +456,13 @@ hydration.
 | Manifest/cache-backed block shell assembly | `Informal.PreviewManifest.BlockRender.renderWithRenderedContent` | Slides, grafts, and custom generated consumers | single manifest-backed assembly owner; callers only supply config and content |
 | Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
 | Browser generated-data URLs and preview keys | `blueprint-preview-core.mjs` shared by the page runtime, `api/data.mjs`, and `api/preview.mjs` | browser runtime, ESM data/preview clients, custom generated pages | single ESM owner for generated-data URL construction and preview-key formatting; runtime stores and ESM helpers delegate to it instead of reimplementing the same string rules |
-| Browser graph JSON discovery and graph manifest loading | `blueprint-graph-core.mjs` shared by the page runtime and `api/graph.mjs` | graph command runtime, graph dashboards, custom browser clients | single ESM owner for graph-data normalization and graph JSON/script discovery; runtime code reaches it through the render API rather than compatibility globals |
+| Browser graph JSON discovery and graph manifest loading | `blueprint-graph-core.mjs` shared by the page runtime and `api/graph.mjs` | graph command runtime, graph dashboards, custom browser clients | single ESM owner for current-schema, top-level, and render-variant validation plus graph JSON/script discovery; Lean remains the semantic-topology owner, and runtime code reaches the shared reader through the render API rather than compatibility globals |
 | Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime-data.mjs` factory-backed data/cache loading exposed through `api/data.mjs`, plus `Commands/preview-runtime-render.mjs` `resolvePreview` and `renderPreviewInto`, with `Commands/preview-runtime-surface.mjs` `resolvePreviewHtml` and `renderPreviewIntoSurface` adapting those helpers for bundled surfaces | graph, summary, relation panels, inline previews, custom browser clients | ESM data/cache and render owners; each data API instance owns its stores, delegates URL/key primitives to preview core and graph data to graph core, while the render chunk consumes the supplied data API and joins entries with rendered fragments |
 | Browser canonical generated-node insertion | `Commands/preview-runtime-render.mjs` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single ESM canonical-preview owner; source-page loading accepts renderer-local `fetchText`, `loadDocument`, `canonicalBaseUrl`, and cache options |
 | Browser preview panel behavior | `Commands/preview-runtime-surface.mjs` `createPreviewSurface`, `hidePreviewSurfaces`, and panel helpers plus `Commands/preview-runtime-lifecycle.mjs` trigger/dismiss/reposition helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single ESM behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
 | Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime-surface.mjs` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single ESM panel/message/surface construction helper; feature scripts pass classes/slots/text |
 | Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.mjs` configured with explicit host policies plus `Commands/preview-runtime-surface.mjs` `createPreviewSurface` and lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; graph/relation host behavior is data in the inline script, while panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
-| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph-runtime-core.mjs` for graph runtime utilities plus `Commands/graph.mjs` configured with runtime surfaces and popover helpers | graph command output, generated graph ESM render helpers, manifest-data graph rendering, and Slides graph refresh hooks | feature-owned graph state; normalization, canvas sizing, script loading, state slots, graph-block construction from public graph data, and graph-specific positioning are shared by the graph runtime, while graph rendering and UI event orchestration stay in the graph feature script and are surfaced to custom clients through `api/graph.mjs` rather than direct support-file imports |
+| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph-runtime-core.mjs` for graph runtime utilities plus `Commands/graph.mjs` configured with runtime surfaces and popover helpers | graph command output, generated graph ESM render helpers, manifest-data graph rendering, and Slides graph refresh hooks | feature-owned graph state; canvas sizing, script loading, state slots, graph-block construction from finalized public graph data, and graph-specific positioning are shared by the graph runtime, while graph rendering and UI event orchestration stay in the graph feature script and are surfaced to custom clients through `api/graph.mjs` rather than direct support-file imports |
 | Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime-template.mjs` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
 
 When adding node UI, use this checklist before introducing a renderer or

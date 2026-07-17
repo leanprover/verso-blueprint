@@ -197,7 +197,6 @@ class TestGraphLayoutRuntime:
     def test_public_graph_api_exposes_rendered_page_and_manifest_data(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         goto_graph_page(page, f"{server}/Dependency-Graph/")
-        wait_for_graph(page)
 
         graph_data = page.evaluate(
             blueprint_render_api_script(
@@ -212,6 +211,24 @@ class TestGraphLayoutRuntime:
                 const manifestSample = manifestGraph
                     ? manifestGraph.nodes.find((node) => node.label === "used_target") || null
                     : null;
+                const topologySnapshot = (graph) => JSON.stringify({
+                    nodes: graph.nodes.map((node) => ({
+                        label: node.label,
+                        parent: node.parent,
+                        statementUses: node.statementUses,
+                        proofUses: node.proofUses
+                    })),
+                    edges: graph.edges,
+                    groups: graph.groups,
+                    variants: graph.variants.map((variant) => ({
+                        key: variant.key,
+                        label: variant.label,
+                        dot: variant.dot,
+                        options: variant.options,
+                        selectOnNodeId: variant.selectOnNodeId,
+                        hoverOnNodeId: variant.hoverOnNodeId
+                    }))
+                });
                 return {
                     hasLegacyGlobal: typeof window.bpGraphApi !== "undefined",
                     previewHasGraphData: typeof api.getGraphData === "function",
@@ -226,6 +243,11 @@ class TestGraphLayoutRuntime:
                     manifestNodes: manifestGraph ? manifestGraph.nodes.length : 0,
                     manifestEdges: manifestGraph ? manifestGraph.edges.length : 0,
                     manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
+                    pageSchemaVersion: pageGraph.schemaVersion,
+                    manifestSchemaVersion: manifestGraph ? manifestGraph.schemaVersion : 0,
+                    topologyMatches: manifestGraph
+                        ? topologySnapshot(pageGraph) === topologySnapshot(manifestGraph)
+                        : false,
                     variantKeys: variants.map((variant) => variant.key),
                     sampleTitle: sample ? sample.title : "",
                     sampleHref: sample ? sample.href : "",
@@ -249,11 +271,94 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestNodes"] == graph_data["pageNodes"]
         assert graph_data["manifestEdges"] == graph_data["pageEdges"]
         assert graph_data["manifestGroups"] == graph_data["pageGroups"]
+        assert graph_data["pageSchemaVersion"] == 3
+        assert graph_data["manifestSchemaVersion"] == 3
+        assert graph_data["topologyMatches"]
         assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
         assert graph_data["sampleTitle"].startswith("Definition")
         assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"
         assert graph_data["manifestSampleTitle"] == graph_data["sampleTitle"]
         assert graph_data["manifestSampleHref"] == graph_data["sampleHref"]
+
+    def test_public_graph_api_rejects_obsolete_or_malformed_records(
+        self, server: str, page: Page
+    ):
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
+
+        keys = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const graphModule = await import(api.graphApiModuleUrl());
+                const fullVariant = {
+                    key: "full",
+                    label: "Full Graph",
+                    dot: "strict digraph {}",
+                    options: { direction: "TB", pack: false },
+                    selectOnNodeId: [],
+                    hoverOnNodeId: [],
+                    previewKeyByNodeId: []
+                };
+                const completeRecord = (schemaVersion, key, variants) => ({
+                    schemaVersion,
+                    key,
+                    nodes: [],
+                    edges: [],
+                    groups: [],
+                    variants
+                });
+                const graphs = await graphModule.loadManifestGraphs(
+                    "https://example.invalid/blueprint-manifest.json",
+                    {
+                        fetchJson: () => ({
+                            graphs: [
+                                completeRecord(3, "graph:current", [fullVariant]),
+                                completeRecord(2, "graph:obsolete-schema", [fullVariant]),
+                                completeRecord(3, "graph:no-variants", []),
+                                completeRecord(3, "graph:blank-dot", [
+                                    { ...fullVariant, dot: " " }
+                                ]),
+                                completeRecord(3, "graph:invalid-options", [
+                                    { ...fullVariant, options: { direction: "sideways", pack: false } }
+                                ]),
+                                completeRecord(3, "graph:invalid-pair", [
+                                    { ...fullVariant, previewKeyByNodeId: [["node-only"]] }
+                                ]),
+                                completeRecord(3, "graph:duplicate-variant", [
+                                    fullVariant,
+                                    { ...fullVariant, label: "Duplicate Full Graph" }
+                                ]),
+                                completeRecord(3, "graph:missing-full", [
+                                    { ...fullVariant, key: "group", label: "Group View" }
+                                ]),
+                                completeRecord(3, "graph:unknown-variant-target", [
+                                    { ...fullVariant, selectOnNodeId: [["node-id", "missing"]] }
+                                ]),
+                                completeRecord(3, "graph:duplicate-node-mapping", [
+                                    {
+                                        ...fullVariant,
+                                        previewKeyByNodeId: [
+                                            ["node-id", "preview:first"],
+                                            ["node-id", "preview:second"]
+                                        ]
+                                    }
+                                ]),
+                                {
+                                    schemaVersion: 3,
+                                    key: "graph:incomplete-record",
+                                    nodes: [],
+                                    edges: [],
+                                    groups: []
+                                }
+                            ]
+                        })
+                    }
+                );
+                return graphs.map((graph) => graph.key);
+                """
+            )
+        )
+
+        assert keys == ["graph:current"]
 
     def test_public_graph_api_can_render_copied_graph_block(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})

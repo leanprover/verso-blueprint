@@ -375,17 +375,68 @@ Three common workflows consume that same model:
 ## Graph Data APIs
 
 Lean callers can build the semantic graph object from elaboration state with
-`Informal.Graph.buildData`. Before Verso traversal finishes, graph data is
-semantic and may not yet include rendered hrefs or display titles:
+`Informal.Graph.buildModel`. Before Verso traversal finishes, the value is a
+`GraphModel`: it may not yet include rendered hrefs or display titles and it
+contains no derived edge, child, or DOT-variant caches:
 
 ```lean
 import VersoBlueprint.Graph
 
 def semanticGraph (state : Informal.Environment.State) :
-    Informal.Graph.GraphData :=
+    Informal.Graph.GraphModel :=
   let roots := state.data.toArray.map (·.1)
-  Informal.Graph.buildData state roots
+  Informal.Graph.buildModel state roots
 ```
+
+`GraphModel` has one topology representation: each node's `statementUses`,
+`proofUses`, and `parent`. Its `groupMetadata` records carry only label, title,
+and declaration status. Select and transform nodes at this stage. For the
+common live/disk overlay case, `mergePreferLeft` selects the preferred model's
+complete node record for each label rather than combining topology fields:
+
+```lean
+def mergedSemanticGraph
+    (live disk : Informal.Graph.GraphModel) : Informal.Graph.GraphModel :=
+  live.mergePreferLeft disk
+```
+
+If both inputs are already finalized, convert them back only for selection and
+merge, then finish the result immediately. This deliberately discards their old
+edges, group children, and variants instead of attempting to combine them:
+
+```lean
+def mergeFinishedGraph
+    (key : String)
+    (live disk : Informal.Graph.GraphData)
+    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
+  (live.toModel.mergePreferLeft disk.toModel).finish key options
+```
+
+The caller chooses the new record's stable key and render options; neither is
+inferred from the projections being discarded.
+
+`GraphModel.canonicalize` is safe before caching: it retains the first complete
+node record for each label, canonicalizes repeated dependency refs, and merges
+group metadata. `GraphModel.finish` is the lower-level finalization operation.
+It derives one edge per retained source/target pair with combined
+statement/proof axes, omits dependencies with a missing source endpoint,
+derives group membership from node parents, preserves metadata for retained
+groups, and generates the DOT variants from that same graph.
+
+The resulting `GraphData` constructor is private. A finished record can be
+inspected or converted back with `toModel`, but its topology cannot be changed
+while retaining old edges, children, or variants. `FromJson GraphData` likewise
+rejects duplicate dependencies and any edge, group-membership, preview mapping,
+or DOT variant that disagrees with the authoritative nodes.
+
+Topology finalization and preview-artifact resolution are separate boundaries.
+`GraphModel.finish` fixes topology and DOT exactly once. Later, after the
+manifest and rendered-fragment cache are both known,
+`PreviewManifest.File.finalizePreviewReferences` may use
+`GraphData.filterPreviewReferences` to remove unavailable preview keys from nodes
+and their variant lookup entries together. That synchronized post-pass cannot
+change nodes' dependencies or parents, derived edges or children, or DOT, and
+cannot rewrite one preview key into another.
 
 Once traversal has completed, use `Informal.GraphApi` to finalize either one
 rendered graph block or every graph cached during traversal:
@@ -396,8 +447,8 @@ import VersoBlueprint.GraphApi
 def graphForRenderedBlock
     (state : Verso.Genre.Manual.TraverseState)
     (blockId : Verso.Multi.InternalId)
-    (semantic : Informal.Graph.GraphData) : Informal.Graph.GraphData :=
-  Informal.GraphApi.finalDataForBlock state blockId semantic
+    (semantic : Informal.Graph.GraphModel) : Informal.Graph.GraphData :=
+  Informal.GraphApi.finishDataForBlock state blockId semantic {}
 
 def allRenderedGraphEntries
     (state : Verso.Genre.Manual.TraverseState) :
@@ -406,16 +457,34 @@ def allRenderedGraphEntries
   Informal.GraphApi.cachedEntries state
 ```
 
+Graph traversal caches store only canonical `GraphModel` plus `GraphOptions`.
+They do not cache edges, group children, or render variants, so topology changes
+cannot reuse a stale rendered projection and the cache stays smaller.
 `cachedEntries` preserves malformed traversal-cache records as `DecodeError`
 values and successful records as canonical-name/data pairs, so callers can
 report corruption instead of silently omitting graphs. The generated-manifest
 path reports those errors and continues with valid graph entries.
 
 Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
-contains `schemaVersion`, `nodes`, `edges`, and `groups`, with status enums,
-dependency axes, preview keys, hrefs when traversal resolved them, and visual
-metadata for renderers that want Blueprint's default styling. Graph schema
-version 2 serializes each node `previewKey` as a string or `null`.
+contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
+status enums, dependency axes, preview keys, hrefs when traversal resolved
+them, and visual metadata for renderers that want Blueprint's default styling.
+Graph schema version 3 identifies records produced under the private-constructor
+topology contract. It retains version 2's string-or-`null` node `previewKey`
+shape, but is semantically incompatible because version 2 did not guarantee
+that edges, group children, and variants agreed with authoritative nodes.
+Regenerate generated Blueprint output when adopting this revision; there is no
+version-2 compatibility path.
+
+Generated `edges` and group `children` are guaranteed projections of the
+authoritative node fields. The browser API recognizes version-3 records with
+all top-level collections and a valid render-variant contract: `full` is first,
+variant keys are unique, and select/hover mappings target variants in the same
+record. It deliberately does not repeat Lean's graph finalization work. Lean's
+`FromJson GraphData` boundary additionally
+recomputes and rejects records whose edges, group membership, or variants
+disagree with their nodes. Browser consumers should treat generated graph data
+as immutable output rather than an input model to repair.
 
 That finished traversal state is the stable boundary. Consumers should not
 reconstruct graph hrefs or titles from lower-level traversal internals when the
@@ -423,15 +492,19 @@ finalized graph data is available.
 
 Finalized graph data is traversal-backed. Imported semantic nodes or code-only
 nodes that have no rendered occurrence in the current site are omitted from the
-public graph; explicit unknown-reference diagnostics are retained. Graph node
-`previewKey` values are selected preview keys finalized against the generated
-manifest/cache pair: when a statement preview is unavailable but a proof preview
-exists, graph and relation UI can point at the proof preview. Bodyless
-source-backed nodes can point at their `externalMarkup:<label>` preview only
-when that key has a manifest entry and rendered cache body. When a retained node
-has no manifest/cache-backed preview in the generated artifact set, the finalized
-`previewKey` is `null` and bundled graph variants omit the node from
-`previewKeyByNodeId`. Use fixed facet keys such as
+public graph; explicit unknown-reference diagnostics are retained. Traversal
+selects each graph node's preferred `previewKey`; manifest graph records then
+validate those candidates against the emitted manifest/cache pair. When a
+statement preview is unavailable but a proof preview exists, graph and relation
+UI can point at the proof preview. Bodyless source-backed nodes can point at
+their `externalMarkup:<label>` preview only when that key has a manifest entry
+and rendered cache body. When a retained node has no manifest/cache-backed
+preview in the generated artifact set, the manifest graph's `previewKey` is
+`null` and its bundled variants omit the node from `previewKeyByNodeId`.
+Embedded page graph data is emitted earlier and may still carry a traversal
+candidate that later fails artifact validation; the runtime resolves candidates
+through the manifest/cache pair rather than treating page JSON as proof that a
+fragment exists. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 
@@ -443,10 +516,9 @@ explicitly requesting that facet.
 | Explicit proof facet identity | `PreviewCache.proofKey label` |
 
 The bundled graph renderer uses that finalized graph data as its block-level
-source of truth. Lean attaches DOT render variants with
-`Informal.Graph.GraphData.renderVariants` during graph finalization, so page
-rendering and custom clients exercise the same graph record shape without
-scraping rendered graph pages.
+source of truth. `GraphApi.finishData` attaches DOT render variants at the one
+semantic-to-public topology boundary, so page rendering and custom clients
+exercise the same schema and topology without scraping rendered graph pages.
 
 Browser callers can use the generated ESM graph module directly:
 
@@ -460,6 +532,11 @@ const graphs = await loadGraphs();
 // Read graph data embedded in a rendered graph block on the current page.
 const graph = getGraphData(document);
 ```
+
+`loadGraphs()` omits records that fail the current schema, top-level collection,
+or render-variant checks. `getGraphData()` returns `null` when embedded graph
+data is missing or fails the same checks. Lean remains responsible for semantic
+topology agreement before serialization.
 
 For rendering new graph blocks, prefer `loadGraphs()` and the manifest graph
 record's Lean-emitted `variants` field. Generated graph blocks embed one
@@ -491,8 +568,8 @@ Use `createGraphBlock(graph, options)` when a client wants to construct the
 standard `.bp_graph_fullwidth` element first and insert or render it later. Use
 `renderGraphData(host, graph, options)` when the host should be populated and
 rendered in one call. Both helpers consume the graph record's precomputed
-`variants` array, or an explicit `options.variants` override. They return
-`null` when neither source provides render variants.
+`variants` array and return `null` when it does not contain valid render
+variants.
 
 The module can also initialize an existing graph block. That compatibility path
 is for markup that is already present, such as the standard
@@ -1246,7 +1323,7 @@ modules:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the page runtime, slide runtime, and `api/graph.mjs`. |
+| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and current-schema/top-level/render-variant validation shared by the page runtime, slide runtime, and `api/graph.mjs`; Lean remains the owner of semantic topology finalization. |
 | `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the page runtime, slide runtime, `api/data.mjs`, and `api/preview.mjs`. |
 | `blueprint-api-common.mjs` | Common generated-ESM wrapper mechanics shared by `api/data.mjs` and `api/preview.mjs`, including default data-base options, URL/key forwarding, default API handles, fallback statuses, and method dispatch. |
 

@@ -92,7 +92,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let label := Name.mkSimple "preview.proof_fallback"
     let statementKey := PreviewCache.statementKey label
     let proofKey := PreviewCache.proofKey label
-    let semantic : Informal.Graph.GraphData := {
+    let semantic : Informal.Graph.GraphModel := {
       nodes := #[{
         label
         title := "Proof fallback"
@@ -101,13 +101,12 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         visual := { fillcolor := "#ffffff" }
       }]
     }
-    let finalized := Informal.GraphApi.finalData st semantic
-    let variants := finalized.renderVariants {}
+    let finalized := Informal.GraphApi.finishData st "preview-proof-fallback" semantic {}
     pure <|
       match finalized.nodes[0]? with
       | some node =>
         node.previewKey == PreviewKey.ofString? proofKey &&
-        variants.any (fun variant =>
+        finalized.variants.any (fun variant =>
           variant.previewKeyByNodeId.any (fun (_, key) => key == proofKey))
       | none => false
 
@@ -119,7 +118,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
     let label := Name.mkSimple "preview.missing"
     let statementKey := PreviewCache.statementKey label
-    let semantic : Informal.Graph.GraphData := {
+    let semantic : Informal.Graph.GraphModel := {
       nodes := #[{
         label
         title := "Missing preview"
@@ -128,13 +127,12 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         visual := { fillcolor := "#ffffff" }
       }]
     }
-    let finalized := Informal.GraphApi.finalData st semantic
-    let variants := finalized.renderVariants {}
+    let finalized := Informal.GraphApi.finishData st "preview-missing" semantic {}
     pure <|
       finalized.nodes.isEmpty &&
       finalized.edges.isEmpty &&
       finalized.groups.isEmpty &&
-      variants.all (fun variant =>
+      finalized.variants.all (fun variant =>
         variant.previewKeyByNodeId.all (fun (_, key) =>
           !key.isEmpty && key != statementKey))
 
@@ -145,7 +143,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
     let label := Name.mkSimple "preview.unknown"
-    let semantic : Informal.Graph.GraphData := {
+    let semantic : Informal.Graph.GraphModel := {
       nodes := #[{
         label
         title := "Unknown preview"
@@ -155,15 +153,14 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         visual := { fillcolor := "#ffffff" }
       }]
     }
-    let finalized := Informal.GraphApi.finalData st semantic
-    let variants := finalized.renderVariants {}
+    let finalized := Informal.GraphApi.finishData st "preview-unknown" semantic {}
     pure <|
       match finalized.nodes[0]? with
       | some node =>
         node.label == label &&
         node.warnings.unknownRef &&
         node.previewKey.isNone &&
-        variants.all (fun variant => variant.previewKeyByNodeId.isEmpty)
+        finalized.variants.all (fun variant => variant.previewKeyByNodeId.isEmpty)
       | none => false
 
 /-- info: true -/
@@ -174,7 +171,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupPreviewSourceDoc
     let label := Name.mkSimple "preview.external_bodyless"
     let externalKey := Informal.PreviewSource.externalMarkupKey label
-    let semantic : Informal.Graph.GraphData := {
+    let semantic : Informal.Graph.GraphModel := {
       nodes := #[{
         label
         title := "External bodyless"
@@ -182,13 +179,12 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         visual := { fillcolor := "#ffffff" }
       }]
     }
-    let finalized := Informal.GraphApi.finalData st semantic
-    let variants := finalized.renderVariants {}
+    let finalized := Informal.GraphApi.finishData st "preview-external" semantic {}
     pure <|
       match finalized.nodes[0]? with
       | some node =>
         node.previewKey == PreviewKey.ofString? externalKey &&
-          variants.any (fun variant =>
+          finalized.variants.any (fun variant =>
             variant.previewKeyByNodeId.any (fun (_, key) => key == externalKey))
       | none => false
 

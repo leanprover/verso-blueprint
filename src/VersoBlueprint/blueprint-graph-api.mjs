@@ -15,8 +15,8 @@ import {
  * Data-only calls do not load the interactive graph renderer; render helpers
  * lazy-load it when called.
  *
- * Use the data helpers when a dashboard needs finalized graph records from the
- * manifest or graph JSON embedded beside a rendered graph block. Use
+ * Use the data helpers when a dashboard needs topology-finalized graph records
+ * from the manifest or graph JSON embedded beside a rendered graph block. Use
  * {@link renderGraphData} to create the standard graph UI from a finalized
  * manifest graph record, or {@link renderGraphs} / {@link renderGraphBlock}
  * when the page already contains generated graph-block markup. Rendering graph
@@ -29,7 +29,7 @@ import {
 
 /** @import { BlueprintDataApiOptions, BlueprintGraphController, BlueprintGraphData, BlueprintGraphRenderOptions, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
 
-/** Graph API schema/runtime version. */
+/** Browser graph API module version; distinct from `BlueprintGraphData.schemaVersion`. */
 export const version = coreVersion;
 const moduleUrl = import.meta.url;
 
@@ -55,7 +55,8 @@ export const graphApiModuleUrl = (baseUrl = moduleUrl) => coreGraphApiModuleUrl(
  *
  * This is for pages that already contain generated graph-block markup. Use
  * {@link loadGraphs} when the current document does not contain the graph you
- * want to inspect.
+ * want to inspect. Payloads that are missing or fail the current schema,
+ * top-level collection, or render-variant checks return `null`.
  *
  * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
  * @returns {BlueprintGraphData | null}
@@ -76,7 +77,8 @@ export function getGraphVariants(root) {
 }
 
 /**
- * Load finalized graph records from a manifest URL.
+ * Load finalized graph records from a manifest URL. Records that fail the
+ * current schema, top-level collection, or render-variant checks are omitted.
  *
  * @param {string} [url] Manifest URL. Defaults to this module's generated-data manifest.
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
@@ -92,6 +94,8 @@ export const loadManifestGraphs = (url, options) => {
 
 /**
  * Load finalized graph records from this generated site's default manifest.
+ * Records that fail the current schema, top-level collection, or render-variant
+ * checks are omitted.
  *
  * This is the simplest graph-data entry point for dashboards and audits that
  * need graph records but do not need to render graph blocks.
@@ -220,8 +224,8 @@ export async function renderGraphs(root, options) {
  * {@link loadGraphs} and wants to insert the same graph block shape used by
  * generated pages. The returned element is not rendered until it is inserted
  * and passed to {@link renderGraphBlock}, or until {@link renderGraphData} is
- * used. Returns `null` when the graph record does not contain precomputed
- * render variants and no `options.variants` override is supplied.
+ * used. Returns `null` when the graph record does not contain valid
+ * precomputed render variants.
  *
  * @param {BlueprintGraphData} graphData Finalized graph record.
  * @param {BlueprintGraphRenderOptions} [options] Graph render options.
@@ -240,8 +244,7 @@ export async function createGraphBlock(graphData, options) {
  * `host`, lazy-loads the graph renderer, and returns the same controller as
  * {@link renderGraphBlock}. Pass `replace: false` to append instead of replacing
  * the host's existing children. Returns `null` without changing `host` when the
- * graph record does not contain precomputed render variants and no
- * `options.variants` override is supplied.
+ * graph record does not contain valid precomputed render variants.
  *
  * @param {Element} host Element that will contain the graph block.
  * @param {BlueprintGraphData} graphData Finalized graph record, typically from {@link loadGraphs}.

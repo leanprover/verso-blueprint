@@ -318,6 +318,10 @@
 /**
  * Public graph dependency edge payload.
  *
+ * This is a derived projection of the target node's `statementUses` and
+ * `proofUses`. Duplicate dependencies are combined by source/target and
+ * dangling dependencies are omitted.
+ *
  * @typedef {Object} BlueprintGraphEdge
  * @property {string} source Dependency source label.
  * @property {string} target Dependent target label.
@@ -331,11 +335,12 @@
  * @property {string} label Canonical group label.
  * @property {string} title Resolved group title.
  * @property {boolean} declared Whether the group was explicitly declared.
- * @property {string[]} children Child node labels.
+ * @property {string[]} children Child node labels derived from node `parent` fields.
  */
 
 /**
- * Two-item graph-renderer mapping emitted as `[svgNodeId, value]`.
+ * Graph-renderer mapping emitted as exactly two elements:
+ * `[svgNodeId, value]`. The runtime decoder enforces the tuple length.
  *
  * @typedef {Array.<string>} BlueprintGraphNodeIdPair
  */
@@ -343,8 +348,11 @@
 /**
  * Public graph node payload.
  *
- * `previewKey` is the finalized manifest/cache-backed preview key for this
- * label. It is `null` when the retained graph node has no generated preview.
+ * In manifest-loaded graph records, `previewKey` is the finalized
+ * manifest/cache-backed preview key for this label. Embedded page records are
+ * emitted earlier and may carry a traversal candidate that the runtime still
+ * resolves through the manifest/cache pair. It is `null` when no key is
+ * advertised by that record.
  *
  * @typedef {Object} BlueprintGraphNode
  * @property {string} label Canonical Blueprint node label.
@@ -353,7 +361,7 @@
  * @property {string | null} kind Node kind, when available.
  * @property {string | null} parent Parent/group label, when available.
  * @property {string | null} href Link to the canonical generated node, when available.
- * @property {string | null} previewKey Finalized manifest/cache-backed preview key, when available.
+ * @property {string | null} previewKey Preview key advertised by this graph record, when available.
  * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
  * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
  * @property {string} statementStatus Statement-track status.
@@ -365,13 +373,17 @@
 /**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
+ * Node `statementUses`, `proofUses`, and `parent` fields are authoritative.
+ * Lean materializes `edges`, group `children`, and render `variants` together
+ * from that topology at the graph finalization boundary.
+ *
  * @typedef {Object} BlueprintGraphData
- * @property {number} schemaVersion Graph payload schema version; version 2 uses string-or-null node preview keys.
- * @property {string} key Variant key.
+ * @property {3} schemaVersion Current finalized graph payload schema version.
+ * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
- * @property {BlueprintGraphEdge[]} edges Graph edge payloads.
- * @property {BlueprintGraphGroup[]} groups Graph grouping payloads.
- * @property {BlueprintGraphVariant[]} [variants] Precomputed DOT variants for the bundled graph renderer.
+ * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.
+ * @property {BlueprintGraphGroup[]} groups Group metadata with membership derived from node parents.
+ * @property {BlueprintGraphVariant[]} variants Precomputed DOT variants for the bundled graph renderer. The first variant is `full`; keys are unique, and select/hover mappings target keys in this array.
  */
 
 /**
@@ -381,10 +393,10 @@
  * @property {string} key Variant key.
  * @property {string} label Human-readable variant label.
  * @property {string} dot DOT source.
- * @property {Record<string, unknown>} [options] Rendering options emitted with the variant.
+ * @property {BlueprintGraphLayoutOptions} options Rendering options emitted with the variant.
  * @property {BlueprintGraphNodeIdPair[]} selectOnNodeId Two-item `[svgNodeId, variantKey]` pairs selected when the variant is active.
  * @property {BlueprintGraphNodeIdPair[]} hoverOnNodeId Two-item `[svgNodeId, variantKey]` pairs highlighted on hover.
- * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; nodes without manifest/cache-backed previews are omitted.
+ * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; manifest records omit nodes without artifact-backed previews.
  */
 
 /**
@@ -399,11 +411,9 @@
  * Options accepted by graph rendering helpers in `api/graph.mjs`.
  *
  * @typedef {Object} BlueprintGraphRenderOptions
- * @property {Record<string, unknown>} previewUtils Render-capable Blueprint preview API required by public `api/graph.mjs` render helpers.
+ * @property {Record<string, unknown>} [previewUtils] Render-capable Blueprint preview API required by rendering operations; `createGraphBlock` does not use it.
  * @property {"page" | "block" | "fill" | string} [layout] Graph sizing mode.
  * @property {BlueprintGraphLayoutOptions} [graphOptions] Initial graph-control values for graph data rendered from manifest records.
- * @property {BlueprintGraphVariant[]} [variants] Optional precomputed DOT variants overriding `graphData.variants`;
- * required when rendering graph records that do not already carry Lean-emitted variants.
  * @property {"pinned" | "hover" | string} [previewMode] Initial graph node preview behavior for graph data rendered from manifest records.
  * @property {"docked" | "anchored" | string} [previewPlacement] Initial graph node preview placement for graph data rendered from manifest records.
  * @property {boolean} [replace] In `renderGraphData`, replace host children by default; set to `false` to append.

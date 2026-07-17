@@ -282,11 +282,11 @@ def buildFor [Monad m] [MonadEnv m] [MonadError m] (label : Name) : m BuildResul
           |>.map (·.1.toString)
           |>.take 12
       throwError m!"No Label Found for '{label}'. Known labels (first {available.size}): {String.intercalate ", " available.toList}"
-  let graphData := Informal.Graph.buildData state #[label] (groupTitles := state.groups.toArray)
-  let dot := graphData.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
+  let graphModel := Informal.Graph.buildModel state #[label] (groupTitles := state.groups.toArray)
+  let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
   let previewSelection? := Informal.PreviewSource.environmentSelection? env label
   let includeMathlibLegend :=
-    graphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
+    graphModel.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
   let legend := toJson (Informal.Graph.graphLegendGroups includeMathlibLegend)
   pure { dot, previewSelection?, legend }
 

@@ -1,5 +1,8 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
-import { getGraphData as coreGetGraphData } from "../blueprint-graph-core.mjs";
+import {
+  getGraphData,
+  decodeGraphData
+} from "../blueprint-graph-core.mjs";
 
 const {
   debounce,
@@ -18,14 +21,6 @@ const {
   resetGraphvizForVariant,
   makeGroupPanelPositioner
 } = graphRuntimeCoreModule;
-
-function readPublicGraphData(root) {
-  return coreGetGraphData(root);
-}
-
-function readPublicGraphVariants(graphData) {
-  return graphData && Array.isArray(graphData.variants) ? graphData.variants : [];
-}
 
 function dotWithGraphAttribute(dot, name, value) {
   const source = String(dot || "");
@@ -57,20 +52,6 @@ function dotForVariantOptions(variant, options) {
 // then feeds the generated block into the same initializer used by page graphs.
 let runtimeGraphIdCounter = 0;
 
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function stringValue(value, fallback) {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return typeof fallback === "string" ? fallback : "";
-}
-
-function graphName(value) {
-  return stringValue(value, "").trim();
-}
-
 function htmlIdKey(value) {
   let out = "";
   for (const char of String(value || "")) {
@@ -90,38 +71,13 @@ function prefixedHtmlId(prefix, value) {
   return body ? prefix + "-" + body : prefix;
 }
 
-function normalizePublicGraphData(rawData) {
-  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
-  const data = rawData;
-  return {
-    schemaVersion: Number.isFinite(Number(data.schemaVersion)) ? Number(data.schemaVersion) : 1,
-    key: stringValue(data.key, "graph"),
-    nodes: asArray(data.nodes),
-    edges: asArray(data.edges),
-    groups: asArray(data.groups),
-    variants: asArray(data.variants)
-  };
-}
-
 function graphOptionsFromRenderOptions(options, variants) {
   const opts = options && typeof options === "object" ? options : {};
   const rawOptions =
     opts.graphOptions && typeof opts.graphOptions === "object"
       ? opts.graphOptions
-      : opts.options && typeof opts.options === "object"
-        ? opts.options
-        : variants[0] && variants[0].options && typeof variants[0].options === "object"
-          ? variants[0].options
-          : opts;
+      : variants[0] && variants[0].options;
   return normalizeGraphOptions(rawOptions);
-}
-
-function graphVariantsFromRenderOptions(data, options) {
-  const opts = options && typeof options === "object" ? options : {};
-  const rawVariants = asArray(opts.variants).length > 0 ? asArray(opts.variants) : asArray(data && data.variants);
-  return rawVariants.filter(function (variant) {
-    return variant && typeof variant === "object" && graphName(variant.key) && stringValue(variant.dot, "").trim();
-  });
 }
 
 function createEl(doc, tagName, attrs, text) {
@@ -183,11 +139,10 @@ function graphControlId(data, suffix) {
 
 export function createGraphBlock(graphData, options) {
   const opts = options && typeof options === "object" ? options : {};
-  const data = normalizePublicGraphData(graphData);
+  const data = decodeGraphData(graphData);
   if (!data) return null;
   const doc = opts.document && typeof opts.document.createElement === "function" ? opts.document : document;
-  const variants = graphVariantsFromRenderOptions(data, opts);
-  if (variants.length === 0) return null;
+  const variants = data.variants;
   const graphOptions = graphOptionsFromRenderOptions(opts, variants);
   const block = createEl(doc, "div", { class: "bp_graph_fullwidth", "data-bp-graph-source": "runtime" });
   if (opts.layout) block.setAttribute("data-bp-graph-layout", graphLayoutMode(block, opts));
@@ -639,7 +594,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
               : null
           );
       if (existingController) return existingController;
-      const graphApiData = readPublicGraphData(graphBlock);
+      const graphApiData = getGraphData(graphBlock);
       if (graphApiData) {
         graphState.graphData = graphApiData;
         graphBlock.__bpGraphData = graphApiData;
@@ -708,35 +663,21 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         { keepOpen: true }
       );
 
-      const rawVariants = readPublicGraphVariants(graphApiData);
-      if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
-      const variantsByKey = new Map();
-      rawVariants.forEach(function (variant) {
-        if (!variant || typeof variant !== "object") return;
-        const key = String(variant.key || "").trim();
-        const label = String(variant.label || key).trim();
-        const dot = String(variant.dot || "").trim();
-        const options = normalizeGraphOptions(
-          variant.options && typeof variant.options === "object"
-            ? variant.options
-            : { direction: variant.direction, pack: variant.pack }
-        );
-        const selectOnNodeId = Array.isArray(variant.selectOnNodeId) ? variant.selectOnNodeId : [];
-        const hoverOnNodeId = Array.isArray(variant.hoverOnNodeId) ? variant.hoverOnNodeId : [];
-        const previewKeyByNodeId = Array.isArray(variant.previewKeyByNodeId) ? variant.previewKeyByNodeId : [];
-        if (!key || !dot) return;
-        variantsByKey.set(key, {
-          key: key,
-          label: label || key,
-          dot: dot,
-          options: options,
-          selectOnNodeId: selectOnNodeId,
-          hoverOnNodeId: hoverOnNodeId,
-          previewKeyByNodeId: new Map(previewKeyByNodeId)
-        });
+      const rawVariants = graphApiData.variants;
+      const variants = rawVariants.map(function (variant) {
+        return {
+          key: variant.key,
+          label: variant.label,
+          dot: variant.dot,
+          options: normalizeGraphOptions(variant.options),
+          selectOnNodeId: variant.selectOnNodeId,
+          hoverOnNodeId: variant.hoverOnNodeId,
+          previewKeyByNodeId: new Map(variant.previewKeyByNodeId)
+        };
       });
-      const variants = Array.from(variantsByKey.values());
-      if (variants.length === 0) return;
+      const variantsByKey = new Map(variants.map(function (variant) {
+        return [variant.key, variant];
+      }));
       graphBlock.__bpGraphVariants = variants;
 
       if (selector && selector.options.length === 0) {

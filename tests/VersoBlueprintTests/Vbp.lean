@@ -4,6 +4,7 @@ import VersoBlueprint.VbpMain
 namespace Verso.VersoBlueprintTests.Vbp
 
 open Lean
+open Informal.Graph
 
 abbrev ManifestFile := Informal.PreviewManifest.File
 abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
@@ -27,6 +28,9 @@ private def relatedWithoutPreview (value title : String) : RelatedEntry :=
     href := some s!"{value}/"
     axes := #[.statement]
   }
+
+private def finishedGraph (key : String) (nodes : Array NodeData) : GraphData :=
+  ({ nodes } : GraphModel).finish key {}
 
 private def sampleManifest : ManifestFile := {
   previews := #[
@@ -169,9 +173,8 @@ private def sampleGraphReferenceManifest : ManifestFile := {
       title := "Semantic graph target"
     }
   ]
-  graphs := #[{
-    key := "graph-fixture"
-    nodes := #[{
+  graphs := #[finishedGraph "graph-fixture" #[
+    {
       label := label "semantic_graph_target"
       title := "Semantic graph target"
       displayLabel := "Semantic graph target"
@@ -179,14 +182,15 @@ private def sampleGraphReferenceManifest : ManifestFile := {
         Informal.PreviewKey.ofString?
           (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))
       visual := { fillcolor := "#ffffff" }
-    }]
-    variants := #[{
-      key := "full"
-      label := "Full"
-      dot := "digraph {}"
-      previewKeyByNodeId := #[("node-1", "informal:cache_only_graph:statement")]
-    }]
-  }]
+    },
+    {
+      label := label "cache_only_graph"
+      title := "Cache-only graph target"
+      displayLabel := "Cache-only graph target"
+      previewKey := Informal.PreviewKey.ofString? "informal:cache_only_graph:statement"
+      visual := { fillcolor := "#ffffff" }
+    }
+  ]]
 }
 
 private def sampleGraphReferenceCache : HtmlCacheFile := {
@@ -232,9 +236,7 @@ private def sampleMetadataManifest : ManifestFile := {
       title := "Proof statement"
     }
   ]
-  graphs := #[{
-    key := "metadata-status"
-    nodes := #[
+  graphs := #[finishedGraph "metadata-status" #[
       {
         label := label "zeta_statement"
         title := "Zeta"
@@ -261,8 +263,7 @@ private def sampleMetadataManifest : ManifestFile := {
         proofStatus := .incomplete
         visual := { fillcolor := "#ffffff" }
       }
-    ]
-  }]
+    ]]
 }
 
 private def jsonField? (json : Json) (field : String) : Option Json :=
@@ -809,11 +810,11 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     errors.any (fun err =>
       err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
         err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
-      errors.any (fun err =>
-        err.contains "missing manifest entry for graph graph-fixture variant full node node-1" &&
+    errors.any (fun err =>
+        err.contains s!"missing manifest entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
           err.contains "informal:cache_only_graph:statement") &&
       !errors.any (fun err =>
-        err.contains "missing HTML cache entry for graph graph-fixture variant full node node-1" &&
+        err.contains s!"missing HTML cache entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
           err.contains "informal:cache_only_graph:statement")
 
 /-- info: true -/

@@ -182,8 +182,8 @@ requireMatches(
 );
 
 const graphApiNames = [
+  "decodeGraphData",
   "graphsFromManifest",
-  "normalizeGraphData",
   ...publicApiContract.exports.graph.filter(
     (name) => !["dataUrl", "graphApiModuleUrl", "renderGraphBlock", "renderGraphs", "version"].includes(name)
   )
@@ -192,11 +192,11 @@ const graphInternalApiNames = [
   "ensureGraphRuntimeLibraries",
   "getGraphRenderApi",
   "graphCanvasFor",
+  "decodeGraphData",
   "graphsFromManifest",
   "initGraphBlock",
   "installGraphRenderApi",
   "loadJson",
-  "normalizeGraphData",
   "readGraphJsonScript"
 ];
 
