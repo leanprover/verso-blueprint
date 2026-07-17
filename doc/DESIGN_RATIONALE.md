@@ -327,7 +327,9 @@ edges, group children, or DOT. It accepts only a retention predicate, so this
 post-pass cannot rewrite preview identities. Thus topology still crosses one
 finalization boundary even though manifest emission later prunes preview
 candidates that did not produce both a manifest entry and a rendered cache
-body.
+body. `PreviewManifest.Files.finalizePreviewReferences` owns that post-pass on
+the paired manifest/cache value, so production construction, indexing, and
+finalization pass one explicit pair instead of repeatedly selecting artifacts.
 
 ### Render Path Inventory
 

@@ -8,7 +8,12 @@ open Informal.Graph
 
 abbrev ManifestFile := Informal.PreviewManifest.File
 abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
+abbrev PreviewDataFiles := Informal.PreviewManifest.Files
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
+
+private def previewData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) :
+    PreviewDataFiles :=
+  { manifest, htmlCache }
 
 private def label (value : String) : Name :=
   Name.mkSimple value
@@ -612,8 +617,10 @@ private def graphNodePreviewKeys
 #guard_msgs in
 #eval
   show Bool from
-    let finalized :=
-      sampleUnfinalizedReferenceManifest.finalizePreviewReferences sampleUnfinalizedReferenceCache
+    let finalizedFiles :=
+      Informal.PreviewManifest.Files.finalizePreviewReferences <|
+        previewData sampleUnfinalizedReferenceManifest sampleUnfinalizedReferenceCache
+    let finalized := finalizedFiles.manifest
     match finalized.findEntry? "informal:reference_source:statement",
         finalized.graphs.find? (fun graph => graph.key == "reference-finalization") with
     | some source, some graph =>
@@ -978,26 +985,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleManifest sampleCache |>.isEmpty
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleEmptyRelationManifest sampleEmptyRelationCache |>.isEmpty
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleGroupManifest sampleGroupCache |>.isEmpty
+    VersoBlueprint.Vbp.checkGeneratedData (previewData sampleManifest sampleCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      sampleExternalGroupManifest sampleExternalGroupCache |>.isEmpty
+      (previewData sampleGroupManifest sampleGroupCache) |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData
+      (previewData sampleExternalGroupManifest sampleExternalGroupCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -1090,34 +1092,22 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
           else
             entry
     }
-    let orphanErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData orphanedManifest sampleGroupCache
-    let duplicateGroupErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData duplicateGroupManifest sampleGroupCache
-    let duplicateMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData duplicateMemberManifest sampleGroupCache
-    let crossGroupMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData crossGroupMemberManifest sampleGroupCache
-    let missingMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData missingMemberManifest sampleGroupCache
-    let orphanMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData orphanMemberManifest sampleGroupCache
-    let mismatchedParentErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData mismatchedParentManifest sampleGroupCache
-    let mismatchedTitleErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData mismatchedTitleManifest sampleGroupCache
-    let unparentedMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData unparentedMemberManifest sampleGroupCache
-    let emptyGroupLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyGroupLabelManifest sampleGroupCache
-    let emptyGroupTitleErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyGroupTitleManifest sampleGroupCache
-    let emptyMemberLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyMemberLabelManifest sampleGroupCache
-    let emptyEntryLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyEntryLabelManifest sampleGroupCache
-    let invalidParentErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData invalidParentManifest sampleGroupCache
+    let checkGroups manifest :=
+      VersoBlueprint.Vbp.checkGeneratedData (previewData manifest sampleGroupCache)
+    let orphanErrors := checkGroups orphanedManifest
+    let duplicateGroupErrors := checkGroups duplicateGroupManifest
+    let duplicateMemberErrors := checkGroups duplicateMemberManifest
+    let crossGroupMemberErrors := checkGroups crossGroupMemberManifest
+    let missingMemberErrors := checkGroups missingMemberManifest
+    let orphanMemberErrors := checkGroups orphanMemberManifest
+    let mismatchedParentErrors := checkGroups mismatchedParentManifest
+    let mismatchedTitleErrors := checkGroups mismatchedTitleManifest
+    let unparentedMemberErrors := checkGroups unparentedMemberManifest
+    let emptyGroupLabelErrors := checkGroups emptyGroupLabelManifest
+    let emptyGroupTitleErrors := checkGroups emptyGroupTitleManifest
+    let emptyMemberLabelErrors := checkGroups emptyMemberLabelManifest
+    let emptyEntryLabelErrors := checkGroups emptyEntryLabelManifest
+    let invalidParentErrors := checkGroups invalidParentManifest
     orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
@@ -1151,14 +1141,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache |>.isEmpty
+      (previewData sampleEmptyRelationManifest sampleEmptyRelationCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    let errors := VersoBlueprint.Vbp.checkGeneratedData
-      sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
+    VersoBlueprint.Vbp.checkGeneratedData
+      (previewData sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache) |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let errors := VersoBlueprint.Vbp.checkGeneratedData <|
+      previewData sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
     errors.any (fun err =>
       err.contains "missing manifest entry for uses of informal:relation_source:statement relation cache_only_relation" &&
         err.contains "informal:cache_only_relation:statement") &&
@@ -1170,8 +1167,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    let errors := VersoBlueprint.Vbp.checkGeneratedData
-      sampleGraphReferenceManifest sampleGraphReferenceCache
+    let errors := VersoBlueprint.Vbp.checkGeneratedData <|
+      previewData sampleGraphReferenceManifest sampleGraphReferenceCache
     errors.any (fun err =>
       err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
         err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
@@ -1186,7 +1183,7 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    let json := VersoBlueprint.Vbp.checkJson sampleManifest sampleCache
+    let json := VersoBlueprint.Vbp.checkJson (previewData sampleManifest sampleCache)
     jsonHasApiStability json &&
       jsonBoolField? json "ok" == some true &&
       jsonNatField? json "manifestEntries" == some 3 &&
@@ -1196,7 +1193,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    let json := VersoBlueprint.Vbp.checkJsonFromErrors sampleManifest sampleCache #["forced diagnostic"]
+    let json := VersoBlueprint.Vbp.checkJsonFromErrors
+      (previewData sampleManifest sampleCache) #["forced diagnostic"]
     let errors := jsonArrayField? json "errors" |>.getD #[]
     jsonBoolField? json "ok" == some false &&
       jsonArrayContainsString errors "forced diagnostic"
@@ -1208,7 +1206,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     let brokenCache : HtmlCacheFile := {
       entries := sampleCache.entries.filter (fun entry => entry.key != "lean:Nat.add_assoc")
     }
-    VersoBlueprint.Vbp.checkGeneratedData sampleManifest brokenCache |>.any (·.contains "lean:Nat.add_assoc")
+    VersoBlueprint.Vbp.checkGeneratedData (previewData sampleManifest brokenCache)
+      |>.any (·.contains "lean:Nat.add_assoc")
 
 /-- info: true -/
 #guard_msgs in

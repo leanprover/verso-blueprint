@@ -1254,10 +1254,9 @@ structure PreviewArtifactIndex where
   manifestIndex : Index := {}
   htmlCacheIndex : HtmlCache.Index := {}
 
-def PreviewArtifactIndex.ofFiles (manifest : File) (htmlCache : HtmlCache.File) :
-    PreviewArtifactIndex := {
-  manifestIndex := manifest.index
-  htmlCacheIndex := htmlCache.index
+def PreviewArtifactIndex.ofFiles (files : Files) : PreviewArtifactIndex := {
+  manifestIndex := files.manifest.index
+  htmlCacheIndex := files.htmlCache.index
 }
 
 def PreviewArtifactIndex.hasManifestKey
@@ -1299,23 +1298,31 @@ private def graphFinalizePreviewReferences
     Informal.Graph.GraphData :=
   graph.filterPreviewReferences fun key => index.resolves key.value
 
-/--
-Finalize traversal-derived preview references against the manifest/cache pair.
-
-Generated relation, group, Lean-code, and graph preview references are only
-advertised when the target key has both a semantic manifest entry and a rendered
-fragment cache body. Relations and graph nodes that fail that join remain
-present but lose their `previewKey`; Lean-code keys and graph-variant mappings
-are removed so generated JSON does not point at an unavailable preview body.
--/
-def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
-  let index := PreviewArtifactIndex.ofFiles file htmlCache
+private def File.finalizePreviewReferences
+    (file : File) (index : PreviewArtifactIndex) : File :=
   {
     file with
       previews := file.previews.map (Entry.finalizePreviewReferences index)
       groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
   }
+
+/--
+Finalize traversal-derived preview references against a paired manifest/cache value.
+
+Generated relation, group, Lean-code, and graph preview references are only
+advertised when the target key has both a semantic manifest entry and a rendered
+fragment cache body. Relations and graph nodes that fail that join remain
+present but lose their `previewKey`; Lean-code keys and graph-variant mappings
+are removed so generated JSON does not point at an unavailable preview body.
+
+Keeping finalization on `Files` makes the manifest/cache pair explicit at the
+construction boundary and prevents argument drift between index construction
+and the returned value.
+-/
+def Files.finalizePreviewReferences (files : Files) : Files :=
+  let index := PreviewArtifactIndex.ofFiles files
+  { files with manifest := files.manifest.finalizePreviewReferences index }
 
 /-- Manifest metadata that was present during traversal but is absent from export. -/
 structure PreviewMetadataLoss where
@@ -2486,8 +2493,11 @@ def buildPreviewDataFiles
     entries := htmlEntries
     hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
   }
-  let manifest : File := { previews, groups, graphs, sourceDocuments }
-  pure { manifest := manifest.finalizePreviewReferences htmlCache, htmlCache }
+  let files : Files := {
+    manifest := { previews, groups, graphs, sourceDocuments }
+    htmlCache
+  }
+  pure files.finalizePreviewReferences
 
 private def dumpManifest
     (text : Part Manual)

@@ -438,7 +438,7 @@ or DOT variant that disagrees with the authoritative nodes.
 Topology finalization and preview-artifact resolution are separate boundaries.
 `GraphModel.finish` fixes topology and DOT exactly once. Later, after the
 manifest and rendered-fragment cache are both known,
-`PreviewManifest.File.finalizePreviewReferences` may use
+`PreviewManifest.Files.finalizePreviewReferences` may use
 `GraphData.filterPreviewReferences` to remove unavailable preview keys from nodes
 and their variant lookup entries together. That synchronized post-pass cannot
 change nodes' dependencies or parents, derived edges or children, or DOT, and

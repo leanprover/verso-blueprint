@@ -19,6 +19,7 @@ abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
+abbrev GeneratedData := Informal.PreviewManifest.Files
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
 
 def defaultSite : FilePath := "_out" / "site"
@@ -292,10 +293,6 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
   | [] => .error "missing query selector"
   | selector :: _ => .error s!"unknown query selector '{selector}'"
 
-structure GeneratedData where
-  manifest : ManifestFile
-  htmlCache : HtmlCacheFile
-
 def readManifestForSite (site : FilePath) : IO ManifestFile := do
   let manifestPath ← manifestPathForSite site
   unless ← manifestPath.pathExists do
@@ -464,8 +461,9 @@ private def checkManifestGroupIntegrity
           s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
   return errors
 
-def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
-  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
+def checkGeneratedData (data : GeneratedData) : Array String :=
+  let manifest := data.manifest
+  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles data
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
@@ -494,16 +492,15 @@ def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : A
   let errors := checkManifestGroupIntegrity manifest errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
-def checkJsonFromErrors
-    (manifest : ManifestFile) (htmlCache : HtmlCacheFile) (errors : Array String) : Json :=
+def checkJsonFromErrors (data : GeneratedData) (errors : Array String) : Json :=
   responseJson [
     ("ok", Json.bool errors.isEmpty),
-    ("manifestEntries", Json.num manifest.previews.size),
-    ("htmlCacheEntries", Json.num htmlCache.entries.size),
+    ("manifestEntries", Json.num data.manifest.previews.size),
+    ("htmlCacheEntries", Json.num data.htmlCache.entries.size),
     ("errors", Json.arr (errors.map Json.str))
   ]
 
-def checkJson (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Json :=
-  checkJsonFromErrors manifest htmlCache (checkGeneratedData manifest htmlCache)
+def checkJson (data : GeneratedData) : Json :=
+  checkJsonFromErrors data (checkGeneratedData data)
 
 end VersoBlueprint.Vbp
