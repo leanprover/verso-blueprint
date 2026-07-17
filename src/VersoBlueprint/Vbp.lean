@@ -379,13 +379,14 @@ private def checkGraphPreviewKeys
 private def checkManifestGroupIntegrity
     (manifest : ManifestFile) (errors : Array String) : Array String := Id.run do
   let mut errors := errors
-  let mut groupLabels : NameSet := {}
+  let mut groupsByLabel : NameMap GroupRelation := {}
+  let mut memberGroups : NameMap Name := {}
   for group in manifest.groups do
-    if groupLabels.contains group.label then
+    if groupsByLabel.contains group.label then
       errors := errors.push
         s!"duplicate manifest group label: {Informal.PreviewManifest.labelString group.label}"
     else
-      groupLabels := groupLabels.insert group.label
+      groupsByLabel := groupsByLabel.insert group.label group
     let mut memberLabels : NameSet := {}
     for member in group.entries do
       if memberLabels.contains member.label then
@@ -394,14 +395,57 @@ private def checkManifestGroupIntegrity
             s!"in manifest group {Informal.PreviewManifest.labelString group.label}"
       else
         memberLabels := memberLabels.insert member.label
+      match memberGroups.get? member.label with
+      | some previousGroup =>
+          if previousGroup != group.label then
+            errors := errors.push <|
+              s!"manifest member {Informal.PreviewManifest.labelString member.label} " ++
+                s!"belongs to multiple groups: " ++
+                s!"{Informal.PreviewManifest.labelString previousGroup} and " ++
+                Informal.PreviewManifest.labelString group.label
+      | none =>
+          memberGroups := memberGroups.insert member.label group.label
+  let mut matchedMembers : NameSet := {}
   for entry in manifest.previews do
+    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
+      continue
     match entry.parent with
+    | none =>
+        if entry.parentTitle.isSome then
+          errors := errors.push s!"entry {entry.key} has parentTitle without parent"
+        if let some group := memberGroups.get? entry.label then
+          errors := errors.push <|
+            s!"entry {entry.key} has no parent but is listed in manifest group: " ++
+              Informal.PreviewManifest.labelString group
     | some parent =>
-        unless groupLabels.contains parent do
+        match groupsByLabel.get? parent with
+        | none =>
           errors := errors.push <|
             s!"entry {entry.key} references missing manifest group: " ++
               Informal.PreviewManifest.labelString parent
-    | none => pure ()
+        | some group =>
+            if entry.parentTitle != some group.title then
+              errors := errors.push <|
+                s!"entry {entry.key} has inconsistent parentTitle for manifest group: " ++
+                  Informal.PreviewManifest.labelString parent
+        match memberGroups.get? entry.label with
+        | none =>
+            errors := errors.push <|
+              s!"entry {entry.key} is missing from manifest group: " ++
+                Informal.PreviewManifest.labelString parent
+        | some memberGroup =>
+            if memberGroup == parent then
+              matchedMembers := matchedMembers.insert entry.label
+            else
+              errors := errors.push <|
+                s!"entry {entry.key} belongs to manifest group " ++
+                  s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
+                  Informal.PreviewManifest.labelString parent
+  for (member, group) in memberGroups.toArray do
+    unless matchedMembers.contains member do
+      errors := errors.push <|
+        s!"manifest group {Informal.PreviewManifest.labelString group} member " ++
+          s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
   return errors
 
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=

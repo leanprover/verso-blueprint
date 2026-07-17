@@ -841,18 +841,90 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       sampleGroupManifest with
         groups := #[{ group with entries := group.entries.push firstMember }]
     }
+    let secondGroup := {
+      group with
+        label := label "second_group"
+        title := "Second group"
+        entries := #[firstMember]
+    }
+    let crossGroupMemberManifest := {
+      sampleGroupManifest with groups := sampleGroupManifest.groups.push secondGroup
+    }
+    let missingMemberManifest := {
+      sampleGroupManifest with
+        groups := #[{
+          group with entries := group.entries.filter (·.label != label "group_member")
+        }]
+    }
+    let orphanMemberManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.filter (·.label != label "group_peer")
+    }
+    let mismatchedParentManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.map fun entry =>
+          if entry.label == label "group_member" then
+            { entry with parent := some (label "second_group"), parentTitle := some "Second group" }
+          else
+            entry
+        groups := sampleGroupManifest.groups.push { secondGroup with entries := #[] }
+    }
+    let mismatchedTitleManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.map fun entry =>
+          if entry.label == label "group_member" then
+            { entry with parentTitle := some "Stale group title" }
+          else
+            entry
+    }
+    let unparentedMemberManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.map fun entry =>
+          if entry.label == label "group_member" then
+            { entry with parent := none, parentTitle := none }
+          else
+            entry
+    }
     let orphanErrors :=
       VersoBlueprint.Vbp.checkGeneratedData orphanedManifest sampleGroupCache
     let duplicateGroupErrors :=
       VersoBlueprint.Vbp.checkGeneratedData duplicateGroupManifest sampleGroupCache
     let duplicateMemberErrors :=
       VersoBlueprint.Vbp.checkGeneratedData duplicateMemberManifest sampleGroupCache
+    let crossGroupMemberErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData crossGroupMemberManifest sampleGroupCache
+    let missingMemberErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData missingMemberManifest sampleGroupCache
+    let orphanMemberErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData orphanMemberManifest sampleGroupCache
+    let mismatchedParentErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData mismatchedParentManifest sampleGroupCache
+    let mismatchedTitleErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData mismatchedTitleManifest sampleGroupCache
+    let unparentedMemberErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData unparentedMemberManifest sampleGroupCache
     orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
         err == "duplicate manifest group label: sample_group") &&
       duplicateMemberErrors.any (fun err =>
-        err == "duplicate member group_member in manifest group sample_group")
+        err == "duplicate member group_member in manifest group sample_group") &&
+      crossGroupMemberErrors.any (fun err =>
+        err ==
+          "manifest member group_member belongs to multiple groups: sample_group and second_group") &&
+      missingMemberErrors.any (fun err =>
+        err == "entry informal:group_member:statement is missing from manifest group: sample_group") &&
+      orphanMemberErrors.any (fun err =>
+        err == "manifest group sample_group member group_peer has no matching manifest entry") &&
+      mismatchedParentErrors.any (fun err =>
+        err ==
+          "entry informal:group_member:statement belongs to manifest group sample_group but references second_group") &&
+      mismatchedTitleErrors.any (fun err =>
+        err ==
+          "entry informal:group_member:statement has inconsistent parentTitle for manifest group: sample_group") &&
+      unparentedMemberErrors.any (fun err =>
+        err ==
+          "entry informal:group_member:statement has no parent but is listed in manifest group: sample_group")
 
 /-- info: true -/
 #guard_msgs in
