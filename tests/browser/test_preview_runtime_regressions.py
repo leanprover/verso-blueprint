@@ -1290,24 +1290,44 @@ class TestPreviewRuntimeRegressions:
                     ...secondGroup,
                     entries: [member]
                 };
-                return {
-                    missing: await loadStatus({ previews: [], graphs: [] }),
-                    valid: await loadStatus(valid),
-                    duplicate: await loadStatus(manifest([], [group, group])),
-                    duplicateMember: await loadStatus(manifest([], [duplicateMemberGroup])),
-                    crossGroupMember: await loadStatus(manifest([], [group, crossGroup])),
-                    missingMember: await loadStatus(manifest([entry], [{ ...group, entries: [] }])),
-                    orphanMember: await loadStatus(manifest([], [group])),
-                    mismatchedParent: await loadStatus(manifest([
+                const payloads = {
+                    missing: { previews: [], graphs: [] },
+                    valid,
+                    validExternal: manifest([
+                        {
+                            ...entry,
+                            key: "externalMarkup:group_member",
+                            targetKind: "externalMarkup"
+                        }
+                    ], [group]),
+                    duplicate: manifest([], [group, group]),
+                    duplicateMember: manifest([], [duplicateMemberGroup]),
+                    crossGroupMember: manifest([], [group, crossGroup]),
+                    missingMember: manifest([entry], [{ ...group, entries: [] }]),
+                    orphanMember: manifest([], [group]),
+                    mismatchedParent: manifest([
                         { ...entry, parent: "second_group", parentTitle: "Second group" }
-                    ], [group, secondGroup])),
-                    mismatchedTitle: await loadStatus(manifest([
+                    ], [group, secondGroup]),
+                    mismatchedTitle: manifest([
                         { ...entry, parentTitle: "Stale group title" }
-                    ], [group])),
-                    unparentedMember: await loadStatus(manifest([
+                    ], [group]),
+                    unparentedMember: manifest([
                         { ...entry, parent: null, parentTitle: null }
-                    ], [group]))
+                    ], [group]),
+                    emptyGroupLabel: manifest([entry], [{ ...group, label: " " }]),
+                    emptyGroupTitle: manifest([entry], [{ ...group, title: " " }]),
+                    emptyMemberLabel: manifest([entry], [{
+                        ...group,
+                        entries: [{ ...member, label: " " }]
+                    }]),
+                    emptyEntryLabel: manifest([{ ...entry, label: " " }], [group]),
+                    invalidParent: manifest([{ ...entry, parent: " " }], [group])
                 };
+                const statuses = {};
+                for (const [name, payload] of Object.entries(payloads)) {
+                    statuses[name] = await loadStatus(payload);
+                }
+                return statuses;
                 """
             )
         )
@@ -1317,6 +1337,8 @@ class TestPreviewRuntimeRegressions:
         assert "missing groups array" in result["missing"]["message"]
         assert result["valid"]["state"] == "ready"
         assert result["valid"]["groupCount"] == 1
+        assert result["validExternal"]["state"] == "ready"
+        assert result["validExternal"]["groupCount"] == 1
         assert result["duplicate"]["state"] == "error"
         assert result["duplicate"]["groupCount"] == 0
         assert "duplicate group sample_group" in result["duplicate"]["message"]
@@ -1349,6 +1371,17 @@ class TestPreviewRuntimeRegressions:
             "entry informal:group_member:statement has no parent but is listed in "
             "group sample_group"
             in result["unparentedMember"]["message"]
+        )
+        assert "missing label" in result["emptyGroupLabel"]["message"]
+        assert "missing title" in result["emptyGroupTitle"]["message"]
+        assert "member 0 is missing label" in result["emptyMemberLabel"]["message"]
+        assert (
+            "entry informal:group_member:statement is missing label"
+            in result["emptyEntryLabel"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has invalid parent"
+            in result["invalidParent"]["message"]
         )
 
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):

@@ -382,6 +382,11 @@ private def checkManifestGroupIntegrity
   let mut groupsByLabel : NameMap GroupRelation := {}
   let mut memberGroups : NameMap Name := {}
   for group in manifest.groups do
+    if group.label == .anonymous then
+      errors := errors.push "manifest group has empty label"
+    if group.title.trimAscii.toString.isEmpty then
+      errors := errors.push <|
+        s!"manifest group {Informal.PreviewManifest.labelString group.label} has empty title"
     if groupsByLabel.contains group.label then
       errors := errors.push
         s!"duplicate manifest group label: {Informal.PreviewManifest.labelString group.label}"
@@ -389,6 +394,11 @@ private def checkManifestGroupIntegrity
       groupsByLabel := groupsByLabel.insert group.label group
     let mut memberLabels : NameSet := {}
     for member in group.entries do
+      if member.label == .anonymous then
+        errors := errors.push <|
+          s!"manifest group {Informal.PreviewManifest.labelString group.label} " ++
+            "has member with empty label"
+        continue
       if memberLabels.contains member.label then
         errors := errors.push <|
           s!"duplicate member {Informal.PreviewManifest.labelString member.label} " ++
@@ -409,6 +419,9 @@ private def checkManifestGroupIntegrity
   for entry in manifest.previews do
     if entry.targetKind != .block && entry.targetKind != .externalMarkup then
       continue
+    if entry.label == .anonymous then
+      errors := errors.push s!"entry {entry.key} is missing label"
+      continue
     match entry.parent with
     | none =>
         if entry.parentTitle.isSome then
@@ -418,6 +431,9 @@ private def checkManifestGroupIntegrity
             s!"entry {entry.key} has no parent but is listed in manifest group: " ++
               Informal.PreviewManifest.labelString group
     | some parent =>
+        if parent == .anonymous then
+          errors := errors.push s!"entry {entry.key} has invalid parent"
+          continue
         match groupsByLabel.get? parent with
         | none =>
           errors := errors.push <|

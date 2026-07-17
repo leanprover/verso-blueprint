@@ -652,7 +652,9 @@ optional `parent` label and a resolved `parentTitle` display convenience, while
 the top-level `groups` catalog stores each group's declaration state and
 traversal-ordered statement members once. Lean and browser consumers join
 through the parent label instead of copying the same sibling array into every
-preview entry.
+preview entry. The generated-data checker and browser loader enforce the join in
+both directions, including unique ownership and agreement between the catalog
+title and each entry's `parentTitle` convenience field.
 
 Consumers should join the two files by preview key at the last responsible
 moment. A renderer may use the manifest entry to decide what the object means

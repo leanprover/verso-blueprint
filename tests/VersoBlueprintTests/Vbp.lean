@@ -165,6 +165,25 @@ private def sampleGroupCache : HtmlCacheFile := {
   ]
 }
 
+private def sampleExternalGroupManifest : ManifestFile := {
+  sampleGroupManifest with
+    previews := sampleGroupManifest.previews.map fun entry =>
+      if entry.label == label "group_member" then
+        {
+          entry with
+            key := Informal.PreviewManifest.externalMarkupEntryKey entry.label
+            targetKind := .externalMarkup
+        }
+      else
+        entry
+}
+
+private def sampleExternalGroupCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:group_peer:statement", html := "<div>group peer</div>" }
+  ]
+}
+
 private def sampleSemanticOnlyExternalManifest : ManifestFile := {
   previews := #[
     {
@@ -977,6 +996,13 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData
+      sampleExternalGroupManifest sampleExternalGroupCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     let orphanedManifest := { sampleGroupManifest with groups := #[] }
     let group := sampleGroupManifest.groups[0]!
     let duplicateGroupManifest := {
@@ -1031,6 +1057,39 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
           else
             entry
     }
+    let emptyGroupLabelManifest := {
+      sampleGroupManifest with groups := #[{ group with label := .anonymous }]
+    }
+    let emptyGroupTitleManifest := {
+      sampleGroupManifest with groups := #[{ group with title := "  " }]
+    }
+    let emptyMemberLabelManifest := {
+      sampleGroupManifest with
+        groups := #[{
+          group with
+            entries := group.entries.map fun member =>
+              if member.label == firstMember.label then
+                { member with label := .anonymous }
+              else
+                member
+        }]
+    }
+    let emptyEntryLabelManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.map fun entry =>
+          if entry.label == label "group_member" then
+            { entry with label := .anonymous }
+          else
+            entry
+    }
+    let invalidParentManifest := {
+      sampleGroupManifest with
+        previews := sampleGroupManifest.previews.map fun entry =>
+          if entry.label == label "group_member" then
+            { entry with parent := some .anonymous }
+          else
+            entry
+    }
     let orphanErrors :=
       VersoBlueprint.Vbp.checkGeneratedData orphanedManifest sampleGroupCache
     let duplicateGroupErrors :=
@@ -1049,6 +1108,16 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       VersoBlueprint.Vbp.checkGeneratedData mismatchedTitleManifest sampleGroupCache
     let unparentedMemberErrors :=
       VersoBlueprint.Vbp.checkGeneratedData unparentedMemberManifest sampleGroupCache
+    let emptyGroupLabelErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData emptyGroupLabelManifest sampleGroupCache
+    let emptyGroupTitleErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData emptyGroupTitleManifest sampleGroupCache
+    let emptyMemberLabelErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData emptyMemberLabelManifest sampleGroupCache
+    let emptyEntryLabelErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData emptyEntryLabelManifest sampleGroupCache
+    let invalidParentErrors :=
+      VersoBlueprint.Vbp.checkGeneratedData invalidParentManifest sampleGroupCache
     orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
@@ -1070,7 +1139,12 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
           "entry informal:group_member:statement has inconsistent parentTitle for manifest group: sample_group") &&
       unparentedMemberErrors.any (fun err =>
         err ==
-          "entry informal:group_member:statement has no parent but is listed in manifest group: sample_group")
+          "entry informal:group_member:statement has no parent but is listed in manifest group: sample_group") &&
+      emptyGroupLabelErrors.any (· == "manifest group has empty label") &&
+      emptyGroupTitleErrors.any (· == "manifest group sample_group has empty title") &&
+      emptyMemberLabelErrors.any (· == "manifest group sample_group has member with empty label") &&
+      emptyEntryLabelErrors.any (· == "entry informal:group_member:statement is missing label") &&
+      invalidParentErrors.any (· == "entry informal:group_member:statement has invalid parent")
 
 /-- info: true -/
 #guard_msgs in
