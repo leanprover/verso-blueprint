@@ -1244,19 +1244,69 @@ class TestPreviewRuntimeRegressions:
                         groupCount: groups.length
                     };
                 }
-                const duplicateGroup = {
-                    label: "duplicate_group",
-                    title: "Duplicate group",
+                const sourceLocation = {
+                    ok: false,
+                    location: null,
+                    error: "source location unavailable"
+                };
+                const member = {
+                    label: "group_member",
+                    title: "Group member",
+                    href: null,
+                    previewKey: null,
+                    axes: []
+                };
+                const entry = {
+                    key: "informal:group_member:statement",
+                    targetKind: "block",
+                    label: "group_member",
+                    facet: "statement",
+                    title: "Group member",
+                    sourceLocation,
+                    parent: "sample_group",
+                    parentTitle: "Sample group"
+                };
+                const group = {
+                    label: "sample_group",
+                    title: "Sample group",
+                    declared: true,
+                    entries: [member]
+                };
+                const secondGroup = {
+                    label: "second_group",
+                    title: "Second group",
                     declared: true,
                     entries: []
                 };
+                function manifest(previews, groups) {
+                    return { previews, groups, graphs: [] };
+                }
+                const valid = manifest([entry], [group]);
+                const duplicateMemberGroup = {
+                    ...group,
+                    entries: [member, member]
+                };
+                const crossGroup = {
+                    ...secondGroup,
+                    entries: [member]
+                };
                 return {
                     missing: await loadStatus({ previews: [], graphs: [] }),
-                    duplicate: await loadStatus({
-                        previews: [],
-                        groups: [duplicateGroup, duplicateGroup],
-                        graphs: []
-                    })
+                    valid: await loadStatus(valid),
+                    duplicate: await loadStatus(manifest([], [group, group])),
+                    duplicateMember: await loadStatus(manifest([], [duplicateMemberGroup])),
+                    crossGroupMember: await loadStatus(manifest([], [group, crossGroup])),
+                    missingMember: await loadStatus(manifest([entry], [{ ...group, entries: [] }])),
+                    orphanMember: await loadStatus(manifest([], [group])),
+                    mismatchedParent: await loadStatus(manifest([
+                        { ...entry, parent: "second_group", parentTitle: "Second group" }
+                    ], [group, secondGroup])),
+                    mismatchedTitle: await loadStatus(manifest([
+                        { ...entry, parentTitle: "Stale group title" }
+                    ], [group])),
+                    unparentedMember: await loadStatus(manifest([
+                        { ...entry, parent: null, parentTitle: null }
+                    ], [group]))
                 };
                 """
             )
@@ -1265,9 +1315,41 @@ class TestPreviewRuntimeRegressions:
         assert result["missing"]["state"] == "error"
         assert result["missing"]["groupCount"] == 0
         assert "missing groups array" in result["missing"]["message"]
+        assert result["valid"]["state"] == "ready"
+        assert result["valid"]["groupCount"] == 1
         assert result["duplicate"]["state"] == "error"
         assert result["duplicate"]["groupCount"] == 0
-        assert "duplicate group duplicate_group" in result["duplicate"]["message"]
+        assert "duplicate group sample_group" in result["duplicate"]["message"]
+        assert (
+            "duplicate member group_member in group sample_group"
+            in result["duplicateMember"]["message"]
+        )
+        assert (
+            "member group_member belongs to multiple groups"
+            in result["crossGroupMember"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement is missing from group sample_group"
+            in result["missingMember"]["message"]
+        )
+        assert (
+            "group sample_group member group_member has no matching manifest entry"
+            in result["orphanMember"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement belongs to group "
+            "sample_group but references second_group"
+            in result["mismatchedParent"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has inconsistent parentTitle"
+            in result["mismatchedTitle"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has no parent but is listed in "
+            "group sample_group"
+            in result["unparentedMember"]["message"]
+        )
 
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
         errors = record_runtime_errors(page)

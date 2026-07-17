@@ -672,6 +672,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       throw new Error("Blueprint manifest is missing groups array");
     }
     const groupsByLabel = new Map();
+    const memberGroupsByLabel = new Map();
     groups.forEach(function (group, index) {
       if (!group || typeof group !== "object" || Array.isArray(group)) {
         throw new Error("Blueprint manifest group " + index + " must be an object");
@@ -686,9 +687,109 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       if (groupsByLabel.has(label)) {
         throw new Error("Blueprint manifest contains duplicate group " + label);
       }
+      const title = typeof group.title === "string" ? group.title.trim() : "";
+      if (!title) {
+        throw new Error("Blueprint manifest group " + label + " is missing title");
+      }
+      const memberLabels = new Set();
+      group.entries.forEach(function (member, memberIndex) {
+        if (!member || typeof member !== "object" || Array.isArray(member)) {
+          throw new Error(
+            "Blueprint manifest group " + label + " member " + memberIndex + " must be an object"
+          );
+        }
+        const memberLabel = typeof member.label === "string" ? member.label.trim() : "";
+        if (!memberLabel) {
+          throw new Error(
+            "Blueprint manifest group " + label + " member " + memberIndex + " is missing label"
+          );
+        }
+        if (memberLabels.has(memberLabel)) {
+          throw new Error(
+            "Blueprint manifest contains duplicate member " + memberLabel + " in group " + label
+          );
+        }
+        memberLabels.add(memberLabel);
+        if (memberGroupsByLabel.has(memberLabel)) {
+          throw new Error(
+            "Blueprint manifest member " + memberLabel + " belongs to multiple groups: " +
+              memberGroupsByLabel.get(memberLabel) + " and " + label
+          );
+        }
+        memberGroupsByLabel.set(memberLabel, label);
+      });
       groupsByLabel.set(label, group);
     });
-    return { groups: groups, groupsByLabel: groupsByLabel };
+    return {
+      groups: groups,
+      groupsByLabel: groupsByLabel,
+      memberGroupsByLabel: memberGroupsByLabel
+    };
+  }
+
+  function validateBlueprintGroupJoins(previews, groupData) {
+    const matchedMembers = new Set();
+    previews.forEach(function (entry) {
+      if (!entry || (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
+        return;
+      }
+      const label = typeof entry.label === "string" ? entry.label.trim() : "";
+      if (!label) {
+        throw new Error("Blueprint manifest entry " + entry.key + " is missing label");
+      }
+      const hasParent = entry.parent !== null && typeof entry.parent !== "undefined";
+      const parent = typeof entry.parent === "string" ? entry.parent.trim() : "";
+      if (hasParent && !parent) {
+        throw new Error("Blueprint manifest entry " + entry.key + " has invalid parent");
+      }
+      if (!hasParent) {
+        if (entry.parentTitle !== null && typeof entry.parentTitle !== "undefined") {
+          throw new Error(
+            "Blueprint manifest entry " + entry.key + " has parentTitle without parent"
+          );
+        }
+        if (groupData.memberGroupsByLabel.has(label)) {
+          throw new Error(
+            "Blueprint manifest entry " + entry.key +
+              " has no parent but is listed in group " + groupData.memberGroupsByLabel.get(label)
+          );
+        }
+        return;
+      }
+      const group = groupData.groupsByLabel.get(parent);
+      if (!group) {
+        throw new Error(
+          "Blueprint manifest entry " + entry.key + " references missing group " + parent
+        );
+      }
+      if (entry.parentTitle !== group.title) {
+        throw new Error(
+          "Blueprint manifest entry " + entry.key +
+            " has inconsistent parentTitle for group " + parent
+        );
+      }
+      const memberGroup = groupData.memberGroupsByLabel.get(label);
+      if (!memberGroup) {
+        throw new Error(
+          "Blueprint manifest entry " + entry.key + " is missing from group " + parent
+        );
+      }
+      if (memberGroup !== parent) {
+        throw new Error(
+          "Blueprint manifest entry " + entry.key + " belongs to group " + memberGroup +
+            " but references " + parent
+        );
+      }
+      matchedMembers.add(label);
+    });
+    groupData.memberGroupsByLabel.forEach(function (group, member) {
+      if (!matchedMembers.has(member)) {
+        throw new Error(
+          "Blueprint manifest group " + group + " member " + member +
+            " has no matching manifest entry"
+        );
+      }
+    });
   }
 
   export function decodeBlueprintSourceDocuments(data) {
@@ -725,6 +826,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
   export function decodeBlueprintManifestFile(data, previews) {
     const previewMap = previews instanceof Map ? previews : decodeBlueprintManifest(data);
     const groupData = decodeBlueprintGroups(data);
+    validateBlueprintGroupJoins(previewMap, groupData);
     const sourceData = decodeBlueprintSourceDocuments(data);
     return {
       previews: previewMap,
