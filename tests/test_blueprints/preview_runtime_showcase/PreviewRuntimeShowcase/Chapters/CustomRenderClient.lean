@@ -498,6 +498,8 @@ source := {
   spans := #[
     {
       page := "42"
+      anchor := "thm:custom-client"
+      citation := "Theorem 4.2"
       text := some {
         path := "source/pages/page-42.md"
         startLine := 10
