@@ -229,7 +229,9 @@ python3 -m scripts.blueprint_reference_harness compose /path/to/source-checkout 
 The command builds the editable source against the current `VersoBlueprint`
 checkout, writes `_out/.../reference-blueprints/local-blueprint/`, and runs
 `vbp check`. Each run replaces that generated output so removed pages cannot
-survive from an older composition. It temporarily overrides either an official
+survive from an older composition. A custom output root must remain disjoint
+from the source checkout; `compose` rejects output directories that contain or
+sit inside that checkout. The command temporarily overrides either an official
 Git dependency or a relative `verso-blueprint` path and restores the source
 checkout's lakefile and manifest afterwards. The nearest `lean-toolchain`
 inside the source checkout must select exactly the same Lean release as this

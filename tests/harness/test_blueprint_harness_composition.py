@@ -63,6 +63,29 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
                     project_id="demo",
                 )
 
+    def test_resolve_rejects_output_source_overlap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_root = root / "output" / "source"
+            project_dir = source_root / "blueprint"
+            project_dir.mkdir(parents=True)
+            (project_dir / "lakefile.lean").write_text("import Lake\n", encoding="utf-8")
+            overlapping_outputs = (
+                (root, "output"),
+                (root / "output", "source"),
+                (source_root, "generated"),
+            )
+
+            for output_root, project_id in overlapping_outputs:
+                with self.subTest(output_root=output_root, project_id=project_id):
+                    with self.assertRaisesRegex(SystemExit, "output must not overlap"):
+                        composition.resolve_composed_blueprint(
+                            source_root,
+                            "blueprint",
+                            output_root,
+                            project_id=project_id,
+                        )
+
     def test_validate_toolchain_accepts_source_root_inheritance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -178,7 +201,7 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
                 ensure_and_log_embedded_asset_owner_outputs=fake_owner_outputs,
                 run_with_heartbeat=fake_run,
             ):
-                composition.compose_blueprint(package_root, project)
+                composition.compose_blueprint(package_root, project, verbose=True)
 
             self.assertEqual(lakefile.read_text(encoding="utf-8"), lakefile_text)
             self.assertEqual(manifest.read_text(encoding="utf-8"), manifest_text)
@@ -195,6 +218,7 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
                         "build",
                         "--output",
                         str(project.output_dir),
+                        "--verbose",
                     ],
                     [
                         str(package_root / "scripts/lean-low-priority"),

@@ -61,6 +61,16 @@ def resolve_composed_blueprint(
 
     resolved_id = _project_id(project_id or source_root.name)
     output_dir = output_root.resolve() / resolved_id
+    resolved_output_dir = output_dir.resolve()
+    if (
+        resolved_output_dir == source_root
+        or resolved_output_dir in source_root.parents
+        or source_root in resolved_output_dir.parents
+    ):
+        raise SystemExit(
+            "[blueprint-harness] composed Blueprint output must not overlap the source checkout: "
+            f"output `{output_dir}`, source `{source_root}`"
+        )
     return ComposedBlueprint(
         project_id=resolved_id,
         source_root=source_root,
