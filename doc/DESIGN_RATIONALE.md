@@ -331,6 +331,15 @@ body. `PreviewManifest.Files.finalizePreviewReferences` owns that post-pass on
 the paired manifest/cache value, so production construction, indexing, and
 finalization pass one explicit pair instead of repeatedly selecting artifacts.
 
+Generated-data readers preserve the same boundary without charging every
+semantic query for projections it cannot consume. The general manifest reader
+strictly reconstructs graph topology and DOT variants from semantic nodes and
+rejects mismatches; `vbp check` and the graph-backed `work-queue` selector use
+that reader. Other `vbp query` selectors remove the top-level graph array before
+decoding because they do not consume graph projections. They still validate the
+manifest schema and decode all queryable semantic data, while avoiding graph and
+DOT rematerialization on graph-free planning-data paths.
+
 ### Render Path Inventory
 
 There are several Blueprint render callers, but only a few true assembly

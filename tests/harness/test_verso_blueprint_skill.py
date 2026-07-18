@@ -31,7 +31,8 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
         self.assertIn("selectors`: query selector forms", text)
         self.assertIn("does not require generated Blueprint data", text)
-        self.assertIn("all <label>", text)
+        self.assertIn("node <label>", text)
+        self.assertNotIn("all <label>", text)
         self.assertIn("search <text>", text)
         self.assertIn("case-insensitively", text)
         self.assertIn("code <decl>", text)
@@ -52,8 +53,9 @@ class VersoBlueprintSkillTests(unittest.TestCase):
 
     def test_vbp_reference_documents_build_check_boundary(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
-        self.assertIn("post-build generated-data health check", text)
-        self.assertIn("does not replace `build`", text)
+        self.assertIn("audits an already-generated artifact boundary", text)
+        self.assertIn("not a repair phase or a required second step", text)
+        self.assertIn("constructs and finalizes the manifest/cache pair together", text)
         self.assertIn("Lean/Lake compilation", text)
 
     def test_vbp_reference_documents_adoption_boundary(self) -> None:

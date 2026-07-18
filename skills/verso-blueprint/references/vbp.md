@@ -19,7 +19,6 @@ Query selectors:
 selectors
 labels
 node <label>
-all <label>
 uses <label>
 used-by <label>
 group <label>
@@ -79,8 +78,7 @@ All query commands print compact JSON for agent consumption. The JSON shape is f
 
 - `selectors`: query selector forms supported by this `vbp` binary. This selector does not require generated Blueprint data.
 - `labels`: statement-level Blueprint block summaries.
-- `node <label>`: one block entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, and Lean preview keys.
-- `all <label>`: one-stop agent bundle for a node, including the node, statement/proof uses, reverse uses, and group data.
+- `node <label>`: one complete block entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys.
 - `uses <label>`: statement/proof dependencies and resolved related entries for one label.
 - `used-by <label>`: reverse dependencies for one label.
 - `group <label>`: group metadata and sibling entries for one label, when present.
@@ -98,7 +96,7 @@ If generated data is missing, run `lake exe vbp build` first. If a label is unkn
 
 ## Check
 
-`lake exe vbp check` is a post-build generated-data health check. It does not replace `build`: build catches Lean/Lake compilation, elaboration, generator, and rendering failures. `check` parses generated data and verifies that semantic entries, Lean preview keys, relation previews, and group previews have corresponding rendered HTML cache entries. It prints:
+`lake exe vbp check` audits an already-generated artifact boundary. It is not a repair phase or a required second step after normal generation: `build` catches Lean/Lake compilation, elaboration, generator, and rendering failures, and production generation constructs and finalizes the manifest/cache pair together. Use `check` for persisted, copied, or externally supplied output. It strictly parses generated graph projections and verifies that semantic entries, Lean preview keys, relation previews, and group previews have corresponding rendered HTML cache entries. It prints:
 
 ```json
 {"apiStability":"unstable","ok":true,"manifestEntries":0,"htmlCacheEntries":0,"errors":[]}

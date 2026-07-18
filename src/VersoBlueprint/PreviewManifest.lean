@@ -1626,6 +1626,22 @@ def readFile (path : System.FilePath) : IO File := do
   | .ok () => decodeJsonAs path "Blueprint manifest" json
   | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
+/--
+Read the semantic projection consumed by graph-free `vbp query` selectors
+without materializing graph render projections they do not read.
+
+The manifest schema and every non-graph field are decoded normally. Use
+`readFile` for artifact audits: its strict `GraphData` decoder reconstructs and
+checks derived edges, groups, preview mappings, and DOT variants.
+-/
+def readFileWithoutGraphs (path : System.FilePath) : IO File := do
+  let json ← readJsonFile path "Blueprint manifest"
+  match checkManifestInternalSchema json with
+  | .ok () =>
+      decodeJsonAs path "Blueprint manifest" <|
+        json.setObjVal! "graphs" (Json.arr #[])
+  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+
 private structure SchemaState where
   seen : Std.HashSet Name := {}
   defs : Array (String × Json) := #[]

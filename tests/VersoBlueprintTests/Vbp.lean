@@ -497,7 +497,8 @@ private def graphNodePreviewKeys
     text.contains "lake exe vbp query [--site <dir>] <selector>" &&
       text.contains "Query selectors:" &&
       text.contains "selectors" &&
-      text.contains "all <label>" &&
+      text.contains "node <label>" &&
+      !text.contains "all <label>" &&
       text.contains "search <text>" &&
       text.contains "lake exe vbp build [--output <dir>] [--pdf] [--verbose]" &&
       text.contains "--pdf builds _out/site/pdf/main.pdf" &&
@@ -699,7 +700,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
         | some selectors =>
             jsonHasApiStability json &&
               jsonArrayContainsString selectors "selectors" &&
-              jsonArrayContainsString selectors "all <label>" &&
+              jsonArrayContainsString selectors "node <label>" &&
+              !jsonArrayContainsString selectors "all <label>" &&
               jsonArrayContainsString selectors "work-queue" &&
               jsonArrayContainsString selectors "metadata" &&
               jsonArrayContainsString selectors "search <text>"
@@ -844,17 +846,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     match VersoBlueprint.Vbp.queryJson sampleManifest ["all", "addition_assoc"] with
-    | .ok json =>
-        match jsonField? json "node", jsonArrayField? json "statementUses" with
-        | some node, some statementUses =>
-            jsonHasApiStability json &&
-              jsonStringField? json "label" == some "addition_assoc" &&
-              jsonStringField? node "label" == some "addition_assoc" &&
-              jsonStringField? node "authoredLabel" == some "addition_assoc" &&
-              jsonArrayHasStringField statementUses "label" "addition_spec" &&
-              (jsonArrayField? json "usedBy").isSome
-        | _, _ => false
-    | .error _ => false
+    | .ok _ => false
+    | .error err => err == "unknown query selector 'all'"
 
 /-- info: true -/
 #guard_msgs in
@@ -1173,10 +1166,10 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
         err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
     errors.any (fun err =>
-        err.contains s!"missing manifest entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
+        err.contains "missing manifest entry for graph graph-fixture node cache_only_graph" &&
           err.contains "informal:cache_only_graph:statement") &&
       !errors.any (fun err =>
-        err.contains s!"missing HTML cache entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
+        err.contains "missing HTML cache entry for graph graph-fixture node cache_only_graph" &&
           err.contains "informal:cache_only_graph:statement")
 
 /-- info: true -/
@@ -1230,6 +1223,49 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       pure <| message.contains "run `lake exe vbp build` first" &&
         !message.contains "vbp check"
   pure (queryOk && cacheMissing)
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  writeRawManifestOnlySite site (toJson sampleGraphReferenceManifest)
+  let strictManifest ← VersoBlueprint.Vbp.readManifestForSite site
+  let queryManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["labels"]
+  let workQueueManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["work-queue"]
+  pure <|
+    strictManifest.graphs.size == 1 &&
+      queryManifest.graphs.isEmpty &&
+      workQueueManifest.graphs.size == 1 &&
+      queryManifest.previews.map
+          (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
+        sampleGraphReferenceManifest.previews.map
+          (fun entry : Informal.PreviewManifest.Entry => entry.key)
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  let malformedGraphManifest :=
+    (toJson sampleManifest).setObjVal! "graphs" (Json.arr #[Json.str "malformed"])
+  writeRawManifestOnlySite site malformedGraphManifest
+  let queryManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["labels"]
+  let strictRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForSite site
+      pure false
+    catch _ =>
+      pure true
+  let workQueueRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["work-queue"]
+      pure false
+    catch _ =>
+      pure true
+  pure <|
+    queryManifest.previews.size == sampleManifest.previews.size &&
+      queryManifest.graphs.isEmpty &&
+      strictRejected &&
+      workQueueRejected
 
 /-- info: true -/
 #guard_msgs in

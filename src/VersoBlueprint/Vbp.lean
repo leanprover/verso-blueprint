@@ -32,7 +32,6 @@ def querySelectorLines : List String := [
   "selectors",
   "labels",
   "node <label>",
-  "all <label>",
   "uses <label>",
   "used-by <label>",
   "group <label>",
@@ -173,23 +172,8 @@ private def entryDetailFields
     ("effort", optionStringJson entry.effort)
   ]
 
-def entryJson (entry : Entry) (group? : Option GroupRelation := none) : Json :=
-  Json.mkObj (entryDetailFields entry group?)
-
 private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :=
   responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
-
-private def entryAllJson (manifest : ManifestFile) (label : String) (entry : Entry) : Json :=
-  let group? := manifest.groupForEntry? entry
-  responseJson [
-    ("label", Json.str label),
-    ("node", entryJson entry group?),
-    ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
-    ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
-    ("uses", Json.arr (entry.uses.map relatedEntryJson)),
-    ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", group?.map groupRelationJson |>.getD Json.null)
-  ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)
@@ -244,8 +228,6 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       ]
   | ["node", label] =>
       withPrimaryEntry manifest label (entryResponseJson manifest)
-  | ["all", label] =>
-      withPrimaryEntry manifest label (entryAllJson manifest label)
   | ["uses", label] =>
       withPrimaryEntry manifest label fun entry =>
         responseJson [
@@ -293,11 +275,25 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
   | [] => .error "missing query selector"
   | selector :: _ => .error s!"unknown query selector '{selector}'"
 
-def readManifestForSite (site : FilePath) : IO ManifestFile := do
+private def readManifestWith
+    (read : FilePath → IO ManifestFile) (site : FilePath) : IO ManifestFile := do
   let manifestPath ← manifestPathForSite site
   unless ← manifestPath.pathExists do
     throw <| IO.userError s!"missing Blueprint manifest at {manifestPath}; run `lake exe vbp build` first"
-  Informal.PreviewManifest.readFile manifestPath
+  read manifestPath
+
+def readManifestForSite (site : FilePath) : IO ManifestFile :=
+  readManifestWith Informal.PreviewManifest.readFile site
+
+def queryNeedsGraphData : List String → Bool
+  | ["work-queue"] => true
+  | _ => false
+
+def readManifestForQuery (site : FilePath) (selector : List String) : IO ManifestFile := do
+  if queryNeedsGraphData selector then
+    readManifestForSite site
+  else
+    readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site
 
 def readHtmlCacheForSite (site : FilePath) : IO HtmlCacheFile := do
   let htmlCachePath ← htmlCachePathForSite site
@@ -354,24 +350,10 @@ private def checkGraphNodePreviewKey
         s!"graph {graphKey} node {Informal.PreviewManifest.labelString node.label}"
         key.value errors
 
-private def checkGraphVariantPreviewKeys
-    (index : PreviewArtifactIndex) (graphKey : String)
-    (variant : Informal.Graph.GraphRenderVariant) (errors : Array String) : Array String :=
-  variant.previewKeyByNodeId.foldl
-    (fun errors (nodeId, key) =>
-      checkPreviewReference index
-        s!"graph {graphKey} variant {variant.key} node {nodeId}"
-        key errors)
-    errors
-
 private def checkGraphPreviewKeys
     (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData)
     (errors : Array String) : Array String :=
-  let errors :=
-    graph.nodes.foldl (fun errors node => checkGraphNodePreviewKey index graph.key node errors) errors
-  graph.variants.foldl
-    (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
-    errors
+  graph.nodes.foldl (fun errors node => checkGraphNodePreviewKey index graph.key node errors) errors
 
 private def checkManifestGroupIntegrity
     (manifest : ManifestFile) (errors : Array String) : Array String := Id.run do

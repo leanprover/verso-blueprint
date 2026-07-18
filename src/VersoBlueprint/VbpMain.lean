@@ -463,7 +463,7 @@ def query (args : List String) : IO UInt32 := do
           pure 0
       | _ =>
           try
-            let manifest ← VersoBlueprint.Vbp.readManifestForSite opts.site
+            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site opts.rest
             match VersoBlueprint.Vbp.queryJson manifest opts.rest with
             | .ok json =>
                 printJson json
