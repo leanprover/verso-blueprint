@@ -8,7 +8,10 @@ import VersoManual
 import VersoSlides
 import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Environment
 import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Graft.Node
 import VersoBlueprint.Graft.Render
@@ -125,12 +128,16 @@ private def renderManualGraftNode
         renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
           node.selectionDescription
   | some (preview, entry) =>
-      if !preview.hasRenderedBody then
+      if !preview.hasRenderedBody && entry.leanCodePreviewKeys.isEmpty then
         pure <| Html.tag "div" (manualNodeAttrs node) <|
           renderNotice "bp_graft_node_notice" "error"
             "Blueprint node has no cached content" node.key
       else
-        let body ← renderManualBlocks goB preview.renderedBody.blocks
+        let body ←
+          if preview.hasRenderedBody then
+            renderManualBlocks goB preview.renderedBody.blocks
+          else
+            pure .empty
         let codeBodies ←
           if node.compact then
             pure #[]
@@ -146,6 +153,42 @@ private def renderManualGraftNode
           entry
           content
           (Informal.PreviewManifest.groupRelationForEntry? state entry)
+
+/-
+Invisible source block that moves an imported `@[blueprint]` node from the
+persistent environment into the current document's traversal indexes.
+
+The visible output still goes through the ordinary graft renderer. Keeping the
+materializer limited to an empty destination anchor gives attribute-owned nodes
+the same numbering, relations, previews, and generated-data path as authored
+Blueprint blocks.
+-/
+open Verso Doc Elab Genre Manual in
+block_extension Block.blueprintAttributeNodeSource (data : Informal.BlockData) where
+  data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
+  traverse id data contents := do
+    let some blockData ←
+        Informal.ExtensionDecode.decode?
+          (α := Informal.BlockData)
+          data
+          (fun err => s!"Malformed attribute-owned Blueprint node data ({err}): {data}")
+      | pure none
+    let blockData := blockData.withTraversalNumberingContext (← read)
+    Informal.registerTraversedBlockAssets id blockData contents
+    Informal.saveTraversedBlockData id blockData
+    pure none
+  toTeX := some <| fun _goI _goB _id _data _blocks => pure .empty
+  extraCss := manualGraftAssetBundle.css
+  extraJs := manualGraftAssetBundle.js
+  toHtml := some <| fun _goI _goB id _data _blocks => do
+    let state ← Doc.Html.HtmlT.state
+    pure <| Html.tag "span"
+      (state.htmlId id ++ #[
+        ("class", "bp_attribute_node_anchor"),
+        ("aria-hidden", "true")
+      ])
+      .empty
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where
@@ -198,18 +241,109 @@ private meta def currentGenreIs (genreTerm : Term) : DocElabM Bool := do
   let expected ← Lean.Elab.Term.elabTerm genreTerm (some (.const ``Verso.Doc.Genre []))
   Lean.Meta.isDefEq current expected
 
-private meta def inManualGenre : DocElabM Bool := do
+public meta def inManualGenre : DocElabM Bool := do
   currentGenreIs (← `(Verso.Genre.Manual))
 
 private meta def inSlidesGenre : DocElabM Bool := do
   currentGenreIs (← `(VersoSlides.Slides))
 
-public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
-    DocElabM Term := do
-  if ← inManualGenre then
+private def nodeIsBlueprintAttributeOwned (node : Informal.Data.Node) : Bool :=
+  node.externalRefs.any fun ref => ref.origin == .blueprintAttr
+
+/--
+Reconstruct one persisted Manual block inside the consuming document.
+
+Attribute-owned nodes may have bodies that were already elaborated in their
+defining module. Encoding those values through Manual's typed JSON instances
+lets the generated materializer feed them back through ordinary traversal
+without running a synthetic document elaborator or introducing another body
+schema.
+-/
+public def persistedManualBlockFromJson (jsonText : String) : Verso.Doc.Block Verso.Genre.Manual :=
+  match Lean.Json.parse jsonText >>= Lean.fromJson? with
+  | .ok block => block
+  | .error err =>
+    .para #[.text s!"Blueprint persisted statement block could not be decoded: {err}"]
+
+private meta def persistedManualBlockTerm
+    (block : Verso.Doc.Block Verso.Genre.Manual) : DocElabM (TSyntax `term) := do
+  let jsonText := Lean.toJson block |>.compress
+  `(Informal.Graft.persistedManualBlockFromJson $(quote jsonText))
+
+private meta def attributeNodeBlockData?
+    (cfg : Informal.Graft.BlueprintNodeConfig) :
+    DocElabM (Option (Informal.BlockData × Array Syntax)) := do
+  let graftNode := cfg.toNode
+  let label := Informal.LabelNameParsing.parse graftNode.label
+  let some node ← Informal.Environment.getNode? label
+    | return none
+  if !nodeIsBlueprintAttributeOwned node then
+    return none
+  let statementStxs ←
+    match node.statement with
+    | none => pure #[]
+    | some statement =>
+      if statement.previewBlocks.isEmpty then
+        pure statement.elabStx
+      else
+        statement.previewBlocks.mapM fun block =>
+          return (← persistedManualBlockTerm block).raw
+  let ownerInfo? ←
+    match node.owner with
+    | some owner => Informal.Environment.getAuthor? owner
+    | none => pure none
+  let opts ← getOptions
+  let sourceLocation :=
+    match ← Informal.Data.SourceLocation.ofSyntax? (← getRef) with
+    | some location => Informal.Data.SourceLocationResult.found location
+    | none =>
+      Informal.Data.SourceLocationResult.unavailable
+        s!"placement source location unavailable for {label}"
+  let blockData : Informal.BlockData := {
+    kind := .statement node.kind
+    codeData := Informal.BlockCodeData.ofExternalRefs node.externalRefs
+    label
+    sourceLocation
+    foldProofBlock := verso.blueprint.foldProofBlocks.get opts
+    foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
+    parent := node.parent
+    count := node.count
+    numberingMode := Informal.numberingMode opts
+    subNumberingPrefix := Informal.subNumberingPrefix opts
+    subNumberingCounter := Informal.subNumberingCounter opts
+    statementUses := node.statement.map (·.deps) |>.getD #[]
+    proofUses := node.proof.map (·.deps) |>.getD #[]
+    owner := node.owner
+    ownerDisplayName := ownerInfo?.map (·.displayName)
+    ownerUrl := ownerInfo?.bind (·.url)
+    ownerImageUrl := ownerInfo?.bind (·.imageUrl)
+    tags := node.tags
+    effort := node.effort
+    priority := node.priority
+    prUrl := node.prUrl
+  }
+  pure <| some (blockData, statementStxs)
+
+private meta def manualBlueprintNodeBlock
+    (cfg : Informal.Graft.BlueprintNodeConfig) : DocElabM Term := do
+  let graft ←
     ``(Verso.Doc.Block.other
         (Informal.Graft.Block.blueprintGraftNode $(quote cfg))
         #[])
+  let some (blockData, statementStxs) ← attributeNodeBlockData? cfg
+    | return graft
+  let statementTerms : Array (TSyntax `term) := statementStxs.map fun stx => ⟨stx⟩
+  ``(Verso.Doc.Block.concat #[
+      Verso.Doc.Block.other
+        (Informal.Graft.Block.blueprintAttributeNodeSource $(quote blockData))
+        #[$statementTerms,*],
+      $graft
+    ])
+
+public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
+    DocElabM Term := do
+  if ← inManualGenre then
+    manualBlueprintNodeBlock cfg
   else if ← inSlidesGenre then
     Informal.Slides.blueprintNodeBlock cfg
   else
