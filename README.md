@@ -152,6 +152,27 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
   simp
 ```
 
+After importing a Lean module containing tagged declarations, include all of
+that module's nodes as a source-ordered Manual part with:
+
+```lean
+{includeBlueprintModule 0 MyProject.Formalization.Addition (title := "Compiled Addition Results")}
+```
+
+The `import MyProject.Formalization.Addition` statement still belongs in the
+Lean file header. When only one declaration should appear at a particular
+location in an existing Manual chapter, place that node with:
+
+```lean
+{blueprint_node "addition_right_identity"}
+```
+
+The declaration docstring supplies the informal statement when present; without
+one, Blueprint still renders a code-only node in either workflow. Docstrings are
+prose, not Blueprint dependency syntax: put `uses` and `proofUses` on the
+attribute. See the Manual's “Attribute-first use-case matrix” for the precise
+dependency, prose, proof, metadata, and source-rendering boundaries.
+
 Add `(autoDeps := true)` when a tagged declaration, labeled inline Lean block,
 or `(lean := "...")` statement should infer statement/proof dependency edges to
 directly referenced Lean declarations that are already associated with Blueprint

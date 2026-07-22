@@ -33,6 +33,8 @@ project_template/
       Addition.lean
       Multiplication.lean
       Collatz.lean
+    Formalization/
+      Addition.lean
   ProjectTemplateMain.lean
   source/
     addition-source.pdf
@@ -43,6 +45,9 @@ project_template/
 The important files are:
 
 - `ProjectTemplate/Chapters/Addition.lean`: the first chapter
+- `ProjectTemplate/Formalization/Addition.lean`: an ordinary Lean module whose
+  tagged declarations become a generated chapter through
+  `{includeBlueprintModule}`
 - `ProjectTemplate/Chapters/Multiplication.lean`: the second chapter
 - `ProjectTemplate/Chapters/Collatz.lean`: a separate exploratory chapter with
   the intentionally unfinished conjecture
@@ -64,6 +69,8 @@ The important files are:
 - local Lean code attached to a Blueprint label
 - local Rust code attached to a Blueprint label
 - a statement linked to an existing Lean declaration
+- an imported Lean module whose `@[blueprint]` declarations are included as a
+  source-ordered Blueprint chapter
 - source-document metadata attached to one theorem
 - group and author metadata
 - rendered progress summary and dependency graph pages
