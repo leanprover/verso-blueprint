@@ -115,10 +115,11 @@ private def StoredBlockData.withReservedNumbering
     match data.globalCount with
     | some globalCount => (globalCount, st)
     | none => reserveGlobalBlockNumber st
+  let sourceCount := if data.count == 0 then globalCount else data.count
   let (count, st) :=
     match data.numberingMode with
-    | .sub => reserveSubBlockNumber st data
-    | _ => (data.count, st)
+    | .sub => reserveSubBlockNumber st { data with count := sourceCount }
+    | _ => (sourceCount, st)
   ({ data with count, globalCount := some globalCount }, st)
 
 /-- Look up the stored semantic payload for an informal block label. -/

@@ -308,6 +308,14 @@ private def logLeanCodePreviewTimings
 private def htmlStringIsBlank (html : String) : Bool :=
   html.all Char.isWhitespace
 
+/--
+Non-visual cache body for a semantic block whose only visible payload is an
+associated Lean-code panel. Browser cache readers reject empty HTML strings, so
+code-only nodes use an explicit inert fragment as their block body.
+-/
+private def codeOnlyBlockPreviewHtml : String :=
+  "<span class=\"bp_code_only_preview_body\" aria-hidden=\"true\"></span>"
+
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
     let msg := Verso.LogMessage.format { severity, text, loc }
@@ -2130,14 +2138,22 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if !entry.hasRenderedBody then
+      let hasLeanCode := !entry.leanCodePreviewKeys.isEmpty
+      let hasExternalMarkup := !(externalMarkupArray state entry.label).isEmpty
+      if !entry.hasRenderedBody && (!hasLeanCode || hasExternalMarkup) then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
-        (logError := logError) (hoverState := hoverState)
-      hoverState := rendered.hoverState
-      let html := rendered.html.asString
-      if htmlStringIsBlank html then
-        continue
+      let html ←
+        if entry.hasRenderedBody then
+          let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers
+            entry.renderedBody.blocks impls state
+            (logError := logError) (hoverState := hoverState)
+          hoverState := rendered.hoverState
+          let html := rendered.html.asString
+          if htmlStringIsBlank html then
+            continue
+          pure html
+        else
+          pure codeOnlyBlockPreviewHtml
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
