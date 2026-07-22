@@ -231,7 +231,12 @@ The same flow can be read as four contracts:
    `Informal.Environment.State`. This is the canonical semantic store for
    Blueprint-owned facts. It is persisted through Lean environment extensions
    and imported through compiled oleans, so downstream modules see one merged
-   object database.
+   object database. Attribute registration also writes a small per-module
+   catalog of distinct labels that preserves first application order. The node
+   itself remains the single source of truth for associated Lean declarations.
+   This is the ownership and ordering source for `{includeBlueprintModule}`;
+   the include path does not infer chapters by sorting labels or reparsing Lean
+   source.
 
    Node exports contain only each module's local `NodeContribution` records,
    together with the module that originally introduced the label and the module
@@ -321,6 +326,22 @@ The same flow can be read as four contracts:
    captured nodes. An empty model is an empty rendering context, not a bypass
    for stale chapter metadata. See [the API guide](API.md) for direct traversal
    and synthetic-renderer usage.
+
+   An imported attribute-owned node has no source block of its own, so a Manual
+   `{blueprint_node}` placement expands to an invisible materialization block
+   followed by the ordinary graft. The materializer writes the same node,
+   preview, Lean-code, anchor, numbering, and relation indexes as an informal
+   block; its only HTML is the empty destination anchor immediately before the
+   visible graft. This keeps placement phase-safe without introducing a second
+   renderer for attribute nodes.
+   `{includeBlueprintModule}` builds a real Verso part by applying that same
+   materializer-plus-graft expansion to every entry in one imported module's
+   catalog. Catalog lookup is exact-module, so transitive imports appear only
+   when explicitly included as their own parts.
+   Statement payloads that already contain elaborated Manual blocks are
+   reconstructed through Manual's typed JSON instances. This is a localized
+   value-quotation bridge, not a second persisted body schema and not a
+   synthetic document elaboration pass.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.
@@ -1022,6 +1043,10 @@ rather than page-local template bodies:
    then hydrates links, math, and related-entry preview panels; it does not
    reconstruct Blueprint block markup or relationship topology from ad hoc
    manifest scans.
+   `VersoBlueprint.ModuleInclude` owns the module-to-part authoring boundary:
+   it reads the persistent attribute catalog, creates the Verso part, and
+   delegates every contained node to the same Manual graft materialization
+   path.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
