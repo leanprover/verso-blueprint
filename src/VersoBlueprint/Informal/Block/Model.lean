@@ -169,15 +169,16 @@ structure BlockData where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
   /--
-  Elaboration-assigned local count. Zero means unassigned; traversal replaces it
-  with the document-order count before applying the configured numbering policy.
+  Elaboration-assigned source-local count. Zero means unassigned; traversal
+  replaces it with the next source-local count after assigned counts already
+  encountered, before applying the configured numbering policy.
   -/
   count : Nat
   numberingMode : NumberingMode := .sub
@@ -245,11 +246,11 @@ main semantic node index.
 structure StoredBlockData where
   kind : Data.InProgressKind := .proof
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   parent : Option Data.Parent := none
-  /-- Local count copied from `BlockData`; zero remains the unassigned sentinel. -/
+  /-- Source-local count copied from `BlockData`; zero remains the unassigned sentinel. -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
