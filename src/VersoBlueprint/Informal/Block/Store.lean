@@ -40,6 +40,31 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   let next := nextGlobalBlockNumber st
   (next, st.set numberingCounterState (next + 1))
 
+/--
+Traversal-state key for the next source-local number available to a block whose
+elaboration phase left its `count` unassigned.
+-/
+private def sourceNumberingCounterState : Name :=
+  Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
+
+private def nextSourceBlockNumber (st : TraverseState) : Nat :=
+  match st.get? sourceNumberingCounterState with
+  | some (.ok (n : Nat)) => n
+  | _ => 1
+
+/--
+Resolve a source-local block number while keeping later unassigned placements
+after every assigned number already encountered during traversal.
+-/
+private def resolveSourceBlockNumber (st : TraverseState) (count : Nat) :
+    Nat × TraverseState :=
+  if count == 0 then
+    let next := nextSourceBlockNumber st
+    (next, st.set sourceNumberingCounterState (next + 1))
+  else
+    let next := max (nextSourceBlockNumber st) (count + 1)
+    (count, st.set sourceNumberingCounterState next)
+
 /-- Prefix-local counters, stored as a small association list in traversal state. -/
 private def prefixBlockCounters (st : TraverseState) : Array (String × Nat) :=
   match st.get? prefixNumberingCounterState with
@@ -115,9 +140,7 @@ private def StoredBlockData.withReservedNumbering
     match data.globalCount with
     | some globalCount => (globalCount, st)
     | none => reserveGlobalBlockNumber st
-  -- Attribute-owned nodes have no document elaboration pass in their defining
-  -- module, so zero marks their count as unassigned until placement traversal.
-  let sourceCount := if data.count == 0 then globalCount else data.count
+  let (sourceCount, st) := resolveSourceBlockNumber st data.count
   let (count, st) :=
     match data.numberingMode with
     | .sub => reserveSubBlockNumber st { data with count := sourceCount }

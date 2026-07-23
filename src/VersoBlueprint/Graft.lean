@@ -304,22 +304,12 @@ private meta def attributeNodeBlockData?
     sourceLocation
     foldProofBlock := verso.blueprint.foldProofBlocks.get opts
     foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
-    parent := node.parent
-    count := node.count
+    count := 0
     numberingMode := Informal.numberingMode opts
     subNumberingPrefix := Informal.subNumberingPrefix opts
     subNumberingCounter := Informal.subNumberingCounter opts
-    statementUses := node.statement.map (·.deps) |>.getD #[]
-    proofUses := node.proof.map (·.deps) |>.getD #[]
-    owner := node.owner
-    ownerDisplayName := ownerInfo?.map (·.displayName)
-    ownerUrl := ownerInfo?.bind (·.url)
-    ownerImageUrl := ownerInfo?.bind (·.imageUrl)
-    tags := node.tags
-    effort := node.effort
-    priority := node.priority
-    prUrl := node.prUrl
   }
+  let blockData := blockData.withSemanticNodeMetadata (some node) ownerInfo?
   pure <| some (blockData, statementStxs)
 
 private meta def manualBlueprintNodeBlock
@@ -340,6 +330,7 @@ private meta def manualBlueprintNodeBlock
 
 public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
     DocElabM Term := do
+  Informal.Environment.reportImportedConflicts
   if ← inManualGenre then
     manualBlueprintNodeBlock cfg
   else if ← inSlidesGenre then
