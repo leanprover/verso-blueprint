@@ -151,7 +151,7 @@ small enough to copy and adapt.
 
 The top-level file in
 [project_template/ProjectTemplate/Blueprint.lean](../project_template/ProjectTemplate/Blueprint.lean)
-does two jobs:
+does three jobs:
 
 1. it includes the chapter modules into the document
 2. it projects the tagged formalization module into a generated chapter

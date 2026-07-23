@@ -211,6 +211,31 @@ structure BlockData where
 deriving FromJson, ToJson, Quote
 
 /--
+Copy the semantic metadata shared by every rendered occurrence of a Blueprint
+node into placement-specific block data.
+
+Callers remain responsible for occurrence-local fields such as the block kind,
+code payload, source provenance, numbering options, and source location.
+-/
+def BlockData.withSemanticNodeMetadata
+    (data : BlockData) (node? : Option Data.Node)
+    (ownerInfo? : Option Data.AuthorInfo := none) : BlockData :=
+  {
+    data with
+      parent := node?.bind (·.parent)
+      statementUses := node?.bind (·.statement) |>.map (·.deps) |>.getD #[]
+      proofUses := node?.bind (·.proof) |>.map (·.deps) |>.getD #[]
+      owner := node?.bind (·.owner)
+      ownerDisplayName := ownerInfo?.map (·.displayName)
+      ownerUrl := ownerInfo?.bind (·.url)
+      ownerImageUrl := ownerInfo?.bind (·.imageUrl)
+      tags := node?.map (·.tags) |>.getD #[]
+      effort := node?.bind (·.effort)
+      priority := node?.bind (·.priority)
+      prUrl := node?.bind (·.prUrl)
+  }
+
+/--
 Slim traversal-store payload for Blueprint node metadata.
 
 Unlike `BlockData`, this intentionally excludes `codeData`. Code-specific

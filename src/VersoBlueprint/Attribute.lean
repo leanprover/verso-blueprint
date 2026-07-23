@@ -341,7 +341,7 @@ initialize
         throwError "invalid attribute '[blueprint]', declaration is in an imported module"
       let cfg ← elabBlueprintConfig stx
       registerLeanOnlyDecl decl cfg stx
-    descr := "Registers a definition/theorem as a Lean-only blueprint node; supports opt-in automatic dependency inference"
+    descr := "Registers a compiled declaration as a Blueprint node; supports opt-in automatic dependency inference"
   }
 
 end Informal

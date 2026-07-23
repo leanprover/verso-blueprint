@@ -53,6 +53,26 @@ set_option verso.blueprint.numbering "global" in
 {includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.Provider}
 :::::::
 
+set_option verso.blueprint.numbering "global" in
+#docs (Genre.Manual) repeatedAttributePlacementDoc "Repeated attribute placement" :=
+:::::::
+{blueprint_node "attr.exported.theorem"}
+
+Intervening prose between two placements of the same declaration.
+
+{blueprint_node "attr.exported.theorem"}
+:::::::
+
+set_option verso.blueprint.numbering "local" in
+#docs (Genre.Manual) locallyNumberedHybridAttributeModuleDoc "Locally numbered hybrid module" :=
+:::::::
+:::definition "attr.consumer.before.module"
+A consumer-authored node that precedes the imported attribute module.
+:::
+
+{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.HybridProvider}
+:::::::
+
 /--
 error: Blueprint module include: imported module 'VersoBlueprintTests.BlueprintAttribute.Reexport' has no declarations registered with `@[blueprint]`
 -/
@@ -313,6 +333,61 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       definitionData.count == 2 &&
       definitionData.displayNumber state == "2"
 
+/- Repeated placements keep the first number and canonical traversal anchors. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (html, state) ←
+      renderManualDocHtmlStringAndState manualImpls repeatedAttributePlacementDoc
+    let label := Name.mkSimple "attr.exported.theorem"
+    let previewKey := Informal.PreviewCache.statementKey label
+    let some data := Informal.TraversalIndex.Nodes.data? state label
+      | return false
+    let some nodeObject := Informal.TraversalIndex.Nodes.object? state label
+      | return false
+    let some previewObject :=
+        Informal.TraversalIndex.TraversalPreviews.object? state previewKey
+      | return false
+    pure <|
+      data.numberingMode == .global &&
+      data.globalCount == some 1 &&
+      data.count == 1 &&
+      Informal.nextGlobalBlockNumber state == 2 &&
+      nodeObject.ids.toArray.size == 1 &&
+      previewObject.ids.toArray.size == 1 &&
+      (html.splitOn "class=\"bp_graft_node bp_graft_manifest_node\"").length == 3
+
+/- Imported placements receive source-local numbers in consumer traversal order. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_html, state) ←
+      renderManualDocHtmlStringAndState manualImpls locallyNumberedHybridAttributeModuleDoc
+    let some consumerData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.module")
+      | return false
+    let some bodyData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
+      | return false
+    let some versoDocstringData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.verso_docstring")
+      | return false
+    let some sharedData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.shared")
+      | return false
+    pure <|
+      consumerData.numberingMode == .local &&
+      bodyData.numberingMode == .local &&
+      consumerData.count + 1 == bodyData.count &&
+      bodyData.count + 1 == versoDocstringData.count &&
+      versoDocstringData.count + 1 == sharedData.count &&
+      consumerData.globalCount == some 1 &&
+      bodyData.globalCount == some 2 &&
+      versoDocstringData.globalCount == some 3 &&
+      sharedData.globalCount == some 4
+
 /- Persisted Manual bodies, Verso docstrings, and repeated labels share the module path. -/
 /-- info: true -/
 #guard_msgs in
@@ -327,6 +402,9 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
     let hasEntries := labels.all fun label =>
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
       (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
+    let some bodyData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
+      | return false
     pure <|
       hasSubstr html "<strong>structural emphasis</strong>" &&
       hasSubstr html "First persisted Manual list item." &&
@@ -340,6 +418,9 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       hasSubstr html "<code class=\"bp_math inline\">2 + 2 = 4</code>" &&
       hasSubstr html "hybridSharedFirst" &&
       hasSubstr html "hybridSharedSecond" &&
+      bodyData.statementUses.map (·.label) ==
+        #[Name.mkSimple "attr.hybrid.verso_docstring"] &&
+      bodyData.proofUses.map (·.label) == #[Name.mkSimple "attr.hybrid.shared"] &&
       hasEntries
 
 /- Attribute-owned, code-only nodes remain available in the manifest/cache pair. -/
