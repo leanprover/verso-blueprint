@@ -179,8 +179,6 @@ block_extension Block.blueprintAttributeNodeSource (data : Informal.BlockData) w
     Informal.saveTraversedBlockData id blockData
     pure none
   toTeX := some <| fun _goI _goB _id _data _blocks => pure .empty
-  extraCss := manualGraftAssetBundle.css
-  extraJs := manualGraftAssetBundle.js
   toHtml := some <| fun _goI _goB id _data _blocks => do
     let state ← Doc.Html.HtmlT.state
     pure <| Html.tag "span"

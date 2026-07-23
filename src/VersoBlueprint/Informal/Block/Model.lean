@@ -175,6 +175,10 @@ structure BlockData where
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
+  /--
+  Elaboration-assigned local count. Zero means unassigned; traversal replaces it
+  with the document-order count before applying the configured numbering policy.
+  -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -220,6 +224,7 @@ structure StoredBlockData where
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   parent : Option Data.Parent := none
+  /-- Local count copied from `BlockData`; zero remains the unassigned sentinel. -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/

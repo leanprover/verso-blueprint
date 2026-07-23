@@ -39,8 +39,9 @@ Those labels are the key to the whole system. They are used to:
 - tag compiled declarations with `@[blueprint "label"]`, optionally using
   `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true` to infer
   edges to directly referenced Lean declarations associated with Blueprint labels
-- turn all directly tagged declarations from one imported Lean module into a
-  source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`
+- turn the distinct labels owned directly by one imported Lean module into a
+  source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`;
+  declarations that share a label become one node
 - place an imported attribute-owned declaration at a specific chapter location
   with `{blueprint_node "label"}`; its docstring becomes the statement body and
   an undocumented declaration renders as a code-only node
