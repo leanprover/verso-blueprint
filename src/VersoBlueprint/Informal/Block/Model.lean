@@ -226,6 +226,10 @@ structure BlockPresentation where
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
+  /--
+  Elaboration-assigned local count. Zero means unassigned; traversal replaces it
+  with the document-order count before applying the configured numbering policy.
+  -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/

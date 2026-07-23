@@ -70,9 +70,9 @@ structure State where
   /-- Only registrations made in this module, in registration order per label. -/
   localContributions : NameMap (Array NodeContribution) := {}
   /-- Attribute-owned labels grouped by their defining module, in application order. -/
-  blueprintAttributeModules : NameMap (Array Label) := {}
+  blueprintAttributeLabelsByModule : NameMap (Array Label) := {}
   /-- Current-module subset exported through the persistent extension. -/
-  localBlueprintAttributeModules : NameMap (Array Label) := {}
+  localBlueprintAttributeLabelsByModule : NameMap (Array Label) := {}
   groups : NameMap String := {}
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
@@ -123,7 +123,7 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
 
 inductive Entry where
   | node (label origin contributor : Name) (contributions : Array NodeContribution)
-  | blueprintAttributeNode (moduleName : Name) (label : Label)
+  | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
@@ -131,7 +131,7 @@ deriving Inhabited, Repr
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
 
-private def addBlueprintAttributeNode
+private def addBlueprintAttributeLabel
     (modules : NameMap (Array Label)) (moduleName : Name) (label : Label) :
     NameMap (Array Label) :=
   modules.insert moduleName <|
@@ -180,13 +180,13 @@ private def State.addEntry (state : State) (entry : Entry) (isLocal : Bool) : St
       { state with
         importedConflicts := pushImportedConflict state.importedConflicts .node label
           reasons (pushUnique ((state.data.get? label).map (·.modules) |>.getD #[]) contributor) }
-  | .blueprintAttributeNode moduleName label =>
+  | .blueprintAttributeLabel moduleName label =>
     { state with
-      blueprintAttributeModules :=
-        addBlueprintAttributeNode state.blueprintAttributeModules moduleName label
-      localBlueprintAttributeModules := if isLocal then
-        addBlueprintAttributeNode state.localBlueprintAttributeModules moduleName label
-        else state.localBlueprintAttributeModules }
+      blueprintAttributeLabelsByModule :=
+        addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label
+      localBlueprintAttributeLabelsByModule := if isLocal then
+        addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label
+        else state.localBlueprintAttributeLabelsByModule }
   | .group label header =>
     if state.groups.contains label then
       { state with importedConflicts := pushImportedConflict state.importedConflicts .group label }
@@ -222,15 +222,15 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         match state.data.get? name with
         | some node => Entry.node name node.origin env.mainModule contributions
         | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
-      let attributeNodeEntries :=
-        state.localBlueprintAttributeModules.toArray.flatMap fun (moduleName, labels) =>
-          labels.map (Entry.blueprintAttributeNode moduleName)
+      let attributeLabelEntries :=
+        state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
+          labels.map (Entry.blueprintAttributeLabel moduleName)
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
       OLeanEntries.uniform
-        (nodeEntries ++ attributeNodeEntries ++ groupEntries ++ authorEntries)
+        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries)
   }
 
 section EnvOps
@@ -246,15 +246,15 @@ def modifyM (f : State -> m State) : m Unit := do
   modifyEnv (informalExt.setState · st)
 
 /-- Record a successful attribute registration in module application order. -/
-def registerBlueprintAttributeNode (label : Label) : m Unit := do
+def registerBlueprintAttributeLabel (label : Label) : m Unit := do
   let moduleName := (← getEnv).mainModule
   modifyEnv fun env =>
     informalExt.addEntry env <|
-      .blueprintAttributeNode moduleName label.eraseMacroScopes
+      .blueprintAttributeLabel moduleName label.eraseMacroScopes
 
 /-- Attribute-owned nodes declared directly by the module, in source order. -/
-def blueprintAttributeNodesForModule (moduleName : Name) : m (Array Label) := do
-  return (informalExt.getState (← getEnv)).blueprintAttributeModules.getD moduleName #[]
+def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
+  return (informalExt.getState (← getEnv)).blueprintAttributeLabelsByModule.getD moduleName #[]
 
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
