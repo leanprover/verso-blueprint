@@ -334,7 +334,9 @@ same label, the part contains one node with all of their Lean panels. Re-exporte
 or otherwise transitive modules are not folded into the part: include each
 desired module explicitly. Every node follows the same docstring/code-only,
 numbering, relation, preview, manifest, and cache path as an individual
-placement.
+placement. Its local display number is assigned in the consuming document's
+traversal order; the generated placement does not retain a display number from
+the provider module.
 
 Module inclusion currently materializes the statement facet only. A separate
 informal `:::proof` body persisted in the defining module is not automatically
@@ -1377,7 +1379,7 @@ renders a pointer to the HTML output, and `Not in PDF` is absent from
 | External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
 | Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
 | Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
-| Grafted Blueprint nodes | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
+| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
 | Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
 | Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
 | Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |

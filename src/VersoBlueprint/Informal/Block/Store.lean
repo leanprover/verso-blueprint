@@ -116,7 +116,8 @@ def numberedPartPrefix? (mode : SubNumberingPrefix) (ctxt : TraverseContext) : O
 Resolve the appended number for a sub-numbered block.
 
 Only `SubNumberingCounter.prefix` reserves a new prefix-local number. In
-document-order mode, the block keeps the elaboration-time `count`.
+document-order mode, the block keeps the source-local `count` already resolved
+during traversal.
 -/
 def reserveSubBlockNumber (st : TraverseState) (data : StoredBlockData) : Nat × TraverseState :=
   match data.subNumberingCounter, data.partPrefix with
