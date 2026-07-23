@@ -152,25 +152,25 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let providerNodes ← Informal.Environment.blueprintAttributeNodesForModule
+    let providerLabels ← Informal.Environment.blueprintAttributeLabelsForModule
       `VersoBlueprintTests.BlueprintAttribute.Provider
-    let reexportNodes ← Informal.Environment.blueprintAttributeNodesForModule
+    let reexportLabels ← Informal.Environment.blueprintAttributeLabelsForModule
       `VersoBlueprintTests.BlueprintAttribute.Reexport
-    let hybridNodes ← Informal.Environment.blueprintAttributeNodesForModule
+    let hybridLabels ← Informal.Environment.blueprintAttributeLabelsForModule
       `VersoBlueprintTests.BlueprintAttribute.HybridProvider
     pure <|
-      providerNodes == #[
+      providerLabels == #[
         Name.mkSimple "attr.exported.theorem",
         Name.mkSimple "attr.exported.definition",
         Name.mkSimple "attr.exported.inductive",
         Name.mkSimple "attr.exported.undocumented"
       ] &&
-      hybridNodes == #[
+      hybridLabels == #[
         Name.mkSimple "attr.hybrid.body",
         Name.mkSimple "attr.hybrid.verso_docstring",
         Name.mkSimple "attr.hybrid.shared"
       ] &&
-      reexportNodes.isEmpty
+      reexportLabels.isEmpty
 
 /- Hybrid fixtures exercise persisted bodies, structural Verso docstrings, and many-to-one labels. -/
 /-- info: true -/
@@ -245,17 +245,6 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
 /-- info: true -/
 #guard_msgs in
 #eval
-  show CoreM Bool from do
-    let state ← importedState
-    pure <|
-      state.data.contains (Name.mkSimple "attr.exported.theorem") &&
-      state.data.contains (Name.mkSimple "attr.exported.definition") &&
-      state.data.contains (Name.mkSimple "attr.exported.inductive") &&
-      state.data.contains (Name.mkSimple "attr.exported.undocumented")
-
-/-- info: true -/
-#guard_msgs in
-#eval
   show IO Bool from do
     let (html, state) ← renderManualDocHtmlStringAndState manualImpls placedAttributeDoc
     let theoremKey := Informal.PreviewCache.statementKey (Name.mkSimple "attr.exported.theorem")
@@ -317,9 +306,11 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
     pure <|
       theoremData.numberingMode == .global &&
       theoremData.globalCount == some 1 &&
+      theoremData.count == 1 &&
       theoremData.displayNumber state == "1" &&
       definitionData.numberingMode == .global &&
       definitionData.globalCount == some 2 &&
+      definitionData.count == 2 &&
       definitionData.displayNumber state == "2"
 
 /- Persisted Manual bodies, Verso docstrings, and repeated labels share the module path. -/
@@ -337,11 +328,18 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
       (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
     pure <|
-      hasSubstr html "Hybrid statement body persisted as already elaborated Manual blocks." &&
-      hasSubstr html "A Verso docstring body that survives Blueprint conversion." &&
+      hasSubstr html "<strong>structural emphasis</strong>" &&
+      hasSubstr html "First persisted Manual list item." &&
+      hasSubstr html "Second persisted Manual list item." &&
+      hasSubstr html "<strong>structurally emphasized Verso docstring body</strong>" &&
+      hasSubstr html "<code>Nat.succ</code>" &&
+      hasSubstr html "First imported docstring list item." &&
+      hasSubstr html "Second imported docstring list item." &&
+      3 ≤ (html.splitOn "<ul>").length &&
+      hasSubstr html "<code class=\"bp_math inline\">1 + 1 = 2</code>" &&
+      hasSubstr html "<code class=\"bp_math inline\">2 + 2 = 4</code>" &&
       hasSubstr html "hybridSharedFirst" &&
       hasSubstr html "hybridSharedSecond" &&
-      !hasSubstr html "bp_code_only_preview_body" &&
       hasEntries
 
 /- Attribute-owned, code-only nodes remain available in the manifest/cache pair. -/

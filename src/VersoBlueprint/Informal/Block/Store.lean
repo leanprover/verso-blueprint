@@ -115,6 +115,8 @@ private def StoredBlockData.withReservedNumbering
     match data.globalCount with
     | some globalCount => (globalCount, st)
     | none => reserveGlobalBlockNumber st
+  -- Attribute-owned nodes have no document elaboration pass in their defining
+  -- module, so zero marks their count as unassigned until placement traversal.
   let sourceCount := if data.count == 0 then globalCount else data.count
   let (count, st) :=
     match data.numberingMode with
