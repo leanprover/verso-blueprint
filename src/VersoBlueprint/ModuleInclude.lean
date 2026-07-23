@@ -73,6 +73,16 @@ Use {lit}`(title := "...")` to replace the default final module-name component.
 @[part_command Lean.Doc.Syntax.command]
 public meta def includeBlueprintModuleCmd : PartCommand
   | stx@`(block|command{includeBlueprintModule $args*}) => do
+    let ref ← getRef
+    Hover.addCustomHover ref
+      r#"Includes the `@[blueprint]` declarations owned directly by an imported Lean module as one Manual part.
+
+  * `{includeBlueprintModule MODULE}`: Includes the declarations as a child part.
+  * `{includeBlueprintModule N MODULE}`: Includes the declarations at header level `N`.
+  * `(title := "...")`: Replaces the default title derived from the module name.
+
+The named module must already be available through the document module's Lean imports.
+  "#
     let cfg ← Verso.ArgParse.parseThe BlueprintModuleConfig (← parseArgs args)
     let endPos := stx.getTailPos?.get!
     let part ← mkBlueprintModulePart stx endPos cfg
