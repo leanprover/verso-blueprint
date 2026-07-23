@@ -302,7 +302,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
     proofUses := deps.proof
     leanCode := #[.external #[extRef]]
   }
-  Environment.registerBlueprintAttributeNode label
+  Environment.registerBlueprintAttributeLabel label
 
 
 open Lean in

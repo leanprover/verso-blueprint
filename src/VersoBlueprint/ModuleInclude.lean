@@ -51,13 +51,13 @@ private meta def mkBlueprintModulePart
     throwErrorAt stx
       "Blueprint module include: module '{cfg.moduleName}' is not available through this Lean module's imports; add `import {cfg.moduleName}`"
   Informal.Environment.reportImportedConflicts
-  let nodes ← Informal.Environment.blueprintAttributeNodesForModule cfg.moduleName
-  if nodes.isEmpty then
+  let labels ← Informal.Environment.blueprintAttributeLabelsForModule cfg.moduleName
+  if labels.isEmpty then
     throwErrorAt stx
       "Blueprint module include: imported module '{cfg.moduleName}' has no declarations registered with `@[blueprint]`"
   let title := cfg.title?.getD (defaultTitle cfg.moduleName)
   let titleInline ← ``(Verso.Doc.Inline.text $(quote title))
-  let blocks ← nodes.mapM fun label =>
+  let blocks ← labels.mapM fun label =>
     PartElabM.liftDocElabM <| Informal.Graft.blueprintNodeBlock {
       label := label.getString!
     }

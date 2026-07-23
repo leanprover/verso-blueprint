@@ -19,12 +19,23 @@ theorem hybridBodyTheorem : True := by
 #docs (Genre.Manual) hybridBodySourceDoc "Hybrid attribute body source" :=
 :::::::
 :::theorem "attr.hybrid.body"
-Hybrid statement body persisted as already elaborated Manual blocks.
+Hybrid statement body persisted with *structural emphasis*, inline mathematics
+$`1 + 1 = 2`, and already elaborated Manual blocks.
+
+* First persisted Manual list item.
+* Second persisted Manual list item.
 :::
 :::::::
 
 set_option doc.verso true in
-/-- A Verso docstring body that survives Blueprint conversion. -/
+/--
+A *structurally emphasized Verso docstring body* that survives Blueprint
+conversion. It keeps the child content of the {name}`Nat.succ`
+extension and inline mathematics $`2 + 2 = 4`.
+
+* First imported docstring list item.
+* Second imported docstring list item.
+-/
 @[blueprint "attr.hybrid.verso_docstring"]
 def hybridVersoDocstring : Nat := 13
 
