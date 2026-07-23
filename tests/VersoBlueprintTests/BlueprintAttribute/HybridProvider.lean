@@ -12,7 +12,9 @@ open Informal
 
 namespace Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider
 
-@[blueprint "attr.hybrid.body"]
+@[blueprint "attr.hybrid.body"
+  (uses := ["attr.hybrid.verso_docstring"])
+  (proofUses := ["attr.hybrid.shared"])]
 theorem hybridBodyTheorem : True := by
   trivial
 
