@@ -176,9 +176,9 @@ structure BlockData where
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
   /--
-  Elaboration-assigned source-local count. Zero means unassigned; traversal
-  replaces it with the next source-local count after assigned counts already
-  encountered, before applying the configured numbering policy.
+  Elaboration-assigned source-local count. Traversal replaces zero or a count
+  behind its source-local cursor with the next available count before applying
+  the configured numbering policy.
   -/
   count : Nat
   numberingMode : NumberingMode := .sub

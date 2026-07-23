@@ -70,16 +70,7 @@ block_extension Block.informal (data : BlockData) where
     | none =>
       pure none
     | some blockData =>
-      let blockData := blockData.withTraversalNumberingContext (← read)
-      registerTraversedBlockAssets id blockData _contents
-      saveTraversedBlockData id blockData
-      if let some sourceRef := blockData.sourceRef then
-        match Informal.TraversalIndex.SourceRefs.data? (← get) blockData.label with
-        | some existing =>
-            unless existing == sourceRef do
-              Verso.reportError s!"Label {blockData.label} already has conflicting source provenance"
-        | none =>
-            modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
+      registerTraversedBlock id blockData _contents
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
       let .ok data := fromJson? (α := BlockData) data
