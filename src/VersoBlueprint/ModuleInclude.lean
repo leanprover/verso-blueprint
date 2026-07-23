@@ -64,6 +64,12 @@ private meta def mkBlueprintModulePart
   pure <| FinishedPart.mk stx stx #[titleInline] title none blocks #[] endPos
 
 open PartElabM in
+/--
+Include the declarations marked with {lit}`@[blueprint]` and owned directly by
+an imported Lean module as a source-ordered Manual part. The optional leading
+level controls where the part is inserted; omitting it creates a child part.
+Use {lit}`(title := "...")` to replace the default final module-name component.
+-/
 @[part_command Lean.Doc.Syntax.command]
 public meta def includeBlueprintModuleCmd : PartCommand
   | stx@`(block|command{includeBlueprintModule $args*}) => do

@@ -30,7 +30,7 @@ error: Duplicate imported blueprint author id '«dup.imported.author»'
 #guard_msgs in
 #docs (Genre.Manual) directImportedDuplicateDoc "Direct Imported Duplicates" :=
 :::::::
-{blueprint_summary}
+{blueprint_node "dup.imported.node"}
 :::::::
 
 def directImportedDuplicateDocBlueprint : Informal.BlueprintDocument := .capture directImportedDuplicateDoc.toPart
