@@ -17,13 +17,13 @@ open Lean
 open Verso Doc Elab Syntax ArgParse
 
 /-- Selection and presentation options for `{includeBlueprintModule ...}`. -/
-public structure BlueprintModuleConfig where
+private structure BlueprintModuleConfig where
   level? : Option Nat := none
   moduleName : Name
   title? : Option String := none
 deriving Inhabited, Repr
 
-public meta instance : FromArgs BlueprintModuleConfig PartElabM where
+private meta instance : FromArgs BlueprintModuleConfig PartElabM where
   fromArgs :=
     ((fun level moduleName title? =>
         { level? := some level, moduleName, title? })

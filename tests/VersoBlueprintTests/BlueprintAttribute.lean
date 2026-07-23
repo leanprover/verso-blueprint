@@ -64,6 +64,20 @@ Intervening prose between two placements of the same declaration.
 :::::::
 
 set_option verso.blueprint.numbering "local" in
+#docs (Genre.Manual) interleavedLocalAttributePlacementDoc "Interleaved local attribute placement" :=
+:::::::
+:::definition "attr.consumer.before.placement"
+A consumer-authored node before an imported attribute placement.
+:::
+
+{blueprint_node "attr.exported.theorem"}
+
+:::definition "attr.consumer.after.placement"
+A consumer-authored node after an imported attribute placement.
+:::
+:::::::
+
+set_option verso.blueprint.numbering "local" in
 #docs (Genre.Manual) locallyNumberedHybridAttributeModuleDoc "Locally numbered hybrid module" :=
 :::::::
 :::definition "attr.consumer.before.module"
@@ -357,6 +371,32 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       nodeObject.ids.toArray.size == 1 &&
       previewObject.ids.toArray.size == 1 &&
       (html.splitOn "class=\"bp_graft_node bp_graft_manifest_node\"").length == 3
+
+/- Generated placements cannot reuse a later authored block's source-local count. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_html, state) ←
+      renderManualDocHtmlStringAndState manualImpls interleavedLocalAttributePlacementDoc
+    let some beforeData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.placement")
+      | return false
+    let some attributeData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.exported.theorem")
+      | return false
+    let some afterData :=
+        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.after.placement")
+      | return false
+    pure <|
+      beforeData.numberingMode == .local &&
+      attributeData.numberingMode == .local &&
+      afterData.numberingMode == .local &&
+      beforeData.count + 1 == attributeData.count &&
+      attributeData.count + 1 == afterData.count &&
+      beforeData.globalCount == some 1 &&
+      attributeData.globalCount == some 2 &&
+      afterData.globalCount == some 3
 
 /- Imported placements receive source-local numbers in consumer traversal order. -/
 /-- info: true -/
