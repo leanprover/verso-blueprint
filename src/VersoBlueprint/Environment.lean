@@ -60,9 +60,9 @@ structure State where
   data : Data := Data.empty
   localData : NameMap Node := {}
   /-- Attribute-owned labels grouped by their defining module, in application order. -/
-  blueprintAttributeModules : NameMap (Array Label) := {}
+  blueprintAttributeLabelsByModule : NameMap (Array Label) := {}
   /-- Current-module subset exported through the persistent extension. -/
-  localBlueprintAttributeModules : NameMap (Array Label) := {}
+  localBlueprintAttributeLabelsByModule : NameMap (Array Label) := {}
   groups : NameMap String := {}
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
@@ -97,7 +97,7 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
 
 inductive Entry where
   | node (label : Name) (node : Node)
-  | blueprintAttributeNode (moduleName : Name) (label : Label)
+  | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
@@ -105,7 +105,7 @@ deriving Inhabited, Repr
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
 
-private def addBlueprintAttributeNode
+private def addBlueprintAttributeLabel
     (modules : NameMap (Array Label))
     (moduleName : Name) (label : Label) :
     NameMap (Array Label) :=
@@ -166,12 +166,12 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           localData := state.localData.insert label node
           leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
         }
-      | .blueprintAttributeNode moduleName label =>
+      | .blueprintAttributeLabel moduleName label =>
         { state with
-          blueprintAttributeModules :=
-            addBlueprintAttributeNode state.blueprintAttributeModules moduleName label
-          localBlueprintAttributeModules :=
-            addBlueprintAttributeNode state.localBlueprintAttributeModules moduleName label
+          blueprintAttributeLabelsByModule :=
+            addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label
+          localBlueprintAttributeLabelsByModule :=
+            addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label
         }
       | .group label header =>
         { state with
@@ -184,7 +184,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           localAuthors := state.localAuthors.insert label info
         }
     addImportedFn entries := do
-      let (data, attributeModules, groups, authors, leanNameLabels, importedConflicts) :=
+      let (data, attributeLabelsByModule, groups, authors, leanNameLabels, importedConflicts) :=
         entries.foldl
           (init := (
             ({} : NameMap Node),
@@ -195,37 +195,37 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
             (#[] : Array ImportedConflict)
           )) fun acc entry =>
         entry.foldl (init := acc) fun
-            (dataAcc, attributeModulesAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
+            (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
           match item with
           | .node label node =>
             if dataAcc.contains label then
-              (dataAcc, attributeModulesAcc, groupAcc, authorAcc, leanNameAcc,
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
                 pushImportedConflict conflictsAcc .node label)
             else
               let leanNameAcc := addNodeLeanDeclLabels leanNameAcc label node
-              (dataAcc.insert label node, attributeModulesAcc, groupAcc, authorAcc,
+              (dataAcc.insert label node, attributeLabelsAcc, groupAcc, authorAcc,
                 leanNameAcc, conflictsAcc)
-          | .blueprintAttributeNode moduleName label =>
+          | .blueprintAttributeLabel moduleName label =>
             (dataAcc,
-              addBlueprintAttributeNode attributeModulesAcc moduleName label,
+              addBlueprintAttributeLabel attributeLabelsAcc moduleName label,
               groupAcc, authorAcc, leanNameAcc, conflictsAcc)
           | .group label header =>
             if groupAcc.contains label then
-              (dataAcc, attributeModulesAcc, groupAcc, authorAcc, leanNameAcc,
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
                 pushImportedConflict conflictsAcc .group label)
             else
-              (dataAcc, attributeModulesAcc, groupAcc.insert label header, authorAcc,
+              (dataAcc, attributeLabelsAcc, groupAcc.insert label header, authorAcc,
                 leanNameAcc, conflictsAcc)
           | .author label info =>
             if authorAcc.contains label then
-              (dataAcc, attributeModulesAcc, groupAcc, authorAcc, leanNameAcc,
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
                 pushImportedConflict conflictsAcc .author label)
             else
-              (dataAcc, attributeModulesAcc, groupAcc, authorAcc.insert label info,
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc.insert label info,
                 leanNameAcc, conflictsAcc)
       pure {
         data
-        blueprintAttributeModules := attributeModules
+        blueprintAttributeLabelsByModule := attributeLabelsByModule
         groups
         authors
         leanNameLabels
@@ -239,15 +239,15 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         let proof := node.proof.map fun p =>
           if p.previewBlocks.isEmpty then p else { p with elabStx := #[] }
         Entry.node name { node with statement, proof }
-      let attributeNodeEntries :=
-        state.localBlueprintAttributeModules.toArray.flatMap fun (moduleName, labels) =>
-          labels.map (Entry.blueprintAttributeNode moduleName)
+      let attributeLabelEntries :=
+        state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
+          labels.map (Entry.blueprintAttributeLabel moduleName)
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
       OLeanEntries.uniform
-        (nodeEntries ++ attributeNodeEntries ++ groupEntries ++ authorEntries)
+        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries)
   }
 
 section EnvOps
@@ -272,15 +272,16 @@ Record one successful `@[blueprint]` label under the module currently being
 compiled. Repeated registrations keep the first application position while the
 semantic node continues to collect every Lean declaration.
 -/
-def registerBlueprintAttributeNode (label : Label) : m Unit := do
+def registerBlueprintAttributeLabel (label : Label) : m Unit := do
   let moduleName := (← getEnv).mainModule
   modifyEnv fun env =>
     informalExt.addEntry env <|
-      .blueprintAttributeNode moduleName label.eraseMacroScopes
+      .blueprintAttributeLabel moduleName label.eraseMacroScopes
 
-/-- Attribute-owned Blueprint nodes declared directly by `moduleName`, in source order. -/
-def blueprintAttributeNodesForModule (moduleName : Name) : m (Array Label) := do
-  return (informalExt.getState (← getEnv)).blueprintAttributeModules.getD moduleName #[]
+/-- Attribute-owned Blueprint labels declared directly by `moduleName`, in source order. -/
+def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
+  let state := informalExt.getState (← getEnv)
+  return state.blueprintAttributeLabelsByModule.getD moduleName #[]
 
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts

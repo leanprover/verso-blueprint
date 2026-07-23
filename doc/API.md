@@ -669,8 +669,9 @@ both cases a docstring supplies the statement body when present; otherwise a
 code-only preview entry is produced. Ordinary informal nodes must already be
 in the traversal, and Slides always use the manifest/cache supplied by their
 generator. The module command is deliberately Manual-only. Module selection and
-materialization are document-elaboration concerns; the config, manifest entry,
-and rendering APIs below remain shared.
+statement-facet materialization are document-elaboration concerns; persisted
+informal proof bodies are not yet materialized from imported modules. The
+config, manifest entry, and rendering APIs below remain shared.
 
 `VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
 interfaces. A consumer such as an audit view can provide its own wrapper

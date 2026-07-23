@@ -326,7 +326,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
         data.insert label node
       | none => data
     return data
-  Environment.registerBlueprintAttributeNode label
+  Environment.registerBlueprintAttributeLabel label
 
 open Lean in
 initialize

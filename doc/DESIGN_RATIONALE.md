@@ -237,10 +237,12 @@ The same flow can be read as four contracts:
    An imported attribute-owned node has no source block of its own, so a Manual
    `{blueprint_node}` placement expands to an invisible materialization block
    followed by the ordinary graft. The materializer writes the same node,
-   preview, Lean-code, anchor, numbering, and relation indexes as an informal
-   block; its only HTML is the empty destination anchor immediately before the
-   visible graft. This keeps placement phase-safe without introducing a second
-   renderer for attribute nodes.
+   statement-preview, Lean-code, anchor, numbering, and relation indexes as an
+   informal statement block; its only HTML is the empty destination anchor
+   immediately before the visible graft. This keeps placement phase-safe
+   without introducing a second renderer for attribute nodes. Persisted
+   provider-module proof bodies are not yet projected into proof-facet traversal
+   entries.
    `{includeBlueprintModule}` builds a real Verso part by applying that same
    materializer-plus-graft expansion to every entry in one imported module's
    catalog. Catalog lookup is exact-module, so transitive imports appear only

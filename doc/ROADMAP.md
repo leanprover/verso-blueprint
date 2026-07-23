@@ -169,15 +169,18 @@ Work:
 9. revisit external declaration footer/status semantics once out-of-workspace
    declarations are represented precisely enough to distinguish declaration
    completeness from dependency completeness
-10. continue the attribute-first authoring path after declaration placement:
-    decide whether explicit Blueprint prose should override an imported
-    docstring fallback, design attribute-side `parent`/owner/tag/effort/priority
-    metadata without duplicating statement-block validation, evaluate
-    `only`/`except` filters and module-level introductory prose for
-    `{includeBlueprintModule}`, design typed adapters for custom Lean docstring
-    extensions that need Manual semantics, and capture exact definition/proof
-    source only after Lean exposes a reliable post-declaration range or syntax
-    hook to the attribute pipeline
+10. design facet-aware materialization for persisted informal proof bodies and
+    decide whether `{includeBlueprintModule}` renders them by default
+11. decide whether explicit Blueprint prose should override an imported
+    docstring fallback
+12. design attribute-side `parent`/owner/tag/effort/priority metadata without
+    duplicating statement-block validation
+13. evaluate `only`/`except` filters and module-level introductory prose for
+    `{includeBlueprintModule}`
+14. extract or upstream the shared structural `Lean.Doc` conversion before
+    designing typed adapters for custom extensions that need Manual semantics
+15. capture exact definition/proof source only after Lean exposes a reliable
+    post-declaration range or syntax hook to the attribute pipeline
 
 ### Asset and Build Reliability
 
