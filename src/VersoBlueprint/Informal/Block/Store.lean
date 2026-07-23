@@ -41,8 +41,7 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   (next, st.set numberingCounterState (next + 1))
 
 /--
-Traversal-state key for the next source-local number available to a block whose
-elaboration phase left its `count` unassigned.
+Traversal-state key for the next source-local number available during traversal.
 -/
 private def sourceNumberingCounterState : Name :=
   Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
@@ -53,17 +52,18 @@ private def nextSourceBlockNumber (st : TraverseState) : Nat :=
   | _ => 1
 
 /--
-Resolve a source-local block number while keeping later unassigned placements
-after every assigned number already encountered during traversal.
+Resolve a source-local block number monotonically in traversal order.
+
+Zero is the unassigned sentinel. A nonzero elaboration-time count is also
+reassigned when an earlier generated placement has already advanced beyond it.
 -/
 private def resolveSourceBlockNumber (st : TraverseState) (count : Nat) :
     Nat × TraverseState :=
-  if count == 0 then
-    let next := nextSourceBlockNumber st
+  let next := nextSourceBlockNumber st
+  if count == 0 || count < next then
     (next, st.set sourceNumberingCounterState (next + 1))
   else
-    let next := max (nextSourceBlockNumber st) (count + 1)
-    (count, st.set sourceNumberingCounterState next)
+    (count, st.set sourceNumberingCounterState (count + 1))
 
 /-- Prefix-local counters, stored as a small association list in traversal state. -/
 private def prefixBlockCounters (st : TraverseState) : Array (String × Nat) :=
