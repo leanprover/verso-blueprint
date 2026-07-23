@@ -8,7 +8,6 @@ import VersoManual
 import VersoSlides
 import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
-import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Environment
@@ -174,9 +173,7 @@ block_extension Block.blueprintAttributeNodeSource (data : Informal.BlockData) w
           data
           (fun err => s!"Malformed attribute-owned Blueprint node data ({err}): {data}")
       | pure none
-    let blockData := blockData.withTraversalNumberingContext (← read)
-    Informal.registerTraversedBlockAssets id blockData contents
-    Informal.saveTraversedBlockData id blockData
+    Informal.registerTraversedBlock id blockData contents
     pure none
   toTeX := some <| fun _goI _goB _id _data _blocks => pure .empty
   toHtml := some <| fun _goI _goB id _data _blocks => do

@@ -293,6 +293,7 @@ that owner.
 | Fact family | Owner | Stored as | Main consumers |
 | --- | --- | --- | --- |
 | Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` and related environment maps | traversal, graph, summary, manifest construction |
+| Attribute-module ownership and first-application order | Attribute elaboration | `Environment.State.blueprintAttributeLabelsByModule`; node semantics remain in `Environment.State.data` | `{includeBlueprintModule}`, exact-module diagnostics |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
@@ -365,6 +366,9 @@ flowchart TD
   previewExtra["Preview-data extra step<br/>emitBlueprintPreviewData"]
   previewFiles["Manifest/cache files<br/>blueprint-manifest.json<br/>blueprint-html-cache.json"]
 
+  attributeEnv["Persistent attribute node/catalog<br/>Environment.State"]
+  moduleInclude["Attribute module part command<br/>includeBlueprintModule"]
+  attributeMaterializer["Attribute traversal materializer<br/>blueprintAttributeNodeSource"]
   manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
   traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
   manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
@@ -384,6 +388,10 @@ flowchart TD
   manualMain --> previewExtra
   previewExtra --> previewFiles
 
+  attributeEnv --> moduleInclude
+  attributeEnv --> attributeMaterializer
+  moduleInclude --> attributeMaterializer
+  attributeMaterializer --> traversalPreview
   manualGraft --> traversalPreview
   traversalPreview --> manualPreviewHtml
   manualPreviewHtml --> graftContent
@@ -407,7 +415,8 @@ The current paths are:
 | --- | --- | --- | --- | --- |
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
-| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState` | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
+| Manual attribute materialization | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | persistent node/catalog data from `Environment.State` plus persisted statement blocks | `Block.blueprintAttributeNodeSource` registers through the ordinary block traversal path | current-document traversal entries followed by grafted Manual HTML |
+| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
