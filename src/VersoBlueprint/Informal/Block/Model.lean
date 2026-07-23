@@ -221,14 +221,15 @@ deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 structure BlockPresentation where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   /--
-  Elaboration-assigned local count. Zero means unassigned; traversal replaces it
-  with the document-order count before applying the configured numbering policy.
+  Elaboration-assigned source-local count. Zero means unassigned; traversal
+  replaces it with the next source-local count after assigned counts already
+  encountered, before applying the configured numbering policy.
   -/
   count : Nat
   numberingMode : NumberingMode := .sub
