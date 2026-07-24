@@ -220,6 +220,7 @@ private def renderCodePanel
       panelSummary.summaryTitle
       panelSummary.indicator
       body
+      (folded := entry.blockData.foldCodeBlock)
 
 /-- Render a Blueprint block shell from semantic entry data and rendered content. -/
 def renderWithRenderedContent

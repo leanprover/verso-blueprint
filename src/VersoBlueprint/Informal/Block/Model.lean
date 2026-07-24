@@ -249,6 +249,8 @@ structure StoredBlockData where
   /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
+  foldProofBlock : Bool := false
+  foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
   /-- Source-local count copied from `BlockData`; zero remains the unassigned sentinel. -/
   count : Nat
@@ -275,6 +277,8 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   kind := data.kind
   label := data.label
   sourceLocation := data.sourceLocation
+  foldProofBlock := data.foldProofBlock
+  foldCodeBlock := data.foldCodeBlock
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
@@ -300,6 +304,8 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   codeData
   label := data.label
   sourceLocation := data.sourceLocation
+  foldProofBlock := data.foldProofBlock
+  foldCodeBlock := data.foldCodeBlock
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode

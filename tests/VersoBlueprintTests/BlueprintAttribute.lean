@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintAttribute.Reexport
 import VersoBlueprintTests.BlueprintAttribute.HybridProvider
+import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
 import VersoBlueprintTests.Blueprint.Support
 
 open Lean
@@ -46,6 +47,20 @@ Concluding prose after the imported declarations.
 :::::::
 {includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.HybridProvider}
 :::::::
+
+set_option verso.blueprint.foldCodeBlocks true
+
+#docs (Genre.Manual) placedDefaultLabelDoc "Placed default-label declaration" :=
+:::::::
+{blueprint_node "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel"}
+:::::::
+
+#docs (Genre.Manual) includedDefaultLabelModuleDoc "Default-label module inclusion" :=
+:::::::
+{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider}
+:::::::
+
+set_option verso.blueprint.foldCodeBlocks false
 
 set_option verso.blueprint.numbering "global" in
 #docs (Genre.Manual) globallyNumberedAttributeModuleDoc "Globally numbered attribute module" :=
@@ -120,6 +135,9 @@ private def importedState : CoreM Informal.Environment.State := do
 private def importedNode? (label : String) : CoreM (Option Informal.Data.Node) := do
   pure <| (← importedState).data.get? (Name.mkSimple label)
 
+private def importedNodeByName? (label : Name) : CoreM (Option Informal.Data.Node) := do
+  pure <| (← importedState).data.get? label
+
 private def importedNodeInLocalData (label : String) : CoreM Bool := do
   pure <| (← importedState).localData.contains (Name.mkSimple label)
 
@@ -192,6 +210,8 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       `VersoBlueprintTests.BlueprintAttribute.Reexport
     let hybridLabels ← Informal.Environment.blueprintAttributeLabelsForModule
       `VersoBlueprintTests.BlueprintAttribute.HybridProvider
+    let defaultLabelProviderLabels ← Informal.Environment.blueprintAttributeLabelsForModule
+      `VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
     pure <|
       providerLabels == #[
         Name.mkSimple "attr.exported.theorem",
@@ -203,6 +223,12 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
         Name.mkSimple "attr.hybrid.body",
         Name.mkSimple "attr.hybrid.verso_docstring",
         Name.mkSimple "attr.hybrid.shared"
+      ] &&
+      defaultLabelProviderLabels == #[
+        Name.mkSimple
+          "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel",
+        Name.mkSimple
+          "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition"
       ] &&
       reexportLabels.isEmpty
 
@@ -462,6 +488,62 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
         #[Name.mkSimple "attr.hybrid.verso_docstring"] &&
       bodyData.proofUses.map (·.label) == #[Name.mkSimple "attr.hybrid.shared"] &&
       hasEntries
+
+/- This is the cross-feature regression case behind the attribute-first authoring
+   feedback: an imported bare attribute, a structural Verso docstring, explicit
+   dependencies, both placement paths, and consumer-side code folding. Keep the
+   assertions on final HTML rather than only on the imported catalog. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let decl :=
+      `Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel
+    let label := Name.mkSimple decl.toString
+    let some node ← importedNodeByName? label
+      | return false
+    let defaultDefinition :=
+      Name.mkSimple
+        "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition"
+    let some definitionNode ← importedNodeByName? defaultDefinition
+      | return false
+    pure <|
+      node.statement.map (·.deps.map (·.label)) ==
+        some #[Name.mkSimple "attr.exported.theorem"] &&
+      isBlueprintAttrRef decl .theorem node &&
+      isBlueprintAttrRef
+        `Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition
+        .definition
+        definitionNode
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let label := Name.mkSimple
+      "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel"
+    let (placedHtml, placedState) ←
+      renderManualDocHtmlStringAndState manualImpls placedDefaultLabelDoc
+    let (moduleHtml, moduleState) ←
+      renderManualDocHtmlStringAndState manualImpls includedDefaultLabelModuleDoc
+    let key := Informal.PreviewCache.statementKey label
+    let renderedAsExpected (html : String) : Bool :=
+      countSubstr html "<strong>qualified default-label theorem</strong>" == 2 &&
+      countSubstr html "<code class=\"bp_math inline\">3 + 4 = 7</code>" == 2 &&
+      2 ≤ countSubstr html "First qualified-label list item." &&
+      hasSubstr html "class=\"bp_code_block bp_code_panel\"" &&
+      hasSubstr html "qualifiedDefaultLabel" &&
+      !hasSubstr html "open=\"open\""
+    pure <|
+      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).isSome &&
+      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).isSome &&
+      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).map
+          (·.2.foldCodeBlock) == some true &&
+      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).map
+          (·.2.foldCodeBlock) == some true &&
+      renderedAsExpected placedHtml &&
+      renderedAsExpected moduleHtml &&
+      hasSubstr moduleHtml "qualifiedDefaultDefinition"
 
 /- Attribute-owned, code-only nodes remain available in the manifest/cache pair. -/
 /-- info: true -/
