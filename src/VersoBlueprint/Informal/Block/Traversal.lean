@@ -131,7 +131,7 @@ This keeps the block extension focused on orchestration while the traversal
 store owns hover-preview payloads, external Lean previews, and rendered
 declaration anchors.
 -/
-def registerTraversedBlockAssets
+private def registerTraversedBlockAssets
     {m}
     [Monad m]
     [MonadReaderOf TraverseContext m]
