@@ -127,7 +127,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `blueprint-manifest.json` contains semantic entries keyed by preview key,
   generated-page hrefs, graph records, labels, dependency data, Lean-code
   associations, a shared group catalog, ownership, tags, priority, effort,
-  status metadata, and display metadata.
+  status metadata, display metadata, and the folding policy needed by reusable
+  block renderers.
 - `blueprint-html-cache.json` contains rendered body fragments keyed by
   preview keys for entries that have generated preview bodies. Some semantic
   entries, such as source-backed external markup generated with

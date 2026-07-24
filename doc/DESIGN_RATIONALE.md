@@ -212,7 +212,8 @@ flowchart TD
 The same flow can be read as four contracts:
 
 1. **Elaboration to environment.**
-   Source directives, inline Lean blocks, `@[blueprint "..."]` attributes,
+   Source directives, inline Lean blocks, `@[blueprint]` attributes with
+   declaration-name or explicit labels,
    external `(lean := "...")` references, group declarations, author
    declarations, citations, and metadata are elaborated into
    `Informal.Environment.State`. This is the canonical semantic store for
@@ -297,7 +298,7 @@ that owner.
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
-| Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
+| Numbering, hrefs, anchors, preview keys, and placement folding policy | Traversal | `TraverseState` and `TraversalIndex` domains, projected into semantic preview entries where rendering needs them | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
 | Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphModel` plus options cached in `TraversalIndex.Graphs`, then topology-finalized once through `Informal.GraphApi.finishData` into private-constructor `GraphData`; manifest emission subsequently resolves preview candidates against the artifact index without reopening topology | graph command rendering, browser runtime, custom graph consumers |
 | Lean code preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |

@@ -67,6 +67,9 @@ open Informal.PreviewManifest
       let leanCodePreviewKeysDesc? := do
         let leanCodePreviewKeysJson ← entryProps.get? "leanCodePreviewKeys"
         leanCodePreviewKeysJson.getObjValAs? String "description" |>.toOption
+      let foldCodeBlockDesc? := do
+        let foldCodeBlockJson ← entryProps.get? "foldCodeBlock"
+        foldCodeBlockJson.getObjValAs? String "description" |>.toOption
       let sourceLocationDesc? := do
         let sourceLocationJson ← entryProps.get? "sourceLocation"
         sourceLocationJson.getObjValAs? String "description" |>.toOption
@@ -119,6 +122,8 @@ open Informal.PreviewManifest
         !useRefProps.contains "intents" &&
         entryProps.contains "leanCodePreviewKeys" &&
         entryProps.contains "codeData" &&
+        entryProps.contains "foldProofBlock" &&
+        entryProps.contains "foldCodeBlock" &&
         entryProps.contains "externalMarkup" &&
         entryProps.contains "sources" &&
         !entryProps.contains "source" &&
@@ -137,6 +142,7 @@ open Informal.PreviewManifest
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Manifest/cache-backed preview keys for Lean code previews associated with this entry." &&
+        foldCodeBlockDesc? == some "Whether an associated Lean code panel is collapsed for this rendered occurrence." &&
         (internalSchemaDesc?.getD "").contains "not a public" &&
         (internalSchemaDesc?.getD "").contains "compatibility promise" &&
         sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&

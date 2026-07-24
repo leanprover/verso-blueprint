@@ -147,6 +147,26 @@ interaction behavior:
 uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
 ```
 
+### Cover Feature Intersections
+
+User-facing authoring behavior should be tested through its final rendered
+surface, not only at the parser or environment-extension boundary. For a feature
+that crosses phases, cover the applicable rows of this matrix:
+
+| Boundary | What to assert | Current attribute-first fixtures |
+| --- | --- | --- |
+| Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
+| Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttribute.lean` |
+| Final Manual HTML | statement body, code-only fallback, structural docstrings/math, code-panel disclosure state | `BlueprintAttribute.lean` |
+| Generated site | embedded assets and the reusable external-declaration renderer | `preview_runtime_showcase` and `check_blueprint_code_panels.py` |
+| Browser runtime | transformations or hydration that cannot be proved from static HTML | `test_preview_runtime_regressions.py` |
+
+When a new option or source form applies to more than one placement path, add
+one compact cross-feature regression that exercises those paths together. A
+unit test for each isolated component is not sufficient when data is projected
+through the environment, traversal store, preview manifest, HTML cache, and
+browser runtime.
+
 Browser tests that need the public Blueprint render API should use
 `blueprint_render_api_script` or `wait_for_blueprint_render_api` from
 `tests/browser/support.py`. Those helpers import

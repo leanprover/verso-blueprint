@@ -36,9 +36,11 @@ Those labels are the key to the whole system. They are used to:
 - attach inline Lean code with a labeled `lean` code block
 - attach external TeX or Markdown source for porting with `tex` or `md` code
   blocks
-- tag compiled declarations with `@[blueprint "label"]`, optionally using
-  `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true` to infer
-  edges to directly referenced Lean declarations associated with Blueprint labels
+- tag compiled declarations with `@[blueprint]`, which defaults to the
+  qualified declaration name, or `@[blueprint "label"]` for an explicit short
+  label; either form can use `(autoDeps := true)` or
+  `set_option verso.blueprint.autoDeps true` to infer edges to directly
+  referenced Lean declarations associated with Blueprint labels
 - turn the distinct labels owned directly by one imported Lean module into a
   source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`;
   declarations that share a label become one node
