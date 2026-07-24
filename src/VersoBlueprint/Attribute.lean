@@ -281,7 +281,7 @@ private def resolveAutoDeps
   let proof ← mergeAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
-private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
+private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
@@ -317,7 +317,7 @@ initialize
       unless ((← getEnv).getModuleIdxFor? decl).isNone do
         throwError "invalid attribute '[blueprint]', declaration is in an imported module"
       let cfg ← elabBlueprintConfig stx
-      registerLeanOnlyDecl decl cfg stx
+      registerBlueprintDecl decl cfg stx
     descr := "Registers a compiled declaration as a Blueprint node; supports opt-in automatic dependency inference"
   }
 
