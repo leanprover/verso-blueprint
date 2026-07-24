@@ -963,6 +963,10 @@ structure Entry extends Informal.BlockMetadata where
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
+  /-- Whether the statement/proof shell is collapsed for this rendered occurrence. -/
+  foldProofBlock : Bool := false
+  /-- Whether an associated Lean code panel is collapsed for this rendered occurrence. -/
+  foldCodeBlock : Bool := false
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
   /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
@@ -999,6 +1003,8 @@ def Entry.blockData (entry : Entry) : Informal.BlockData := {
   codeData := entry.codeData
   sourceRef := entry.primarySource?
   sourceLocation := entry.sourceLocation
+  foldProofBlock := entry.foldProofBlock
+  foldCodeBlock := entry.foldCodeBlock
   count := 0
 }
 
@@ -2151,6 +2157,8 @@ private def blockSemanticManifestEntry
     parentTitle := blockParentTitle? state blockData?
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
+    foldProofBlock := blockData?.map (·.foldProofBlock) |>.getD false
+    foldCodeBlock := blockData?.map (·.foldCodeBlock) |>.getD false
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := preview.sourceRef.toArray
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]

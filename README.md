@@ -143,7 +143,8 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
 Blueprint supports three main ways to connect informal nodes to Lean:
 
 - inline code with a labeled Lean code block
-- compiled code tagged with `@[blueprint "addition_right_identity"]`
+- compiled code tagged with `@[blueprint]` or
+  `@[blueprint "addition_right_identity"]`
 - existing declarations referenced with `(lean := "Nat.add_assoc")`
 
 ```lean
@@ -151,6 +152,12 @@ Blueprint supports three main ways to connect informal nodes to Lean:
 theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
   simp
 ```
+
+The string selects a short, explicit Blueprint label. Omitting it uses the
+declaration's qualified Lean name, so `@[blueprint] theorem
+MyProject.nat_add_zero_right ...` is referenced as
+`"MyProject.nat_add_zero_right"`. Attribute options remain available in the
+bare form, for example `@[blueprint (uses := ["addition_spec"])]`.
 
 After importing a Lean module containing tagged declarations, include one node
 per distinct directly owned label as a source-ordered Manual part with:
@@ -170,7 +177,8 @@ location in an existing Manual chapter, place that node with:
 The declaration docstring supplies the informal statement when present; without
 one, Blueprint still renders a code-only node in either workflow. Docstrings are
 prose, not Blueprint dependency syntax: put `uses` and `proofUses` on the
-attribute. See the Manual's
+attribute. Standard `doc.verso` structure, including math, is preserved in both
+the statement and the attached “Lean code for…” declaration panel. See the Manual's
 [“Attribute-first use-case matrix”](doc/MANUAL.md#attribute-first-use-case-matrix)
 for the precise dependency, prose, proof, metadata, and source-rendering
 boundaries.

@@ -28,6 +28,26 @@ definitions appear in the same code panel.
 -/
 def previewDocstringedFunction (n : Nat) : Nat := n + 1
 
+set_option doc.verso true in
+/--
+A *structural external-panel docstring* with inline mathematics
+$`6 + 1 = 7`.
+
+* First structural panel item.
+* Second structural panel item.
+-/
+def previewVersoDocstringedDefinition : Nat := 7
+
+set_option doc.verso true in
+/--
+A *structural container docstring* for a field-docstring regression.
+-/
+structure PreviewVersoDocstringedStructure where
+  /--
+  A *structural field docstring* with inline mathematics $`8 + 1 = 9`.
+  -/
+  value : Nat
+
 theorem previewExternalTheorem : True := by
   trivial
 
@@ -302,4 +322,12 @@ class PanelInlineMixedFold (α : Type) where
 
 :::definition "panel_no_code"
 Statement without associated Lean code.
+:::
+
+:::definition "panel_external_verso_docstring" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition")
+External definition panel sample with a structural Verso docstring.
+:::
+
+:::definition "panel_external_verso_structure_docstring" (lean := "PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure")
+External structure panel sample with structural declaration and field docstrings.
 :::

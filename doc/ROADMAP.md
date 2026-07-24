@@ -175,8 +175,10 @@ Work:
     docstring fallback
 12. design attribute-side `parent`/owner/tag/effort/priority metadata without
     duplicating statement-block validation
-13. evaluate `only`/`except` filters and module-level introductory prose for
-    `{includeBlueprintModule}`
+13. evaluate `only`/`except` filters and an ordered module-prose representation
+    for `{includeBlueprintModule}`, including a `blueprint_comment`-like way to
+    interleave prose among tagged declarations rather than only adding one
+    introductory paragraph
 14. extract or upstream the shared structural `Lean.Doc` conversion before
     designing typed adapters for custom extensions that need Manual semantics
 15. capture exact definition/proof source only after Lean exposes a reliable
