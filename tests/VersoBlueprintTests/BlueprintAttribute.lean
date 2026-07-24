@@ -17,7 +17,7 @@ open Verso
 open Verso.Genre.Manual
 open Verso.VersoBlueprintTests.Blueprint.Support
 
-def manualImpls : ExtensionImpls := extension_impls%
+private def manualImpls : ExtensionImpls := extension_impls%
 
 #docs (Genre.Manual) placedAttributeDoc "Placed attribute-owned nodes" :=
 :::::::

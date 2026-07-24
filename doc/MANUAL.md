@@ -413,11 +413,15 @@ work in the same project.
 
 ### Compiled code tagged with `@[blueprint "addition_assoc_compiled"]`
 
-Use the `@[blueprint "label"]` attribute when a compiled definition-like declaration or theorem
-should appear as a Lean-owned Blueprint node:
+Use the `@[blueprint "label"]` attribute when a compiled definition-like
+declaration or theorem should appear as a compiled-declaration-backed Blueprint
+node:
 
 ```lean
-/-- Associativity of addition, exposed as a Lean-owned blueprint node. -/
+/--
+Associativity of addition, exposed as a compiled-declaration-backed Blueprint
+node.
+-/
 @[blueprint "addition_assoc_compiled"]
 theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
   simpa [Nat.add_assoc]
@@ -716,7 +720,8 @@ Notes:
 
 - `(lean := "Nat.add_assoc")` points at Lean-owned declaration names
 - `(lean := "Nat.add, Nat.succ")` supports comma-separated declaration lists
-- `@[blueprint "addition_assoc_compiled"]` registers a Lean-owned Blueprint node
+- `@[blueprint "addition_assoc_compiled"]` registers a
+  compiled-declaration-backed Blueprint node
 - `(autoDeps := true)` is accepted by `@[blueprint]`, labeled inline Lean blocks,
   and statement blocks with `(lean := "...")`
 - Blueprint labels are Blueprint-owned metadata
@@ -1543,7 +1548,7 @@ renders a pointer to the HTML output, and `Not in PDF` is absent from
 | External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
 | Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
 | Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
-| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
+| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from current traversal preview data and emitted to the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
 | Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
 | Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
 | Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |
