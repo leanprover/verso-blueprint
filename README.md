@@ -178,10 +178,11 @@ The declaration docstring supplies the informal statement when present; without
 one, Blueprint still renders a code-only node in either workflow. Docstrings are
 prose, not Blueprint dependency syntax: put `uses` and `proofUses` on the
 attribute. Standard `doc.verso` structure, including math, is preserved in both
-the statement and the attached “Lean code for…” declaration panel. See the Manual's
+the statement and the attached “Lean code for…” declaration panel. For the
+precise dependency, prose, proof, metadata, and source-rendering boundaries, see
+the Manual's
 [“Attribute-first use-case matrix”](doc/MANUAL.md#attribute-first-use-case-matrix)
-for the precise dependency, prose, proof, metadata, and source-rendering
-boundaries.
+section.
 
 Add `(autoDeps := true)` when a tagged declaration, labeled inline Lean block,
 or `(lean := "...")` statement should infer statement/proof dependency edges to

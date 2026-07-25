@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-06-20
+Last updated: 2026-07-25
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.

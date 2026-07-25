@@ -387,6 +387,8 @@ def main() -> int:
         fail("Verso-docstring panel missing structural emphasis")
     if '<code class="bp_math inline">6 + 1 = 7</code>' not in verso_docstring_panel:
         fail("Verso-docstring panel missing structural inline mathematics")
+    if '<code class="bp_math display">6 + 2 = 8</code>' not in verso_docstring_panel:
+        fail("Verso-docstring panel missing structural display mathematics")
     if verso_docstring_panel.count("structural panel item") < 2:
         fail("Verso-docstring panel missing structural list items")
     if '<pre class="docstring">' in verso_docstring_panel:

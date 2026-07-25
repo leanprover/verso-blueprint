@@ -316,6 +316,10 @@ def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : Bloc
 def RenderNode.toBlockData (node : RenderNode) : BlockData :=
   node.resolve (node.occurrence.getD { label := node.label, count := node.initialCount })
 
+/-- Whether this block's informal statement/proof shell should be collapsed. -/
+def BlockData.foldInformalShell (data : BlockData) : Bool :=
+  data.isProof && data.foldProofBlock
+
 /-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
 def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   toBlockMetadata := data.toBlockMetadata
