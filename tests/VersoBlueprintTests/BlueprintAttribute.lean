@@ -530,6 +530,7 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
     let renderedAsExpected (html : String) : Bool :=
       countSubstr html "<strong>qualified default-label theorem</strong>" == 2 &&
       countSubstr html "<code class=\"bp_math inline\">3 + 4 = 7</code>" == 2 &&
+      countSubstr html "<code class=\"bp_math display\">3 + 5 = 8</code>" == 2 &&
       2 ≤ countSubstr html "First qualified-label list item." &&
       hasSubstr html "class=\"bp_code_block bp_code_panel\"" &&
       hasSubstr html "qualifiedDefaultLabel" &&
