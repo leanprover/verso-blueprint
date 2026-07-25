@@ -112,6 +112,10 @@ class TestPreviewRuntimeRegressions:
         expect(verso_math).to_contain_text("6 + 1 = 7")
         expect(verso_math).to_have_attribute("data-bp-math-rendered", "1")
         expect(verso_math.locator(".katex")).to_have_count(1)
+        verso_display_math = verso_doc.locator("code.bp_math.display").first
+        expect(verso_display_math).to_contain_text("6 + 2 = 8")
+        expect(verso_display_math).to_have_attribute("data-bp-math-rendered", "1")
+        expect(verso_display_math.locator(".katex-display")).to_have_count(1)
         expect(verso_def.locator(".bp_external_decl_body > pre.docstring")).to_have_count(0)
 
         verso_structure = page.locator(

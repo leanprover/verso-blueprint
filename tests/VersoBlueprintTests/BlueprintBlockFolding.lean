@@ -57,6 +57,8 @@ Folded proof statement.
 :::proof "folding.folded.proof"
 Folded proof body.
 :::
+
+{blueprint_node "folding.folded.proof" (facet := "proof")}
 :::::::
 
 set_option verso.blueprint.foldProofBlocks false
@@ -122,7 +124,8 @@ set_option verso.blueprint.foldCodeBlocks false
 #eval! do
   let out ← renderManualDocHtmlString manualImpls foldedProofBlockDoc
   pure <|
-    hasSubstr out "<details class=\"bp_wrapper bp_kind_proof_wrapper" &&
+    countSubstr out "<details class=\"bp_wrapper bp_kind_proof_wrapper" == 2 &&
+    hasSubstr out "class=\"bp_graft_node_blueprint\"" &&
     hasSubstr out "<summary class=\"bp_heading bp_kind_proof_heading" &&
     hasSubstr out "Folded proof body."
 

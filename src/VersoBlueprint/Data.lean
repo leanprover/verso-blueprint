@@ -494,7 +494,8 @@ inductive CodeRef where
   /-
   Blueprint code references can currently come from two sources:
   1. An inline Lean block processed by Verso/Lean integration (`.literate`).
-  2. A regular Lean declaration tagged with `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
+  2. A regular Lean declaration tagged with `@[blueprint]` or
+     `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
      A `(lean := "...")` directive reference to Lean code we do not directly control
      also lands in `.external` (origin `.directiveLean`).
 

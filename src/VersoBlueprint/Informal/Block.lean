@@ -165,10 +165,6 @@ block_extension Block.informal (data : BlockOccurrence) where
         let usedByEntry ← RelatedPanel.renderUsedByExtra s data
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
-        let foldInformalBlock :=
-          match data.isProof with
-          | true => data.foldProofBlock
-          | false => false
         let headerExtras : HeaderExtras :=
           match data.isProof with
           | true =>
@@ -190,7 +186,7 @@ block_extension Block.informal (data : BlockOccurrence) where
             (proofCaption? := some (data.displayTitle s))
             (attrs := attrs)
             (headerExtras := headerExtras)
-            (folded := foldInformalBlock)
+            (folded := data.foldInformalShell)
           content
           companionPanels := #[externalPanel]
         }

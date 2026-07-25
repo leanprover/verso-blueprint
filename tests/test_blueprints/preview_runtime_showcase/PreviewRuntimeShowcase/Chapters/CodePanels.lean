@@ -33,6 +33,9 @@ set_option doc.verso true in
 A *structural external-panel docstring* with inline mathematics
 $`6 + 1 = 7`.
 
+A display equation follows:
+$$`6 + 2 = 8`
+
 * First structural panel item.
 * Second structural panel item.
 -/

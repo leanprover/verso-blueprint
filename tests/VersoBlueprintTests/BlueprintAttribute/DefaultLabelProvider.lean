@@ -13,6 +13,9 @@ set_option doc.verso true in
 A *qualified default-label theorem* whose structural external panel preserves
 inline mathematics $`3 + 4 = 7`.
 
+It also preserves display mathematics:
+$$`3 + 5 = 8`
+
 * First qualified-label list item.
 * Second qualified-label list item.
 -/
