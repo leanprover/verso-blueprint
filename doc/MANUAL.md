@@ -498,8 +498,8 @@ by the declaration's type and compiled body. Declarations associated with
 Blueprint labels and used directly by the type become statement dependencies;
 declarations associated with Blueprint labels and used directly by the body
 become proof dependencies. A Lean declaration is associated with a Blueprint
-label by `@[blueprint "..."]`, by a labeled inline Lean code block, or by an
-informal statement block with `(lean := "...")`.
+label by `@[blueprint]` or `@[blueprint "..."]`, by a labeled inline Lean code
+block, or by an informal statement block with `(lean := "...")`.
 
 Lean associations are many-to-many. One Blueprint label may be associated with
 several Lean code items, and one Lean declaration may be associated with several
