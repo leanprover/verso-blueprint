@@ -246,6 +246,7 @@ def renderWithRenderedContent
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
         (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group?)
         (sourceRefs := entry.sources)
+        (folded := blockData.foldInformalShell)
       content := #[content.body]
       companionPanels := #[codePanel]
       wrapperClass? := some cfg.wrapperClass

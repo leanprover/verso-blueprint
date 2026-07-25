@@ -978,9 +978,9 @@ structure Entry where
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
-  /-- Whether the statement/proof shell is collapsed for this rendered occurrence. -/
+  /-- Whether the canonical proof shell is collapsed when this is a proof entry. -/
   foldProofBlock : Bool := false
-  /-- Whether an associated Lean code panel is collapsed for this rendered occurrence. -/
+  /-- Whether the associated Lean code panel is collapsed for this canonical traversal entry. -/
   foldCodeBlock : Bool := false
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]

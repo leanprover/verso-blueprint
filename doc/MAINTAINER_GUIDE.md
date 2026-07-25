@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-05-04
+Last updated: 2026-07-25
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its

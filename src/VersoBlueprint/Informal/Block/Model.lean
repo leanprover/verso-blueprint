@@ -211,6 +211,12 @@ structure BlockData where
   prUrl : Option String := none
 deriving FromJson, ToJson, Quote
 
+/-- Whether this block's informal statement/proof shell should be collapsed. -/
+def BlockData.foldInformalShell (data : BlockData) : Bool :=
+  match data.kind with
+  | .proof => data.foldProofBlock
+  | .statement _ => false
+
 /--
 Copy the semantic metadata shared by every rendered occurrence of a Blueprint
 node into placement-specific block data.

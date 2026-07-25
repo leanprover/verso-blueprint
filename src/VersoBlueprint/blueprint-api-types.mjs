@@ -281,8 +281,8 @@
  * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
  * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
  * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
- * @property {boolean} foldProofBlock Whether the owning proof/statement shell is collapsed.
- * @property {boolean} foldCodeBlock Whether the associated code panel is collapsed.
+ * @property {boolean} foldProofBlock Whether the canonical proof shell is collapsed for proof entries.
+ * @property {boolean} foldCodeBlock Whether the associated code panel is collapsed for this canonical traversal entry.
  * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
  * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
  */
