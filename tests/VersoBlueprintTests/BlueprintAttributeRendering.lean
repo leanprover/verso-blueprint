@@ -4,7 +4,10 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprintTests.BlueprintAttribute
+import VersoBlueprintTests.BlueprintAttribute.Provider
+import VersoBlueprintTests.BlueprintAttribute.Reexport
+import VersoBlueprintTests.BlueprintAttribute.HybridProvider
+import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
 import VersoBlueprintTests.Blueprint.Support
 
 open Lean
@@ -298,7 +301,8 @@ private def substringsInOrder (text : String) : List String → Bool
       versoDocstringData.globalCount == some 3 &&
       sharedData.globalCount == some 4
 
-/- Persisted Manual bodies, Verso docstrings, and repeated labels share the module path. -/
+/- Persisted Manual bodies, Verso docstrings, flattened extension children, and
+   repeated labels share the module path. -/
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -320,7 +324,7 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "First persisted Manual list item." &&
       hasSubstr html "Second persisted Manual list item." &&
       hasSubstr html "<strong>structurally emphasized Verso docstring body</strong>" &&
-      hasSubstr html "<code>Nat.succ</code>" &&
+      countSubstr html "<code>Nat.succ</code>" == 2 &&
       hasSubstr html "First imported docstring list item." &&
       hasSubstr html "Second imported docstring list item." &&
       3 ≤ (html.splitOn "<ul>").length &&
