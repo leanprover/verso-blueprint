@@ -148,13 +148,6 @@ private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.Pane
   | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
   | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
 
-private def relationMatchesFacet
-    (facet : Informal.PreviewCache.Facet)
-    (related : RelatedEntry) : Bool :=
-  match facet with
-  | .statement => related.axes.contains .statement
-  | .proof => related.axes.contains .proof
-
 private def renderUsesExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
@@ -163,7 +156,7 @@ private def renderUsesExtra?
     cfg
     .uses
     (usesPanelConfigForEntry entry)
-    (entry.uses.filter (relationMatchesFacet entry.facet))
+    entry.usesForFacet
     entry
     Name.anonymous
     Informal.HeaderExtra.uses

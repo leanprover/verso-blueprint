@@ -351,13 +351,16 @@ open Informal
 The generated Manual part contains one materialized Blueprint node for each
 distinct `@[blueprint]` label owned directly by the named module, in first
 attribute-application order. If several declarations in that module use the
-same label, the part contains one node with all of their Lean panels. Re-exported
-or otherwise transitive modules are not folded into the part: include each
-desired module explicitly. Every node follows the same docstring/code-only,
-numbering, relation, preview, manifest, and cache path as an individual
-placement. Its local display number is assigned in the consuming document's
-traversal order; the generated placement does not retain a display number from
-the provider module.
+same label, the part contains one node with all of their Lean panels.
+Dependencies and declarations accumulate in source order. The first docstring
+that supplies a statement body remains authoritative; a later docstring fills
+the statement only while the earlier registrations are bodyless. Re-exported or
+otherwise transitive modules are not folded into the part: include each desired
+module explicitly. Every node follows the same docstring/code-only, numbering,
+relation, preview, manifest, and cache path as an individual placement. Its
+local display number is assigned in the consuming document's traversal order;
+the generated placement does not retain a display number from the provider
+module.
 
 This is Blueprint's current Verso-native counterpart to
 [LeanArchitect's `\inputleanmodule`](https://github.com/hanwenzhu/LeanArchitect#extracting-entire-lean-file-to-latex):
