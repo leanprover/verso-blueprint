@@ -312,7 +312,8 @@ private def substringsInOrder (text : String) : List String → Bool
       "attr.hybrid.body",
       "attr.hybrid.verso_docstring",
       "attr.hybrid.shared",
-      "attr.hybrid.late_docstring"
+      "attr.hybrid.late_docstring",
+      "attr.hybrid.first_body"
     ]
     let hasEntries := labels.all fun label =>
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
@@ -320,6 +321,10 @@ private def substringsInOrder (text : String) : List String → Bool
     let some bodyData :=
         Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
       | return false
+    let firstBodyMarkerCount :=
+      countSubstr html "First repeated-label statement body marker."
+    let laterBodyMarkerCount :=
+      countSubstr html "Later repeated-label declaration docstring marker."
     pure <|
       hasSubstr html "<strong>structural emphasis</strong>" &&
       hasSubstr html "First persisted Manual list item." &&
@@ -337,6 +342,9 @@ private def substringsInOrder (text : String) : List String → Bool
         "A later declaration docstring fills a dependency-only statement payload" &&
       hasSubstr html "hybridLateDocstringFirst" &&
       hasSubstr html "hybridLateDocstringSecond" &&
+      firstBodyMarkerCount == laterBodyMarkerCount + 1 &&
+      hasSubstr html "hybridFirstBody" &&
+      hasSubstr html "hybridLaterBody" &&
       bodyData.statementUses.map (·.label) ==
         #[Name.mkSimple "attr.hybrid.verso_docstring"] &&
       bodyData.proofUses.map (·.label) == #[Name.mkSimple "attr.hybrid.shared"] &&
