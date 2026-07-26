@@ -112,7 +112,8 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
         Name.mkSimple "attr.hybrid.body",
         Name.mkSimple "attr.hybrid.verso_docstring",
         Name.mkSimple "attr.hybrid.shared",
-        Name.mkSimple "attr.hybrid.late_docstring"
+        Name.mkSimple "attr.hybrid.late_docstring",
+        Name.mkSimple "attr.hybrid.first_body"
       ] &&
       defaultLabelProviderLabels == #[
         Name.mkSimple
@@ -132,6 +133,8 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
     let some sharedNode ← importedNode? "attr.hybrid.shared"
       | return false
     let some lateDocstringNode ← importedNode? "attr.hybrid.late_docstring"
+      | return false
+    let some firstBodyNode ← importedNode? "attr.hybrid.first_body"
       | return false
     let versoDoc? ← liftM <| findInternalDocString? (← getEnv)
       `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridVersoDocstring
@@ -157,6 +160,10 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       lateDocstringNode.leanDecls == #[
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringFirst,
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringSecond
+      ] &&
+      firstBodyNode.leanDecls == #[
+        `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridFirstBody,
+        `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLaterBody
       ]
 
 /-- info: true -/

@@ -58,4 +58,12 @@ discarding the dependencies registered by the first declaration.
 @[blueprint "attr.hybrid.late_docstring"]
 def hybridLateDocstringSecond : Nat := 29
 
+/-- First repeated-label statement body marker. -/
+@[blueprint "attr.hybrid.first_body"]
+def hybridFirstBody : Nat := 31
+
+/-- Later repeated-label declaration docstring marker. -/
+@[blueprint "attr.hybrid.first_body"]
+def hybridLaterBody : Nat := 37
+
 end Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider
