@@ -155,7 +155,7 @@ that crosses phases, cover the applicable rows of this matrix:
 
 | Boundary | What to assert | Current attribute-first fixtures |
 | --- | --- | --- |
-| Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
+| Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute.lean` with `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
 | Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttributeRendering.lean` |
 | Final Manual HTML | statement body, code-only fallback, structural docstrings/math, code-panel disclosure state | `BlueprintAttributeRendering.lean` |
 | Generated site | embedded assets and the reusable external-declaration renderer | `preview_runtime_showcase` and `check_blueprint_code_panels.py` |
