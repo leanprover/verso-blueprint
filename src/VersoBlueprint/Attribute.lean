@@ -54,9 +54,6 @@ private def classifyDeclKind (decl : Name) (info : ConstantInfo) : CoreM Data.No
   | none =>
     throwError "invalid '[blueprint]' target '{decl}': expected a definition-like declaration or theorem, got {Informal.Data.ConstantInfo.blueprintKindText info}"
 
-private def pushLabelUnique (labels : Array Data.Label) (label : Data.Label) : Array Data.Label :=
-  if labels.contains label then labels else labels.push label
-
 private def manualUseRef (label : Data.Label) : Data.UseRef :=
   { label }
 
@@ -75,6 +72,16 @@ private def pushTargetUnique (targets : Array AutoDepTarget) (target : AutoDepTa
 
 private def parseLabel (label : String) : Data.Label :=
   LabelNameParsing.parse label
+
+/--
+Use a declaration's fully qualified spelling as an opaque Blueprint label.
+
+The `Name.mkSimple` representation is deliberate: string-authored Blueprint
+references use the same opaque-label parser rather than Lean namespace
+resolution.
+-/
+private def defaultLabelForDecl (decl : Name) : Data.Label :=
+  parseLabel decl.eraseMacroScopes.toString
 
 private def parseDepList : TSyntax ``blueprintDepList → CoreM AutoDepEntries
   | `(blueprintDepList| [$[$deps:blueprintDepTerm],*]) => do
@@ -118,7 +125,7 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
   | `(attr| blueprint $label:str $[$opts:blueprintAttrOption]*) =>
     elabBlueprintOptions { label := parseLabel label.getString } opts
   | `(attr| blueprint $[$opts:blueprintAttrOption]*) =>
-    elabBlueprintOptions { label := parseLabel decl.eraseMacroScopes.toString } opts
+    elabBlueprintOptions { label := defaultLabelForDecl decl } opts
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
 
 private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalData) := do
@@ -173,14 +180,14 @@ private def resolveManualTargets
     (currentDecl currentLabel : Name) (targets : Array AutoDepTarget) : CoreM (Array Data.Label) := do
   targets.foldlM (init := #[]) fun acc target => do
     let labels ← labelsForManualTarget currentDecl currentLabel target
-    return labels.foldl pushLabelUnique acc
+    return labels.foldl Data.Label.pushUnique acc
 
 private def mergeAxisDeps
     (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries) :
     CoreM (Array Data.UseRef) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
-  let excluded := pushLabelUnique excluded currentLabel
+  let excluded := Data.Label.pushUnique excluded currentLabel
   let mut out := #[]
   for label in DependencyAnalysis.sortLabels inferred do
     if !excluded.contains label then
