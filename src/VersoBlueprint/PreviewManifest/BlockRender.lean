@@ -148,6 +148,13 @@ private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.Pane
   | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
   | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
 
+private def relationMatchesFacet
+    (facet : Informal.PreviewCache.Facet)
+    (related : RelatedEntry) : Bool :=
+  match facet with
+  | .statement => related.axes.contains .statement
+  | .proof => related.axes.contains .proof
+
 private def renderUsesExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
@@ -156,10 +163,11 @@ private def renderUsesExtra?
     cfg
     .uses
     (usesPanelConfigForEntry entry)
-    entry.uses
+    (entry.uses.filter (relationMatchesFacet entry.facet))
     entry
     Name.anonymous
     Informal.HeaderExtra.uses
+    (showWhenEmpty := true)
 
 private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
     Option Informal.HeaderExtra :=
@@ -189,16 +197,19 @@ private def renderHeaderExtras
     (blockData : Informal.BlockData)
     (group? : Option GroupRelation) :
     Informal.HeaderExtras :=
-  {
-    group? := renderGroupExtra? cfg entry group?
-    uses? := renderUsesExtra? cfg entry
-    code? := renderCodeExtra? entry blockData
-    usedBy? := renderUsedByExtra? cfg entry
-    markup? :=
-      match entry.facet with
-      | .statement => Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
-      | .proof => none
-  }
+  match entry.facet with
+  | .proof =>
+    {
+      uses? := renderUsesExtra? cfg entry
+    }
+  | .statement =>
+    {
+      group? := renderGroupExtra? cfg entry group?
+      uses? := renderUsesExtra? cfg entry
+      code? := renderCodeExtra? entry blockData
+      usedBy? := renderUsedByExtra? cfg entry
+      markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
+    }
 
 private def renderCodePanel
     (cfg : RenderConfig)
@@ -233,7 +244,7 @@ def renderWithRenderedContent
     let blockData := entry.blockData
     let title := entry.heading opts.displayLabelOverride?
     let codePanel :=
-      if opts.compact then
+      if opts.compact || entry.facet == .proof then
         .empty
       else
         renderCodePanel cfg title entry content.codeBodies

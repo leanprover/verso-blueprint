@@ -111,7 +111,8 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       hybridLabels == #[
         Name.mkSimple "attr.hybrid.body",
         Name.mkSimple "attr.hybrid.verso_docstring",
-        Name.mkSimple "attr.hybrid.shared"
+        Name.mkSimple "attr.hybrid.shared",
+        Name.mkSimple "attr.hybrid.late_docstring"
       ] &&
       defaultLabelProviderLabels == #[
         Name.mkSimple
@@ -130,11 +131,20 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       | return false
     let some sharedNode ← importedNode? "attr.hybrid.shared"
       | return false
+    let some lateDocstringNode ← importedNode? "attr.hybrid.late_docstring"
+      | return false
     let versoDoc? ← liftM <| findInternalDocString? (← getEnv)
       `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridVersoDocstring
     let bodyWasPersisted :=
       match bodyNode.statement with
       | some statement => !statement.previewBlocks.isEmpty && statement.elabStx.isEmpty
+      | none => false
+    let lateDocstringFilled :=
+      match lateDocstringNode.statement with
+      | some statement =>
+        statement.hasBody &&
+          statement.dependencyLabels ==
+            #[Name.mkSimple "attr.hybrid.verso_docstring"]
       | none => false
     pure <|
       bodyWasPersisted &&
@@ -142,6 +152,11 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       sharedNode.leanDecls == #[
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedFirst,
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedSecond
+      ] &&
+      lateDocstringFilled &&
+      lateDocstringNode.leanDecls == #[
+        `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringFirst,
+        `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringSecond
       ]
 
 /-- info: true -/

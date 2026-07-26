@@ -1927,9 +1927,12 @@ private def blockLeanCodePreviewKeys
     (state : TraverseState)
     (label : Name)
     (entry : PreviewCache.Entry) : Array String :=
-  (inlineCodePreviewKeys state label).foldl
-    (init := entry.leanCodePreviewKeys)
-    (fun keys key => pushUnique keys key)
+  match entry.facet with
+  | .proof => entry.leanCodePreviewKeys
+  | .statement =>
+    (inlineCodePreviewKeys state label).foldl
+      (init := entry.leanCodePreviewKeys)
+      (fun keys key => pushUnique keys key)
 
 private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)
@@ -1944,14 +1947,17 @@ private def blockCodeData?
     (label : Name)
     (entry : PreviewCache.Entry)
     (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
-  let inline? := Informal.TraversalIndex.InlineCode.data? state label
-  let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
-  let external? :=
-    if externalDecls.isEmpty then
-      blockData?.bind (·.codeData)
-    else
-      some (Informal.BlockCodeData.external externalDecls)
-  Informal.BlockCodeData.ofHintAndInline external? inline?
+  match entry.facet with
+  | .proof => none
+  | .statement =>
+    let inline? := Informal.TraversalIndex.InlineCode.data? state label
+    let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
+    let external? :=
+      if externalDecls.isEmpty then
+        blockData?.bind (·.codeData)
+      else
+        some (Informal.BlockCodeData.external externalDecls)
+    Informal.BlockCodeData.ofHintAndInline external? inline?
 
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do

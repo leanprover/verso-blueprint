@@ -141,7 +141,7 @@ private def payloadWithUseRefs
   else
     match current? with
     | some payload =>
-      some { payload with deps := Data.UseRef.mergeByLabel payload.deps useRefs }
+      some (payload.withMergedDeps useRefs)
     | none =>
       some { stx := ref, deps := useRefs }
 
