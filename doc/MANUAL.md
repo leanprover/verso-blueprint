@@ -1171,10 +1171,10 @@ The statement to feature.
 :::::::
 ```
 
-An imported node owned by `@[blueprint "label"]` is the other Manual case. If
-the label is not yet in the traversal, the command first materializes the
-persistent attribute node at that source position, then renders the same graft
-shell. See [Placing an attribute-owned node in a
+An imported node owned by bare `@[blueprint]` or `@[blueprint "label"]` is the
+other Manual case. If the label is not yet in the traversal, the command first
+materializes the persistent attribute node at that source position, then
+renders the same graft shell. See [Placing an attribute-owned node in a
 chapter](#placing-an-attribute-owned-node-in-a-chapter) for the attribute-first
 workflow and its current code/proof limitations.
 
