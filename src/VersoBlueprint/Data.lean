@@ -531,7 +531,12 @@ def CodeRef.leanDecls : CodeRef → Array Name
 structure InformalBody where
   stx : Syntax
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
+  /--
+  Manual block term syntax retained when the producing phase cannot evaluate it
+  into typed preview blocks, as with a docstring on an imported Blueprint
+  attribute.
+  -/
+  elabStx : Array Syntax := #[]
 deriving Repr, Inhabited
 
 def InformalBody.hasBody (data : InformalBody) : Bool :=

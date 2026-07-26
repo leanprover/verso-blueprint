@@ -47,4 +47,15 @@ def hybridSharedFirst : Nat := 17
 @[blueprint "attr.hybrid.shared"]
 def hybridSharedSecond : Nat := 19
 
+@[blueprint "attr.hybrid.late_docstring"
+  (uses := ["attr.hybrid.verso_docstring"])]
+def hybridLateDocstringFirst : Nat := 23
+
+/--
+A later declaration docstring fills a dependency-only statement payload without
+discarding the dependencies registered by the first declaration.
+-/
+@[blueprint "attr.hybrid.late_docstring"]
+def hybridLateDocstringSecond : Nat := 29
+
 end Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider

@@ -311,7 +311,8 @@ private def substringsInOrder (text : String) : List String → Bool
     let labels := #[
       "attr.hybrid.body",
       "attr.hybrid.verso_docstring",
-      "attr.hybrid.shared"
+      "attr.hybrid.shared",
+      "attr.hybrid.late_docstring"
     ]
     let hasEntries := labels.all fun label =>
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
@@ -332,10 +333,32 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "<code class=\"bp_math inline\">2 + 2 = 4</code>" &&
       hasSubstr html "hybridSharedFirst" &&
       hasSubstr html "hybridSharedSecond" &&
+      hasSubstr html
+        "A later declaration docstring fills a dependency-only statement payload" &&
+      hasSubstr html "hybridLateDocstringFirst" &&
+      hasSubstr html "hybridLateDocstringSecond" &&
       bodyData.statementUses.map (·.label) ==
         #[Name.mkSimple "attr.hybrid.verso_docstring"] &&
       bodyData.proofUses.map (·.label) == #[Name.mkSimple "attr.hybrid.shared"] &&
       hasEntries
+
+/- A manifest-backed graft must project only the selected dependency facet. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let files ← buildManualPreviewDataFiles manualImpls includedHybridAttributeModuleDoc
+    let ctx :=
+      Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let node :=
+      (({ label := "attr.hybrid.body" } :
+        Informal.Graft.BlueprintNodeConfig).toNode)
+    let rendered ← Informal.Graft.renderNodeFromManifestCache {} ctx node
+    let html := rendered.asString
+    pure <|
+      hasSubstr html "Statement uses 1" &&
+      hasSubstr html "attr.hybrid.verso_docstring" &&
+      !hasSubstr html "attr.hybrid.shared"
 
 /- This is the final-HTML regression behind the attribute-first authoring
    feedback: an imported bare attribute, a structural Verso docstring, both
