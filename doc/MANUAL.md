@@ -319,11 +319,15 @@ registered, but there is no imported informal statement body.
 
 Enabling `doc.verso` does not elaborate a declaration docstring as a Blueprint
 Manual fragment. Blueprint currently flattens every Lean docstring extension
-node to its child content, discarding the extension wrapper rather than looking
-up a Manual adapter. Custom role or directive semantics are therefore not
-preserved. In particular, `{uses ...}[]` inside a docstring is not Blueprint
-dependency metadata. Record those edges with the attribute's `(uses := [...])`
-or `(proofUses := [...])` options. Blueprint deliberately does not create a
+node that successfully elaborates to its child content, discarding the
+extension wrapper rather than looking up a Manual adapter. Custom Lean
+docstring-extension semantics are therefore not preserved.
+
+Blueprint Manual roles are a separate registry. In particular,
+`{uses ...}[]` is not a Lean `doc.verso` role and is rejected during docstring
+elaboration; it is neither flattened nor recorded as Blueprint dependency
+metadata. Record those edges with the attribute's `(uses := [...])` or
+`(proofUses := [...])` options. Blueprint deliberately does not create a
 synthetic `DocElabM` context to reinterpret an imported docstring.
 
 #### Including an attribute module as a chapter
@@ -551,7 +555,7 @@ the inferred dependency edges.
 | Reuse the same node in several places | Supported. The node keeps one semantic identity; later `{blueprint_node}` occurrences are presentation views and may use compact/header/display-label options. |
 | Use the declaration docstring as the statement | Supported for plain Markdown and standard structural `doc.verso` content that can be converted to Manual blocks. Structural `doc.verso` markup and math are also preserved in the attached external-declaration panel. Custom docstring extension semantics are flattened to child content rather than re-elaborated. An absent docstring produces a code-only placement. |
 | Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Type references become statement dependencies and body references become proof dependencies. Inference is direct, not transitive through untagged helpers. |
-| Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. A `{uses ...}[]` form inside a declaration docstring is not interpreted as dependency metadata. |
+| Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. Blueprint's `{uses ...}[]` Manual role is not registered for Lean `doc.verso` docstrings and is rejected there rather than interpreted as dependency metadata. |
 | Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
 | Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
 | Show the formal declaration | Supported as a highlighted external-declaration panel with its signature, kind-specific structure information, docstring, proof/completeness status, and source link when available. |

@@ -1,4 +1,4 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
@@ -7,127 +7,27 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintAttribute.Reexport
 import VersoBlueprintTests.BlueprintAttribute.HybridProvider
 import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
-import VersoBlueprintTests.Blueprint.Support
 
 open Lean
 open Informal
 
 namespace Verso.VersoBlueprintTests.BlueprintAttribute
 
-open Verso
-open Verso.Genre.Manual
-open Verso.VersoBlueprintTests.Blueprint.Support
-
-private def manualImpls : ExtensionImpls := extension_impls%
-
-#docs (Genre.Manual) placedAttributeDoc "Placed attribute-owned nodes" :=
-:::::::
-Introductory prose before the imported declaration.
-
-{blueprint_node "attr.exported.theorem"}
-
-Connecting prose between declarations.
-
-{blueprint_node "attr.exported.undocumented"}
-
-Concluding prose after the imported declarations.
-:::::::
-
-#docs (Genre.Manual) includedAttributeModuleDoc "Attribute module inclusion" :=
-:::::::
-{includeBlueprintModule 0 VersoBlueprintTests.BlueprintAttribute.Provider (title := "Imported attribute declarations")}
-:::::::
-
-#docs (Genre.Manual) includedAttributeModuleDefaultDoc "Default attribute module inclusion" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.Provider}
-:::::::
-
-#docs (Genre.Manual) includedHybridAttributeModuleDoc "Hybrid attribute module inclusion" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.HybridProvider}
-:::::::
-
-set_option verso.blueprint.foldCodeBlocks true
-
-#docs (Genre.Manual) placedDefaultLabelDoc "Placed default-label declaration" :=
-:::::::
-{blueprint_node "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel"}
-:::::::
-
-#docs (Genre.Manual) includedDefaultLabelModuleDoc "Default-label module inclusion" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider}
-:::::::
-
-set_option verso.blueprint.foldCodeBlocks false
-
-set_option verso.blueprint.numbering "global" in
-#docs (Genre.Manual) globallyNumberedAttributeModuleDoc "Globally numbered attribute module" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.Provider}
-:::::::
-
-set_option verso.blueprint.numbering "global" in
-#docs (Genre.Manual) repeatedAttributePlacementDoc "Repeated attribute placement" :=
-:::::::
-{blueprint_node "attr.exported.theorem"}
-
-Intervening prose between two placements of the same declaration.
-
-{blueprint_node "attr.exported.theorem"}
-:::::::
-
-set_option verso.blueprint.numbering "local" in
-#docs (Genre.Manual) interleavedLocalAttributePlacementDoc "Interleaved local attribute placement" :=
-:::::::
-:::definition "attr.consumer.before.placement"
-A consumer-authored node before an imported attribute placement.
-:::
-
-{blueprint_node "attr.exported.theorem"}
-
-:::definition "attr.consumer.after.placement"
-A consumer-authored node after an imported attribute placement.
-:::
-:::::::
-
-set_option verso.blueprint.numbering "local" in
-#docs (Genre.Manual) locallyNumberedHybridAttributeModuleDoc "Locally numbered hybrid module" :=
-:::::::
-:::definition "attr.consumer.before.module"
-A consumer-authored node that precedes the imported attribute module.
-:::
-
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.HybridProvider}
-:::::::
-
+/-
+`uses` is a Manual role, not a Lean `doc.verso` role. Keep the diagnostic
+explicit so documentation cannot drift back toward describing it as a flattened
+docstring extension.
+-/
 /--
-error: Blueprint module include: imported module 'VersoBlueprintTests.BlueprintAttribute.Reexport' has no declarations registered with `@[blueprint]`
+error: `uses : Doc.Elab.RoleExpanderOf UsesConfig` is not registered as a role
 -/
 #guard_msgs in
-#docs (Genre.Manual) rejectedEmptyAttributeModuleDoc "Rejected empty attribute module" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.Reexport}
-:::::::
-
+set_option doc.verso true in
 /--
-error: Blueprint module include: module 'NotImported.BlueprintModule' is not available through this Lean module's imports; add `import NotImported.BlueprintModule`
+A declaration docstring containing {uses "attr.exported.theorem"}[].
 -/
-#guard_msgs in
-#docs (Genre.Manual) rejectedUnimportedAttributeModuleDoc "Rejected unimported attribute module" :=
-:::::::
-{includeBlueprintModule NotImported.BlueprintModule}
-:::::::
-
-/--
-error: Blueprint module include is only available in Manual documents
--/
-#guard_msgs in
-#docs (VersoSlides.Slides) rejectedSlidesAttributeModuleDoc "Rejected Slides module include" :=
-:::::::
-{includeBlueprintModule VersoBlueprintTests.BlueprintAttribute.Provider}
-:::::::
+@[blueprint "attr.docstring.rejected_uses"]
+def rejectedDocstringUsesRole : Nat := 0
 
 private def importedState : CoreM Informal.Environment.State := do
   pure <| Informal.Environment.informalExt.getState (← getEnv)
@@ -140,17 +40,6 @@ private def importedNodeByName? (label : Name) : CoreM (Option Informal.Data.Nod
 
 private def importedNodeInLocalData (label : String) : CoreM Bool := do
   pure <| (← importedState).localData.contains (Name.mkSimple label)
-
-private def substringsInOrder (text : String) : List String → Bool
-  | [] => true
-  | needle :: rest =>
-    match text.splitOn needle with
-    | _before :: after =>
-      if after.isEmpty then
-        false
-      else
-        substringsInOrder (String.intercalate needle after) rest
-    | _ => false
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
     (node : Informal.Data.Node) : Bool :=
@@ -255,14 +144,6 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedSecond
       ]
 
-/- The no-level form creates a child part and derives its title from the module name. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show Bool from
-    includedAttributeModuleDefaultDoc.toPart.subParts.any fun part =>
-      part.titleString == "Provider" && part.content.size == 4
-
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -274,9 +155,15 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
     let some inductiveNode ← importedNode? "attr.exported.inductive"
       | return false
     pure <|
-      isBlueprintAttrRef `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedTheorem .theorem theoremNode &&
-      isBlueprintAttrRef `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedDefinition .definition definitionNode &&
-      isBlueprintAttrRef `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedInductive .definition inductiveNode
+      isBlueprintAttrRef
+          `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedTheorem
+          .theorem theoremNode &&
+      isBlueprintAttrRef
+          `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedDefinition
+          .definition definitionNode &&
+      isBlueprintAttrRef
+          `Verso.VersoBlueprintTests.BlueprintAttribute.Provider.exportedInductive
+          .definition inductiveNode
 
 /-- Imported statement payloads should keep empty deps and at least one preview source. -/
 private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
@@ -302,197 +189,7 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       importedStatementExportOk inductiveNode &&
       undocumentedNode.statement.isNone
 
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, state) ← renderManualDocHtmlStringAndState manualImpls placedAttributeDoc
-    let theoremKey := Informal.PreviewCache.statementKey (Name.mkSimple "attr.exported.theorem")
-    let undocumentedKey :=
-      Informal.PreviewCache.statementKey (Name.mkSimple "attr.exported.undocumented")
-    pure <|
-      hasSubstr html "Introductory prose before the imported declaration." &&
-      hasSubstr html "Connecting prose between declarations." &&
-      hasSubstr html "Concluding prose after the imported declarations." &&
-      hasSubstr html "Exported theorem used to verify" &&
-      hasSubstr html "bp_attribute_node_anchor" &&
-      hasSubstr html "exportedTheorem" &&
-      hasSubstr html "exportedUndocumentedDefinition" &&
-      !hasSubstr html "Blueprint node not found" &&
-      !hasSubstr html "Blueprint node has no cached content" &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? state theoremKey).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? state undocumentedKey).isSome
-
-/- A regular imported Lean module can become a source-ordered Verso part. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, state) ← renderManualDocHtmlStringAndState manualImpls includedAttributeModuleDoc
-    let hasIncludedTitle :=
-      includedAttributeModuleDoc.toPart.subParts.any
-        (·.titleString == "Imported attribute declarations")
-    let labels := #[
-      "attr.exported.theorem",
-      "attr.exported.definition",
-      "attr.exported.inductive",
-      "attr.exported.undocumented"
-    ]
-    let hasAnchor := hasSubstr html "bp_attribute_node_anchor"
-    let ordered := substringsInOrder html [
-        "exportedTheorem",
-        "exportedDefinition",
-        "exportedInductive",
-        "exportedUndocumentedDefinition"
-      ]
-    let hasEntries := labels.all fun label =>
-        let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
-        (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
-    pure <| hasIncludedTitle && hasAnchor && ordered && hasEntries
-
-/- Generated module nodes honor non-default Blueprint numbering options. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_html, state) ←
-      renderManualDocHtmlStringAndState manualImpls globallyNumberedAttributeModuleDoc
-    let theoremLabel := Name.mkSimple "attr.exported.theorem"
-    let definitionLabel := Name.mkSimple "attr.exported.definition"
-    let some theoremData := Informal.TraversalIndex.Nodes.data? state theoremLabel
-      | return false
-    let some definitionData := Informal.TraversalIndex.Nodes.data? state definitionLabel
-      | return false
-    pure <|
-      theoremData.numberingMode == .global &&
-      theoremData.globalCount == some 1 &&
-      theoremData.count == 1 &&
-      theoremData.displayNumber state == "1" &&
-      definitionData.numberingMode == .global &&
-      definitionData.globalCount == some 2 &&
-      definitionData.count == 2 &&
-      definitionData.displayNumber state == "2"
-
-/- Repeated placements keep the first number and canonical traversal anchors. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, state) ←
-      renderManualDocHtmlStringAndState manualImpls repeatedAttributePlacementDoc
-    let label := Name.mkSimple "attr.exported.theorem"
-    let previewKey := Informal.PreviewCache.statementKey label
-    let some data := Informal.TraversalIndex.Nodes.data? state label
-      | return false
-    let some nodeObject := Informal.TraversalIndex.Nodes.object? state label
-      | return false
-    let some previewObject :=
-        Informal.TraversalIndex.TraversalPreviews.object? state previewKey
-      | return false
-    pure <|
-      data.numberingMode == .global &&
-      data.globalCount == some 1 &&
-      data.count == 1 &&
-      Informal.nextGlobalBlockNumber state == 2 &&
-      nodeObject.ids.toArray.size == 1 &&
-      previewObject.ids.toArray.size == 1 &&
-      (html.splitOn "class=\"bp_graft_node bp_graft_manifest_node\"").length == 3
-
-/- Generated placements cannot reuse a later authored block's source-local count. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_html, state) ←
-      renderManualDocHtmlStringAndState manualImpls interleavedLocalAttributePlacementDoc
-    let some beforeData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.placement")
-      | return false
-    let some attributeData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.exported.theorem")
-      | return false
-    let some afterData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.after.placement")
-      | return false
-    pure <|
-      beforeData.numberingMode == .local &&
-      attributeData.numberingMode == .local &&
-      afterData.numberingMode == .local &&
-      beforeData.count + 1 == attributeData.count &&
-      attributeData.count + 1 == afterData.count &&
-      beforeData.globalCount == some 1 &&
-      attributeData.globalCount == some 2 &&
-      afterData.globalCount == some 3
-
-/- Imported placements receive source-local numbers in consumer traversal order. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_html, state) ←
-      renderManualDocHtmlStringAndState manualImpls locallyNumberedHybridAttributeModuleDoc
-    let some consumerData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.module")
-      | return false
-    let some bodyData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
-      | return false
-    let some versoDocstringData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.verso_docstring")
-      | return false
-    let some sharedData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.shared")
-      | return false
-    pure <|
-      consumerData.numberingMode == .local &&
-      bodyData.numberingMode == .local &&
-      consumerData.count + 1 == bodyData.count &&
-      bodyData.count + 1 == versoDocstringData.count &&
-      versoDocstringData.count + 1 == sharedData.count &&
-      consumerData.globalCount == some 1 &&
-      bodyData.globalCount == some 2 &&
-      versoDocstringData.globalCount == some 3 &&
-      sharedData.globalCount == some 4
-
-/- Persisted Manual bodies, Verso docstrings, and repeated labels share the module path. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, state) ← renderManualDocHtmlStringAndState manualImpls includedHybridAttributeModuleDoc
-    let labels := #[
-      "attr.hybrid.body",
-      "attr.hybrid.verso_docstring",
-      "attr.hybrid.shared"
-    ]
-    let hasEntries := labels.all fun label =>
-      let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
-      (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
-    let some bodyData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
-      | return false
-    pure <|
-      hasSubstr html "<strong>structural emphasis</strong>" &&
-      hasSubstr html "First persisted Manual list item." &&
-      hasSubstr html "Second persisted Manual list item." &&
-      hasSubstr html "<strong>structurally emphasized Verso docstring body</strong>" &&
-      hasSubstr html "<code>Nat.succ</code>" &&
-      hasSubstr html "First imported docstring list item." &&
-      hasSubstr html "Second imported docstring list item." &&
-      3 ≤ (html.splitOn "<ul>").length &&
-      hasSubstr html "<code class=\"bp_math inline\">1 + 1 = 2</code>" &&
-      hasSubstr html "<code class=\"bp_math inline\">2 + 2 = 4</code>" &&
-      hasSubstr html "hybridSharedFirst" &&
-      hasSubstr html "hybridSharedSecond" &&
-      bodyData.statementUses.map (·.label) ==
-        #[Name.mkSimple "attr.hybrid.verso_docstring"] &&
-      bodyData.proofUses.map (·.label) == #[Name.mkSimple "attr.hybrid.shared"] &&
-      hasEntries
-
-/- This is the cross-feature regression case behind the attribute-first authoring
-   feedback: an imported bare attribute, a structural Verso docstring, explicit
-   dependencies, both placement paths, and consumer-side code folding. Keep the
-   assertions on final HTML rather than only on the imported catalog. -/
+/- Bare attributes use qualified declaration names and retain explicit dependencies. -/
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -515,52 +212,5 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
         `Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition
         .definition
         definitionNode
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let label := Name.mkSimple
-      "Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultLabel"
-    let (placedHtml, placedState) ←
-      renderManualDocHtmlStringAndState manualImpls placedDefaultLabelDoc
-    let (moduleHtml, moduleState) ←
-      renderManualDocHtmlStringAndState manualImpls includedDefaultLabelModuleDoc
-    let key := Informal.PreviewCache.statementKey label
-    let renderedAsExpected (html : String) : Bool :=
-      countSubstr html "<strong>qualified default-label theorem</strong>" == 2 &&
-      countSubstr html "<code class=\"bp_math inline\">3 + 4 = 7</code>" == 2 &&
-      countSubstr html "<code class=\"bp_math display\">3 + 5 = 8</code>" == 2 &&
-      2 ≤ countSubstr html "First qualified-label list item." &&
-      hasSubstr html "class=\"bp_code_block bp_code_panel\"" &&
-      hasSubstr html "qualifiedDefaultLabel" &&
-      !hasSubstr html "open=\"open\""
-    pure <|
-      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).map
-          (·.2.foldCodeBlock) == some true &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).map
-          (·.2.foldCodeBlock) == some true &&
-      renderedAsExpected placedHtml &&
-      renderedAsExpected moduleHtml &&
-      hasSubstr moduleHtml "qualifiedDefaultDefinition"
-
-/- Attribute-owned, code-only nodes remain available in the manifest/cache pair. -/
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let files ← buildManualPreviewDataFiles manualImpls placedAttributeDoc
-    let key := Informal.PreviewCache.statementKey (Name.mkSimple "attr.exported.undocumented")
-    let some entry := files.manifest.previews.find? (·.key == key)
-      | return false
-    let some body := files.htmlCache.findHtml? key
-      | return false
-    pure <|
-      body.contains "bp_code_only_preview_body" &&
-      !entry.leanCodePreviewKeys.isEmpty &&
-      entry.kind == some .definition &&
-      (files.htmlCache.codeHtmlBodies entry |>.any (·.contains "exportedUndocumentedDefinition"))
 
 end Verso.VersoBlueprintTests.BlueprintAttribute
