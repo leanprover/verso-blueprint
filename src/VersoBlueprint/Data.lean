@@ -44,6 +44,10 @@ set_option doc.verso true
 def Label := Name
 deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
+/-- Append a Blueprint label only when it is not already present. -/
+def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
+  if labels.contains label then labels else labels.push label
+
 def LabelMap A := NameMap A
 
 instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
