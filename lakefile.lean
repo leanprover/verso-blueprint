@@ -27,49 +27,7 @@ lean_exe «vbp» where
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
-  roots := #[
-    `VersoBlueprintTests.Blueprint.Support,
-    `VersoBlueprintTests.BlueprintAssets,
-    `VersoBlueprintTests.BlueprintAutoDeps,
-    `VersoBlueprintTests.BlueprintAttribute,
-    `VersoBlueprintTests.BlueprintAttributeRendering,
-    `VersoBlueprintTests.BlueprintBlockFolding,
-    `VersoBlueprintTests.BlueprintCodeRenderMatrix,
-    `VersoBlueprintTests.BlueprintImportedDuplicates.Direct,
-    `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA,
-    `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB,
-    `VersoBlueprintTests.BlueprintImportedDuplicates.Reexport,
-    `VersoBlueprintTests.BlueprintImportedDuplicates.Transitive,
-    `VersoBlueprintTests.BlueprintExternalHeadingStatus,
-    `VersoBlueprintTests.BlueprintGraft,
-    `VersoBlueprintTests.BlueprintGraph,
-    `VersoBlueprintTests.BlueprintHeaderExtras,
-    `VersoBlueprintTests.BlueprintInformal,
-    `VersoBlueprintTests.BlueprintInlinePrecision,
-    `VersoBlueprintTests.BlueprintLinkHover,
-    `VersoBlueprintTests.BlueprintMainWrapper,
-    `VersoBlueprintTests.BlueprintMathLint,
-    `VersoBlueprintTests.BlueprintMetadataPanel,
-    `VersoBlueprintTests.BlueprintNumbering,
-    `VersoBlueprintTests.BlueprintSlides,
-    `VersoBlueprintTests.BlueprintPreviewPanels,
-    `VersoBlueprintTests.BlueprintPreviewSchema,
-    `VersoBlueprintTests.BlueprintPreviewSource,
-    `VersoBlueprintTests.BlueprintPreviewWiring,
-    `VersoBlueprintTests.BlueprintSource,
-    `VersoBlueprintTests.BlueprintRustCode,
-    `VersoBlueprintTests.BlueprintSummaryLinks,
-    `VersoBlueprintTests.BlueprintSummaryStatus,
-    `VersoBlueprintTests.BlueprintTeXCleanup,
-    `VersoBlueprintTests.BlueprintTexMacros,
-    `VersoBlueprintTests.BlueprintExternalMarkup,
-    `VersoBlueprintTests.ExternalDeclRender,
-    `VersoBlueprintTests.RuntimeCache,
-    `VersoBlueprintTests.TestBlueprintRegistryMeta,
-    `VersoBlueprintTests.TestBlueprintRegistryChecks,
-    `VersoBlueprintTests.TestBlueprintRegistryCoverage,
-    `VersoBlueprintTests.Vbp
-  ]
+  globs := #[.submodules `VersoBlueprintTests]
 
 lean_lib VersoBlueprintTestDocs where
   srcDir := "tests"

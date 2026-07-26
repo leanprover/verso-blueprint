@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-07-26
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should

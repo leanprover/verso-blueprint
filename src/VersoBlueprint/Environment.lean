@@ -101,29 +101,23 @@ inductive Entry where
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
 
-private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
-  if labels.contains label then labels else labels.push label
-
 private def addBlueprintAttributeLabel
     (modules : NameMap (Array Label))
     (moduleName : Name) (label : Label) :
     NameMap (Array Label) :=
   modules.insert moduleName <|
-    pushLabelUnique (modules.getD moduleName #[]) label
-
-private def nodeLeanDecls (node : Node) : Array Name :=
-  node.leanDecls
+    Label.pushUnique (modules.getD moduleName #[]) label
 
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
   let decl := decl.eraseMacroScopes
   let labels := leanNameLabels.getD decl #[]
-  leanNameLabels.insert decl (pushLabelUnique labels label)
+  leanNameLabels.insert decl (Label.pushUnique labels label)
 
 private def addNodeLeanDeclLabels
     (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
     NameMap (Array Label) :=
-  (nodeLeanDecls node).foldl (init := leanNameLabels) fun acc decl =>
+  node.leanDecls.foldl (init := leanNameLabels) fun acc decl =>
     addLeanDeclLabel acc decl label
 
 private def addRegisteredNodeLeanDeclLabels
