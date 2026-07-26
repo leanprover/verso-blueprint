@@ -407,21 +407,29 @@ private def substringsInOrder (text : String) : List String → Bool
       renderedAsExpected moduleHtml &&
       hasSubstr moduleHtml "qualifiedDefaultDefinition"
 
-/- Attribute-owned, code-only nodes remain available in the manifest/cache pair. -/
+private def hasCodeOnlyAttributePreview
+    (files : Informal.PreviewManifest.Files) (label declaration : String) : Bool :=
+  let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
+  match files.manifest.previews.find? (·.key == key), files.htmlCache.findHtml? key with
+  | some entry, some body =>
+      body.contains "bp_code_only_preview_body" &&
+      !entry.leanCodePreviewKeys.isEmpty &&
+      entry.kind == some .definition &&
+      (files.htmlCache.codeHtmlBodies entry |>.any (·.contains declaration))
+  | _, _ => false
+
+/- Attribute-owned, code-only nodes remain available in the manifest/cache pair
+   through both individual placement and module inclusion. -/
 /-- info: true -/
 #guard_msgs in
 #eval
   show IO Bool from do
-    let files ← buildManualPreviewDataFiles manualImpls placedAttributeDoc
-    let key := Informal.PreviewCache.statementKey (Name.mkSimple "attr.exported.undocumented")
-    let some entry := files.manifest.previews.find? (·.key == key)
-      | return false
-    let some body := files.htmlCache.findHtml? key
-      | return false
+    let placedFiles ← buildManualPreviewDataFiles manualImpls placedAttributeDoc
+    let moduleFiles ← buildManualPreviewDataFiles manualImpls includedAttributeModuleDoc
     pure <|
-      body.contains "bp_code_only_preview_body" &&
-      !entry.leanCodePreviewKeys.isEmpty &&
-      entry.kind == some .definition &&
-      (files.htmlCache.codeHtmlBodies entry |>.any (·.contains "exportedUndocumentedDefinition"))
+      hasCodeOnlyAttributePreview placedFiles
+        "attr.exported.undocumented" "exportedUndocumentedDefinition" &&
+      hasCodeOnlyAttributePreview moduleFiles
+        "attr.exported.undocumented" "exportedUndocumentedDefinition"
 
 end Verso.VersoBlueprintTests.BlueprintAttributeRendering
