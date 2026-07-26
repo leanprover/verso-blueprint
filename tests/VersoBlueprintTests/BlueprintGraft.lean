@@ -76,6 +76,69 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
         Html.ofString s!"{title}: {detail}"
   }
 
+private def facetRelated
+    (label : String) (axis : Informal.PreviewManifest.RelationAxis) :
+    Informal.PreviewManifest.RelatedEntry :=
+  {
+    label := Lean.Name.mkSimple label
+    title := label
+    axes := #[axis]
+  }
+
+private def facetProjectionEntry
+    (facet : Informal.PreviewCache.Facet) : Informal.PreviewManifest.Entry :=
+  {
+    key := Informal.PreviewCache.key (Lean.Name.mkSimple "thm:graft.facet") facet
+    targetKind := .block
+    label := Lean.Name.mkSimple "thm:graft.facet"
+    facet
+    kind := some .theorem
+    title := "Theorem 7"
+    displayCaption := some "Theorem"
+    displayLabel := some "7"
+    parent := some (Lean.Name.mkSimple "grp:graft.facet")
+    uses := #[
+      facetRelated "def:graft.statement.dep" .statement,
+      facetRelated "def:graft.proof.dep" .proof
+    ]
+    usedBy := #[facetRelated "def:graft.used.by" .statement]
+  }
+
+private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
+  {
+    label := Lean.Name.mkSimple "grp:graft.facet"
+    title := "Graft facet group"
+    declared := true
+    entries := #[facetRelated "def:graft.group.member" .statement]
+  }
+
+/- Manifest-backed graft presentation projects dependency and auxiliary UI by facet. -/
+#guard
+  let content :=
+    Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings
+      "Facet body" #["Facet code body"]
+  let render facet :=
+    Informal.PreviewManifest.BlockRender.renderWithRenderedContent
+      {}
+      (facetProjectionEntry facet)
+      content
+      (some facetProjectionGroup)
+      |>.asString
+  let statement := render .statement
+  let proof := render .proof
+  hasSubstr statement "Statement uses 1" &&
+    hasSubstr statement "def:graft.statement.dep" &&
+    !hasSubstr statement "def:graft.proof.dep" &&
+    hasSubstr statement "class=\"bp_extra_slot bp_extra_slot_group\"" &&
+    hasSubstr statement "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
+    hasSubstr statement "bp_code_panel_wrapper" &&
+    hasSubstr proof "Proof uses 1" &&
+    hasSubstr proof "def:graft.proof.dep" &&
+    !hasSubstr proof "def:graft.statement.dep" &&
+    !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_group\"" &&
+    !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
+    !hasSubstr proof "bp_code_panel_wrapper"
+
 private def renderAuditNode
     (manifest : Informal.PreviewManifest.File)
     (htmlCache : Informal.PreviewManifest.HtmlCache.File)

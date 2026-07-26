@@ -207,18 +207,22 @@ private def resolveAutoDeps
 private def payloadWithDeps
     (ref : Syntax) (deps : Array Data.UseRef) (incoming? existing? : Option Data.InformalData) :
     Option Data.InformalData :=
-  let mergeDeps (payload : Data.InformalData) : Data.InformalData :=
-    { payload with deps := deps.foldl Data.UseRef.pushMergeByLabel payload.deps }
-  match existing? with
-  | some payload => some (mergeDeps payload)
-  | none =>
-    match incoming? with
-    | some payload => some (mergeDeps payload)
-    | none =>
-      if deps.isEmpty then
-        none
-      else
-        some { stx := ref, deps }
+  let incoming? := incoming?.map (·.withMergedDeps deps)
+  match existing?, incoming? with
+  | some existing, some incoming =>
+    if existing.hasBody then
+      some (existing.withMergedDeps deps)
+    else
+      some (existing.fillBodyless incoming)
+  | some existing, none =>
+    some (existing.withMergedDeps deps)
+  | none, some incoming =>
+    some incoming
+  | none, none =>
+    if deps.isEmpty then
+      none
+    else
+      some { stx := ref, deps }
 
 private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
