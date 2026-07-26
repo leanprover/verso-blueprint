@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprintTests.BlueprintAttribute
+import VersoBlueprintTests.BlueprintAttributeRendering
 import VersoBlueprintTests.BlueprintAssets
 import VersoBlueprintTests.BlueprintAutoDeps
 import VersoBlueprintTests.BlueprintBlockFolding
