@@ -31,6 +31,22 @@ Manual graft body.
 {blueprint_node "def:graft.manual.source" -header +compact}
 :::::::
 
+#docs (Genre.Manual) facetCodeProjectionDoc "Graft Facet Code Projection" :=
+:::::::
+:::theorem "thm:graft.facet.code"
+Statement facet with attached Lean code.
+:::
+
+:::proof "thm:graft.facet.code"
+Proof facet without its own Lean code.
+:::
+
+```lean "thm:graft.facet.code"
+theorem graftFacetCodeWitness : True := by
+  trivial
+```
+:::::::
+
 #docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
 :::::::
 :::definition "def:graft.manual.left" (tags := "graft, source") (effort := "small") (lean := "graftManualLeftValue")
@@ -138,6 +154,41 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
     !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_group\"" &&
     !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
     !hasSubstr proof "bp_code_panel_wrapper"
+
+/- Manifest construction keeps statement code associations off the proof facet. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let files ← buildManualPreviewDataFiles manualImpls facetCodeProjectionDoc
+    let label := Lean.Name.mkSimple "thm:graft.facet.code"
+    let statementKey := Informal.PreviewCache.statementKey label
+    let proofKey := Informal.PreviewCache.proofKey label
+    let some statementEntry := files.manifest.previews.find? (·.key == statementKey)
+      | return false
+    let some proofEntry := files.manifest.previews.find? (·.key == proofKey)
+      | return false
+    let ctx :=
+      Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let statementNode :=
+      (({ label := "thm:graft.facet.code" } :
+        Informal.Graft.BlueprintNodeConfig).toNode)
+    let proofNode :=
+      (({ label := "thm:graft.facet.code", facet := some "proof" } :
+        Informal.Graft.BlueprintNodeConfig).toNode)
+    let statementHtml ←
+      Informal.Graft.renderNodeFromManifestCache {} ctx statementNode
+    let proofHtml ←
+      Informal.Graft.renderNodeFromManifestCache {} ctx proofNode
+    pure <|
+      !statementEntry.leanCodePreviewKeys.isEmpty &&
+      statementEntry.codeData.isSome &&
+      proofEntry.leanCodePreviewKeys.isEmpty &&
+      proofEntry.codeData.isNone &&
+      hasSubstr statementHtml.asString "graftFacetCodeWitness" &&
+      hasSubstr statementHtml.asString "bp_code_panel_wrapper" &&
+      !hasSubstr proofHtml.asString "graftFacetCodeWitness" &&
+      !hasSubstr proofHtml.asString "bp_code_panel_wrapper"
 
 private def renderAuditNode
     (manifest : Informal.PreviewManifest.File)

@@ -1000,6 +1000,17 @@ structure Entry where
   effort : Option String := none
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- Whether a related dependency participates in the selected statement or proof facet. -/
+def RelatedEntry.matchesFacet
+    (related : RelatedEntry) (facet : PreviewCache.Facet) : Bool :=
+  match facet with
+  | .statement => related.axes.contains .statement
+  | .proof => related.axes.contains .proof
+
+/-- Related dependencies that belong to this manifest entry's selected facet. -/
+def Entry.usesForFacet (entry : Entry) : Array RelatedEntry :=
+  entry.uses.filter (·.matchesFacet entry.facet)
+
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
 structure EntryHeading where
   /-- Heading caption, such as "Definition" or "Theorem". -/
