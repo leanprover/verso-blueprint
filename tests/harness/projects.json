@@ -10,23 +10,10 @@
       },
       "targets": [
         {
-          "release": "v4.31.0"
-        },
-        {
           "release": "v4.32.0"
         }
       ],
-      "build_command": ["lake", "build", "ProjectTemplate"],
-      "generate_command": [
-        "lake",
-        "lean",
-        "ProjectTemplateMain.lean",
-        "--",
-        "--run",
-        "ProjectTemplateMain.lean",
-        "--output",
-        "{output_dir}"
-      ],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -40,9 +27,8 @@
       "targets": [
         {
           "release": "v4.32.0",
-          "ref": "ad062f0d06b891fa53db1cfcdc7e39be05c39204",
-          "publish_reference": true,
-          "rc": "4.32-rc1"
+          "ref": "50252fcd705f47c69e1643d6e55c362da273bec1",
+          "publish_reference": true
         }
       ],
       "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
@@ -58,8 +44,8 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "4cbb43d6401ff2ca8d4495b82fea99df59b633bd",
+          "release": "v4.32.0",
+          "ref": "7f7fb9eb8770497625d5155af52921281093fe2b",
           "publish_reference": true
         }
       ],
@@ -77,9 +63,8 @@
       "targets": [
         {
           "release": "v4.32.0",
-          "ref": "1695b7cb937a8022dacd2742b969a272b7d57d1e",
-          "publish_reference": true,
-          "rc": "4.32-rc1"
+          "ref": "bc09f1e5ce35d6418173386b5f134b51a81e6c17",
+          "publish_reference": true
         }
       ],
       "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
@@ -95,8 +80,8 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "5b34f5d43ba50bca0680b2c139b2b994857902f4",
+          "release": "v4.32.0",
+          "ref": "e89a585c13d05c965d9d28d307517da0bfe13960",
           "publish_reference": true
         }
       ],

@@ -111,6 +111,10 @@ Do those upstream write actions only when they are explicitly requested.
   repository metadata. Source, scripts, tests, templates, package
   configuration, and runtime assets require paired backports so maintenance
   lines remain structurally aligned for future cherry-picks.
+- `release-line retirement` is machine-checked rather than exempt. CI accepts
+  it only when the default Lean line stays fixed, the oldest contiguous suffix
+  of required backports is removed, and every remaining release target is
+  unchanged.
 - Backported default-development PRs should normally be landed with a merge
   commit rather than squash or rebase, so the source commits recorded by
   `git cherry-pick -x` remain present in default-dev history.
@@ -128,6 +132,8 @@ Do those upstream write actions only when they are explicitly requested.
   - keep the default-development PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted
     public title/body scaffold
+  - for a maintenance-line retirement, replace the retiring
+    `Backport ...: pending` lines with `Backport ...: release-line retirement`
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs

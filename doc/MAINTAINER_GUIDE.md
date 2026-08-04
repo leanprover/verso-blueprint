@@ -394,6 +394,14 @@ Commit that metadata-only change separately on each older branch that still
 carries `branch-policy.json`, such as `v4.31.0`. Preserve their own Lean
 toolchain pins.
 
+When retiring old maintenance lines from an existing release branch, use
+`Backport ...: release-line retirement` for each removed line. The check
+accepts this only when the default Lean toolchain and branch stay fixed, the
+removed branches are the oldest contiguous suffix of the maintenance sequence,
+and all remaining release targets are unchanged. This makes the policy
+transition self-validating without constructing obsolete backport projects
+solely to satisfy the policy being removed.
+
 To remove stale harness-managed reference caches and orphaned local clones:
 
 ```bash
