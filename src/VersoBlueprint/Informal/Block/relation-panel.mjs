@@ -169,6 +169,9 @@
       const dataScript = list.querySelector("script.bp-relation-entries");
       if (dataScript instanceof Element) dataScript.remove();
       list.appendChild(fragment);
+      if (typeof previewUtils.hydrate === "function") {
+        previewUtils.hydrate(list, { renderMath: false });
+      }
       if (!items.some(function (item) {
         return item instanceof Element && item.classList.contains("bp_relation_item_active");
       }) && items[0] instanceof Element) {
