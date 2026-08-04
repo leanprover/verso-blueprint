@@ -1,9 +1,7 @@
 {
   "version": 2,
   "default_dev_branch": "v4.32.0",
-  "required_backport_branches": [
-    "v4.31.0"
-  ],
+  "required_backport_branches": [],
   "release_targets": [
     {
       "id": "v4.31.0",
