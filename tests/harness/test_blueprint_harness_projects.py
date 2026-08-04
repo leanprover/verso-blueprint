@@ -16,7 +16,7 @@ from scripts.blueprint_harness_projects import (
     load_project_catalog,
     load_project_catalog_data,
     reference_build_matrix,
-    reference_dependency_cache_key,
+    reference_source_identity,
     reference_release_payload,
     resolve_projects_for_release,
     resolve_release_target,
@@ -32,6 +32,8 @@ from scripts.blueprint_harness_references import (
     default_reference_bump_branch,
     default_reference_edit_base,
     generate_git_project,
+    output_dir_for,
+    reference_source_paths,
     reference_submodule_update_command,
     require_reference_harness_layout,
     run_external_reference_lake_update,
@@ -233,7 +235,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "expected JSON object"):
                 load_project_catalog(manifest)
 
-    def test_reference_dependency_cache_key_tracks_external_source_identity(self) -> None:
+    def test_reference_source_identity_tracks_external_source(self) -> None:
         base_project = HarnessProject(
             project_id="external-blueprint",
             source_kind="git_checkout",
@@ -283,13 +285,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             selected_release="v4.29.0",
         )
 
-        key = reference_dependency_cache_key(base_project)
+        identity = reference_source_identity(base_project)
 
-        self.assertTrue(key.startswith("external-blueprint-0123456789ab-"))
-        self.assertEqual(key, reference_dependency_cache_key(same_source_other_release))
-        self.assertNotEqual(key, reference_dependency_cache_key(changed_ref))
+        self.assertTrue(identity.startswith("external-blueprint-0123456789ab-"))
+        self.assertEqual(identity, reference_source_identity(same_source_other_release))
+        self.assertNotEqual(identity, reference_source_identity(changed_ref))
 
-    def test_reference_dependency_package_cache_is_separate_from_checkout_cache(self) -> None:
+    def test_reference_dependency_packages_seed_two_checkouts_without_transferring_ownership(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
 
         project = HarnessProject(
@@ -310,14 +312,20 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            dependency_packages = root / "deps" / cache_key / "packages"
-            project_dir = root / "checkout" / "nested" / "blueprint"
+            source_identity = reference_source_identity(project)
+            dependency_packages = root / "deps" / source_identity / "packages"
+            first_project_dir = root / "first-checkout" / "nested" / "blueprint"
+            second_project_dir = root / "second-checkout" / "nested" / "blueprint"
             dependency_packages.mkdir(parents=True)
-            (project_dir / ".lake" / "packages" / "mathlib").mkdir(parents=True)
+            shared_marker = dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            shared_marker.parent.mkdir(parents=True)
+            shared_marker.write_text("shared", encoding="utf-8")
+            (first_project_dir / ".lake" / "packages" / "mathlib").mkdir(parents=True)
             layout = SimpleNamespace(
                 package_root=root / "pkg",
+                reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
             )
             layout.package_root.mkdir()
 
@@ -326,22 +334,33 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             try:
                 refs_mod.run = lambda command, *, cwd: commands.append(command)
 
-                seeded_from = seed_lake_packages_from_dependency_cache(layout, project, project_dir)
-                stored_to = store_lake_packages_in_dependency_cache(layout, project, project_dir)
+                first_seed = seed_lake_packages_from_dependency_cache(layout, project, first_project_dir)
+                second_seed = seed_lake_packages_from_dependency_cache(layout, project, second_project_dir)
+                stored_to = store_lake_packages_in_dependency_cache(layout, project, first_project_dir)
+                shared_marker_text = shared_marker.read_text(encoding="utf-8")
             finally:
                 refs_mod.run = original_run
 
-        self.assertEqual(seeded_from, dependency_packages)
+        self.assertEqual(first_seed, dependency_packages)
+        self.assertEqual(second_seed, dependency_packages)
         self.assertEqual(stored_to, dependency_packages)
+        self.assertEqual(shared_marker_text, "shared")
         self.assertEqual(
             commands,
             [
-                ["rsync", "-a", f"{dependency_packages}/", f"{project_dir / '.lake' / 'packages'}/"],
-                ["rsync", "-a", "--delete", f"{project_dir / '.lake' / 'packages'}/", f"{dependency_packages}/"],
+                ["rsync", "-a", f"{dependency_packages}/", f"{first_project_dir / '.lake' / 'packages'}/"],
+                ["rsync", "-a", f"{dependency_packages}/", f"{second_project_dir / '.lake' / 'packages'}/"],
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    f"{first_project_dir / '.lake' / 'packages'}/",
+                    f"{dependency_packages}/",
+                ],
             ],
         )
 
-    def test_reference_dependency_package_move_mode_moves_into_checkout(self) -> None:
+    def test_reference_source_paths_share_one_identity_and_exclude_generated_output(self) -> None:
         project = HarnessProject(
             project_id="external-blueprint",
             source_kind="git_checkout",
@@ -357,89 +376,24 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             browser_tests_path=None,
             description=None,
         )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            dependency_packages = root / "deps" / cache_key / "packages"
-            project_dir = root / "checkout" / "nested" / "blueprint"
-            marker = dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
-            marker.parent.mkdir(parents=True)
-            marker.write_text("warm", encoding="utf-8")
-            old_local_marker = project_dir / ".lake" / "packages" / "old" / "stale"
-            old_local_marker.parent.mkdir(parents=True)
-            old_local_marker.write_text("stale", encoding="utf-8")
-            layout = SimpleNamespace(
-                package_root=root / "pkg",
-                reference_dependency_cache_root=root / "deps",
-            )
-            layout.package_root.mkdir()
-
-            seeded_from = seed_lake_packages_from_dependency_cache(
-                layout,
-                project,
-                project_dir,
-                package_mode="move",
-            )
-
-            self.assertEqual(seeded_from, dependency_packages)
-            self.assertFalse(dependency_packages.exists())
-            self.assertFalse(old_local_marker.exists())
-            self.assertEqual(
-                (project_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean").read_text(
-                    encoding="utf-8"
-                ),
-                "warm",
-            )
-
-    def test_reference_dependency_package_move_mode_restores_to_cache(self) -> None:
-        project = HarnessProject(
-            project_id="external-blueprint",
-            source_kind="git_checkout",
-            project_root="nested/blueprint",
-            build_target=None,
-            generator=None,
-            repository="https://github.com/example/external-blueprint.git",
-            ref="main",
-            build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
-            site_subdir="html-multi",
-            panel_regression_script=None,
-            browser_tests_path=None,
-            description=None,
+        layout = SimpleNamespace(
+            reference_source_cache_root=Path("/tmp/cache"),
+            reference_dependency_cache_root=Path("/tmp/deps"),
+            reference_project_checkout_root=Path("/tmp/by-worktree/demo"),
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            dependency_packages = root / "deps" / cache_key / "packages"
-            project_dir = root / "checkout" / "nested" / "blueprint"
-            marker = project_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean"
-            marker.parent.mkdir(parents=True)
-            marker.write_text("warm", encoding="utf-8")
-            old_cache_marker = dependency_packages / "old" / "stale"
-            old_cache_marker.parent.mkdir(parents=True)
-            old_cache_marker.write_text("stale", encoding="utf-8")
-            layout = SimpleNamespace(
-                package_root=root / "pkg",
-                reference_dependency_cache_root=root / "deps",
-            )
-            layout.package_root.mkdir()
+        paths = reference_source_paths(layout, project)
+        output = output_dir_for(project, Path("/tmp/output"))
 
-            stored_to = store_lake_packages_in_dependency_cache(
-                layout,
-                project,
-                project_dir,
-                package_mode="move",
-            )
-
-            self.assertEqual(stored_to, dependency_packages)
-            self.assertFalse((project_dir / ".lake" / "packages").exists())
-            self.assertFalse(old_cache_marker.exists())
-            self.assertEqual(
-                (dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean").read_text(encoding="utf-8"),
-                "warm",
-            )
+        self.assertEqual(paths.identity, reference_source_identity(project))
+        self.assertEqual(paths.source_checkout, Path("/tmp/cache") / paths.identity)
+        self.assertEqual(paths.dependency_cache, Path("/tmp/deps") / paths.identity)
+        self.assertEqual(paths.dependency_packages, paths.dependency_cache / "packages")
+        self.assertEqual(paths.dependency_path_builds, paths.dependency_cache / "path-builds")
+        self.assertEqual(paths.local_checkout, Path("/tmp/by-worktree/demo") / paths.identity)
+        self.assertEqual(output, Path("/tmp/output/external-blueprint"))
+        for managed_path in (paths.source_checkout, paths.dependency_cache, paths.local_checkout):
+            self.assertFalse(output.is_relative_to(managed_path))
 
     def test_discard_lake_packages_prunes_warmed_checkout_copy(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
@@ -478,8 +432,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            path_builds = root / "deps" / cache_key / "path-builds"
+            source_identity = reference_source_identity(project)
+            path_builds = root / "deps" / source_identity / "path-builds"
             project_dir = root / "checkout" / "nested" / "blueprint"
             package_root = root / "pkg"
             project_dir.mkdir(parents=True)
@@ -507,7 +461,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             )
             layout = SimpleNamespace(
                 package_root=package_root,
+                reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
             )
 
             original_run = refs_mod.run
@@ -565,12 +521,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("lualatex --version", workflow_text)
         self.assertIn("texlive-fonts-extra", workflow_text)
         self.assertIn("texlive-plain-generic", workflow_text)
-        self.assertIn("matrix.reference_cache_key", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", workflow_text)
-        self.assertIn("reference-deps-v2-${{ matrix.reference_cache_key }}", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
-        self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
+        self.assertIn("matrix.reference_source_identity", workflow_text)
+        self.assertIn(
+            ".worktrees/_reference-blueprints/deps/${{ matrix.reference_source_identity }}/packages", workflow_text
+        )
+        self.assertIn(
+            ".worktrees/_reference-blueprints/deps/${{ matrix.reference_source_identity }}/path-builds", workflow_text
+        )
+        self.assertIn("reference-deps-v2-${{ matrix.reference_source_identity }}", workflow_text)
+        self.assertIn(
+            ".worktrees/_reference-blueprints/deps/${{ matrix.reference_source_identity }}/path-builds",
+            deploy_workflow_text,
+        )
+        self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_source_identity }}", deploy_workflow_text)
         self.assertIn(
             "group: ${{ github.repository }}-reference-blueprints-pages",
             deploy_workflow_text,
@@ -605,9 +568,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(entry["artifact_path"], f"_out/reference-blueprints/{entry['project_id']}")
             self.assertIn("project_root", entry)
             if entry["hash"] is not None:
-                self.assertTrue(entry["reference_cache_key"])
+                self.assertTrue(entry["reference_source_identity"])
             else:
-                self.assertEqual(entry["reference_cache_key"], "")
+                self.assertEqual(entry["reference_source_identity"], "")
 
     def test_reference_release_payload_uses_project_target_rcs(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
@@ -770,7 +733,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(matrix_by_project["old-release-project"]["project_root"], "old-controller")
         self.assertEqual(matrix_by_project["old-release-project"]["rc"], "")
         self.assertEqual(matrix_by_project["old-release-project"]["toolchain"], "v4.28.0")
-        self.assertTrue(matrix_by_project["old-release-project"]["reference_cache_key"].startswith("old-release-project-"))
+        self.assertTrue(
+            matrix_by_project["old-release-project"]["reference_source_identity"].startswith("old-release-project-")
+        )
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["targets"],
             [{"release": "v4.29.0", "ref": "new-controller-ref", "rc": "4.29-rc1"}],
@@ -1345,7 +1310,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_dir = root / "cache" / reference_dependency_cache_key(project)
+            cache_dir = root / "cache" / reference_source_identity(project)
             project_dir = cache_dir / "nested" / "blueprint"
             project_dir.mkdir(parents=True)
             (cache_dir / ".git").mkdir()
@@ -1356,6 +1321,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repo_root=root / "root",
                 reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
             )
             layout.package_root.mkdir()
             layout.repo_root.mkdir()
@@ -1416,7 +1382,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             root = Path(tmp)
             worktrees_root = root / ".worktrees"
             package_root = worktrees_root / "docs-431-reference-catalog"
-            cache_dir = worktrees_root / "_reference-blueprints" / "cache" / reference_dependency_cache_key(project)
+            cache_dir = worktrees_root / "_reference-blueprints" / "cache" / reference_source_identity(project)
             cache_dir.mkdir(parents=True)
             (cache_dir / ".git").mkdir()
             lakefile = cache_dir / "lakefile.lean"
@@ -1427,6 +1393,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repo_root=root,
                 reference_source_cache_root=worktrees_root / "_reference-blueprints" / "cache",
                 reference_dependency_cache_root=worktrees_root / "_reference-blueprints" / "deps",
+                reference_project_checkout_root=worktrees_root / "_reference-blueprints" / "by-worktree" / "demo",
             )
 
             originals = {
@@ -1481,8 +1448,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            cache_dir = root / "cache" / cache_key
+            source_identity = reference_source_identity(project)
+            cache_dir = root / "cache" / source_identity
             project_dir = cache_dir / "nested" / "blueprint"
             project_dir.mkdir(parents=True)
             (cache_dir / ".git").mkdir()
@@ -1493,6 +1460,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repo_root=root / "root",
                 reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
             )
             layout.package_root.mkdir()
             layout.repo_root.mkdir()
@@ -1530,9 +1498,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
             message = str(raised.exception)
             self.assertIn("failed to warm reference cache for `external-blueprint`", message)
-            self.assertIn(cache_key, message)
+            self.assertIn(source_identity, message)
             self.assertIn(str(cache_dir), message)
-            self.assertIn(str(root / "deps" / cache_key / "packages"), message)
+            self.assertIn(str(root / "deps" / source_identity / "packages"), message)
             self.assertIn("incompatible `.olean` header", message)
             self.assertIn("create-worktree <name> --lightweight", message)
             self.assertIn("blueprint_reference_harness prune --dry-run", message)
@@ -1773,7 +1741,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout = SimpleNamespace(
                 package_root=root / "pkg",
                 repo_root=root / "repo",
+                reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
             )
             layout.package_root.mkdir()
             layout.repo_root.mkdir()
@@ -1790,15 +1760,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             }
             commands: list[list[str]] = []
             warm_build_values: list[bool] = []
-            package_modes: list[str] = []
 
-            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build, package_mode="copy"):
+            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build):
                 warm_build_values.append(warm_build)
-                package_modes.append(package_mode)
                 return cache_dir
 
-            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir, *, package_mode="copy"):
-                package_modes.append(package_mode)
+            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir):
                 return local_dir
 
             try:
@@ -1826,7 +1793,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         setattr(refs_mod, name, value)
 
         self.assertEqual(warm_build_values, [False])
-        self.assertEqual(package_modes, ["copy", "copy"])
         self.assertEqual(commands[0], reference_submodule_update_command())
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
@@ -1844,7 +1810,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             )
         )
 
-    def test_generate_git_project_move_mode_restores_packages_after_failure(self) -> None:
+    def test_generate_git_project_failure_leaves_shared_packages_usable(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
 
         project = HarnessProject(
@@ -1868,9 +1834,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             cache_dir = root / "cache"
             local_dir = root / "local"
             output_root = root / "out"
-            marker = local_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean"
-            marker.parent.mkdir(parents=True)
-            marker.write_text("warm", encoding="utf-8")
+            dependency_packages = root / "deps" / reference_source_identity(project) / "packages"
+            shared_marker = dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            shared_marker.parent.mkdir(parents=True)
+            shared_marker.write_text("shared", encoding="utf-8")
+            local_marker = local_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            local_marker.parent.mkdir(parents=True)
+            local_marker.write_text("local", encoding="utf-8")
             layout = SimpleNamespace(
                 package_root=root / "pkg",
                 repo_root=root / "repo",
@@ -1885,14 +1855,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "sync_reference_local_checkout": refs_mod.sync_reference_local_checkout,
                 "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
             }
-            package_modes: list[str] = []
-
-            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build, package_mode="copy"):
-                package_modes.append(package_mode)
+            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build):
                 return cache_dir
 
-            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir, *, package_mode="copy"):
-                package_modes.append(package_mode)
+            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir):
                 return local_dir
 
             try:
@@ -1902,19 +1868,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 refs_mod.bootstrap_reference_checkout = lambda *, project_dir: (_ for _ in ()).throw(RuntimeError("boom"))
 
                 with self.assertRaisesRegex(RuntimeError, "boom"):
-                    generate_git_project(layout, output_root, project, skip_build=False, package_mode="move")
+                    generate_git_project(layout, output_root, project, skip_build=False)
             finally:
                 for name, value in originals.items():
                     setattr(refs_mod, name, value)
 
-            dependency_packages = root / "deps" / reference_dependency_cache_key(project) / "packages"
-
-            self.assertEqual(package_modes, ["move", "move"])
-            self.assertFalse((local_dir / ".lake" / "packages").exists())
-            self.assertEqual(
-                (dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean").read_text(encoding="utf-8"),
-                "warm",
-            )
+            self.assertEqual(shared_marker.read_text(encoding="utf-8"), "shared")
+            self.assertEqual(local_marker.read_text(encoding="utf-8"), "local")
 
     def test_reference_submodule_update_skips_lfs_smudge(self) -> None:
         self.assertEqual(
@@ -2155,9 +2115,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            local_dir = root / "local" / cache_key
-            cache_dir = root / "cache" / cache_key
+            source_identity = reference_source_identity(project)
+            local_dir = root / "local" / source_identity
+            cache_dir = root / "cache" / source_identity
             edit_dir = root / "edit" / project.project_id
             (local_dir / "nested" / "blueprint" / ".lake" / "packages").mkdir(parents=True)
             (cache_dir / "nested" / "blueprint" / ".lake" / "packages").mkdir(parents=True)
@@ -2220,8 +2180,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_key = reference_dependency_cache_key(project)
-            cache_dir = root / "cache" / cache_key
+            source_identity = reference_source_identity(project)
+            cache_dir = root / "cache" / source_identity
             cache_dir.mkdir(parents=True)
             (cache_dir / "nested" / "blueprint" / ".lake" / "packages" / "mathlib" / ".lake" / "build").mkdir(
                 parents=True
@@ -2229,6 +2189,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout = SimpleNamespace(
                 package_root=root / "pkg",
                 reference_project_checkout_root=root / "checkouts",
+                reference_source_cache_root=root / "cache",
                 reference_dependency_cache_root=root / "deps",
             )
             layout.package_root.mkdir()
@@ -2254,7 +2215,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 for name, value in originals.items():
                     setattr(refs_mod, name, value)
 
-        self.assertEqual(local_dir, root / "checkouts" / cache_key)
+        self.assertEqual(local_dir, root / "checkouts" / source_identity)
         self.assertIn(
             [
                 "rsync",
