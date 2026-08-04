@@ -75,7 +75,7 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command(["bash", "scripts/report-ci-disk-usage.sh", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Print a compact disk-usage report", result.stdout)
-        self.assertIn("--reference-cache-key", result.stdout)
+        self.assertIn("--reference-source-identity", result.stdout)
 
     def test_validate_reference_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/validate-reference-blueprints.sh", "--help"])

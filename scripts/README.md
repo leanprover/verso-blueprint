@@ -122,12 +122,13 @@ script map, not a second command reference.
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json), including
   branch-policy release-target inheritance, per-project RC resolution, shared
-  reference/deploy matrix serialization, and the external reference
-  dependency-cache key.
+  reference/deploy matrix serialization, and the external project's shared
+  source identity.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override,
-  dependency package/path-build cache warm-up, and prune helpers shared by the
-  reference CLI.
+  copy-owned dependency package/path-build cache warm-up, and prune helpers
+  shared by the reference CLI. The canonical path and ownership model is in
+  [the maintainer guide](../doc/MAINTAINER_GUIDE.md#external-reference-cache-ownership).
 - `blueprint_harness_utils.py`
   Shared process-launch helpers used by the harness modules.
 - `blueprint_harness_validation.py`

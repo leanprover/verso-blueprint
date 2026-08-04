@@ -434,6 +434,38 @@ locations used by the harness.
 It also prints the shared reference checkout cache root, dependency package
 cache root, and the current checkout's local clone root.
 
+## External Reference Cache Ownership
+
+Every external git-checkout project has one `reference_source_identity`. Its
+readable prefix comes from the catalog project id, and its digest is derived
+from the repository URL, project root, and selected source ref. The identity
+intentionally does not include the current Verso Blueprint checkout or release
+label: all paths below represent the same pinned external source. The reference
+and deploy CI matrices serialize this same identity so local and CI cache
+layouts agree.
+
+| Role | Path | Ownership |
+| --- | --- | --- |
+| Disposable source checkout | `.worktrees/_reference-blueprints/cache/<source-identity>/` | Shared; refreshed by `sync` and safe to prune |
+| Warmed dependencies | `.worktrees/_reference-blueprints/deps/<source-identity>/{packages,path-builds}/` | Shared; remains resident while consumers are seeded |
+| Validation checkout | `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-identity>/` | Owned by one root checkout or linked worktree |
+| Generated site | `_out/.../reference-blueprints/<project-id>/` | Output artifact; never stored in a dependency cache |
+
+Dependency packages and path-dependency build trees are copied from the shared
+cache into each validation checkout. The harness never moves them or lends
+their ownership to a consumer. Consequently, multiple worktrees can seed from
+one warmed cache, and a failed or interrupted generation does not have to move
+packages back to make the cache usable again. Cache warm-up may refresh shared
+contents with `rsync`; this ownership rule does not yet provide transactional
+publication for simultaneous writers.
+
+After warm-up, the disposable source checkout's duplicate `.lake/packages/`
+tree is removed once it has been copied into the dependency cache. This deletes
+only the source checkout's copy, not the shared dependency cache. CI likewise
+keeps the shared dependency tree resident while a per-job checkout uses its own
+copy. The additional peak disk use is an intentional tradeoff for predictable
+ownership and failure behavior.
+
 ## Working from Linked Worktrees
 
 For implementation work, create a linked worktree under `.worktrees/` and keep
@@ -541,17 +573,9 @@ The harness is worktree-aware:
 - in a linked worktree it writes artifacts to `_out/<worktree>/...`
 - by default it prefers reusing the root checkout's prepared package `.lake`
   artifacts and binaries
-- it also keeps shared warmed reference dependency caches under
-  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, with downloaded
-  Lake packages under `packages/` and external path-dependency build trees under
-  `path-builds/`
-- those shared caches are keyed by external repository, project root, and
-  selected project ref; they preserve expensive pinned dependency state such as
-  Mathlib package builds, not generated Blueprint site artifacts
-- disposable source checkouts for those refs live separately under
-  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
-- each checkout uses its own local reference blueprint clones under
-  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`
+- external reference projects follow the shared-source and per-worktree
+  ownership model described in
+  [External Reference Cache Ownership](#external-reference-cache-ownership)
 - the reference CLI avoids local `lake build` and `lake test` in a linked
   worktree by default to avoid unnecessary dependency rebuilds
 
@@ -636,19 +660,8 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --merged-pr <number>
 - the default validation catalog mixes in-repo projects with external reference
   blueprints; the larger published reference blueprints live in external
   repositories
-- the harness warms shared reference dependency caches under
-  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, including Lake
-  packages and `.lake/build` trees for external path dependencies such as
-  formalization submodules
-- the cache key is derived from the external repository URL, project root, and
-  selected project ref, so one project can keep separate caches for different
-  Lean/mathlib release pins
-- disposable source checkouts for those keyed refs live under
-  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
-- each checkout gets its own local clone under
-  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`,
-  seeded from the dependency cache so transitive package and path-dependency
-  build artifacts stay warm across worktrees
+- shared cache and validation-checkout paths obey
+  [External Reference Cache Ownership](#external-reference-cache-ownership)
 - editable reference-project clones live separately under
   `.worktrees/_reference-blueprints/edit/<checkout>/` and are not touched by
   `sync`, `generate`, or `prune`
@@ -726,12 +739,9 @@ pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 - stages a branch-local site artifact under `_site/` only when the selected
   release target has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
-- generates external references from per-job local clones seeded by the keyed
-  dependency cache
-- restores and saves external reference dependency caches by the same
-  repository/project-root/ref key used locally, caching the external project's
-  `.lake/packages/` tree and `.lake/build` trees for external path dependencies
-  rather than the source checkout or generated Blueprint site's own output
+- generates external references from per-job local clones using the same
+  [source identity and ownership model](#external-reference-cache-ownership)
+  as local worktrees
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like

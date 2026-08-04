@@ -62,7 +62,7 @@ jobs:
           echo "branch=${{ matrix.branch }}"
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
-          echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+          echo "reference_source_identity=${{ matrix.reference_source_identity }}"
           echo "publish_pdf=${{ matrix.publish_pdf }}"
       - name: Write deploy project manifest
         env:
@@ -90,7 +90,7 @@ jobs:
             --output _out/deploy-projects/${{ matrix.project_id }}.identity.json \
             --github-output >> "$GITHUB_OUTPUT"
       - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore exact generated reference site
         id: generated-site-cache
         uses: actions/cache/restore@v5
@@ -140,20 +140,20 @@ jobs:
             ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Report disk usage after Lake cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore external reference dependency cache
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_cache_key != '' }}
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_source_identity != '' }}
         uses: actions/cache@v5
         with:
           path: |
-            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages
-            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds
-          key: ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.reference_cache_key }}
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_source_identity }}/packages
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_source_identity }}/path-builds
+          key: ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.reference_source_identity }}
           restore-keys: |
             ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
@@ -172,12 +172,11 @@ jobs:
             --project ${{ matrix.project_id }} \
             --allow-unsafe-root-release \
             --allow-local-build \
-            --reference-package-mode move \
             --serial \
             _out/reference-blueprints/${{ matrix.release_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Install exact reference artifact identity
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |

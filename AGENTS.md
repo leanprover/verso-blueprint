@@ -196,12 +196,14 @@
 - Default test-blueprint output in a linked worktree:
   - `_out/<worktree>/test-blueprints/{<slug>,preview_runtime_showcase,state-showcase}/`
 - Shared warmed source checkout cache for external git-checkout projects:
-  - `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
+  - `.worktrees/_reference-blueprints/cache/<source-identity>/`
 - Shared warmed dependency cache for external git-checkout projects:
-  - `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages/`
-  - `.worktrees/_reference-blueprints/deps/<source-ref-key>/path-builds/`
+  - `.worktrees/_reference-blueprints/deps/<source-identity>/packages/`
+  - `.worktrees/_reference-blueprints/deps/<source-identity>/path-builds/`
 - Current-checkout local reference blueprint clones for external git-checkout projects:
-  - `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`
+  - `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-identity>/`
+- The canonical ownership rules for these paths live in
+  `doc/MAINTAINER_GUIDE.md#external-reference-cache-ownership`.
 
 ## Mathlib and Worktree Reuse
 

@@ -30,7 +30,7 @@ from scripts.blueprint_harness_manifest import (
 
 IN_REPO_PROJECT_SOURCE_KIND = "in_repo_project"
 GIT_CHECKOUT_SOURCE_KIND = "git_checkout"
-REFERENCE_CACHE_KEY_DIGEST_LENGTH = 12
+REFERENCE_SOURCE_IDENTITY_DIGEST_LENGTH = 12
 
 
 @dataclass(frozen=True)
@@ -96,12 +96,12 @@ class HarnessProject:
         return None
 
 
-def _reference_cache_key_slug(value: str, *, max_length: int) -> str:
+def _reference_source_identity_slug(value: str, *, max_length: int) -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip(".-_")
     return (slug or "unknown")[:max_length].strip(".-_") or "unknown"
 
 
-def _short_reference_cache_ref(ref: str) -> str:
+def _short_reference_source_ref(ref: str) -> str:
     if len(ref) == 40 and all(char in "0123456789abcdefABCDEF" for char in ref):
         return ref[:12]
     return ref
@@ -115,13 +115,15 @@ def selected_project_toolchain(project: HarnessProject) -> str:
     raise ValueError(f"project `{project.project_id}` has no selected release target")
 
 
-def reference_dependency_cache_key(project: HarnessProject) -> str:
-    """Key dependency cache state for one external project source ref.
+def reference_source_identity(project: HarnessProject) -> str:
+    """Identify one external project source checkout.
 
-    The key intentionally ignores the selected release and local package root:
-    the expensive state being reused is the external project's pinned Lake
-    dependency packages, not the generated Blueprint site or local checkout
-    build output.
+    The identity is shared by source checkouts, dependency caches, and local
+    worktree clones. Its readable prefix includes the catalog project id, while
+    its digest covers the repository, project root, and selected source ref. It
+    intentionally ignores the selected release and local package root.
+    Generated Blueprint sites have a separate identity and never use this value
+    as their cache key.
     """
     if not project.git_checkout:
         raise ValueError(f"project `{project.project_id}` is not an external git checkout project")
@@ -139,9 +141,9 @@ def reference_dependency_cache_key(project: HarnessProject) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    digest = hashlib.sha256(key_material.encode("utf-8")).hexdigest()[:REFERENCE_CACHE_KEY_DIGEST_LENGTH]
-    project_slug = _reference_cache_key_slug(project.project_id, max_length=48)
-    ref_slug = _reference_cache_key_slug(_short_reference_cache_ref(project.ref), max_length=40)
+    digest = hashlib.sha256(key_material.encode("utf-8")).hexdigest()[:REFERENCE_SOURCE_IDENTITY_DIGEST_LENGTH]
+    project_slug = _reference_source_identity_slug(project.project_id, max_length=48)
+    ref_slug = _reference_source_identity_slug(_short_reference_source_ref(project.ref), max_length=40)
     return f"{project_slug}-{ref_slug}-{digest}"
 
 
@@ -485,7 +487,7 @@ def reference_project_target_fields(
         "verso_ref": project_target_verso_ref(release_target, project),
         "project_root": project.project_root,
         "hash": project.ref,
-        "reference_cache_key": reference_dependency_cache_key(project) if project.git_checkout else "",
+        "reference_source_identity": reference_source_identity(project) if project.git_checkout else "",
     }
 
 
@@ -649,7 +651,7 @@ def deploy_matrix_from_controller_catalog(
                     "project_id": fields["project_id"],
                     "project_root": fields["project_root"],
                     "hash": fields["hash"],
-                    "reference_cache_key": fields["reference_cache_key"],
+                    "reference_source_identity": fields["reference_source_identity"],
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
                     "publish_pdf": publish_pdf,

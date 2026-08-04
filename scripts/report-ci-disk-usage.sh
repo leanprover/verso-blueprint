@@ -9,14 +9,15 @@ Usage: scripts/report-ci-disk-usage.sh LABEL [options]
 Print a compact disk-usage report for CI reference blueprint jobs.
 
 Options:
-  --reference-cache-key KEY   Include per-reference cache paths for KEY.
+  --reference-source-identity ID
+                              Include per-reference paths for the source ID.
   --artifact-path PATH        Include the generated artifact path.
   -h, --help                  Show this help.
 EOF
 }
 
 label=""
-reference_cache_key=""
+reference_source_identity=""
 artifact_path=""
 
 while [[ $# -gt 0 ]]; do
@@ -25,12 +26,12 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    --reference-cache-key)
+    --reference-source-identity)
       if [[ $# -lt 2 ]]; then
-        echo "missing value for --reference-cache-key" >&2
+        echo "missing value for --reference-source-identity" >&2
         exit 2
       fi
-      reference_cache_key="$2"
+      reference_source_identity="$2"
       shift 2
       ;;
     --artifact-path)
@@ -107,15 +108,15 @@ report_du() {
     "_out/reference-blueprints"
   )
 
-  if [[ -n "$reference_cache_key" ]]; then
+  if [[ -n "$reference_source_identity" ]]; then
     paths+=(
-      ".worktrees/_reference-blueprints/cache/$reference_cache_key"
-      ".worktrees/_reference-blueprints/deps/$reference_cache_key"
-      ".worktrees/_reference-blueprints/deps/$reference_cache_key/packages"
+      ".worktrees/_reference-blueprints/cache/$reference_source_identity"
+      ".worktrees/_reference-blueprints/deps/$reference_source_identity"
+      ".worktrees/_reference-blueprints/deps/$reference_source_identity/packages"
     )
 
     shopt -s nullglob
-    local local_checkouts=(.worktrees/_reference-blueprints/by-worktree/*/"$reference_cache_key")
+    local local_checkouts=(.worktrees/_reference-blueprints/by-worktree/*/"$reference_source_identity")
     shopt -u nullglob
     paths+=("${local_checkouts[@]}")
   fi
@@ -141,10 +142,10 @@ report_reference_children() {
     du -sh "$root"/* 2>/dev/null | sort -h || true
   fi
 
-  if [[ -n "$reference_cache_key" ]]; then
-    local packages=".worktrees/_reference-blueprints/deps/$reference_cache_key/packages"
+  if [[ -n "$reference_source_identity" ]]; then
+    local packages=".worktrees/_reference-blueprints/deps/$reference_source_identity/packages"
     if [[ -d "$packages" ]]; then
-      printf '[ci-disk] packages for %s\n' "$reference_cache_key"
+      printf '[ci-disk] packages for %s\n' "$reference_source_identity"
       du -sh "$packages"/* 2>/dev/null | sort -h || true
     fi
   fi
@@ -152,8 +153,8 @@ report_reference_children() {
 
 begin_group "Disk usage: $label"
 printf '[ci-disk] label=%s\n' "$label"
-if [[ -n "$reference_cache_key" ]]; then
-  printf '[ci-disk] reference_cache_key=%s\n' "$reference_cache_key"
+if [[ -n "$reference_source_identity" ]]; then
+  printf '[ci-disk] reference_source_identity=%s\n' "$reference_source_identity"
 fi
 if [[ -n "$artifact_path" ]]; then
   printf '[ci-disk] artifact_path=%s\n' "$artifact_path"
