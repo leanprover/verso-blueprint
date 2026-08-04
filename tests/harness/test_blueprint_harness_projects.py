@@ -146,51 +146,39 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(catalog.release_targets, branch_policy.release_targets)
-        self.assertEqual(branch_policy.required_backport_branches, ("v4.31.0",))
+        self.assertEqual(branch_policy.required_backport_branches, ())
         self.assertEqual(
             [target.release_id for target in branch_policy.release_targets],
-            ["v4.31.0", "v4.32.0"],
+            ["v4.32.0"],
         )
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
-        self.assertEqual(projects[0].build_command, ("lake", "build", "ProjectTemplate"))
-        self.assertEqual(
-            projects[0].generate_command,
-            (
-                "lake",
-                "lean",
-                "ProjectTemplateMain.lean",
-                "--",
-                "--run",
-                "ProjectTemplateMain.lean",
-                "--output",
-                "{output_dir}",
-            ),
-        )
+        self.assertIsNone(projects[0].build_command)
+        self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         expected_template_targets = [target.release_id for target in branch_policy.release_targets]
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
         self.assertIsNotNone(default_template_target)
         self.assertFalse(default_template_target.publish_reference)
         self.assertFalse(any(target.publish_reference for target in projects[0].targets))
-        self.assertTrue(catalog.release_target("v4.31.0").deploy_pages)
+        self.assertTrue(catalog.release_target("v4.32.0").deploy_pages)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_releases = {
             "noperthedron": "v4.32.0",
-            "spherepackingblueprint": "v4.31.0",
+            "spherepackingblueprint": "v4.32.0",
             "verso-flt": "v4.32.0",
-            "verso-carleson": "v4.31.0",
+            "verso-carleson": "v4.32.0",
         }
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assert_single_current_release_target(
             projects[1], expected_external_releases[projects[1].project_id], publish_reference=True
         )
-        self.assertEqual(projects[1].targets[0].rc, "4.32-rc1")
+        self.assertIsNone(projects[1].targets[0].rc)
         self.assertIsNone(projects[1].build_command)
         self.assertEqual(projects[1].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[1].browser_tests_path, None)
@@ -206,7 +194,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assert_single_current_release_target(
             projects[3], expected_external_releases[projects[3].project_id], publish_reference=True
         )
-        self.assertEqual(projects[3].targets[0].rc, "4.32-rc1")
+        self.assertIsNone(projects[3].targets[0].rc)
         self.assertIsNone(projects[3].build_command)
         self.assertEqual(projects[3].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
@@ -220,10 +208,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
     def test_selected_project_toolchain_requires_resolved_release_metadata(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         noperthedron = resolve_projects_for_release(catalog, "v4.32.0", ["noperthedron"])[0]
-        spherepacking = resolve_projects_for_release(catalog, "v4.31.0", ["spherepackingblueprint"])[0]
+        spherepacking = resolve_projects_for_release(catalog, "v4.32.0", ["spherepackingblueprint"])[0]
 
-        self.assertEqual(selected_project_toolchain(noperthedron), "v4.32.0-rc1")
-        self.assertEqual(selected_project_toolchain(spherepacking), "v4.31.0")
+        self.assertEqual(selected_project_toolchain(noperthedron), "v4.32.0")
+        self.assertEqual(selected_project_toolchain(spherepacking), "v4.32.0")
         with self.assertRaisesRegex(ValueError, "has no selected release target"):
             selected_project_toolchain(catalog.projects[1])
 
@@ -817,22 +805,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             set(rows),
             {
-                ("v4.31.0", "spherepackingblueprint"),
-                ("v4.31.0", "verso-carleson"),
                 ("v4.32.0", "noperthedron"),
+                ("v4.32.0", "spherepackingblueprint"),
                 ("v4.32.0", "verso-flt"),
+                ("v4.32.0", "verso-carleson"),
             },
         )
-        self.assertFalse(rows[("v4.31.0", "spherepackingblueprint")]["publish_pdf"])
-        self.assertFalse(rows[("v4.31.0", "verso-carleson")]["publish_pdf"])
-        self.assertNotIn(
-            "--pdf",
-            rows[("v4.31.0", "spherepackingblueprint")]["project_manifest"]["projects"][0]["generate_command"],
-        )
-        self.assertNotIn(
-            "--pdf",
-            rows[("v4.31.0", "verso-carleson")]["project_manifest"]["projects"][0]["generate_command"],
-        )
+        for entry in rows.values():
+            self.assertTrue(entry["publish_pdf"])
+            self.assertIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])
 
         current_release_projects = [
             entry
@@ -930,7 +911,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
-        self.assert_resolved_projects_match_manifest("v4.31.0")
+        self.assert_resolved_projects_match_manifest("v4.32.0")
 
     def test_resolve_projects_for_default_release_uses_matching_targets(self) -> None:
         self.assert_resolved_projects_match_manifest(load_branch_policy(PACKAGE_ROOT).default_dev_branch)

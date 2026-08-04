@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 from pathlib import Path
 
@@ -19,6 +20,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 BRANCH_POLICY = load_branch_policy(PACKAGE_ROOT)
 DEFAULT_DEV_RELEASE = BRANCH_POLICY.default_dev_branch
 REQUIRED_BACKPORT_RELEASES = BRANCH_POLICY.required_backport_branches
+RUN_REQUIRED_BACKPORT_RELEASES = (SAMPLE_PREVIOUS_RELEASE,)
 
 
 class FakeGitHubApi:
@@ -62,7 +64,13 @@ def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
 
 
 def required_backport_body(status: str) -> str:
-    return "".join(f"{backport_line(branch, status)}\n" for branch in REQUIRED_BACKPORT_RELEASES)
+    return "".join(f"{backport_line(branch, status)}\n" for branch in RUN_REQUIRED_BACKPORT_RELEASES)
+
+
+def run_with_required_backport(event_path: Path, *, token: str | None) -> int:
+    policy = replace(BRANCH_POLICY, required_backport_branches=RUN_REQUIRED_BACKPORT_RELEASES)
+    with patch.object(backport_mod, "load_branch_policy", return_value=policy):
+        return backport_mod.run(str(event_path), token=token)
 
 
 class BackportPrCheckTests(unittest.TestCase):
@@ -108,7 +116,7 @@ Backport v4.26.0: exempt: no longer maintained
             event_path = Path(tmp) / "event.json"
             write_pull_request_event(event_path, draft=True, body="")
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing paired backport metadata"):
-                backport_mod.run(str(event_path), token=None)
+                run_with_required_backport(event_path, token=None)
 
     def test_run_accepts_pending_entries_for_draft_default_dev_prs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,7 +126,7 @@ Backport v4.26.0: exempt: no longer maintained
                 draft=True,
                 body=required_backport_body("pending"),
             )
-            self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
+            self.assertEqual(run_with_required_backport(event_path, token=None), 0)
 
     def test_verify_backport_commit_series_accepts_matching_cherry_picks(self) -> None:
         api = FakeGitHubApi(
@@ -195,7 +203,7 @@ Backport v4.26.0: exempt: no longer maintained
                 body=required_backport_body("pending"),
             )
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending backport entries are not allowed"):
-                backport_mod.run(str(event_path), token=None)
+                run_with_required_backport(event_path, token=None)
 
     def test_run_accepts_ready_docs_only_exemptions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,7 +215,7 @@ Backport v4.26.0: exempt: no longer maintained
             )
             api = FakeGitHubApi(pull_request_files={11: ["doc/API.md", "README.md"]})
             with patch.object(backport_mod, "GitHubApi", return_value=api):
-                self.assertEqual(backport_mod.run(str(event_path), token="token"), 0)
+                self.assertEqual(run_with_required_backport(event_path, token="token"), 0)
 
     def test_run_rejects_source_change_exemptions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,7 +228,7 @@ Backport v4.26.0: exempt: no longer maintained
             api = FakeGitHubApi(pull_request_files={11: ["src/VersoBlueprint/GraphApi.lean", "doc/API.md"]})
             with patch.object(backport_mod, "GitHubApi", return_value=api):
                 with self.assertRaisesRegex(backport_mod.BackportCheckError, "paired backports are required"):
-                    backport_mod.run(str(event_path), token="token")
+                    run_with_required_backport(event_path, token="token")
 
     def test_run_requires_token_to_validate_exemptions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,7 +239,7 @@ Backport v4.26.0: exempt: no longer maintained
                 body=required_backport_body("exempt: docs-only change"),
             )
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing GitHub token"):
-                backport_mod.run(str(event_path), token=None)
+                run_with_required_backport(event_path, token=None)
 
 
 if __name__ == "__main__":
