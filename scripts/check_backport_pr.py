@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from dataclasses import dataclass
 import os
@@ -9,13 +10,15 @@ import re
 import sys
 from typing import Any
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.blueprint_harness_branches import load_branch_policy
+from scripts.blueprint_harness_branches import BranchPolicy, load_branch_policy, load_branch_policy_text
 from scripts.blueprint_harness_backports import backport_exemption_violations
+from scripts.blueprint_harness_releases import release_branch_from_lean_ref
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +27,8 @@ API_VERSION = "2022-11-28"
 BACKPORT_LINE_RE = re.compile(r"(?mi)^Backport\s+([^\s:]+)\s*:\s*(.+)\s*$")
 BACKPORT_PR_RE = re.compile(r"(?:#|/pull/)(\d+)\b")
 CHERRY_PICK_SOURCE_RE = re.compile(r"(?mi)^\(cherry picked from commit ([0-9a-f]{40})\)\s*$")
+RELEASE_LINE_BOOTSTRAP_STATUS = "release-line bootstrap"
+RELEASE_LINE_RETIREMENT_STATUS = "release-line retirement"
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,8 @@ class BackportEntry:
     exempt_reason: str | None = None
     pending: bool = False
     pending_note: str | None = None
+    release_line_bootstrap: bool = False
+    release_line_retirement: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,6 +118,17 @@ class GitHubApi:
                 return files
             page += 1
 
+    def file_text(self, path: str, ref: str) -> str:
+        encoded_path = quote(path, safe="/")
+        encoded_ref = quote(ref, safe="")
+        data = self.get_json(f"/repos/{self.repo_full_name}/contents/{encoded_path}?ref={encoded_ref}")
+        if not isinstance(data, dict) or data.get("encoding") != "base64" or not isinstance(data.get("content"), str):
+            raise BackportCheckError(f"Unexpected repository file payload for `{path}` at `{ref}`")
+        try:
+            return base64.b64decode(data["content"], validate=False).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as err:
+            raise BackportCheckError(f"Unable to decode repository file `{path}` at `{ref}`") from err
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -159,11 +177,18 @@ def parse_backport_entries(body: str) -> dict[str, BackportEntry]:
             note = value[len("pending") :].lstrip(" :-()")
             entries[branch] = BackportEntry(branch=branch, pending=True, pending_note=note or None)
             continue
+        if lower == RELEASE_LINE_BOOTSTRAP_STATUS:
+            entries[branch] = BackportEntry(branch=branch, release_line_bootstrap=True)
+            continue
+        if lower == RELEASE_LINE_RETIREMENT_STATUS:
+            entries[branch] = BackportEntry(branch=branch, release_line_retirement=True)
+            continue
 
         pr_match = BACKPORT_PR_RE.search(value)
         if pr_match is None:
             raise BackportCheckError(
-                f"Backport {branch}: expected `#<pr>`, `pending`, or `exempt: <reason>`, got `{value}`"
+                f"Backport {branch}: expected `#<pr>`, `pending`, `exempt: <reason>`, or "
+                f"`{RELEASE_LINE_BOOTSTRAP_STATUS}`/`{RELEASE_LINE_RETIREMENT_STATUS}`, got `{value}`"
             )
         entries[branch] = BackportEntry(branch=branch, pr_number=int(pr_match.group(1)))
     return entries
@@ -186,7 +211,9 @@ def validate_backport_entries(
         raise BackportCheckError(
             "missing paired backport metadata for "
             + ", ".join(missing)
-            + f". Add lines like {example} or `Backport {example_branch}: exempt: <reason>`"
+            + f". Add lines like {example}, `Backport {example_branch}: exempt: <reason>`, or "
+            + f"`Backport {example_branch}: {RELEASE_LINE_BOOTSTRAP_STATUS}`/"
+            + f"`Backport {example_branch}: {RELEASE_LINE_RETIREMENT_STATUS}`"
         )
 
     if allow_pending:
@@ -197,9 +224,138 @@ def validate_backport_entries(
         raise BackportCheckError(
             "pending backport entries are not allowed once the default-dev PR is ready for review: "
             + ", ".join(pending)
-            + ". Replace each `pending` entry with `#<pr>` or `exempt: <reason>`"
+            + f". Replace each `pending` entry with `#<pr>`, `exempt: <reason>`, or "
+            + f"`{RELEASE_LINE_BOOTSTRAP_STATUS}`/`{RELEASE_LINE_RETIREMENT_STATUS}` "
+            + "for a machine-checked release-policy transition"
         )
     return entries
+
+
+def dedupe_release_branches(branches: tuple[str, ...]) -> tuple[str, ...]:
+    result: list[str] = []
+    for branch in branches:
+        normalized = release_branch_from_lean_ref(branch)
+        if normalized not in result:
+            result.append(normalized)
+    return tuple(result)
+
+
+def verify_release_line_bootstrap(
+    api: GitHubApi,
+    source_pr_number: int,
+    pull_request: dict[str, Any],
+    base_policy: BranchPolicy,
+) -> BranchPolicy:
+    base = pull_request.get("base")
+    base_sha = str(base.get("sha") or "") if isinstance(base, dict) else ""
+    head = pull_request.get("head")
+    head_sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
+    if not base_sha:
+        raise BackportCheckError("release-line bootstrap validation requires pull_request.base.sha")
+    if not head_sha:
+        raise BackportCheckError("release-line bootstrap validation requires pull_request.head.sha")
+
+    try:
+        head_policy = load_branch_policy_text(
+            api.file_text("branch-policy.json", head_sha),
+            source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
+        )
+    except SystemExit as err:
+        raise BackportCheckError(str(err)) from err
+    base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
+    head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
+
+    if base_toolchain_release != base_policy.default_dev_branch:
+        raise BackportCheckError(
+            "release-line bootstrap base is internally inconsistent: its Lean toolchain does not match its default branch"
+        )
+    if head_toolchain_release != head_policy.default_dev_branch:
+        raise BackportCheckError(
+            "release-line bootstrap head is internally inconsistent: its Lean toolchain does not match its default branch"
+        )
+    if head_policy.default_dev_branch == base_policy.default_dev_branch:
+        raise BackportCheckError("release-line bootstrap status requires advancing the default development release line")
+
+    expected_backports = tuple(
+        branch
+        for branch in dedupe_release_branches(
+            (base_policy.default_dev_branch, *base_policy.required_backport_branches)
+        )
+        if branch != head_policy.default_dev_branch
+    )
+    if head_policy.required_backport_branches != expected_backports:
+        raise BackportCheckError(
+            "release-line bootstrap must inherit the previous default branch and required backport sequence; expected "
+            + ", ".join(expected_backports)
+        )
+
+    changed_files = set(api.pull_request_files(source_pr_number))
+    missing_files = sorted({"branch-policy.json", "lean-toolchain"} - changed_files)
+    if missing_files:
+        raise BackportCheckError(
+            "release-line bootstrap must change both release identity files; missing " + ", ".join(missing_files)
+        )
+    return head_policy
+
+
+def verify_release_line_retirement(
+    api: GitHubApi,
+    source_pr_number: int,
+    pull_request: dict[str, Any],
+    base_policy: BranchPolicy,
+) -> tuple[BranchPolicy, tuple[str, ...]]:
+    base = pull_request.get("base")
+    base_sha = str(base.get("sha") or "") if isinstance(base, dict) else ""
+    head = pull_request.get("head")
+    head_sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
+    if not base_sha:
+        raise BackportCheckError("release-line retirement validation requires pull_request.base.sha")
+    if not head_sha:
+        raise BackportCheckError("release-line retirement validation requires pull_request.head.sha")
+
+    try:
+        head_policy = load_branch_policy_text(
+            api.file_text("branch-policy.json", head_sha),
+            source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
+        )
+    except SystemExit as err:
+        raise BackportCheckError(str(err)) from err
+    base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
+    head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
+
+    if head_policy.default_dev_branch != base_policy.default_dev_branch:
+        raise BackportCheckError("release-line retirement must preserve the default development release line")
+    if base_toolchain_release != base_policy.default_dev_branch:
+        raise BackportCheckError(
+            "release-line retirement base is internally inconsistent: its Lean toolchain does not match its default branch"
+        )
+    if head_toolchain_release != head_policy.default_dev_branch:
+        raise BackportCheckError(
+            "release-line retirement head is internally inconsistent: its Lean toolchain does not match its default branch"
+        )
+
+    retained_count = len(head_policy.required_backport_branches)
+    if retained_count >= len(base_policy.required_backport_branches):
+        raise BackportCheckError("release-line retirement status requires removing at least one backport branch")
+    if base_policy.required_backport_branches[:retained_count] != head_policy.required_backport_branches:
+        raise BackportCheckError(
+            "release-line retirement may remove only the oldest contiguous suffix of required backport branches"
+        )
+    retired_branches = base_policy.required_backport_branches[retained_count:]
+
+    retired_set = set(retired_branches)
+    expected_targets = tuple(
+        target for target in base_policy.release_targets if target.release_id not in retired_set
+    )
+    if head_policy.release_targets != expected_targets:
+        raise BackportCheckError(
+            "release-line retirement must remove exactly the retired release targets and preserve every remaining target"
+        )
+
+    changed_files = set(api.pull_request_files(source_pr_number))
+    if "branch-policy.json" not in changed_files:
+        raise BackportCheckError("release-line retirement must change branch-policy.json")
+    return head_policy, retired_branches
 
 
 def parse_cherry_pick_source(message: str) -> str | None:
@@ -297,7 +453,20 @@ def event_pull_request(event: dict[str, Any]) -> dict[str, Any]:
     return pull_request
 
 
-def should_enforce(pull_request: dict[str, Any], default_dev_branch: str, required_backports: tuple[str, ...]) -> bool:
+def should_enforce(
+    pull_request: dict[str, Any],
+    default_dev_branch: str,
+    required_backports: tuple[str, ...],
+    *,
+    release_line_bootstrap: bool = False,
+    release_line_retirement: bool = False,
+) -> bool:
+    if release_line_bootstrap:
+        print("[backport-check] release-line bootstrap plan declared; validating the base-to-head policy transition")
+        return True
+    if release_line_retirement:
+        print("[backport-check] release-line retirement plan declared; validating the base-to-head policy transition")
+        return True
     if not required_backports:
         print("[backport-check] no required backport branches configured; skipping")
         return False
@@ -313,39 +482,96 @@ def should_enforce(pull_request: dict[str, Any], default_dev_branch: str, requir
 def run(event_path: str | None, token: str | None) -> int:
     event = load_event(event_path)
     pull_request = event_pull_request(event)
-    policy = load_branch_policy(PACKAGE_ROOT)
+    base_policy = load_branch_policy(PACKAGE_ROOT)
+    body = str(pull_request.get("body") or "")
+    release_line_bootstrap = any(
+        value.strip().lower() == RELEASE_LINE_BOOTSTRAP_STATUS for _, value in BACKPORT_LINE_RE.findall(body)
+    )
+    release_line_retirement = any(
+        value.strip().lower() == RELEASE_LINE_RETIREMENT_STATUS for _, value in BACKPORT_LINE_RE.findall(body)
+    )
+    if release_line_bootstrap and release_line_retirement:
+        raise BackportCheckError("release-line bootstrap and retirement plans cannot be mixed")
 
-    if not should_enforce(pull_request, policy.default_dev_branch, policy.required_backport_branches):
+    if not should_enforce(
+        pull_request,
+        base_policy.default_dev_branch,
+        base_policy.required_backport_branches,
+        release_line_bootstrap=release_line_bootstrap,
+        release_line_retirement=release_line_retirement,
+    ):
         return 0
 
     draft = bool(pull_request.get("draft"))
-    body = str(pull_request.get("body") or "")
-    entries = validate_backport_entries(body, policy.required_backport_branches, allow_pending=draft)
-    entries_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].pr_number is not None]
-    exemptions_to_verify = [entries[branch] for branch in policy.required_backport_branches if entries[branch].exempt_reason is not None]
-    needs_api = bool(exemptions_to_verify or (not draft and entries_to_verify))
-    if needs_api:
-        repository = event.get("repository")
+    repository = event.get("repository")
+    source_pr_number_raw = pull_request.get("number", event.get("number"))
+    try:
+        source_pr_number = int(source_pr_number_raw)
+    except (TypeError, ValueError) as err:
+        raise BackportCheckError("event payload is missing the default-development PR number") from err
+
+    api = None
+    if release_line_bootstrap or release_line_retirement:
         if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
             raise BackportCheckError("event payload is missing repository.full_name")
-        source_pr_number_raw = pull_request.get("number", event.get("number"))
-        try:
-            source_pr_number = int(source_pr_number_raw)
-        except (TypeError, ValueError) as err:
-            raise BackportCheckError("event payload is missing the default-development PR number") from err
         if not token:
             raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
         api = GitHubApi(repository["full_name"], token)
-        verify_backport_exemptions(api, source_pr_number, entries)
+        if release_line_bootstrap:
+            policy = verify_release_line_bootstrap(api, source_pr_number, pull_request, base_policy)
+            plan_branches = policy.required_backport_branches
+        else:
+            policy, plan_branches = verify_release_line_retirement(
+                api, source_pr_number, pull_request, base_policy
+            )
     else:
-        source_pr_number = 0
-        api = None
+        policy = base_policy
+        plan_branches = policy.required_backport_branches
+
+    entries = validate_backport_entries(body, plan_branches, allow_pending=draft)
+    if release_line_bootstrap:
+        non_bootstrap = [
+            branch for branch in policy.required_backport_branches if not entries[branch].release_line_bootstrap
+        ]
+        if non_bootstrap:
+            raise BackportCheckError(
+                "release-line bootstrap status must be used for every required backport branch; mixed plans are invalid"
+            )
+    if release_line_retirement:
+        retirement_branches = {
+            branch for branch, entry in entries.items() if entry.release_line_retirement
+        }
+        if retirement_branches != set(plan_branches):
+            raise BackportCheckError(
+                "release-line retirement status must name exactly the retired backport branches"
+            )
+    entries_to_verify = [entries[branch] for branch in plan_branches if entries[branch].pr_number is not None]
+    exemptions_to_verify = [entries[branch] for branch in plan_branches if entries[branch].exempt_reason is not None]
+    bootstraps_to_verify = [
+        entries[branch] for branch in plan_branches if entries[branch].release_line_bootstrap
+    ]
+    retirements_to_verify = [entries[branch] for branch in plan_branches if entries[branch].release_line_retirement]
+    needs_api = bool(
+        exemptions_to_verify or bootstraps_to_verify or retirements_to_verify or (not draft and entries_to_verify)
+    )
+    if needs_api and api is None:
+        if not isinstance(repository, dict) or not isinstance(repository.get("full_name"), str):
+            raise BackportCheckError("event payload is missing repository.full_name")
+        if not token:
+            raise BackportCheckError("missing GitHub token; pass --token or set GITHUB_TOKEN")
+        api = GitHubApi(repository["full_name"], token)
+    if api is not None:
+        verify_backport_exemptions(api, source_pr_number, entries)
     if draft:
         print("[backport-check] draft PR; enforcing declared backport plan only")
-        for branch in policy.required_backport_branches:
+        for branch in plan_branches:
             entry = entries[branch]
             if entry.exempt_reason is not None:
                 print(f"[backport-check] {branch}: exempt ({entry.exempt_reason})")
+            elif entry.release_line_bootstrap:
+                print(f"[backport-check] {branch}: release-line bootstrap verified")
+            elif entry.release_line_retirement:
+                print(f"[backport-check] {branch}: release-line retirement verified")
             elif entry.pending:
                 note_suffix = f" ({entry.pending_note})" if entry.pending_note else ""
                 print(f"[backport-check] {branch}: pending{note_suffix}")
@@ -356,10 +582,16 @@ def run(event_path: str | None, token: str | None) -> int:
                 )
         return 0
 
-    for branch in policy.required_backport_branches:
+    for branch in plan_branches:
         entry = entries[branch]
         if entry.exempt_reason is not None:
             print(f"[backport-check] {branch}: exempt ({entry.exempt_reason})")
+            continue
+        if entry.release_line_bootstrap:
+            print(f"[backport-check] {branch}: release-line bootstrap verified")
+            continue
+        if entry.release_line_retirement:
+            print(f"[backport-check] {branch}: release-line retirement verified")
             continue
         if api is None:
             raise BackportCheckError(f"Backport {branch}: internal error; paired PR verification is unavailable")

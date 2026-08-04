@@ -124,41 +124,49 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
             source_path=path,
         )
 
+    return load_branch_policy_text(path.read_text(encoding="utf-8"), source_path=path)
+
+
+def load_branch_policy_text(text: str, *, source_path: Path) -> BranchPolicy:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(text)
     except json.JSONDecodeError as err:
-        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: {err}") from err
+        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{source_path}`: {err}") from err
 
     if not isinstance(data, dict):
-        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: expected a JSON object")
+        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{source_path}`: expected a JSON object")
 
     raw_default = data.get("default_dev_branch")
     if not isinstance(raw_default, str):
-        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: missing string `default_dev_branch`")
+        raise SystemExit(
+            f"[blueprint-harness] invalid branch policy file `{source_path}`: missing string `default_dev_branch`"
+        )
 
     raw_backports = data.get("required_backport_branches", [])
     if not isinstance(raw_backports, list) or not all(isinstance(item, str) for item in raw_backports):
         raise SystemExit(
-            f"[blueprint-harness] invalid branch policy file `{path}`: "
+            f"[blueprint-harness] invalid branch policy file `{source_path}`: "
             "`required_backport_branches` must be a list of strings"
         )
 
     raw_version = data.get("version", 1)
     if not isinstance(raw_version, int):
-        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: `version` must be an integer")
+        raise SystemExit(
+            f"[blueprint-harness] invalid branch policy file `{source_path}`: `version` must be an integer"
+        )
 
-    release_targets = load_branch_policy_release_targets(data, path)
+    release_targets = load_branch_policy_release_targets(data, source_path)
     release_ids = {target.release_id for target in release_targets}
     if release_ids and release_branch_from_lean_ref(raw_default) not in release_ids:
         raise SystemExit(
-            f"[blueprint-harness] invalid branch policy file `{path}`: "
+            f"[blueprint-harness] invalid branch policy file `{source_path}`: "
             f"default development branch `{release_branch_from_lean_ref(raw_default)}` is not a release target"
         )
     for branch in raw_backports:
         normalized = release_branch_from_lean_ref(branch)
         if release_ids and normalized not in release_ids:
             raise SystemExit(
-                f"[blueprint-harness] invalid branch policy file `{path}`: "
+                f"[blueprint-harness] invalid branch policy file `{source_path}`: "
                 f"required backport branch `{normalized}` is not a release target"
             )
 
@@ -167,7 +175,7 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
         default_dev_branch=release_branch_from_lean_ref(raw_default),
         required_backport_branches=tuple(release_branch_from_lean_ref(item) for item in raw_backports),
         release_targets=release_targets,
-        source_path=path,
+        source_path=source_path,
     )
 
 

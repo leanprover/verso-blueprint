@@ -13,6 +13,9 @@ from tests.harness.release_fixtures import (
     SAMPLE_DEFAULT_RELEASE,
     SAMPLE_PREVIOUS_RELEASE,
     backport_line,
+    branch_policy_json,
+    lean_toolchain,
+    release_target,
 )
 
 
@@ -30,10 +33,12 @@ class FakeGitHubApi:
         pull_requests: dict[int, dict[str, object]] | None = None,
         pull_request_commits: dict[int, list[backport_mod.PullRequestCommit]] | None = None,
         pull_request_files: dict[int, list[str]] | None = None,
+        file_texts: dict[tuple[str, str], str] | None = None,
     ) -> None:
         self._pull_requests = pull_requests or {}
         self._pull_request_commits = pull_request_commits or {}
         self._pull_request_files = pull_request_files or {}
+        self._file_texts = file_texts or {}
 
     def pull_request(self, number: int) -> dict[str, object]:
         return self._pull_requests[number]
@@ -44,6 +49,9 @@ class FakeGitHubApi:
     def pull_request_files(self, number: int) -> list[str]:
         return self._pull_request_files[number]
 
+    def file_text(self, path: str, ref: str) -> str:
+        return self._file_texts[(path, ref)]
+
 
 def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
     path.write_text(
@@ -52,7 +60,8 @@ def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
                 "repository": {"full_name": "leanprover/verso-blueprint"},
                 "pull_request": {
                     "number": 11,
-                    "base": {"ref": DEFAULT_DEV_RELEASE},
+                    "base": {"ref": DEFAULT_DEV_RELEASE, "sha": "base-sha"},
+                    "head": {"sha": "head-sha"},
                     "draft": draft,
                     "body": body,
                 },
@@ -87,12 +96,16 @@ class BackportPrCheckTests(unittest.TestCase):
 Backport v4.28.0: #42
 Backport v4.27.0: pending
 Backport v4.26.0: exempt: no longer maintained
+Backport v4.25.0: release-line bootstrap
+Backport v4.24.0: release-line retirement
 """
         entries = backport_mod.parse_backport_entries(body)
         self.assertEqual(entries["v4.28.0"].pr_number, 42)
         self.assertIsNone(entries["v4.28.0"].exempt_reason)
         self.assertTrue(entries["v4.27.0"].pending)
         self.assertEqual(entries["v4.26.0"].exempt_reason, "no longer maintained")
+        self.assertTrue(entries["v4.25.0"].release_line_bootstrap)
+        self.assertTrue(entries["v4.24.0"].release_line_retirement)
 
     def test_parse_backport_entries_accepts_pull_request_url(self) -> None:
         body = "Backport v4.28.0: https://github.com/leanprover/verso-blueprint/pull/123\n"
@@ -240,6 +253,96 @@ Backport v4.26.0: exempt: no longer maintained
             )
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing GitHub token"):
                 run_with_required_backport(event_path, token=None)
+
+    def test_run_accepts_machine_checked_release_line_retirement(self) -> None:
+        retired = SAMPLE_PREVIOUS_RELEASE
+        base_targets = [release_target(retired), release_target(DEFAULT_DEV_RELEASE)]
+        head_targets = [release_target(DEFAULT_DEV_RELEASE)]
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "package"
+            package_root.mkdir()
+            (package_root / "branch-policy.json").write_text(
+                branch_policy_json(
+                    default_dev=DEFAULT_DEV_RELEASE,
+                    required_backports=(retired,),
+                    release_targets=base_targets,
+                ),
+                encoding="utf-8",
+            )
+            (package_root / "lean-toolchain").write_text(
+                f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                encoding="utf-8",
+            )
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=backport_line(retired, backport_mod.RELEASE_LINE_RETIREMENT_STATUS),
+            )
+            api = FakeGitHubApi(
+                pull_request_files={11: ["branch-policy.json", "tests/harness/projects.json"]},
+                file_texts={
+                    ("branch-policy.json", "head-sha"): branch_policy_json(
+                        default_dev=DEFAULT_DEV_RELEASE,
+                        release_targets=head_targets,
+                    ),
+                    ("lean-toolchain", "base-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                    ("lean-toolchain", "head-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                },
+            )
+            with (
+                patch.object(backport_mod, "GitHubApi", return_value=api),
+                patch.object(backport_mod, "PACKAGE_ROOT", package_root),
+            ):
+                self.assertEqual(backport_mod.run(str(event_path), token="token"), 0)
+
+    def test_run_rejects_retiring_a_non_oldest_backport(self) -> None:
+        newest = "v4.31.0"
+        oldest = "v4.30.0"
+        base_targets = [
+            release_target(oldest),
+            release_target(newest),
+            release_target(DEFAULT_DEV_RELEASE),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "package"
+            package_root.mkdir()
+            (package_root / "branch-policy.json").write_text(
+                branch_policy_json(
+                    default_dev=DEFAULT_DEV_RELEASE,
+                    required_backports=(newest, oldest),
+                    release_targets=base_targets,
+                ),
+                encoding="utf-8",
+            )
+            (package_root / "lean-toolchain").write_text(
+                f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                encoding="utf-8",
+            )
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=backport_line(newest, backport_mod.RELEASE_LINE_RETIREMENT_STATUS),
+            )
+            api = FakeGitHubApi(
+                pull_request_files={11: ["branch-policy.json"]},
+                file_texts={
+                    ("branch-policy.json", "head-sha"): branch_policy_json(
+                        default_dev=DEFAULT_DEV_RELEASE,
+                        required_backports=(oldest,),
+                        release_targets=[release_target(oldest), release_target(DEFAULT_DEV_RELEASE)],
+                    ),
+                    ("lean-toolchain", "base-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                    ("lean-toolchain", "head-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                },
+            )
+            with (
+                patch.object(backport_mod, "GitHubApi", return_value=api),
+                patch.object(backport_mod, "PACKAGE_ROOT", package_root),
+            ):
+                with self.assertRaisesRegex(backport_mod.BackportCheckError, "oldest contiguous suffix"):
+                    backport_mod.run(str(event_path), token="token")
 
 
 if __name__ == "__main__":
