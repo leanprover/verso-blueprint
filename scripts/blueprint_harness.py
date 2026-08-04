@@ -19,6 +19,7 @@ from scripts.blueprint_harness_branches import (
     default_dev_branch,
     checkout_is_backport_only,
     current_branch_name,
+    dedupe_release_branches,
     is_ancestor,
     load_branch_policy,
     local_release_ref,
@@ -475,17 +476,6 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
     print(f"project_manifest={manifest_path}")
     print(f"validated={str(not args.skip_validation).lower()}")
     return 0
-
-
-def dedupe_release_branches(branches: list[str] | tuple[str, ...]) -> tuple[str, ...]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for branch in branches:
-        normalized = release_branch_from_lean_ref(branch)
-        if normalized not in seen:
-            result.append(normalized)
-            seen.add(normalized)
-    return tuple(result)
 
 
 def write_json(path: Path, data: object) -> None:

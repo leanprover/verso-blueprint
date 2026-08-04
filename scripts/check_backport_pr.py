@@ -16,9 +16,18 @@ from urllib.request import Request, urlopen
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.blueprint_harness_branches import BranchPolicy, load_branch_policy, load_branch_policy_text
-from scripts.blueprint_harness_backports import backport_exemption_violations
-from scripts.blueprint_harness_releases import release_branch_from_lean_ref
+from scripts.blueprint_harness_branches import (
+    BranchPolicy,
+    dedupe_release_branches,
+    load_branch_policy,
+    load_branch_policy_text,
+)
+from scripts.blueprint_harness_backports import (
+    RELEASE_LINE_BOOTSTRAP_STATUS,
+    RELEASE_LINE_RETIREMENT_STATUS,
+    backport_exemption_violations,
+)
+from scripts.blueprint_harness_releases import release_branch_from_lean_ref, release_branch_version
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -27,8 +36,6 @@ API_VERSION = "2022-11-28"
 BACKPORT_LINE_RE = re.compile(r"(?mi)^Backport\s+([^\s:]+)\s*:\s*(.+)\s*$")
 BACKPORT_PR_RE = re.compile(r"(?:#|/pull/)(\d+)\b")
 CHERRY_PICK_SOURCE_RE = re.compile(r"(?mi)^\(cherry picked from commit ([0-9a-f]{40})\)\s*$")
-RELEASE_LINE_BOOTSTRAP_STATUS = "release-line bootstrap"
-RELEASE_LINE_RETIREMENT_STATUS = "release-line retirement"
 
 
 @dataclass(frozen=True)
@@ -231,13 +238,43 @@ def validate_backport_entries(
     return entries
 
 
-def dedupe_release_branches(branches: tuple[str, ...]) -> tuple[str, ...]:
-    result: list[str] = []
-    for branch in branches:
-        normalized = release_branch_from_lean_ref(branch)
-        if normalized not in result:
-            result.append(normalized)
-    return tuple(result)
+def load_release_transition_head_policy(
+    api: GitHubApi,
+    pull_request: dict[str, Any],
+    base_policy: BranchPolicy,
+    *,
+    transition_name: str,
+) -> BranchPolicy:
+    base = pull_request.get("base")
+    base_sha = str(base.get("sha") or "") if isinstance(base, dict) else ""
+    head = pull_request.get("head")
+    head_sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
+    if not base_sha:
+        raise BackportCheckError(f"{transition_name} validation requires pull_request.base.sha")
+    if not head_sha:
+        raise BackportCheckError(f"{transition_name} validation requires pull_request.head.sha")
+
+    try:
+        head_policy = load_branch_policy_text(
+            api.file_text("branch-policy.json", head_sha),
+            source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
+        )
+        base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
+        head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
+    except SystemExit as err:
+        raise BackportCheckError(str(err)) from err
+
+    if base_toolchain_release != base_policy.default_dev_branch:
+        raise BackportCheckError(
+            f"{transition_name} base is internally inconsistent: "
+            "its Lean toolchain does not match its default branch"
+        )
+    if head_toolchain_release != head_policy.default_dev_branch:
+        raise BackportCheckError(
+            f"{transition_name} head is internally inconsistent: "
+            "its Lean toolchain does not match its default branch"
+        )
+    return head_policy
 
 
 def verify_release_line_bootstrap(
@@ -246,48 +283,62 @@ def verify_release_line_bootstrap(
     pull_request: dict[str, Any],
     base_policy: BranchPolicy,
 ) -> BranchPolicy:
-    base = pull_request.get("base")
-    base_sha = str(base.get("sha") or "") if isinstance(base, dict) else ""
-    head = pull_request.get("head")
-    head_sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
-    if not base_sha:
-        raise BackportCheckError("release-line bootstrap validation requires pull_request.base.sha")
-    if not head_sha:
-        raise BackportCheckError("release-line bootstrap validation requires pull_request.head.sha")
-
+    head_policy = load_release_transition_head_policy(
+        api,
+        pull_request,
+        base_policy,
+        transition_name="release-line bootstrap",
+    )
     try:
-        head_policy = load_branch_policy_text(
-            api.file_text("branch-policy.json", head_sha),
-            source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
-        )
+        base_version = release_branch_version(base_policy.default_dev_branch)
+        head_version = release_branch_version(head_policy.default_dev_branch)
     except SystemExit as err:
         raise BackportCheckError(str(err)) from err
-    base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
-    head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
-
-    if base_toolchain_release != base_policy.default_dev_branch:
+    if head_version <= base_version:
         raise BackportCheckError(
-            "release-line bootstrap base is internally inconsistent: its Lean toolchain does not match its default branch"
+            "release-line bootstrap status requires a newer default development release line"
         )
-    if head_toolchain_release != head_policy.default_dev_branch:
-        raise BackportCheckError(
-            "release-line bootstrap head is internally inconsistent: its Lean toolchain does not match its default branch"
-        )
-    if head_policy.default_dev_branch == base_policy.default_dev_branch:
-        raise BackportCheckError("release-line bootstrap status requires advancing the default development release line")
 
-    expected_backports = tuple(
-        branch
-        for branch in dedupe_release_branches(
-            (base_policy.default_dev_branch, *base_policy.required_backport_branches)
-        )
-        if branch != head_policy.default_dev_branch
+    inherited_backports = dedupe_release_branches(
+        (base_policy.default_dev_branch, *base_policy.required_backport_branches)
     )
-    if head_policy.required_backport_branches != expected_backports:
+    retained_count = len(head_policy.required_backport_branches)
+    if (
+        retained_count == 0
+        or retained_count > len(inherited_backports)
+        or inherited_backports[:retained_count] != head_policy.required_backport_branches
+    ):
         raise BackportCheckError(
-            "release-line bootstrap must inherit the previous default branch and required backport sequence; expected "
-            + ", ".join(expected_backports)
+            "release-line bootstrap must retain the previous default branch followed by an ordered prefix of "
+            "the previous backport sequence; only the oldest contiguous suffix may retire"
         )
+    retired_branches = inherited_backports[retained_count:]
+
+    if base_policy.release_targets or head_policy.release_targets:
+        retired_set = set(retired_branches)
+        retained_targets = tuple(
+            target for target in base_policy.release_targets if target.release_id not in retired_set
+        )
+        new_targets = tuple(
+            target
+            for target in head_policy.release_targets
+            if target.release_id == head_policy.default_dev_branch
+        )
+        if len(new_targets) != 1 or head_policy.release_targets != (*retained_targets, new_targets[0]):
+            raise BackportCheckError(
+                "release-line bootstrap must preserve retained release targets, remove only retired targets, "
+                "and append exactly one target for the new default line"
+            )
+        new_target = new_targets[0]
+        if (
+            release_branch_from_lean_ref(new_target.release_toolchain) != head_policy.default_dev_branch
+            or release_branch_from_lean_ref(new_target.release_verso_ref) != head_policy.default_dev_branch
+            or new_target.branch != head_policy.default_dev_branch
+        ):
+            raise BackportCheckError(
+                "release-line bootstrap target must use the new default release line for its toolchain, "
+                "Verso ref, and branch"
+            )
 
     changed_files = set(api.pull_request_files(source_pr_number))
     missing_files = sorted({"branch-policy.json", "lean-toolchain"} - changed_files)
@@ -304,35 +355,15 @@ def verify_release_line_retirement(
     pull_request: dict[str, Any],
     base_policy: BranchPolicy,
 ) -> tuple[BranchPolicy, tuple[str, ...]]:
-    base = pull_request.get("base")
-    base_sha = str(base.get("sha") or "") if isinstance(base, dict) else ""
-    head = pull_request.get("head")
-    head_sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
-    if not base_sha:
-        raise BackportCheckError("release-line retirement validation requires pull_request.base.sha")
-    if not head_sha:
-        raise BackportCheckError("release-line retirement validation requires pull_request.head.sha")
-
-    try:
-        head_policy = load_branch_policy_text(
-            api.file_text("branch-policy.json", head_sha),
-            source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
-        )
-    except SystemExit as err:
-        raise BackportCheckError(str(err)) from err
-    base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
-    head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
+    head_policy = load_release_transition_head_policy(
+        api,
+        pull_request,
+        base_policy,
+        transition_name="release-line retirement",
+    )
 
     if head_policy.default_dev_branch != base_policy.default_dev_branch:
         raise BackportCheckError("release-line retirement must preserve the default development release line")
-    if base_toolchain_release != base_policy.default_dev_branch:
-        raise BackportCheckError(
-            "release-line retirement base is internally inconsistent: its Lean toolchain does not match its default branch"
-        )
-    if head_toolchain_release != head_policy.default_dev_branch:
-        raise BackportCheckError(
-            "release-line retirement head is internally inconsistent: its Lean toolchain does not match its default branch"
-        )
 
     retained_count = len(head_policy.required_backport_branches)
     if retained_count >= len(base_policy.required_backport_branches):

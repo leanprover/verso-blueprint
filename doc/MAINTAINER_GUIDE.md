@@ -296,7 +296,7 @@ Use the harness to generate public PR/backport scaffolds:
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
@@ -306,7 +306,7 @@ check intentionally does not require patch-id equality, because release-line
 conflict resolution often changes the exact diff while preserving provenance.
 
 Each paired backport PR should carry the scaffolded release label, such as
-`backport-v4.31.0`, so release-specific queues remain visible when several
+`backport-v4.32.0`, so release-specific queues remain visible when several
 maintenance lines are active.
 
 Land reviewed local work from the clean root checkout:
@@ -331,8 +331,8 @@ fixtures, and pin the matching `verso` release or release candidate in the root
 package:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain 4.31-rc2
-python3 -m scripts.blueprint_harness bump-toolchain v4.31.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain 4.32-rc2
+python3 -m scripts.blueprint_harness bump-toolchain v4.32.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
@@ -342,8 +342,8 @@ root package, `project_template`, and
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release
-candidates use the official short RC name, for example `4.31-rc2`; the harness
-writes the corresponding Lean and `verso` tag ref, such as `v4.31.0-rc2`.
+candidates use the official short RC name, for example `4.32-rc2`; the harness
+writes the corresponding Lean and `verso` tag ref, such as `v4.32.0-rc2`.
 The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ.
@@ -355,10 +355,10 @@ default-development branch, then let the harness do the branch-local release
 setup:
 
 ```bash
-python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
+python3 -m scripts.blueprint_harness start-release-line 4.33-rc2
 ```
 
-Run this from the new local branch, for example `v4.31.0`. The command:
+Run this from the new local branch, for example `v4.33.0`. The command:
 
 - rewrites the managed `lean-toolchain` files, the root `verso` pin, and the
   committed manifests for the root package, `project_template`, and the
@@ -371,14 +371,14 @@ Run this from the new local branch, for example `v4.31.0`. The command:
   a release candidate; fixtures remain explicitly selectable for validation
   but are not added to the public reference catalog
 
-For release candidates, use the official short RC name such as `4.31-rc2`.
-The branch name remains the stable release branch, for example `v4.31.0`, while
-the command pins the managed root-package files to `v4.31.0-rc2`.
+For release candidates, use the official short RC name such as `4.33-rc2`.
+The branch name remains the stable release branch, for example `v4.33.0`, while
+the command pins the managed root-package files to `v4.33.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
 validated on the new Lean release. If one project target still needs a release
-candidate, put the short RC name, for example `"rc": "4.31-rc2"`, on that
+candidate, put the short RC name, for example `"rc": "4.33-rc2"`, on that
 specific project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
@@ -391,7 +391,7 @@ python3 -m scripts.blueprint_harness set-default-dev-branch v4.32.0
 ```
 
 Commit that metadata-only change separately on each older branch that still
-carries `branch-policy.json`, such as `v4.31.0`. Preserve their own Lean
+carries `branch-policy.json`, such as `v4.32.0`. Preserve their own Lean
 toolchain pins.
 
 When retiring old maintenance lines from an existing release branch, use
@@ -446,7 +446,7 @@ python3 -m scripts.blueprint_harness create-worktree <name>
 After `git worktree add`, that command syncs the root checkout's `.lake/` and
 prepares the shared and per-worktree reference blueprint clones without running
 external reference project builds. New worktrees now base off the branch policy's
-preferred default-development ref, typically something like `origin/v4.31.0`.
+preferred default-development ref, typically something like `origin/v4.32.0`.
 Pass `--base <release-ref>` explicitly for backport-only work.
 
 If you want to verify that the root checkout has not drifted before branching
@@ -490,11 +490,11 @@ an exemption is acceptable.
 To create one paired backport scaffold, run:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.31.0] ...`, a `backport-v4.31.0` release label, and a PR body
+`[backport v4.32.0] ...`, a `backport-v4.32.0` release label, and a PR body
 that points back to the primary default-development review. By default the
 title after the backport prefix is read from the GitHub title of `--main-pr`,
 which keeps multi-commit backports from inheriting the last local commit

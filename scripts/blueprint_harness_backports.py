@@ -12,6 +12,8 @@ EXEMPT_FILE_NAMES = frozenset(
     }
 )
 EXEMPT_PATH_PREFIXES = (".github/", "doc/", "LICENSES/")
+RELEASE_LINE_BOOTSTRAP_STATUS = "release-line bootstrap"
+RELEASE_LINE_RETIREMENT_STATUS = "release-line retirement"
 
 
 def backport_exemption_violations(paths: Iterable[str]) -> tuple[str, ...]:

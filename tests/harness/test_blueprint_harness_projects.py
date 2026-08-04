@@ -162,7 +162,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIsNotNone(default_template_target)
         self.assertFalse(default_template_target.publish_reference)
         self.assertFalse(any(target.publish_reference for target in projects[0].targets))
-        self.assertTrue(catalog.release_target("v4.32.0").deploy_pages)
+        for release_id in branch_policy.required_backport_branches:
+            self.assertTrue(catalog.release_target(release_id).deploy_pages)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:

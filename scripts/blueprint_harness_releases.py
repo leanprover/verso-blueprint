@@ -70,6 +70,15 @@ def release_branch_from_lean_ref(raw_ref: str) -> str:
     return ref
 
 
+def release_branch_version(raw_ref: str) -> tuple[int, int, int]:
+    """Return the comparable numeric version of a stable or RC release branch."""
+    branch = release_branch_from_lean_ref(raw_ref)
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(branch) is None:
+        raise SystemExit(f"[blueprint-harness] expected a numeric Lean release branch, got `{branch}`")
+    major, minor, patch = branch.removeprefix("v").split(".")
+    return int(major), int(minor), int(patch)
+
+
 def lean_toolchain_spec(lean_ref: str) -> str:
     return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
 
