@@ -128,70 +128,45 @@ private def mathAttrs (mode : Lean.Doc.MathMode) (texPrelude : String) :
   else
     #[("class", classes), ("data-bp-tex-prelude", texPrelude)]
 
-mutual
+private def elaboratedDocstringGenre : Verso.Doc.Genre where
+  PartMetadata := Empty
+  Block := Lean.ElabBlock
+  Inline := Lean.ElabInline
+  TraverseContext := Unit
+  TraverseState := Unit
 
-private partial def inlineToHtml
-    (texPrelude : String)
+private instance : Verso.Doc.TraverseBlock elaboratedDocstringGenre := {}
+
+private instance : Verso.Doc.Html.GenreHtml elaboratedDocstringGenre Id where
+  part _ metadata := nomatch metadata
+  -- Docstring extensions do not carry rendering behavior once elaborated outside
+  -- their owning genre, so retain their standard children.
+  block _ blockHtml _ contents := .seq <$> contents.mapM blockHtml
+  inline inlineHtml _ contents := .seq <$> contents.mapM inlineHtml
+
+private def inlineToHtml
     (inline : Lean.Doc.Inline Lean.ElabInline) : Verso.Output.Html :=
-  match inline with
-  | .text text => .text true text
-  | .emph content => .tag "em" #[] (.seq <| content.map (inlineToHtml texPrelude))
-  | .bold content => .tag "strong" #[] (.seq <| content.map (inlineToHtml texPrelude))
-  | .code code => .tag "code" #[] (.text true code)
-  | .math mode source =>
-    .tag "code" (mathAttrs mode texPrelude) (.text true source)
-  | .linebreak text => .text false text
-  | .link content url =>
-    .tag "a" #[("href", url)] (.seq <| content.map (inlineToHtml texPrelude))
-  | .footnote name content =>
-    .tag "details" #[("class", "footnote")] <|
-      .seq #[
-        .tag "summary" #[] (.text true s!"[{name}]"),
-        .seq <| content.map (inlineToHtml texPrelude)
-      ]
-  | .image alt url => .tag "img" #[("src", url), ("alt", alt)] .empty
-  | .concat content => .seq <| content.map (inlineToHtml texPrelude)
-  -- Keep the same fallback policy as Manual-block conversion.
-  | .other _ content => .seq <| content.map (inlineToHtml texPrelude)
+  let action :=
+    elaboratedDocstringGenre.toHtml (m := Id)
+      {} () () {} {} {} (show Verso.Doc.Inline elaboratedDocstringGenre from inline)
+  (action.run .empty).1
 
-private partial def listItemToHtml
-    (texPrelude : String)
-    (item : Lean.Doc.ListItem (Lean.Doc.Block Lean.ElabInline Lean.ElabBlock)) :
-    Verso.Output.Html :=
-  .tag "li" #[] (.seq <| item.contents.map (blockToHtml texPrelude))
+private def blockToHtml
+    (block : Lean.Doc.Block Lean.ElabInline Lean.ElabBlock) : Verso.Output.Html :=
+  let action :=
+    elaboratedDocstringGenre.toHtml (m := Id)
+      {} () () {} {} {} (show Verso.Doc.Block elaboratedDocstringGenre from block)
+  (action.run .empty).1
 
-private partial def descItemToHtml
-    (texPrelude : String)
-    (item :
-      Lean.Doc.DescItem
-        (Lean.Doc.Inline Lean.ElabInline)
-        (Lean.Doc.Block Lean.ElabInline Lean.ElabBlock)) :
-    Verso.Output.Html :=
-  .seq #[
-    .tag "dt" #[] (.seq <| item.term.map (inlineToHtml texPrelude)),
-    .tag "dd" #[] (.seq <| item.desc.map (blockToHtml texPrelude))
-  ]
-
-private partial def blockToHtml
-    (texPrelude : String)
-    (block : Lean.Doc.Block Lean.ElabInline Lean.ElabBlock) :
-    Verso.Output.Html :=
-  match block with
-  | .para contents =>
-    .tag "p" #[] (.seq <| contents.map (inlineToHtml texPrelude))
-  | .code content => .tag "pre" #[] (.text true content)
-  | .ul items => .tag "ul" #[] (.seq <| items.map (listItemToHtml texPrelude))
-  | .ol start items =>
-    .tag "ol" #[("start", toString (max start 0))]
-      (.seq <| items.map (listItemToHtml texPrelude))
-  | .dl items => .tag "dl" #[] (.seq <| items.map (descItemToHtml texPrelude))
-  | .blockquote items =>
-    .tag "blockquote" #[] (.seq <| items.map (blockToHtml texPrelude))
-  | .concat content => .seq <| content.map (blockToHtml texPrelude)
-  -- Keep the same fallback policy as Manual-block conversion.
-  | .other _ content => .seq <| content.map (blockToHtml texPrelude)
-
-end
+private def rewriteMathHtml
+    (texPrelude : String) (html : Verso.Output.Html) : Verso.Output.Html :=
+  html.visitM (m := Id) (tag := fun name attrs contents =>
+    if name == "code" && attrs.contains ("class", "math inline") then
+      some (.tag name (mathAttrs .inline texPrelude) contents)
+    else if name == "code" && attrs.contains ("class", "math display") then
+      some (.tag name (mathAttrs .display texPrelude) contents)
+    else
+      none)
 
 /--
 Render the standard structural subset of an elaborated Verso docstring as
@@ -204,12 +179,11 @@ metadata as normal Blueprint math nodes.
 partial def versoDocstringToHtml
     (doc : Lean.VersoDocString) (texPrelude : String := "") :
     Verso.Output.Html :=
-  let text := .seq <| doc.text.map (blockToHtml texPrelude)
-  let subsections := .seq <| doc.subsections.map (partToHtml texPrelude)
-  .seq #[text, subsections]
+  let text := .seq <| doc.text.map blockToHtml
+  let subsections := .seq <| doc.subsections.map partToHtml
+  rewriteMathHtml texPrelude <| .seq #[text, subsections]
 where
   partToHtml
-      (texPrelude : String)
       (part : Lean.Doc.Part Lean.ElabInline Lean.ElabBlock Empty) :
       Verso.Output.Html :=
     let title :=
@@ -217,9 +191,9 @@ where
         .empty
       else
         .tag "p" #[] <|
-          .tag "strong" #[] (.seq <| part.title.map (inlineToHtml texPrelude))
-    let content := .seq <| part.content.map (blockToHtml texPrelude)
-    let children := .seq <| part.subParts.map (partToHtml texPrelude)
+          .tag "strong" #[] (.seq <| part.title.map inlineToHtml)
+    let content := .seq <| part.content.map blockToHtml
+    let children := .seq <| part.subParts.map partToHtml
     .seq #[title, content, children]
 
 end Informal.Docstring
