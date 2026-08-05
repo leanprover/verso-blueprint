@@ -57,6 +57,7 @@ from scripts.blueprint_harness_references import (
     reference_prune_plan,
     reference_source_identities,
     reference_source_paths,
+    require_reference_rsync,
     site_dir_for,
     sync_reference_blueprints,
 )
@@ -691,6 +692,9 @@ def generate_projects(
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
     in_repo_command_projects = [project for project in in_repo_projects if project.in_repo_command_project]
     git_projects = [project for project in projects if project.git_checkout]
+
+    if git_projects:
+        require_reference_rsync()
 
     if in_repo_target_projects:
         print(f"[blueprint-reference-harness] package root: {layout.package_root}")

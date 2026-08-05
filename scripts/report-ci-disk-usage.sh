@@ -4,63 +4,30 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/report-ci-disk-usage.sh LABEL [options]
+Usage: scripts/report-ci-disk-usage.sh LABEL
 
 Print a compact disk-usage report for CI reference blueprint jobs.
 
-Options:
-  --reference-source-identity ID
-                              Include per-reference paths for the source ID.
-  --artifact-path PATH        Include the generated artifact path.
-  -h, --help                  Show this help.
+The BP_REFERENCE_SOURCE_IDENTITY, BP_REFERENCE_DEPENDENCY_PACKAGES_PATH,
+BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH, and BP_REFERENCE_ARTIFACT_PATH
+environment variables select the per-reference paths to include.
 EOF
 }
 
-label=""
-reference_source_identity=""
-artifact_path=""
+reference_source_identity="${BP_REFERENCE_SOURCE_IDENTITY:-}"
+reference_dependency_packages_path="${BP_REFERENCE_DEPENDENCY_PACKAGES_PATH:-}"
+reference_dependency_path_builds_path="${BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH:-}"
+artifact_path="${BP_REFERENCE_ARTIFACT_PATH:-}"
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    --reference-source-identity)
-      if [[ $# -lt 2 ]]; then
-        echo "missing value for --reference-source-identity" >&2
-        exit 2
-      fi
-      reference_source_identity="$2"
-      shift 2
-      ;;
-    --artifact-path)
-      if [[ $# -lt 2 ]]; then
-        echo "missing value for --artifact-path" >&2
-        exit 2
-      fi
-      artifact_path="$2"
-      shift 2
-      ;;
-    -*)
-      echo "unknown option: $1" >&2
-      exit 2
-      ;;
-    *)
-      if [[ -n "$label" ]]; then
-        echo "unexpected argument: $1" >&2
-        exit 2
-      fi
-      label="$1"
-      shift
-      ;;
-  esac
-done
-
-if [[ -z "$label" ]]; then
+if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+  usage
+  exit 0
+fi
+if [[ $# -ne 1 ]]; then
   usage >&2
   exit 2
 fi
+label="$1"
 
 begin_group() {
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
@@ -111,15 +78,19 @@ report_du() {
   if [[ -n "$reference_source_identity" ]]; then
     paths+=(
       ".worktrees/_reference-blueprints/cache/$reference_source_identity"
-      ".worktrees/_reference-blueprints/deps/$reference_source_identity"
-      ".worktrees/_reference-blueprints/deps/$reference_source_identity/packages"
-      ".worktrees/_reference-blueprints/deps/$reference_source_identity/path-builds"
     )
 
     shopt -s nullglob
     local local_checkouts=(.worktrees/_reference-blueprints/by-worktree/*/"$reference_source_identity")
     shopt -u nullglob
     paths+=("${local_checkouts[@]}")
+  fi
+
+  if [[ -n "$reference_dependency_packages_path" ]]; then
+    paths+=("$reference_dependency_packages_path")
+  fi
+  if [[ -n "$reference_dependency_path_builds_path" ]]; then
+    paths+=("$reference_dependency_path_builds_path")
   fi
 
   if [[ -n "$artifact_path" ]]; then
@@ -143,16 +114,16 @@ report_reference_children() {
     du -sh "$root"/* 2>/dev/null | sort -h || true
   fi
 
-  if [[ -n "$reference_source_identity" ]]; then
-    local packages=".worktrees/_reference-blueprints/deps/$reference_source_identity/packages"
-    if [[ -d "$packages" ]]; then
+  if [[ -n "$reference_dependency_packages_path" ]]; then
+    if [[ -d "$reference_dependency_packages_path" ]]; then
       printf '[ci-disk] packages for %s\n' "$reference_source_identity"
-      du -sh "$packages"/* 2>/dev/null | sort -h || true
+      du -sh "$reference_dependency_packages_path"/* 2>/dev/null | sort -h || true
     fi
-    local path_builds=".worktrees/_reference-blueprints/deps/$reference_source_identity/path-builds"
-    if [[ -d "$path_builds" ]]; then
+  fi
+  if [[ -n "$reference_dependency_path_builds_path" ]]; then
+    if [[ -d "$reference_dependency_path_builds_path" ]]; then
       printf '[ci-disk] path builds for %s\n' "$reference_source_identity"
-      du -sh "$path_builds"/* 2>/dev/null | sort -h || true
+      du -sh "$reference_dependency_path_builds_path"/* 2>/dev/null | sort -h || true
     fi
   fi
 }
@@ -161,6 +132,12 @@ begin_group "Disk usage: $label"
 printf '[ci-disk] label=%s\n' "$label"
 if [[ -n "$reference_source_identity" ]]; then
   printf '[ci-disk] reference_source_identity=%s\n' "$reference_source_identity"
+fi
+if [[ -n "$reference_dependency_packages_path" ]]; then
+  printf '[ci-disk] reference_dependency_packages_path=%s\n' "$reference_dependency_packages_path"
+fi
+if [[ -n "$reference_dependency_path_builds_path" ]]; then
+  printf '[ci-disk] reference_dependency_path_builds_path=%s\n' "$reference_dependency_path_builds_path"
 fi
 if [[ -n "$artifact_path" ]]; then
   printf '[ci-disk] artifact_path=%s\n' "$artifact_path"

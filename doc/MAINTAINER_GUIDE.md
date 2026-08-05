@@ -390,8 +390,15 @@ policy metadata on each older release branch so the harness recognizes them as
 backport-only:
 
 ```bash
-python3 -m scripts.blueprint_harness set-default-dev-branch v4.32.0
+python3 -m scripts.blueprint_harness set-default-dev-branch <new-default-dev-toolchain>
 ```
+
+Use the exact command printed by `start-release-line`. For version 2 policies,
+`set-default-dev-branch` also adds the new branch's baseline release target when
+the older checkout does not have it yet and adds the corresponding target to
+in-repo project metadata. Passing the printed RC ref preserves its target-level
+RC pin. The command preserves the older checkout's own Lean toolchain, existing
+release targets, and required-backport list.
 
 Commit that metadata-only change separately on each older branch that still
 carries `branch-policy.json`, such as `v4.32.0`. Preserve their own Lean
@@ -463,6 +470,11 @@ packages back to make the cache usable again. Cache warm-up may refresh shared
 contents with `rsync`; this ownership rule does not yet provide transactional
 publication for simultaneous writers.
 
+Maintainer `sync`, `generate`, and `validate` operations involving external
+git-checkout projects require `rsync` on `PATH`. The harness checks this before
+starting external checkout or cache work and reports a focused diagnostic when
+it is unavailable.
+
 After warm-up, the disposable source checkout's duplicate `.lake/packages/`
 tree is removed once it has been copied into the dependency cache. This deletes
 only the source checkout's copy, not the shared dependency cache. CI likewise
@@ -482,7 +494,7 @@ python3 -m scripts.blueprint_harness create-worktree <name>
 After `git worktree add`, that command syncs the root checkout's `.lake/` and
 prepares the shared and per-worktree reference blueprint clones without running
 external reference project builds. New worktrees now base off the branch policy's
-preferred default-development ref, typically something like `origin/v4.32.0`.
+preferred default-development ref, `origin/<default-dev-branch>`.
 Pass `--base <release-ref>` explicitly for backport-only work.
 
 If you want to verify that the root checkout has not drifted before branching

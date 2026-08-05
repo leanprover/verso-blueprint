@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -76,39 +77,55 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command(["bash", "scripts/report-ci-disk-usage.sh", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Print a compact disk-usage report", result.stdout)
-        self.assertIn("--reference-source-identity", result.stdout)
+        self.assertIn("BP_REFERENCE_SOURCE_IDENTITY", result.stdout)
+        self.assertIn("BP_REFERENCE_DEPENDENCY_PACKAGES_PATH", result.stdout)
+        self.assertIn("BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH", result.stdout)
+        self.assertIn("BP_REFERENCE_ARTIFACT_PATH", result.stdout)
+        self.assertNotIn("--reference-source-identity", result.stdout)
 
-    def test_report_ci_disk_usage_includes_dependency_path_builds(self) -> None:
+    def test_report_ci_disk_usage_includes_reference_paths_from_environment(self) -> None:
         identity = "external-main-123456789abc"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            path_build = (
-                root
-                / ".worktrees"
-                / "_reference-blueprints"
-                / "deps"
-                / identity
-                / "path-builds"
-                / "Formalization"
-            )
+            reference_root = root / ".worktrees" / "_reference-blueprints"
+            source_cache = reference_root / "cache" / identity
+            local_checkout = reference_root / "by-worktree" / "demo" / identity
+            dependency_root = reference_root / "deps" / identity
+            packages = dependency_root / "packages" / "mathlib"
+            path_build = dependency_root / "path-builds" / "Formalization"
+            artifact = root / "_out" / "reference-blueprints" / "external-blueprint"
+            source_cache.mkdir(parents=True)
+            local_checkout.mkdir(parents=True)
+            packages.mkdir(parents=True)
             path_build.mkdir(parents=True)
+            artifact.mkdir(parents=True)
             result = subprocess.run(
                 [
                     "bash",
                     str(PACKAGE_ROOT / "scripts" / "report-ci-disk-usage.sh"),
                     "test",
-                    "--reference-source-identity",
-                    identity,
                 ],
                 cwd=root,
                 check=False,
                 text=True,
                 capture_output=True,
+                env={
+                    **os.environ,
+                    "BP_REFERENCE_SOURCE_IDENTITY": identity,
+                    "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH": str(packages.parent.relative_to(root)),
+                    "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH": str(path_build.parent.relative_to(root)),
+                    "BP_REFERENCE_ARTIFACT_PATH": str(artifact.relative_to(root)),
+                },
             )
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn(f"cache/{identity}", result.stdout)
+        self.assertIn(f"by-worktree/demo/{identity}", result.stdout)
+        self.assertIn(f"[ci-disk] packages for {identity}", result.stdout)
+        self.assertIn("packages/mathlib", result.stdout)
         self.assertIn(f"[ci-disk] path builds for {identity}", result.stdout)
         self.assertIn("path-builds/Formalization", result.stdout)
+        self.assertIn("artifact_path=_out/reference-blueprints/external-blueprint", result.stdout)
 
     def test_validate_reference_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/validate-reference-blueprints.sh", "--help"])

@@ -46,6 +46,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: resolve-deploy-releases
     if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
+    env:
+      BP_REFERENCE_SOURCE_IDENTITY: ${{ matrix.reference_source_identity }}
+      BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}
+      BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}
+      BP_REFERENCE_ARTIFACT_PATH: ${{ matrix.artifact_path }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_matrix) }}
@@ -90,7 +95,7 @@ jobs:
             --output _out/deploy-projects/${{ matrix.project_id }}.identity.json \
             --github-output >> "$GITHUB_OUTPUT"
       - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore"
       - name: Restore exact generated reference site
         id: generated-site-cache
         uses: actions/cache/restore@v5
@@ -140,7 +145,7 @@ jobs:
             ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Report disk usage after Lake cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore"
       - name: Restore external reference dependency cache
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_source_identity != '' }}
         uses: actions/cache@v5
@@ -153,7 +158,7 @@ jobs:
             ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore"
       - name: Show tool versions
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
@@ -176,7 +181,7 @@ jobs:
             _out/reference-blueprints/${{ matrix.release_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation"
       - name: Install exact reference artifact identity
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
