@@ -694,7 +694,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 3
+def manifestInternalSchemaVersion : Nat := 4
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1697,18 +1697,31 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       modify fun st => { st with seen := st.seen.insert name }
       let env ← getEnv
       if let some info := getStructureInfo? env name then
-        let mut properties : List (String × Json) := []
-        let mut required : Array Json := #[]
-        for fieldInfo in info.fieldInfo do
-          let schema ← schemaForType (← fieldType fieldInfo.projFn)
-          let docs? ← findDocString? env fieldInfo.projFn
-          let schema :=
-            match docs? with
-            | some docs => schemaWithDescription schema docs
-            | none => schema
-          let key := fieldKey fieldInfo.fieldName
-          properties := properties.concat (key, schema)
-          required := required.push (Json.str key)
+        let rec collectFields (info : StructureInfo) :
+            StateT SchemaState MetaM (List (String × Json) × Array Json) := do
+          let mut properties : List (String × Json) := []
+          let mut required : Array Json := #[]
+          for fieldInfo in info.fieldInfo do
+            match fieldInfo.subobject? with
+            | some parentName =>
+                -- Derived JSON flattens embedded parent structures into the child object.
+                let some parentInfo := getStructureInfo? env parentName
+                  | throwError "Unsupported schema parent structure: {parentName}"
+                let (parentProperties, parentRequired) ← collectFields parentInfo
+                properties := properties ++ parentProperties
+                required := required ++ parentRequired
+            | none =>
+                let schema ← schemaForType (← fieldType fieldInfo.projFn)
+                let docs? ← findDocString? env fieldInfo.projFn
+                let schema :=
+                  match docs? with
+                  | some docs => schemaWithDescription schema docs
+                  | none => schema
+                let key := fieldKey fieldInfo.fieldName
+                properties := properties.concat (key, schema)
+                required := required.push (Json.str key)
+          pure (properties, required)
+        let (properties, required) ← collectFields info
         let schema := Json.mkObj [
           ("type", Json.str "object"),
           ("properties", Json.mkObj properties),

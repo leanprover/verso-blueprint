@@ -272,9 +272,11 @@ For every natural number $`n`, $`n + 0 = n`.
 
 Current behavior: source provenance is exported in the Blueprint manifest as
 `sourceDocuments` and per-entry `sources`. A sourced node shows a compact chip;
-when one source citation is available, the chip says, for example,
-`source: Lemma 2.1(1)` rather than presenting the citation as Blueprint's own
-generated number.
+when an entry has exactly one source ref and that ref has one unique citation,
+the chip says, for example, `source: Lemma 2.1(1)` rather than presenting the
+citation as Blueprint's own generated number. Entries with multiple source refs
+retain the `sources N` summary so that the chip does not hide aggregated
+provenance.
 Browser clients can resolve source-document ids with `loadSourceDocument`, load
 the complete catalog with `loadSourceDocuments`, or join entry source refs with
 declared documents using `resolveSourceMetadata` from `api/data.mjs` or

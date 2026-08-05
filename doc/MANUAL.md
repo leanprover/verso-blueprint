@@ -672,6 +672,11 @@ shells also show a compact source chip when source provenance is present; open
 it to inspect the source document id, source-native anchor and citation, page
 summary, and recorded text/PDF span details.
 
+When an entry has exactly one source ref with one unique citation, the chip
+displays that citation as `source: ...`. A single ref without a unique citation
+uses `source 1`; entries that aggregate several refs use `sources N` so the
+compact label does not hide additional provenance.
+
 `anchor` is a stable identifier in the original source, such as a TeX
 `\label`; `citation` is the corresponding human-readable source identity, such
 as `Lemma 2.1(1)` or `Equation (2.4)`. These fields do not replace the

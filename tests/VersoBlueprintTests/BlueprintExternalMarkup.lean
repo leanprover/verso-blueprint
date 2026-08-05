@@ -951,7 +951,7 @@ external markup.
       sourcedWitnessEntry.sources.any (fun sourceRef =>
         sourceRef.document == "external-paper" &&
           sourceRef.spans.size == 1 &&
-          sourceRef.spans[0]!.page == "7") &&
+          sourceRef.spans[0]!.page == some "7") &&
       htmlHasSourcePreview sourcedWitnessHtml "external-paper" "p. 7" &&
       hasSubstr externalOut "bp_extra_slot_markup" &&
       hasSubstr externalOut "bp_external_markup_badge_markdown" &&
