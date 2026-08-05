@@ -11,6 +11,10 @@
       "targets": [
         {
           "release": "v4.32.0"
+        },
+        {
+          "release": "v4.33.0",
+          "rc": "4.33-rc2"
         }
       ],
       "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
