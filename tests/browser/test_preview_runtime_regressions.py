@@ -1665,6 +1665,7 @@ class TestPreviewRuntimeRegressions:
         )
         source_ref = entry["sources"][0]
         span = source_ref["spans"][0]
+        page_less_span = source_ref["spans"][1]
 
         assert source_document == {
             "id": "custom-client-paper",
@@ -1693,6 +1694,19 @@ class TestPreviewRuntimeRegressions:
             "xMin": 120,
             "yMax": 520,
             "yMin": 240,
+        }
+        assert page_less_span == {
+            "anchor": "itm:custom-client",
+            "citation": "Theorem 4.2",
+            "page": None,
+            "pdf": None,
+            "text": {
+                "endCharacter": None,
+                "endLine": 82,
+                "path": "source/custom-client.tex",
+                "startCharacter": None,
+                "startLine": 80,
+            },
         }
 
     def test_public_apis_resolve_source_documents_from_manifest(self, server: str, page: Page):
@@ -2363,6 +2377,8 @@ class TestPreviewRuntimeRegressions:
         expect(body).to_contain_text("anchor thm:custom-client")
         expect(body).to_contain_text("source/pages/page-42.md:10-12")
         expect(body).to_contain_text("source/pages/page-42.pdf")
+        expect(body).to_contain_text("anchor itm:custom-client")
+        expect(body).to_contain_text("source/custom-client.tex:80-82")
 
         assert_no_runtime_errors(errors)
 

@@ -1243,6 +1243,11 @@ they own. Each span may carry a source-native `anchor` (for example a TeX
 `\label`) and a human-readable `citation` (for example `Lemma 2.1(1)`) in
 addition to its optional page, text range, and PDF location.
 
+Generated JSON includes every source-provenance field. Fields backed by Lean
+`Option` values are encoded as either their documented value or `null`, rather
+than being omitted. In particular, clients must handle page-less spans as
+`page: null` and use their anchor, text range, or PDF location instead.
+
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |
 | `resolveLabel(label, options)` | `{ ok: true, label, facet, key, manifestEntry, href, sourceLocation }` | `{ ok: false, label, facet, key, reason, manifestEntry, href, sourceLocation }` |
