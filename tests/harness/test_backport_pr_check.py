@@ -274,7 +274,7 @@ Backport v4.24.0: release-line retirement
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending backport entries are not allowed"):
                 run_with_required_backport(event_path, token=None)
 
-    def test_run_accepts_ready_docs_only_exemptions(self) -> None:
+    def test_run_accepts_ready_documentation_exemptions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
             write_pull_request_event(
@@ -283,6 +283,18 @@ Backport v4.24.0: release-line retirement
                 body=required_backport_body("exempt: docs-only change"),
             )
             api = FakeGitHubApi(pull_request_files={11: ["doc/API.md", "README.md"]})
+            with patch.object(backport_mod, "GitHubApi", return_value=api):
+                self.assertEqual(backport_mod.run(str(event_path), token="token"), 0)
+
+    def test_run_accepts_ready_catalog_exemptions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=required_backport_body("exempt: release-specific reference catalog"),
+            )
+            api = FakeGitHubApi(pull_request_files={11: ["tests/harness/projects.json"]})
             with patch.object(backport_mod, "GitHubApi", return_value=api):
                 self.assertEqual(run_with_required_backport(event_path, token="token"), 0)
 

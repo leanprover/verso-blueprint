@@ -312,6 +312,12 @@ Each paired backport PR should carry the scaffolded release label, such as
 `backport-v4.32.0`, so release-specific queues remain visible when several
 maintenance lines are active.
 
+A change limited to `tests/harness/projects.json` updates release-specific
+catalog metadata and may use an explicit backport exemption; do not recreate
+that catalog target on older release branches. If the same PR changes scripts,
+other tests, templates, or runtime files, it still requires the normal paired
+backport.
+
 Land reviewed local work from the clean root checkout:
 
 ```bash
