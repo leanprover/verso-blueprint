@@ -205,15 +205,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
-    def test_selected_project_toolchain_requires_resolved_release_metadata(self) -> None:
-        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-        noperthedron = resolve_projects_for_release(catalog, "v4.32.0", ["noperthedron"])[0]
-        spherepacking = resolve_projects_for_release(catalog, "v4.32.0", ["spherepackingblueprint"])[0]
+    def test_selected_project_toolchain_uses_selected_release(self) -> None:
+        project = external_project(selected_release="v4.29.0")
 
-        self.assertEqual(selected_project_toolchain(noperthedron), "v4.32.0")
-        self.assertEqual(selected_project_toolchain(spherepacking), "v4.32.0")
+        self.assertEqual(selected_project_toolchain(project), "v4.29.0")
         with self.assertRaisesRegex(ValueError, "has no selected release target"):
-            selected_project_toolchain(catalog.projects[1])
+            selected_project_toolchain(external_project())
 
     def test_selected_project_toolchain_prefers_compiler_only_override(self) -> None:
         project = external_project(
