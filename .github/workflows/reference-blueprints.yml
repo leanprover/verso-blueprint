@@ -50,7 +50,6 @@ jobs:
           echo "hash=${{ matrix.hash }}"
           echo "reference_source_identity=${{ matrix.reference_source_identity }}"
       - name: Match reference target toolchain
-        if: ${{ matrix.rc != '' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Report disk usage before cache restore
         run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"

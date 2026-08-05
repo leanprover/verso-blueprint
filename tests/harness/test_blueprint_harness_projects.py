@@ -120,6 +120,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         expected_projects: list[str] = []
         expected_refs: dict[str, str | None] = {}
         expected_rcs: dict[str, str | None] = {}
+        expected_toolchains: dict[str, str | None] = {}
         expected_targets = [
             (project, target)
             for project in catalog.projects
@@ -129,11 +130,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             expected_projects.append(project.project_id)
             expected_refs[project.project_id] = target.ref
             expected_rcs[project.project_id] = target.rc
+            expected_toolchains[project.project_id] = target.toolchain
 
         self.assertEqual([project.project_id for project in projects], expected_projects)
         for project in projects:
             self.assertEqual(project.selected_release, release.release_id)
             self.assertEqual(project.selected_rc, expected_rcs[project.project_id])
+            self.assertEqual(project.selected_toolchain, expected_toolchains[project.project_id])
             expected_ref = expected_refs[project.project_id]
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
@@ -203,6 +206,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[1], expected_external_releases[projects[1].project_id], publish_reference=True
         )
         self.assertIsNone(projects[1].targets[0].rc)
+        self.assertIsNone(projects[1].targets[0].toolchain)
         self.assertIsNone(projects[1].build_command)
         self.assertEqual(projects[1].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[1].browser_tests_path, None)
@@ -212,6 +216,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[2], expected_external_releases[projects[2].project_id], publish_reference=True
         )
         self.assertIsNone(projects[2].targets[0].rc)
+        self.assertIsNone(projects[2].targets[0].toolchain)
         self.assertIsNone(projects[2].build_command)
         self.assertEqual(projects[2].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
@@ -219,6 +224,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[3], expected_external_releases[projects[3].project_id], publish_reference=True
         )
         self.assertIsNone(projects[3].targets[0].rc)
+        self.assertIsNone(projects[3].targets[0].toolchain)
         self.assertIsNone(projects[3].build_command)
         self.assertEqual(projects[3].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
@@ -226,6 +232,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[4], expected_external_releases[projects[4].project_id], publish_reference=True
         )
         self.assertIsNone(projects[4].targets[0].rc)
+        self.assertIsNone(projects[4].targets[0].toolchain)
         self.assertIsNone(projects[4].build_command)
         self.assertEqual(projects[4].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
@@ -238,6 +245,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(selected_project_toolchain(spherepacking), "v4.32.0")
         with self.assertRaisesRegex(ValueError, "has no selected release target"):
             selected_project_toolchain(catalog.projects[1])
+
+    def test_selected_project_toolchain_prefers_compiler_only_override(self) -> None:
+        project = external_project(
+            selected_release="v4.33.0",
+            selected_rc=None,
+            selected_toolchain="v4.33.0-rc1",
+        )
+
+        self.assertEqual(selected_project_toolchain(project), "v4.33.0-rc1")
 
     def test_project_catalog_requires_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -543,7 +559,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(set(rows), {project.project_id for project, _target in expected_targets})
         for project, target in expected_targets:
             row = rows[project.project_id]
-            expected_toolchain = release_candidate_ref(target.rc) if target.rc is not None else release.toolchain
+            expected_toolchain = (
+                target.toolchain
+                if target.toolchain is not None
+                else release_candidate_ref(target.rc)
+                if target.rc is not None
+                else release.toolchain
+            )
             expected_verso_ref = release_candidate_ref(target.rc) if target.rc is not None else release.verso_ref
             self.assertEqual(row["rc"], target.rc or "")
             self.assertEqual(row["toolchain"], expected_toolchain)
@@ -629,7 +651,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.29.0",
                                     "ref": "new-second-controller-ref",
-                                    "rc": "v4.29.0-rc2",
+                                    "toolchain": "v4.29.0-rc2",
                                     "publish_reference": True,
                                 }
                             ],
@@ -697,16 +719,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(matrix_by_project["new-release-project"]["verso_ref"], "v4.29.0-rc1")
         self.assertEqual(
             manifest_by_project["new-release-second-project"]["projects"][0]["targets"],
-            [{"release": "v4.29.0", "ref": "new-second-controller-ref", "rc": "4.29-rc2"}],
+            [{"release": "v4.29.0", "ref": "new-second-controller-ref", "toolchain": "v4.29.0-rc2"}],
         )
         self.assertEqual(
             manifest_by_project["new-release-second-project"]["projects"][0]["generate_command"],
             list(VBP_BUILD_PDF_COMMAND),
         )
         self.assertTrue(matrix_by_project["new-release-second-project"]["publish_pdf"])
-        self.assertEqual(matrix_by_project["new-release-second-project"]["rc"], "4.29-rc2")
+        self.assertEqual(matrix_by_project["new-release-second-project"]["rc"], "")
         self.assertEqual(matrix_by_project["new-release-second-project"]["toolchain"], "v4.29.0-rc2")
-        self.assertEqual(matrix_by_project["new-release-second-project"]["verso_ref"], "v4.29.0-rc2")
+        self.assertEqual(matrix_by_project["new-release-second-project"]["verso_ref"], "v4.29.0")
 
     def test_default_deploy_matrix_publishes_pdfs_only_for_default_dev_release(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -770,6 +792,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         {
                             "release": "v4.29.0",
                             "ref": "main",
+                            "toolchain": "v4.29.0-rc1",
                         }
                     ],
                     "build_command": ["lake", "build"],
@@ -787,6 +810,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(len(projects), 1)
         self.assertTrue(projects[0].git_checkout)
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
+        self.assertEqual(projects[0].targets[0].toolchain, "v4.29.0-rc1")
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {

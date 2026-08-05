@@ -93,7 +93,7 @@ jobs:
               lake exe cache get || true
             )
           fi
-      - if: ${{ inputs.harness_enabled && steps.harness.outputs.use_formalization_toolchain == 'true' }}
+      - if: ${{ inputs.harness_enabled }}
         name: Select harness Lean toolchain
         run: |
           formalization_toolchain="${{ steps.harness.outputs.formalization_path }}/lean-toolchain"

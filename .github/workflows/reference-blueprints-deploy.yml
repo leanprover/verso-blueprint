@@ -98,7 +98,7 @@ jobs:
           path: ${{ matrix.artifact_path }}
           key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
       - name: Match reference target toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.rc != '' }}
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Install elan
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
