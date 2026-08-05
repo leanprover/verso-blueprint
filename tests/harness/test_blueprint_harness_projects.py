@@ -175,7 +175,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(branch_policy.required_backport_branches, ())
         self.assertEqual(
             [target.release_id for target in branch_policy.release_targets],
-            ["v4.32.0"],
+            ["v4.32.0", "v4.33.0"],
         )
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
@@ -755,15 +755,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             },
         )
         for entry in rows.values():
-            self.assertTrue(entry["publish_pdf"])
-            self.assertIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])
+            self.assertFalse(entry["publish_pdf"])
+            self.assertNotIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])
 
         current_release_projects = [
             entry
             for (release_id, _project_id), entry in rows.items()
             if release_id == branch_policy.default_dev_branch
         ]
-        self.assertTrue(current_release_projects)
+        self.assertFalse(current_release_projects)
         for entry in current_release_projects:
             self.assertTrue(entry["publish_pdf"])
             self.assertIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])
