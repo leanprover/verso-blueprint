@@ -9,6 +9,7 @@ EXEMPT_FILE_NAMES = frozenset(
         ".gitignore",
         "branch-policy.json",
         "LICENSE",
+        "tests/harness/projects.json",
     }
 )
 EXEMPT_PATH_PREFIXES = (".github/", "doc/", "LICENSES/")

@@ -108,9 +108,12 @@ Do those upstream write actions only when they are explicitly requested.
   `pending` entry with a paired backport PR number or an explicit exemption
   reason.
 - Exemptions are limited to changes whose files are all documentation or
-  repository metadata. Source, scripts, tests, templates, package
-  configuration, and runtime assets require paired backports so maintenance
-  lines remain structurally aligned for future cherry-picks.
+  repository metadata. The release-specific reference catalog at
+  `tests/harness/projects.json` is metadata: moving a project to its intended
+  current release must not recreate that target on older release branches.
+  Source, scripts, other tests, templates, package configuration, and runtime
+  assets require paired backports so maintenance lines remain structurally
+  aligned for future cherry-picks.
 - `release-line retirement` is machine-checked rather than exempt. CI accepts
   it only when the default Lean line stays fixed, the oldest contiguous suffix
   of required backports is removed, and every remaining release target is
