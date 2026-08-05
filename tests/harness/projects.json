@@ -87,9 +87,10 @@
       },
       "targets": [
         {
-          "release": "v4.32.0",
-          "ref": "bc09f1e5ce35d6418173386b5f134b51a81e6c17",
-          "publish_reference": true
+          "release": "v4.33.0",
+          "ref": "e4f15950fc128b024fc1872d7178d30b29094e64",
+          "publish_reference": true,
+          "reference_toolchain": "v4.33.0-rc1"
         }
       ],
       "generate_command": [
@@ -112,9 +113,10 @@
       },
       "targets": [
         {
-          "release": "v4.32.0",
-          "ref": "e89a585c13d05c965d9d28d307517da0bfe13960",
-          "publish_reference": true
+          "release": "v4.33.0",
+          "ref": "275d7562958693065a012a74026432b3bd6598b7",
+          "publish_reference": true,
+          "reference_toolchain": "v4.33.0-rc1"
         }
       ],
       "generate_command": [
