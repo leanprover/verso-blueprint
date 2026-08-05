@@ -1995,19 +1995,32 @@ private def buildUsesRelations
   labels.map fun label =>
     relatedEntryForLabel state label (relatedAxes blockData label)
 
+/--
+Read the reverse-dependency index installed after normal HTML traversal.
+The fallback keeps direct `buildPreviewDataFiles` callers with an unpatched
+traversal state correct.
+-/
 private def buildUsedByRelations
     (state : TraverseState)
-    (storedBlocks : Array Informal.BlockData)
     (blockData : Informal.BlockData) : Array RelatedEntry :=
-  storedBlocks.filterMap fun source =>
-    if source.label == blockData.label then
-      none
-    else
-      let axes := relatedAxes source blockData.label
-      if axes.isEmpty then
-        none
-      else
+  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label with
+  | some cachedEntries =>
+      cachedEntries.filterMap fun cached => do
+        let source ← blockInfo? state cached.sourceLabel
+        let axes : Array RelationAxis :=
+          if cached.inStatement then #[.statement] else #[]
+        let axes := if cached.inProof then axes.push .proof else axes
         some <| relatedEntryForBlock state source axes
+  | none =>
+      Informal.collectStoredBlocks state |>.filterMap fun source =>
+        if source.label == blockData.label then
+          none
+        else
+          let axes := relatedAxes source blockData.label
+          if axes.isEmpty then
+            none
+          else
+            some <| relatedEntryForBlock state source axes
 
 private def groupRelationHeader
     (state : TraverseState)
@@ -2042,14 +2055,27 @@ private def buildGroupRelations (state : TraverseState) : Array GroupRelation :=
         groups := groups.push { label := parent, title, declared, entries := #[member] }
   return groups
 
-/-- Resolve traversal-backed group metadata for one entry without storing it per entry. -/
+/--
+Resolve traversal-backed group metadata for one entry without storing it per
+entry. Normal HTML generation uses the cached member index; direct callers with
+an unpatched traversal state retain the full-store fallback.
+-/
 def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option GroupRelation := do
   let parent ← entry.parent
-  let entries := Informal.collectStoredBlocks state |>.filterMap fun blockData =>
-    if statementGroupParent? blockData == some parent && blockData.label != entry.label then
-      some <| relatedEntryForBlock state blockData
-    else
-      none
+  let entries :=
+    match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state parent with
+    | some labels =>
+        labels.filterMap fun label =>
+          if label == entry.label then
+            none
+          else
+            (blockInfo? state label).map (relatedEntryForBlock state)
+    | none =>
+        Informal.collectStoredBlocks state |>.filterMap fun blockData =>
+          if statementGroupParent? blockData == some parent && blockData.label != entry.label then
+            some <| relatedEntryForBlock state blockData
+          else
+            none
   let (title, declared) := groupRelationHeader state parent
   pure { label := parent, title, declared, entries }
 
@@ -2076,7 +2102,6 @@ private def blockSemanticManifestEntry
   let blockData? := blockInfo? state preview.label
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
   let codeData := blockCodeData? state preview.label preview blockData?
-  let storedBlocks := Informal.collectStoredBlocks state
   {
     key
     targetKind
@@ -2097,7 +2122,7 @@ private def blockSemanticManifestEntry
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := sourceRefsForBlockLabel state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-    usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+    usedBy := blockData?.map (buildUsedByRelations state ·) |>.getD #[]
     ownerDisplayName := blockData?.bind (·.ownerDisplayName)
     tags := blockData?.map (·.tags) |>.getD #[]
     priority := blockData?.bind (·.priority)
@@ -2485,6 +2510,7 @@ private def dumpManifest
   let (_text, traverseState) ←
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
+  let traverseState := Informal.RelatedPanel.patchRelationCaches traverseState
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
     (verbose := cfg.verbose)
   let logger := callbackLogger logError
@@ -2513,6 +2539,7 @@ private def dumpHtmlCache
   let (_text, traverseState) ←
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
+  let traverseState := Informal.RelatedPanel.patchRelationCaches traverseState
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
     (verbose := cfg.verbose)
   let logger := callbackLogger logError

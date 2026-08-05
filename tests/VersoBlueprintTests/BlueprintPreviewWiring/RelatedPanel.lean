@@ -86,6 +86,15 @@ private def cachedStatement
     let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source
     let emptyEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state empty
     let groupMembers := Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state group
+    let sourceWithoutRelations := cachedStatement source 1
+    let cacheOnlyState :=
+      Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceWithoutRelations)
+    let targetPreview := Informal.PreviewCache.Entry.ofBlocks target .statement #[]
+    let targetManifestEntry :=
+      Informal.PreviewManifest.blockEntryOfTraversalPreview cacheOnlyState targetPreview
+    let groupedTargetEntry := { targetManifestEntry with parent := some group }
+    let cachedGroup? :=
+      Informal.PreviewManifest.groupRelationForEntry? cacheOnlyState groupedTargetEntry
     match targetEntries with
     | some #[entry] =>
         let rawEntry := Lean.toJson entry |>.compress
@@ -97,7 +106,10 @@ private def cachedStatement
               !hasSubstr rawEntry "\"statementUses\"" &&
               sourceEntries.map Array.isEmpty == some true &&
               emptyEntries.map Array.isEmpty == some true &&
-              groupMembers == some #[source]
+              groupMembers == some #[source] &&
+              targetManifestEntry.usedBy.map (·.label) == #[source] &&
+              targetManifestEntry.usedBy.map (·.axes) == #[#[.statement]] &&
+              cachedGroup?.map (fun relation => relation.entries.map (·.label)) == some #[source]
         | _, _ => false
     | _ => false
 
