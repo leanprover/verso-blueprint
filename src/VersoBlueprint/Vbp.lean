@@ -285,9 +285,27 @@ private def readManifestWith
 def readManifestForSite (site : FilePath) : IO ManifestFile :=
   readManifestWith Informal.PreviewManifest.readFile site
 
+/--
+Whether a query must use the strict manifest reader that reconstructs graph data.
+
+Graph-free loading is an explicit allowlist. Unknown or newly added selector
+shapes default to strict loading so they cannot silently observe an empty graph
+projection when their read mode has not yet been classified.
+-/
 def queryNeedsGraphData : List String → Bool
-  | ["work-queue"] => true
-  | _ => false
+  | ["selectors"]
+  | ["labels"]
+  | ["node", _]
+  | ["uses", _]
+  | ["used-by", _]
+  | ["group", _]
+  | ["owners"]
+  | ["tags"]
+  | ["metadata"]
+  | ["search", _]
+  | ["code", _]
+  | ["stats"] => false
+  | _ => true
 
 def readManifestForQuery (site : FilePath) (selector : List String) : IO ManifestFile := do
   if queryNeedsGraphData selector then

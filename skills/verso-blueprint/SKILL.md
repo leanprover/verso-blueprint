@@ -13,7 +13,6 @@ Prefer the project-local helper:
 lake exe vbp discover
 lake exe vbp build
 lake exe vbp query labels
-lake exe vbp check
 ```
 
 Read `references/vbp.md` when you need exact command behavior, JSON shapes, serve behavior, or fallback commands.

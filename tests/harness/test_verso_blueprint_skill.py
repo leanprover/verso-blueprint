@@ -20,6 +20,14 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("JSON shapes as unstable", text)
         self.assertNotIn("TODO", text)
 
+    def test_quick_start_does_not_present_check_as_a_routine_build_step(self) -> None:
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        quick_start = text.split("## Quick Start", 1)[1].split("Read `references/vbp.md`", 1)[0]
+        self.assertIn("lake exe vbp build", quick_start)
+        self.assertIn("lake exe vbp query labels", quick_start)
+        self.assertNotIn("lake exe vbp check", quick_start)
+        self.assertIn("Use `lake exe vbp check` when auditing", text)
+
     def test_vbp_reference_documents_public_surface(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
         self.assertIn("lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]", text)

@@ -671,6 +671,33 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     (dataDir / Informal.PreviewManifest.manifestFilename)
     manifestJson.compress
 
+private def queryReadModeExamples : List (String × List String × Bool) := [
+  ("selectors", ["selectors"], false),
+  ("labels", ["labels"], false),
+  ("node <label>", ["node", "addition_assoc"], false),
+  ("uses <label>", ["uses", "addition_assoc"], false),
+  ("used-by <label>", ["used-by", "addition_assoc"], false),
+  ("group <label>", ["group", "addition_assoc"], false),
+  ("owners", ["owners"], false),
+  ("tags", ["tags"], false),
+  ("work-queue", ["work-queue"], true),
+  ("metadata", ["metadata"], false),
+  ("search <text>", ["search", "addition"], false),
+  ("code <decl>", ["code", "Nat.add"], false),
+  ("stats", ["stats"], false)
+]
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    queryReadModeExamples.map (fun (selector, _, _) => selector) ==
+        VersoBlueprint.Vbp.querySelectorLines &&
+      (queryReadModeExamples.all fun (_, args, needsGraphData) =>
+        VersoBlueprint.Vbp.queryNeedsGraphData args == needsGraphData) &&
+      VersoBlueprint.Vbp.queryNeedsGraphData ["future-selector"] &&
+      VersoBlueprint.Vbp.queryNeedsGraphData ["node"]
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -1230,16 +1257,23 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
   let site ← freshVbpFixtureRoot
   writeRawManifestOnlySite site (toJson sampleGraphReferenceManifest)
   let strictManifest ← VersoBlueprint.Vbp.readManifestForSite site
-  let queryManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["labels"]
-  let workQueueManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["work-queue"]
+  let queryManifests ← queryReadModeExamples.mapM
+      (fun (queryMode : String × List String × Bool) => do
+        let args := queryMode.2.1
+        let needsGraphData := queryMode.2.2
+        let manifest ← VersoBlueprint.Vbp.readManifestForQuery site args
+        pure (manifest, needsGraphData))
+  let unknownManifest ←
+    VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
   pure <|
     strictManifest.graphs.size == 1 &&
-      queryManifest.graphs.isEmpty &&
-      workQueueManifest.graphs.size == 1 &&
-      queryManifest.previews.map
-          (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
-        sampleGraphReferenceManifest.previews.map
-          (fun entry : Informal.PreviewManifest.Entry => entry.key)
+      queryManifests.all (fun (manifest, needsGraphData) =>
+        manifest.graphs.isEmpty == !needsGraphData &&
+          manifest.previews.map
+              (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
+            sampleGraphReferenceManifest.previews.map
+              (fun entry : Informal.PreviewManifest.Entry => entry.key)) &&
+      unknownManifest.graphs.size == 1
 
 /-- info: true -/
 #guard_msgs in
@@ -1248,7 +1282,14 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
   let malformedGraphManifest :=
     (toJson sampleManifest).setObjVal! "graphs" (Json.arr #[Json.str "malformed"])
   writeRawManifestOnlySite site malformedGraphManifest
-  let queryManifest ← VersoBlueprint.Vbp.readManifestForQuery site ["labels"]
+  let graphFreeManifests ← queryReadModeExamples.filterMapM
+      (fun (queryMode : String × List String × Bool) =>
+        let args := queryMode.2.1
+        let needsGraphData := queryMode.2.2
+        if needsGraphData then
+          pure none
+        else
+          some <$> VersoBlueprint.Vbp.readManifestForQuery site args)
   let strictRejected ←
     try
       let _ ← VersoBlueprint.Vbp.readManifestForSite site
@@ -1261,11 +1302,18 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       pure false
     catch _ =>
       pure true
+  let unknownRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
+      pure false
+    catch _ =>
+      pure true
   pure <|
-    queryManifest.previews.size == sampleManifest.previews.size &&
-      queryManifest.graphs.isEmpty &&
+    graphFreeManifests.all (fun manifest =>
+      manifest.previews.size == sampleManifest.previews.size && manifest.graphs.isEmpty) &&
       strictRejected &&
-      workQueueRejected
+      workQueueRejected &&
+      unknownRejected
 
 /-- info: true -/
 #guard_msgs in
