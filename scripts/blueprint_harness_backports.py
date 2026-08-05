@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 
-EXEMPT_FILE_NAMES = frozenset(
+EXEMPT_PATHS = frozenset(
     {
         ".gitattributes",
         ".gitignore",
@@ -24,7 +24,7 @@ def backport_exemption_violations(paths: Iterable[str]) -> tuple[str, ...]:
         path = raw_path.removeprefix("./")
         exempt = (
             path.endswith(".md")
-            or path in EXEMPT_FILE_NAMES
+            or path in EXEMPT_PATHS
             or path.startswith(EXEMPT_PATH_PREFIXES)
         )
         if not exempt:

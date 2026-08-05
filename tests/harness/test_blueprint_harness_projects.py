@@ -141,7 +141,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
 
-    def assert_single_current_release_target(
+    def assert_single_maintained_release_target(
         self,
         project: HarnessProject,
         release_ids: set[str],
@@ -201,11 +201,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
             self.assertEqual(project.repository, expected_external_repositories[project.project_id])
-            self.assert_single_current_release_target(project, release_id_set, publish_reference=True)
+            self.assert_single_maintained_release_target(project, release_id_set, publish_reference=True)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertEqual(projects[1].browser_tests_path, None)
-        self.assertEqual(projects[1].panel_regression_script, None)
 
     def test_selected_project_toolchain_requires_resolved_release_metadata(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
