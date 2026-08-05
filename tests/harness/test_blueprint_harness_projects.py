@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from scripts.blueprint_harness_projects import (
     HarnessProject,
@@ -43,6 +45,7 @@ from scripts.blueprint_harness_references import (
     seed_lake_packages_from_dependency_cache,
     store_lake_path_builds_in_dependency_cache,
     store_lake_packages_in_dependency_cache,
+    sync_reference_local_checkout,
     update_git_checkout,
     validate_external_reference_toolchain,
 )
@@ -346,6 +349,83 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(shared_marker.read_text(encoding="utf-8"), "warm")
             self.assertEqual(local_marker.read_text(encoding="utf-8"), "warm")
 
+    @unittest.skipUnless(shutil.which("rsync"), "rsync is required for the reference cache integration test")
+    def test_reference_local_checkout_seeds_without_consuming_shared_cache(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = external_project()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_identity = reference_source_identity(project)
+            cache_dir = root / "cache" / source_identity
+            dependency_packages = root / "deps" / source_identity / "packages"
+            shared_marker = dependency_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            shared_marker.parent.mkdir(parents=True)
+            shared_marker.write_text("shared", encoding="utf-8")
+            dependency_path_builds = root / "deps" / source_identity / "path-builds"
+            shared_path_marker = (
+                dependency_path_builds / "Formalization" / ".lake" / "build" / "Formalization.olean"
+            )
+            shared_path_marker.parent.mkdir(parents=True)
+            shared_path_marker.write_text("shared path build", encoding="utf-8")
+            layout = SimpleNamespace(
+                package_root=root / "pkg",
+                reference_source_cache_root=root / "cache",
+                reference_dependency_cache_root=root / "deps",
+                reference_project_checkout_root=root / "checkouts",
+            )
+            layout.package_root.mkdir()
+            clone_sources: list[str | None] = []
+
+            def fake_clone(_project, destination, *, cwd, source=None, shallow=True):
+                clone_sources.append(source)
+                project_dir = destination / project.project_root
+                project_dir.mkdir(parents=True)
+                (project_dir / "lake-manifest.json").write_text(
+                    json.dumps({"packages": [{"type": "path", "dir": "Formalization"}]}),
+                    encoding="utf-8",
+                )
+                return destination
+
+            with (
+                patch.object(refs_mod, "clone_git_project", side_effect=fake_clone),
+                patch.object(refs_mod, "bootstrap_reference_checkout"),
+            ):
+                local_dir = sync_reference_local_checkout(layout, project, cache_dir)
+
+            local_marker = (
+                local_dir
+                / project.project_root
+                / ".lake"
+                / "packages"
+                / "mathlib"
+                / ".lake"
+                / "build"
+                / "Mathlib.olean"
+            )
+            local_path_marker = (
+                local_dir
+                / project.project_root
+                / "Formalization"
+                / ".lake"
+                / "build"
+                / "Formalization.olean"
+            )
+            self.assertEqual(clone_sources, [str(cache_dir)])
+            self.assertEqual(local_marker.read_text(encoding="utf-8"), "shared")
+            self.assertEqual(local_path_marker.read_text(encoding="utf-8"), "shared path build")
+            local_marker.write_text("consumer", encoding="utf-8")
+            local_path_marker.write_text("consumer path build", encoding="utf-8")
+            self.assertEqual(shared_marker.read_text(encoding="utf-8"), "shared")
+            self.assertEqual(shared_path_marker.read_text(encoding="utf-8"), "shared path build")
+
+    def test_reference_rsync_requirement_has_a_maintainer_facing_error(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with patch.object(refs_mod.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(SystemExit, "`rsync` is required for external reference cache copies"):
+                refs_mod.require_reference_rsync()
+
     def test_reference_source_paths_share_one_identity_and_exclude_generated_output(self) -> None:
         project = external_project()
         layout = SimpleNamespace(
@@ -482,9 +562,25 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("matrix.reference_dependency_packages_path", workflow_text)
         self.assertIn("matrix.reference_dependency_path_builds_path", workflow_text)
         self.assertIn("reference-deps-v2-${{ matrix.reference_source_identity }}", workflow_text)
+        self.assertIn(
+            "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}",
+            workflow_text,
+        )
+        self.assertIn(
+            "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}",
+            workflow_text,
+        )
         self.assertIn("matrix.reference_dependency_packages_path", deploy_workflow_text)
         self.assertIn("matrix.reference_dependency_path_builds_path", deploy_workflow_text)
         self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_source_identity }}", deploy_workflow_text)
+        self.assertIn(
+            "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}",
+            deploy_workflow_text,
+        )
+        self.assertIn(
+            "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}",
+            deploy_workflow_text,
+        )
         self.assertIn(
             "group: ${{ github.repository }}-reference-blueprints-pages",
             deploy_workflow_text,

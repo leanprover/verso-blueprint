@@ -1486,7 +1486,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 [target["release"] for target in manifest["projects"][1]["targets"]],
                 ["v4.29.0"],
             )
-            self.assertIn("set-default-dev-branch v4.30.0", out.getvalue())
+            self.assertIn("set-default-dev-branch v4.30.0-rc2", out.getvalue())
 
     def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
         args = argparse.Namespace(
@@ -1535,6 +1535,96 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 (root / "branch-policy.json").read_text(encoding="utf-8"),
                 '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": [\n    "v4.28.0"\n  ]\n}\n',
             )
+            self.assertIn("checkout_role=backport", out.getvalue())
+
+    def test_set_default_dev_branch_adds_missing_version_two_release_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
+            (root / "branch-policy.json").write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "default_dev_branch": "v4.32.0",
+                        "required_backport_branches": [],
+                        "release_targets": [
+                            {
+                                "id": "v4.32.0",
+                                "toolchain": "v4.32.0",
+                                "verso_ref": "v4.32.0",
+                                "branch": "v4.32.0",
+                                "deploy_pages": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest_path = root / "tests" / "harness" / "projects.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "projects": [
+                            {
+                                "id": "project-template",
+                                "source": {"kind": "in_repo_project"},
+                                "targets": [{"release": "v4.32.0"}],
+                            },
+                            {
+                                "id": "external",
+                                "source": {"kind": "git_checkout"},
+                                "targets": [{"release": "v4.32.0", "ref": "abc"}],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(branch="4.33-rc2")
+            layout = SimpleNamespace(package_root=root)
+            out = io.StringIO()
+            with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):
+                with redirect_stdout(out):
+                    self.assertEqual(harness_mod.command_set_default_dev_branch(args), 0)
+
+            policy = json.loads((root / "branch-policy.json").read_text(encoding="utf-8"))
+            self.assertEqual(policy["default_dev_branch"], "v4.33.0")
+            self.assertEqual(policy["required_backport_branches"], [])
+            self.assertEqual(
+                policy["release_targets"],
+                [
+                    {
+                        "id": "v4.32.0",
+                        "toolchain": "v4.32.0",
+                        "verso_ref": "v4.32.0",
+                        "branch": "v4.32.0",
+                        "deploy_pages": True,
+                    },
+                    {
+                        "id": "v4.33.0",
+                        "toolchain": "v4.33.0",
+                        "verso_ref": "v4.33.0",
+                        "branch": "v4.33.0",
+                        "deploy_pages": False,
+                    },
+                ],
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["projects"][0]["targets"],
+                [
+                    {"release": "v4.32.0"},
+                    {"release": "v4.33.0", "rc": "4.33-rc2"},
+                ],
+            )
+            self.assertEqual(
+                manifest["projects"][1]["targets"],
+                [{"release": "v4.32.0", "ref": "abc"}],
+            )
+            self.assertIn("rc=4.33-rc2", out.getvalue())
+            self.assertIn("release_target_added=true", out.getvalue())
             self.assertIn("checkout_role=backport", out.getvalue())
 
     def test_paths_prints_current_release_project_sites_by_default(self) -> None:
@@ -2342,6 +2432,24 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 serial=False,
                 allow_local_build=False,
             )
+
+    def test_generate_projects_preflights_rsync_for_external_projects(self) -> None:
+        layout = SimpleNamespace(package_root=Path("/tmp/package"), in_linked_worktree=True)
+
+        with patch.object(
+            reference_harness_mod,
+            "require_reference_rsync",
+            side_effect=SystemExit("rsync required"),
+        ):
+            with self.assertRaisesRegex(SystemExit, "rsync required"):
+                generate_projects(
+                    layout,
+                    Path("/tmp/out"),
+                    [self.published_git_project()],
+                    skip_build=False,
+                    serial=False,
+                    allow_local_build=False,
+                )
 
     def test_validate_run_lean_tests_does_not_auto_sync_root_lake(self) -> None:
         args = argparse.Namespace(

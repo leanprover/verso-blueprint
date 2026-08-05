@@ -198,6 +198,11 @@ def validate_external_reference_toolchain(
     return project_toolchain.lean_ref
 
 
+def require_reference_rsync() -> None:
+    if shutil.which("rsync") is None:
+        raise SystemExit("[blueprint-harness] `rsync` is required for external reference cache copies.")
+
+
 def seed_lake_packages_from_dependency_cache(
     layout,
     project: HarnessProject,
@@ -827,20 +832,9 @@ def sync_reference_local_checkout(
         update_git_checkout(project, local_dir)
     bootstrap_reference_checkout(project_dir=local_dir / project.project_root)
 
-    dependency_packages = paths.dependency_packages
-    if dependency_packages.exists():
-        local_packages = local_dir / project.project_root / ".lake" / "packages"
-        local_packages.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                "rsync",
-                "-a",
-                f"{dependency_packages}/",
-                f"{local_packages}/",
-            ],
-            cwd=layout.package_root,
-        )
-    seed_lake_path_builds_from_dependency_cache(layout, project, local_dir / project.project_root)
+    project_dir = local_dir / project.project_root
+    seed_lake_packages_from_dependency_cache(layout, project, project_dir)
+    seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
     return local_dir
 
 
@@ -951,8 +945,7 @@ def sync_reference_blueprints(
     git_projects = [project for project in projects if project.git_checkout]
     if not git_projects:
         return
-    if shutil.which("rsync") is None:
-        raise SystemExit("[blueprint-harness] `rsync` is required for reference dependency cache sync.")
+    require_reference_rsync()
     for project in git_projects:
         cache_dir = sync_reference_cache_checkout(layout, project, warm_build=warm_build)
         if prepare_local_checkout:

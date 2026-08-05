@@ -622,23 +622,52 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     print(f"project_manifest={manifest_path}")
     print(f"deploy_pages={str(args.deploy_pages).lower()}")
     print("[blueprint-harness] next: commit this branch-start change, then update older branches with:")
-    print(f"python3 -m scripts.blueprint_harness set-default-dev-branch {release_id}")
+    print(f"python3 -m scripts.blueprint_harness set-default-dev-branch {result.lean_ref}")
     return 0
 
 
 def command_set_default_dev_branch(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     old_policy = load_branch_policy(layout.package_root)
+    requested_lean_ref = normalize_lean_release_ref(args.branch)
+    new_default_branch = release_branch_from_lean_ref(requested_lean_ref)
+    rc = release_candidate_name_or_none(requested_lean_ref)
+    release_targets = old_policy.release_targets
+    release_target_added = False
+    if old_policy.version >= 2 and all(
+        target.release_id != new_default_branch for target in release_targets
+    ):
+        release_targets = upsert_release_target(
+            release_targets,
+            BranchPolicyReleaseTarget(
+                release_id=new_default_branch,
+                release_toolchain=new_default_branch,
+                release_verso_ref=new_default_branch,
+                branch=new_default_branch,
+                deploy_pages=False,
+            ),
+        )
+        release_target_added = True
     new_policy = write_branch_policy(
         layout.package_root,
-        default_dev_branch=args.branch,
+        default_dev_branch=new_default_branch,
         required_backport_branches=old_policy.required_backport_branches,
-        release_targets=old_policy.release_targets,
+        release_targets=release_targets,
         version=old_policy.version,
     )
+    manifest_path = resolve_manifest_path(None, layout.package_root)
+    if manifest_path.exists():
+        update_release_line_project_manifest(
+            manifest_path,
+            release_id=new_default_branch,
+            rc=rc,
+        )
     print(f"branch_policy={new_policy.source_path}")
     print(f"default_dev_branch={new_policy.default_dev_branch}")
+    print(f"rc={rc or ''}")
+    print(f"release_target_added={str(release_target_added).lower()}")
     print(f"required_backports={','.join(new_policy.required_backport_branches)}")
+    print(f"project_manifest={manifest_path}")
     print(f"active_release_branch={active_release_branch(layout.package_root)}")
     print(f"checkout_role={checkout_branch_role(layout.package_root)}")
     return 0
@@ -1393,11 +1422,11 @@ def add_release_management_commands(subparsers) -> None:
 
     set_default_dev_branch = subparsers.add_parser(
         "set-default-dev-branch",
-        help="Update only `branch-policy.json.default_dev_branch` in the current checkout.",
+        help="Update `branch-policy.json` for a new default-development release branch.",
     )
     set_default_dev_branch.add_argument(
         "branch",
-        help="New default development branch, such as `v4.32.0`.",
+        help="New default development Lean ref, including an RC ref when applicable.",
     )
     set_default_dev_branch.set_defaults(func=command_set_default_dev_branch)
 

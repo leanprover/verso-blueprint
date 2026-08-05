@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -76,7 +77,11 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command(["bash", "scripts/report-ci-disk-usage.sh", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Print a compact disk-usage report", result.stdout)
-        self.assertIn("--reference-source-identity", result.stdout)
+        self.assertIn("BP_REFERENCE_SOURCE_IDENTITY", result.stdout)
+        self.assertIn("BP_REFERENCE_DEPENDENCY_PACKAGES_PATH", result.stdout)
+        self.assertIn("BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH", result.stdout)
+        self.assertIn("BP_REFERENCE_ARTIFACT_PATH", result.stdout)
+        self.assertNotIn("--reference-source-identity", result.stdout)
 
     def test_report_ci_disk_usage_includes_dependency_path_builds(self) -> None:
         identity = "external-main-123456789abc"
@@ -97,13 +102,21 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
                     "bash",
                     str(PACKAGE_ROOT / "scripts" / "report-ci-disk-usage.sh"),
                     "test",
-                    "--reference-source-identity",
-                    identity,
                 ],
                 cwd=root,
                 check=False,
                 text=True,
                 capture_output=True,
+                env={
+                    **os.environ,
+                    "BP_REFERENCE_SOURCE_IDENTITY": identity,
+                    "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH": (
+                        f".worktrees/_reference-blueprints/deps/{identity}/packages"
+                    ),
+                    "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH": (
+                        f".worktrees/_reference-blueprints/deps/{identity}/path-builds"
+                    ),
+                },
             )
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
