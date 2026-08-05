@@ -293,6 +293,46 @@ Invalid source metadata.
 /-- info: true -/
 #guard_msgs in
 #eval
+  show Bool from
+    let sharedCitation := "Lemma 2.1(1)"
+    let paperSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[{ page := "12", citation := sharedCitation }]
+    }
+    let notesSource : Informal.Source.Ref := {
+      document := "notes"
+      spans := #[{ anchor := "itm:addition-right-identity", citation := sharedCitation }]
+    }
+    let uncitedSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[{ page := "12" }]
+    }
+    let ambiguousSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[
+        { page := "12", citation := sharedCitation },
+        { page := "13", citation := "Lemma 2.1(2)" }
+      ]
+    }
+    let singleHtml? :=
+      (Informal.renderSourceHeaderExtra? #[paperSource]).map (·.html.asString)
+    let multipleHtml? :=
+      (Informal.renderSourceHeaderExtra? #[paperSource, notesSource]).map (·.html.asString)
+    let uncitedHtml? :=
+      (Informal.renderSourceHeaderExtra? #[uncitedSource]).map (·.html.asString)
+    let ambiguousHtml? :=
+      (Informal.renderSourceHeaderExtra? #[ambiguousSource]).map (·.html.asString)
+    singleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
+      multipleHtml?.any (hasSubstr · "sources 2") &&
+      !multipleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
+      uncitedHtml?.any (hasSubstr · "source 1") &&
+      !uncitedHtml?.any (hasSubstr · "source:") &&
+      ambiguousHtml?.any (hasSubstr · "source 1") &&
+      !ambiguousHtml?.any (hasSubstr · "source:")
+
+/-- info: true -/
+#guard_msgs in
+#eval
   show IO Bool from do
     let (html, st) ← renderManualDocHtmlStringAndState extension_impls% sourceProvenanceDoc
     let sourceDocument? := Informal.TraversalIndex.SourceDocuments.data? st "paper"

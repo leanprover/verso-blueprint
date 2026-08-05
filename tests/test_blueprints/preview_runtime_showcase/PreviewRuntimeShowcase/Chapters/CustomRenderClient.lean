@@ -518,6 +518,15 @@ source := {
           yMax := 520
         }
       }
+    },
+    {
+      anchor := "itm:custom-client"
+      citation := "Theorem 4.2"
+      text := some {
+        path := "source/custom-client.tex"
+        startLine := 80
+        endLine := 82
+      }
     }
   ]
 }
