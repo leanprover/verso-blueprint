@@ -448,13 +448,14 @@ cache root, and the current checkout's local clone root.
 
 ## External Reference Cache Ownership
 
-Every external git-checkout project has one `reference_source_identity`. Its
-readable prefix comes from the catalog project id, and its digest is derived
-from the repository URL, project root, and selected source ref. The identity
+Every selected external git-checkout project source has one
+`reference_source_identity`. Its readable prefix comes from the catalog project
+id, and its digest is derived from the repository URL, project root, and
+selected source ref. The identity
 intentionally does not include the current Verso Blueprint checkout or release
 label: all paths below represent the same pinned external source. The reference
-and deploy CI matrices serialize this same identity so local and CI cache
-layouts agree.
+and deploy CI matrices serialize this identity together with its canonical
+dependency paths so local and CI cache layouts agree.
 
 | Role | Path | Ownership |
 | --- | --- | --- |

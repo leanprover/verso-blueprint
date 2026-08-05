@@ -17,6 +17,7 @@ from scripts.blueprint_harness_projects import (
     command_with_pdf,
     reference_source_identity,
     selected_project_toolchain,
+    short_git_ref,
 )
 from scripts.blueprint_harness_project_commands import (
     discard_untracked_project_manifest,
@@ -84,7 +85,6 @@ class ReferenceToolchain:
 class ReferenceSourcePaths:
     identity: str
     source_checkout: Path
-    dependency_cache: Path
     dependency_packages: Path
     dependency_path_builds: Path
     local_checkout: Path
@@ -104,7 +104,6 @@ def reference_source_paths(layout, project: HarnessProject) -> ReferenceSourcePa
     return ReferenceSourcePaths(
         identity=identity,
         source_checkout=layout.reference_source_cache_root / identity,
-        dependency_cache=dependency_cache,
         dependency_packages=dependency_cache / "packages",
         dependency_path_builds=dependency_cache / "path-builds",
         local_checkout=layout.reference_project_checkout_root / identity,
@@ -226,6 +225,7 @@ def store_lake_packages_in_dependency_cache(
     run(["rsync", "-a", "--delete", f"{source_packages}/", f"{destination_packages}/"], cwd=layout.package_root)
     return destination_packages
 
+
 def discard_lake_packages(project_dir: Path) -> Path | None:
     packages = lake_packages_dir(project_dir)
     if not packages.exists() and not packages.is_symlink():
@@ -304,10 +304,6 @@ def store_lake_path_builds_in_dependency_cache(layout, project: HarnessProject, 
         run(["rsync", "-a", "--delete", f"{source_build}/", f"{destination_build}/"], cwd=layout.package_root)
         copied = True
     return destination_root if copied else None
-
-
-def short_git_ref(ref: str) -> str:
-    return ref[:12] if COMMIT_HASH_PATTERN.fullmatch(ref) is not None else ref
 
 
 def default_reference_bump_branch(ref: str) -> str:
@@ -842,20 +838,6 @@ def sync_reference_local_checkout(
                 f"{dependency_packages}/",
                 f"{local_packages}/",
             ],
-            cwd=layout.package_root,
-        )
-    else:
-        cache_lake = cache_dir / project.project_root / ".lake"
-        if not cache_lake.exists():
-            return local_dir
-        # Fallback for caches produced before the dedicated dependency-package
-        # cache existed: seed dependency state from the shared checkout, but
-        # preserve the worktree-local project's own build products. Those
-        # artifacts are produced after rewriting the reference project to depend
-        # on the local VersoBlueprint checkout, so deleting them defeats the
-        # local cache.
-        run(
-            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / project.project_root / '.lake'}/"],
             cwd=layout.package_root,
         )
     seed_lake_path_builds_from_dependency_cache(layout, project, local_dir / project.project_root)
