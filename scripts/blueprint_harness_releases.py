@@ -79,6 +79,30 @@ def release_branch_version(raw_ref: str) -> tuple[int, int, int]:
     return int(major), int(minor), int(patch)
 
 
+def lean_release_family(raw_ref: str) -> tuple[int, int]:
+    """Return the Lean major/minor release family for a stable or RC ref."""
+    major, minor, _patch = release_branch_version(raw_ref)
+    return major, minor
+
+
+def lean_release_subversion(raw_ref: str) -> tuple[int, int, int]:
+    """Order versions within one Lean release family.
+
+    The first component is the patch version. Within one patch, release
+    candidates precede the final release and are ordered by RC number.
+    """
+    ref = normalize_lean_release_ref(raw_ref)
+    rc_match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    if rc_match is not None:
+        return int(rc_match.group("patch") or "0"), 0, int(rc_match.group("rc"))
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None:
+        _major, _minor, patch = ref.removeprefix("v").split(".")
+        return int(patch), 1, 0
+    raise SystemExit(
+        f"[blueprint-harness] expected an official numeric Lean release or release candidate, got `{ref}`"
+    )
+
+
 def lean_toolchain_spec(lean_ref: str) -> str:
     return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
 

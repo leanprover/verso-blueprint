@@ -82,12 +82,14 @@ Reference release metadata has two tracked sources of truth. `branch-policy.json
 owns release ids, branch names, baseline Lean toolchain refs, baseline `verso`
 refs, default-development/backport policy, and the release-level Pages deploy
 flag. `tests/harness/projects.json` owns project ids, external repository refs,
-the `publish_reference` flag, and any per-project compiler or RC override.
+the `publish_reference` flag, and the exact `reference_toolchain` when an
+external project is behind VBP within the same release family.
 Matrix emitter scripts derive effective per-project `toolchain` and `verso_ref`
-values from those two files; release targets themselves do not carry `rc`
-metadata. A project-target `rc` changes both values for legacy RC lockstep,
-while a project-target `toolchain` changes only the compiler and leaves the
-release target's VBP/Verso ref intact.
+values from those two files. A project-target `rc` is reserved for VBP's own
+in-repository fixtures, which move in lockstep with VBP. External reference
+projects never select the VBP/Verso ref: their `reference_toolchain` controls
+only the effective compiler, while the release target continues to control
+VBP/Verso.
 
 ## Everyday Workflows
 
@@ -386,9 +388,10 @@ the command pins the managed root-package files to `v4.33.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
-validated on the new Lean release. If one project target still needs a release
-candidate, put the short RC name, for example `"rc": "4.33-rc2"`, on that
-specific project target in `tests/harness/projects.json`.
+validated on the new Lean release. If an external project still uses a release
+candidate while VBP has moved further within that release family, record its
+exact compiler, for example `"reference_toolchain": "v4.33.0-rc1"`, on that
+project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
 changes the actual Lean toolchain. Instead, update only the tracked branch
@@ -776,10 +779,10 @@ the project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
 default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
-`projects.json` refs. The per-project target entry also owns any RC or
-compiler-only override, so two projects in the same release line can use
-different compilers when needed without necessarily selecting different
-VBP/Verso refs. Deploy one-project manifests append `--pdf` to the
+`projects.json` refs. The per-project target entry also owns the exact external
+reference toolchain, so two projects in the same release family can use
+different compilers while sharing the release target's VBP/Verso ref. Deploy
+one-project manifests append `--pdf` to the
 selected generator command only for the default-development release target, so
 the current published catalog includes PDFs while archived release targets stay
 HTML-only unless their deploy policy is deliberately expanded.
@@ -880,24 +883,25 @@ The harness is now project-driven rather than hardcoded to one project.
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
 - the external project's top-level `lean-toolchain` selects its compiler; the
-  harness validates that it exactly matches the project target's final/RC
-  metadata and belongs to the same Lean release family as the VBP checkout, but
-  never promotes an RC project or rewrites dependency toolchains
+  harness validates that it exactly matches the project target's
+  `reference_toolchain` (or the release baseline when that field is omitted),
+  belongs to the same Lean release family as VBP, and is not newer than VBP;
+  the harness never promotes an RC project or rewrites dependency toolchains
 - the current local override injection expects a `lakefile.lean` project that
   declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
   repository, and it tolerates different Git refs and URL spellings for that
   source
 - local worktree bookkeeping is intentionally not tracked in the repository
 
-For example, the release id may remain `v4.32.0` while a specific published
-project target records `"rc": "4.32-rc1"`. That row then builds with
-`leanprover/lean4:v4.32.0-rc1` and pins `verso` to `v4.32.0-rc1`, while another
-project target on the same release id can use a different RC or the final
-release tag.
-
-Use `"toolchain": "v4.32.0-rc1"` instead when only the external project's
-compiler must remain on that RC while VBP/Verso use the release target's normal
-ref. Do not combine `rc` and `toolchain` on one project target.
+The compatibility rule is monotonic within one Lean release family. If VBP's
+subversion is older than the reference project's subversion, validation fails
+and the VBP maintainers must bump VBP. If VBP is equal or newer, the reference
+project's exact toolchain remains the effective compiler. For example, a
+`v4.33.0` VBP release may build an external project with
+`"reference_toolchain": "v4.33.0-rc1"`; VBP/Verso stay on `v4.33.0`, while the
+wrapper, formalization, Mathlib artifacts, and build all stay on `v4.33.0-rc1`.
+Cross-family combinations such as VBP `v4.34.0` with a `v4.33.0` reference are
+always rejected.
 
 Minimal external catalog entry shape:
 

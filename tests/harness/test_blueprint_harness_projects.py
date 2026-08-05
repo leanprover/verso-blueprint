@@ -18,6 +18,8 @@ from scripts.blueprint_harness_projects import (
     deploy_matrix_from_controller_catalog,
     load_project_catalog,
     load_project_catalog_data,
+    project_target_toolchain,
+    project_target_verso_ref,
     reference_build_matrix,
     reference_source_identity,
     reference_release_payload,
@@ -85,6 +87,40 @@ def load_project_catalog_text(text: str, manifest_path: Path | str):
     return load_project_catalog_data(raw, manifest_path)
 
 
+def external_catalog_data(
+    *,
+    vbp_toolchain: str,
+    reference_toolchain: str | None,
+    release: str = "v4.33.0",
+) -> dict[str, object]:
+    target: dict[str, object] = {"release": release, "ref": "reference-ref"}
+    if reference_toolchain is not None:
+        target["reference_toolchain"] = reference_toolchain
+    return {
+        "version": 2,
+        "release_targets": [
+            {
+                "id": release,
+                "toolchain": vbp_toolchain,
+                "verso_ref": release,
+                "branch": release,
+                "deploy_pages": True,
+            }
+        ],
+        "projects": [
+            {
+                "id": "external-blueprint",
+                "source": {
+                    "kind": "git_checkout",
+                    "repository": "https://example.com/external-blueprint.git",
+                },
+                "targets": [target],
+                "generate_command": list(VBP_BUILD_COMMAND),
+            }
+        ],
+    }
+
+
 class BlueprintHarnessProjectsTests(unittest.TestCase):
     def test_command_with_pdf_appends_pdf_once(self) -> None:
         self.assertEqual(
@@ -133,13 +169,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             expected_projects.append(project.project_id)
             expected_refs[project.project_id] = target.ref
             expected_rcs[project.project_id] = target.rc
-            expected_toolchains[project.project_id] = target.toolchain
+            expected_toolchains[project.project_id] = target.reference_toolchain or release.toolchain
 
         self.assertEqual([project.project_id for project in projects], expected_projects)
         for project in projects:
             self.assertEqual(project.selected_release, release.release_id)
             self.assertEqual(project.selected_rc, expected_rcs[project.project_id])
-            self.assertEqual(project.selected_toolchain, expected_toolchains[project.project_id])
+            self.assertEqual(
+                project.selected_reference_toolchain,
+                expected_toolchains[project.project_id],
+            )
             expected_ref = expected_refs[project.project_id]
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
@@ -215,14 +254,87 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "has no selected release target"):
             selected_project_toolchain(external_project())
 
-    def test_selected_project_toolchain_prefers_compiler_only_override(self) -> None:
+    def test_selected_project_toolchain_uses_reference_toolchain(self) -> None:
         project = external_project(
             selected_release="v4.33.0",
             selected_rc=None,
-            selected_toolchain="v4.33.0-rc1",
+            selected_reference_toolchain="v4.33.0-rc1",
         )
 
         self.assertEqual(selected_project_toolchain(project), "v4.33.0-rc1")
+
+    def test_reference_toolchain_accepts_equal_vbp_subversion(self) -> None:
+        catalog = load_project_catalog_data(
+            external_catalog_data(
+                vbp_toolchain="v4.33.0-rc2",
+                reference_toolchain="v4.33.0-rc2",
+            ),
+            "projects.json",
+        )
+        release = catalog.release_target("v4.33.0")
+        self.assertIsNotNone(release)
+        project = resolve_projects_for_release(catalog, "v4.33.0", ["external-blueprint"])[0]
+
+        self.assertEqual(selected_project_toolchain(project), "v4.33.0-rc2")
+        self.assertEqual(project_target_toolchain(release, project), "v4.33.0-rc2")
+
+    def test_reference_toolchain_accepts_vbp_ahead_and_keeps_reference_effective(self) -> None:
+        catalog = load_project_catalog_data(
+            external_catalog_data(
+                vbp_toolchain="v4.33.0",
+                reference_toolchain="v4.33.0-rc1",
+            ),
+            "projects.json",
+        )
+        release = catalog.release_target("v4.33.0")
+        self.assertIsNotNone(release)
+        project = resolve_projects_for_release(catalog, "v4.33.0", ["external-blueprint"])[0]
+
+        self.assertEqual(project_target_toolchain(release, project), "v4.33.0-rc1")
+        self.assertEqual(project_target_verso_ref(release, project), "v4.33.0")
+
+    def test_reference_toolchain_rejects_vbp_behind(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "VBP toolchain `v4.33.0-rc1` is older than reference toolchain `v4.33.0-rc2`.*ask the VBP maintainers to bump",
+        ):
+            load_project_catalog_data(
+                external_catalog_data(
+                    vbp_toolchain="v4.33.0-rc1",
+                    reference_toolchain="v4.33.0-rc2",
+                ),
+                "projects.json",
+            )
+
+    def test_reference_toolchain_rejects_different_release_family(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not belong to release family `v4.33.0`"):
+            load_project_catalog_data(
+                external_catalog_data(
+                    vbp_toolchain="v4.33.0",
+                    reference_toolchain="v4.34.0-rc1",
+                ),
+                "projects.json",
+            )
+
+    def test_external_reference_rejects_coupled_rc_field(self) -> None:
+        manifest = external_catalog_data(
+            vbp_toolchain="v4.33.0",
+            reference_toolchain=None,
+        )
+        manifest["projects"][0]["targets"][0]["rc"] = "4.33-rc1"
+
+        with self.assertRaisesRegex(ValueError, "must use `reference_toolchain`, not the coupled `rc` field"):
+            load_project_catalog_data(manifest, "projects.json")
+
+    def test_external_reference_rejects_renamed_toolchain_field(self) -> None:
+        manifest = external_catalog_data(
+            vbp_toolchain="v4.33.0",
+            reference_toolchain=None,
+        )
+        manifest["projects"][0]["targets"][0]["toolchain"] = "v4.33.0-rc1"
+
+        with self.assertRaisesRegex(ValueError, "`toolchain` was renamed to `reference_toolchain`"):
+            load_project_catalog_data(manifest, "projects.json")
 
     def test_project_catalog_requires_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -615,8 +727,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         for project, target in expected_targets:
             row = rows[project.project_id]
             expected_toolchain = (
-                target.toolchain
-                if target.toolchain is not None
+                target.reference_toolchain
+                if target.reference_toolchain is not None
                 else release_candidate_ref(target.rc)
                 if target.rc is not None
                 else release.toolchain
@@ -688,7 +800,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.29.0",
                                     "ref": "new-controller-ref",
-                                    "rc": "4.29-rc1",
+                                    "reference_toolchain": "v4.29.0-rc1",
                                     "publish_reference": True,
                                 }
                             ],
@@ -706,7 +818,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.29.0",
                                     "ref": "new-second-controller-ref",
-                                    "toolchain": "v4.29.0-rc2",
+                                    "reference_toolchain": "v4.29.0-rc2",
                                     "publish_reference": True,
                                 }
                             ],
@@ -761,7 +873,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["targets"],
-            [{"release": "v4.29.0", "ref": "new-controller-ref", "rc": "4.29-rc1"}],
+            [
+                {
+                    "release": "v4.29.0",
+                    "ref": "new-controller-ref",
+                    "reference_toolchain": "v4.29.0-rc1",
+                }
+            ],
         )
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["generate_command"],
@@ -769,12 +887,18 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertTrue(matrix_by_project["new-release-project"]["publish_pdf"])
         self.assertNotIn("rc", manifest_by_project["new-release-project"]["release_targets"][0])
-        self.assertEqual(matrix_by_project["new-release-project"]["rc"], "4.29-rc1")
+        self.assertEqual(matrix_by_project["new-release-project"]["rc"], "")
         self.assertEqual(matrix_by_project["new-release-project"]["toolchain"], "v4.29.0-rc1")
-        self.assertEqual(matrix_by_project["new-release-project"]["verso_ref"], "v4.29.0-rc1")
+        self.assertEqual(matrix_by_project["new-release-project"]["verso_ref"], "v4.29.0")
         self.assertEqual(
             manifest_by_project["new-release-second-project"]["projects"][0]["targets"],
-            [{"release": "v4.29.0", "ref": "new-second-controller-ref", "toolchain": "v4.29.0-rc2"}],
+            [
+                {
+                    "release": "v4.29.0",
+                    "ref": "new-second-controller-ref",
+                    "reference_toolchain": "v4.29.0-rc2",
+                }
+            ],
         )
         self.assertEqual(
             manifest_by_project["new-release-second-project"]["projects"][0]["generate_command"],
@@ -848,7 +972,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         {
                             "release": "v4.29.0",
                             "ref": "main",
-                            "toolchain": "v4.29.0-rc1",
+                            "reference_toolchain": "v4.29.0-rc1",
                         }
                     ],
                     "build_command": ["lake", "build"],
@@ -866,7 +990,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(len(projects), 1)
         self.assertTrue(projects[0].git_checkout)
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertEqual(projects[0].targets[0].toolchain, "v4.29.0-rc1")
+        self.assertEqual(projects[0].targets[0].reference_toolchain, "v4.29.0-rc1")
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {
@@ -1173,6 +1297,32 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "leanprover/lean4:v4.29.0\n",
             )
 
+    def test_validate_reference_toolchains_rejects_vbp_behind_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            package_root.mkdir()
+            project_dir.mkdir()
+            (package_root / "lean-toolchain").write_text(
+                "leanprover/lean4:v4.33.0-rc1\n",
+                encoding="utf-8",
+            )
+            (project_dir / "lean-toolchain").write_text(
+                "leanprover/lean4:v4.33.0-rc2\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                SystemExit,
+                "Verso Blueprint is older than the reference Blueprint.*Ask the VBP maintainers to bump VBP",
+            ):
+                validate_external_reference_toolchain(
+                    package_root,
+                    project_dir,
+                    expected_project_toolchain="v4.33.0-rc2",
+                )
+
     def test_validate_reference_toolchains_rejects_different_release_branches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1256,7 +1406,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 refs_mod.run = unexpected_run
                 with self.assertRaisesRegex(
                     SystemExit,
-                    "catalog target expects Lean `v4.30.0`.*keep its explicit project-target RC metadata",
+                    "catalog target expects Lean `v4.30.0`.*its `reference_toolchain` metadata",
                 ):
                     run_external_reference_lake_update(
                         package_root,

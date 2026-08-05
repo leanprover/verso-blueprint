@@ -13,6 +13,8 @@ from scripts.blueprint_harness_branches import (
     load_branch_policy,
 )
 from scripts.blueprint_harness_releases import (
+    lean_release_family,
+    lean_release_subversion,
     normalize_lean_release_ref,
     normalize_release_candidate_name,
     release_candidate_ref,
@@ -40,7 +42,7 @@ class HarnessProjectTarget:
     ref: str | None
     publish_reference: bool = False
     rc: str | None = None
-    toolchain: str | None = None
+    reference_toolchain: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,7 +76,7 @@ class HarnessProject:
     targets: tuple[HarnessProjectTarget, ...] = ()
     selected_release: str | None = None
     selected_rc: str | None = None
-    selected_toolchain: str | None = None
+    selected_reference_toolchain: str | None = None
 
     @property
     def in_repo_project(self) -> bool:
@@ -111,8 +113,8 @@ def short_git_ref(ref: str) -> str:
 
 
 def selected_project_toolchain(project: HarnessProject) -> str:
-    if project.selected_toolchain is not None:
-        return project.selected_toolchain
+    if project.selected_reference_toolchain is not None:
+        return project.selected_reference_toolchain
     if project.selected_rc is not None:
         return release_candidate_ref(project.selected_rc)
     if project.selected_release is not None:
@@ -222,7 +224,7 @@ def _load_project_targets(
     entry: dict,
     *,
     context: str,
-    release_ids: set[str],
+    release_targets: dict[str, HarnessReleaseTarget],
     source_kind: str,
 ) -> tuple[HarnessProjectTarget, ...]:
     raw_targets = entry.get("targets")
@@ -236,7 +238,7 @@ def _load_project_targets(
             raise ValueError(f"{context}: target #{index} must be an object")
         target_context = f"{context}: target #{index}"
         release = release_branch_from_lean_ref(_require_string(raw_target, "release", context=target_context))
-        if release not in release_ids:
+        if release not in release_targets:
             raise ValueError(f"{target_context}: unknown release target `{release}`")
         if release in seen_releases:
             raise ValueError(f"{target_context}: duplicate release target `{release}`")
@@ -255,18 +257,32 @@ def _load_project_targets(
             rc = normalize_release_candidate_name(rc)
             if release_branch_from_lean_ref(rc) != release:
                 raise ValueError(f"{target_context}: `rc` `{rc}` does not belong to release `{release}`")
-        toolchain = _optional_string(raw_target, "toolchain", context=target_context)
-        if toolchain is not None:
-            toolchain = normalize_lean_release_ref(toolchain)
-            if release_branch_from_lean_ref(toolchain) != release:
+            if source_kind == GIT_CHECKOUT_SOURCE_KIND:
                 raise ValueError(
-                    f"{target_context}: `toolchain` `{toolchain}` does not belong to release `{release}`"
+                    f"{target_context}: external reference projects must use `reference_toolchain`, "
+                    "not the coupled `rc` field"
                 )
-            if rc is not None:
+        if "toolchain" in raw_target:
+            raise ValueError(
+                f"{target_context}: project-target `toolchain` was renamed to `reference_toolchain`"
+            )
+        reference_toolchain = _optional_string(raw_target, "reference_toolchain", context=target_context)
+        if reference_toolchain is not None:
+            if source_kind != GIT_CHECKOUT_SOURCE_KIND:
                 raise ValueError(
-                    f"{target_context}: `rc` and `toolchain` are mutually exclusive; "
-                    "use `rc` to override both compiler and Verso ref, or `toolchain` "
-                    "to override only the compiler"
+                    f"{target_context}: `reference_toolchain` belongs only on external reference projects"
+                )
+            reference_toolchain = normalize_lean_release_ref(reference_toolchain)
+            if lean_release_family(reference_toolchain) != lean_release_family(release):
+                raise ValueError(
+                    f"{target_context}: reference toolchain `{reference_toolchain}` does not belong "
+                    f"to release family `{release}`"
+                )
+            vbp_toolchain = release_targets[release].toolchain
+            if lean_release_subversion(vbp_toolchain) < lean_release_subversion(reference_toolchain):
+                raise ValueError(
+                    f"{target_context}: VBP toolchain `{vbp_toolchain}` is older than reference "
+                    f"toolchain `{reference_toolchain}`; ask the VBP maintainers to bump this release target"
                 )
         targets.append(
             HarnessProjectTarget(
@@ -274,7 +290,7 @@ def _load_project_targets(
                 ref=ref,
                 publish_reference=_optional_bool(raw_target, "publish_reference", default=False, context=target_context),
                 rc=rc,
-                toolchain=toolchain,
+                reference_toolchain=reference_toolchain,
             )
         )
     return tuple(targets)
@@ -289,7 +305,7 @@ def load_project_catalog_data(raw: dict, manifest_path: Path | str) -> HarnessPr
             "mark published project targets with `publish_reference`"
         )
     release_targets = _load_release_targets(raw, manifest_path)
-    release_ids = {target.release_id for target in release_targets}
+    release_targets_by_id = {target.release_id: target for target in release_targets}
 
     entries = raw.get("projects")
     if not isinstance(entries, list):
@@ -327,7 +343,12 @@ def load_project_catalog_data(raw: dict, manifest_path: Path | str) -> HarnessPr
         browser_tests_path = _optional_string(validation, "browser_tests_path", context=context)
         description = _optional_string(entry, "description", context=context)
         site_subdir = _optional_string(entry, "site_subdir", context=context) or "html-multi"
-        targets = _load_project_targets(entry, context=context, release_ids=release_ids, source_kind=source_kind)
+        targets = _load_project_targets(
+            entry,
+            context=context,
+            release_targets=release_targets_by_id,
+            source_kind=source_kind,
+        )
 
         if source_kind == IN_REPO_PROJECT_SOURCE_KIND:
             target_mode = build_target is not None or generator is not None
@@ -426,6 +447,9 @@ def resolve_projects_for_release(
     require_selected_targets: bool = True,
 ) -> list[HarnessProject]:
     by_id = {project.project_id: project for project in catalog.projects}
+    release_target = catalog.release_target(release)
+    if release_target is None:
+        raise ValueError(f"unknown release target `{release}`")
 
     if selected_ids is None:
         candidates = [
@@ -457,7 +481,11 @@ def resolve_projects_for_release(
                 ref=target.ref,
                 selected_release=release,
                 selected_rc=target.rc,
-                selected_toolchain=target.toolchain,
+                selected_reference_toolchain=(
+                    target.reference_toolchain or release_target.toolchain
+                    if project.git_checkout
+                    else None
+                ),
             )
         )
     return resolved
@@ -494,8 +522,8 @@ def project_target_rc(project: HarnessProject) -> str:
 
 
 def project_target_toolchain(release_target: HarnessReleaseTarget, project: HarnessProject) -> str:
-    if project.selected_toolchain is not None:
-        return project.selected_toolchain
+    if project.selected_reference_toolchain is not None:
+        return project.selected_reference_toolchain
     return release_candidate_ref(project.selected_rc) if project.selected_rc is not None else release_target.toolchain
 
 
@@ -612,8 +640,12 @@ def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False
         target["ref"] = project.ref
     if project.selected_rc is not None:
         target["rc"] = project.selected_rc
-    if project.selected_toolchain is not None:
-        target["toolchain"] = project.selected_toolchain
+    if (
+        project.selected_reference_toolchain is not None
+        and project.selected_reference_toolchain
+        != normalize_lean_release_ref(project.selected_release)
+    ):
+        target["reference_toolchain"] = project.selected_reference_toolchain
 
     entry: dict[str, object] = {
         "id": project.project_id,

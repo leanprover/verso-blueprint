@@ -40,6 +40,18 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "expected a numeric Lean release branch"):
             releases_mod.release_branch_version("main")
 
+    def test_release_family_and_subversion_order_rc_final_and_patch(self) -> None:
+        versions = ["v4.33.0-rc1", "v4.33.0-rc2", "v4.33.0", "v4.33.1-rc1", "v4.33.1"]
+
+        self.assertEqual(
+            {releases_mod.lean_release_family(version) for version in versions},
+            {(4, 33)},
+        )
+        self.assertEqual(
+            sorted(versions, key=releases_mod.lean_release_subversion),
+            versions,
+        )
+
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
