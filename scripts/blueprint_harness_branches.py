@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import json
 from dataclasses import dataclass
 import subprocess
@@ -16,6 +17,18 @@ ROOT_WORKTREE_NAME = "root"
 CHECKOUT_ROLE_DEFAULT_DEV = "default_dev"
 CHECKOUT_ROLE_BACKPORT = "backport"
 CHECKOUT_ROLE_CHOICES = (CHECKOUT_ROLE_DEFAULT_DEV, CHECKOUT_ROLE_BACKPORT)
+
+
+def dedupe_release_branches(branches: Iterable[str]) -> tuple[str, ...]:
+    """Normalize release branches while preserving their first-seen order."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for branch in branches:
+        normalized = release_branch_from_lean_ref(branch)
+        if normalized not in seen:
+            result.append(normalized)
+            seen.add(normalized)
+    return tuple(result)
 
 
 @dataclass(frozen=True)

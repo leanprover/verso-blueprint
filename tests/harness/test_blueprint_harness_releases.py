@@ -28,6 +28,18 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
         self.assertEqual(releases_mod.normalize_lean_release_ref(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC_REF)
         self.assertEqual(releases_mod.release_branch_from_lean_ref(lean_toolchain(SAMPLE_NEXT_RC_REF)), SAMPLE_NEXT_RELEASE)
 
+    def test_release_branch_versions_are_comparable_across_stable_and_rc_refs(self) -> None:
+        self.assertEqual(releases_mod.release_branch_version("v4.33.0"), (4, 33, 0))
+        self.assertEqual(releases_mod.release_branch_version("4.33-rc2"), (4, 33, 0))
+        self.assertGreater(
+            releases_mod.release_branch_version("v4.33.0"),
+            releases_mod.release_branch_version("v4.32.1"),
+        )
+
+    def test_release_branch_version_rejects_non_numeric_refs(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "expected a numeric Lean release branch"):
+            releases_mod.release_branch_version("main")
+
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
