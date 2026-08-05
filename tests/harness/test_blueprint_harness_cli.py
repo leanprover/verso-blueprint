@@ -1314,7 +1314,13 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                             {
                                 "id": "external",
                                 "source": {"kind": "git_checkout"},
-                                "targets": [{"release": "v4.30.0", "ref": "abc", "rc": "4.30-rc1"}],
+                                "targets": [
+                                    {
+                                        "release": "v4.30.0",
+                                        "ref": "abc",
+                                        "reference_toolchain": "v4.30.0-rc1",
+                                    }
+                                ],
                             },
                         ],
                     }
@@ -1343,7 +1349,10 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     {"release": "v4.30.0", "rc": "4.30-rc2"},
                 ],
             )
-            self.assertEqual(manifest["projects"][1]["targets"][0]["rc"], "4.30-rc1")
+            self.assertEqual(
+                manifest["projects"][1]["targets"][0]["reference_toolchain"],
+                "v4.30.0-rc1",
+            )
 
             harness_mod.update_release_line_project_manifest(
                 manifest_path,
@@ -1352,7 +1361,10 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             )
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertNotIn("rc", manifest["projects"][0]["targets"][1])
-            self.assertEqual(manifest["projects"][1]["targets"][0]["rc"], "4.30-rc1")
+            self.assertEqual(
+                manifest["projects"][1]["targets"][0]["reference_toolchain"],
+                "v4.30.0-rc1",
+            )
 
     def test_start_release_line_updates_policy_and_in_repo_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

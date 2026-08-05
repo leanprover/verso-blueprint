@@ -9,8 +9,9 @@ from pathlib import Path
 import tomllib
 
 from scripts.blueprint_harness_releases import (
+    lean_release_family,
+    lean_release_subversion,
     normalize_lean_release_ref,
-    release_branch_from_lean_ref,
 )
 from scripts.blueprint_harness_projects import (
     HarnessProject,
@@ -78,7 +79,8 @@ class ReferenceProjectBumpResult:
 @dataclass(frozen=True)
 class ReferenceToolchain:
     lean_ref: str
-    release_branch: str
+    release_family: tuple[int, int]
+    subversion: tuple[int, int, int]
 
 
 @dataclass(frozen=True)
@@ -150,7 +152,8 @@ def read_reference_toolchain(path: Path) -> ReferenceToolchain | None:
 
     return ReferenceToolchain(
         lean_ref=lean_ref,
-        release_branch=release_branch_from_lean_ref(lean_ref),
+        release_family=lean_release_family(lean_ref),
+        subversion=lean_release_subversion(lean_ref),
     )
 
 
@@ -179,13 +182,20 @@ def validate_external_reference_toolchain(
             "[blueprint-harness] external reference project has no valid `lean-toolchain`: "
             f"{project_dir / 'lean-toolchain'}"
         )
-    if package_toolchain.release_branch != project_toolchain.release_branch:
+    if package_toolchain.release_family != project_toolchain.release_family:
         raise SystemExit(
             "[blueprint-harness] reference Blueprint release mismatch: "
             f"project `{project_dir}` uses Lean `{project_toolchain.lean_ref}` "
-            f"({project_toolchain.release_branch}), but the selected Verso Blueprint checkout "
-            f"uses Lean `{package_toolchain.lean_ref}` ({package_toolchain.release_branch}). "
+            f"(family {project_toolchain.release_family}), but the selected Verso Blueprint checkout "
+            f"uses Lean `{package_toolchain.lean_ref}` (family {package_toolchain.release_family}). "
             "Catalog each external Blueprint only under its current matching release."
+        )
+    if package_toolchain.subversion < project_toolchain.subversion:
+        raise SystemExit(
+            "[blueprint-harness] Verso Blueprint is older than the reference Blueprint: "
+            f"VBP uses Lean `{package_toolchain.lean_ref}`, while project `{project_dir}` uses "
+            f"Lean `{project_toolchain.lean_ref}`. Ask the VBP maintainers to bump VBP before "
+            "building this reference."
         )
     expected_ref = normalize_lean_release_ref(expected_project_toolchain)
     if project_toolchain.lean_ref != expected_ref:
@@ -193,7 +203,7 @@ def validate_external_reference_toolchain(
             "[blueprint-harness] reference Blueprint toolchain mismatch: "
             f"catalog target expects Lean `{expected_ref}`, but project `{project_dir}` "
             f"uses Lean `{project_toolchain.lean_ref}`. Update the external project ref "
-            "or keep its explicit project-target RC metadata."
+            "or its `reference_toolchain` metadata."
         )
     return project_toolchain.lean_ref
 
