@@ -1219,6 +1219,171 @@ class TestPreviewRuntimeRegressions:
         assert result["manifestSize"] == 0
         assert "missing sourceLocation" in result["message"]
 
+    def test_public_data_api_rejects_invalid_group_catalogs(
+        self, server: str, page: Page
+    ):
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const { createPreviewData } = await import(api.dataApiModuleUrl());
+                async function loadStatus(payload) {
+                    const data = createPreviewData({
+                        fetchJson(url) {
+                            if (url.endsWith("blueprint-manifest.json")) {
+                                return Promise.resolve(payload);
+                            }
+                            throw new Error("Unexpected custom loader URL: " + url);
+                        }
+                    });
+                    const groups = await data.loadGroups();
+                    return {
+                        state: data.readManifestStatus().state,
+                        message: data.readManifestStatus().lastError,
+                        groupCount: groups.length
+                    };
+                }
+                const sourceLocation = {
+                    ok: false,
+                    location: null,
+                    error: "source location unavailable"
+                };
+                const member = {
+                    label: "group_member",
+                    title: "Group member",
+                    href: null,
+                    previewKey: null,
+                    axes: []
+                };
+                const entry = {
+                    key: "informal:group_member:statement",
+                    targetKind: "block",
+                    label: "group_member",
+                    facet: "statement",
+                    title: "Group member",
+                    sourceLocation,
+                    parent: "sample_group",
+                    parentTitle: "Sample group"
+                };
+                const group = {
+                    label: "sample_group",
+                    title: "Sample group",
+                    declared: true,
+                    entries: [member]
+                };
+                const secondGroup = {
+                    label: "second_group",
+                    title: "Second group",
+                    declared: true,
+                    entries: []
+                };
+                function manifest(previews, groups) {
+                    return { previews, groups, graphs: [] };
+                }
+                const valid = manifest([entry], [group]);
+                const duplicateMemberGroup = {
+                    ...group,
+                    entries: [member, member]
+                };
+                const crossGroup = {
+                    ...secondGroup,
+                    entries: [member]
+                };
+                const payloads = {
+                    missing: { previews: [], graphs: [] },
+                    valid,
+                    validExternal: manifest([
+                        {
+                            ...entry,
+                            key: "externalMarkup:group_member",
+                            targetKind: "externalMarkup"
+                        }
+                    ], [group]),
+                    duplicate: manifest([], [group, group]),
+                    duplicateMember: manifest([], [duplicateMemberGroup]),
+                    crossGroupMember: manifest([], [group, crossGroup]),
+                    missingMember: manifest([entry], [{ ...group, entries: [] }]),
+                    orphanMember: manifest([], [group]),
+                    mismatchedParent: manifest([
+                        { ...entry, parent: "second_group", parentTitle: "Second group" }
+                    ], [group, secondGroup]),
+                    mismatchedTitle: manifest([
+                        { ...entry, parentTitle: "Stale group title" }
+                    ], [group]),
+                    unparentedMember: manifest([
+                        { ...entry, parent: null, parentTitle: null }
+                    ], [group]),
+                    emptyGroupLabel: manifest([entry], [{ ...group, label: " " }]),
+                    emptyGroupTitle: manifest([entry], [{ ...group, title: " " }]),
+                    emptyMemberLabel: manifest([entry], [{
+                        ...group,
+                        entries: [{ ...member, label: " " }]
+                    }]),
+                    emptyEntryLabel: manifest([{ ...entry, label: " " }], [group]),
+                    invalidParent: manifest([{ ...entry, parent: " " }], [group])
+                };
+                const statuses = {};
+                for (const [name, payload] of Object.entries(payloads)) {
+                    statuses[name] = await loadStatus(payload);
+                }
+                return statuses;
+                """
+            )
+        )
+
+        assert result["missing"]["state"] == "error"
+        assert result["missing"]["groupCount"] == 0
+        assert "missing groups array" in result["missing"]["message"]
+        assert result["valid"]["state"] == "ready"
+        assert result["valid"]["groupCount"] == 1
+        assert result["validExternal"]["state"] == "ready"
+        assert result["validExternal"]["groupCount"] == 1
+        assert result["duplicate"]["state"] == "error"
+        assert result["duplicate"]["groupCount"] == 0
+        assert "duplicate group sample_group" in result["duplicate"]["message"]
+        assert (
+            "duplicate member group_member in group sample_group"
+            in result["duplicateMember"]["message"]
+        )
+        assert (
+            "member group_member belongs to multiple groups"
+            in result["crossGroupMember"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement is missing from group sample_group"
+            in result["missingMember"]["message"]
+        )
+        assert (
+            "group sample_group member group_member has no matching manifest entry"
+            in result["orphanMember"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement belongs to group "
+            "sample_group but references second_group"
+            in result["mismatchedParent"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has inconsistent parentTitle"
+            in result["mismatchedTitle"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has no parent but is listed in "
+            "group sample_group"
+            in result["unparentedMember"]["message"]
+        )
+        assert "missing label" in result["emptyGroupLabel"]["message"]
+        assert "missing title" in result["emptyGroupTitle"]["message"]
+        assert "member 0 is missing label" in result["emptyMemberLabel"]["message"]
+        assert (
+            "entry informal:group_member:statement is missing label"
+            in result["emptyEntryLabel"]["message"]
+        )
+        assert (
+            "entry informal:group_member:statement has invalid parent"
+            in result["invalidParent"]["message"]
+        )
+
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")

@@ -179,14 +179,15 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
   responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
 
 private def entryAllJson (manifest : ManifestFile) (label : String) (entry : Entry) : Json :=
+  let group? := manifest.groupForEntry? entry
   responseJson [
     ("label", Json.str label),
-    ("node", entryJson entry (manifest.groupForEntry? entry)),
+    ("node", entryJson entry group?),
     ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
     ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", entryGroupJson manifest entry)
+    ("group", group?.map groupRelationJson |>.getD Json.null)
   ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
@@ -375,6 +376,94 @@ private def checkGraphPreviewKeys
     (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
     errors
 
+private def checkManifestGroupIntegrity
+    (manifest : ManifestFile) (errors : Array String) : Array String := Id.run do
+  let mut errors := errors
+  let mut groupsByLabel : NameMap GroupRelation := {}
+  let mut memberGroups : NameMap Name := {}
+  for group in manifest.groups do
+    if group.label == .anonymous then
+      errors := errors.push "manifest group has empty label"
+    if group.title.trimAscii.toString.isEmpty then
+      errors := errors.push <|
+        s!"manifest group {Informal.PreviewManifest.labelString group.label} has empty title"
+    if groupsByLabel.contains group.label then
+      errors := errors.push
+        s!"duplicate manifest group label: {Informal.PreviewManifest.labelString group.label}"
+    else
+      groupsByLabel := groupsByLabel.insert group.label group
+    let mut memberLabels : NameSet := {}
+    for member in group.entries do
+      if member.label == .anonymous then
+        errors := errors.push <|
+          s!"manifest group {Informal.PreviewManifest.labelString group.label} " ++
+            "has member with empty label"
+        continue
+      if memberLabels.contains member.label then
+        errors := errors.push <|
+          s!"duplicate member {Informal.PreviewManifest.labelString member.label} " ++
+            s!"in manifest group {Informal.PreviewManifest.labelString group.label}"
+      else
+        memberLabels := memberLabels.insert member.label
+      match memberGroups.get? member.label with
+      | some previousGroup =>
+          if previousGroup != group.label then
+            errors := errors.push <|
+              s!"manifest member {Informal.PreviewManifest.labelString member.label} " ++
+                s!"belongs to multiple groups: " ++
+                s!"{Informal.PreviewManifest.labelString previousGroup} and " ++
+                Informal.PreviewManifest.labelString group.label
+      | none =>
+          memberGroups := memberGroups.insert member.label group.label
+  let mut matchedMembers : NameSet := {}
+  for entry in manifest.previews do
+    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
+      continue
+    if entry.label == .anonymous then
+      errors := errors.push s!"entry {entry.key} is missing label"
+      continue
+    match entry.parent with
+    | none =>
+        if entry.parentTitle.isSome then
+          errors := errors.push s!"entry {entry.key} has parentTitle without parent"
+        if let some group := memberGroups.get? entry.label then
+          errors := errors.push <|
+            s!"entry {entry.key} has no parent but is listed in manifest group: " ++
+              Informal.PreviewManifest.labelString group
+    | some parent =>
+        if parent == .anonymous then
+          errors := errors.push s!"entry {entry.key} has invalid parent"
+          continue
+        match groupsByLabel.get? parent with
+        | none =>
+          errors := errors.push <|
+            s!"entry {entry.key} references missing manifest group: " ++
+              Informal.PreviewManifest.labelString parent
+        | some group =>
+            if entry.parentTitle != some group.title then
+              errors := errors.push <|
+                s!"entry {entry.key} has inconsistent parentTitle for manifest group: " ++
+                  Informal.PreviewManifest.labelString parent
+        match memberGroups.get? entry.label with
+        | none =>
+            errors := errors.push <|
+              s!"entry {entry.key} is missing from manifest group: " ++
+                Informal.PreviewManifest.labelString parent
+        | some memberGroup =>
+            if memberGroup == parent then
+              matchedMembers := matchedMembers.insert entry.label
+            else
+              errors := errors.push <|
+                s!"entry {entry.key} belongs to manifest group " ++
+                  s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
+                  Informal.PreviewManifest.labelString parent
+  for (member, group) in memberGroups.toArray do
+    unless matchedMembers.contains member do
+      errors := errors.push <|
+        s!"manifest group {Informal.PreviewManifest.labelString group} member " ++
+          s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
+  return errors
+
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
   let errors := manifest.previews.foldl
@@ -402,6 +491,7 @@ def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : A
         s!"group {Informal.PreviewManifest.labelString group.label}"
         group.entries errors)
     errors
+  let errors := checkManifestGroupIntegrity manifest errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 def checkJsonFromErrors

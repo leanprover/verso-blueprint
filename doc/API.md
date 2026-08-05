@@ -344,18 +344,22 @@ Manifest entries serialize several label-like fields with distinct roles:
   should prefer it when presenting or round-tripping labels that contain
   punctuation.
 
-Group membership is normalized: a block entry's optional `parent` names one
-record in the manifest's top-level `groups` array. Each group stores its
-traversal-ordered statement members once. Browser clients can join these records
+Group membership is normalized: an informal block or source-backed
+external-markup entry's optional `parent` names one record in the manifest's
+top-level `groups` array. Each group stores its traversal-ordered statement
+members once. Group labels are unique, each member label belongs to at most one
+group, and participating manifest entries must agree with the catalog on group
+ownership and `parentTitle`. Both `vbp check` and the browser manifest loader
+reject incomplete or inconsistent joins. Browser clients can join these records
 with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
 clients can use `PreviewManifest.File.groupForEntry?` when they need the current
 entry filtered out of the member list.
 
 Relation entries in `uses`, `usedBy`, and top-level `groups[*].entries` carry
-their own `previewKey` field. That field is either a non-empty key that resolves through
-both the manifest and rendered-fragment cache, or `null` when the related node
-has no manifest/cache-backed preview in the generated artifact set. Fresh
-generated data does not use an empty string as a no-preview sentinel.
+their own `previewKey` field. That field is either a non-empty key that resolves
+through both the manifest and rendered-fragment cache, or `null` when the
+related node has no manifest/cache-backed preview in the generated artifact
+set. Fresh generated data does not use an empty string as a no-preview sentinel.
 
 Use `Informal.PreviewManifest.previewMetadataLosses state manifest` to audit
 whether traversal-preview metadata survived manifest construction. A non-empty

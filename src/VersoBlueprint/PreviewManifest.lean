@@ -1231,18 +1231,20 @@ def File.findEntry? (file : File) (key : String) : Option Entry :=
 def Index.findGroup? (index : Index) (label : Name) : Option GroupRelation :=
   index.groupsByLabel.get? label
 
-def File.findGroup? (file : File) (label : Name) : Option GroupRelation :=
-  file.index.findGroup? label
+private def GroupRelation.withoutMember (group : GroupRelation) (label : Name) : GroupRelation :=
+  { group with entries := group.entries.filter (fun member => member.label != label) }
 
 /-- Group metadata for an entry, with the current node removed from the member list. -/
 def Index.groupForEntry? (index : Index) (entry : Entry) : Option GroupRelation := do
   let parent ← entry.parent
   let group ← index.findGroup? parent
-  pure { group with entries := group.entries.filter (fun member => member.label != entry.label) }
+  pure (group.withoutMember entry.label)
 
 /-- Group metadata for an entry, with the current node removed from the member list. -/
-def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation :=
-  file.index.groupForEntry? entry
+def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation := do
+  let parent ← entry.parent
+  let group ← file.groups.find? (fun group => group.label == parent)
+  pure (group.withoutMember entry.label)
 
 /--
 Indexes over the generated manifest/cache pair used to decide whether a
