@@ -8,11 +8,12 @@ open Informal.Graph
 
 abbrev ManifestFile := Informal.PreviewManifest.File
 abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
-abbrev PreviewDataFiles := Informal.PreviewManifest.Files
+abbrev PreviewDataModel := Informal.PreviewManifest.PreviewDataModel
+abbrev PersistedFiles := Informal.PreviewManifest.PersistedFiles
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 
-private def previewData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) :
-    PreviewDataFiles :=
+private def persistedFiles (manifest : ManifestFile) (htmlCache : HtmlCacheFile) :
+    PersistedFiles :=
   { manifest, htmlCache }
 
 private def label (value : String) : Name :=
@@ -618,9 +619,11 @@ private def graphNodePreviewKeys
 #guard_msgs in
 #eval
   show Bool from
-    let finalizedFiles :=
-      Informal.PreviewManifest.Files.finalizePreviewReferences <|
-        previewData sampleUnfinalizedReferenceManifest sampleUnfinalizedReferenceCache
+    let model : PreviewDataModel := {
+      manifest := sampleUnfinalizedReferenceManifest
+      htmlCache := sampleUnfinalizedReferenceCache
+    }
+    let finalizedFiles := model.finish
     let finalized := finalizedFiles.manifest
     match finalized.findEntry? "informal:reference_source:statement",
         finalized.graphs.find? (fun graph => graph.key == "reference-finalization") with
@@ -1005,21 +1008,21 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData (previewData sampleManifest sampleCache) |>.isEmpty
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest sampleCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      (previewData sampleGroupManifest sampleGroupCache) |>.isEmpty
+      (persistedFiles sampleGroupManifest sampleGroupCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      (previewData sampleExternalGroupManifest sampleExternalGroupCache) |>.isEmpty
+      (persistedFiles sampleExternalGroupManifest sampleExternalGroupCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -1113,7 +1116,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
             entry
     }
     let checkGroups manifest :=
-      VersoBlueprint.Vbp.checkGeneratedData (previewData manifest sampleGroupCache)
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles manifest sampleGroupCache)
     let orphanErrors := checkGroups orphanedManifest
     let duplicateGroupErrors := checkGroups duplicateGroupManifest
     let duplicateMemberErrors := checkGroups duplicateMemberManifest
@@ -1161,21 +1164,21 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      (previewData sampleEmptyRelationManifest sampleEmptyRelationCache) |>.isEmpty
+      (persistedFiles sampleEmptyRelationManifest sampleEmptyRelationCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      (previewData sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache) |>.isEmpty
+      (persistedFiles sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     let errors := VersoBlueprint.Vbp.checkGeneratedData <|
-      previewData sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
+      persistedFiles sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
     errors.any (fun err =>
       err.contains "missing manifest entry for uses of informal:relation_source:statement relation cache_only_relation" &&
         err.contains "informal:cache_only_relation:statement") &&
@@ -1188,7 +1191,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #eval
   show Bool from
     let errors := VersoBlueprint.Vbp.checkGeneratedData <|
-      previewData sampleGraphReferenceManifest sampleGraphReferenceCache
+      persistedFiles sampleGraphReferenceManifest sampleGraphReferenceCache
     errors.any (fun err =>
       err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
         err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
@@ -1203,7 +1206,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    let json := VersoBlueprint.Vbp.checkJson (previewData sampleManifest sampleCache)
+    let json := VersoBlueprint.Vbp.checkJson (persistedFiles sampleManifest sampleCache)
     jsonHasApiStability json &&
       jsonBoolField? json "ok" == some true &&
       jsonNatField? json "manifestEntries" == some 3 &&
@@ -1214,7 +1217,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #eval
   show Bool from
     let json := VersoBlueprint.Vbp.checkJsonFromErrors
-      (previewData sampleManifest sampleCache) #["forced diagnostic"]
+      (persistedFiles sampleManifest sampleCache) #["forced diagnostic"]
     let errors := jsonArrayField? json "errors" |>.getD #[]
     jsonBoolField? json "ok" == some false &&
       jsonArrayContainsString errors "forced diagnostic"
@@ -1226,7 +1229,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let brokenCache : HtmlCacheFile := {
       entries := sampleCache.entries.filter (fun entry => entry.key != "lean:Nat.add_assoc")
     }
-    VersoBlueprint.Vbp.checkGeneratedData (previewData sampleManifest brokenCache)
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest brokenCache)
       |>.any (·.contains "lean:Nat.add_assoc")
 
 /-- info: true -/

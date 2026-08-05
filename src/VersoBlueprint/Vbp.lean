@@ -19,7 +19,7 @@ abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
-abbrev GeneratedData := Informal.PreviewManifest.Files
+abbrev GeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
 
 def defaultSite : FilePath := "_out" / "site"
@@ -463,7 +463,7 @@ private def checkManifestGroupIntegrity
 
 def checkGeneratedData (data : GeneratedData) : Array String :=
   let manifest := data.manifest
-  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles data
+  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
