@@ -272,10 +272,10 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.deploy_pages)
         self.assertTrue(args.skip_validation)
 
-    def test_set_default_dev_branch_parses_branch(self) -> None:
+    def test_set_default_dev_branch_parses_lean_ref(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["set-default-dev-branch", "v4.30.0"])
-        self.assertEqual(args.branch, "v4.30.0")
+        self.assertEqual(args.lean_ref, "v4.30.0")
 
     def test_create_worktree_parses_lock_flag(self) -> None:
         parser = build_parser()
@@ -1521,7 +1521,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
                 encoding="utf-8",
             )
-            args = argparse.Namespace(branch="v4.30.0")
+            args = argparse.Namespace(lean_ref="v4.30.0")
             layout = SimpleNamespace(package_root=root)
             out = io.StringIO()
             with patched_attrs(
@@ -1582,7 +1582,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            args = argparse.Namespace(branch="4.33-rc2")
+            args = argparse.Namespace(lean_ref="4.33-rc2")
             layout = SimpleNamespace(package_root=root)
             out = io.StringIO()
             with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):
@@ -1682,7 +1682,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            args = argparse.Namespace(branch="v4.33.0-rc2")
+            args = argparse.Namespace(lean_ref="v4.33.0-rc2")
             layout = SimpleNamespace(package_root=root)
             outputs: list[str] = []
             with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):

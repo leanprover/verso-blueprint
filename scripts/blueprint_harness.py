@@ -629,7 +629,7 @@ def command_start_release_line(args: argparse.Namespace) -> int:
 def command_set_default_dev_branch(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     old_policy = load_branch_policy(layout.package_root)
-    requested_lean_ref = normalize_lean_release_ref(args.branch)
+    requested_lean_ref = normalize_lean_release_ref(args.lean_ref)
     new_default_branch = release_branch_from_lean_ref(requested_lean_ref)
     rc = release_candidate_name_or_none(requested_lean_ref)
     release_targets = old_policy.release_targets
@@ -1425,7 +1425,8 @@ def add_release_management_commands(subparsers) -> None:
         help="Update `branch-policy.json` for a new default-development release branch.",
     )
     set_default_dev_branch.add_argument(
-        "branch",
+        "lean_ref",
+        metavar="LEAN_REF",
         help="New default development Lean ref, including an RC ref when applicable.",
     )
     set_default_dev_branch.set_defaults(func=command_set_default_dev_branch)

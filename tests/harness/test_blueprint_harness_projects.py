@@ -562,25 +562,18 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("matrix.reference_dependency_packages_path", workflow_text)
         self.assertIn("matrix.reference_dependency_path_builds_path", workflow_text)
         self.assertIn("reference-deps-v2-${{ matrix.reference_source_identity }}", workflow_text)
-        self.assertIn(
-            "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}",
-            workflow_text,
-        )
-        self.assertIn(
-            "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}",
-            workflow_text,
-        )
         self.assertIn("matrix.reference_dependency_packages_path", deploy_workflow_text)
         self.assertIn("matrix.reference_dependency_path_builds_path", deploy_workflow_text)
         self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_source_identity }}", deploy_workflow_text)
-        self.assertIn(
+        reference_environment = (
+            "BP_REFERENCE_SOURCE_IDENTITY: ${{ matrix.reference_source_identity }}",
             "BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}",
-            deploy_workflow_text,
-        )
-        self.assertIn(
             "BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}",
-            deploy_workflow_text,
+            "BP_REFERENCE_ARTIFACT_PATH: ${{ matrix.artifact_path }}",
         )
+        for mapping in reference_environment:
+            self.assertIn(mapping, workflow_text)
+            self.assertIn(mapping, deploy_workflow_text)
         self.assertIn(
             "group: ${{ github.repository }}-reference-blueprints-pages",
             deploy_workflow_text,
