@@ -482,7 +482,7 @@ def check (args : List String) : IO UInt32 := do
       pure 2
   | .ok opts =>
       try
-        let data ← VersoBlueprint.Vbp.readGeneratedData opts.site
+        let data ← VersoBlueprint.Vbp.readPersistedGeneratedData opts.site
         let errors := VersoBlueprint.Vbp.checkGeneratedData data
         printJson (VersoBlueprint.Vbp.checkJsonFromErrors data errors)
         if errors.isEmpty then pure 0 else pure 1

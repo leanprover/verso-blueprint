@@ -333,11 +333,12 @@ constructor makes the phase transition concrete. Production construction,
 indexing, and finalization therefore pass one explicit pair instead of
 repeatedly selecting artifacts, and finalized files cannot be finalized again.
 
-For `m` manifest entries, `c` rendered-cache entries, `r` non-graph preview
-references, `n` graph nodes, and `v` graph-variant preview mappings, `finish`
-runs in expected `O(m + c + r + n + v)` time under hash-map operations. Its
-auxiliary indexes use `O(m + c)` space; the finalized arrays it returns are
-linear in the candidate output size. Graph topology and DOT are not rebuilt.
+For `m` manifest preview/group records, `c` rendered-cache entries, `r`
+non-graph preview references, `n` graph nodes, and `v` graph-variant
+records/mappings, `finish` runs in expected `O(m + c + r + n + v)` time under
+hash-map operations. Its auxiliary indexes use `O(m + c)` space; the finalized
+arrays it returns are linear in the candidate output size. Graph topology and
+DOT are not rebuilt.
 
 Generated-data readers preserve the same boundary without charging every
 semantic query for projections it cannot consume. The general manifest reader

@@ -19,7 +19,7 @@ abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
-abbrev GeneratedData := Informal.PreviewManifest.PersistedFiles
+abbrev PersistedGeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
 
 def defaultSite : FilePath := "_out" / "site"
@@ -319,7 +319,7 @@ def readHtmlCacheForSite (site : FilePath) : IO HtmlCacheFile := do
     throw <| IO.userError s!"missing Blueprint HTML cache at {htmlCachePath}; run `lake exe vbp build` first"
   Informal.PreviewManifest.HtmlCache.readFile htmlCachePath
 
-def readGeneratedData (site : FilePath) : IO GeneratedData := do
+def readPersistedGeneratedData (site : FilePath) : IO PersistedGeneratedData := do
   let manifest ← readManifestForSite site
   let htmlCache ← readHtmlCacheForSite site
   pure { manifest, htmlCache }
@@ -461,7 +461,7 @@ private def checkManifestGroupIntegrity
           s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
   return errors
 
-def checkGeneratedData (data : GeneratedData) : Array String :=
+def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
   let errors := manifest.previews.foldl
@@ -492,7 +492,7 @@ def checkGeneratedData (data : GeneratedData) : Array String :=
   let errors := checkManifestGroupIntegrity manifest errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
-def checkJsonFromErrors (data : GeneratedData) (errors : Array String) : Json :=
+def checkJsonFromErrors (data : PersistedGeneratedData) (errors : Array String) : Json :=
   responseJson [
     ("ok", Json.bool errors.isEmpty),
     ("manifestEntries", Json.num data.manifest.previews.size),
@@ -500,7 +500,7 @@ def checkJsonFromErrors (data : GeneratedData) (errors : Array String) : Json :=
     ("errors", Json.arr (errors.map Json.str))
   ]
 
-def checkJson (data : GeneratedData) : Json :=
+def checkJson (data : PersistedGeneratedData) : Json :=
   checkJsonFromErrors data (checkGeneratedData data)
 
 end VersoBlueprint.Vbp
