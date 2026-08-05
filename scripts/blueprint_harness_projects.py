@@ -40,6 +40,7 @@ class HarnessProjectTarget:
     ref: str | None
     publish_reference: bool = False
     rc: str | None = None
+    toolchain: str | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class HarnessProject:
     targets: tuple[HarnessProjectTarget, ...] = ()
     selected_release: str | None = None
     selected_rc: str | None = None
+    selected_toolchain: str | None = None
 
     @property
     def in_repo_project(self) -> bool:
@@ -109,6 +111,8 @@ def short_git_ref(ref: str) -> str:
 
 
 def selected_project_toolchain(project: HarnessProject) -> str:
+    if project.selected_toolchain is not None:
+        return project.selected_toolchain
     if project.selected_rc is not None:
         return release_candidate_ref(project.selected_rc)
     if project.selected_release is not None:
@@ -251,12 +255,26 @@ def _load_project_targets(
             rc = normalize_release_candidate_name(rc)
             if release_branch_from_lean_ref(rc) != release:
                 raise ValueError(f"{target_context}: `rc` `{rc}` does not belong to release `{release}`")
+        toolchain = _optional_string(raw_target, "toolchain", context=target_context)
+        if toolchain is not None:
+            toolchain = normalize_lean_release_ref(toolchain)
+            if release_branch_from_lean_ref(toolchain) != release:
+                raise ValueError(
+                    f"{target_context}: `toolchain` `{toolchain}` does not belong to release `{release}`"
+                )
+            if rc is not None:
+                raise ValueError(
+                    f"{target_context}: `rc` and `toolchain` are mutually exclusive; "
+                    "use `rc` to override both compiler and Verso ref, or `toolchain` "
+                    "to override only the compiler"
+                )
         targets.append(
             HarnessProjectTarget(
                 release=release,
                 ref=ref,
                 publish_reference=_optional_bool(raw_target, "publish_reference", default=False, context=target_context),
                 rc=rc,
+                toolchain=toolchain,
             )
         )
     return tuple(targets)
@@ -439,6 +457,7 @@ def resolve_projects_for_release(
                 ref=target.ref,
                 selected_release=release,
                 selected_rc=target.rc,
+                selected_toolchain=target.toolchain,
             )
         )
     return resolved
@@ -475,6 +494,8 @@ def project_target_rc(project: HarnessProject) -> str:
 
 
 def project_target_toolchain(release_target: HarnessReleaseTarget, project: HarnessProject) -> str:
+    if project.selected_toolchain is not None:
+        return project.selected_toolchain
     return release_candidate_ref(project.selected_rc) if project.selected_rc is not None else release_target.toolchain
 
 
@@ -591,6 +612,8 @@ def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False
         target["ref"] = project.ref
     if project.selected_rc is not None:
         target["rc"] = project.selected_rc
+    if project.selected_toolchain is not None:
+        target["toolchain"] = project.selected_toolchain
 
     entry: dict[str, object] = {
         "id": project.project_id,

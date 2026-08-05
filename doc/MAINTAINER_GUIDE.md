@@ -82,9 +82,12 @@ Reference release metadata has two tracked sources of truth. `branch-policy.json
 owns release ids, branch names, baseline Lean toolchain refs, baseline `verso`
 refs, default-development/backport policy, and the release-level Pages deploy
 flag. `tests/harness/projects.json` owns project ids, external repository refs,
-the `publish_reference` flag, and any per-project `rc` override. Matrix emitter
-scripts derive effective per-project `toolchain` and `verso_ref` values from
-those two files; release targets themselves do not carry `rc` metadata.
+the `publish_reference` flag, and any per-project compiler or RC override.
+Matrix emitter scripts derive effective per-project `toolchain` and `verso_ref`
+values from those two files; release targets themselves do not carry `rc`
+metadata. A project-target `rc` changes both values for legacy RC lockstep,
+while a project-target `toolchain` changes only the compiler and leaves the
+release target's VBP/Verso ref intact.
 
 ## Everyday Workflows
 
@@ -755,9 +758,10 @@ the project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
 default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
-`projects.json` refs. The per-project target entry also owns any RC override,
-so two projects in the same release line can deploy against different release
-candidate tags when needed. Deploy one-project manifests append `--pdf` to the
+`projects.json` refs. The per-project target entry also owns any RC or
+compiler-only override, so two projects in the same release line can use
+different compilers when needed without necessarily selecting different
+VBP/Verso refs. Deploy one-project manifests append `--pdf` to the
 selected generator command only for the default-development release target, so
 the current published catalog includes PDFs while archived release targets stay
 HTML-only unless their deploy policy is deliberately expanded.
@@ -872,6 +876,10 @@ project target records `"rc": "4.32-rc1"`. That row then builds with
 `leanprover/lean4:v4.32.0-rc1` and pins `verso` to `v4.32.0-rc1`, while another
 project target on the same release id can use a different RC or the final
 release tag.
+
+Use `"toolchain": "v4.32.0-rc1"` instead when only the external project's
+compiler must remain on that RC while VBP/Verso use the release target's normal
+ref. Do not combine `rc` and `toolchain` on one project target.
 
 Minimal external catalog entry shape:
 
