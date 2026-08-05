@@ -48,12 +48,12 @@ jobs:
           echo "verso_ref=${{ matrix.verso_ref }}"
           echo "blueprint=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
-          echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+          echo "reference_source_identity=${{ matrix.reference_source_identity }}"
       - name: Match reference target toolchain
         if: ${{ matrix.rc != '' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -89,19 +89,19 @@ jobs:
             ${{ runner.os }}-lake-deps-${{ matrix.toolchain }}-
             ${{ runner.os }}-lake-deps-
       - name: Report disk usage after Lake cache restore
-        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore external reference dependency cache
-        if: ${{ matrix.reference_cache_key != '' }}
+        if: ${{ matrix.reference_source_identity != '' }}
         uses: actions/cache@v5
         with:
           path: |
-            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages
-            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds
-          key: ${{ runner.os }}-reference-deps-v2-${{ matrix.reference_cache_key }}
+            ${{ matrix.reference_dependency_packages_path }}
+            ${{ matrix.reference_dependency_path_builds_path }}
+          key: ${{ runner.os }}-reference-deps-v2-${{ matrix.reference_source_identity }}
           restore-keys: |
             ${{ runner.os }}-reference-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
-        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
         run: |
           lean --version
@@ -109,10 +109,10 @@ jobs:
           lualatex --version | head -n 1
           python3 --version
       - name: Generate reference blueprint with PDF
-        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --reference-package-mode move --pdf --project ${{ matrix.project_id }}
+        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --pdf --project ${{ matrix.project_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-source-identity "${{ matrix.reference_source_identity }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Upload reference blueprint artifact
         uses: actions/upload-artifact@v7
         with:

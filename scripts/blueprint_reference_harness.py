@@ -46,8 +46,6 @@ from scripts.blueprint_harness_projects import (
 )
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_URL_PATTERNS
 from scripts.blueprint_harness_references import (
-    REFERENCE_PACKAGE_MODE_COPY,
-    REFERENCE_PACKAGE_MODES,
     bump_reference_project,
     clone_git_project,
     generate_in_repo_command_project,
@@ -56,9 +54,9 @@ from scripts.blueprint_harness_references import (
     prepare_reference_edit_checkout,
     reference_generation_command,
     ref_is_commit_hash,
-    reference_dependency_cache_keys,
     reference_prune_plan,
-    reference_source_cache_checkout_dir,
+    reference_source_identities,
+    reference_source_paths,
     site_dir_for,
     sync_reference_blueprints,
 )
@@ -114,18 +112,6 @@ BLUEPRINT_REQUIRE_PATTERN = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 REFERENCE_HARNESS_PREFIX = "[blueprint-reference-harness]"
-
-
-def add_reference_package_mode_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--reference-package-mode",
-        choices=REFERENCE_PACKAGE_MODES,
-        default=REFERENCE_PACKAGE_MODE_COPY,
-        help=(
-            "How external reference projects receive warmed `.lake/packages` trees. "
-            "`copy` keeps the local default; `move` avoids duplicate package trees and is intended for CI."
-        ),
-    )
 
 
 def add_generation_verbose_argument(parser: argparse.ArgumentParser) -> None:
@@ -254,7 +240,7 @@ def refresh_reference_status_checkout(checkout_root: Path, project: HarnessProje
 
 
 def ensure_reference_status_checkout(layout, project: HarnessProject) -> Path:
-    checkout_root = reference_source_cache_checkout_dir(layout, project)
+    checkout_root = reference_source_paths(layout, project).source_checkout
     checkout_root.parent.mkdir(parents=True, exist_ok=True)
     if not checkout_root.exists():
         clone_git_project(project, checkout_root, cwd=layout.package_root, shallow=False)
@@ -698,7 +684,6 @@ def generate_projects(
     skip_build: bool,
     serial: bool,
     allow_local_build: bool,
-    reference_package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
     pdf: bool = False,
     verbose: bool = False,
 ) -> None:
@@ -751,7 +736,6 @@ def generate_projects(
             output_root,
             project,
             skip_build=skip_build,
-            package_mode=reference_package_mode,
             pdf=pdf,
             verbose=verbose,
         )
@@ -771,7 +755,6 @@ def command_generate(args: argparse.Namespace) -> int:
         skip_build=args.skip_build,
         serial=args.serial,
         allow_local_build=args.allow_local_build,
-        reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
         pdf=args.pdf,
         verbose=getattr(args, "verbose", False),
     )
@@ -860,7 +843,6 @@ def command_validate(args: argparse.Namespace) -> int:
             skip_build=False,
             serial=args.serial,
             allow_local_build=args.allow_local_build,
-            reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
             verbose=getattr(args, "verbose", False),
         )
     except SystemExit as err:
@@ -1096,10 +1078,10 @@ def command_reference_prune(args: argparse.Namespace) -> int:
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
     }
-    cache_keys = reference_dependency_cache_keys(projects)
+    source_identities = reference_source_identities(projects)
     removals = reference_prune_plan(
         active_names,
-        cache_keys,
+        source_identities,
         layout.reference_source_cache_root,
         layout.reference_project_root / "by-worktree",
         layout.reference_dependency_cache_root,
@@ -1184,7 +1166,6 @@ def add_generation_commands(subparsers) -> None:
         generate,
         help_text="Permit `lake build` in a linked worktree instead of requiring synced root executables.",
     )
-    add_reference_package_mode_argument(generate)
     generate.set_defaults(func=command_generate)
 
     validate = subparsers.add_parser(
@@ -1228,7 +1209,6 @@ def add_generation_commands(subparsers) -> None:
         action="store_true",
         help="Stop validation as soon as one phase fails instead of collecting later failures.",
     )
-    add_reference_package_mode_argument(validate)
     validate.set_defaults(func=command_validate)
 
 

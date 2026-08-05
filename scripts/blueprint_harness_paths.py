@@ -6,6 +6,10 @@ from pathlib import Path
 from scripts.blueprint_harness_branches import root_checkout_namespace
 
 
+REFERENCE_PROJECT_RELATIVE_ROOT = Path(".worktrees") / "_reference-blueprints"
+REFERENCE_DEPENDENCY_CACHE_RELATIVE_ROOT = REFERENCE_PROJECT_RELATIVE_ROOT / "deps"
+
+
 @dataclass(frozen=True)
 class HarnessLayout:
     package_root: Path
@@ -27,7 +31,7 @@ class HarnessLayout:
 
     @property
     def reference_project_root(self) -> Path:
-        return self.repo_root / ".worktrees" / "_reference-blueprints"
+        return self.repo_root / REFERENCE_PROJECT_RELATIVE_ROOT
 
     @property
     def reference_source_cache_root(self) -> Path:
