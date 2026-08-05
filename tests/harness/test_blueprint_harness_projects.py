@@ -1696,20 +1696,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             cache_dir.mkdir()
             local_dir.mkdir()
             (local_dir / "lakefile.lean").write_text('require VersoBlueprint from "../pkg"\n', encoding="utf-8")
-            (local_dir / ".gitmodules").write_text(
-                '[submodule "tools/verso-harness"]\n\tpath = tools/verso-harness\n\turl = git@github.com:ejgallego/leanblueprint-to-verso.git\n',
-                encoding="utf-8",
-            )
-            (local_dir / "verso-harness.toml").write_text(
-                'package_name = "Demo"\nblueprint_main = "Main"\nformalization_path = "DemoFormalization"\nchapter_root = "Chapters"\ntex_source_glob = "./blueprint/*.tex"\n[lt]\ndefault_chapters = []\n',
-                encoding="utf-8",
-            )
-            (local_dir / "tools" / "verso-harness" / "scripts").mkdir(parents=True)
-            (local_dir / "tools" / "verso-harness" / "scripts" / "check_harness.py").write_text(
-                "#!/usr/bin/env python3\n",
-                encoding="utf-8",
-            )
-            (local_dir / "DemoFormalization").mkdir()
 
             layout = SimpleNamespace(
                 package_root=root / "pkg",
@@ -1721,16 +1707,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout.package_root.mkdir()
             layout.repo_root.mkdir()
 
-            originals = {
-                "command_rewrite_local_blueprint_dependency": commands_mod.rewrite_local_blueprint_dependency,
-                "command_run": commands_mod.run,
-                "command_run_with_heartbeat": commands_mod.run_with_heartbeat,
-                "sync_reference_cache_checkout": refs_mod.sync_reference_cache_checkout,
-                "sync_reference_local_checkout": refs_mod.sync_reference_local_checkout,
-                "project_lake_update_command": refs_mod.project_lake_update_command,
-                "validate_external_reference_toolchain": refs_mod.validate_external_reference_toolchain,
-                "run": refs_mod.run,
-            }
             commands: list[list[str]] = []
             warm_build_values: list[bool] = []
 
@@ -1741,32 +1717,44 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             def fake_sync_reference_local_checkout(_layout, _project, _cache_dir):
                 return local_dir
 
-            try:
-                refs_mod.sync_reference_cache_checkout = fake_sync_reference_cache_checkout
-                refs_mod.sync_reference_local_checkout = fake_sync_reference_local_checkout
-                commands_mod.rewrite_local_blueprint_dependency = (
-                    lambda _project_dir, _package_root: local_dir / "lakefile.lean"
-                )
-                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
-                refs_mod.validate_external_reference_toolchain = lambda *_args, **_kwargs: "v4.30.0"
-                refs_mod.run = lambda command, *, cwd: commands.append(command)
-                commands_mod.run = lambda command, *, cwd: commands.append(command)
-                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
-
+            with (
+                patch.object(
+                    refs_mod,
+                    "sync_reference_cache_checkout",
+                    side_effect=fake_sync_reference_cache_checkout,
+                ),
+                patch.object(
+                    refs_mod,
+                    "sync_reference_local_checkout",
+                    side_effect=fake_sync_reference_local_checkout,
+                ),
+                patch.object(
+                    commands_mod,
+                    "rewrite_local_blueprint_dependency",
+                    return_value=local_dir / "lakefile.lean",
+                ),
+                patch.object(
+                    refs_mod,
+                    "project_lake_update_command",
+                    return_value=["lake", "update", "VersoBlueprint"],
+                ),
+                patch.object(
+                    refs_mod,
+                    "validate_external_reference_toolchain",
+                    return_value="v4.30.0",
+                ),
+                patch.object(refs_mod, "run", side_effect=lambda command, *, cwd: commands.append(command)),
+                patch.object(commands_mod, "run", side_effect=lambda command, *, cwd: commands.append(command)),
+                patch.object(
+                    commands_mod,
+                    "run_with_heartbeat",
+                    side_effect=lambda command, *, cwd, label: commands.append(command),
+                ),
+            ):
                 generate_git_project(layout, output_root, project, skip_build=False, pdf=True, verbose=True)
-            finally:
-                for name, value in originals.items():
-                    if name == "command_rewrite_local_blueprint_dependency":
-                        commands_mod.rewrite_local_blueprint_dependency = value
-                    elif name == "command_run":
-                        commands_mod.run = value
-                    elif name == "command_run_with_heartbeat":
-                        commands_mod.run_with_heartbeat = value
-                    else:
-                        setattr(refs_mod, name, value)
 
         self.assertEqual(warm_build_values, [False])
-        self.assertEqual(commands[0], reference_submodule_update_command())
+        self.assertNotIn(reference_submodule_update_command(), commands)
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
         self.assertTrue(

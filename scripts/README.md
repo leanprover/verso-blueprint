@@ -52,7 +52,7 @@ python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock
 python3 -m scripts.blueprint_harness create-worktree <name> --lightweight  # docs/Python-only work
 python3 -m scripts.blueprint_harness release-status --require-sync
 python3 -m scripts.blueprint_harness start-release-line 4.33-rc2
-python3 -m scripts.blueprint_harness set-default-dev-branch v4.33.0
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.33.0-rc2
 python3 -m scripts.blueprint_harness paths
 python3 -m scripts.blueprint_reference_harness compose /path/to/source --project-root blueprint
 python3 -m scripts.blueprint_reference_harness projects

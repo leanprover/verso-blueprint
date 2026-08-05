@@ -1627,6 +1627,102 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             self.assertIn("release_target_added=true", out.getvalue())
             self.assertIn("checkout_role=backport", out.getvalue())
 
+    def test_set_default_dev_branch_is_idempotent_for_existing_rc_release_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
+            (root / "branch-policy.json").write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "default_dev_branch": "v4.33.0",
+                        "required_backport_branches": ["v4.32.0"],
+                        "release_targets": [
+                            {
+                                "id": "v4.32.0",
+                                "toolchain": "v4.32.0",
+                                "verso_ref": "v4.32.0",
+                                "branch": "v4.32.0",
+                                "deploy_pages": False,
+                            },
+                            {
+                                "id": "v4.33.0",
+                                "toolchain": "v4.33.0",
+                                "verso_ref": "v4.33.0",
+                                "branch": "v4.33.0",
+                                "deploy_pages": True,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest_path = root / "tests" / "harness" / "projects.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "projects": [
+                            {
+                                "id": "project-template",
+                                "source": {"kind": "in_repo_project"},
+                                "targets": [
+                                    {"release": "v4.32.0"},
+                                    {"release": "v4.33.0", "rc": "4.33-rc2"},
+                                ],
+                            },
+                            {
+                                "id": "external",
+                                "source": {"kind": "git_checkout"},
+                                "targets": [{"release": "v4.32.0", "ref": "abc"}],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(branch="v4.33.0-rc2")
+            layout = SimpleNamespace(package_root=root)
+            outputs: list[str] = []
+            with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):
+                for _ in range(2):
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        self.assertEqual(harness_mod.command_set_default_dev_branch(args), 0)
+                    outputs.append(out.getvalue())
+
+            policy = json.loads((root / "branch-policy.json").read_text(encoding="utf-8"))
+            self.assertEqual(policy["default_dev_branch"], "v4.33.0")
+            self.assertEqual(policy["required_backport_branches"], ["v4.32.0"])
+            self.assertEqual(
+                [target for target in policy["release_targets"] if target["id"] == "v4.33.0"],
+                [
+                    {
+                        "id": "v4.33.0",
+                        "toolchain": "v4.33.0",
+                        "verso_ref": "v4.33.0",
+                        "branch": "v4.33.0",
+                        "deploy_pages": True,
+                    }
+                ],
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["projects"][0]["targets"],
+                [
+                    {"release": "v4.32.0"},
+                    {"release": "v4.33.0", "rc": "4.33-rc2"},
+                ],
+            )
+            self.assertEqual(
+                manifest["projects"][1]["targets"],
+                [{"release": "v4.32.0", "ref": "abc"}],
+            )
+            for output in outputs:
+                self.assertIn("rc=4.33-rc2", output)
+                self.assertIn("release_target_added=false", output)
+
     def test_paths_prints_current_release_project_sites_by_default(self) -> None:
         args = argparse.Namespace(all_projects=False)
         layout = SimpleNamespace(

@@ -901,7 +901,6 @@ def generate_git_project(
     discard_untracked_project_manifest(project_dir)
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
-    bootstrap_reference_checkout(project_dir=project_dir)
 
     def update_reference_project() -> None:
         run_external_reference_lake_update(
