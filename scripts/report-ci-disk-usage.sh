@@ -113,6 +113,7 @@ report_du() {
       ".worktrees/_reference-blueprints/cache/$reference_source_identity"
       ".worktrees/_reference-blueprints/deps/$reference_source_identity"
       ".worktrees/_reference-blueprints/deps/$reference_source_identity/packages"
+      ".worktrees/_reference-blueprints/deps/$reference_source_identity/path-builds"
     )
 
     shopt -s nullglob
@@ -147,6 +148,11 @@ report_reference_children() {
     if [[ -d "$packages" ]]; then
       printf '[ci-disk] packages for %s\n' "$reference_source_identity"
       du -sh "$packages"/* 2>/dev/null | sort -h || true
+    fi
+    local path_builds=".worktrees/_reference-blueprints/deps/$reference_source_identity/path-builds"
+    if [[ -d "$path_builds" ]]; then
+      printf '[ci-disk] path builds for %s\n' "$reference_source_identity"
+      du -sh "$path_builds"/* 2>/dev/null | sort -h || true
     fi
   fi
 }

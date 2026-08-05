@@ -122,8 +122,8 @@ script map, not a second command reference.
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json), including
   branch-policy release-target inheritance, per-project RC resolution, shared
-  reference/deploy matrix serialization, and the external project's shared
-  source identity.
+  reference/deploy matrix serialization, and each external project's shared
+  source identity and canonical CI dependency paths.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override,
   copy-owned dependency package/path-build cache warm-up, and prune helpers
@@ -135,7 +135,7 @@ script map, not a second command reference.
   Shared panel/browser regression command builders.
 - `blueprint_harness_paths.py`
   Worktree-aware path resolution for `_out/` and reference-blueprint
-  directories.
+  directories, including the shared relative roots consumed by CI matrices.
 - `blueprint_harness_worktrees.py`
   Local worktree-coordination helpers for ignored metadata under `.worktrees/`.
 - `prepare_reference_blueprints_pages.py`

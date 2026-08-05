@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -76,6 +77,38 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Print a compact disk-usage report", result.stdout)
         self.assertIn("--reference-source-identity", result.stdout)
+
+    def test_report_ci_disk_usage_includes_dependency_path_builds(self) -> None:
+        identity = "external-main-123456789abc"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path_build = (
+                root
+                / ".worktrees"
+                / "_reference-blueprints"
+                / "deps"
+                / identity
+                / "path-builds"
+                / "Formalization"
+            )
+            path_build.mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(PACKAGE_ROOT / "scripts" / "report-ci-disk-usage.sh"),
+                    "test",
+                    "--reference-source-identity",
+                    identity,
+                ],
+                cwd=root,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn(f"[ci-disk] path builds for {identity}", result.stdout)
+        self.assertIn("path-builds/Formalization", result.stdout)
 
     def test_validate_reference_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/validate-reference-blueprints.sh", "--help"])

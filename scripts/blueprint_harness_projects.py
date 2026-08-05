@@ -26,6 +26,7 @@ from scripts.blueprint_harness_manifest import (
     require_string as _require_string,
     resolve_manifest_path as resolve_manifest_file_path,
 )
+from scripts.blueprint_harness_paths import REFERENCE_DEPENDENCY_CACHE_RELATIVE_ROOT
 
 
 IN_REPO_PROJECT_SOURCE_KIND = "in_repo_project"
@@ -101,7 +102,7 @@ def _reference_source_identity_slug(value: str, *, max_length: int) -> str:
     return (slug or "unknown")[:max_length].strip(".-_") or "unknown"
 
 
-def _short_reference_source_ref(ref: str) -> str:
+def short_git_ref(ref: str) -> str:
     if len(ref) == 40 and all(char in "0123456789abcdefABCDEF" for char in ref):
         return ref[:12]
     return ref
@@ -143,8 +144,13 @@ def reference_source_identity(project: HarnessProject) -> str:
     )
     digest = hashlib.sha256(key_material.encode("utf-8")).hexdigest()[:REFERENCE_SOURCE_IDENTITY_DIGEST_LENGTH]
     project_slug = _reference_source_identity_slug(project.project_id, max_length=48)
-    ref_slug = _reference_source_identity_slug(_short_reference_source_ref(project.ref), max_length=40)
+    ref_slug = _reference_source_identity_slug(short_git_ref(project.ref), max_length=40)
     return f"{project_slug}-{ref_slug}-{digest}"
+
+
+def reference_dependency_cache_paths(source_identity: str) -> tuple[str, str]:
+    root = REFERENCE_DEPENDENCY_CACHE_RELATIVE_ROOT / source_identity
+    return (root / "packages").as_posix(), (root / "path-builds").as_posix()
 
 
 def default_project_manifest(package_root: Path) -> Path:
@@ -480,6 +486,10 @@ def reference_project_target_fields(
     project: HarnessProject,
     release_target: HarnessReleaseTarget,
 ) -> dict[str, object]:
+    source_identity = reference_source_identity(project) if project.git_checkout else ""
+    dependency_packages_path, dependency_path_builds_path = (
+        reference_dependency_cache_paths(source_identity) if source_identity else ("", "")
+    )
     return {
         "project_id": project.project_id,
         "rc": project_target_rc(project),
@@ -487,7 +497,9 @@ def reference_project_target_fields(
         "verso_ref": project_target_verso_ref(release_target, project),
         "project_root": project.project_root,
         "hash": project.ref,
-        "reference_source_identity": reference_source_identity(project) if project.git_checkout else "",
+        "reference_source_identity": source_identity,
+        "reference_dependency_packages_path": dependency_packages_path,
+        "reference_dependency_path_builds_path": dependency_path_builds_path,
     }
 
 
@@ -652,6 +664,8 @@ def deploy_matrix_from_controller_catalog(
                     "project_root": fields["project_root"],
                     "hash": fields["hash"],
                     "reference_source_identity": fields["reference_source_identity"],
+                    "reference_dependency_packages_path": fields["reference_dependency_packages_path"],
+                    "reference_dependency_path_builds_path": fields["reference_dependency_path_builds_path"],
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
                     "publish_pdf": publish_pdf,
