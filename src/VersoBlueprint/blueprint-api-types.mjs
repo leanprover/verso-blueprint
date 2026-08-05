@@ -175,9 +175,9 @@
  * @property {string} id Canonical source-document id.
  * @property {string} title Human-readable source title.
  * @property {"pdf" | "text" | string} kind Broad source-document kind.
- * @property {string} [pdf] Source PDF path, when the document is PDF-backed.
- * @property {string} [pageRoot] Optional root for extracted source pages.
- * @property {string} [imageRoot] Optional root for extracted page images.
+ * @property {string | null} pdf Source PDF path, or `null` when the document is not PDF-backed.
+ * @property {string | null} pageRoot Root for extracted source pages, or `null` when unavailable.
+ * @property {string | null} imageRoot Root for extracted page images, or `null` when unavailable.
  */
 
 /**
@@ -187,8 +187,8 @@
  * @property {string} path Source text path.
  * @property {number} startLine One-based inclusive start line.
  * @property {number} endLine One-based inclusive end line.
- * @property {number} [startCharacter] Optional start character.
- * @property {number} [endCharacter] Optional end character.
+ * @property {number | null} startCharacter Start character, or `null` when the span covers whole lines.
+ * @property {number | null} endCharacter End character, or `null` when the span covers whole lines.
  */
 
 /**
@@ -209,19 +209,19 @@
  *
  * @typedef {Object} BlueprintSourcePdfSpan
  * @property {string} path Source PDF page path.
- * @property {string} [image] Optional rendered page image path.
- * @property {BlueprintSourcePdfBox} [box] Optional crop box.
+ * @property {string | null} image Rendered page image path, or `null` when unavailable.
+ * @property {BlueprintSourcePdfBox | null} box Crop box, or `null` when the span covers the page.
  */
 
 /**
  * One original source span attached to a Blueprint node.
  *
  * @typedef {Object} BlueprintSourceSpan
- * @property {string} [page] Optional source-local page identifier.
- * @property {string} [anchor] Stable source-native identifier, such as a TeX `\\label`.
- * @property {string} [citation] Human-readable source-native reference, such as `Lemma 2.1(1)`.
- * @property {BlueprintSourceTextRange} [text] Text location for this span.
- * @property {BlueprintSourcePdfSpan} [pdf] PDF/page-image location for this span.
+ * @property {string | null} page Source-local page identifier, or `null` for a page-less span.
+ * @property {string | null} anchor Stable source-native identifier, such as a TeX `\\label`, or `null` when unavailable.
+ * @property {string | null} citation Human-readable source-native reference, such as `Lemma 2.1(1)`, or `null` when unavailable.
+ * @property {BlueprintSourceTextRange | null} text Text location, or `null` when unavailable.
+ * @property {BlueprintSourcePdfSpan | null} pdf PDF/page-image location, or `null` when unavailable.
  */
 
 /**

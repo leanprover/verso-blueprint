@@ -50,11 +50,12 @@ rather than invent parallel sources of truth.
 
 Blueprint labels and traversal-generated heading numbers identify nodes inside
 the Blueprint site. They must remain independent of identities inherited from
-an original TeX, PDF, or text source. A source span therefore records a stable
-source-native `anchor` and a human-facing `citation` alongside physical page,
-text, or PDF locations. For example, a node generated as `Lemma 2.2` can point
-to `itm: ib-first` and display `source: Lemma 2.1(1)` without changing its graph
-key, cross-references, or intrinsic numbering.
+an original TeX, PDF, or text source. A source span may therefore record a
+stable source-native `anchor` and a human-facing `citation` either alongside
+physical page, text, or PDF locations or, for an anchor-only span, instead of
+them. For example, a node generated as `Lemma 2.2` can point to `itm:ib-first`
+and display `source: Lemma 2.1(1)` without changing its graph key,
+cross-references, or intrinsic numbering.
 
 The source anchor is machine identity; the citation is presentation. Neither is
 reconstructed from visible prose, and neither is used as a substitute for the
