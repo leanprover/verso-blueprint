@@ -26,9 +26,30 @@ jobs:
       reference_matrix: ${{ steps.resolve.outputs.reference_matrix }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Select controller catalog
+        id: controller
+        env:
+          BP_DEFAULT_DEV_BRANCH: ${{ github.event.repository.default_branch }}
+          BP_RELEASE_ID: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          manifest_path=tests/harness/projects.json
+          if [ "$BP_RELEASE_ID" != "$BP_DEFAULT_DEV_BRANCH" ]; then
+            git fetch --no-tags origin "$BP_DEFAULT_DEV_BRANCH"
+            manifest_path=_out/controller-projects.json
+            mkdir -p "$(dirname "$manifest_path")"
+            git show "origin/$BP_DEFAULT_DEV_BRANCH:tests/harness/projects.json" > "$manifest_path"
+          fi
+          echo "manifest_path=$manifest_path" >> "$GITHUB_OUTPUT"
+          echo "release_id=$BP_RELEASE_ID" >> "$GITHUB_OUTPUT"
       - name: Resolve release metadata
         id: resolve
-        run: python3 ./scripts/emit_reference_release_matrix.py --github-output >> "$GITHUB_OUTPUT"
+        run: |
+          python3 ./scripts/emit_reference_release_matrix.py \
+            --manifest "${{ steps.controller.outputs.manifest_path }}" \
+            --release "${{ steps.controller.outputs.release_id }}" \
+            --github-output >> "$GITHUB_OUTPUT"
 
   build-reference-blueprints:
     name: Build Reference ${{ matrix.project_id }}
@@ -54,6 +75,21 @@ jobs:
           echo "blueprint=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_source_identity=${{ matrix.reference_source_identity }}"
+      - name: Write reference project manifest
+        env:
+          BP_PROJECT_ID: ${{ matrix.project_id }}
+          BP_REFERENCE_PROJECT_MANIFEST: ${{ toJSON(matrix.project_manifest) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("_out/reference-projects") / (os.environ["BP_PROJECT_ID"] + ".json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          manifest = json.loads(os.environ["BP_REFERENCE_PROJECT_MANIFEST"])
+          path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
       - name: Match reference target toolchain
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Report disk usage before cache restore
@@ -116,6 +152,8 @@ jobs:
         run: |
           ./scripts/generate-reference-blueprints.sh \
             --allow-unsafe-root-release \
+            --manifest _out/reference-projects/${{ matrix.project_id }}.json \
+            --release ${{ needs.resolve-reference-release.outputs.release_id }} \
             --pdf \
             --record-build-metrics \
             --project ${{ matrix.project_id }}

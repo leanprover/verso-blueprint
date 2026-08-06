@@ -775,9 +775,15 @@ template-owned CI path.
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
 pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 
-- resolves the current branch's release target from `branch-policy.json`
+- resolves the triggering branch's release target from `branch-policy.json`
+- uses the triggering checkout's catalog on the default-development line, but
+  reads the default-development branch's controller catalog for maintenance
+  lines so stale branch-local targets cannot recreate retired Blueprint builds
 - builds only project targets for that release that set
   `publish_reference: true`
+- passes each selected target to the release-branch harness through an exact
+  generated one-project manifest, preserving the controller ref and effective
+  reference toolchain
 - builds `pdf/main.pdf` for those reference targets, using the workflow's
   installed TeX toolchain
 - builds the local `test-blueprints/` artifact set, including
