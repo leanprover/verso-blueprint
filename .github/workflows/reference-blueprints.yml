@@ -113,7 +113,12 @@ jobs:
           lualatex --version | head -n 1
           python3 --version
       - name: Generate reference blueprint with PDF
-        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --pdf --project ${{ matrix.project_id }}
+        run: |
+          ./scripts/generate-reference-blueprints.sh \
+            --allow-unsafe-root-release \
+            --pdf \
+            --record-build-metrics \
+            --project ${{ matrix.project_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation"
@@ -189,6 +194,12 @@ jobs:
           path: _out/test-blueprints
       - name: Prepare site artifact
         run: python3 ./scripts/prepare_reference_blueprints_pages.py --reference-root _out/reference-blueprints-artifacts
+      - name: Report reference build metrics
+        run: |
+          python3 ./scripts/reference_build_metrics.py report \
+            --input-root _out/reference-blueprints-artifacts \
+            --output _site/build-data/reference-blueprints.json \
+            --summary-output "$GITHUB_STEP_SUMMARY"
       - name: Upload site artifact
         uses: actions/upload-artifact@v7
         with:

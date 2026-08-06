@@ -38,6 +38,7 @@ from scripts.blueprint_harness_references import (
     default_reference_edit_base,
     generate_git_project,
     output_dir_for,
+    reference_build_metrics_command,
     reference_source_paths,
     reference_submodule_update_command,
     require_reference_harness_layout,
@@ -131,6 +132,28 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             command_with_pdf(VBP_BUILD_PDF_COMMAND),
             VBP_BUILD_PDF_COMMAND,
         )
+
+    def test_reference_build_metrics_command_wraps_generator_with_identity(self) -> None:
+        project = external_project(
+            selected_release="v4.33.0",
+            selected_reference_toolchain="v4.33.0-rc1",
+            ref="abc123",
+        )
+        output_dir = Path("/tmp/out/external-blueprint")
+
+        command = reference_build_metrics_command(
+            PACKAGE_ROOT,
+            project,
+            output_dir,
+            (*VBP_BUILD_OUTPUT_COMMAND, "--verbose"),
+        )
+
+        self.assertEqual(command[1], str(PACKAGE_ROOT / "scripts" / "reference_build_metrics.py"))
+        self.assertEqual(command[2:4], ("record", "--output"))
+        self.assertIn(str(output_dir / "build-metrics.json"), command)
+        self.assertIn("v4.33.0", command)
+        self.assertIn("v4.33.0-rc1", command)
+        self.assertEqual(command[-len(VBP_BUILD_OUTPUT_COMMAND) - 1 :], (*VBP_BUILD_OUTPUT_COMMAND, "--verbose"))
 
     def init_git_repo(self, root: Path) -> None:
         subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -630,9 +653,11 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("--reference-root _out/reference-blueprints-artifacts", workflow_text)
         self.assertNotIn("merge-multiple: true", workflow_text)
         self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
-        self.assertIn("--pdf --project ${{ matrix.project_id }}", workflow_text)
         self.assertIn("Install PDF toolchain", workflow_text)
         self.assertIn("Generate reference blueprint with PDF", workflow_text)
+        self.assertIn("--record-build-metrics", workflow_text)
+        self.assertIn("reference_build_metrics.py report", workflow_text)
+        self.assertIn("_site/build-data/reference-blueprints.json", workflow_text)
         self.assertIn("lualatex --version", workflow_text)
         self.assertIn("texlive-fonts-extra", workflow_text)
         self.assertIn("texlive-plain-generic", workflow_text)
@@ -665,6 +690,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertIn("publish_pdf=${{ matrix.publish_pdf }}", deploy_workflow_text)
         self.assertIn("Generate release reference blueprints", deploy_workflow_text)
+        self.assertIn("--record-build-metrics", deploy_workflow_text)
+        self.assertIn("reference_build_metrics.py report", deploy_workflow_text)
+        self.assertIn("_site/build-data/reference-blueprints.json", deploy_workflow_text)
         self.assertIn("lualatex --version", deploy_workflow_text)
         self.assertIn("texlive-fonts-extra", deploy_workflow_text)
         self.assertIn("texlive-plain-generic", deploy_workflow_text)

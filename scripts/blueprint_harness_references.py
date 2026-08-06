@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 import tomllib
 
@@ -43,6 +44,7 @@ GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "url.https://github.com/.insteadOf=ssh://git@github.com/",
 )
 REFERENCE_HARNESS_CONFIG = "verso-harness.toml"
+REFERENCE_BUILD_METRICS_FILENAME = "build-metrics.json"
 
 
 def command_with_verbose(command: tuple[str, ...]) -> tuple[str, ...]:
@@ -62,6 +64,33 @@ def reference_generation_command(
     if verbose:
         command = command_with_verbose(command)
     return command
+
+
+def reference_build_metrics_command(
+    package_root: Path,
+    project: HarnessProject,
+    output_dir: Path,
+    command: tuple[str, ...],
+) -> tuple[str, ...]:
+    if project.selected_release is None:
+        raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
+    return (
+        sys.executable,
+        str(package_root / "scripts" / "reference_build_metrics.py"),
+        "record",
+        "--output",
+        str(output_dir / REFERENCE_BUILD_METRICS_FILENAME),
+        "--project-id",
+        project.project_id,
+        "--release-id",
+        project.selected_release,
+        "--source-ref",
+        project.ref or "",
+        "--toolchain",
+        selected_project_toolchain(project),
+        "--",
+        *command,
+    )
 
 
 @dataclass(frozen=True)
@@ -856,6 +885,7 @@ def generate_in_repo_command_project(
     skip_build: bool,
     pdf: bool = False,
     verbose: bool = False,
+    record_build_metrics: bool = False,
 ) -> None:
     project_dir = layout.package_root / project.project_root
     if not project_dir.exists():
@@ -868,7 +898,18 @@ def generate_in_repo_command_project(
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     try:
         with maybe_in_repo_blueprint_dependency_override(project_dir, layout.package_root, log=True):
-            generate_command = reference_generation_command(project.generate_command or (), pdf=pdf, verbose=verbose)
+            generate_command = reference_generation_command(
+                project.generate_command or (),
+                pdf=pdf,
+                verbose=verbose or record_build_metrics,
+            )
+            if record_build_metrics:
+                generate_command = reference_build_metrics_command(
+                    layout.package_root,
+                    project,
+                    output_dir,
+                    generate_command,
+                )
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
@@ -903,6 +944,7 @@ def generate_git_project(
     skip_build: bool,
     pdf: bool = False,
     verbose: bool = False,
+    record_build_metrics: bool = False,
 ) -> None:
     rebuild_and_log_embedded_asset_owners(layout.package_root)
     cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False)
@@ -921,7 +963,18 @@ def generate_git_project(
         seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
 
     with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
-        generate_command = reference_generation_command(project.generate_command or (), pdf=pdf, verbose=verbose)
+        generate_command = reference_generation_command(
+            project.generate_command or (),
+            pdf=pdf,
+            verbose=verbose or record_build_metrics,
+        )
+        if record_build_metrics:
+            generate_command = reference_build_metrics_command(
+                layout.package_root,
+                project,
+                output_dir,
+                generate_command,
+            )
         run_project_update_build_generate(
             layout.package_root,
             project_dir,

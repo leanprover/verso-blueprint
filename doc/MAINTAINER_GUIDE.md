@@ -257,6 +257,27 @@ Pass `--verbose` to `compose`, `generate`, or `validate` when you want each
 Blueprint generator to print its own progress diagnostics during HTML
 emission.
 
+Pass `--record-build-metrics` to `generate` or `validate` when the phase
+timings need to be retained. This option also enables generator `--verbose`
+output, tees the normal build log unchanged, and writes `build-metrics.json`
+beside each generated project artifact. The record contains the total
+generator-command duration plus every canonical
+`Blueprint: finished <phase> in <milliseconds>ms` measurement emitted by the
+generator. In particular, single-page and multi-page HTML traversal remain
+separate measurements rather than being inferred from the surrounding Lake
+build time.
+
+Reference Blueprint CI enables this recording by default. It aggregates the
+per-project files into the Actions job summary and the published
+`/build-data/reference-blueprints.json` report. The report retains the latest
+50 snapshots and compares a run with the currently deployed baseline when the
+reference source revision and Lean toolchain match. A total-command or phase
+increase is marked as a regression warning only when it exceeds both 20
+percent and one second; warnings are initially advisory so ordinary
+hosted-runner variation cannot block a release. Full command and phase data
+remains available in JSON even when a value does not cross the warning
+threshold.
+
 When editing an external reference repository, use an editable clone rather
 than the disposable validation clones:
 

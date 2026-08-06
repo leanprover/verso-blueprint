@@ -185,6 +185,32 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertFalse(parser.parse_args(["validate"]).verbose)
         self.assertTrue(parser.parse_args(["validate", "--verbose"]).verbose)
 
+    def test_reference_generation_commands_parse_build_metrics(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        self.assertFalse(parser.parse_args(["generate"]).record_build_metrics)
+        self.assertTrue(parser.parse_args(["generate", "--record-build-metrics"]).record_build_metrics)
+        self.assertFalse(parser.parse_args(["validate"]).record_build_metrics)
+        self.assertTrue(parser.parse_args(["validate", "--record-build-metrics"]).record_build_metrics)
+
+    def test_record_build_metrics_enables_verbose_generator(self) -> None:
+        project = self.published_git_project()
+        with patch.object(
+            reference_harness_mod,
+            "ensure_prebuilt_executable",
+            return_value=Path("/tmp/published"),
+        ):
+            command = reference_harness_mod.reference_executable_args(
+                Path("/tmp/package"),
+                project,
+                Path("/tmp/out/published"),
+                pdf=False,
+                verbose=False,
+                record_build_metrics=True,
+            )
+
+        self.assertIn("/tmp/package/scripts/reference_build_metrics.py", command)
+        self.assertEqual(command[-1], "--verbose")
+
     def test_reference_projects_parses_release_filter(self) -> None:
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["projects", "--release", "v4.29.0"])
@@ -2530,7 +2556,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with patched_attrs(
             reference_harness_mod,
             ensure_prebuilt_executable=lambda _package_root, _exe_name: Path("/tmp/demo"),
-            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, *, pdf=False, verbose=False: None,
+            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, **_kwargs: None,
         ):
             generate_projects(
                 layout,
