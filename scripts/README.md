@@ -104,6 +104,10 @@ script map, not a second command reference.
 - `blueprint_reference_harness.py`
   Editable external Blueprint composition plus reference-blueprint generation,
   validation, and reference-checkout CLI.
+- `reference_build_metrics.py`
+  Tee and persist verbose Blueprint phase timings, aggregate reference-project
+  measurements, compare them with the deployed baseline, and emit the Actions
+  summary/public build-data report used for regression visibility.
 - `blueprint_harness_composition.py`
   User-provided Blueprint composition, Lake-configuration preservation,
   toolchain validation, and mandatory Mathlib-cache retrieval.

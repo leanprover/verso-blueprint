@@ -178,6 +178,7 @@ jobs:
             --allow-unsafe-root-release \
             --allow-local-build \
             --serial \
+            --record-build-metrics \
             _out/reference-blueprints/${{ matrix.release_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
@@ -302,6 +303,12 @@ jobs:
           path: _out/test-blueprints
       - name: Prepare combined Pages artifact
         run: python3 ./scripts/prepare_reference_blueprints_pages.py --js-api-docs-root _out/jsdoc-api
+      - name: Report reference build metrics
+        run: |
+          python3 ./scripts/reference_build_metrics.py report \
+            --input-root _out/reference-blueprints \
+            --output _site/build-data/reference-blueprints.json \
+            --summary-output "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

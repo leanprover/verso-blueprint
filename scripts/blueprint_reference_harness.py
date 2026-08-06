@@ -52,6 +52,7 @@ from scripts.blueprint_harness_references import (
     generate_git_project,
     output_dir_for,
     prepare_reference_edit_checkout,
+    reference_build_metrics_command,
     reference_generation_command,
     ref_is_commit_hash,
     reference_prune_plan,
@@ -120,6 +121,17 @@ def add_generation_verbose_argument(parser: argparse.ArgumentParser) -> None:
         "--verbose",
         action="store_true",
         help="Pass `--verbose` to Blueprint generator commands.",
+    )
+
+
+def add_generation_metrics_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--record-build-metrics",
+        action="store_true",
+        help=(
+            "Record structured generator phase timings beside each project artifact. "
+            "This also enables generator `--verbose` output."
+        ),
     )
 
 
@@ -621,13 +633,21 @@ def reference_executable_args(
     *,
     pdf: bool,
     verbose: bool,
+    record_build_metrics: bool,
 ) -> list[str]:
     args = [
         str(ensure_prebuilt_executable(package_root, project.generator or project.project_id)),
         "--output",
         str(output_dir),
     ]
-    return list(reference_generation_command(tuple(args), pdf=pdf, verbose=verbose))
+    command = reference_generation_command(
+        tuple(args),
+        pdf=pdf,
+        verbose=verbose or record_build_metrics,
+    )
+    if record_build_metrics:
+        command = reference_build_metrics_command(package_root, project, output_dir, command)
+    return list(command)
 
 
 def render_in_repo_projects(
@@ -638,6 +658,7 @@ def render_in_repo_projects(
     *,
     pdf: bool = False,
     verbose: bool = False,
+    record_build_metrics: bool = False,
 ) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     if serial:
@@ -646,7 +667,14 @@ def render_in_repo_projects(
             run(
                 lean_low_priority_command(
                     package_root,
-                    *reference_executable_args(package_root, project, output_dir, pdf=pdf, verbose=verbose),
+                    *reference_executable_args(
+                        package_root,
+                        project,
+                        output_dir,
+                        pdf=pdf,
+                        verbose=verbose,
+                        record_build_metrics=record_build_metrics,
+                    ),
                 ),
                 cwd=package_root,
             )
@@ -659,7 +687,14 @@ def render_in_repo_projects(
             output_dir.mkdir(parents=True, exist_ok=True)
             command = lean_low_priority_command(
                 package_root,
-                *reference_executable_args(package_root, project, output_dir, pdf=pdf, verbose=verbose),
+                *reference_executable_args(
+                    package_root,
+                    project,
+                    output_dir,
+                    pdf=pdf,
+                    verbose=verbose,
+                    record_build_metrics=record_build_metrics,
+                ),
             )
             print(f"[blueprint-reference-harness] launching {project.project_id} -> {output_dir}", flush=True)
             procs.append((project.project_id, spawn_managed_process(command, cwd=package_root)))
@@ -687,6 +722,7 @@ def generate_projects(
     allow_local_build: bool,
     pdf: bool = False,
     verbose: bool = False,
+    record_build_metrics: bool = False,
 ) -> None:
     in_repo_projects = [project for project in projects if project.in_repo_project]
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
@@ -714,7 +750,15 @@ def generate_projects(
         elif not skip_build and not use_local_build:
             for project in in_repo_target_projects:
                 ensure_prebuilt_executable(layout.package_root, project.generator or project.project_id)
-        render_in_repo_projects(layout.package_root, output_root, in_repo_target_projects, serial, pdf=pdf, verbose=verbose)
+        render_in_repo_projects(
+            layout.package_root,
+            output_root,
+            in_repo_target_projects,
+            serial,
+            pdf=pdf,
+            verbose=verbose,
+            record_build_metrics=record_build_metrics,
+        )
 
     if in_repo_command_projects:
         print(f"[blueprint-reference-harness] package root: {layout.package_root}")
@@ -731,6 +775,7 @@ def generate_projects(
                 skip_build=skip_build,
                 pdf=pdf,
                 verbose=verbose,
+                record_build_metrics=record_build_metrics,
             )
 
     for project in git_projects:
@@ -742,6 +787,7 @@ def generate_projects(
             skip_build=skip_build,
             pdf=pdf,
             verbose=verbose,
+            record_build_metrics=record_build_metrics,
         )
 
 
@@ -761,6 +807,7 @@ def command_generate(args: argparse.Namespace) -> int:
         allow_local_build=args.allow_local_build,
         pdf=args.pdf,
         verbose=getattr(args, "verbose", False),
+        record_build_metrics=getattr(args, "record_build_metrics", False),
     )
 
     print(f"[blueprint-reference-harness] project manifest: {manifest_path}")
@@ -848,6 +895,7 @@ def command_validate(args: argparse.Namespace) -> int:
             serial=args.serial,
             allow_local_build=args.allow_local_build,
             verbose=getattr(args, "verbose", False),
+            record_build_metrics=getattr(args, "record_build_metrics", False),
         )
     except SystemExit as err:
         failures.append(StepFailure("generate projects", str(err)))
@@ -1164,6 +1212,7 @@ def add_generation_commands(subparsers) -> None:
         help="Also build pdf/main.pdf for each generated reference blueprint.",
     )
     add_generation_verbose_argument(generate)
+    add_generation_metrics_argument(generate)
     add_allow_unsafe_root_release_argument(generate)
     add_serial_argument(generate)
     add_allow_local_build_argument(
@@ -1197,6 +1246,7 @@ def add_generation_commands(subparsers) -> None:
     )
     add_allow_unsafe_root_release_argument(validate)
     add_generation_verbose_argument(validate)
+    add_generation_metrics_argument(validate)
     add_serial_argument(validate)
     validate.add_argument(
         "--pytest-arg",
