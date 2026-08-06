@@ -841,10 +841,14 @@ def Data.registerExternalMarkup (data : Data) (label : Label) (markup : External
 structure NodeInfo where
   label : Label
   kind : Data.InProgressKind
+  /-- Formal declaration represented by this info node, when applicable. -/
+  decl? : Option Name := none
 deriving TypeName, Repr
 
 def NodeInfo.save [Monad m] [Elab.MonadInfoTree m]
-    (stx : Syntax) (label : Label) (kind : Data.InProgressKind) : m Unit := do
-  Elab.pushInfoLeaf <| .ofCustomInfo { stx := stx, value := Dynamic.mk ({ label, kind } : NodeInfo) }
+    (stx : Syntax) (label : Label) (kind : Data.InProgressKind)
+    (decl? : Option Name := none) : m Unit := do
+  Elab.pushInfoLeaf <|
+    .ofCustomInfo { stx := stx, value := Dynamic.mk ({ label, kind, decl? } : NodeInfo) }
 
 end
