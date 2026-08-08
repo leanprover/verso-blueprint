@@ -395,12 +395,6 @@ private def externalDeclRenderedWithCacheHovers
       (.text true s!"Render failed: {err.message}")
 
 /--
-Rendered fragments produced by `ExternalCode.renderParts` for external panel content.
--/
-structure RenderParts where
-  externalCodePanel : Output.Html := .empty
-
-/--
 Render the canonical hover-preview body for external Lean code references.
 
 This is the standalone variant for callers that do not have a page or generated
@@ -438,51 +432,27 @@ def renderPreviewHtmlWithCacheHovers
     (renderExternalDeclList rows, hoverState)
 
 /--
-Render external-code UI fragments for an informal block.
-
-This self-contained variant is kept for callers that do not have access to a
-page or generated-cache hover table. Page rendering should use
-`renderPartsWithPageHovers` so repeated hover payloads deduplicate.
--/
-def renderParts (panelHeader : CodePanelHeader)
-    (summaryTitle : String) (indicator : Output.Html)
-    (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
-    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
-    (folded : Bool := false) : RenderParts :=
-  if externalDecls.isEmpty then
-    {}
-  else
-    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
-    let externalCodePanel : Output.Html :=
-      mkCodePanel panelHeader summaryTitle indicator
-        (renderExternalDeclList <| renderExternalDeclRows linkedDecls)
-        (folded := folded)
-    { externalCodePanel }
-
-/--
-Render external-code UI fragments into a real page `Html.State`.
+Render an external-code panel into a real page `Html.State`.
 
 This is the normal page-rendering path for `(lean := ...)` references. It
 remaps declaration-local highlighted-code hover ids into Verso's page hover
 table, so repeated external declaration docstrings are emitted once per page
 instead of once per occurrence.
 -/
-def renderPartsWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
+def renderPanelWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
     (summaryTitle : String) (indicator : Output.Html)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
     (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
     (folded : Bool := false) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m RenderParts := do
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   if externalDecls.isEmpty then
-    pure {}
+    pure .empty
   else
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let rows ← renderExternalDeclRowsWith externalDeclRenderedWithPageHovers linkedDecls
-    let externalCodePanel : Output.Html :=
-      mkCodePanel panelHeader summaryTitle indicator
-        (renderExternalDeclList rows)
-        (folded := folded)
-    pure { externalCodePanel }
+    pure <| mkCodePanel panelHeader summaryTitle indicator
+      (renderExternalDeclList rows)
+      (folded := folded)
 
 end ExternalCode
 end Informal
