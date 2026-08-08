@@ -72,6 +72,21 @@ startup work.
 The worker reduced wall time by 52.7% and 70.7% in the two pairs, system CPU by
 78.7% and 87.6%, and minor faults by about 86%.
 
+## CI corroboration
+
+The v4.32 reference-Blueprint workflow independently exercised the same FLT
+source revision, `bc09f1e5ce35d6418173386b5f134b51a81e6c17`. Lake reported
+`FLTBlueprint.Chapters.FujisakiProject` at 30s in the
+[base job](https://github.com/leanprover/verso-blueprint/actions/runs/31261292723/job/93112402344)
+and 14s in the
+[candidate job](https://github.com/leanprover/verso-blueprint/actions/runs/31262165786/job/93116039081),
+a 53.3% reduction that agrees with the isolated workstation result.
+
+This is corroboration of the module-level effect, not a controlled whole-build
+measurement. The candidate's complete reference-generation step was also
+shorter (12m43s versus 19m39s), but the base job rebuilt substantially more FLT
+dependencies, so cache state explains an unknown portion of that difference.
+
 ## Cause and implementation
 
 The original exact-payload cache did not help Fujisaki's 135 mostly unique
