@@ -67,6 +67,12 @@ open Informal.PreviewManifest
       let leanCodePreviewKeysDesc? := do
         let leanCodePreviewKeysJson ← entryProps.get? "leanCodePreviewKeys"
         leanCodePreviewKeysJson.getObjValAs? String "description" |>.toOption
+      let foldCodeBlockDesc? := do
+        let foldCodeBlockJson ← entryProps.get? "foldCodeBlock"
+        foldCodeBlockJson.getObjValAs? String "description" |>.toOption
+      let foldProofBlockDesc? := do
+        let foldProofBlockJson ← entryProps.get? "foldProofBlock"
+        foldProofBlockJson.getObjValAs? String "description" |>.toOption
       let sourceLocationDesc? := do
         let sourceLocationJson ← entryProps.get? "sourceLocation"
         sourceLocationJson.getObjValAs? String "description" |>.toOption
@@ -119,6 +125,8 @@ open Informal.PreviewManifest
         !useRefProps.contains "intents" &&
         entryProps.contains "leanCodePreviewKeys" &&
         entryProps.contains "codeData" &&
+        entryProps.contains "foldProofBlock" &&
+        entryProps.contains "foldCodeBlock" &&
         entryProps.contains "externalMarkup" &&
         entryProps.contains "sources" &&
         !entryProps.contains "source" &&
@@ -137,6 +145,10 @@ open Informal.PreviewManifest
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Manifest/cache-backed preview keys for Lean code previews associated with this entry." &&
+        foldProofBlockDesc? ==
+          some "Whether the canonical proof shell is collapsed when this is a proof entry." &&
+        foldCodeBlockDesc? ==
+          some "Whether the associated Lean code panel is collapsed for this canonical traversal entry." &&
         (internalSchemaDesc?.getD "").contains "Internal generated-data schema marker" &&
         sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&

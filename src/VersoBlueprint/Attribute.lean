@@ -8,10 +8,10 @@ import Lean
 import Lean.DocString.Extension
 import VersoManual
 import VersoBlueprint.DependencyAnalysis
+import VersoBlueprint.Docstring
 import VersoBlueprint.Environment
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.Math
 
 namespace Informal
 
@@ -23,7 +23,7 @@ declare_syntax_cat blueprintAttrOption
 syntax (name := blueprintAutoDepsAttrOption) "(" &"autoDeps" " := " ident ")" : blueprintAttrOption
 syntax (name := blueprintUsesAttrOption) "(" &"uses" " := " blueprintDepList ")" : blueprintAttrOption
 syntax (name := blueprintProofUsesAttrOption) "(" &"proofUses" " := " blueprintDepList ")" : blueprintAttrOption
-syntax (name := blueprint) "blueprint" ppSpace str (ppSpace blueprintAttrOption)* : attr
+syntax (name := blueprint) "blueprint" (ppSpace str)? (ppSpace blueprintAttrOption)* : attr
 
 private inductive AutoDepTarget where
   | label (label : Data.Label)
@@ -54,9 +54,6 @@ private def classifyDeclKind (decl : Name) (info : ConstantInfo) : CoreM Data.No
   | none =>
     throwError "invalid '[blueprint]' target '{decl}': expected a definition-like declaration or theorem, got {Informal.Data.ConstantInfo.blueprintKindText info}"
 
-private def pushLabelUnique (labels : Array Data.Label) (label : Data.Label) : Array Data.Label :=
-  if labels.contains label then labels else labels.push label
-
 private def manualUseRef (label : Data.Label) : Data.UseRef :=
   { label }
 
@@ -76,6 +73,16 @@ private def pushTargetUnique (targets : Array AutoDepTarget) (target : AutoDepTa
 private def parseLabel (label : String) : Data.Label :=
   LabelNameParsing.parse label
 
+/--
+Use a declaration's fully qualified spelling as an opaque Blueprint label.
+
+The `Name.mkSimple` representation is deliberate: string-authored Blueprint
+references use the same opaque-label parser rather than Lean namespace
+resolution.
+-/
+private def defaultLabelForDecl (decl : Name) : Data.Label :=
+  parseLabel decl.eraseMacroScopes.toString
+
 private def parseDepList : TSyntax ``blueprintDepList → CoreM AutoDepEntries
   | `(blueprintDepList| [$[$deps:blueprintDepTerm],*]) => do
     deps.foldlM (init := {}) fun cfg dep => do
@@ -93,108 +100,33 @@ private def parseDepList : TSyntax ``blueprintDepList → CoreM AutoDepEntries
       | _ => throwError "unsupported dependency syntax in '[blueprint]' attribute"
   | _ => throwError "unsupported dependency list syntax in '[blueprint]' attribute"
 
-private def elabBlueprintConfig : Syntax → CoreM BlueprintAttrConfig
-  | `(attr| blueprint $label:str $[$opts:blueprintAttrOption]*) => do
-    let mut cfg : BlueprintAttrConfig := { label := parseLabel label.getString }
-    for opt in opts do
-      match opt with
-      | `(blueprintAttrOption| (autoDeps := $value:ident)) =>
-        match value.getId.eraseMacroScopes with
-        | `true => cfg := { cfg with autoDeps := some true }
-        | `false => cfg := { cfg with autoDeps := some false }
-        | _ => throwErrorAt value "'autoDeps' expects 'true' or 'false'"
-      | `(blueprintAttrOption| (uses := $deps:blueprintDepList)) =>
-        let deps ← parseDepList deps
-        cfg := { cfg with uses := cfg.uses.append deps }
-      | `(blueprintAttrOption| (proofUses := $deps:blueprintDepList)) =>
-        let deps ← parseDepList deps
-        cfg := { cfg with proofUses := cfg.proofUses.append deps }
-      | _ => throwError "unsupported option syntax in '[blueprint]' attribute"
-    return cfg
+private def elabBlueprintOptions
+    (cfg : BlueprintAttrConfig)
+    (opts : Array (TSyntax `blueprintAttrOption)) :
+    CoreM BlueprintAttrConfig := do
+  let mut cfg := cfg
+  for opt in opts do
+    match opt with
+    | `(blueprintAttrOption| (autoDeps := $value:ident)) =>
+      match value.getId.eraseMacroScopes with
+      | `true => cfg := { cfg with autoDeps := some true }
+      | `false => cfg := { cfg with autoDeps := some false }
+      | _ => throwErrorAt value "'autoDeps' expects 'true' or 'false'"
+    | `(blueprintAttrOption| (uses := $deps:blueprintDepList)) =>
+      let deps ← parseDepList deps
+      cfg := { cfg with uses := cfg.uses.append deps }
+    | `(blueprintAttrOption| (proofUses := $deps:blueprintDepList)) =>
+      let deps ← parseDepList deps
+      cfg := { cfg with proofUses := cfg.proofUses.append deps }
+    | _ => throwError "unsupported option syntax in '[blueprint]' attribute"
+  return cfg
+
+private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrConfig
+  | `(attr| blueprint $label:str $[$opts:blueprintAttrOption]*) =>
+    elabBlueprintOptions { label := parseLabel label.getString } opts
+  | `(attr| blueprint $[$opts:blueprintAttrOption]*) =>
+    elabBlueprintOptions { label := defaultLabelForDecl decl } opts
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
-
-mutual
-
-private partial def inlineToManualStx (inl : Lean.Doc.Inline Lean.ElabInline) : CoreM (TSyntax `term) := do
-  match inl with
-  | .text s => `(Verso.Doc.Inline.text $(quote s))
-  | .emph content =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.emph #[$content,*])
-  | .bold content =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.bold #[$content,*])
-  | .code s => `(Verso.Doc.Inline.code $(quote s))
-  | .math .inline s => Informal.Math.mkBpMathInlineTerm .inline s
-  | .math .display s => Informal.Math.mkBpMathInlineTerm .display s
-  | .linebreak s => `(Verso.Doc.Inline.linebreak $(quote s))
-  | .link content url =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.link #[$content,*] $(quote url))
-  | .footnote name content =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.footnote $(quote name) #[$content,*])
-  | .image alt url => `(Verso.Doc.Inline.image $(quote alt) $(quote url))
-  | .concat content =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.concat #[$content,*])
-  -- Fallback for docstring extensions not available in the Manual genre.
-  | .other _ content =>
-    let content ← content.mapM inlineToManualStx
-    `(Verso.Doc.Inline.concat #[$content,*])
-
-private partial def listItemToManualStx
-    (item : Lean.Doc.ListItem (Lean.Doc.Block Lean.ElabInline Lean.ElabBlock)) : CoreM (TSyntax `term) := do
-  let contents ← item.contents.mapM blockToManualStx
-  `(Verso.Doc.ListItem.mk #[$contents,*])
-
-private partial def descItemToManualStx
-    (item : Lean.Doc.DescItem (Lean.Doc.Inline Lean.ElabInline) (Lean.Doc.Block Lean.ElabInline Lean.ElabBlock)) :
-    CoreM (TSyntax `term) := do
-  let term ← item.term.mapM inlineToManualStx
-  let desc ← item.desc.mapM blockToManualStx
-  `(Verso.Doc.DescItem.mk #[$term,*] #[$desc,*])
-
-private partial def blockToManualStx (b : Lean.Doc.Block Lean.ElabInline Lean.ElabBlock) : CoreM (TSyntax `term) := do
-  match b with
-  | .para contents =>
-    let contents ← contents.mapM inlineToManualStx
-    `(Verso.Doc.Block.para #[$contents,*])
-  | .code content => `(Verso.Doc.Block.code $(quote content))
-  | .ul items =>
-    let items ← items.mapM listItemToManualStx
-    `(Verso.Doc.Block.ul #[$items,*])
-  | .ol start items =>
-    let items ← items.mapM listItemToManualStx
-    `(Verso.Doc.Block.ol $(quote start) #[$items,*])
-  | .dl items =>
-    let items ← items.mapM descItemToManualStx
-    `(Verso.Doc.Block.dl #[$items,*])
-  | .blockquote items =>
-    let items ← items.mapM blockToManualStx
-    `(Verso.Doc.Block.blockquote #[$items,*])
-  | .concat content =>
-    let content ← content.mapM blockToManualStx
-    `(Verso.Doc.Block.concat #[$content,*])
-  -- Fallback for docstring extensions not available in the Manual genre.
-  | .other _ content =>
-    let content ← content.mapM blockToManualStx
-    `(Verso.Doc.Block.concat #[$content,*])
-
-end
-
-private partial def partToManualBlocksStx
-    (p : Lean.Doc.Part Lean.ElabInline Lean.ElabBlock Empty) : CoreM (Array (TSyntax `term)) := do
-  let mut out : Array (TSyntax `term) := #[]
-  if !p.title.isEmpty then
-    let title ← p.title.mapM inlineToManualStx
-    let titleBold ← `(Verso.Doc.Inline.bold #[$title,*])
-    let titleBlock ← `(Verso.Doc.Block.para #[$titleBold])
-    out := out.push titleBlock
-  out := out ++ (← p.content.mapM blockToManualStx)
-  for child in p.subParts do
-    out := out ++ (← partToManualBlocksStx child)
-  pure out
 
 private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalData) := do
   let env ← getEnv
@@ -214,11 +146,8 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option
               (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
         | none =>
           pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
-    | some (.inr d) =>
-      let mut blocks ← d.text.mapM blockToManualStx
-      for part in d.subsections do
-        blocks := blocks ++ (← partToManualBlocksStx part)
-      pure blocks
+    | some (.inr doc) =>
+      Informal.Docstring.versoDocstringToManualBlocksStx doc
   if elabStx.isEmpty then
     pure none
   else
@@ -251,14 +180,14 @@ private def resolveManualTargets
     (currentDecl currentLabel : Name) (targets : Array AutoDepTarget) : CoreM (Array Data.Label) := do
   targets.foldlM (init := #[]) fun acc target => do
     let labels ← labelsForManualTarget currentDecl currentLabel target
-    return labels.foldl pushLabelUnique acc
+    return labels.foldl Data.Label.pushUnique acc
 
 private def mergeAxisDeps
     (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries) :
     CoreM (Array Data.UseRef) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
-  let excluded := pushLabelUnique excluded currentLabel
+  let excluded := Data.Label.pushUnique excluded currentLabel
   let mut out := #[]
   for label in DependencyAnalysis.sortLabels inferred do
     if !excluded.contains label then
@@ -285,20 +214,24 @@ private def resolveAutoDeps
 private def payloadWithDeps
     (ref : Syntax) (deps : Array Data.UseRef) (incoming? existing? : Option Data.InformalData) :
     Option Data.InformalData :=
-  let mergeDeps (payload : Data.InformalData) : Data.InformalData :=
-    { payload with deps := deps.foldl Data.UseRef.pushMergeByLabel payload.deps }
-  match existing? with
-  | some payload => some (mergeDeps payload)
-  | none =>
-    match incoming? with
-    | some payload => some (mergeDeps payload)
-    | none =>
-      if deps.isEmpty then
-        none
-      else
-        some { stx := ref, deps }
+  let incoming? := incoming?.map (·.withMergedDeps deps)
+  match existing?, incoming? with
+  | some existing, some incoming =>
+    if existing.hasBody then
+      some (existing.withMergedDeps deps)
+    else
+      some (existing.fillBodyless incoming)
+  | some existing, none =>
+    some (existing.withMergedDeps deps)
+  | none, some incoming =>
+    some incoming
+  | none, none =>
+    if deps.isEmpty then
+      none
+    else
+      some { stx := ref, deps }
 
-private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
+private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
@@ -326,6 +259,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
         data.insert label node
       | none => data
     return data
+  Environment.registerBlueprintAttributeLabel label
 
 open Lean in
 initialize
@@ -338,9 +272,9 @@ initialize
         throwError "invalid attribute '[blueprint]', must be global"
       unless ((← getEnv).getModuleIdxFor? decl).isNone do
         throwError "invalid attribute '[blueprint]', declaration is in an imported module"
-      let cfg ← elabBlueprintConfig stx
-      registerLeanOnlyDecl decl cfg stx
-    descr := "Registers a definition/theorem as a Lean-only blueprint node; supports opt-in automatic dependency inference"
+      let cfg ← elabBlueprintConfig decl stx
+      registerBlueprintDecl decl cfg stx
+    descr := "Registers a compiled declaration as a Blueprint node, using its qualified declaration name as the default label; supports opt-in automatic dependency inference"
   }
 
 end Informal

@@ -48,10 +48,6 @@ deriving Inhabited, Repr
 def enabled (opts : Options) (local? : Option Bool) : Bool :=
   local?.getD (verso.blueprint.autoDeps.get opts)
 
-def pushLabelUnique (labels : Array Data.Label) (label : Data.Label) :
-    Array Data.Label :=
-  if labels.contains label then labels else labels.push label
-
 def automaticUseRef (label : Data.Label) : Data.UseRef :=
   { label, origin := .automatic }
 
@@ -60,8 +56,8 @@ def sortLabels (labels : Array Data.Label) : Array Data.Label :=
 
 def InferredDeps.merge (current incoming : InferredDeps) : InferredDeps :=
   {
-    statement := incoming.statement.foldl pushLabelUnique current.statement
-    proof := incoming.proof.foldl pushLabelUnique current.proof
+    statement := incoming.statement.foldl Data.Label.pushUnique current.statement
+    proof := incoming.proof.foldl Data.Label.pushUnique current.proof
   }
 
 private def automaticUseRefs (labels : Array Data.Label) : Array Data.UseRef :=
@@ -95,7 +91,7 @@ private def directLabelsForExpr (root : Name) (expr : Expr) : CoreM (Array Data.
       return labels
     else
       let declLabels ← Environment.labelsForLeanDecl decl
-      return declLabels.foldl pushLabelUnique labels
+      return declLabels.foldl Data.Label.pushUnique labels
 
 private def directBodyLabels (root : Name) (info : ConstantInfo) : CoreM (Array Data.Label) := do
   match info with
@@ -111,7 +107,7 @@ private def directBodyLabels (root : Name) (info : ConstantInfo) : CoreM (Array 
       match (← getEnv).find? ctor with
       | some (.ctorInfo ctorInfo) =>
         let ctorLabels ← directLabelsForExpr root ctorInfo.type
-        return ctorLabels.foldl pushLabelUnique labels
+        return ctorLabels.foldl Data.Label.pushUnique labels
       | _ => return labels
 
 def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
@@ -141,7 +137,7 @@ private def payloadWithUseRefs
   else
     match current? with
     | some payload =>
-      some { payload with deps := Data.UseRef.mergeByLabel payload.deps useRefs }
+      some (payload.withMergedDeps useRefs)
     | none =>
       some { stx := ref, deps := useRefs }
 

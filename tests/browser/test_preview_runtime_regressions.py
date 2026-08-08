@@ -101,6 +101,36 @@ class TestPreviewRuntimeRegressions:
         expect(fun_doc).to_contain_text("Adds a small preview offset")
         expect(fun_doc.locator("code").first).to_contain_text("n")
 
+        verso_def = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition"]'
+        ).first
+        expect(verso_def).to_have_count(1)
+        verso_doc = verso_def.locator(".bp_external_decl_body > div.docstring").first
+        expect(verso_doc.locator("strong")).to_contain_text("structural external-panel docstring")
+        expect(verso_doc.locator("li")).to_have_count(2)
+        verso_math = verso_doc.locator("code.bp_math.inline").first
+        expect(verso_math).to_contain_text("6 + 1 = 7")
+        expect(verso_math).to_have_attribute("data-bp-math-rendered", "1")
+        expect(verso_math.locator(".katex")).to_have_count(1)
+        verso_display_math = verso_doc.locator("code.bp_math.display").first
+        expect(verso_display_math).to_contain_text("6 + 2 = 8")
+        expect(verso_display_math).to_have_attribute("data-bp-math-rendered", "1")
+        expect(verso_display_math.locator(".katex-display")).to_have_count(1)
+        expect(verso_def.locator(".bp_external_decl_body > pre.docstring")).to_have_count(0)
+
+        verso_structure = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure"]'
+        ).first
+        expect(verso_structure).to_have_count(1)
+        expect(verso_structure.locator(".bp_external_decl_body > div.docstring strong")).to_contain_text(
+            "structural container docstring"
+        )
+        field_doc = verso_structure.locator(".subdocs div.docstring").first
+        expect(field_doc.locator("strong")).to_contain_text("structural field docstring")
+        field_math = field_doc.locator("code.bp_math.inline").first
+        expect(field_math).to_contain_text("8 + 1 = 9")
+        expect(field_math).to_have_attribute("data-bp-math-rendered", "1")
+
         decl = page.locator(
             '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewFreyPackage.ofCounterexample"]'
         ).first

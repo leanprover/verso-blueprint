@@ -18,9 +18,9 @@ open Informal.Data
 Elaboration-time builder for a node that is currently open on the directive
 stack.
 
-This intentionally stays separate from `Data.Node`: it carries phase-specific
-inputs such as preview blocks and elaboration syntax before the final persisted
-semantic node can be assembled.
+This intentionally stays separate from `Data.Node`: it carries directive-stack
+metadata and typed preview blocks before the final persisted semantic node can
+be assembled.
 -/
 structure InProgress where
   label : Label
@@ -34,7 +34,6 @@ structure InProgress where
   prUrl : Option String := none
   deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  elabStx : Array Syntax := #[]
 deriving Inhabited, Repr
 
 inductive ImportedConflictKind where
@@ -59,6 +58,10 @@ data.
 structure State where
   data : Data := Data.empty
   localData : NameMap Node := {}
+  /-- Attribute-owned labels grouped by their defining module, in application order. -/
+  blueprintAttributeLabelsByModule : NameMap (Array Label) := {}
+  /-- Current-module subset exported through the persistent extension. -/
+  localBlueprintAttributeLabelsByModule : NameMap (Array Label) := {}
   groups : NameMap String := {}
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
@@ -93,26 +96,28 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
 
 inductive Entry where
   | node (label : Name) (node : Node)
+  | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
 
-private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
-  if labels.contains label then labels else labels.push label
-
-private def nodeLeanDecls (node : Node) : Array Name :=
-  node.leanDecls
+private def addBlueprintAttributeLabel
+    (modules : NameMap (Array Label))
+    (moduleName : Name) (label : Label) :
+    NameMap (Array Label) :=
+  modules.insert moduleName <|
+    Label.pushUnique (modules.getD moduleName #[]) label
 
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
   let decl := decl.eraseMacroScopes
   let labels := leanNameLabels.getD decl #[]
-  leanNameLabels.insert decl (pushLabelUnique labels label)
+  leanNameLabels.insert decl (Label.pushUnique labels label)
 
 private def addNodeLeanDeclLabels
     (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
     NameMap (Array Label) :=
-  (nodeLeanDecls node).foldl (init := leanNameLabels) fun acc decl =>
+  node.leanDecls.foldl (init := leanNameLabels) fun acc decl =>
     addLeanDeclLabel acc decl label
 
 private def addRegisteredNodeLeanDeclLabels
@@ -154,6 +159,13 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           localData := state.localData.insert label node
           leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
         }
+      | .blueprintAttributeLabel moduleName label =>
+        { state with
+          blueprintAttributeLabelsByModule :=
+            addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label
+          localBlueprintAttributeLabelsByModule :=
+            addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label
+        }
       | .group label header =>
         { state with
           groups := state.groups.insert label header
@@ -165,34 +177,54 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           localAuthors := state.localAuthors.insert label info
         }
     addImportedFn entries := do
-      let (data, groups, authors, leanNameLabels, importedConflicts) := entries.foldl
+      let (data, attributeLabelsByModule, groups, authors, leanNameLabels, importedConflicts) :=
+        entries.foldl
           (init := (
             ({} : NameMap Node),
+            ({} : NameMap (Array Label)),
             ({} : NameMap String),
             ({} : NameMap AuthorInfo),
             ({} : NameMap (Array Label)),
             (#[] : Array ImportedConflict)
           )) fun acc entry =>
-        entry.foldl (init := acc) fun (dataAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
+        entry.foldl (init := acc) fun
+            (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
           match item with
           | .node label node =>
             if dataAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .node label)
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .node label)
             else
               let leanNameAcc := addNodeLeanDeclLabels leanNameAcc label node
-              (dataAcc.insert label node, groupAcc, authorAcc, leanNameAcc, conflictsAcc)
+              (dataAcc.insert label node, attributeLabelsAcc, groupAcc, authorAcc,
+                leanNameAcc, conflictsAcc)
+          | .blueprintAttributeLabel moduleName label =>
+            (dataAcc,
+              addBlueprintAttributeLabel attributeLabelsAcc moduleName label,
+              groupAcc, authorAcc, leanNameAcc, conflictsAcc)
           | .group label header =>
             if groupAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .group label)
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .group label)
             else
-              (dataAcc, groupAcc.insert label header, authorAcc, leanNameAcc, conflictsAcc)
+              (dataAcc, attributeLabelsAcc, groupAcc.insert label header, authorAcc,
+                leanNameAcc, conflictsAcc)
           | .author label info =>
             if authorAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .author label)
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .author label)
             else
-              (dataAcc, groupAcc, authorAcc.insert label info, leanNameAcc, conflictsAcc)
-      pure { data, groups, authors, leanNameLabels, importedConflicts := sortImportedConflicts importedConflicts }
-    -- Strip transient elaboration cache before exporting nodes to the environment.
+              (dataAcc, attributeLabelsAcc, groupAcc, authorAcc.insert label info,
+                leanNameAcc, conflictsAcc)
+      pure {
+        data
+        blueprintAttributeLabelsByModule := attributeLabelsByModule
+        groups
+        authors
+        leanNameLabels
+        importedConflicts := sortImportedConflicts importedConflicts
+      }
+    -- Prefer typed preview blocks and strip redundant term syntax before export.
     exportEntriesFnEx env := fun state =>
       let nodeEntries := state.localData.toArray.map fun (name, node) =>
         let statement := node.statement.map fun s =>
@@ -200,11 +232,15 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         let proof := node.proof.map fun p =>
           if p.previewBlocks.isEmpty then p else { p with elabStx := #[] }
         Entry.node name { node with statement, proof }
+      let attributeLabelEntries :=
+        state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
+          labels.map (Entry.blueprintAttributeLabel moduleName)
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
-      OLeanEntries.uniform (nodeEntries ++ groupEntries ++ authorEntries)
+      OLeanEntries.uniform
+        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries)
   }
 
 section EnvOps
@@ -223,6 +259,22 @@ def modifyDataForLabel (label : Label) (f : Data -> m Data) : m Unit := do
   modifyM fun state => do
     let data ← f state.data
     return state.commitDataForLabel label data
+
+/--
+Record one successful `@[blueprint]` label under the module currently being
+compiled. Repeated registrations keep the first application position while the
+semantic node continues to collect every Lean declaration.
+-/
+def registerBlueprintAttributeLabel (label : Label) : m Unit := do
+  let moduleName := (← getEnv).mainModule
+  modifyEnv fun env =>
+    informalExt.addEntry env <|
+      .blueprintAttributeLabel moduleName label.eraseMacroScopes
+
+/-- Attribute-owned Blueprint labels declared directly by `moduleName`, in source order. -/
+def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
+  let state := informalExt.getState (← getEnv)
+  return state.blueprintAttributeLabelsByModule.getD moduleName #[]
 
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
@@ -311,7 +363,6 @@ def pop (ref : Syntax) : m Nat := do
           stx := ref
           deps := cur.deps
           previewBlocks := cur.previewBlocks
-          elabStx := cur.elabStx
         }
         let data ← state.data.register
           cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
@@ -344,16 +395,6 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
 
 def addDep (stx : Syntax) (dep : Name) : m Unit := do
   addUse stx { label := dep }
-
-def setStatementElab (stxs : Array Syntax) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] => pure ()
-  | cur :: rest =>
-    match cur.kind with
-    | .proof => pure ()
-    | .statement _ =>
-      let cur := { cur with elabStx := stxs }
-      modify fun state => { state with stack := cur :: rest }
 
 def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m Unit := do
   match (informalExt.getState (← getEnv)).stack with
