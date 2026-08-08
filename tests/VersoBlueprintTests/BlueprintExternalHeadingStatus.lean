@@ -184,13 +184,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 #guard_msgs in
 #eval!
   let decls := #[renderFailedExternalRef `Ext.external.panel_render_fail]
-  let parts := ExternalCode.renderParts
-    { caption := "Code for theorem", number? := some "1" }
-    "Lean declarations (all present: 1/1)"
-    .empty
-    decls
-    (fun _ => none)
-  let html := parts.externalCodePanel.asString
+  let html := (ExternalCode.renderPreviewHtml decls).asString
   hasSubstr html "Ext.external.panel_render_fail" &&
     hasSubstr html "bp_external_decl_error" &&
     hasSubstr html "render failed" &&

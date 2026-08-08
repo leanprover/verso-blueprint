@@ -208,19 +208,18 @@ private def htmlTestContext :
       Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[ref, ref] {}
     let cacheHtml := cacheHtml.asString
     let renderPage :
-        Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Informal.ExternalCode.RenderParts :=
-      Informal.ExternalCode.renderPartsWithPageHovers
+        Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Verso.Output.Html :=
+      Informal.ExternalCode.renderPanelWithPageHovers
         { caption := "Code for theorem", number? := some "1" }
         "Lean declarations"
         .empty
         #[ref, ref]
         (fun _ => none)
     let result :
-        Informal.ExternalCode.RenderParts × Verso.Code.Hover.State Verso.Output.Html :=
+        Verso.Output.Html × Verso.Code.Hover.State Verso.Output.Html :=
       Id.run <| (renderPage htmlTestContext).run {}
-    let parts := result.fst
     let hoverState := result.snd
-    let pageHtml := parts.externalCodePanel.asString
+    let pageHtml := result.fst.asString
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
