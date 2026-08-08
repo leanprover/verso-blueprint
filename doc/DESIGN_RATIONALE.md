@@ -719,18 +719,33 @@ The generation boundary is:
 ```text
 Lean/Verso source modules
   -> Manual traversal state and traversal domains
-  -> PreviewManifest.buildPreviewDataFiles
-  -> blueprint-manifest.json and blueprint-html-cache.json
+  -> PreparedRendererState
+       |-> projected TraverseState -> Manual HTML emission
+       `-> BlueprintExtraStep post-render steps
+             `-> PreparedPreviewState
+                   -> PreviewManifest.buildPreviewDataFiles
+                   -> blueprint-manifest.json and blueprint-html-cache.json
   -> generated ESM APIs and browser/custom clients
 ```
 
 Traversal domains are richer than rendered page HTML. They carry semantic
 payloads for the current generator process, including bodyless directives whose
-visible text comes from an external source. Relation indexes are installed once
-when traversal state becomes `PreparedPreviewState`; manifest assembly does not
-silently recover missing indexes by rescanning all stored blocks.
-For `b` stored blocks and `e` dependency uses, preparation is `O(b + e)` and
-relation assembly consumes the cached rows; direct construction therefore
+visible text comes from an external source. The standard renderer turns raw
+traversal output into `PreparedRendererState` once, applying Blueprint's HTML
+asset patches and retaining a `PreparedPreviewState` projection for generated
+data. Verso's emitters receive the underlying traversal state, but Blueprint
+post-render steps receive the prepared wrapper; there is no raw-state escape
+hatch that lets preview-data emission merely assert that another caller already
+installed the required indexes. Direct preview-data callers explicitly create
+the narrower `PreparedPreviewState`.
+
+For `a` HTML assets, `b` stored blocks, and `e` dependency uses, renderer-state
+preparation is `O(a + b + e)`: the asset patch is linear in the asset set and
+relation-index construction is `O(b + e)`. The wrapper and its preview-state
+projection are `O(1)`, so each immediate, delayed-save, or resumed-emission path
+still performs one preparation pass. Resumed persisted state crosses the
+boundary again because its serialized raw type cannot witness preparation.
+Relation assembly consumes the cached rows; direct construction therefore
 cannot regress to the former `O(b²)` full-store fallback path.
 `buildPreviewDataFiles` is the normalization point where those traversal facts
 become documented generated data. It must therefore decide from traversal

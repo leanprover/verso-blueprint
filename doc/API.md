@@ -172,10 +172,17 @@ In practice:
 Generator-side data flow is source-to-traversal-to-public JSON. During Manual
 traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
-state and traversal domains. Before assembly, the state crosses the explicit
-`PreparedPreviewState` boundary, which installs the relation indexes consumed by
-manifest construction. The standard HTML pipeline supplies an already-prepared
-state; direct callers use `PreparedPreviewState.prepare`.
+state and traversal domains. Before HTML emission, the standard pipeline crosses
+the explicit `PreparedRendererState` boundary. Renderer preparation applies the
+Blueprint HTML asset patches and owns the `PreparedPreviewState` that installs
+the relation indexes consumed by manifest construction. Verso's HTML emitters
+receive the projected traversal state, while Blueprint post-render
+`BlueprintExtraStep`s receive the prepared wrapper and therefore cannot assume
+that a raw state was patched by an earlier caller. Direct preview-data callers
+cross the narrower boundary with `PreparedPreviewState.prepare`. Custom steps
+passed to `blueprintMain` or `blueprintMainWithPreviewData` use
+`BlueprintExtraStep`; steps that need Verso's raw traversal state project it
+explicitly with `PreparedRendererState.state`.
 `Informal.PreviewManifest.buildPreviewDataFiles` then assembles a
 `PreviewDataModel` and crosses its `finish` boundary into the emission-ready
 semantic manifest/rendered-fragment-cache `Files` pair. The final type has a
