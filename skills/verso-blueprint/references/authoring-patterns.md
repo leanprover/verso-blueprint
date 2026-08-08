@@ -118,7 +118,9 @@ Before editing, inspect the neighboring chapter and top-level Blueprint module. 
 
 ```bash
 lake exe vbp build
-lake exe vbp check
 ```
 
-When reporting changes, name the labels changed, dependency edges added or removed, and any remaining build/check diagnostics.
+`vbp build` is the correctness boundary for normal source edits. Use
+`lake exe vbp check` separately when auditing persisted, copied, or externally
+supplied generated output. When reporting changes, name the labels changed,
+dependency edges added or removed, and any remaining diagnostics.

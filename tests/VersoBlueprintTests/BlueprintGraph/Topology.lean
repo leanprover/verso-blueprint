@@ -48,6 +48,30 @@ private def topologyNode
   | .error _ => true
   | .ok _ => false
 
+/- A variant preview mapping cannot disagree with its authoritative node. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  let previewKey := "informal:variant_preview_source:statement"
+  let source := {
+    topologyNode `variant_preview_source with
+      previewKey := PreviewKey.ofString? previewKey
+  }
+  let finalized := ({ nodes := #[source] } : GraphModel).finish "inconsistent-preview" {}
+  match finalized.variants[0]? with
+  | none => false
+  | some variant =>
+      let corrupted := {
+        variant with
+          previewKeyByNodeId :=
+            #[(graphNodeSvgId `variant_preview_source, "informal:wrong_preview:statement")]
+      }
+      let variants := finalized.variants.set! 0 corrupted
+      let inconsistent := (toJson finalized).setObjVal! "variants" (toJson variants)
+      match fromJson? (α := GraphData) inconsistent with
+      | .error _ => true
+      | .ok _ => false
+
 /- Repeated live/disk-equivalent refs collapse to one semantic mixed-axis edge. -/
 /-- info: true -/
 #guard_msgs in

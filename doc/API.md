@@ -173,9 +173,16 @@ Generator-side data flow is source-to-traversal-to-public JSON. During Manual
 traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
 state and traversal domains. `Informal.PreviewManifest.buildPreviewDataFiles`
-then normalizes those phase-local records into the semantic manifest and the
-rendered-fragment cache. Generated ESM APIs load those two files; they do not
-rerun traversal and should not recover semantics by scraping cached HTML.
+then assembles a `PreviewDataModel` and crosses its `finish` boundary into the
+emission-ready semantic manifest/rendered-fragment-cache `Files` pair. The
+final type has a private constructor, so unresolved candidate references cannot
+enter the normal emission path. Generated ESM APIs load those two files; they
+do not rerun traversal and should not recover semantics by scraping cached HTML.
+
+Persisted or externally supplied manifest/cache pairs enter maintainer audits
+as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each
+file cannot by itself establish their cross-artifact reference invariants;
+`vbp check` reports violations without repairing or promoting the decoded pair.
 
 Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
@@ -438,7 +445,7 @@ or DOT variant that disagrees with the authoritative nodes.
 Topology finalization and preview-artifact resolution are separate boundaries.
 `GraphModel.finish` fixes topology and DOT exactly once. Later, after the
 manifest and rendered-fragment cache are both known,
-`PreviewManifest.File.finalizePreviewReferences` may use
+`PreviewManifest.PreviewDataModel.finish` uses
 `GraphData.filterPreviewReferences` to remove unavailable preview keys from nodes
 and their variant lookup entries together. That synchronized post-pass cannot
 change nodes' dependencies or parents, derived edges or children, or DOT, and

@@ -20,6 +20,14 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("JSON shapes as unstable", text)
         self.assertNotIn("TODO", text)
 
+    def test_quick_start_does_not_present_check_as_a_routine_build_step(self) -> None:
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        quick_start = text.split("## Quick Start", 1)[1].split("Read `references/vbp.md`", 1)[0]
+        self.assertIn("lake exe vbp build", quick_start)
+        self.assertIn("lake exe vbp query labels", quick_start)
+        self.assertNotIn("lake exe vbp check", quick_start)
+        self.assertIn("Use `lake exe vbp check` when auditing", text)
+
     def test_vbp_reference_documents_public_surface(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
         self.assertIn("lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]", text)
@@ -31,7 +39,8 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
         self.assertIn("selectors`: query selector forms", text)
         self.assertIn("does not require generated Blueprint data", text)
-        self.assertIn("all <label>", text)
+        self.assertIn("node <label>", text)
+        self.assertNotIn("all <label>", text)
         self.assertIn("search <text>", text)
         self.assertIn("case-insensitively", text)
         self.assertIn("code <decl>", text)
@@ -52,8 +61,9 @@ class VersoBlueprintSkillTests(unittest.TestCase):
 
     def test_vbp_reference_documents_build_check_boundary(self) -> None:
         text = (SKILL_ROOT / "references" / "vbp.md").read_text(encoding="utf-8")
-        self.assertIn("post-build generated-data health check", text)
-        self.assertIn("does not replace `build`", text)
+        self.assertIn("audits an already-generated artifact boundary", text)
+        self.assertIn("not a repair phase or a required second step", text)
+        self.assertIn("constructs and finalizes the manifest/cache pair together", text)
         self.assertIn("Lean/Lake compilation", text)
 
     def test_vbp_reference_documents_adoption_boundary(self) -> None:

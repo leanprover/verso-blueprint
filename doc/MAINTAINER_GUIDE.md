@@ -58,6 +58,15 @@ queries. End-user docs should present `lake exe vbp build` as the normal
 rendering workflow; it discovers the project generator entry point and invokes
 it internally.
 
+`lake exe vbp check` is an audit of an already-generated artifact boundary, not
+a repair phase or a required second half of normal generation. Production
+generation constructs the manifest and rendered-fragment cache together and
+finalizes their preview references before emission. Use `check` when validating
+persisted, copied, or externally supplied output; it deliberately performs
+stricter cross-artifact and graph-projection checks than ordinary semantic
+queries. The graph-backed `work-queue` selector also retains strict graph
+decoding; graph-free selectors avoid materializing graph projections.
+
 Treat `vbp` JSON as fully unstable. It may change within this repository as
 agent workflows evolve, and is not part of the documented integration API.
 Prefer in-band discovery through `lake exe vbp --help`,

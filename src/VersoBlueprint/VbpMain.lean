@@ -463,7 +463,7 @@ def query (args : List String) : IO UInt32 := do
           pure 0
       | _ =>
           try
-            let manifest ← VersoBlueprint.Vbp.readManifestForSite opts.site
+            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site opts.rest
             match VersoBlueprint.Vbp.queryJson manifest opts.rest with
             | .ok json =>
                 printJson json
@@ -482,9 +482,9 @@ def check (args : List String) : IO UInt32 := do
       pure 2
   | .ok opts =>
       try
-        let data ← VersoBlueprint.Vbp.readGeneratedData opts.site
-        let errors := VersoBlueprint.Vbp.checkGeneratedData data.manifest data.htmlCache
-        printJson (VersoBlueprint.Vbp.checkJsonFromErrors data.manifest data.htmlCache errors)
+        let data ← VersoBlueprint.Vbp.readPersistedGeneratedData opts.site
+        let errors := VersoBlueprint.Vbp.checkGeneratedData data
+        printJson (VersoBlueprint.Vbp.checkJsonFromErrors data errors)
         if errors.isEmpty then pure 0 else pure 1
       catch err =>
         IO.eprintln err.toString

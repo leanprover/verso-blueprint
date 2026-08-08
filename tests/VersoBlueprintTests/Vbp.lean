@@ -8,7 +8,13 @@ open Informal.Graph
 
 abbrev ManifestFile := Informal.PreviewManifest.File
 abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
+abbrev PreviewDataModel := Informal.PreviewManifest.PreviewDataModel
+abbrev PersistedFiles := Informal.PreviewManifest.PersistedFiles
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
+
+private def persistedFiles (manifest : ManifestFile) (htmlCache : HtmlCacheFile) :
+    PersistedFiles :=
+  { manifest, htmlCache }
 
 private def label (value : String) : Name :=
   Name.mkSimple value
@@ -492,7 +498,8 @@ private def graphNodePreviewKeys
     text.contains "lake exe vbp query [--site <dir>] <selector>" &&
       text.contains "Query selectors:" &&
       text.contains "selectors" &&
-      text.contains "all <label>" &&
+      text.contains "node <label>" &&
+      !text.contains "all <label>" &&
       text.contains "search <text>" &&
       text.contains "lake exe vbp build [--output <dir>] [--pdf] [--verbose]" &&
       text.contains "--pdf builds _out/site/pdf/main.pdf" &&
@@ -612,8 +619,12 @@ private def graphNodePreviewKeys
 #guard_msgs in
 #eval
   show Bool from
-    let finalized :=
-      sampleUnfinalizedReferenceManifest.finalizePreviewReferences sampleUnfinalizedReferenceCache
+    let model : PreviewDataModel := {
+      manifest := sampleUnfinalizedReferenceManifest
+      htmlCache := sampleUnfinalizedReferenceCache
+    }
+    let finalizedFiles := model.finish
+    let finalized := finalizedFiles.manifest
     match finalized.findEntry? "informal:reference_source:statement",
         finalized.graphs.find? (fun graph => graph.key == "reference-finalization") with
     | some source, some graph =>
@@ -663,6 +674,33 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     (dataDir / Informal.PreviewManifest.manifestFilename)
     manifestJson.compress
 
+private def queryReadModeExamples : List (String × List String × Bool) := [
+  ("selectors", ["selectors"], false),
+  ("labels", ["labels"], false),
+  ("node <label>", ["node", "addition_assoc"], false),
+  ("uses <label>", ["uses", "addition_assoc"], false),
+  ("used-by <label>", ["used-by", "addition_assoc"], false),
+  ("group <label>", ["group", "addition_assoc"], false),
+  ("owners", ["owners"], false),
+  ("tags", ["tags"], false),
+  ("work-queue", ["work-queue"], true),
+  ("metadata", ["metadata"], false),
+  ("search <text>", ["search", "addition"], false),
+  ("code <decl>", ["code", "Nat.add"], false),
+  ("stats", ["stats"], false)
+]
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    queryReadModeExamples.map (fun (selector, _, _) => selector) ==
+        VersoBlueprint.Vbp.querySelectorLines &&
+      (queryReadModeExamples.all fun (_, args, needsGraphData) =>
+        VersoBlueprint.Vbp.queryNeedsGraphData args == needsGraphData) &&
+      VersoBlueprint.Vbp.queryNeedsGraphData ["future-selector"] &&
+      VersoBlueprint.Vbp.queryNeedsGraphData ["node"]
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -692,7 +730,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
         | some selectors =>
             jsonHasApiStability json &&
               jsonArrayContainsString selectors "selectors" &&
-              jsonArrayContainsString selectors "all <label>" &&
+              jsonArrayContainsString selectors "node <label>" &&
+              !jsonArrayContainsString selectors "all <label>" &&
               jsonArrayContainsString selectors "work-queue" &&
               jsonArrayContainsString selectors "metadata" &&
               jsonArrayContainsString selectors "search <text>"
@@ -837,17 +876,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     match VersoBlueprint.Vbp.queryJson sampleManifest ["all", "addition_assoc"] with
-    | .ok json =>
-        match jsonField? json "node", jsonArrayField? json "statementUses" with
-        | some node, some statementUses =>
-            jsonHasApiStability json &&
-              jsonStringField? json "label" == some "addition_assoc" &&
-              jsonStringField? node "label" == some "addition_assoc" &&
-              jsonStringField? node "authoredLabel" == some "addition_assoc" &&
-              jsonArrayHasStringField statementUses "label" "addition_spec" &&
-              (jsonArrayField? json "usedBy").isSome
-        | _, _ => false
-    | .error _ => false
+    | .ok _ => false
+    | .error err => err == "unknown query selector 'all'"
 
 /-- info: true -/
 #guard_msgs in
@@ -978,26 +1008,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleManifest sampleCache |>.isEmpty
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleEmptyRelationManifest sampleEmptyRelationCache |>.isEmpty
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show Bool from
-    VersoBlueprint.Vbp.checkGeneratedData sampleGroupManifest sampleGroupCache |>.isEmpty
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest sampleCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      sampleExternalGroupManifest sampleExternalGroupCache |>.isEmpty
+      (persistedFiles sampleGroupManifest sampleGroupCache) |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData
+      (persistedFiles sampleExternalGroupManifest sampleExternalGroupCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -1090,34 +1115,22 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
           else
             entry
     }
-    let orphanErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData orphanedManifest sampleGroupCache
-    let duplicateGroupErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData duplicateGroupManifest sampleGroupCache
-    let duplicateMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData duplicateMemberManifest sampleGroupCache
-    let crossGroupMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData crossGroupMemberManifest sampleGroupCache
-    let missingMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData missingMemberManifest sampleGroupCache
-    let orphanMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData orphanMemberManifest sampleGroupCache
-    let mismatchedParentErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData mismatchedParentManifest sampleGroupCache
-    let mismatchedTitleErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData mismatchedTitleManifest sampleGroupCache
-    let unparentedMemberErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData unparentedMemberManifest sampleGroupCache
-    let emptyGroupLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyGroupLabelManifest sampleGroupCache
-    let emptyGroupTitleErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyGroupTitleManifest sampleGroupCache
-    let emptyMemberLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyMemberLabelManifest sampleGroupCache
-    let emptyEntryLabelErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData emptyEntryLabelManifest sampleGroupCache
-    let invalidParentErrors :=
-      VersoBlueprint.Vbp.checkGeneratedData invalidParentManifest sampleGroupCache
+    let checkGroups manifest :=
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles manifest sampleGroupCache)
+    let orphanErrors := checkGroups orphanedManifest
+    let duplicateGroupErrors := checkGroups duplicateGroupManifest
+    let duplicateMemberErrors := checkGroups duplicateMemberManifest
+    let crossGroupMemberErrors := checkGroups crossGroupMemberManifest
+    let missingMemberErrors := checkGroups missingMemberManifest
+    let orphanMemberErrors := checkGroups orphanMemberManifest
+    let mismatchedParentErrors := checkGroups mismatchedParentManifest
+    let mismatchedTitleErrors := checkGroups mismatchedTitleManifest
+    let unparentedMemberErrors := checkGroups unparentedMemberManifest
+    let emptyGroupLabelErrors := checkGroups emptyGroupLabelManifest
+    let emptyGroupTitleErrors := checkGroups emptyGroupTitleManifest
+    let emptyMemberLabelErrors := checkGroups emptyMemberLabelManifest
+    let emptyEntryLabelErrors := checkGroups emptyEntryLabelManifest
+    let invalidParentErrors := checkGroups invalidParentManifest
     orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
@@ -1151,14 +1164,21 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #eval
   show Bool from
     VersoBlueprint.Vbp.checkGeneratedData
-      sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache |>.isEmpty
+      (persistedFiles sampleEmptyRelationManifest sampleEmptyRelationCache) |>.isEmpty
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    let errors := VersoBlueprint.Vbp.checkGeneratedData
-      sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
+    VersoBlueprint.Vbp.checkGeneratedData
+      (persistedFiles sampleSemanticOnlyExternalManifest sampleSemanticOnlyExternalCache) |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let errors := VersoBlueprint.Vbp.checkGeneratedData <|
+      persistedFiles sampleCacheOnlyRelationManifest sampleCacheOnlyRelationCache
     errors.any (fun err =>
       err.contains "missing manifest entry for uses of informal:relation_source:statement relation cache_only_relation" &&
         err.contains "informal:cache_only_relation:statement") &&
@@ -1170,23 +1190,23 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    let errors := VersoBlueprint.Vbp.checkGeneratedData
-      sampleGraphReferenceManifest sampleGraphReferenceCache
+    let errors := VersoBlueprint.Vbp.checkGeneratedData <|
+      persistedFiles sampleGraphReferenceManifest sampleGraphReferenceCache
     errors.any (fun err =>
       err.contains "missing HTML cache entry for graph graph-fixture node semantic_graph_target" &&
         err.contains (Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target"))) &&
     errors.any (fun err =>
-        err.contains s!"missing manifest entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
+        err.contains "missing manifest entry for graph graph-fixture node cache_only_graph" &&
           err.contains "informal:cache_only_graph:statement") &&
       !errors.any (fun err =>
-        err.contains s!"missing HTML cache entry for graph graph-fixture variant full node {graphNodeSvgId (label "cache_only_graph")}" &&
+        err.contains "missing HTML cache entry for graph graph-fixture node cache_only_graph" &&
           err.contains "informal:cache_only_graph:statement")
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    let json := VersoBlueprint.Vbp.checkJson sampleManifest sampleCache
+    let json := VersoBlueprint.Vbp.checkJson (persistedFiles sampleManifest sampleCache)
     jsonHasApiStability json &&
       jsonBoolField? json "ok" == some true &&
       jsonNatField? json "manifestEntries" == some 3 &&
@@ -1196,7 +1216,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
 #guard_msgs in
 #eval
   show Bool from
-    let json := VersoBlueprint.Vbp.checkJsonFromErrors sampleManifest sampleCache #["forced diagnostic"]
+    let json := VersoBlueprint.Vbp.checkJsonFromErrors
+      (persistedFiles sampleManifest sampleCache) #["forced diagnostic"]
     let errors := jsonArrayField? json "errors" |>.getD #[]
     jsonBoolField? json "ok" == some false &&
       jsonArrayContainsString errors "forced diagnostic"
@@ -1208,7 +1229,8 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     let brokenCache : HtmlCacheFile := {
       entries := sampleCache.entries.filter (fun entry => entry.key != "lean:Nat.add_assoc")
     }
-    VersoBlueprint.Vbp.checkGeneratedData sampleManifest brokenCache |>.any (·.contains "lean:Nat.add_assoc")
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest brokenCache)
+      |>.any (·.contains "lean:Nat.add_assoc")
 
 /-- info: true -/
 #guard_msgs in
@@ -1231,6 +1253,70 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
       pure <| message.contains "run `lake exe vbp build` first" &&
         !message.contains "vbp check"
   pure (queryOk && cacheMissing)
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  writeRawManifestOnlySite site (toJson sampleGraphReferenceManifest)
+  let strictManifest ← VersoBlueprint.Vbp.readManifestForSite site
+  let queryManifests ← queryReadModeExamples.mapM
+      (fun (queryMode : String × List String × Bool) => do
+        let args := queryMode.2.1
+        let needsGraphData := queryMode.2.2
+        let manifest ← VersoBlueprint.Vbp.readManifestForQuery site args
+        pure (manifest, needsGraphData))
+  let unknownManifest ←
+    VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
+  pure <|
+    strictManifest.graphs.size == 1 &&
+      queryManifests.all (fun (manifest, needsGraphData) =>
+        manifest.graphs.isEmpty == !needsGraphData &&
+          manifest.previews.map
+              (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
+            sampleGraphReferenceManifest.previews.map
+              (fun entry : Informal.PreviewManifest.Entry => entry.key)) &&
+      unknownManifest.graphs.size == 1
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  let malformedGraphManifest :=
+    (toJson sampleManifest).setObjVal! "graphs" (Json.arr #[Json.str "malformed"])
+  writeRawManifestOnlySite site malformedGraphManifest
+  let graphFreeManifests ← queryReadModeExamples.filterMapM
+      (fun (queryMode : String × List String × Bool) =>
+        let args := queryMode.2.1
+        let needsGraphData := queryMode.2.2
+        if needsGraphData then
+          pure none
+        else
+          some <$> VersoBlueprint.Vbp.readManifestForQuery site args)
+  let strictRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForSite site
+      pure false
+    catch _ =>
+      pure true
+  let workQueueRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["work-queue"]
+      pure false
+    catch _ =>
+      pure true
+  let unknownRejected ←
+    try
+      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
+      pure false
+    catch _ =>
+      pure true
+  pure <|
+    graphFreeManifests.all (fun manifest =>
+      manifest.previews.size == sampleManifest.previews.size && manifest.graphs.isEmpty) &&
+      strictRejected &&
+      workQueueRejected &&
+      unknownRejected
 
 /-- info: true -/
 #guard_msgs in

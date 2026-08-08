@@ -327,7 +327,29 @@ edges, group children, or DOT. It accepts only a retention predicate, so this
 post-pass cannot rewrite preview identities. Thus topology still crosses one
 finalization boundary even though manifest emission later prunes preview
 candidates that did not produce both a manifest entry and a rendered cache
-body.
+body. `PreviewManifest.PreviewDataModel.finish` owns that post-pass on the paired
+manifest/cache candidate and returns `PreviewManifest.Files`, whose private
+constructor makes the phase transition concrete. Production construction,
+indexing, and finalization therefore pass one explicit pair instead of
+repeatedly selecting artifacts, and finalized files cannot be finalized again.
+
+For `m` manifest preview/group records, `c` rendered-cache entries, `r`
+non-graph preview references, `n` graph nodes, and `v` graph-variant
+records/mappings, `finish` runs in expected `O(m + c + r + n + v)` time under
+hash-map operations. Its auxiliary indexes use `O(m + c)` space; the finalized
+arrays it returns are linear in the candidate output size. Graph topology and
+DOT are not rebuilt.
+
+Generated-data readers preserve the same boundary without charging every
+semantic query for projections it cannot consume. The general manifest reader
+strictly reconstructs graph topology and DOT variants from semantic nodes and
+rejects mismatches; `vbp check` and the graph-backed `work-queue` selector use
+that reader. Other `vbp query` selectors remove the top-level graph array before
+decoding because they do not consume graph projections. They still validate the
+manifest schema and decode all queryable semantic data, while avoiding graph and
+DOT rematerialization on graph-free planning-data paths. The manifest/cache pair
+read by `vbp check` is represented as `PreviewManifest.PersistedFiles`, because
+successful local decoding does not imply that cross-file references agree.
 
 ### Render Path Inventory
 

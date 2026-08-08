@@ -1194,8 +1194,17 @@ def readFile (path : System.FilePath) : IO File := do
 
 end HtmlCache
 
-/-- Paired preview-data outputs emitted for a generated Blueprint site. -/
-structure Files where
+/--
+Assembled preview-data candidates before rendered-preview references are
+resolved against the paired manifest and HTML cache.
+-/
+structure PreviewDataModel where
+  manifest : File := {}
+  htmlCache : HtmlCache.File := {}
+deriving Inhabited, Repr
+
+/-- Paired, emission-ready preview-data outputs for a generated Blueprint site. -/
+structure Files where private mk ::
   /--
   Semantic preview data. This is the public source of truth for labels, hrefs,
   relationship topology, Lean-code associations, external-markup metadata, and
@@ -1206,6 +1215,19 @@ structure Files where
   Opaque rendered fragments and their hover payload side table. Consumers join
   this cache with `manifest` by preview key when they need presentation data.
   -/
+  htmlCache : HtmlCache.File := {}
+deriving Repr
+
+/--
+Manifest/cache files decoded from persisted or externally supplied output.
+
+Parsing establishes each file's local schema but does not establish the
+cross-artifact invariants enforced during production construction. Consumers
+such as `vbp check` audit this value rather than treating it as emission-ready
+`Files`.
+-/
+structure PersistedFiles where
+  manifest : File := {}
   htmlCache : HtmlCache.File := {}
 deriving Inhabited, Repr
 
@@ -1254,11 +1276,17 @@ structure PreviewArtifactIndex where
   manifestIndex : Index := {}
   htmlCacheIndex : HtmlCache.Index := {}
 
-def PreviewArtifactIndex.ofFiles (manifest : File) (htmlCache : HtmlCache.File) :
-    PreviewArtifactIndex := {
+private def PreviewArtifactIndex.ofArtifacts
+    (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex := {
   manifestIndex := manifest.index
   htmlCacheIndex := htmlCache.index
 }
+
+def PreviewArtifactIndex.ofModel (model : PreviewDataModel) : PreviewArtifactIndex :=
+  PreviewArtifactIndex.ofArtifacts model.manifest model.htmlCache
+
+def PreviewArtifactIndex.ofPersistedFiles (files : PersistedFiles) : PreviewArtifactIndex :=
+  PreviewArtifactIndex.ofArtifacts files.manifest files.htmlCache
 
 def PreviewArtifactIndex.hasManifestKey
     (index : PreviewArtifactIndex) (key : String) : Bool :=
@@ -1299,23 +1327,31 @@ private def graphFinalizePreviewReferences
     Informal.Graph.GraphData :=
   graph.filterPreviewReferences fun key => index.resolves key.value
 
-/--
-Finalize traversal-derived preview references against the manifest/cache pair.
-
-Generated relation, group, Lean-code, and graph preview references are only
-advertised when the target key has both a semantic manifest entry and a rendered
-fragment cache body. Relations and graph nodes that fail that join remain
-present but lose their `previewKey`; Lean-code keys and graph-variant mappings
-are removed so generated JSON does not point at an unavailable preview body.
--/
-def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
-  let index := PreviewArtifactIndex.ofFiles file htmlCache
+private def File.finalizePreviewReferences
+    (file : File) (index : PreviewArtifactIndex) : File :=
   {
     file with
       previews := file.previews.map (Entry.finalizePreviewReferences index)
       groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
   }
+
+/--
+Finalize traversal-derived preview references against a paired manifest/cache value.
+
+Generated relation, group, Lean-code, and graph preview references are only
+advertised when the target key has both a semantic manifest entry and a rendered
+fragment cache body. Relations and graph nodes that fail that join remain
+present but lose their `previewKey`; Lean-code keys and graph-variant mappings
+are removed so generated JSON does not point at an unavailable preview body.
+
+The phase-changing result type makes the manifest/cache pair explicit at the
+construction boundary: unresolved candidates cannot be emitted as `Files`, and
+emission-ready files cannot be finalized a second time.
+-/
+def PreviewDataModel.finish (model : PreviewDataModel) : Files :=
+  let index := PreviewArtifactIndex.ofModel model
+  Files.mk (model.manifest.finalizePreviewReferences index) model.htmlCache
 
 /-- Manifest metadata that was present during traversal but is absent from export. -/
 structure PreviewMetadataLoss where
@@ -1617,6 +1653,22 @@ def readFile (path : System.FilePath) : IO File := do
   let json ← readJsonFile path "Blueprint manifest"
   match checkManifestInternalSchema json with
   | .ok () => decodeJsonAs path "Blueprint manifest" json
+  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+
+/--
+Read the semantic projection consumed by graph-free `vbp query` selectors
+without materializing graph render projections they do not read.
+
+The manifest schema and every non-graph field are decoded normally. Use
+`readFile` for artifact audits: its strict `GraphData` decoder reconstructs and
+checks derived edges, groups, preview mappings, and DOT variants.
+-/
+def readFileWithoutGraphs (path : System.FilePath) : IO File := do
+  let json ← readJsonFile path "Blueprint manifest"
+  match checkManifestInternalSchema json with
+  | .ok () =>
+      decodeJsonAs path "Blueprint manifest" <|
+        json.setObjVal! "graphs" (Json.arr #[])
   | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
 private structure SchemaState where
@@ -2486,8 +2538,11 @@ def buildPreviewDataFiles
     entries := htmlEntries
     hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
   }
-  let manifest : File := { previews, groups, graphs, sourceDocuments }
-  pure { manifest := manifest.finalizePreviewReferences htmlCache, htmlCache }
+  let model : PreviewDataModel := {
+    manifest := { previews, groups, graphs, sourceDocuments }
+    htmlCache
+  }
+  pure model.finish
 
 private def dumpManifest
     (text : Part Manual)
