@@ -1278,6 +1278,9 @@ prefixes with document-order block counts.
 - `verso.blueprint.math.lint`
   - default: `true`
   - runs best-effort KaTeX validation during elaboration
+  - uses a local `node` executable from `PATH`; linting is silently skipped when
+    Node or the packaged lint assets are unavailable
+  - set this option to `false` to disable elaboration-time math linting
 - `verso.blueprint.externalCode.strictResolve`
   - default: `false`
   - upgrades unresolved or ambiguous external Lean names from warnings to errors
