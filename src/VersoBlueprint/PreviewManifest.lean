@@ -2542,7 +2542,8 @@ def buildPreviewDataFiles
   }
   pure model.finish
 
-private def dumpManifest
+private def dumpPreviewDataJson
+    (select : Files → Json)
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
@@ -2569,38 +2570,26 @@ private def dumpManifest
     (verbose := cfg.verbose)
   let logger := callbackLogger logError
   reportPreviewMetadataLossWarnings logger traverseState files.manifest
-  IO.println <| jsonPretty <| toJson files.manifest
+  IO.println <| jsonPretty <| select files
   if (← errorCount.get) == 0 then pure 0 else pure 1
+
+private def dumpManifest
+    (text : Part Manual)
+    (options : List String)
+    (extensionImpls : ExtensionImpls)
+    (config : RenderConfig := {})
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 :=
+  dumpPreviewDataJson (fun files => toJson files.manifest)
+    text options extensionImpls config externalMarkupConfig
 
 private def dumpHtmlCache
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
-  let options ←
-    match parsePdfOptions options with
-    | .ok (_, options) => pure options
-    | .error err =>
-        IO.eprintln err
-        return 2
-  let errorCount : IO.Ref Nat ← IO.mkRef 0
-  let logError msg := do
-    errorCount.modify (· + 1)
-    IO.eprintln msg
-  let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
-  let traverseCfg := { cfg with verbose := false }
-  let (_text, traverseState) ←
-    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
-      |>.run (callbackLogger logError)
-  let preparedState := PreparedPreviewState.prepare traverseState
-  let traverseState := preparedState.state
-  let files ← buildPreviewDataFiles extensionImpls logError preparedState externalMarkupConfig
-    (verbose := cfg.verbose)
-  let logger := callbackLogger logError
-  reportPreviewMetadataLossWarnings logger traverseState files.manifest
-  IO.println <| jsonPretty <| toJson files.htmlCache
-  if (← errorCount.get) == 0 then pure 0 else pure 1
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 :=
+  dumpPreviewDataJson (fun files => toJson files.htmlCache)
+    text options extensionImpls config externalMarkupConfig
 
 private def readJsonFileOrEmptyObject (path : System.FilePath) : IO Json := do
   if !(← path.pathExists) then
