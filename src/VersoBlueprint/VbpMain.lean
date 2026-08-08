@@ -457,20 +457,18 @@ def query (args : List String) : IO UInt32 := do
       IO.eprintln err
       pure 2
   | .ok opts =>
-      match opts.rest with
-      | ["selectors"] =>
+      match VersoBlueprint.Vbp.parseQueryPlan opts.rest with
+      | .error err =>
+          IO.eprintln err
+          pure 2
+      | .ok none =>
           printJson VersoBlueprint.Vbp.querySelectorsJson
           pure 0
-      | _ =>
+      | .ok (some plan) =>
           try
-            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site opts.rest
-            match VersoBlueprint.Vbp.queryJson manifest opts.rest with
-            | .ok json =>
-                printJson json
-                pure 0
-            | .error err =>
-                IO.eprintln err
-                pure 2
+            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site plan
+            printJson (plan.run manifest)
+            pure 0
           catch err =>
             IO.eprintln err.toString
             pure 1

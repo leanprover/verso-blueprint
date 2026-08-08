@@ -336,9 +336,10 @@ repeatedly selecting artifacts, and finalized files cannot be finalized again.
 For `m` manifest preview/group records, `c` rendered-cache entries, `r`
 non-graph preview references, `n` graph nodes, and `v` graph-variant
 records/mappings, `finish` runs in expected `O(m + c + r + n + v)` time under
-hash-map operations. Its auxiliary indexes use `O(m + c)` space; the finalized
-arrays it returns are linear in the candidate output size. Graph topology and
-DOT are not rebuilt.
+hash-set operations. Its auxiliary indexes retain only the `O(m + c)` preview
+keys needed for membership checks, rather than duplicate full entry indexes;
+the finalized arrays it returns are linear in the candidate output size. Graph
+topology and DOT are not rebuilt.
 
 Generated-data readers preserve the same boundary without charging every
 semantic query for projections it cannot consume. The general manifest reader
@@ -347,9 +348,12 @@ rejects mismatches; `vbp check` and the graph-backed `work-queue` selector use
 that reader. Other `vbp query` selectors remove the top-level graph array before
 decoding because they do not consume graph projections. They still validate the
 manifest schema and decode all queryable semantic data, while avoiding graph and
-DOT rematerialization on graph-free planning-data paths. The manifest/cache pair
-read by `vbp check` is represented as `PreviewManifest.PersistedFiles`, because
-successful local decoding does not imply that cross-file references agree.
+DOT rematerialization on graph-free planning-data paths. Query arguments are
+validated before artifact I/O into a `QueryPlan`; each selector declaration owns
+its argument shape, graph-read requirement, help line, and execution function.
+The manifest/cache pair read by `vbp check` is represented as
+`PreviewManifest.PersistedFiles`, because successful local decoding does not
+imply that cross-file references agree.
 
 ### Render Path Inventory
 
@@ -722,13 +726,18 @@ Lean/Verso source modules
 
 Traversal domains are richer than rendered page HTML. They carry semantic
 payloads for the current generator process, including bodyless directives whose
-visible text comes from an external source. `buildPreviewDataFiles` is the
-normalization point where those traversal facts become documented generated
-data. It must therefore decide from traversal metadata, not from whether a
-rendered block body is empty, whether a preview entry is semantically real. If
-that boundary loses semantic data such as Lean preview keys, downstream
-fallbacks should report or copy the existing traversal metadata rather than
-reconstruct it from rendered markup.
+visible text comes from an external source. Relation indexes are installed once
+when traversal state becomes `PreparedPreviewState`; manifest assembly does not
+silently recover missing indexes by rescanning all stored blocks.
+For `b` stored blocks and `e` dependency uses, preparation is `O(b + e)` and
+relation assembly consumes the cached rows; direct construction therefore
+cannot regress to the former `O(b²)` full-store fallback path.
+`buildPreviewDataFiles` is the normalization point where those traversal facts
+become documented generated data. It must therefore decide from traversal
+metadata, not from whether a rendered block body is empty, whether a preview
+entry is semantically real. If that boundary loses semantic data such as Lean
+preview keys, downstream fallbacks should report or copy the existing traversal
+metadata rather than reconstruct it from rendered markup.
 
 Serialized preview references are finalized at this boundary. Relation entries,
 graph nodes, graph variants, and Lean-code associations may start from

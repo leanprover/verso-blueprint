@@ -196,7 +196,8 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupGraphPreviewSourceDoc
     let label := Name.mkSimple "preview.external_graph_bodyless"
     let externalKey := Informal.PreviewSource.externalMarkupKey label
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+      (Informal.PreviewManifest.PreparedPreviewState.prepare st)
       ({ mode := .none } : Informal.ExternalMarkupRender.Config)
     let some entry := files.manifest.previews.find? (fun entry => entry.key == externalKey)
       | return false

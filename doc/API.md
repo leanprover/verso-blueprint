@@ -172,12 +172,16 @@ In practice:
 Generator-side data flow is source-to-traversal-to-public JSON. During Manual
 traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
-state and traversal domains. `Informal.PreviewManifest.buildPreviewDataFiles`
-then assembles a `PreviewDataModel` and crosses its `finish` boundary into the
-emission-ready semantic manifest/rendered-fragment-cache `Files` pair. The
-final type has a private constructor, so unresolved candidate references cannot
-enter the normal emission path. Generated ESM APIs load those two files; they
-do not rerun traversal and should not recover semantics by scraping cached HTML.
+state and traversal domains. Before assembly, the state crosses the explicit
+`PreparedPreviewState` boundary, which installs the relation indexes consumed by
+manifest construction. The standard HTML pipeline supplies an already-prepared
+state; direct callers use `PreparedPreviewState.prepare`.
+`Informal.PreviewManifest.buildPreviewDataFiles` then assembles a
+`PreviewDataModel` and crosses its `finish` boundary into the emission-ready
+semantic manifest/rendered-fragment-cache `Files` pair. The final type has a
+private constructor, so unresolved candidate references cannot enter the normal
+emission path. Generated ESM APIs load those two files; they do not rerun
+traversal and should not recover semantics by scraping cached HTML.
 
 Persisted or externally supplied manifest/cache pairs enter maintainer audits
 as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each

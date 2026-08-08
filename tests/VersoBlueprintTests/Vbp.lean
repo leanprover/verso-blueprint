@@ -697,9 +697,17 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     queryReadModeExamples.map (fun (selector, _, _) => selector) ==
         VersoBlueprint.Vbp.querySelectorLines &&
       (queryReadModeExamples.all fun (_, args, needsGraphData) =>
-        VersoBlueprint.Vbp.queryNeedsGraphData args == needsGraphData) &&
-      VersoBlueprint.Vbp.queryNeedsGraphData ["future-selector"] &&
-      VersoBlueprint.Vbp.queryNeedsGraphData ["node"]
+        match VersoBlueprint.Vbp.parseQueryPlan args with
+        | .ok none => !needsGraphData
+        | .ok (some plan) => plan.needsGraphData == needsGraphData
+        | .error _ => false) &&
+      (match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
+       | .error err => err == "unknown query selector 'future-selector'"
+       | .ok _ => false) &&
+      (match VersoBlueprint.Vbp.parseQueryPlan ["node"] with
+       | .error err =>
+           err == "invalid arguments for query selector 'node'; expected 'node <label>'"
+       | .ok _ => false)
 
 /-- info: true -/
 #guard_msgs in
@@ -1260,14 +1268,20 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   let site ← freshVbpFixtureRoot
   writeRawManifestOnlySite site (toJson sampleGraphReferenceManifest)
   let strictManifest ← VersoBlueprint.Vbp.readManifestForSite site
-  let queryManifests ← queryReadModeExamples.mapM
+  let queryManifests ← queryReadModeExamples.filterMapM
       (fun (queryMode : String × List String × Bool) => do
         let args := queryMode.2.1
         let needsGraphData := queryMode.2.2
-        let manifest ← VersoBlueprint.Vbp.readManifestForQuery site args
-        pure (manifest, needsGraphData))
-  let unknownManifest ←
-    VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
+        match VersoBlueprint.Vbp.parseQueryPlan args with
+        | .ok none => pure none
+        | .ok (some plan) =>
+            let manifest ← VersoBlueprint.Vbp.readManifestForQuery site plan
+            pure (some (manifest, needsGraphData))
+        | .error err => throw <| IO.userError err)
+  let unknownRejectedBeforeRead :=
+    match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
+    | .error _ => true
+    | .ok _ => false
   pure <|
     strictManifest.graphs.size == 1 &&
       queryManifests.all (fun (manifest, needsGraphData) =>
@@ -1276,7 +1290,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
               (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
             sampleGraphReferenceManifest.previews.map
               (fun entry : Informal.PreviewManifest.Entry => entry.key)) &&
-      unknownManifest.graphs.size == 1
+      unknownRejectedBeforeRead
 
 /-- info: true -/
 #guard_msgs in
@@ -1292,7 +1306,11 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
         if needsGraphData then
           pure none
         else
-          some <$> VersoBlueprint.Vbp.readManifestForQuery site args)
+          match VersoBlueprint.Vbp.parseQueryPlan args with
+          | .ok none => pure none
+          | .ok (some plan) =>
+              some <$> VersoBlueprint.Vbp.readManifestForQuery site plan
+          | .error err => throw <| IO.userError err)
   let strictRejected ←
     try
       let _ ← VersoBlueprint.Vbp.readManifestForSite site
@@ -1300,23 +1318,24 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     catch _ =>
       pure true
   let workQueueRejected ←
-    try
-      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["work-queue"]
-      pure false
-    catch _ =>
-      pure true
-  let unknownRejected ←
-    try
-      let _ ← VersoBlueprint.Vbp.readManifestForQuery site ["future-selector"]
-      pure false
-    catch _ =>
-      pure true
+    match VersoBlueprint.Vbp.parseQueryPlan ["work-queue"] with
+    | .ok (some plan) =>
+        try
+          let _ ← VersoBlueprint.Vbp.readManifestForQuery site plan
+          pure false
+        catch _ =>
+          pure true
+    | _ => pure false
+  let unknownRejectedBeforeRead :=
+    match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
+    | .error _ => true
+    | .ok _ => false
   pure <|
     graphFreeManifests.all (fun manifest =>
       manifest.previews.size == sampleManifest.previews.size && manifest.graphs.isEmpty) &&
       strictRejected &&
       workQueueRejected &&
-      unknownRejected
+      unknownRejectedBeforeRead
 
 /-- info: true -/
 #guard_msgs in

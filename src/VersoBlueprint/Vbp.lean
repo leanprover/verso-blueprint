@@ -28,29 +28,8 @@ def defaultOutput : FilePath := defaultSite
 
 def apiStability : String := "unstable"
 
-def querySelectorLines : List String := [
-  "selectors",
-  "labels",
-  "node <label>",
-  "uses <label>",
-  "used-by <label>",
-  "group <label>",
-  "owners",
-  "tags",
-  "work-queue",
-  "metadata",
-  "search <text>",
-  "code <decl>",
-  "stats"
-]
-
 def responseJson (fields : List (String × Json)) : Json :=
   Json.mkObj (("apiStability", Json.str apiStability) :: fields)
-
-def querySelectorsJson : Json :=
-  responseJson [
-    ("selectors", Json.arr (querySelectorLines.toArray.map Json.str))
-  ]
 
 def htmlDirForSite (site : FilePath) : IO FilePath := do
   if ← (site / "-verso-data" / Informal.PreviewManifest.manifestFilename).pathExists then
@@ -213,67 +192,149 @@ private def missingLabelJson (label : String) : Json :=
   ]
 
 private def withPrimaryEntry
-    (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Except String Json :=
+    (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Json :=
   match manifest.findPrimaryQueryableEntry? label with
-  | some entry => .ok (mkJson entry)
-  | none => .ok (missingLabelJson label)
+  | some entry => mkJson entry
+  | none => missingLabelJson label
+
+/-- A validated query and the manifest projection needed to execute it. -/
+structure QueryPlan where
+  /-- Whether execution requires reconstructing strict graph projections. -/
+  needsGraphData : Bool
+  /-- Execute the validated query against the selected manifest projection. -/
+  run : ManifestFile → Json
+
+private structure QuerySelector where
+  name : String
+  argumentName : String
+  needsGraphData : Bool
+  run : Sum (ManifestFile → Json) (String → ManifestFile → Json)
+
+private def QuerySelector.noArg
+    (name : String) (needsGraphData : Bool) (run : ManifestFile → Json) : QuerySelector :=
+  { name, argumentName := "", needsGraphData, run := .inl run }
+
+private def QuerySelector.oneArg
+    (name argumentName : String) (needsGraphData : Bool)
+    (run : String → ManifestFile → Json) : QuerySelector :=
+  { name, argumentName, needsGraphData, run := .inr run }
+
+private def QuerySelector.line (selector : QuerySelector) : String :=
+  match selector.run with
+  | .inl _ => selector.name
+  | .inr _ => s!"{selector.name} <{selector.argumentName}>"
+
+private def QuerySelector.plan? (selector : QuerySelector) (args : List String) : Option QueryPlan :=
+  match selector.run, args with
+  | .inl run, [name] =>
+      if name == selector.name then
+        some { needsGraphData := selector.needsGraphData, run }
+      else
+        none
+  | .inr run, [name, argument] =>
+      if name == selector.name then
+        some {
+          needsGraphData := selector.needsGraphData
+          run := run argument
+        }
+      else
+        none
+  | _, _ => none
+
+private def querySelectors : List QuerySelector := [
+  QuerySelector.noArg "labels" false fun manifest =>
+    responseJson [
+      ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
+    ],
+  QuerySelector.oneArg "node" "label" false fun label manifest =>
+    withPrimaryEntry manifest label (entryResponseJson manifest),
+  QuerySelector.oneArg "uses" "label" false fun label manifest =>
+    withPrimaryEntry manifest label fun entry =>
+      responseJson [
+        ("label", Json.str label),
+        ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
+        ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
+        ("uses", Json.arr (entry.uses.map relatedEntryJson))
+      ],
+  QuerySelector.oneArg "used-by" "label" false fun label manifest =>
+    withPrimaryEntry manifest label fun entry =>
+      responseJson [
+        ("label", Json.str label),
+        ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson))
+      ],
+  QuerySelector.oneArg "group" "label" false fun label manifest =>
+    withPrimaryEntry manifest label fun entry =>
+      responseJson [
+        ("label", Json.str label),
+        ("group", entryGroupJson manifest entry)
+      ],
+  QuerySelector.noArg "owners" false fun manifest =>
+    responseJson [("owners", stringArrayJson manifest.ownerValues)],
+  QuerySelector.noArg "tags" false fun manifest =>
+    responseJson [("tags", stringArrayJson manifest.tagValues)],
+  QuerySelector.noArg "work-queue" true fun manifest =>
+    responseJson [
+      ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
+    ],
+  QuerySelector.noArg "metadata" false fun manifest =>
+    responseJson [
+      ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
+    ],
+  QuerySelector.oneArg "search" "text" false fun text manifest =>
+    responseJson [
+      ("query", Json.str text),
+      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
+        (fun entry => entry.matchesText text) |>.map entrySummaryJson))
+    ],
+  QuerySelector.oneArg "code" "decl" false fun decl manifest =>
+    responseJson [
+      ("query", Json.str decl),
+      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
+        (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
+    ],
+  QuerySelector.noArg "stats" false statsJson
+]
+
+def querySelectorLines : List String :=
+  "selectors" :: querySelectors.map QuerySelector.line
+
+def querySelectorsJson : Json :=
+  responseJson [
+    ("selectors", Json.arr (querySelectorLines.toArray.map Json.str))
+  ]
+
+private def findQueryPlan? (args : List String) : List QuerySelector → Option QueryPlan
+  | [] => none
+  | selector :: selectors =>
+      selector.plan? args |>.orElse (fun _ => findQueryPlan? args selectors)
+
+private def findQuerySelector? (name : String) : List QuerySelector → Option QuerySelector
+  | [] => none
+  | selector :: selectors =>
+      if selector.name == name then some selector else findQuerySelector? name selectors
+
+/-- Parse and validate a query before reading any generated data. -/
+def parseQueryPlan (args : List String) : Except String (Option QueryPlan) :=
+  match args with
+  | ["selectors"] => .ok none
+  | [] => .error "missing query selector"
+  | name :: _ =>
+      match findQueryPlan? args querySelectors with
+      | some plan => .ok (some plan)
+      | none =>
+          if name == "selectors" then
+            .error "invalid arguments for query selector 'selectors'; expected 'selectors'"
+          else
+            match findQuerySelector? name querySelectors with
+            | some selector =>
+                .error s!"invalid arguments for query selector '{name}'; expected '{selector.line}'"
+            | none => .error s!"unknown query selector '{name}'"
 
 def queryJson (manifest : ManifestFile) (args : List String) : Except String Json :=
-  match args with
-  | ["selectors"] =>
-      .ok querySelectorsJson
-  | ["labels"] =>
-      .ok <| responseJson [
-        ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
-      ]
-  | ["node", label] =>
-      withPrimaryEntry manifest label (entryResponseJson manifest)
-  | ["uses", label] =>
-      withPrimaryEntry manifest label fun entry =>
-        responseJson [
-          ("label", Json.str label),
-          ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
-          ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
-          ("uses", Json.arr (entry.uses.map relatedEntryJson))
-        ]
-  | ["used-by", label] =>
-      withPrimaryEntry manifest label fun entry =>
-        responseJson [
-          ("label", Json.str label),
-          ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson))
-        ]
-  | ["group", label] =>
-      withPrimaryEntry manifest label fun entry =>
-        responseJson [
-          ("label", Json.str label),
-          ("group", entryGroupJson manifest entry)
-        ]
-  | ["owners"] =>
-      .ok <| responseJson [("owners", stringArrayJson manifest.ownerValues)]
-  | ["tags"] =>
-      .ok <| responseJson [("tags", stringArrayJson manifest.tagValues)]
-  | ["work-queue"] =>
-      .ok <| responseJson [
-        ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
-      ]
-  | ["metadata"] =>
-      .ok <| responseJson [
-        ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
-      ]
-  | ["search", text] =>
-      .ok <| responseJson [
-        ("query", Json.str text),
-        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
-      ]
-  | ["code", decl] =>
-      .ok <| responseJson [
-        ("query", Json.str decl),
-        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
-      ]
-  | ["stats"] =>
-      .ok (statsJson manifest)
-  | [] => .error "missing query selector"
-  | selector :: _ => .error s!"unknown query selector '{selector}'"
+  match parseQueryPlan args with
+  | .ok none => .ok querySelectorsJson
+  | .ok (some plan) => .ok (plan.run manifest)
+  | .error err => .error err
 
 private def readManifestWith
     (read : FilePath → IO ManifestFile) (site : FilePath) : IO ManifestFile := do
@@ -285,30 +346,9 @@ private def readManifestWith
 def readManifestForSite (site : FilePath) : IO ManifestFile :=
   readManifestWith Informal.PreviewManifest.readFile site
 
-/--
-Whether a query must use the strict manifest reader that reconstructs graph data.
-
-Graph-free loading is an explicit allowlist. Unknown or newly added selector
-shapes default to strict loading so they cannot silently observe an empty graph
-projection when their read mode has not yet been classified.
--/
-def queryNeedsGraphData : List String → Bool
-  | ["selectors"]
-  | ["labels"]
-  | ["node", _]
-  | ["uses", _]
-  | ["used-by", _]
-  | ["group", _]
-  | ["owners"]
-  | ["tags"]
-  | ["metadata"]
-  | ["search", _]
-  | ["code", _]
-  | ["stats"] => false
-  | _ => true
-
-def readManifestForQuery (site : FilePath) (selector : List String) : IO ManifestFile := do
-  if queryNeedsGraphData selector then
+/-- Read exactly the manifest projection required by a validated query. -/
+def readManifestForQuery (site : FilePath) (plan : QueryPlan) : IO ManifestFile := do
+  if plan.needsGraphData then
     readManifestForSite site
   else
     readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site

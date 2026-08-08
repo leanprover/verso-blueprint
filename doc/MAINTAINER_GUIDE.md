@@ -65,7 +65,9 @@ finalizes their preview references before emission. Use `check` when validating
 persisted, copied, or externally supplied output; it deliberately performs
 stricter cross-artifact and graph-projection checks than ordinary semantic
 queries. The graph-backed `work-queue` selector also retains strict graph
-decoding; graph-free selectors avoid materializing graph projections.
+decoding; graph-free selectors avoid materializing graph projections. Query
+arguments are parsed into a validated plan before any generated file is read,
+so unknown or malformed selectors fail without paying manifest-decoding cost.
 
 Treat `vbp` JSON as fully unstable. It may change within this repository as
 agent workflows evolve, and is not part of the documented integration API.

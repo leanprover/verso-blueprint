@@ -91,7 +91,8 @@ def buildManualPreviewDataFiles
     (logError : String → IO Unit := fun _ => pure ()) :
     IO Informal.PreviewManifest.Files := do
   let (_html, st) ← renderManualDocHtmlStringAndState impls doc
-  Informal.PreviewManifest.buildPreviewDataFiles impls logError st
+  Informal.PreviewManifest.buildPreviewDataFiles impls logError
+    (Informal.PreviewManifest.PreparedPreviewState.prepare st)
 
 def findExtraJsContaining? (st : TraverseState) (needle : String) : Option String :=
   st.toHtmlAssets.extraJs.toArray.findSome? fun js =>

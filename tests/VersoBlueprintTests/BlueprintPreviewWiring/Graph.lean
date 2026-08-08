@@ -190,7 +190,8 @@ Base statement for graph preview mode option coverage.
           Informal.TraversalIndex.Graphs.domainName malformedKey (Lean.Json.str "malformed")
     let errors ← IO.mkRef #[]
     let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls
-      (fun msg => errors.modify (·.push msg)) state
+      (fun msg => errors.modify (·.push msg))
+      (Informal.PreviewManifest.PreparedPreviewState.prepare state)
     let errors ← errors.get
     pure <|
       !files.manifest.graphs.isEmpty &&
