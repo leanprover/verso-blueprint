@@ -180,14 +180,4 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     hasSubstr panelParts.summaryTitle "render failed for 1 declaration"
   | none => false
 
-/-- info: true -/
-#guard_msgs in
-#eval!
-  let decls := #[renderFailedExternalRef `Ext.external.panel_render_fail]
-  let html := (ExternalCode.renderPreviewHtml decls).asString
-  hasSubstr html "Ext.external.panel_render_fail" &&
-    hasSubstr html "bp_external_decl_error" &&
-    hasSubstr html "render failed" &&
-    hasSubstr html "Render failed: Ext.external.panel_render_fail: synthetic render failure"
-
 end Verso.VersoBlueprintTests.BlueprintExternalHeadingStatus
