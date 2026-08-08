@@ -81,7 +81,7 @@ private def cachedStatement
     let state := Informal.TraversalIndex.Nodes.saveData state target (Lean.toJson targetData)
     let state := Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceData)
     let state := Informal.TraversalIndex.Nodes.saveData state empty (Lean.toJson emptyData)
-    let state := Informal.RelatedPanel.patchRelationCaches state
+    let state := Informal.PreviewManifest.PreparedRendererState.prepare state |>.state
     let targetEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target
     let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source
     let emptyEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state empty
