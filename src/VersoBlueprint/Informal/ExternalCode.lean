@@ -237,17 +237,25 @@ private def externalDeclRenderedMeta
     </div>
   }}
 
-private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
-  open Verso.Output.Html in
+/--
+All external declaration body strategies share the same success wrapper and
+render-failure presentation. They differ only in how successful rendered HTML
+is adapted to its destination hover table.
+-/
+private def externalDeclRenderedWith [Monad m]
+    (renderHtml : ExternalDeclRenderedHtml → m String)
+    (item : LinkedExternalDecl) : m Output.Html := do
   match item.decl.render with
   | .ok renderedHtml =>
-    {{
-      <div class="bp_external_decl_rendered">{{.text false renderedHtml.selfContained}}</div>
-    }}
+    let renderedHtml ← renderHtml renderedHtml
+    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
   | .error err =>
-    {{
-      <pre class="bp_external_decl_stmt bp_external_decl_render_error">{{.text true s!"Render failed: {err.message}"}}</pre>
-    }}
+    pure <| .tag "pre"
+      #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
+      (.text true s!"Render failed: {err.message}")
+
+private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
+  Id.run <| externalDeclRenderedWith (fun renderedHtml => pure renderedHtml.selfContained) item
 
 private def registerPageHoverPayload [Monad m]
     (payload : ExternalDeclHoverPayload) :
@@ -290,15 +298,8 @@ private def renderedHtmlWithPageHovers [Monad m]
 
 private def externalDeclRenderedWithPageHovers [Monad m]
     (item : LinkedExternalDecl) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  match item.decl.render with
-  | .ok renderedHtml =>
-    let renderedHtml ← renderedHtmlWithPageHovers renderedHtml
-    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
-  | .error err =>
-    pure <| .tag "pre"
-      #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
-      (.text true s!"Render failed: {err.message}")
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html :=
+  externalDeclRenderedWith renderedHtmlWithPageHovers item
 
 private def missingExternalDeclBody : Output.Html :=
   open Verso.Output.Html in
@@ -384,15 +385,8 @@ private def renderedHtmlWithCacheHovers
 
 private def externalDeclRenderedWithCacheHovers
     (item : LinkedExternalDecl) :
-    ExternalDeclCacheHoverRender Output.Html := do
-  match item.decl.render with
-  | .ok renderedHtml =>
-    let renderedHtml ← renderedHtmlWithCacheHovers renderedHtml
-    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
-  | .error err =>
-    pure <| .tag "pre"
-      #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
-      (.text true s!"Render failed: {err.message}")
+    ExternalDeclCacheHoverRender Output.Html :=
+  externalDeclRenderedWith renderedHtmlWithCacheHovers item
 
 /--
 Render the canonical hover-preview body for external Lean code references.

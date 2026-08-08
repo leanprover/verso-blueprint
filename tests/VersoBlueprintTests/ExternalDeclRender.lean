@@ -207,19 +207,35 @@ private def htmlTestContext :
     let (cacheHtml, cacheHoverState) :=
       Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[ref, ref] {}
     let cacheHtml := cacheHtml.asString
-    let renderPage :
+    let renderPage (decls : Array Informal.Data.ExternalRef) :
         Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Verso.Output.Html :=
       Informal.ExternalCode.renderPanelWithPageHovers
         { caption := "Code for theorem", number? := some "1" }
         "Lean declarations"
         .empty
-        #[ref, ref]
+        decls
         (fun _ => none)
     let result :
         Verso.Output.Html × Verso.Code.Hover.State Verso.Output.Html :=
-      Id.run <| (renderPage htmlTestContext).run {}
+      Id.run <| (renderPage #[ref, ref] htmlTestContext).run {}
     let hoverState := result.snd
     let pageHtml := result.fst.asString
+    let failedRef : Informal.Data.ExternalRef := {
+      (Informal.Data.ExternalRef.ofName `Ext.external.strategy_render_fail) with
+        present := true
+        kind := .theorem
+        render := .error (.exception `Ext.external.strategy_render_fail "synthetic render failure")
+    }
+    let expectedError :=
+      "Render failed: Ext.external.strategy_render_fail: synthetic render failure"
+    let previewErrorHtml :=
+      Informal.ExternalCode.renderPreviewHtml #[failedRef] |>.asString
+    let (cacheErrorHtml, _) :=
+      Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[failedRef] {}
+    let cacheErrorHtml := cacheErrorHtml.asString
+    let (pageErrorHtml, _) :=
+      Id.run <| (renderPage #[failedRef] htmlTestContext).run {}
+    let pageErrorHtml := pageErrorHtml.asString
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
@@ -234,7 +250,13 @@ private def htmlTestContext :
       !cacheHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
       !previewHtml.contains "data-bp-external-hover-local=\"" &&
-      !previewHtml.contains "data-bp-external-hover-inline-local=\""
+      !previewHtml.contains "data-bp-external-hover-inline-local=\"" &&
+      previewErrorHtml.contains "bp_external_decl_render_error" &&
+      previewErrorHtml.contains expectedError &&
+      cacheErrorHtml.contains "bp_external_decl_render_error" &&
+      cacheErrorHtml.contains expectedError &&
+      pageErrorHtml.contains "bp_external_decl_render_error" &&
+      pageErrorHtml.contains expectedError
 
 /-- info: true -/
 #guard_msgs in
