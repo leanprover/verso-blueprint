@@ -80,6 +80,9 @@ private def externalDeclHoverInlineMarkerPrefix : String :=
 private def externalDeclHoverInlineMarkerSuffix : String :=
   "></span>"
 
+private def externalDeclHoverMarkerNamePrefix : String :=
+  "data-bp-external-hover-"
+
 private inductive ExternalDeclHoverMarkerKind where
   | attr
   | inline
@@ -108,20 +111,18 @@ private def parseExternalDeclHoverInlineMarker?
   else
     none
 
-private def findNextExternalDeclHoverMarker?
+private partial def findNextExternalDeclHoverMarker?
     (html : String) (pos : html.Pos) :
-    Option (ExternalDeclHoverMarkerKind × html.Pos) :=
-  let attrPos? := pos.find? externalDeclHoverLocalAttrPrefix
-  let inlinePos? := pos.find? externalDeclHoverInlineMarkerPrefix
-  match attrPos?, inlinePos? with
-  | none, none => none
-  | some attrPos, none => some (.attr, attrPos)
-  | none, some inlinePos => some (.inline, inlinePos)
-  | some attrPos, some inlinePos =>
-      if attrPos <= inlinePos then
-        some (.attr, attrPos)
-      else
-        some (.inline, inlinePos)
+    Option (ExternalDeclHoverMarkerKind × html.Pos) := do
+  let markerNamePos ← pos.find? externalDeclHoverMarkerNamePrefix
+  if (html.sliceFrom markerNamePos).startsWith externalDeclHoverLocalAttrPrefix then
+    some (.attr, markerNamePos)
+  else
+    let inlinePos := markerNamePos.prevn "<span ".length
+    if (html.sliceFrom inlinePos).startsWith externalDeclHoverInlineMarkerPrefix then
+      some (.inline, inlinePos)
+    else
+      markerNamePos.next?.bind (findNextExternalDeclHoverMarker? html)
 
 private partial def rewriteExternalDeclHoverTemplateLoop
     (html : String)

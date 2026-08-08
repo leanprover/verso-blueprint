@@ -191,6 +191,24 @@ private def htmlTestContext :
 /-- info: true -/
 #guard_msgs in
 #eval
+  let rendered : Informal.ExternalDeclRenderedHtml := {
+    html :=
+      "before data-bp-external-hover-local=\"1\" " ++
+      "literal data-bp-external-hover-not-a-marker " ++
+      "<span data-bp-external-hover-inline-local=\"2\"></span> after"
+    hoverPayloads := #[]
+  }
+  let rewrites : Array Informal.ExternalDeclHoverRewrite := #[
+    { localId := 1, attrReplacement := "data-verso-hover=\"11\"", inlineReplacement := "" },
+    { localId := 2, attrReplacement := "data-verso-hover=\"12\"", inlineReplacement := "INLINE" }
+  ]
+  rendered.rewriteHovers rewrites ==
+    "before data-verso-hover=\"11\" " ++
+    "literal data-bp-external-hover-not-a-marker INLINE after"
+
+/-- info: true -/
+#guard_msgs in
+#eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
     let ref ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
