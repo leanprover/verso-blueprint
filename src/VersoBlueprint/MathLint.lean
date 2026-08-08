@@ -98,9 +98,47 @@ private structure RuntimePaths where
   script : System.FilePath
   katexModule : System.FilePath
 
-initialize nodeAvailableRef : IO.Ref (Option Bool) ← IO.mkRef none
 initialize runtimePathsRef : IO.Ref (Option (Option RuntimePaths)) ← IO.mkRef none
+
+private abbrev WorkerChild := IO.Process.Child {
+  stdin := .piped
+  stdout := .piped
+  stderr := .null
+}
+
+private structure Worker where
+  child : WorkerChild
+
+private inductive WorkerStatus where
+  | notStarted
+  | running (worker : Worker)
+  | unavailable
+deriving Inhabited
+
+initialize workerStatusRef : IO.Ref WorkerStatus ← IO.mkRef .notStarted
 initialize lintCacheRef : IO.Ref (Std.HashMap String (Option Failure)) ← IO.mkRef {}
+initialize lintRequestMutexRef : IO.Ref (Option Std.BaseMutex) ← IO.mkRef none
+
+/--
+Create the request mutex lazily: this module runs in Lean's interpreter during elaboration, where
+a platform mutex cannot safely be allocated by the module initializer. `modifyGet` also ensures
+that concurrent first requests converge on one mutex.
+-/
+private def lintRequestMutex : IO Std.BaseMutex := do
+  if let some mutex ← lintRequestMutexRef.get then
+    return mutex
+  let fresh ← Std.BaseMutex.new
+  lintRequestMutexRef.modifyGet fun
+    | some mutex => (mutex, some mutex)
+    | none => (fresh, some fresh)
+
+private def withLintRequestMutex (action : IO α) : IO α := do
+  let mutex ← lintRequestMutex
+  mutex.lock
+  try
+    action
+  finally
+    mutex.unlock
 
 private partial def findPackageAssetFrom
     (dir : System.FilePath) (assetPath : System.FilePath) : IO (Option System.FilePath) := do
@@ -157,20 +195,6 @@ private def runtimePaths : IO (Option RuntimePaths) := do
       pure (some { script, katexModule })
     runtimePathsRef.set (some resolved)
     pure resolved
-
-/-- Probe `node` once per Lean process so missing Node just disables linting quietly. -/
-private def nodeAvailable : IO Bool := do
-  match ← nodeAvailableRef.get with
-  | some available => pure available
-  | none =>
-    let available ←
-      try
-        let out ← IO.Process.output { cmd := "node", args := #["--version"] }
-        pure (out.exitCode == 0)
-      catch _ =>
-        pure false
-    nodeAvailableRef.set (some available)
-    pure available
 
 def enabled (opts : Options) : Bool :=
   opts.get verso.blueprint.math.lint.name verso.blueprint.math.lint.defValue
@@ -251,42 +275,87 @@ private def RawResult.toFailure : RawResult → Failure
         | none, none => .unknown
     }
 
+private def startWorker (paths : RuntimePaths) : IO (Option Worker) := do
+  try
+    let child ← IO.Process.spawn {
+      cmd := "node"
+      args := #[paths.script.toString, "--worker", paths.katexModule.toString]
+      stdin := .piped
+      stdout := .piped
+      stderr := .null
+    }
+    pure <| some { child }
+  catch _ =>
+    pure none
+
+private def stopWorker (worker : Worker) : IO Unit := do
+  try
+    worker.child.kill
+  catch _ =>
+    pure ()
+  try
+    discard worker.child.wait
+  catch _ =>
+    pure ()
+
+private def requestWorker (worker : Worker) (payloadJson : String) : IO (Option RawResult) := do
+  if (← worker.child.tryWait).isSome then
+    return none
+  worker.child.stdin.putStr payloadJson
+  worker.child.stdin.putStr "\n"
+  worker.child.stdin.flush
+  let line ← worker.child.stdout.getLine
+  if line.isEmpty then
+    return none
+  let json ←
+    match Json.parse line with
+    | .ok json => pure json
+    | .error _ => return none
+  match fromJson? (α := RawResult) json with
+  | .ok report => pure (some report)
+  | .error _ => pure none
+
+private def requestWithState
+    (status : WorkerStatus) (payloadJson : String) : IO (WorkerStatus × Option RawResult) := do
+  if let .unavailable := status then
+    return (.unavailable, none)
+  let some paths ← runtimePaths
+    | return (.unavailable, none)
+  let worker? ←
+    match status with
+    | .notStarted => startWorker paths
+    | .running worker => pure (some worker)
+    | .unavailable => pure none
+  let some worker := worker?
+    | return (status, none)
+  let report? ←
+    try
+      requestWorker worker payloadJson
+    catch _ =>
+      pure none
+  match report? with
+  | some report =>
+    pure (.running worker, some report)
+  | none =>
+    stopWorker worker
+    pure (.unavailable, none)
+
 /--
-Runs the vendored Node+KaTeX checker synchronously and memoizes by payload.
+Runs the persistent Node+KaTeX checker synchronously and memoizes by payload.
 Returning `none` means either "no error" or "linting unavailable"; callers treat both as non-fatal.
 -/
 def lint? (payload : Payload) : IO (Option Failure) := do
-  if !(← nodeAvailable) then
-    return none
-
-  -- maybe a hash function would be faster? Anyways we are sending the TeX like this to node
   let key := Json.compress (toJson payload)
-  if let some cached := (← lintCacheRef.get)[key]? then
-    return cached
-
-  let result ← do
-    let some { script, katexModule } ← runtimePaths
+  withLintRequestMutex do
+    if let some cached := (← lintCacheRef.get)[key]? then
+      return cached
+    let (status, report?) ← requestWithState (← workerStatusRef.get) key
+    workerStatusRef.set status
+    let some report := report?
       | return none
-    let out ←
-      try
-        IO.Process.output {
-          cmd := "node"
-          args := #[script.toString, key, katexModule.toString]
-        }
-      catch _ =>
-        return none
-    if out.exitCode != 0 then
-      return none
-    let json ←
-      match Json.parse out.stdout with
-      | .ok json => pure json
-      | .error _ => return none
-    match fromJson? (α := RawResult) json with
-    | .ok report => pure <| if report.ok then none else some report.toFailure
-    | .error _ => pure none
-
-  lintCacheRef.modify fun cache => cache.insert key result
-  pure result
+    let result := if report.ok then none else some report.toFailure
+    lintCacheRef.modify fun cache => cache.insert key result
+    pure result
 
 /-- Render the most precise span wording we have, preferring source-relative spans over KaTeX-input ones. -/
 private def spanText? (label : String) (span? : Option Span) : Option MessageData :=

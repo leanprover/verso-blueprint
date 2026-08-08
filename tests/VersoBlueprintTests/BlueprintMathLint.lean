@@ -55,6 +55,18 @@ private def localNodeAvailable : IO Bool := do
 /-- info: true -/
 #guard_msgs in
 #eval
+  show IO Bool from do
+    let tasks ← (List.range 8).mapM fun i =>
+      IO.asTask <| Informal.MathLint.lint? {
+        mode := .inline
+        source := "x_" ++ toString i
+      }
+    let reports ← tasks.mapM fun task => IO.ofExcept task.get
+    pure <| reports.all (·.isNone)
+
+/-- info: true -/
+#guard_msgs in
+#eval
   show Bool from
     extractedRaw? r#"\`x"# { start := 0, length := 1 } == some r#"\`"#
 
@@ -96,5 +108,23 @@ private def localNodeAvailable : IO Bool := do
       match failure.site with
       | .prelude { start, length } => start > 0 && length == 0
       | _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let invalidPrelude := r#"\newcommand{\foo}{\mathsf{Foo}"#
+    let nodeAvailable ← localNodeAvailable
+    let first ← Informal.MathLint.lint? {
+      mode := .inline
+      source := r#"\foo + 1"#
+      texPrelude := invalidPrelude
+    }
+    let second ← Informal.MathLint.lint? {
+      mode := .inline
+      source := r#"\foo + 2"#
+      texPrelude := invalidPrelude
+    }
+    pure <| !nodeAvailable || (first.isSome && first == second)
 
 end Verso.VersoBlueprintTests.BlueprintMathLint
