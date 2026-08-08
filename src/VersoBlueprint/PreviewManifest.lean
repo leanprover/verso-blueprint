@@ -308,6 +308,14 @@ private def logLeanCodePreviewTimings
 private def htmlStringIsBlank (html : String) : Bool :=
   html.all Char.isWhitespace
 
+/--
+Non-visual cache body for a semantic block whose only visible payload is an
+associated Lean-code panel. Browser cache readers reject empty HTML strings, so
+code-only nodes use an explicit inert fragment as their block body.
+-/
+private def codeOnlyBlockPreviewHtml : String :=
+  "<span class=\"bp_code_only_preview_body\" aria-hidden=\"true\"></span>"
+
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
     let msg := Verso.LogMessage.format { severity, text, loc }
@@ -970,6 +978,10 @@ structure Entry where
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
+  /-- Whether the canonical proof shell is collapsed when this is a proof entry. -/
+  foldProofBlock : Bool := false
+  /-- Whether the associated Lean code panel is collapsed for this canonical traversal entry. -/
+  foldCodeBlock : Bool := false
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
   /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
@@ -987,6 +999,17 @@ structure Entry where
   /-- Declared effort estimate for this informal node, if any. -/
   effort : Option String := none
 deriving Inhabited, Repr, ToJson, FromJson
+
+/-- Whether a related dependency participates in the selected statement or proof facet. -/
+def RelatedEntry.matchesFacet
+    (related : RelatedEntry) (facet : PreviewCache.Facet) : Bool :=
+  match facet with
+  | .statement => related.axes.contains .statement
+  | .proof => related.axes.contains .proof
+
+/-- Related dependencies that belong to this manifest entry's selected facet. -/
+def Entry.usesForFacet (entry : Entry) : Array RelatedEntry :=
+  entry.uses.filter (·.matchesFacet entry.facet)
 
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
 structure EntryHeading where
@@ -1013,6 +1036,8 @@ def Entry.blockData (entry : Entry) : Informal.BlockData := {
   sourceRef := entry.primarySource?
   label := entry.label
   sourceLocation := entry.sourceLocation
+  foldProofBlock := entry.foldProofBlock
+  foldCodeBlock := entry.foldCodeBlock
   parent := entry.parent
   count := 0
   statementUses := entry.statementUses
@@ -1987,9 +2012,12 @@ private def blockLeanCodePreviewKeys
     (state : TraverseState)
     (label : Name)
     (entry : PreviewCache.Entry) : Array String :=
-  (inlineCodePreviewKeys state label).foldl
-    (init := entry.leanCodePreviewKeys)
-    (fun keys key => pushUnique keys key)
+  match entry.facet with
+  | .proof => entry.leanCodePreviewKeys
+  | .statement =>
+    (inlineCodePreviewKeys state label).foldl
+      (init := entry.leanCodePreviewKeys)
+      (fun keys key => pushUnique keys key)
 
 private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)
@@ -2004,14 +2032,17 @@ private def blockCodeData?
     (label : Name)
     (entry : PreviewCache.Entry)
     (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
-  let inline? := Informal.TraversalIndex.InlineCode.data? state label
-  let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
-  let external? :=
-    if externalDecls.isEmpty then
-      blockData?.bind (·.codeData)
-    else
-      some (Informal.BlockCodeData.external externalDecls)
-  Informal.BlockCodeData.ofHintAndInline external? inline?
+  match entry.facet with
+  | .proof => none
+  | .statement =>
+    let inline? := Informal.TraversalIndex.InlineCode.data? state label
+    let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
+    let external? :=
+      if externalDecls.isEmpty then
+        blockData?.bind (·.codeData)
+      else
+        some (Informal.BlockCodeData.external externalDecls)
+    Informal.BlockCodeData.ofHintAndInline external? inline?
 
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
@@ -2168,6 +2199,8 @@ private def blockSemanticManifestEntry
     proofUses := blockData?.map (·.proofUses) |>.getD #[]
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
+    foldProofBlock := blockData?.map (·.foldProofBlock) |>.getD false
+    foldCodeBlock := blockData?.map (·.foldCodeBlock) |>.getD false
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := sourceRefsForBlockLabel state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
@@ -2206,14 +2239,22 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if !entry.hasRenderedBody then
+      let hasLeanCode := !entry.leanCodePreviewKeys.isEmpty
+      let hasExternalMarkup := !(externalMarkupArray state entry.label).isEmpty
+      if !entry.hasRenderedBody && (!hasLeanCode || hasExternalMarkup) then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
-        (logError := logError) (hoverState := hoverState)
-      hoverState := rendered.hoverState
-      let html := rendered.html.asString
-      if htmlStringIsBlank html then
-        continue
+      let html ←
+        if entry.hasRenderedBody then
+          let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers
+            entry.renderedBody.blocks impls state
+            (logError := logError) (hoverState := hoverState)
+          hoverState := rendered.hoverState
+          let html := rendered.html.asString
+          if htmlStringIsBlank html then
+            continue
+          pure html
+        else
+          pure codeOnlyBlockPreviewHtml
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }

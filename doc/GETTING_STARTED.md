@@ -36,9 +36,17 @@ Those labels are the key to the whole system. They are used to:
 - attach inline Lean code with a labeled `lean` code block
 - attach external TeX or Markdown source for porting with `tex` or `md` code
   blocks
-- tag compiled declarations with `@[blueprint "label"]`, optionally using
-  `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true` to infer
-  edges to directly referenced Lean declarations associated with Blueprint labels
+- tag compiled declarations with `@[blueprint]`, which defaults to the
+  qualified declaration name, or `@[blueprint "label"]` for an explicit short
+  label; either form can use `(autoDeps := true)` or
+  `set_option verso.blueprint.autoDeps true` to infer edges to directly
+  referenced Lean declarations associated with Blueprint labels
+- turn the distinct labels owned directly by one imported Lean module into a
+  source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`;
+  declarations that share a label become one node
+- place an imported attribute-owned declaration at a specific chapter location
+  with `{blueprint_node "label"}`; its docstring becomes the statement body and
+  an undocumented declaration renders as a code-only node
 
 If you pick stable labels early, the rest of the project structure becomes much
 easier to maintain.
@@ -93,6 +101,8 @@ Use [project_template/](../project_template/) as the starting point.
 Its key files are:
 
 - `ProjectTemplate/Chapters/Addition.lean`: the first chapter
+- `ProjectTemplate/Formalization/Addition.lean`: an ordinary Lean module whose
+  attribute-owned declarations become a generated chapter
 - `ProjectTemplate/Chapters/Multiplication.lean`: the second chapter
 - `ProjectTemplate/Chapters/Collatz.lean`: a third chapter with a deliberately
   unfinished open problem
@@ -104,16 +114,18 @@ Its key files are:
 The template is intentionally small. It is meant to teach the shape of a
 Blueprint project before you scale it up.
 
-## The three Verso forms to recognize first
+## The four Verso forms to recognize first
 
-If you are new to Verso, there are only three forms you need to understand at
+If you are new to Verso, there are only four forms you need to understand at
 the start:
 
 - `#doc (Manual) "Title" =>` starts a document module
 - `{include 0 Some.Module}` includes a chapter into the top-level file
+- `{includeBlueprintModule 0 Some.Formalization}` turns that imported Lean
+  module's tagged declarations into a generated Manual chapter
 - `:::definition "label_1"` starts a Blueprint block
 
-You can get a long way just by following those three patterns in the template.
+You can get a long way just by following those four patterns in the template.
 
 ## Read the first chapters
 
@@ -141,15 +153,18 @@ small enough to copy and adapt.
 
 The top-level file in
 [project_template/ProjectTemplate/Blueprint.lean](../project_template/ProjectTemplate/Blueprint.lean)
-does two jobs:
+does three jobs:
 
 1. it includes the chapter modules into the document
-2. it chooses which rendered overview pages to include
+2. it projects the tagged formalization module into a generated chapter
+3. it chooses which rendered overview pages to include
 
 The starter template includes:
 
 - the chapter pages with `{include 0 ProjectTemplate.Chapters.Addition}` and
   the other chapter includes
+- the compiled-results page with
+  `{includeBlueprintModule 0 ProjectTemplate.Formalization.Addition ...}`
 - a dependency graph with `{blueprint_graph}`
 - a progress summary with `{blueprint_summary}`
 

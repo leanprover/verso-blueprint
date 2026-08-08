@@ -44,6 +44,10 @@ set_option doc.verso true
 def Label := Name
 deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
+/-- Append a Blueprint label only when it is not already present. -/
+def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
+  if labels.contains label then labels else labels.push label
+
 def LabelMap A := NameMap A
 
 instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
@@ -494,7 +498,8 @@ inductive CodeRef where
   /-
   Blueprint code references can currently come from two sources:
   1. An inline Lean block processed by Verso/Lean integration (`.literate`).
-  2. A regular Lean declaration tagged with `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
+  2. A regular Lean declaration tagged with `@[blueprint]` or
+     `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
      A `(lean := "...")` directive reference to Lean code we do not directly control
      also lands in `.external` (origin `.directiveLean`).
 
@@ -540,7 +545,12 @@ structure InformalData where
   /-- Structured dependency edges declared from this informal payload. -/
   deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
+  /--
+  Manual block term syntax retained when the producing phase cannot evaluate it
+  into typed preview blocks, as with a docstring on an imported Blueprint
+  attribute.
+  -/
+  elabStx : Array Syntax := #[]
 deriving Repr, Inhabited
 
 def InformalData.hasBody (data : InformalData) : Bool :=
@@ -548,6 +558,19 @@ def InformalData.hasBody (data : InformalData) : Bool :=
 
 def InformalData.dependencyLabels (data : InformalData) : Array Label :=
   data.deps.map (·.label)
+
+/-- Merge dependency metadata into an informal payload without changing its body source. -/
+def InformalData.withMergedDeps
+    (data : InformalData) (deps : Array UseRef) : InformalData :=
+  { data with deps := UseRef.mergeByLabel data.deps deps }
+
+/--
+Fill a bodyless informal payload from the incoming payload, preserving and merging the
+dependency metadata that was registered before the body became available.
+-/
+def InformalData.fillBodyless
+    (current incoming : InformalData) : InformalData :=
+  { incoming with deps := UseRef.mergeByLabel current.deps incoming.deps }
 
 structure Node where
   kind : NodeKind := .lemma
@@ -711,9 +734,6 @@ private def mergeTags (current incoming : Array String) : Array String :=
   incoming.foldl (init := current) fun acc tag =>
     if acc.contains tag then acc else acc.push tag
 
-private def fillBodylessPayload (current incoming : InformalData) : InformalData :=
-  { incoming with deps := UseRef.mergeByLabel current.deps incoming.deps }
-
 private def fillPayload? (current? : Option InformalData) (incoming : InformalData) :
     Option InformalData :=
   match current? with
@@ -722,7 +742,7 @@ private def fillPayload? (current? : Option InformalData) (incoming : InformalDa
     if current.hasBody then
       none
     else
-      some (fillBodylessPayload current incoming)
+      some (current.fillBodyless incoming)
 
 private def Data.nextCount (data : Data) : Nat :=
   data.foldl (init := 0) (fun count _label node => max count node.count) + 1

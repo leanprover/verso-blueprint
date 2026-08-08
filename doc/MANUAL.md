@@ -58,7 +58,7 @@ These identifiers are used by:
 - labeled inline Lean code blocks
 - labeled inline Rust code blocks
 - `tex` and `md` code blocks carrying external markup source
-- `@[blueprint "label"]` on compiled Lean declarations
+- `@[blueprint]` or `@[blueprint "label"]` on compiled Lean declarations
 - summary and graph nodes
 - preview lookup and exported metadata
 
@@ -116,6 +116,8 @@ ProjectTemplate/
     Addition.lean
     Multiplication.lean
     Collatz.lean
+  Formalization/
+    Addition.lean
 ProjectTemplate.lean
 ProjectTemplateMain.lean
 lakefile.lean
@@ -124,6 +126,8 @@ lakefile.lean
 The role of each file is:
 
 - `ProjectTemplate/Chapters/Addition.lean`: a chapter with Blueprint blocks
+- `ProjectTemplate/Formalization/Addition.lean`: ordinary Lean declarations
+  tagged with `@[blueprint]` and included as a generated module chapter
 - `ProjectTemplate/Chapters/Multiplication.lean`: another chapter with the same
   pattern
 - `ProjectTemplate/Chapters/Collatz.lean`: a separate chapter for an
@@ -147,6 +151,7 @@ import VersoBlueprint.Commands.Summary
 import ProjectTemplate.Chapters.Addition
 import ProjectTemplate.Chapters.Collatz
 import ProjectTemplate.Chapters.Multiplication
+import ProjectTemplate.Formalization.Addition
 
 open Verso.Genre
 open Verso.Genre.Manual
@@ -158,6 +163,7 @@ This small Blueprint tracks a few basic arithmetic facts on natural numbers,
 then ends with a separate Collatz chapter that is intentionally unfinished.
 
 {include 0 ProjectTemplate.Chapters.Addition}
+{includeBlueprintModule 0 ProjectTemplate.Formalization.Addition (title := "Compiled Addition Results")}
 {include 0 ProjectTemplate.Chapters.Multiplication}
 {include 0 ProjectTemplate.Chapters.Collatz}
 
@@ -271,13 +277,29 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
 This is the clearest way to connect a Blueprint entry to local formalization
 work in the same project.
 
-### Compiled code tagged with `@[blueprint "addition_assoc_compiled"]`
+### Compiled code tagged with `@[blueprint]`
 
-Use the `@[blueprint "label"]` attribute when a compiled definition-like declaration or theorem
-should appear as a Lean-owned Blueprint node:
+Use the `@[blueprint]` attribute when a compiled definition-like
+declaration or theorem should appear as a compiled-declaration-backed Blueprint
+node. With no string argument, its Blueprint label is the declaration's
+qualified Lean name:
 
 ```lean
-/-- Associativity of addition, exposed as a Lean-owned blueprint node. -/
+/-- Associativity of addition under its qualified declaration name. -/
+@[blueprint]
+theorem MyProject.addition_assoc (a b c : Nat) :
+    (a + b) + c = a + (b + c) := by
+  simpa [Nat.add_assoc]
+```
+
+Use `@[blueprint "label"]` when the document should own a shorter or otherwise
+independent label:
+
+```lean
+/--
+Associativity of addition, exposed as a compiled-declaration-backed Blueprint
+node.
+-/
 @[blueprint "addition_assoc_compiled"]
 theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
   simpa [Nat.add_assoc]
@@ -287,10 +309,154 @@ This mode is useful when the formal declaration already exists as ordinary Lean
 code and you want to register it as a Blueprint node.
 
 If the declaration has a docstring, Blueprint tries to reuse it as the informal
-statement body for that Lean-owned node. Plain docstrings are parsed through the
-manual Markdown path when possible, and richer internal docstring structures are
-converted into Manual blocks directly. If no docstring is available, the node is
-still registered, but there is no imported informal statement body.
+statement body for that attribute-owned node. Plain docstrings are parsed
+through the Manual Markdown path when possible. With the `doc.verso` option
+enabled, standard structural content such as paragraphs, emphasis, lists,
+links, code, math, quotations, and section content is converted into Manual
+blocks. The same structural content is rendered inside the attached “Lean code
+for…” declaration panel. If no docstring is available, the node is still
+registered, but there is no imported informal statement body.
+
+Enabling `doc.verso` does not elaborate a declaration docstring as a Blueprint
+Manual fragment. Blueprint currently flattens every Lean docstring extension
+node that successfully elaborates to its child content, discarding the
+extension wrapper rather than looking up a Manual adapter. Custom Lean
+docstring-extension semantics are therefore not preserved.
+
+Blueprint Manual roles are a separate registry. In particular,
+`{uses ...}[]` is not a Lean `doc.verso` role and is rejected during docstring
+elaboration; it is neither flattened nor recorded as Blueprint dependency
+metadata. Record those edges with the attribute's `(uses := [...])` or
+`(proofUses := [...])` options. Blueprint deliberately does not create a
+synthetic `DocElabM` context to reinterpret an imported docstring.
+
+#### Including an attribute module as a chapter
+
+When a regular Lean module is the primary Blueprint source, import it in the
+document module's Lean header and include all of its directly tagged
+declarations as one Verso part:
+
+```lean
+import MyProject.Formalization.Interpolation
+
+open Verso.Genre
+open Verso.Genre.Manual
+open Informal
+
+#doc (Manual) "Project Blueprint" =>
+
+{includeBlueprintModule 0 MyProject.Formalization.Interpolation (title := "Interpolation Spaces")}
+```
+
+The generated Manual part contains one materialized Blueprint node for each
+distinct `@[blueprint]` label owned directly by the named module, in first
+attribute-application order. If several declarations in that module use the
+same label, the part contains one node with all of their Lean panels.
+Dependencies and declarations accumulate in source order. The first docstring
+that supplies a statement body remains authoritative; a later docstring fills
+the statement only while the earlier registrations are bodyless. Re-exported or
+otherwise transitive modules are not folded into the part: include each desired
+module explicitly. Every node follows the same docstring/code-only, numbering,
+relation, preview, manifest, and cache path as an individual placement. Its
+local display number is assigned in the consuming document's traversal order;
+the generated placement does not retain a display number from the provider
+module.
+
+This is Blueprint's current Verso-native counterpart to
+[LeanArchitect's `\inputleanmodule`](https://github.com/hanwenzhu/LeanArchitect#extracting-entire-lean-file-to-latex):
+it turns tagged declarations from a regular imported Lean module into document
+content. The current command includes declaration-backed nodes only. It does
+not yet have LeanArchitect's ordered `blueprint_comment` equivalent for prose
+interleaved among declarations; put compact prose in declaration docstrings, or
+use individual `{blueprint_node "label"}` placements inside an ordinary Verso
+chapter when the prose needs its own position.
+
+Module inclusion currently materializes the statement facet only. A separate
+informal `:::proof` body persisted in the defining module is not automatically
+registered in the consuming document. Proof prose written and traversed in the
+consuming document remains available through the ordinary proof facet. This is
+separate from the compiled Lean proof: Blueprint's external-declaration panel
+does not reproduce the original `:= by ...` source text.
+
+The first positional number has the same structural role as in Verso's regular
+`{include 0 Some.Document}` command. It is optional; without it, the generated
+part is a child of the current part. The optional `(title := "...")` overrides
+the generated title, whose default is the final component of the module name:
+
+```lean
+{includeBlueprintModule MyProject.Formalization.Interpolation}
+```
+
+The command is available only in Manual documents. It reads Blueprint metadata
+from the imported `.olean`; it does not perform a Lean import from inside the
+document body. If the exact named module is not available through the Lean
+module's import graph, or if it directly owns no `@[blueprint]` declarations,
+the command reports an error. A module include is best when declaration
+docstrings are the chapter prose. To interleave longer prose between selected
+declarations, use individual `{blueprint_node "label"}` placements instead.
+
+#### Placing an attribute-owned node in a chapter
+
+Import the module containing the tagged declaration, then write
+`{blueprint_node "label"}` at the exact place where the node should appear:
+
+```lean
+import MyProject.Formalization.Interpolation
+
+open Verso.Genre
+open Verso.Genre.Manual
+open Informal
+
+#doc (Manual) "Interpolation spaces" =>
+
+The next result packages the formal definition used throughout this chapter.
+
+{blueprint_node "k-interpolation-space"}
+
+The surrounding chapter can continue with examples, motivation, or links to
+later Blueprint nodes.
+```
+
+For an imported `@[blueprint]` node, this command does two jobs. It projects the
+persistent Lean-side node into the current document traversal, which gives it a
+number, page destination, relation metadata, and generated preview entries; it
+then renders that entry through the ordinary Blueprint graft path. A docstring
+becomes the statement body. A declaration without a docstring renders as a
+code-only node instead of failing with “Blueprint node not found”.
+
+This placement behavior is specific to attribute-owned nodes in Manual
+documents. For ordinary `:::theorem` and related blocks, `{blueprint_node}`
+continues to mean “render another view of a node already traversed in this
+document”. In Slides, grafts continue to read the Blueprint site manifest/cache
+passed to the Slides generator.
+
+The usual graft options apply at the placement site, including `+compact`,
+`-header`, `(displayLabel := "...")`, and `(facet := "proof")`. Compact mode
+intentionally hides the attached Lean panel. For an imported attribute-owned
+node, the initial placement currently materializes only its statement facet; a
+proof facet is available after a matching `:::proof` has been traversed in the
+consuming document. A persisted provider-module proof is not automatically
+materialized, and a compiled theorem proof does not automatically become
+informal proof prose.
+
+Additional prose can simply surround the placement command. If the tagged
+declaration has no docstring and the prose should live inside the numbered
+statement shell, write a matching statement block instead; it fills the
+attribute-created node and keeps the Lean association and dependency metadata:
+
+```lean
+:::theorem "k-interpolation-space"
+An interpolation space satisfying the conditions used in this chapter.
+:::
+
+:::proof "k-interpolation-space"
+The informal proof outline can be maintained separately from the Lean proof.
+:::
+```
+
+Do not also use `{blueprint_node "k-interpolation-space"}` merely to create the
+first occurrence in that case: the statement block is already the canonical
+placement. Later `{blueprint_node}` commands may reuse it elsewhere.
 
 Automatic dependency inference is opt-in. Enable it locally with
 `(autoDeps := true)`, or set the file/section default with:
@@ -339,8 +505,8 @@ by the declaration's type and compiled body. Declarations associated with
 Blueprint labels and used directly by the type become statement dependencies;
 declarations associated with Blueprint labels and used directly by the body
 become proof dependencies. A Lean declaration is associated with a Blueprint
-label by `@[blueprint "..."]`, by a labeled inline Lean code block, or by an
-informal statement block with `(lean := "...")`.
+label by `@[blueprint]` or `@[blueprint "..."]`, by a labeled inline Lean code
+block, or by an informal statement block with `(lean := "...")`.
 
 Lean associations are many-to-many. One Blueprint label may be associated with
 several Lean code items, and one Lean declaration may be associated with several
@@ -379,6 +545,27 @@ same Blueprint label. If the attribute has only created dependency metadata for
 that statement or proof, the later block fills in the rendered body and keeps
 the inferred dependency edges.
 
+#### Attribute-first use-case matrix
+
+| Use case | Current behavior |
+| --- | --- |
+| Definitions, theorems, structures, and inductives | Supported. They become definition- or theorem-shaped Blueprint nodes. Constructors, recursors, axioms, and declarations introduced with `opaque` are not accepted as direct attribute targets. |
+| Omit an explicit Blueprint label | Supported with bare `@[blueprint]`; the label defaults to the declaration's qualified Lean name. Attribute options such as `uses`, `proofUses`, and `autoDeps` remain available. |
+| Direct and transitive imports | Supported. Attribute nodes, Lean associations, docstring bodies, and dependency metadata persist through imported `.olean` files. Duplicate imported Blueprint labels are diagnosed. |
+| Include a regular Lean module as a Blueprint chapter | Supported in Manual documents with `{includeBlueprintModule 0 Some.Module}` after importing the module. Distinct directly owned labels are emitted in first attribute-application order; transitive modules must be named and included explicitly. |
+| Place a tagged declaration on a specific Manual page | Supported with `{blueprint_node "label"}` after importing its module. The placement participates in numbering, links, relations, previews, the manifest, and the rendered-fragment cache. |
+| Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |
+| Reuse the same node in several places | Supported. The node keeps one semantic identity; later `{blueprint_node}` occurrences are presentation views and may use compact/header/display-label options. |
+| Use the declaration docstring as the statement | Supported for plain Markdown and standard structural `doc.verso` content that can be converted to Manual blocks. Structural `doc.verso` markup and math are also preserved in the attached external-declaration panel. Custom docstring extension semantics are flattened to child content rather than re-elaborated. An absent docstring produces a code-only placement. |
+| Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Type references become statement dependencies and body references become proof dependencies. Inference is direct, not transitive through untagged helpers. |
+| Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. Blueprint's `{uses ...}[]` Manual role is not registered for Lean `doc.verso` docstrings and is rejected there rather than interpreted as dependency metadata. |
+| Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
+| Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
+| Show the formal declaration | Supported as a highlighted external-declaration panel with its signature, kind-specific structure information, docstring, proof/completeness status, and source link when available. |
+| Show the original definition body or `:= by ...` proof text | Not currently supported by the compiled-declaration renderer. The panel renders the declaration interface, not the original source body. Use the source link, or a labeled inline Lean block when the exact authored proof text must be embedded in the page. |
+| Put `parent`, `owner`, `tags`, `effort`, `priority`, or `pr_url` directly on `@[blueprint]` | Not currently supported. These remain Blueprint statement-block metadata. A separate attribute-side metadata surface needs an ownership and validation design before it is added. |
+| Use an unplaced attribute node in global views | The persistent node can contribute semantic graph/summary facts, but it has no page destination or rendered preview until it is placed in a Manual document. |
+
 ### Existing Lean declarations
 
 Use `(lean := "Nat.add_assoc")` when Lean already owns the declaration and you
@@ -402,7 +589,10 @@ Notes:
 
 - `(lean := "Nat.add_assoc")` points at Lean-owned declaration names
 - `(lean := "Nat.add, Nat.succ")` supports comma-separated declaration lists
-- `@[blueprint "addition_assoc_compiled"]` registers a Lean-owned Blueprint node
+- `@[blueprint "addition_assoc_compiled"]` registers a
+  compiled-declaration-backed Blueprint node
+- bare `@[blueprint]` uses the qualified declaration name as its Blueprint
+  label
 - `(autoDeps := true)` is accepted by `@[blueprint]`, labeled inline Lean blocks,
   and statement blocks with `(lean := "...")`
 - Blueprint labels are Blueprint-owned metadata
@@ -964,8 +1154,8 @@ contract shared by those workflows.
 Use `{blueprint_node "label"}` when an overview, introduction, roadmap, or slide
 needs to feature an existing Blueprint entry without rewriting it.
 
-In Manual documents, the command resolves the target from the current traversal
-state:
+In Manual documents, an ordinary informal node resolves from the current
+traversal state:
 
 ```lean
 import VersoBlueprint
@@ -983,6 +1173,13 @@ The statement to feature.
 {blueprint_node "thm:key" -header +compact}
 :::::::
 ```
+
+An imported node owned by bare `@[blueprint]` or `@[blueprint "label"]` is the
+other Manual case. If the label is not yet in the traversal, the command first
+materializes the persistent attribute node at that source position, then
+renders the same graft shell. See [Placing an attribute-owned node in a
+chapter](#placing-an-attribute-owned-node-in-a-chapter) for the attribute-first
+workflow and its current code/proof limitations.
 
 In Slides decks, the same source command is available after importing
 `VersoBlueprint.Slides`, but the rendered node comes from the manifest/cache
@@ -1222,7 +1419,7 @@ renders a pointer to the HTML output, and `Not in PDF` is absent from
 | External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
 | Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
 | Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
-| Grafted Blueprint nodes | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
+| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from current traversal preview data and emitted to the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
 | Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
 | Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
 | Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |
@@ -1271,7 +1468,9 @@ prefixes with document-order block counts.
   - renders proof blocks as collapsed disclosure blocks
 - `verso.blueprint.foldCodeBlocks`
   - default: `false`
-  - renders Lean, Rust, and external code panels as collapsed disclosure blocks
+  - renders Lean, Rust, and external code panels as collapsed disclosure blocks,
+    including panels produced by attribute-owned `{blueprint_node}` placements
+    and `{includeBlueprintModule}`
 - `verso.blueprint.trimTeXLabelPrefix`
   - default: `false`
   - trims TeX-style label prefixes when deriving Lean names

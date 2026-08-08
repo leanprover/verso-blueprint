@@ -169,12 +169,17 @@ structure BlockData where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
+  /--
+  Elaboration-assigned source-local count. Traversal replaces zero or a count
+  behind its source-local cursor with the next available count before applying
+  the configured numbering policy.
+  -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -206,6 +211,37 @@ structure BlockData where
   prUrl : Option String := none
 deriving FromJson, ToJson, Quote
 
+/-- Whether this block's informal statement/proof shell should be collapsed. -/
+def BlockData.foldInformalShell (data : BlockData) : Bool :=
+  match data.kind with
+  | .proof => data.foldProofBlock
+  | .statement _ => false
+
+/--
+Copy the semantic metadata shared by every rendered occurrence of a Blueprint
+node into placement-specific block data.
+
+Callers remain responsible for occurrence-local fields such as the block kind,
+code payload, source provenance, numbering options, and source location.
+-/
+def BlockData.withSemanticNodeMetadata
+    (data : BlockData) (node? : Option Data.Node)
+    (ownerInfo? : Option Data.AuthorInfo := none) : BlockData :=
+  {
+    data with
+      parent := node?.bind (·.parent)
+      statementUses := node?.bind (·.statement) |>.map (·.deps) |>.getD #[]
+      proofUses := node?.bind (·.proof) |>.map (·.deps) |>.getD #[]
+      owner := node?.bind (·.owner)
+      ownerDisplayName := ownerInfo?.map (·.displayName)
+      ownerUrl := ownerInfo?.bind (·.url)
+      ownerImageUrl := ownerInfo?.bind (·.imageUrl)
+      tags := node?.map (·.tags) |>.getD #[]
+      effort := node?.bind (·.effort)
+      priority := node?.bind (·.priority)
+      prUrl := node?.bind (·.prUrl)
+  }
+
 /--
 Slim traversal-store payload for Blueprint node metadata.
 
@@ -216,10 +252,13 @@ main semantic node index.
 structure StoredBlockData where
   kind : Data.InProgressKind := .proof
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
+  foldProofBlock : Bool := false
+  foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
+  /-- Source-local count copied from `BlockData`; zero remains the unassigned sentinel. -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -244,6 +283,8 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   kind := data.kind
   label := data.label
   sourceLocation := data.sourceLocation
+  foldProofBlock := data.foldProofBlock
+  foldCodeBlock := data.foldCodeBlock
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
@@ -269,6 +310,8 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   codeData
   label := data.label
   sourceLocation := data.sourceLocation
+  foldProofBlock := data.foldProofBlock
+  foldCodeBlock := data.foldCodeBlock
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode

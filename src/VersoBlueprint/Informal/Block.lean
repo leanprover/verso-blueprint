@@ -70,16 +70,7 @@ block_extension Block.informal (data : BlockData) where
     | none =>
       pure none
     | some blockData =>
-      let blockData := blockData.withTraversalNumberingContext (← read)
-      registerTraversedBlockAssets id blockData _contents
-      saveTraversedBlockData id blockData
-      if let some sourceRef := blockData.sourceRef then
-        match Informal.TraversalIndex.SourceRefs.data? (← get) blockData.label with
-        | some existing =>
-            unless existing == sourceRef do
-              Verso.reportError s!"Label {blockData.label} already has conflicting source provenance"
-        | none =>
-            modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
+      registerTraversedBlock id blockData _contents
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
       let .ok data := fromJson? (α := BlockData) data
@@ -172,10 +163,6 @@ block_extension Block.informal (data : BlockData) where
         let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
-        let foldInformalBlock :=
-          match data.kind with
-          | .proof => data.foldProofBlock
-          | .statement _ => false
         let headerExtras : HeaderExtras :=
           match data.kind with
           | .proof =>
@@ -197,7 +184,7 @@ block_extension Block.informal (data : BlockData) where
             (proofCaption? := some (data.displayTitle s))
             (attrs := attrs)
             (headerExtras := headerExtras)
-            (folded := foldInformalBlock)
+            (folded := data.foldInformalShell)
           content
           companionPanels := #[externalPanel]
         }
@@ -260,10 +247,6 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       | .statement _ =>
         let externalRefs := node?.map (·.externalRefs) |>.getD #[]
         BlockCodeData.ofExternalRefs externalRefs
-    let statementPayload? := node?.bind (·.statement)
-    let proofPayload? := node?.bind (·.proof)
-    let statementUses := statementPayload?.map (·.deps) |>.getD #[]
-    let proofUses := proofPayload?.map (·.deps) |>.getD #[]
     let owner := node?.bind (·.owner)
     let ownerInfo? ←
       match owner with
@@ -283,22 +266,12 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       sourceLocation
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
-      parent := node?.bind (·.parent)
       count
       numberingMode := numberingMode opts
       subNumberingPrefix := subNumberingPrefix opts
       subNumberingCounter := subNumberingCounter opts
-      statementUses
-      proofUses
-      owner
-      ownerDisplayName := ownerInfo?.map (·.displayName)
-      ownerUrl := ownerInfo?.bind (·.url)
-      ownerImageUrl := ownerInfo?.bind (·.imageUrl)
-      tags := node?.map (·.tags) |>.getD #[]
-      effort := node?.bind (·.effort)
-      priority := node?.bind (·.priority)
-      prUrl := node?.bind (·.prUrl)
     }
+    let data := data.withSemanticNodeMetadata node? ownerInfo?
     ``(Block.other (Block.informal $(quote data)) #[$contents,*])
 
 private def directiveName (kind : Data.NodeKind) (isProof : Bool): String :=

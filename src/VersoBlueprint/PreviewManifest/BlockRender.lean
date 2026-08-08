@@ -156,10 +156,11 @@ private def renderUsesExtra?
     cfg
     .uses
     (usesPanelConfigForEntry entry)
-    entry.uses
+    entry.usesForFacet
     entry
     Name.anonymous
     Informal.HeaderExtra.uses
+    (showWhenEmpty := true)
 
 private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
     Option Informal.HeaderExtra :=
@@ -189,16 +190,19 @@ private def renderHeaderExtras
     (blockData : Informal.BlockData)
     (group? : Option GroupRelation) :
     Informal.HeaderExtras :=
-  {
-    group? := renderGroupExtra? cfg entry group?
-    uses? := renderUsesExtra? cfg entry
-    code? := renderCodeExtra? entry blockData
-    usedBy? := renderUsedByExtra? cfg entry
-    markup? :=
-      match entry.facet with
-      | .statement => Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
-      | .proof => none
-  }
+  match entry.facet with
+  | .proof =>
+    {
+      uses? := renderUsesExtra? cfg entry
+    }
+  | .statement =>
+    {
+      group? := renderGroupExtra? cfg entry group?
+      uses? := renderUsesExtra? cfg entry
+      code? := renderCodeExtra? entry blockData
+      usedBy? := renderUsedByExtra? cfg entry
+      markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
+    }
 
 private def renderCodePanel
     (cfg : RenderConfig)
@@ -220,6 +224,7 @@ private def renderCodePanel
       panelSummary.summaryTitle
       panelSummary.indicator
       body
+      (folded := entry.blockData.foldCodeBlock)
 
 /-- Render a Blueprint block shell from semantic entry data and rendered content. -/
 def renderWithRenderedContent
@@ -232,7 +237,7 @@ def renderWithRenderedContent
     let blockData := entry.blockData
     let title := entry.heading opts.displayLabelOverride?
     let codePanel :=
-      if opts.compact then
+      if opts.compact || entry.facet == .proof then
         .empty
       else
         renderCodePanel cfg title entry content.codeBodies
@@ -245,6 +250,7 @@ def renderWithRenderedContent
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
         (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group?)
         (sourceRefs := entry.sources)
+        (folded := blockData.foldInformalShell)
       content := #[content.body]
       companionPanels := #[codePanel]
       wrapperClass? := some cfg.wrapperClass

@@ -129,7 +129,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `blueprint-manifest.json` contains semantic entries keyed by preview key,
   generated-page hrefs, graph records, labels, dependency data, Lean-code
   associations, a shared group catalog, ownership, tags, priority, effort,
-  status metadata, and display metadata.
+  status metadata, display metadata, and the folding policy needed by reusable
+  block renderers.
 - `blueprint-html-cache.json` contains rendered body fragments keyed by
   preview keys for entries that have generated preview bodies. Some semantic
   entries, such as source-backed external markup generated with
@@ -676,6 +677,19 @@ The useful data boundary is small:
   custom consumers can ignore both helpers and arrange nodes in their own UI.
 - Slide generators and other generated consumers should import and use the
   `Informal.Graft` node/config names directly.
+
+Manual documents expose two attribute-owned authoring paths before reaching
+this rendering boundary. `{includeBlueprintModule 0 Some.Module}` reads that
+imported module's persistent, source-ordered label catalog and creates one
+Manual part containing all directly owned nodes. `{blueprint_node "label"}`
+materializes one imported attribute node at the command's source position. In
+both cases a docstring supplies the statement body when present; otherwise a
+code-only preview entry is produced. Ordinary informal nodes must already be
+in the traversal, and Slides always use the manifest/cache supplied by their
+generator. The module command is deliberately Manual-only. Module selection and
+statement-facet materialization are document-elaboration concerns; persisted
+informal proof bodies are not yet materialized from imported modules. The
+config, manifest entry, and rendering APIs below remain shared.
 
 `VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
 interfaces. A consumer such as an audit view can provide its own wrapper

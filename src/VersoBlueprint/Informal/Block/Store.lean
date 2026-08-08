@@ -40,6 +40,31 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   let next := nextGlobalBlockNumber st
   (next, st.set numberingCounterState (next + 1))
 
+/--
+Traversal-state key for the next source-local number available during traversal.
+-/
+private def sourceNumberingCounterState : Name :=
+  Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
+
+private def nextSourceBlockNumber (st : TraverseState) : Nat :=
+  match st.get? sourceNumberingCounterState with
+  | some (.ok (n : Nat)) => n
+  | _ => 1
+
+/--
+Resolve a source-local block number monotonically in traversal order.
+
+Zero is the unassigned sentinel. A nonzero elaboration-time count is also
+reassigned when an earlier generated placement has already advanced beyond it.
+-/
+private def resolveSourceBlockNumber (st : TraverseState) (count : Nat) :
+    Nat × TraverseState :=
+  let next := nextSourceBlockNumber st
+  if count == 0 || count < next then
+    (next, st.set sourceNumberingCounterState (next + 1))
+  else
+    (count, st.set sourceNumberingCounterState (count + 1))
+
 /-- Prefix-local counters, stored as a small association list in traversal state. -/
 private def prefixBlockCounters (st : TraverseState) : Array (String × Nat) :=
   match st.get? prefixNumberingCounterState with
@@ -91,7 +116,8 @@ def numberedPartPrefix? (mode : SubNumberingPrefix) (ctxt : TraverseContext) : O
 Resolve the appended number for a sub-numbered block.
 
 Only `SubNumberingCounter.prefix` reserves a new prefix-local number. In
-document-order mode, the block keeps the elaboration-time `count`.
+document-order mode, the block keeps the source-local `count` already resolved
+during traversal.
 -/
 def reserveSubBlockNumber (st : TraverseState) (data : StoredBlockData) : Nat × TraverseState :=
   match data.subNumberingCounter, data.partPrefix with
@@ -115,10 +141,11 @@ private def StoredBlockData.withReservedNumbering
     match data.globalCount with
     | some globalCount => (globalCount, st)
     | none => reserveGlobalBlockNumber st
+  let (sourceCount, st) := resolveSourceBlockNumber st data.count
   let (count, st) :=
     match data.numberingMode with
-    | .sub => reserveSubBlockNumber st data
-    | _ => (data.count, st)
+    | .sub => reserveSubBlockNumber st { data with count := sourceCount }
+    | _ => (sourceCount, st)
   ({ data with count, globalCount := some globalCount }, st)
 
 /-- Look up the stored semantic payload for an informal block label. -/

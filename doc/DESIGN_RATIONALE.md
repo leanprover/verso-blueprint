@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-06-20
+Last updated: 2026-07-25
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -212,13 +212,19 @@ flowchart TD
 The same flow can be read as four contracts:
 
 1. **Elaboration to environment.**
-   Source directives, inline Lean blocks, `@[blueprint "..."]` attributes,
+   Source directives, inline Lean blocks, `@[blueprint]` attributes with
+   declaration-name or explicit labels,
    external `(lean := "...")` references, group declarations, author
    declarations, citations, and metadata are elaborated into
    `Informal.Environment.State`. This is the canonical semantic store for
    Blueprint-owned facts. It is persisted through Lean environment extensions
    and imported through compiled oleans, so downstream modules see one merged
-   object database.
+   object database. Attribute registration also writes a small per-module
+   catalog of distinct labels that preserves first application order. The node
+   itself remains the single source of truth for associated Lean declarations.
+   This is the ownership and ordering source for `{includeBlueprintModule}`;
+   the include path does not infer chapters by sorting labels or reparsing Lean
+   source.
 
 2. **Environment to traversal.**
    During Verso traversal, Blueprint reads the semantic environment and writes
@@ -229,6 +235,23 @@ The same flow can be read as four contracts:
    public graph data records, and external declaration row anchors. These
    facts are intentionally not pushed back into `Environment.State`, because
    their values depend on the current rendered document and output mode.
+   An imported attribute-owned node has no source block of its own, so a Manual
+   `{blueprint_node}` placement expands to an invisible materialization block
+   followed by the ordinary graft. The materializer writes the same node,
+   statement-preview, Lean-code, anchor, numbering, and relation indexes as an
+   informal statement block; its only HTML is the empty destination anchor
+   immediately before the visible graft. This keeps placement phase-safe
+   without introducing a second renderer for attribute nodes. Persisted
+   provider-module proof bodies are not yet projected into proof-facet traversal
+   entries.
+   `{includeBlueprintModule}` builds a real Verso part by applying that same
+   materializer-plus-graft expansion to every entry in one imported module's
+   catalog. Catalog lookup is exact-module, so transitive imports appear only
+   when explicitly included as their own parts.
+   Statement payloads that already contain elaborated Manual blocks are
+   reconstructed through Manual's typed JSON instances. This is a localized
+   value-quotation bridge, not a second persisted body schema and not a
+   synthetic document elaboration pass.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.
@@ -271,10 +294,11 @@ that owner.
 | Fact family | Owner | Stored as | Main consumers |
 | --- | --- | --- | --- |
 | Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` and related environment maps | traversal, graph, summary, manifest construction |
+| Attribute-module ownership and first-application order | Attribute elaboration | `Environment.State.blueprintAttributeLabelsByModule`; node semantics remain in `Environment.State.data` | `{includeBlueprintModule}`, exact-module diagnostics |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
-| Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
+| Numbering, hrefs, anchors, preview keys, and placement folding policy | Traversal | `TraverseState` and `TraversalIndex` domains, projected into semantic preview entries where rendering needs them | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
 | Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphModel` plus options cached in `TraversalIndex.Graphs`, then topology-finalized once through `Informal.GraphApi.finishData` into private-constructor `GraphData`; manifest emission subsequently resolves preview candidates against the artifact index without reopening topology | graph command rendering, browser runtime, custom graph consumers |
 | Lean code preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
@@ -369,6 +393,9 @@ flowchart TD
   previewExtra["Preview-data extra step<br/>emitBlueprintPreviewData"]
   previewFiles["Manifest/cache files<br/>blueprint-manifest.json<br/>blueprint-html-cache.json"]
 
+  attributeEnv["Persistent attribute node/catalog<br/>Environment.State"]
+  moduleInclude["Attribute module part command<br/>includeBlueprintModule"]
+  attributeMaterializer["Attribute traversal materializer<br/>blueprintAttributeNodeSource"]
   manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
   traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
   manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
@@ -388,6 +415,10 @@ flowchart TD
   manualMain --> previewExtra
   previewExtra --> previewFiles
 
+  attributeEnv --> moduleInclude
+  attributeEnv --> attributeMaterializer
+  moduleInclude --> attributeMaterializer
+  attributeMaterializer --> traversalPreview
   manualGraft --> traversalPreview
   traversalPreview --> manualPreviewHtml
   manualPreviewHtml --> graftContent
@@ -411,7 +442,8 @@ The current paths are:
 | --- | --- | --- | --- | --- |
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
-| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState` | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
+| Manual attribute materialization | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | persistent node/catalog data from `Environment.State` plus persisted statement blocks | `Block.blueprintAttributeNodeSource` registers through the ordinary block traversal path | current-document traversal entries followed by grafted Manual HTML |
+| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
@@ -913,6 +945,10 @@ rather than page-local template bodies:
    then hydrates links, math, and related-entry preview panels; it does not
    reconstruct Blueprint block markup or relationship topology from ad hoc
    manifest scans.
+   `VersoBlueprint.ModuleInclude` owns the module-to-part authoring boundary:
+   it reads the persistent attribute catalog, creates the Verso part, and
+   delegates every contained node to the same Manual graft materialization
+   path.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
