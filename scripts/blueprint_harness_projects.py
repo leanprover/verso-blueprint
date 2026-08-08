@@ -563,6 +563,7 @@ def reference_build_matrix(
             {
                 "artifact_name": reference_artifact_name(project),
                 "artifact_path": reference_artifact_path(project),
+                "project_manifest": release_project_manifest(release_target, project),
             }
         )
         include.append(entry)
@@ -678,11 +679,11 @@ def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False
     return entry
 
 
-def deploy_project_manifest(
+def release_project_manifest(
     target: HarnessReleaseTarget,
     project: HarnessProject,
     *,
-    include_pdf: bool = True,
+    include_pdf: bool = False,
 ) -> dict[str, object]:
     return {
         "version": 2,
@@ -724,7 +725,7 @@ def deploy_matrix_from_controller_catalog(
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
                     "publish_pdf": publish_pdf,
-                    "project_manifest": deploy_project_manifest(target, project, include_pdf=publish_pdf),
+                    "project_manifest": release_project_manifest(target, project, include_pdf=publish_pdf),
                 }
             )
     return {"include": include}

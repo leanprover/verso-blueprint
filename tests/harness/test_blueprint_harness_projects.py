@@ -233,8 +233,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "project-template",
                 "noperthedron",
                 "spherepackingblueprint",
-                "verso-flt",
-                "verso-carleson",
             ],
         )
         self.assertEqual(catalog.release_targets, branch_policy.release_targets)
@@ -260,8 +258,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         expected_external_repositories = {
             "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
             "spherepackingblueprint": "https://github.com/ejgallego/verso-sphere-packing.git",
-            "verso-flt": "https://github.com/ejgallego/verso-flt.git",
-            "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
         }
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
@@ -653,6 +649,11 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("--reference-root _out/reference-blueprints-artifacts", workflow_text)
         self.assertNotIn("merge-multiple: true", workflow_text)
         self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
+        self.assertIn("Select controller catalog", workflow_text)
+        self.assertIn("origin/$BP_DEFAULT_DEV_BRANCH:tests/harness/projects.json", workflow_text)
+        self.assertIn("BP_REFERENCE_PROJECT_MANIFEST", workflow_text)
+        self.assertIn("--manifest _out/reference-projects/${{ matrix.project_id }}.json", workflow_text)
+        self.assertIn("--release ${{ needs.resolve-reference-release.outputs.release_id }}", workflow_text)
         self.assertIn("Install PDF toolchain", workflow_text)
         self.assertIn("Generate reference blueprint with PDF", workflow_text)
         self.assertIn("--record-build-metrics", workflow_text)
@@ -728,6 +729,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 self.assertEqual(entry["reference_source_identity"], "")
                 self.assertEqual(entry["reference_dependency_packages_path"], "")
                 self.assertEqual(entry["reference_dependency_path_builds_path"], "")
+            project_manifest = entry["project_manifest"]
+            self.assertEqual(len(project_manifest["projects"]), 1)
+            self.assertEqual(project_manifest["projects"][0]["id"], entry["project_id"])
+            self.assertEqual(
+                project_manifest["projects"][0]["targets"][0]["release"],
+                release.release_id,
+            )
+            self.assertNotIn("--pdf", project_manifest["projects"][0]["generate_command"])
 
     def test_reference_release_payload_uses_project_target_rcs(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
@@ -766,6 +775,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(row["toolchain"], expected_toolchain)
             self.assertEqual(row["verso_ref"], expected_verso_ref)
             self.assertEqual(row["hash"], target.ref)
+            self.assertEqual(
+                row["project_manifest"]["projects"][0]["targets"][0].get("ref"),
+                target.ref,
+            )
 
     def test_deploy_matrix_uses_controller_publish_targets_for_generated_manifests(self) -> None:
         controller_catalog = load_project_catalog_text(

@@ -55,42 +55,6 @@
       ],
       "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
-    },
-    {
-      "id": "verso-flt",
-      "description": "External FLT blueprint integration layer with an FLT submodule checkout.",
-      "source": {
-        "kind": "git_checkout",
-        "repository": "https://github.com/ejgallego/verso-flt.git",
-        "project_root": "."
-      },
-      "targets": [
-        {
-          "release": "v4.32.0",
-          "ref": "bc09f1e5ce35d6418173386b5f134b51a81e6c17",
-          "publish_reference": true
-        }
-      ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
-      "site_subdir": "html-multi"
-    },
-    {
-      "id": "verso-carleson",
-      "description": "External Carleson blueprint integration layer with a Carleson submodule checkout.",
-      "source": {
-        "kind": "git_checkout",
-        "repository": "https://github.com/ejgallego/verso-carleson.git",
-        "project_root": "."
-      },
-      "targets": [
-        {
-          "release": "v4.32.0",
-          "ref": "e89a585c13d05c965d9d28d307517da0bfe13960",
-          "publish_reference": true
-        }
-      ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
-      "site_subdir": "html-multi"
     }
   ]
 }
