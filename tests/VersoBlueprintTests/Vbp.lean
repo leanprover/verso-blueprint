@@ -12,6 +12,12 @@ abbrev PreviewDataModel := Informal.PreviewManifest.PreviewDataModel
 abbrev PersistedFiles := Informal.PreviewManifest.PersistedFiles
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 
+private def executeQuery (manifest : ManifestFile) (args : List String) : Except String Json :=
+  match VersoBlueprint.Vbp.parseQueryPlan args with
+  | .ok none => .ok VersoBlueprint.Vbp.querySelectorsJson
+  | .ok (some plan) => .ok (plan.run manifest)
+  | .error err => .error err
+
 private def persistedFiles (manifest : ManifestFile) (htmlCache : HtmlCacheFile) :
     PersistedFiles :=
   { manifest, htmlCache }
@@ -732,7 +738,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["selectors"] with
+    match executeQuery sampleManifest ["selectors"] with
     | .ok json =>
         match jsonArrayField? json "selectors" with
         | some selectors =>
@@ -750,7 +756,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleMetadataManifest ["work-queue"] with
+    match executeQuery sampleMetadataManifest ["work-queue"] with
     | .ok json =>
         match jsonArrayField? json "entries" with
         | some entries =>
@@ -774,7 +780,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleMetadataManifest ["metadata"] with
+    match executeQuery sampleMetadataManifest ["metadata"] with
     | .ok json =>
         match jsonArrayField? json "entries" with
         | some entries =>
@@ -788,7 +794,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["labels"] with
+    match executeQuery sampleManifest ["labels"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -805,7 +811,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["labels"] with
+    match executeQuery sampleExternalManifest ["labels"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -820,7 +826,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["node", "addition_assoc"] with
+    match executeQuery sampleManifest ["node", "addition_assoc"] with
     | .ok json =>
         match jsonArrayField? json "statementUses" with
         | some statementUses =>
@@ -837,7 +843,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["node", "external_bodyless"] with
+    match executeQuery sampleExternalManifest ["node", "external_bodyless"] with
     | .ok json =>
         match jsonArrayField? json "statementUses" with
         | some statementUses =>
@@ -853,7 +859,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["used-by", "addition_spec"] with
+    match executeQuery sampleManifest ["used-by", "addition_spec"] with
     | .ok json =>
         match jsonArrayField? json "usedBy" with
         | some usedBy =>
@@ -868,7 +874,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleEmptyRelationManifest ["uses", "relation_source"] with
+    match executeQuery sampleEmptyRelationManifest ["uses", "relation_source"] with
     | .ok json =>
         match jsonArrayField? json "uses" with
         | some uses =>
@@ -883,7 +889,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["all", "addition_assoc"] with
+    match executeQuery sampleManifest ["all", "addition_assoc"] with
     | .ok _ => false
     | .error err => err == "unknown query selector 'all'"
 
@@ -891,7 +897,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["search", "assoc"] with
+    match executeQuery sampleManifest ["search", "assoc"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -905,7 +911,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["search", "THEOREM"] with
+    match executeQuery sampleManifest ["search", "THEOREM"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -919,7 +925,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["code", "Nat.add_assoc"] with
+    match executeQuery sampleManifest ["code", "Nat.add_assoc"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -932,7 +938,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["code", "Nat.mul_assoc"] with
+    match executeQuery sampleExternalManifest ["code", "Nat.mul_assoc"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -945,7 +951,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleInlineCodeManifest ["code", "Inline.localDef"] with
+    match executeQuery sampleInlineCodeManifest ["code", "Inline.localDef"] with
     | .ok json =>
         match jsonArrayField? json "labels" with
         | some labels =>
@@ -958,7 +964,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["stats"] with
+    match executeQuery sampleManifest ["stats"] with
     | .ok json =>
         match jsonField? json "byKind", jsonField? json "byTag" with
         | some byKind, some byTag =>
@@ -974,7 +980,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleExternalManifest ["stats"] with
+    match executeQuery sampleExternalManifest ["stats"] with
     | .ok json =>
         match jsonField? json "byKind", jsonField? json "byTag" with
         | some byKind, some byTag =>
@@ -989,7 +995,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest [] with
+    match executeQuery sampleManifest [] with
     | .ok _ => false
     | .error err => err == "missing query selector"
 
@@ -997,7 +1003,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["bogus"] with
+    match executeQuery sampleManifest ["bogus"] with
     | .ok _ => false
     | .error err => err == "unknown query selector 'bogus'"
 
@@ -1005,7 +1011,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
-    match VersoBlueprint.Vbp.queryJson sampleManifest ["node", "missing_label"] with
+    match executeQuery sampleManifest ["node", "missing_label"] with
     | .ok json =>
         jsonHasApiStability json &&
           jsonStringField? json "error" == some "unknown-label" &&
@@ -1247,7 +1253,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   writeManifestOnlySite site
   let manifest ← VersoBlueprint.Vbp.readManifestForSite site
   let queryOk :=
-    match VersoBlueprint.Vbp.queryJson manifest ["labels"] with
+    match executeQuery manifest ["labels"] with
     | .ok json =>
         let labels := jsonArrayField? json "labels" |>.getD #[]
         jsonArrayHasStringField labels "label" "addition_assoc"

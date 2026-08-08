@@ -330,12 +330,6 @@ def parseQueryPlan (args : List String) : Except String (Option QueryPlan) :=
                 .error s!"invalid arguments for query selector '{name}'; expected '{selector.line}'"
             | none => .error s!"unknown query selector '{name}'"
 
-def queryJson (manifest : ManifestFile) (args : List String) : Except String Json :=
-  match parseQueryPlan args with
-  | .ok none => .ok querySelectorsJson
-  | .ok (some plan) => .ok (plan.run manifest)
-  | .error err => .error err
-
 private def readManifestWith
     (read : FilePath → IO ManifestFile) (site : FilePath) : IO ManifestFile := do
   let manifestPath ← manifestPathForSite site
