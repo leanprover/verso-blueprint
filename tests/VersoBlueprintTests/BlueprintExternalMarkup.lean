@@ -15,6 +15,10 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintExternalMarkup
 
+private def preparePreviewState (state : TraverseState) :
+    Informal.PreviewManifest.PreparedPreviewState :=
+  Informal.PreviewManifest.PreparedPreviewState.prepare state
+
 private def externalMarkupRaw?
     (sources : Informal.Data.ExternalMarkupSet)
     (language : Informal.Data.ExternalMarkupLanguage)
@@ -549,7 +553,8 @@ external markup.
     let (showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
     let showcaseFiles ←
-      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) showcaseState
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+        (preparePreviewState showcaseState)
     let manifest := showcaseFiles.manifest
     let nativeKey := Informal.PreviewCache.statementKey (Name.mkSimple "showcase.visible.attachments")
     let theorem21Key :=
@@ -722,7 +727,8 @@ external markup.
     let (_showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
     let showcaseFiles ←
-      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) showcaseState
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+        (preparePreviewState showcaseState)
         ({ mode := .none } : Informal.ExternalMarkupRender.Config)
     let theorem21Label := Name.mkSimple "ImportedPaper:Theorem2.1"
     let proposition24Label := Name.mkSimple "ImportedPaper:Proposition2.4"
@@ -813,16 +819,18 @@ external markup.
     let traversed := (Informal.TraversalIndex.ExternalMarkup.data? externalState (Name.mkSimple "external.markup")).map (·.markup) |>.getD {}
     let traversedTex := externalMarkupRaw? traversed .tex "statement" |>.getD ""
     let traversedMd := externalMarkupRaw? traversed .markdown "proof" |>.getD ""
-    let externalFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) externalState
+    let externalFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+      (preparePreviewState externalState)
     let externalBlockKey := Informal.PreviewCache.statementKey (Name.mkSimple "external.markup")
     let externalMarkupOnlyKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markup")
     let some externalBlockEntry := externalFiles.manifest.previews.find? (fun entry => entry.key == externalBlockKey)
       | return false
     let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
-    let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
-    let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+    let preparedWitnessState := preparePreviewState witnessState
+    let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
+    let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
       ({ mode := .none } : Informal.ExternalMarkupRender.Config)
-    let witnessFilesNoNotice ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) witnessState
+    let witnessFilesNoNotice ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
       ({ showSourceNotice := false } : Informal.ExternalMarkupRender.Config)
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
@@ -832,12 +840,14 @@ external markup.
     let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
       | return false
     let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc
-    let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) markdownState
+    let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+      (preparePreviewState markdownState)
     let markdownKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markdown.witness")
     let some markdownHtml := markdownFiles.htmlCache.findHtml? markdownKey
       | return false
     let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc
-    let bodylessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) bodylessState
+    let bodylessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+      (preparePreviewState bodylessState)
     let bodylessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.bodyless.lean")
     let some bodylessEntry := bodylessFiles.manifest.previews.find? (fun entry => entry.key == bodylessKey)
       | return false
@@ -846,7 +856,8 @@ external markup.
     let (_punctuationOut, punctuationState) ←
       renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc
     let punctuationFiles ←
-      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) punctuationState
+      Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+        (preparePreviewState punctuationState)
     let punctuationLabel := Name.mkSimple "Chapter4:Theorem4.2.1"
     let punctuationKey := Informal.PreviewManifest.externalMarkupEntryKey punctuationLabel
     let some punctuationEntry := punctuationFiles.manifest.previews.find? (fun entry => entry.key == punctuationKey)
@@ -888,7 +899,8 @@ external markup.
       | return false
     let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
     let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc
-    let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) sourcedWitnessState
+    let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
+      (preparePreviewState sourcedWitnessState)
     let sourcedWitnessKey :=
       Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.sourced.witness")
     let some sourcedWitnessEntry :=

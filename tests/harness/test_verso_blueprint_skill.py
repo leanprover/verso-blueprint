@@ -51,6 +51,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("`--port` is accepted only with `--serve`", text)
         self.assertIn('"apiStability":"unstable"', text)
         self.assertIn("discoveryErrors", text)
+        self.assertIn("validated before generated data is read", text)
         self.assertIn("Query reads the semantic manifest only", text)
         self.assertIn("topLevelBlueprintModuleGuess", text)
         self.assertIn("chapterCandidateGuesses", text)

@@ -74,7 +74,7 @@ generated data also prints an error to stderr and exits nonzero.
 
 ## Query Output
 
-All query commands print compact JSON for agent consumption. The JSON shape is fully unstable today; do not treat it as a compatibility contract. Top-level query objects include `"apiStability":"unstable"`. Query reads the semantic manifest only; use `check` when you need to validate the rendered HTML cache as well.
+All query commands print compact JSON for agent consumption. The JSON shape is fully unstable today; do not treat it as a compatibility contract. Top-level query objects include `"apiStability":"unstable"`. Query arguments are validated before generated data is read, so unknown or malformed selectors do not require a built site. Query reads the semantic manifest only for valid selectors; use `check` when you need to validate the rendered HTML cache as well.
 
 - `selectors`: query selector forms supported by this `vbp` binary. This selector does not require generated Blueprint data.
 - `labels`: statement-level Blueprint block summaries.

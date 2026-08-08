@@ -1195,6 +1195,24 @@ def readFile (path : System.FilePath) : IO File := do
 end HtmlCache
 
 /--
+Traversal state whose relation indexes have been prepared for preview-data
+construction.
+
+The standard HTML pipeline installs these indexes before rendering. Direct
+callers cross this boundary explicitly through `prepare` so manifest assembly
+never falls back to repeatedly scanning the full stored-block collection.
+-/
+structure PreparedPreviewState where private mk ::
+  state : TraverseState
+
+/-- Install the relation indexes required by preview-data construction. -/
+def PreparedPreviewState.prepare (state : TraverseState) : PreparedPreviewState :=
+  PreparedPreviewState.mk (Informal.RelatedPanel.patchRelationCaches state)
+
+private def PreparedPreviewState.ofPatched (state : TraverseState) : PreparedPreviewState :=
+  PreparedPreviewState.mk state
+
+/--
 Assembled preview-data candidates before rendered-preview references are
 resolved against the paired manifest and HTML cache.
 -/
@@ -1273,13 +1291,15 @@ Indexes over the generated manifest/cache pair used to decide whether a
 serialized preview reference can render.
 -/
 structure PreviewArtifactIndex where
-  manifestIndex : Index := {}
-  htmlCacheIndex : HtmlCache.Index := {}
+  manifestKeys : Std.HashSet String := {}
+  htmlCacheKeys : Std.HashSet String := {}
 
 private def PreviewArtifactIndex.ofArtifacts
     (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex := {
-  manifestIndex := manifest.index
-  htmlCacheIndex := htmlCache.index
+  manifestKeys :=
+    manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
+  htmlCacheKeys :=
+    htmlCache.entries.foldl (fun keys entry => keys.insert entry.key) {}
 }
 
 def PreviewArtifactIndex.ofModel (model : PreviewDataModel) : PreviewArtifactIndex :=
@@ -1290,11 +1310,11 @@ def PreviewArtifactIndex.ofPersistedFiles (files : PersistedFiles) : PreviewArti
 
 def PreviewArtifactIndex.hasManifestKey
     (index : PreviewArtifactIndex) (key : String) : Bool :=
-  (index.manifestIndex.findEntry? key).isSome
+  index.manifestKeys.contains key
 
 def PreviewArtifactIndex.hasCacheKey
     (index : PreviewArtifactIndex) (key : String) : Bool :=
-  (index.htmlCacheIndex.findEntry? key).isSome
+  index.htmlCacheKeys.contains key
 
 def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
     Bool :=
@@ -2047,32 +2067,18 @@ private def buildUsesRelations
   labels.map fun label =>
     relatedEntryForLabel state label (relatedAxes blockData label)
 
-/--
-Read the reverse-dependency index installed after normal HTML traversal.
-The fallback keeps direct `buildPreviewDataFiles` callers with an unpatched
-traversal state correct.
--/
+/-- Read the reverse-dependency index installed during preview-state preparation. -/
 private def buildUsedByRelations
     (state : TraverseState)
     (blockData : Informal.BlockData) : Array RelatedEntry :=
-  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label with
-  | some cachedEntries =>
-      cachedEntries.filterMap fun cached => do
-        let source ← blockInfo? state cached.sourceLabel
-        let axes : Array RelationAxis :=
-          if cached.inStatement then #[.statement] else #[]
-        let axes := if cached.inProof then axes.push .proof else axes
-        some <| relatedEntryForBlock state source axes
-  | none =>
-      Informal.collectStoredBlocks state |>.filterMap fun source =>
-        if source.label == blockData.label then
-          none
-        else
-          let axes := relatedAxes source blockData.label
-          if axes.isEmpty then
-            none
-          else
-            some <| relatedEntryForBlock state source axes
+  let cachedEntries :=
+    Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label |>.getD #[]
+  cachedEntries.filterMap fun cached => do
+    let source ← blockInfo? state cached.sourceLabel
+    let axes : Array RelationAxis :=
+      if cached.inStatement then #[.statement] else #[]
+    let axes := if cached.inProof then axes.push .proof else axes
+    some <| relatedEntryForBlock state source axes
 
 private def groupRelationHeader
     (state : TraverseState)
@@ -2108,26 +2114,17 @@ private def buildGroupRelations (state : TraverseState) : Array GroupRelation :=
   return groups
 
 /--
-Resolve traversal-backed group metadata for one entry without storing it per
-entry. Normal HTML generation uses the cached member index; direct callers with
-an unpatched traversal state retain the full-store fallback.
+Resolve traversal-backed group metadata from the member index installed by the
+standard Blueprint traversal pipeline.
 -/
 def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option GroupRelation := do
   let parent ← entry.parent
-  let entries :=
-    match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state parent with
-    | some labels =>
-        labels.filterMap fun label =>
-          if label == entry.label then
-            none
-          else
-            (blockInfo? state label).map (relatedEntryForBlock state)
-    | none =>
-        Informal.collectStoredBlocks state |>.filterMap fun blockData =>
-          if statementGroupParent? blockData == some parent && blockData.label != entry.label then
-            some <| relatedEntryForBlock state blockData
-          else
-            none
+  let labels ← Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state parent
+  let entries := labels.filterMap fun label =>
+    if label == entry.label then
+      none
+    else
+      (blockInfo? state label).map (relatedEntryForBlock state)
   let (title, declared) := groupRelationHeader state parent
   pure { label := parent, title, declared, entries }
 
@@ -2495,9 +2492,10 @@ the manifest, and keep rendered fragments in the HTML cache.
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState)
+    (preparedState : PreparedPreviewState)
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) : IO Files := do
+  let state := preparedState.state
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ←
     withTimedBuildProgress verbose "building traversal preview entries" <|
@@ -2565,8 +2563,9 @@ private def dumpManifest
   let (_text, traverseState) ←
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
-  let traverseState := Informal.RelatedPanel.patchRelationCaches traverseState
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  let preparedState := PreparedPreviewState.prepare traverseState
+  let traverseState := preparedState.state
+  let files ← buildPreviewDataFiles extensionImpls logError preparedState externalMarkupConfig
     (verbose := cfg.verbose)
   let logger := callbackLogger logError
   reportPreviewMetadataLossWarnings logger traverseState files.manifest
@@ -2594,8 +2593,9 @@ private def dumpHtmlCache
   let (_text, traverseState) ←
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
-  let traverseState := Informal.RelatedPanel.patchRelationCaches traverseState
-  let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  let preparedState := PreparedPreviewState.prepare traverseState
+  let traverseState := preparedState.state
+  let files ← buildPreviewDataFiles extensionImpls logError preparedState externalMarkupConfig
     (verbose := cfg.verbose)
   let logger := callbackLogger logError
   reportPreviewMetadataLossWarnings logger traverseState files.manifest
@@ -2634,7 +2634,8 @@ def emitBlueprintPreviewData
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
   let modeDescription := htmlModeDescription mode
-  let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
+  let files ← buildPreviewDataFiles extensionImpls logError
+    (PreparedPreviewState.ofPatched state) externalMarkupConfig
     (verbose := cfg.verbose)
   reportPreviewMetadataLossWarnings logger state files.manifest
   let countSummary :=
