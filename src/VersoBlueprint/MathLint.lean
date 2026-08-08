@@ -79,7 +79,7 @@ private structure RawResult where
   sourcePosition : Option Nat := none
   sourceLength : Option Nat := none
   inPrelude : Bool := false
-deriving FromJson, ToJson, Repr
+deriving FromJson
 
 /--
 Package-relative location of the vendored KaTeX lint entrypoint.
@@ -204,11 +204,6 @@ private def mkSpan? (start? length? : Option Nat) : Option Span := do
   let length ← length?
   pure { start, length }
 
-private def Site.sourceSpan? (site : Site) : Option Span :=
-  match site with
-  | .source src _katexInput => some src
-  | _ => none
-
 /--
 Map a decoded span back onto the raw inline-code contents parsed by Verso.
 
@@ -319,7 +314,12 @@ private def requestWithState
     (status : WorkerStatus) (payloadJson : String) : IO (WorkerStatus × Option RawResult) := do
   if let .unavailable := status then
     return (.unavailable, none)
-  let some paths ← runtimePaths
+  let paths? ←
+    try
+      runtimePaths
+    catch _ =>
+      pure none
+  let some paths := paths?
     | return (.unavailable, none)
   let worker? ←
     match status with
@@ -327,7 +327,7 @@ private def requestWithState
     | .running worker => pure (some worker)
     | .unavailable => pure none
   let some worker := worker?
-    | return (status, none)
+    | return (.unavailable, none)
   let report? ←
     try
       requestWorker worker payloadJson

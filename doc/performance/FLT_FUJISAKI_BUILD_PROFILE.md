@@ -8,11 +8,26 @@ selection and the persistent-worker result; it is not a regression threshold.
 The workload is the isolated `.olean` phase behind Lake's
 `FLTBlueprint.Chapters.FujisakiProject` job. It excludes compilation of imports,
 generated C, native objects, and executables. The measurements use FLT revision
-`e4f1595` with `leanprover/lean4:v4.33.0-rc1`.
+`e4f1595` with `leanprover/lean4:v4.33.0-rc1`. Both worktrees started from
+Verso Blueprint revision `2c18ef309c3810bc0e53a7e9214a8ea59c2f86d9`;
+the candidate implementation was subsequently published as
+`708978dfaa6a85ed3f1eac30df1bf83aa6b5be2b` after rebasing.
 
 Local raw evidence is under the root checkout at
 `_out/persistent-katex-worker/profiles/fujisaki/`. The earlier baseline evidence
 is under `_out/profile-flt-traversal/profiles/flt-html-escape-016/`.
+
+From the FLT checkout, the candidate profile used this command shape, with
+`<verso-blueprint>` replaced by the candidate worktree path:
+
+```sh
+<verso-blueprint>/scripts/lean-low-priority lake env lean \
+  FLTBlueprint/Chapters/FujisakiProject.lean \
+  -o /tmp/fujisaki-profile.olean -i /tmp/fujisaki-profile.ilean \
+  --profile -Dprofiler.threshold=10 \
+  -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+  -Dtrace.profiler.output=/tmp/fujisaki-profile-firefox.json
+```
 
 ## Result
 
@@ -74,7 +89,6 @@ The replacement keeps one best-effort worker per Lean process:
 - A spawn, transport, or protocol failure marks linting unavailable for the rest
   of the Lean process, preserving the existing non-fatal behavior without
   repeatedly trying to restart a broken worker.
-- One-shot script invocation remains supported for compatibility and diagnosis.
 
 Live process inspection during the FLT run showed one worker child of Lean. The
 worker exited when Lean closed its stdin, and no Node process remained after the
@@ -85,8 +99,8 @@ compile.
 - The focused Lean math-lint test covers valid and invalid source spans, invalid
   preludes, concurrent calls, and repeated use of one invalid prelude.
 - The focused test also passes with a deliberately unavailable `node` command.
-- The JavaScript entrypoint passes `node --check` and direct one-shot/worker
-  protocol probes.
+- The JavaScript entrypoint passes `node --check` and a direct worker protocol
+  probe.
 - `VersoBlueprint` builds successfully with the FLT RC1 toolchain, and the
   isolated Fujisaki compile completes with math lint enabled.
 

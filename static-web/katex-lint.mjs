@@ -21,7 +21,8 @@ async function loadKatex(katexPath) {
   if (!katexPath) return null;
   try {
     const katexModule = await import(pathToFileURL(katexPath).href);
-    return katexModule.default ?? katexModule;
+    const loaded = katexModule.default ?? katexModule;
+    return typeof loaded.renderToString === "function" ? loaded : null;
   } catch {
     return null;
   }
@@ -151,19 +152,9 @@ function lintPayload(payload, katex, preludeCache = null) {
   }
 }
 
-async function runOneShot() {
-  const payload = readPayload(process.argv[2] ?? "");
-  const katex = await loadKatex(process.argv[3] ?? "");
-  if (!katex || typeof katex.renderToString !== "function") return false;
-  const result = lintPayload(payload, katex);
-  if (!result) return false;
-  process.stdout.write(JSON.stringify(result));
-  return true;
-}
-
 async function runWorker() {
   const katex = await loadKatex(process.argv[3] ?? "");
-  if (!katex || typeof katex.renderToString !== "function") return false;
+  if (!katex) return false;
 
   const preludeCache = new Map();
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -178,8 +169,7 @@ async function runWorker() {
   return true;
 }
 
-const ok =
-  process.argv[2] === "--worker" ? await runWorker() : await runOneShot();
+const ok = process.argv[2] === "--worker" && (await runWorker());
 if (!ok) {
   process.exitCode = 1;
 }

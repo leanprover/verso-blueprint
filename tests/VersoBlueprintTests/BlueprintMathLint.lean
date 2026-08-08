@@ -56,13 +56,14 @@ private def localNodeAvailable : IO Bool := do
 #guard_msgs in
 #eval
   show IO Bool from do
+    let nodeAvailable ← localNodeAvailable
     let tasks ← (List.range 8).mapM fun i =>
       IO.asTask <| Informal.MathLint.lint? {
         mode := .inline
-        source := "x_" ++ toString i
+        source := r#"\undefinedmacro"# ++ toString i
       }
     let reports ← tasks.mapM fun task => IO.ofExcept task.get
-    pure <| reports.all (·.isNone)
+    pure <| !nodeAvailable || reports.all (·.isSome)
 
 /-- info: true -/
 #guard_msgs in
@@ -86,28 +87,35 @@ private def localNodeAvailable : IO Bool := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let some failure ← Informal.MathLint.lint? {
+    let nodeAvailable ← localNodeAvailable
+    let failure? ← Informal.MathLint.lint? {
       mode := .inline
       source := r#"\frac{a}{"#
     }
-      | pure true
-    pure <| failure.site == .source { start := 9, length := 0 } { start := 9, length := 0 }
+    pure <| if !nodeAvailable then true else
+      match failure? with
+      | some failure =>
+        failure.site == .source { start := 9, length := 0 } { start := 9, length := 0 }
+      | none => false
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show IO Bool from do
-    let some failure ← Informal.MathLint.lint? {
+    let nodeAvailable ← localNodeAvailable
+    let failure? ← Informal.MathLint.lint? {
       mode := .display
       source := r#"\foo + 1"#
       texPrelude := r#"\newcommand{\foo}{\mathsf{Foo}"#
     }
-      | pure true
-    pure <|
-      failure.reason.contains "expected '}'" &&
-      match failure.site with
-      | .prelude { start, length } => start > 0 && length == 0
-      | _ => false
+    pure <| if !nodeAvailable then true else
+      match failure? with
+      | some failure =>
+        failure.reason.contains "expected '}'" &&
+        match failure.site with
+        | .prelude { start, length } => start > 0 && length == 0
+        | _ => false
+      | none => false
 
 /-- info: true -/
 #guard_msgs in
