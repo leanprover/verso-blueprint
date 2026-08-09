@@ -173,6 +173,10 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
         | _ => none
       let nodeAtSyntax? := nodeInfos.find? fun (stx, _) =>
         stx.getRange?.map (·.contains pos) |>.getD false
+      /- Info nodes for a `@[blueprint]` attribute are placed on the attribute's syntax only,
+      so are not found by position-based lookup in `nodeAtSyntax?`
+      when the cursor is within a `@[blueprint]`-marked declaration.
+      Look for such a declaration explicitly. -/
       let nodeAtDeclaration? := nodeInfos.find? fun (_, info) =>
         match info.decl? with
         | none => false
