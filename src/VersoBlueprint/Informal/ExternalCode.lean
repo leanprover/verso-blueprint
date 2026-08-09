@@ -171,7 +171,6 @@ wording and CSS classification cannot drift between compact and expanded rows.
 private structure ExternalDeclStatusView where
   className : String
   panelText : String
-  renderedMetaText : String
 
 private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclStatusView :=
   let statusView := item.decl.provedStatus.presentation (present := item.decl.present)
@@ -180,7 +179,7 @@ private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclSta
       ("bp_external_decl_error", "render failed")
     else
       (statusView.externalDeclClass, statusView.externalPanelText)
-  { className, panelText, renderedMetaText := panelText }
+  { className, panelText }
 
 private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
   open Verso.Output.Html in
@@ -216,12 +215,9 @@ private def externalDeclHead (item : LinkedExternalDecl) (status : ExternalDeclS
   }}
 
 private def externalDeclRenderedMeta
-    (item : LinkedExternalDecl) (status : ExternalDeclStatusView) (includeStatus : Bool := true) : Output.Html :=
+    (item : LinkedExternalDecl) (status : ExternalDeclStatusView) : Output.Html :=
   open Verso.Output.Html in
-  if !includeStatus then
-    .empty
-  else
-  let metaText := status.renderedMetaText
+  let metaText := status.panelText
   let statusBadge : Output.Html :=
     if !metaText.isEmpty then
       {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {status.className}"}}>{{.text true metaText}}</span>}}
@@ -334,7 +330,6 @@ private def externalDeclRowDataWith [Monad m]
       pure {
         liAttrs := #[("class", "bp_external_decl_item bp_external_decl_item_rendered")] ++ item.anchorAttrs
         body
-        footer := externalDeclRenderedMeta item status (includeStatus := false)
       }
 
 private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=
