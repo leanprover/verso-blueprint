@@ -18,9 +18,9 @@ open Informal.Data
 Elaboration-time builder for a node that is currently open on the directive
 stack.
 
-This intentionally stays separate from `Data.Node`: it carries phase-specific
-inputs such as preview blocks and elaboration syntax before the final persisted
-semantic node can be assembled.
+This intentionally stays separate from `Data.Node`: it carries directive-stack
+metadata and typed preview blocks before the final persisted semantic node can
+be assembled.
 -/
 structure InProgress where
   label : Label
@@ -34,7 +34,6 @@ structure InProgress where
   prUrl : Option String := none
   deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  elabStx : Array Syntax := #[]
 deriving Inhabited, Repr
 
 inductive ImportedConflictKind where
@@ -192,7 +191,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
             else
               (dataAcc, groupAcc, authorAcc.insert label info, leanNameAcc, conflictsAcc)
       pure { data, groups, authors, leanNameLabels, importedConflicts := sortImportedConflicts importedConflicts }
-    -- Strip transient elaboration cache before exporting nodes to the environment.
+    -- Prefer typed preview blocks and strip redundant term syntax before export.
     exportEntriesFnEx env := fun state =>
       let nodeEntries := state.localData.toArray.map fun (name, node) =>
         let statement := node.statement.map fun s =>
@@ -311,7 +310,6 @@ def pop (ref : Syntax) : m Nat := do
           stx := ref
           deps := cur.deps
           previewBlocks := cur.previewBlocks
-          elabStx := cur.elabStx
         }
         let data ← state.data.register
           cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
@@ -344,16 +342,6 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
 
 def addDep (stx : Syntax) (dep : Name) : m Unit := do
   addUse stx { label := dep }
-
-def setStatementElab (stxs : Array Syntax) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] => pure ()
-  | cur :: rest =>
-    match cur.kind with
-    | .proof => pure ()
-    | .statement _ =>
-      let cur := { cur with elabStx := stxs }
-      modify fun state => { state with stack := cur :: rest }
 
 def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m Unit := do
   match (informalExt.getState (← getEnv)).stack with

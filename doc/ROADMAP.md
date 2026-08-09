@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-08-09
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -146,9 +146,9 @@ Work:
    requirements onto `PreviewManifest.Entry`; remaining candidates include
    repeated traversal-store decoding and validation-message assembly patterns
    across preview, source, and status data
-2. revisit `Informal.Environment.InProgress` after the widget path no longer
-   needs elaboration-time syntax; today it remains separate from `Data.Node`
-   because it owns directive-stack state, preview blocks, and `elabStx`
+2. keep `Informal.Environment.InProgress` separate from `Data.Node` while it
+   owns directive-stack state and typed preview blocks; attribute docstring term
+   syntax belongs only to persisted `InformalData`
 3. keep `Informal.Environment.State` as the persisted semantic store and
    traversal indexes as rendered-site projections; consolidate only if the
    replacement keeps numbering, hrefs, preview ids, and HTML-cache keys

@@ -4,14 +4,48 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.Blueprint.Support
 import VersoBlueprintTests.BlueprintInformal.Shared
 
 open Lean
 open Verso Genre Manual
 open Informal
+open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintInformal.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintInformal.Structure
+
+private def manualImpls : ExtensionImpls := extension_impls%
+
+elab "retainedBlueprintBodyBlock" : term => do
+  logInfo "retained Blueprint body elaborated"
+  Lean.Elab.Term.elabTerm
+    (← ``((Verso.Doc.Block.para #[Verso.Doc.Inline.text "Retained body output."] :
+      Verso.Doc.Block Verso.Genre.Manual))) none
+
+@[code_block]
+def retainedBodyProbe : Verso.Doc.Elab.CodeBlockExpanderOf Unit
+  | _, _ => do
+    `(retainedBlueprintBodyBlock)
+
+/--
+info: retained Blueprint body elaborated
+-/
+#guard_msgs in
+#docs (Manual) retainedBodyDoc "Retained Body" :=
+:::::::
+:::definition "retained.body"
+```retainedBodyProbe
+probe
+```
+:::
+:::::::
+
+/-- info: true -/
+#guard_msgs in
+#eval! do
+  let out ← renderManualDocHtmlString manualImpls retainedBodyDoc
+  pure <| hasSubstr out "Retained body output."
 
 #docs (Manual) groupHeaderDoc "Group Header" :=
 :::::::
