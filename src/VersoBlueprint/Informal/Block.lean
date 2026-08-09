@@ -27,7 +27,6 @@ import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Informal.ExternalMarkupRender
 import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.Source.Metadata
 import VersoBlueprint.TeX
@@ -225,6 +224,40 @@ private def parseDirectiveSourceMetadata
     logErrorAt block m!"Label {cfg.label} has a metadata block after visible content; Blueprint source metadata must be the first block inside the directive"
   pure { sourceRef?, body }
 
+private unsafe def retainElaboratedBlocksUnsafe (stxs : Array (TSyntax `term)) :
+    TermElabM (Array (Doc.Block Genre.Manual) × TSyntax `term) := do
+  if stxs.isEmpty then
+    pure (#[], ← `(#[]))
+  else
+    let blockType ← Term.elabType (← `(Doc.Block Genre.Manual))
+    let arrayType := mkApp (.const ``Array [0]) blockType
+    let arraySyntax ← `(#[$stxs,*])
+    let arrayExpr ← Term.elabTermAndSynthesize arraySyntax (some arrayType)
+    let arrayExpr ← instantiateMVars arrayExpr
+    let name ← mkFreshUserName `blueprintDirectiveBodyBlocks
+    let decl := Declaration.defnDecl {
+      name
+      levelParams := []
+      type := arrayType
+      value := arrayExpr
+      hints := .abbrev
+      safety := .safe
+    }
+    Term.ensureNoUnassignedMVars decl
+    -- This dynamically compiled declaration must remain a single reusable
+    -- environment constant for preview evaluation and final reconstruction.
+    withOptions (·.setBool `compiler.extract_closed false) <|
+      addAndCompile decl
+    let blocks ← Meta.evalExpr
+      (Array (Doc.Block Genre.Manual)) arrayType (.const name [])
+    let reference ← ``($(mkIdent name))
+    pure (blocks, reference)
+
+@[implemented_by retainElaboratedBlocksUnsafe]
+private opaque retainElaboratedBlocks
+    (stxs : Array (TSyntax `term)) :
+    TermElabM (Array (Doc.Block Genre.Manual) × TSyntax `term)
+
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
     let blockRef ← getRef
@@ -237,7 +270,8 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let contents ← parsedContents.body.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
-    let previewBlocks ← liftM <| Informal.evalElaboratedBlocks (contents.map (·.raw))
+    let (previewBlocks, retainedContents) ←
+      liftM <| retainElaboratedBlocks contents
     Environment.setPreviewBlocks previewBlocks
     let count ← Environment.pop blockRef
     liftM <| DependencyAnalysis.attachInferredUseRefs label blockRef { proof := resolved.proofUses }
@@ -298,7 +332,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       priority := node?.bind (·.priority)
       prUrl := node?.bind (·.prUrl)
     }
-    ``(Block.other (Block.informal $(quote data)) #[$contents,*])
+    ``(Block.other (Block.informal $(quote data)) $retainedContents)
 
 private def directiveName (kind : Data.NodeKind) (isProof : Bool): String :=
   if isProof then "proof" else (toString kind).toLower
