@@ -8,7 +8,6 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Lib.HtmlId
-import VersoBlueprint.Lib.HoverInline
 
 open Lean Meta
 
