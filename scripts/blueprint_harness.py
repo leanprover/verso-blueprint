@@ -494,6 +494,7 @@ def update_release_line_project_manifest(
     *,
     release_id: str,
     rc: str | None,
+    retired_releases: tuple[str, ...] = (),
 ) -> None:
     try:
         raw = load_json_object(manifest_path)
@@ -504,19 +505,48 @@ def update_release_line_project_manifest(
     if not isinstance(projects, list):
         raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected `projects` list")
 
+    retired_release_ids = {
+        release_branch_from_lean_ref(release) for release in retired_releases
+    }
     changed = False
+    updated_projects: list[object] = []
     for project in projects:
         if not isinstance(project, dict):
+            updated_projects.append(project)
             continue
         source = project.get("source")
-        if not isinstance(source, dict) or source.get("kind") != "in_repo_project":
-            continue
+        in_repo_project = isinstance(source, dict) and source.get("kind") == "in_repo_project"
         targets = project.get("targets")
         if not isinstance(targets, list):
-            raise SystemExit(
-                f"[blueprint-harness] invalid project manifest `{manifest_path}`: "
-                f"in-repo project `{project.get('id', '<unknown>')}` has no `targets` list"
-            )
+            if in_repo_project or retired_release_ids:
+                raise SystemExit(
+                    f"[blueprint-harness] invalid project manifest `{manifest_path}`: "
+                    f"project `{project.get('id', '<unknown>')}` has no `targets` list"
+                )
+            updated_projects.append(project)
+            continue
+
+        if retired_release_ids:
+            retained_targets = [
+                target
+                for target in targets
+                if not (
+                    isinstance(target, dict)
+                    and isinstance(target.get("release"), str)
+                    and release_branch_from_lean_ref(target["release"]) in retired_release_ids
+                )
+            ]
+            if len(retained_targets) != len(targets):
+                targets[:] = retained_targets
+                changed = True
+
+        if not in_repo_project:
+            if retired_release_ids and not targets:
+                changed = True
+                continue
+            updated_projects.append(project)
+            continue
+
         matching_target = next(
             (
                 target
@@ -537,8 +567,10 @@ def update_release_line_project_manifest(
         elif matching_target.get("rc") != rc:
             matching_target["rc"] = rc
             changed = True
+        updated_projects.append(project)
 
     if changed:
+        raw["projects"] = updated_projects
         write_json(manifest_path, raw)
 
 
@@ -610,10 +642,23 @@ def command_start_release_line(args: argparse.Namespace) -> int:
                 )
 
     old_policy = load_branch_policy(layout.package_root)
-    inherited_backports = dedupe_release_branches(
-        [old_policy.default_dev_branch, *old_policy.required_backport_branches]
+    inherited_backports = tuple(
+        branch
+        for branch in dedupe_release_branches(
+            [old_policy.default_dev_branch, *old_policy.required_backport_branches]
+        )
+        if branch != release_id
     )
-    required_backports = tuple(branch for branch in inherited_backports if branch != release_id)
+    keep_maintenance = args.keep_maintenance
+    if keep_maintenance is None:
+        keep_maintenance = len(inherited_backports)
+    if keep_maintenance < 1 or keep_maintenance > len(inherited_backports):
+        raise SystemExit(
+            "[blueprint-harness] `--keep-maintenance` must retain the previous default-development branch "
+            "and cannot exceed the inherited maintenance count"
+        )
+    required_backports = inherited_backports[:keep_maintenance]
+    retired_releases = inherited_backports[keep_maintenance:]
 
     result = bump_toolchain_checkout(
         layout.package_root,
@@ -626,8 +671,14 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     release_verso_ref = release_branch_from_lean_ref(result.verso_ref)
     rc = release_candidate_name_or_none(result.lean_ref)
 
+    retired_release_set = set(retired_releases)
+    retained_release_targets = tuple(
+        target
+        for target in old_policy.release_targets
+        if target.release_id not in retired_release_set
+    )
     release_targets = upsert_release_target(
-        old_policy.release_targets,
+        retained_release_targets,
         BranchPolicyReleaseTarget(
             release_id=release_id,
             release_toolchain=release_toolchain,
@@ -652,6 +703,7 @@ def command_start_release_line(args: argparse.Namespace) -> int:
         manifest_path,
         release_id=release_id,
         rc=rc,
+        retired_releases=retired_releases,
     )
 
     print(f"package_root={layout.package_root}")
@@ -664,9 +716,10 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     print(f"pull_request_template={pull_request_template_path}")
     print(f"default_dev_branch={new_policy.default_dev_branch}")
     print(f"required_backports={','.join(new_policy.required_backport_branches)}")
+    print(f"retired_releases={','.join(retired_releases)}")
     print(f"project_manifest={manifest_path}")
     print(f"deploy_pages={str(args.deploy_pages).lower()}")
-    print("[blueprint-harness] next: commit this branch-start change, then update older branches with:")
+    print("[blueprint-harness] next: commit this branch-start change, then update retained maintenance branches with:")
     print(f"python3 -m scripts.blueprint_harness set-default-dev-branch {result.lean_ref}")
     return 0
 
@@ -829,7 +882,7 @@ def backport_plan_lines(
 
 def print_public_pr_message_scaffold(
     *,
-    default_dev: str,
+    base_branch: str,
     source_branch: str,
     title: str,
     backport_lines: list[str],
@@ -841,7 +894,7 @@ def print_public_pr_message_scaffold(
         for line in backport_lines
     )
     print(f"repository={PUBLIC_REPOSITORY}")
-    print(f"base={default_dev}")
+    print(f"base={base_branch}")
     print(f"head={source_branch}")
     print("draft=true")
     if paired_backports_required:
@@ -852,7 +905,7 @@ def print_public_pr_message_scaffold(
     print()
     print("## Submission")
     print(f"- Push `{source_branch}` to a branch visible to `{PUBLIC_REPOSITORY}`.")
-    print(f"- Open a draft PR against `{PUBLIC_REPOSITORY}:{default_dev}` using the title and body below.")
+    print(f"- Open a draft PR against `{PUBLIC_REPOSITORY}:{base_branch}` using the title and body below.")
     if paired_backports_required:
         print("- Use a merge commit when landing so paired backports can cherry-pick commits that remain in default-dev history.")
     print("- Keep local worktree and write-scope notes out of the public body unless they materially help review.")
@@ -1049,6 +1102,11 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
                 "paired backports are required for: " + ", ".join(violations)
             )
     if release_line_bootstrap:
+        if not policy.required_backport_branches:
+            raise SystemExit(
+                "[blueprint-harness] release-line bootstrap PRs require the previous default branch "
+                "as the first required backport"
+            )
         changed_files = set(source_changed_files(layout.package_root, source_branch))
         missing = sorted({"branch-policy.json", "lean-toolchain"} - changed_files)
         if missing:
@@ -1058,8 +1116,13 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
             )
 
     title = validate_public_pr_title(args.title or current_commit_subject(layout.package_root))
+    pull_request_base = (
+        policy.required_backport_branches[0]
+        if release_line_bootstrap
+        else policy.default_dev_branch
+    )
     print_public_pr_message_scaffold(
-        default_dev=policy.default_dev_branch,
+        base_branch=pull_request_base,
         source_branch=source_branch,
         title=title,
         backport_lines=backport_plan_lines(
@@ -1494,6 +1557,13 @@ def add_release_management_commands(subparsers) -> None:
         "--deploy-pages",
         action="store_true",
         help="Enable Pages deployment for the new release target immediately. RC lines usually leave this unset.",
+    )
+    start_release_line.add_argument(
+        "--keep-maintenance",
+        type=int,
+        default=None,
+        metavar="COUNT",
+        help="Keep COUNT inherited maintenance lines and retire the remaining oldest suffix.",
     )
     start_release_line.add_argument(
         "--skip-validation",

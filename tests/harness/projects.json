@@ -10,10 +10,11 @@
       },
       "targets": [
         {
-          "release": "v4.32.0"
+          "release": "v4.33.0"
         },
         {
-          "release": "v4.33.0"
+          "release": "v4.34.0",
+          "rc": "4.34-rc1"
         }
       ],
       "generate_command": [
@@ -38,31 +39,6 @@
         {
           "release": "v4.33.0",
           "ref": "58e5b7e3ce38cc059d0dcd4f5604c666356026bb",
-          "publish_reference": true
-        }
-      ],
-      "generate_command": [
-        "lake",
-        "exe",
-        "vbp",
-        "build",
-        "--output",
-        "{output_dir}"
-      ],
-      "site_subdir": "html-multi"
-    },
-    {
-      "id": "spherepackingblueprint",
-      "description": "External blueprint project without project-specific browser regressions.",
-      "source": {
-        "kind": "git_checkout",
-        "repository": "https://github.com/ejgallego/verso-sphere-packing.git",
-        "project_root": "."
-      },
-      "targets": [
-        {
-          "release": "v4.32.0",
-          "ref": "c7eee39480088000d2b7e7245a7be3b8bd43e6fb",
           "publish_reference": true
         }
       ],
