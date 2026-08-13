@@ -61,56 +61,6 @@ private def writeBinFileWithDirs (path : System.FilePath) (content : ByteArray) 
   ensureParentDir path
   IO.FS.writeBinFile path content
 
-inductive SlideAssetPayload where
-  | text (body : String)
-  | binary (bytes : ByteArray)
-
-private def SlideAssetPayload.equal : SlideAssetPayload → SlideAssetPayload → Bool
-  | .text a, .text b => a == b
-  | .binary a, .binary b => a == b
-  | _, _ => false
-
-private def SlideAssetPayload.kind : SlideAssetPayload → String
-  | .text _ => "text"
-  | .binary _ => "binary"
-
-structure SlideAssetPlan where
-  assets : Std.HashMap String (String × SlideAssetPayload) := {}
-
-private def recordSlideAsset
-    (seen : Std.HashMap String (String × SlideAssetPayload))
-    (filename source : String) (payload : SlideAssetPayload) :
-    IO (Std.HashMap String (String × SlideAssetPayload)) := do
-  match seen.get? filename with
-  | none => pure <| seen.insert filename (source, payload)
-  | some (prevSource, prev) =>
-    if prev.equal payload then
-      pure seen
-    else
-      throw <| IO.userError
-        s!"Filename collision in config: \"{filename}\" is claimed by {prevSource} ({prev.kind}) and {source} ({payload.kind}) with different contents."
-
-def collectSlideAssets (config : VersoSlides.Config) : IO SlideAssetPlan := do
-  let mut seen : Std.HashMap String (String × SlideAssetPayload) := {}
-  if let .custom theme := config.theme then
-    seen ← recordSlideAsset seen theme.stylesheet.filename
-      "theme stylesheet" (.text theme.stylesheet.contents.css)
-    for asset in theme.assets do
-      seen ← recordSlideAsset seen asset.filename
-        "theme asset" (.binary asset.contents)
-  seen ← recordSlideAsset seen config.highlightTheme.filename
-    "highlight.js theme" (.text config.highlightTheme.contents.css)
-  for css in config.extraCss do
-    seen ← recordSlideAsset seen css.filename
-      "extraCss" (.text css.contents.css)
-  pure { assets := seen }
-
-def writeSlideAssets (outputDir : System.FilePath) (plan : SlideAssetPlan) : IO Unit := do
-  for (filename, _source, payload) in plan.assets.toList do
-    match payload with
-    | .text body => writeTextFileWithDirs (outputDir / filename) body
-    | .binary bytes => writeBinFileWithDirs (outputDir / filename) bytes
-
 def writeSlideImages
     (outputDir : System.FilePath)
     (imageFiles : Std.HashMap String String) : IO Unit := do

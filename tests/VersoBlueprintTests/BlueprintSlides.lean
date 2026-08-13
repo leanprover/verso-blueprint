@@ -95,6 +95,10 @@ private def dummySlidesCss (filename body : String) : VersoSlides.CssFile where
   filename
   contents := ⟨body⟩
 
+private def dummySlidesJs (filename body : String) : VersoSlides.JsModule where
+  filename
+  contents := ⟨body⟩
+
 private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
   let root :=
@@ -433,9 +437,11 @@ private def writeSlidesPreviewDataFiles
     let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let root ← freshSlidesSmokeRoot
     let outDir := root / "slides"
+    let jsModule := dummySlidesJs "js/blueprint-wrapper-probe.mjs"
+      "document.documentElement.dataset.blueprintWrapperProbe = 'loaded';\n"
     let manifestPath ← writeSlidesPreviewDataFiles root files
     let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
-      { outputDir := outDir }
+      { outputDir := outDir, extraJsModules := #[jsModule] }
       (previewManifest? := some manifestPath)
       staticBlueprintNodeSlideFixture.toPart
       (quiet := true)
@@ -450,6 +456,10 @@ private def writeSlidesPreviewDataFiles
     let normalizedKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
     let slideRuntimePath := outDir / "-verso-data" / Informal.Slides.blueprintSlideRuntimeModuleFilename
     let slideRuntimeModulePath := outDir / "-verso-data" / Informal.Slides.blueprintSlidesModulePath
+    let jsModulePath := outDir / jsModule.filename
+    if !(← jsModulePath.pathExists) then
+      return false
+    let jsModuleContents ← IO.FS.readFile jsModulePath
     pure <|
       (← copiedManifest.pathExists) &&
         (← copiedHtmlCache.pathExists) &&
@@ -461,6 +471,8 @@ private def writeSlidesPreviewDataFiles
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
         hasSubstr index s!"src=\"{Informal.Slides.blueprintSlideRuntimeModulePath}\"" &&
+        hasSubstr index s!"<script type=\"module\" src=\"{jsModule.filename}\"></script>" &&
+        jsModuleContents == jsModule.contents.js &&
         !hasSubstr index "blueprint-slides.js" &&
         hasSubstr index "href=\"#--informal-preview" &&
         !hasSubstr index "Loading Blueprint node"
