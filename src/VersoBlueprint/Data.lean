@@ -490,6 +490,125 @@ structure RustInlineCode where
   raw : String
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
+/--
+A foreign language whose declarations may be associated with Blueprint nodes.
+
+The current surface is intentionally small: Rocq and Rust are the first target
+languages for language-server lookup experiments.
+-/
+inductive ForeignLanguage where
+  | rocq
+  | rust
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+def ForeignLanguage.key : ForeignLanguage → String
+  | .rocq => "rocq"
+  | .rust => "rust"
+
+def ForeignLanguage.displayName : ForeignLanguage → String
+  | .rocq => "Rocq"
+  | .rust => "Rust"
+
+def ForeignLanguage.defaultCommand : ForeignLanguage → String
+  | .rocq => "coq-lsp"
+  | .rust => "rust-analyzer"
+
+def ForeignLanguage.languageId : ForeignLanguage → String
+  | .rocq => "coq"
+  | .rust => "rust"
+
+def ForeignLanguage.sourceExtension : ForeignLanguage → String
+  | .rocq => "v"
+  | .rust => "rs"
+
+/-- Result category for a single foreign-language reference lookup. -/
+inductive ForeignLookupStatus where
+  /-- The language server returned a definition location. -/
+  | resolved
+  /-- The language server was available but returned no definition location. -/
+  | unresolved
+  /-- The lookup could not run, for example because a language server is missing. -/
+  | unavailable
+  /-- The lookup ran but failed unexpectedly. -/
+  | failed
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+def ForeignLookupStatus.isWarning : ForeignLookupStatus → Bool
+  | .resolved => false
+  | .unresolved | .unavailable | .failed => true
+
+def ForeignLookupStatus.label : ForeignLookupStatus → String
+  | .resolved => "resolved"
+  | .unresolved => "unresolved"
+  | .unavailable => "unavailable"
+  | .failed => "failed"
+
+/-- Zero-based LSP-style source position. -/
+structure ForeignPosition where
+  line : Nat
+  character : Nat
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+/-- Zero-based LSP-style source range. -/
+structure ForeignRange where
+  start : ForeignPosition
+  stop : ForeignPosition
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+/-- Diagnostic emitted while checking a foreign-language prelude or lookup file. -/
+structure ForeignDiagnostic where
+  message : String
+  range? : Option ForeignRange := none
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+/--
+Snapshot for one written foreign-language reference attached to a node.
+
+The written field preserves the spelling from the Blueprint source. The
+optional target and source fields are filled only when lookup succeeds.
+-/
+structure ForeignRef where
+  written : String
+  status : ForeignLookupStatus := .unresolved
+  targetUri? : Option String := none
+  targetRange? : Option ForeignRange := none
+  sourceHref? : Option String := none
+  sourceSnippet? : Option String := none
+  message? : Option String := none
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+def ForeignRef.hasWarning (ref : ForeignRef) : Bool :=
+  ref.status.isWarning
+
+/--
+All foreign-language lookup data for one language attached to a Blueprint node.
+
+The command, root, and synthetic URI fields record the lookup context used to
+produce the snapshot. They are renderable diagnostics, not process handles.
+-/
+structure ForeignAttachment where
+  language : ForeignLanguage
+  command : String
+  root : String
+  syntheticUri : String
+  preludeDiagnostics : Array ForeignDiagnostic := #[]
+  refs : Array ForeignRef := #[]
+deriving Repr, Inhabited, DecidableEq, BEq, ToJson, FromJson, Quote
+
+def ForeignAttachment.hasResolved (attachment : ForeignAttachment) : Bool :=
+  attachment.refs.any (fun ref => ref.status == .resolved)
+
+def ForeignAttachment.hasWarning (attachment : ForeignAttachment) : Bool :=
+  !attachment.preludeDiagnostics.isEmpty || attachment.refs.any (·.hasWarning)
+
+def mergeForeignAttachments
+    (current incoming : Array ForeignAttachment) : Array ForeignAttachment :=
+  incoming.foldl (init := current) fun acc attachment =>
+    if acc.any (fun existing => existing.language == attachment.language) then
+      acc
+    else
+      acc.push attachment
+
 inductive CodeRef where
   /-
   Blueprint code references can currently come from two sources:
@@ -558,6 +677,7 @@ structure Node where
   leanCode : Array CodeRef := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
   externalMarkup : ExternalMarkupSet := {} -- Raw external markup keyed by language and slot
+  foreignRefs : Array ForeignAttachment := #[] -- Foreign-language reference snapshots
   parent : Option Parent := none -- Optional parent group for summaries/graphs
   priority : Option String := none -- Optional author-provided triage hint
   owner : Option AuthorId := none
@@ -740,6 +860,18 @@ private def mergeExternalMarkup (label : Label)
   else
     return current.insert incoming
 
+private def mergeForeignRefs (label : Label)
+    (current incoming : Array ForeignAttachment) : m (Array ForeignAttachment) := do
+  if incoming.isEmpty then
+    return current
+  let mut acc := current
+  for attachment in incoming do
+    if acc.any (fun existing => existing.language == attachment.language) then
+      logError m!"Label {label} already has associated {attachment.language.displayName} references"
+    else
+      acc := acc.push attachment
+  return acc
+
 def Data.registerCodeRef (data : Data) (label : Label) (codeRef : CodeRef) : m Data := do
   match data.get? label with
   | none =>
@@ -750,7 +882,7 @@ def Data.registerCodeRef (data : Data) (label : Label) (codeRef : CodeRef) : m D
 def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload : InformalData)
     (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
     (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) : m Data := do
+    (prUrl : Option String := none) (foreignRefs : Array ForeignAttachment := #[]) : m Data := do
   let applyHints (node : Node) : m Node := do
     let node :=
       match codeHint with
@@ -762,7 +894,8 @@ def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload
     let effort ← mergeEffort label node.effort effort
     let prUrl ← mergePrUrl label node.prUrl prUrl
     let tags := mergeTags node.tags tags
-    return { node with parent, priority, owner, tags, effort, prUrl }
+    let foreignRefs ← mergeForeignRefs label node.foreignRefs foreignRefs
+    return { node with parent, priority, owner, tags, effort, prUrl, foreignRefs }
   let nextCount := data.nextCount
   match data.get? label, kind with
   -- First statement for a fresh label.
