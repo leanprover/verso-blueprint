@@ -374,8 +374,8 @@ fixtures, and pin the matching `verso` and `verso-slides` releases or release
 candidates in the root package:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain 4.33-rc2
-python3 -m scripts.blueprint_harness bump-toolchain v4.33.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain 4.34-rc1
+python3 -m scripts.blueprint_harness bump-toolchain v4.34.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
@@ -385,9 +385,9 @@ the committed manifests for the root package, `project_template`, and
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release
-candidates use the official short RC name, for example `4.33-rc2`; the harness
+candidates use the official short RC name, for example `4.34-rc1`; the harness
 writes the corresponding Lean, `verso`, and `verso-slides` tag ref, such as
-`v4.33.0-rc2`.
+`v4.34.0-rc1`.
 The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ, or `--verso-slides-ref <tag>` for the corresponding
@@ -400,10 +400,10 @@ default-development branch, then let the harness do the branch-local release
 setup:
 
 ```bash
-python3 -m scripts.blueprint_harness start-release-line 4.33-rc2
+python3 -m scripts.blueprint_harness start-release-line 4.34-rc1
 ```
 
-Run this from the new local branch, for example `v4.33.0`. The command:
+Run this from the new local branch, for example `v4.34.0`. The command:
 
 - rewrites the managed `lean-toolchain` files, the root `verso` and
   `verso-slides` pins, and the committed manifests for the root package,
@@ -418,15 +418,15 @@ Run this from the new local branch, for example `v4.33.0`. The command:
 - rewrites the PR template's managed `Backport ...` lines from the resulting
   `branch-policy.json` backport sequence
 
-For release candidates, use the official short RC name such as `4.33-rc2`.
-The branch name remains the stable release branch, for example `v4.33.0`, while
-the command pins the managed root-package files to `v4.33.0-rc2`.
+For release candidates, use the official short RC name such as `4.34-rc1`.
+The branch name remains the stable release branch, for example `v4.34.0`, while
+the command pins the managed root-package files to `v4.34.0-rc1`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
 validated on the new Lean release. If an external project still uses a release
 candidate while VBP has moved further within that release family, record its
-exact compiler, for example `"reference_toolchain": "v4.33.0-rc1"`, on that
+exact compiler, for example `"reference_toolchain": "v4.34.0-rc1"`, on that
 project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
