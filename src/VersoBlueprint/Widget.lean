@@ -209,9 +209,17 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
           | .ok manifest =>
             let manifestIndex := manifest.index
 
-            -- If on-disk graph is present, merge nodes in non-imported modules from there.
-            if let some diskGraphData := manifest.graphs[0]? then
+            -- Merge disk nodes only when the generated site has one unambiguous graph.
+            match manifest.graphs with
+            | #[diskGraphData] =>
               graphModel ← mergeGraphModel diskGraphData liveGraphModel importedMods manifestIndex
+            | graphs =>
+              manifestWarning? :=
+                some <p className="warning">
+                  Generated Blueprint data contains {.text (toString graphs.size)} dependency
+                  graphs; the editor widget requires exactly one.<br />
+                  Keep exactly one <code>blueprint_graph</code> command and rebuild the Blueprint.
+                </p>
 
             for node in graphModel.nodes do
               -- FIXME: Find srcLoc for imported entries via env instead of via manifest, for freshness?
