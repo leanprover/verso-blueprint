@@ -5,16 +5,12 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprintTests.BlueprintTexMacros.Root
-import VersoBlueprintTests.Blueprint.Support
-import VersoBlueprint.Widget
 
 namespace Verso.VersoBlueprintTests.BlueprintTexMacros
 
 open Lean
 open Verso
-open Verso.Genre.Manual
 open Informal
-open Verso.VersoBlueprintTests.Blueprint.Support
 
 set_option doc.verso true
 
