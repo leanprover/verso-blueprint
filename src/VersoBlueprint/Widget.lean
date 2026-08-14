@@ -199,7 +199,8 @@ def BlueprintGraph.mk (props : Props) : RequestM (RequestTask Html) := do
         let liveGraphModel :=
           Informal.Graph.buildModel state liveRoots (groupTitles := state.groups.toArray)
 
-        RequestM.mapTaskCostly manifestTask fun manifest? => do
+        -- Map as 'cheap' since `bindWaitFindSnap` already spawns a dedicated thread.
+        RequestM.mapTaskCheap manifestTask fun manifest? => do
           let mut graphModel := liveGraphModel
           let mut manifestWarning? : Option Html := none
           let mut locs := #[]
