@@ -291,15 +291,10 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir.mkdir()
             original_run = commands_mod.run
             original_run_with_heartbeat = commands_mod.run_with_heartbeat
-            original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
                 commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
-                commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
-                    lambda package_root: commands.append(["ensure", str(package_root)]) or []
-                )
-
                 run_project_update_build_generate(
                     package_root,
                     project_dir,
@@ -312,14 +307,12 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             finally:
                 commands_mod.run = original_run
                 commands_mod.run_with_heartbeat = original_run_with_heartbeat
-                commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
             commands,
             [
                 ["lake", "update"],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "build", "--formatted"],
-                ["ensure", str(package_root)],
                 [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND, "--formatted"],
             ],
         )
@@ -335,15 +328,10 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir.mkdir()
             original_run = commands_mod.run
             original_run_with_heartbeat = commands_mod.run_with_heartbeat
-            original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
                 commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
-                commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
-                    lambda package_root: commands.append(["ensure", str(package_root)]) or []
-                )
-
                 run_project_update_build_generate(
                     package_root,
                     project_dir,
@@ -356,13 +344,11 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             finally:
                 commands_mod.run = original_run
                 commands_mod.run_with_heartbeat = original_run_with_heartbeat
-                commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
             commands,
             [
                 ["lake", "update"],
-                ["ensure", str(package_root)],
                 [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND],
             ],
         )
