@@ -8,9 +8,7 @@ import re
 import subprocess
 
 from scripts.blueprint_harness_utils import (
-    ensure_embedded_asset_owner_outputs,
     lean_low_priority_command,
-    rebuild_embedded_asset_owners,
     run,
     run_with_heartbeat,
     timed_step,
@@ -257,20 +255,6 @@ def local_blueprint_dependency_override(
             lakefile.write_text(original_text, encoding="utf-8")
 
 
-def rebuild_and_log_embedded_asset_owners(package_root: Path) -> list[str]:
-    rebuilt = rebuild_embedded_asset_owners(package_root)
-    for target in rebuilt:
-        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
-    return rebuilt
-
-
-def ensure_and_log_embedded_asset_owner_outputs(package_root: Path) -> list[str]:
-    materialized = ensure_embedded_asset_owner_outputs(package_root)
-    for target in materialized:
-        print(f"[blueprint-harness] materialized embedded-asset owner output: {target}")
-    return materialized
-
-
 def format_project_command(command: tuple[str, ...], placeholders: Mapping[str, object]) -> list[str]:
     values = {key: str(value) for key, value in placeholders.items()}
     return [part.format(**values) for part in command]
@@ -296,8 +280,6 @@ def run_project_update_build_generate(
             cwd=project_dir,
             label=f"{label_prefix}build project",
         )
-    with timed_step(f"{label_prefix}embedded asset owner outputs"):
-        ensure_and_log_embedded_asset_owner_outputs(package_root)
     run_with_heartbeat(
         lean_low_priority_command(package_root, *format_command(generate_command)),
         cwd=project_dir,

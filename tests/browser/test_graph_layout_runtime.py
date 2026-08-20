@@ -7,7 +7,6 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from scripts.blueprint_harness_paths import canonical_test_blueprint_output_dir
-from scripts.blueprint_harness_project_commands import rebuild_and_log_embedded_asset_owners
 from scripts.blueprint_harness_utils import lean_low_priority_command
 from support import PACKAGE_ROOT, blueprint_render_api_script, find_free_port, wait_for_server
 
@@ -17,7 +16,6 @@ def preview_runtime_showcase_output_dir() -> Path:
     output_dir = canonical_test_blueprint_output_dir("preview_runtime_showcase", Path(__file__))
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     project_dir = PACKAGE_ROOT / "tests" / "test_blueprints" / "preview_runtime_showcase"
-    rebuild_and_log_embedded_asset_owners(PACKAGE_ROOT)
     subprocess.run(
         lean_low_priority_command(PACKAGE_ROOT, "lake", "build", "PreviewRuntimeShowcase"),
         cwd=project_dir,

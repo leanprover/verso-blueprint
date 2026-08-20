@@ -184,10 +184,6 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
                 events.append("cache")
                 return False
 
-            def fake_owner_outputs(*_args, **_kwargs) -> list[str]:
-                events.append("owner outputs")
-                return []
-
             def fake_run(command: list[str], **_kwargs) -> None:
                 commands.append(command)
                 events.append("build" if "build" in command else "check")
@@ -195,10 +191,8 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
             with patch.multiple(
                 composition,
                 validate_composed_toolchain=lambda *_args, **_kwargs: "v4.32.0",
-                rebuild_and_log_embedded_asset_owners=lambda *_args, **_kwargs: [],
                 run_project_lake_update=fake_update,
                 ensure_composed_mathlib_cache=fake_cache,
-                ensure_and_log_embedded_asset_owner_outputs=fake_owner_outputs,
                 run_with_heartbeat=fake_run,
             ):
                 composition.compose_blueprint(package_root, project, verbose=True)
@@ -206,7 +200,7 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
             self.assertEqual(lakefile.read_text(encoding="utf-8"), lakefile_text)
             self.assertEqual(manifest.read_text(encoding="utf-8"), manifest_text)
             self.assertFalse(stale_output.exists())
-            self.assertEqual(events, ["update", "cache", "owner outputs", "build", "check"])
+            self.assertEqual(events, ["update", "cache", "build", "check"])
             self.assertEqual(
                 commands,
                 [
@@ -249,10 +243,8 @@ class BlueprintHarnessCompositionTests(unittest.TestCase):
             with patch.multiple(
                 composition,
                 validate_composed_toolchain=lambda *_args, **_kwargs: "v4.32.0",
-                rebuild_and_log_embedded_asset_owners=lambda *_args, **_kwargs: [],
                 run_project_lake_update=fake_update,
                 ensure_composed_mathlib_cache=lambda *_args, **_kwargs: False,
-                ensure_and_log_embedded_asset_owner_outputs=lambda *_args, **_kwargs: [],
                 run_with_heartbeat=fail_build,
             ):
                 with self.assertRaisesRegex(RuntimeError, "build failed"):
