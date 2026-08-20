@@ -385,12 +385,12 @@ the current checkout's selected projects with
 `python3 -m scripts.blueprint_reference_harness projects`.
 
 Each external Blueprint is published only for its intended current release.
-Noperthedron and Sphere Packing currently target `v4.32.0`; FLT and Carleson
-target `v4.33.0`. The in-repo starter template is a CI fixture rather than a
-public reference entry; it continues to validate every maintained release line.
+Noperthedron, FLT, and Carleson currently target `v4.33.0`; Sphere Packing
+remains on `v4.32.0`. The in-repo starter template is a CI fixture rather than
+a public reference entry; it continues to validate every maintained release line.
 
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
-  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/noperthedron/)
+  [rendered site for v4.33.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.33.0/noperthedron/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
   [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/spherepackingblueprint/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),

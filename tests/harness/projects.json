@@ -36,8 +36,8 @@
       },
       "targets": [
         {
-          "release": "v4.32.0",
-          "ref": "dc8ca41ebce328933d212e0e30444fdd1711a442",
+          "release": "v4.33.0",
+          "ref": "58e5b7e3ce38cc059d0dcd4f5604c666356026bb",
           "publish_reference": true
         }
       ],
@@ -62,7 +62,7 @@
       "targets": [
         {
           "release": "v4.32.0",
-          "ref": "bbeb73a885019de8684973db10fbb4dca4c33752",
+          "ref": "c7eee39480088000d2b7e7245a7be3b8bd43e6fb",
           "publish_reference": true
         }
       ],
@@ -87,9 +87,8 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "330641da6551c4f5ddf7ff96173aeb500c684868",
-          "publish_reference": true,
-          "reference_toolchain": "v4.33.0-rc1"
+          "ref": "bdba3568faf918df1aa3024c1e69df98e26b7e5d",
+          "publish_reference": true
         }
       ],
       "generate_command": [
@@ -113,9 +112,8 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "7c3df4b5c219a7493aeaa0febe3b34c48bd512df",
-          "publish_reference": true,
-          "reference_toolchain": "v4.33.0-rc1"
+          "ref": "8810e9d67c7048705fbea66d6f5cf1bacb34f254",
+          "publish_reference": true
         }
       ],
       "generate_command": [
