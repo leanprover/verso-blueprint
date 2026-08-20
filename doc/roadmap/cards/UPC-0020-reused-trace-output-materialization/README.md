@@ -9,7 +9,7 @@ Owner: none
 Issue: https://github.com/leanprover/lean4/issues/14435
 PR: none linked
 Upstream timing: none
-Removal target: none; the local canonical-output fallback was removed after v4.33 validation
+Removal target: none; the local canonical-output fallback was removed after maintained-release validation
 Related cards: UPC-0019
 
 ## Summary
@@ -39,9 +39,10 @@ requires it.
 
 ## Reproduction Status
 
-Validated on Lean v4.33 with `VersoBlueprint.Commands.Graph`. Starting from a
-dedicated warm artifact cache, remove `Graph.olean` and `Graph.olean.hash` while
-leaving `Graph.trace`, then build and generate with restoration disabled.
+Validated on Lean v4.32 and v4.33 with `VersoBlueprint.Commands.Graph`.
+Starting from a dedicated warm artifact cache, remove `Graph.olean` and
+`Graph.olean.hash` while leaving `Graph.trace`, then build and generate with
+restoration disabled.
 
 - `lake build PreviewRuntimeShowcase` completed while the canonical `.olean`
   remained absent.
@@ -65,22 +66,28 @@ leaving `Graph.trace`, then build and generate with restoration disabled.
   diagnostics and `saveReady: true`, and returned semantic hover information
   from `VersoBlueprint.Graph`. The target and imported VBP modules still had
   traces but no canonical `.olean` files after the session.
+- On the v4.32 backport, a cold `lake test`, a build-tree-free warm replay, a
+  fresh downstream project-template generation, and the same Beam workflow all
+  passed with artifact caching enabled and restoration disabled. Changing only
+  `graph.css` rebuilt the expected 24-module closure and embedded the marker;
+  restoring the CSS selected the byte-identical original synthetic trace and
+  removed the canonical `Graph.olean` again.
 
 ## Preliminary Analysis
 
-Lean v4.33's package configuration documents that restore-all defaults to
-`false` and exists for external consumers that expect build-directory outputs.
-Module cache reuse restores only the artifacts Lake requires in place, such as
-the `.ilean`, and propagates other cache paths through Lake jobs. This behavior
-is independent of whether an external `include_str` input participates in the
+Lean's package configuration documents that restore-all defaults to `false`
+and exists for external consumers that expect build-directory outputs. Module
+cache reuse restores only the artifacts Lake requires in place, such as the
+`.ilean`, and propagates other cache paths through Lake jobs. This behavior is
+independent of whether an external `include_str` input participates in the
 trace; UPC-0019 owns that dependency question.
 
 Lean issue #14435 reports a user-visible `missing data file` failure after a
 clean artifact-cache rebuild on v4.34 nightly and v4.33.0-rc1. Beam's held
-language-server path does not reproduce it on final v4.33, so the remaining
-question is narrower: which editor/server entry paths bypass Lake's resolved
-artifact locations, and whether those paths should request restoration
-automatically.
+language-server path does not reproduce it on v4.32 or final v4.33, so the
+remaining question is narrower: which editor/server entry paths bypass Lake's
+resolved artifact locations, and whether those paths should request
+restoration automatically.
 
 ## Scope Boundary
 
@@ -99,7 +106,7 @@ entry path that requests the necessary restoration.
 ## Evidence
 
 - Existing Lean issue: https://github.com/leanprover/lean4/issues/14435
-- Local v4.33 target: `VersoBlueprint.Commands.Graph`
+- Local v4.32 and v4.33 target: `VersoBlueprint.Commands.Graph`
 - Preserved trace: `.lake/build/lib/lean/VersoBlueprint/Commands/Graph.trace`
 - Removed outputs: `Graph.olean` and `Graph.olean.hash`
 - Consumers: standalone `lake lean` generation and public `lake exe vbp build`
@@ -115,6 +122,9 @@ entry path that requests the necessary restoration.
   31.90 seconds warm (7.25x); 586/586 `vbp check`
 - Beam integration: `update`, `sync`, and `hover` succeeded on final v4.33 with
   restoration disabled and canonical dependency outputs absent
+- v4.32 backport: cold and cache-in-place `lake test`, fresh project-template
+  generation, Beam, and asset-change/restore selection all succeeded without a
+  release-specific cache disable
 
 ## Current Workaround
 

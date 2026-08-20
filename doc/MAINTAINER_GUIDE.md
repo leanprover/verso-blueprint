@@ -70,8 +70,9 @@ export LAKE_RESTORE_ARTIFACTS=false
 ```
 
 Cache-in-place artifacts are supported by `lake lean`, `lake exe vbp build`,
-and the tested `lean-beam` language-server workflow. Explicit `LAKE_CACHE_DIR`,
-`LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values take precedence. Use
+and the tested `lean-beam` language-server workflow on both maintained v4.32
+and v4.33 release lines. Explicit `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and
+`LAKE_RESTORE_ARTIFACTS` values take precedence. Use
 `scripts/with-blueprint-lake-cache --print-config` to inspect the effective
 configuration. `BP_LAKE_ARTIFACT_CACHE_ROOT` changes only the shared root while
 retaining toolchain scoping; it is useful for isolated measurements.

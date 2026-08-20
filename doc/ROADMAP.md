@@ -193,6 +193,10 @@ Current state:
 6. Lean Beam opened, synchronized, and served semantic hover data for a VBP
    source module with restoration disabled and canonical dependency `.olean`
    files absent
+7. the paired v4.32 validation covered a cold build, a build-tree-free warm
+   replay, a fresh downstream project-template generation, Lean Beam, and an
+   asset-change/restore cycle; all passed with artifact caching enabled and
+   restoration disabled
 
 Work:
 
