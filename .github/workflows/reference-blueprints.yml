@@ -33,9 +33,24 @@ jobs:
         env:
           BP_DEFAULT_DEV_BRANCH: ${{ github.event.repository.default_branch }}
           BP_RELEASE_ID: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+          BP_EVENT_NAME: ${{ github.event_name }}
+          BP_BEFORE_SHA: ${{ github.event.before }}
         run: |
           manifest_path=tests/harness/projects.json
-          if [ "$BP_RELEASE_ID" != "$BP_DEFAULT_DEV_BRANCH" ]; then
+          use_local_catalog=false
+          if [ "$BP_RELEASE_ID" = "$BP_DEFAULT_DEV_BRANCH" ]; then
+            use_local_catalog=true
+          elif [ "$BP_EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags origin "$BP_RELEASE_ID"
+            if ! git diff --quiet "origin/$BP_RELEASE_ID"...HEAD -- "$manifest_path"; then
+              use_local_catalog=true
+            fi
+          elif [ "$BP_EVENT_NAME" = "push" ] &&
+              git rev-parse --verify --quiet "${BP_BEFORE_SHA}^{commit}" >/dev/null &&
+              ! git diff --quiet "$BP_BEFORE_SHA" HEAD -- "$manifest_path"; then
+            use_local_catalog=true
+          fi
+          if [ "$use_local_catalog" != true ]; then
             git fetch --no-tags origin "$BP_DEFAULT_DEV_BRANCH"
             manifest_path=_out/controller-projects.json
             mkdir -p "$(dirname "$manifest_path")"
