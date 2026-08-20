@@ -177,18 +177,31 @@ manual source touches or stale cached owner modules.
 
 Current state:
 
-1. the harness refreshes embedded asset owner mtimes and rebuilds targeted owner
-   modules before reference and test blueprint generation
-2. regression tests cover the mtime refresh and targeted rebuild behavior
-3. direct `include_str` ownership still remains the underlying Lean/Lake
-   dependency model
+1. filtered Lake inputs attached to the `VersoBlueprint` library with `needs`
+   make embedded-asset changes and artifact-cache keys correct
+2. the harness no longer mutates owner mtimes, deletes cached outputs, or
+   materializes canonical `.olean` files
+3. v4.33 asset-cache experiments covered changed and restored assets plus
+   cache-in-place generation through both `lake lean` and `lake exe vbp build`,
+   with 90/90 `vbp check` results while `LAKE_RESTORE_ARTIFACTS=false`
+4. maintainer commands share a repository-local cache partitioned by the
+   nearest exact Lean toolchain while keeping every `.lake` directory private
+5. an isolated project-template consumer built in 162.78 seconds cold and 7.30
+   seconds warm (22.3x), while the real v4.33 FLT reference target built in
+   231.33 seconds cold and 31.90 seconds warm (7.25x); both warm runs kept VBP
+   artifacts in the cache and passed `vbp check`
+6. Lean Beam opened, synchronized, and served semantic hover data for a VBP
+   source module with restoration disabled and canonical dependency `.olean`
+   files absent
 
 Work:
 
-1. keep the harness owner-module refresh path covered while it remains the
-   practical release mechanism
-2. replace the mtime workaround with a durable generated-or-staged Lean
-   dependency edge for browser assets
+1. pursue module-level Lake input dependencies through UPC-0019 so one asset
+   change does not invalidate every module in the library
+2. keep generation Lake-backed so cached artifact paths remain usable without
+   forcing all artifacts into `.lake/build`; external filesystem consumers can
+   opt into `LAKE_RESTORE_ARTIFACTS=true`, while the remaining editor boundary
+   is tracked through UPC-0020
 3. keep the structured embedded-asset inventory covered against discovered
    browser `include_str` references so graph, summary, bibliography, slides,
    block, and shared static-web ownership is not rediscovered per feature

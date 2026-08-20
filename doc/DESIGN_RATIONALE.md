@@ -154,8 +154,15 @@ ordered CSS and any feature-local JavaScript fragments needed by a Blueprint
 feature. Manual pages consume CSS through Verso `HtmlAssets` and load runtime
 JavaScript through the generated ESM page runtime. Slides load runtime
 JavaScript through the generated ESM slide runtime. The Python
-`EMBEDDED_ASSET_OWNERS` inventory remains rebuild metadata for `include_str`
-owner modules, not the semantic source of asset ordering.
+`EMBEDDED_ASSET_OWNERS` inventory verifies that every browser `include_str`
+has a declared Lake input owner; it is not the semantic source of asset
+ordering or the build dependency edge.
+
+Maintainer builds share only Lake's content-addressed, toolchain-scoped artifact
+cache. Project and worktree `.lake` directories remain private. Supported
+generator entry points consume cache artifact paths through Lake, so the shared
+cache defaults to `LAKE_RESTORE_ARTIFACTS=false` rather than copying artifacts
+back into canonical build directories.
 
 ## Rendering Clients
 
