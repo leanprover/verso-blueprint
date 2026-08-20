@@ -32,6 +32,9 @@ else
   command_args=("$@")
 fi
 
+script_dir="$(cd "$(dirname "$0")" && pwd -P)"
+command_args=("$script_dir/with-blueprint-lake-cache" "${command_args[@]}")
+
 if command -v nice >/dev/null 2>&1; then
   exec nice -n "$niceness" "${command_args[@]}"
 else

@@ -1,6 +1,6 @@
 # Blueprint Roadmap Cards
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-08-20
 
 This directory tracks maintainer planning cards for scoped implementation and
 upstream follow-up work. Cards are not end-user setup docs, option references,
@@ -40,6 +40,7 @@ removal target.
 | Highlighted code | [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md) | Verso | high |
 | Highlighted code | [`UPC-0014 Portable Hover Fragment Transfer`](./cards/UPC-0014-portable-hover-fragment-transfer/README.md) | Verso | medium |
 | Elaboration | [`UPC-0010 Package Asset Resolution During Elaboration`](./cards/UPC-0010-package-asset-resolution-during-elaboration/README.md) | Lake | medium |
+| Lake build graph | [`UPC-0019 Module-Level Lake Input Dependencies`](./cards/UPC-0019-module-level-lake-input-dependencies/README.md) | Lake | medium |
 | Directive parsing | [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md) | Verso | medium |
 
 ## Triage Candidates
@@ -52,6 +53,7 @@ work.
 - [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
+- [`UPC-0020 Cache-in-Place External Consumer Compatibility`](./cards/UPC-0020-reused-trace-output-materialization/README.md)
 
 ## Resolved Cards
 

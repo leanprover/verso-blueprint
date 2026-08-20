@@ -50,6 +50,41 @@ python3 -m scripts.blueprint_reference_harness --help
 python3 -m scripts.blueprint_test_blueprints --help
 ```
 
+### Shared Lake Artifact Cache
+
+Long Lean and Lake commands run through `scripts/lean-low-priority`, which in
+turn applies `scripts/with-blueprint-lake-cache`. The wrapper discovers the
+nearest `lean-toolchain` from the command's working directory and initializes a
+repository-shared cache at:
+
+```text
+.worktrees/_lake-artifact-cache/<toolchain>/
+```
+
+The default environment is equivalent to:
+
+```bash
+export LAKE_CACHE_DIR="$(scripts/with-blueprint-lake-cache --print-cache-dir)"
+export LAKE_ARTIFACT_CACHE=true
+export LAKE_RESTORE_ARTIFACTS=false
+```
+
+Cache-in-place artifacts are supported by `lake lean`, `lake exe vbp build`,
+and the tested `lean-beam` language-server workflow. Explicit `LAKE_CACHE_DIR`,
+`LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values take precedence. Use
+`scripts/with-blueprint-lake-cache --print-config` to inspect the effective
+configuration. `BP_LAKE_ARTIFACT_CACHE_ROOT` changes only the shared root while
+retaining toolchain scoping; it is useful for isolated measurements.
+
+The nearest-toolchain rule is important for reference projects that remain on
+an RC within the current release family. Their artifacts occupy a different
+cache directory from the package checkout's final-release toolchain. The
+shared cache is content-addressed and may be pruned as a unit for one toolchain;
+mutable `.lake` build directories remain private to each worktree or project.
+Consumers that independently read canonical `.lake/build` paths can opt into
+restoration; the narrower editor compatibility investigation remains recorded
+in UPC-0020.
+
 ### Agent-Facing `vbp` Helper
 
 `lake exe vbp ...` and `skills/verso-blueprint/` are maintained as the
@@ -174,13 +209,18 @@ generated slide runtime's narrow rehydration hook, not a general render API.
 
 Several browser assets are embedded into Lean modules with `include_str`, for
 example the preview runtime, graph, summary, bibliography, block, slide, and
-math assets. A JS/CSS-only edit can leave a focused Lean check looking at a
-stale owner module if you run that check directly.
+math assets. The root `lakefile.lean` declares filtered CSS, JavaScript, and MJS
+inputs, plus the out-of-tree math asset, and attaches them to the
+`VersoBlueprint` library with `needs`. The standalone preview showcase declares
+its own JavaScript input directory.
 
-The artifact-generation and validation scripts already refresh the embedded
-asset owner modules before generating reference or test Blueprint output. After
-editing embedded browser assets, prefer one of these paths before relying on
-generated HTML or browser tests:
+Artifact-generation and validation flows rely on those Lake edges rather than
+touching Lean sources, deleting cached outputs, or materializing canonical
+`.olean` files. Both supported generation paths, `lake lean` and
+`lake exe vbp build`, consume cache-in-place artifacts when
+`LAKE_RESTORE_ARTIFACTS=false`. Set that variable to `true` only for an external
+consumer that requires artifacts under `.lake/build`. After editing embedded
+browser assets, prefer one of these paths:
 
 ```bash
 ./scripts/generate-test-blueprints.sh <slug>
@@ -190,10 +230,10 @@ generated HTML or browser tests:
 
 The tracked owner inventory lives in `EMBEDDED_ASSET_OWNERS` in
 `scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
-asset, add it to that inventory and cover the mapping in the harness tests so
-artifact generation rebuilds the right Lean owner. Keep semantic asset ordering
-in the Lean `BlueprintAssetBundle` definitions; the Python inventory is only
-rebuild metadata.
+asset, ensure that a Lake input covers it, add it to that inventory, and cover
+the mapping in the harness tests. Keep semantic asset ordering in the Lean
+`BlueprintAssetBundle` definitions; the Python inventory only verifies input
+ownership coverage.
 
 ### Generate Review Artifacts
 

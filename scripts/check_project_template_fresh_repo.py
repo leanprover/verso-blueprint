@@ -15,6 +15,7 @@ if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
 from scripts.blueprint_harness_project_commands import rewrite_local_blueprint_dependency
+from scripts.blueprint_harness_utils import lean_low_priority_command
 
 
 def run(command: list[str], *, cwd: Path) -> None:
@@ -44,8 +45,8 @@ def main() -> int:
         fresh_root = Path(tmp) / "project-template"
         shutil.copytree(TEMPLATE_ROOT, fresh_root)
         rewrite_local_blueprint_dependency(fresh_root, PACKAGE_ROOT)
-        run(["lake", "update", "VersoBlueprint"], cwd=fresh_root)
-        run(["bash", "./scripts/ci-pages.sh"], cwd=fresh_root)
+        run(lean_low_priority_command(PACKAGE_ROOT, "lake", "update", "VersoBlueprint"), cwd=fresh_root)
+        run(lean_low_priority_command(PACKAGE_ROOT, "bash", "./scripts/ci-pages.sh"), cwd=fresh_root)
 
         site_root = fresh_root / "_out" / "site" / "html-multi"
         if not site_root.exists():
