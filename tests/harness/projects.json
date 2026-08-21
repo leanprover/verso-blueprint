@@ -20,24 +20,6 @@
       "site_subdir": "html-multi"
     },
     {
-      "id": "noperthedron",
-      "description": "Mathlib-heavy external blueprint project kept for generation coverage.",
-      "source": {
-        "kind": "git_checkout",
-        "repository": "https://github.com/ejgallego/verso-noperthedron.git",
-        "project_root": "."
-      },
-      "targets": [
-        {
-          "release": "v4.32.0",
-          "ref": "dc8ca41ebce328933d212e0e30444fdd1711a442",
-          "publish_reference": true
-        }
-      ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
-      "site_subdir": "html-multi"
-    },
-    {
       "id": "spherepackingblueprint",
       "description": "External blueprint project without project-specific browser regressions.",
       "source": {
@@ -48,7 +30,7 @@
       "targets": [
         {
           "release": "v4.32.0",
-          "ref": "bbeb73a885019de8684973db10fbb4dca4c33752",
+          "ref": "c7eee39480088000d2b7e7245a7be3b8bd43e6fb",
           "publish_reference": true
         }
       ],

@@ -231,7 +231,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [project.project_id for project in projects],
             [
                 "project-template",
-                "noperthedron",
                 "spherepackingblueprint",
             ],
         )
@@ -256,7 +255,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_repositories = {
-            "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
             "spherepackingblueprint": "https://github.com/ejgallego/verso-sphere-packing.git",
         }
         for project in projects[1:]:
@@ -651,6 +649,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
         self.assertIn("Select controller catalog", workflow_text)
         self.assertIn("origin/$BP_DEFAULT_DEV_BRANCH:tests/harness/projects.json", workflow_text)
+        self.assertIn('git diff --quiet "origin/$BP_RELEASE_ID"...HEAD', workflow_text)
+        self.assertIn('git diff --quiet "$BP_BEFORE_SHA" HEAD', workflow_text)
         self.assertIn("BP_REFERENCE_PROJECT_MANIFEST", workflow_text)
         self.assertIn("--manifest _out/reference-projects/${{ matrix.project_id }}.json", workflow_text)
         self.assertIn("--release ${{ needs.resolve-reference-release.outputs.release_id }}", workflow_text)
