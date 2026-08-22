@@ -53,7 +53,7 @@ work.
 - [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
-- [`UPC-0020 Cache-in-Place External Consumer Compatibility`](./cards/UPC-0020-reused-trace-output-materialization/README.md)
+- [`UPC-0020 Cache-in-Place External Consumer Compatibility`](./cards/UPC-0020-cache-in-place-external-consumer-compatibility/README.md)
 
 ## Resolved Cards
 

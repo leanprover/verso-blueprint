@@ -1,118 +1,95 @@
 import contextlib
 import io
 import os
+import re
 import signal
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.blueprint_harness_utils import (
-    EMBEDDED_ASSET_OWNERS,
-    EmbeddedAssetOwner,
-    discover_embedded_asset_owners,
-    run_with_heartbeat,
-)
+from scripts.blueprint_harness_utils import run_with_heartbeat
 
 
-def _command_arg(command: list[str], option: str) -> str:
-    return command[command.index(option) + 1]
+INCLUDE_STR_RE = re.compile(r'include_str\s+"([^"]+)"')
+BROWSER_ASSET_SUFFIXES = {".css", ".js", ".mjs"}
+
+
+def _browser_include_assets(source_root: Path) -> set[Path]:
+    assets: set[Path] = set()
+    for owner in sorted(source_root.rglob("*.lean")):
+        source = owner.read_text(encoding="utf-8")
+        for include_path in INCLUDE_STR_RE.findall(source):
+            asset = (owner.parent / include_path).resolve()
+            if asset.suffix in BROWSER_ASSET_SUFFIXES:
+                assets.add(asset)
+    return assets
+
+
+def _normalized_whitespace(source: str) -> str:
+    return " ".join(source.split())
 
 
 class TestBlueprintHarnessUtils(unittest.TestCase):
-    def test_embedded_asset_inventory_matches_browser_include_strs(self) -> None:
+    def test_blueprint_browser_include_strs_are_covered_by_lake_inputs(self) -> None:
         package_root = Path(__file__).resolve().parents[2]
+        source_root = package_root / "src" / "VersoBlueprint"
+        math_js = (package_root / "static-web" / "math.js").resolve()
+        assets = _browser_include_assets(source_root)
+        missing = {asset for asset in assets if not asset.is_file()}
+        uncovered = {
+            asset
+            for asset in assets
+            if not (
+                (asset.is_relative_to(source_root) and asset.suffix in BROWSER_ASSET_SUFFIXES)
+                or asset == math_js
+            )
+        }
 
-        self.assertEqual(
-            set(EMBEDDED_ASSET_OWNERS),
-            set(discover_embedded_asset_owners(package_root)),
+        self.assertTrue(assets)
+        self.assertEqual(missing, set())
+        self.assertEqual(uncovered, set())
+
+        lakefile = (package_root / "lakefile.lean").read_text(encoding="utf-8")
+        normalized = _normalized_whitespace(lakefile)
+        self.assertIn(
+            'input_dir embeddedBlueprintAssets where path := "src/VersoBlueprint" '
+            'text := true filter := .extension <| .mem #["css", "js", "mjs"]',
+            normalized,
         )
+        self.assertIn(
+            'input_file blueprintMathJs where path := "static-web/math.js" text := true',
+            normalized,
+        )
+        library = normalized.split("lean_lib VersoBlueprint where", 1)[1].split(
+            "@[default_target]", 1
+        )[0]
+        self.assertIn("needs := #[embeddedBlueprintAssets, blueprintMathJs]", library)
 
-    def test_common_module_does_not_own_runtime_js_assets(self) -> None:
-        for asset in (
-            "src/VersoBlueprint/blueprint-graph-core.mjs",
-            "src/VersoBlueprint/blueprint-preview-core.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
-            "src/VersoBlueprint/Commands/inline-preview.mjs",
-        ):
-            self.assertNotIn(
-                EmbeddedAssetOwner(
-                    asset,
-                    "src/VersoBlueprint/Commands/Common.lean",
-                    "VersoBlueprint.Commands.Common",
-                ),
-                EMBEDDED_ASSET_OWNERS,
-            )
+    def test_preview_showcase_browser_include_strs_are_covered_by_lake_input(self) -> None:
+        package_root = Path(__file__).resolve().parents[2]
+        project_root = package_root / "tests" / "test_blueprints" / "preview_runtime_showcase"
+        asset_root = (project_root / "PreviewRuntimeShowcase" / "Chapters").resolve()
+        assets = _browser_include_assets(asset_root)
+        missing = {asset for asset in assets if not asset.is_file()}
+        uncovered = {
+            asset
+            for asset in assets
+            if not (asset.is_relative_to(asset_root) and asset.suffix == ".js")
+        }
 
-    def test_standalone_api_assets_are_owned_by_preview_manifest_module(self) -> None:
-        for asset in (
-            "src/VersoBlueprint/blueprint-graph-core.mjs",
-            "src/VersoBlueprint/blueprint-preview-core.mjs",
-            "src/VersoBlueprint/blueprint-api-common.mjs",
-            "src/VersoBlueprint/blueprint-graph-api.mjs",
-            "src/VersoBlueprint/blueprint-data-api.mjs",
-            "src/VersoBlueprint/blueprint-preview-api.mjs",
-            "src/VersoBlueprint/blueprint-page-runtime.mjs",
-            "src/VersoBlueprint/Commands/open-target-details.mjs",
-            "src/VersoBlueprint/Commands/inline-preview.mjs",
-            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
-            "src/VersoBlueprint/Commands/graph.mjs",
-            "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
-        ):
-            self.assertIn(
-                EmbeddedAssetOwner(
-                    asset,
-                    "src/VersoBlueprint/PreviewManifest.lean",
-                    "VersoBlueprint.PreviewManifest",
-                ),
-                EMBEDDED_ASSET_OWNERS,
-            )
+        self.assertTrue(assets)
+        self.assertEqual(missing, set())
+        self.assertEqual(uncovered, set())
 
-    def test_graph_js_assets_are_owned_by_graph_module(self) -> None:
-        for asset in (
-            "src/VersoBlueprint/Commands/graph.css",
-        ):
-            self.assertIn(
-                EmbeddedAssetOwner(
-                    asset,
-                    "src/VersoBlueprint/Commands/Graph.lean",
-                    "VersoBlueprint.Commands.Graph",
-                ),
-                EMBEDDED_ASSET_OWNERS,
-            )
-
-    def test_slide_esm_assets_are_owned_by_slide_assets_module(self) -> None:
-        for asset, owner, target in (
-            (
-                "src/VersoBlueprint/Slides/blueprint-slides.mjs",
-                "src/VersoBlueprint/Slides/Assets.lean",
-                "VersoBlueprint.Slides.Assets",
-            ),
-            (
-                "src/VersoBlueprint/Slides/blueprint-slide-runtime.mjs",
-                "src/VersoBlueprint/Slides/Assets.lean",
-                "VersoBlueprint.Slides.Assets",
-            ),
-        ):
-            self.assertIn(EmbeddedAssetOwner(asset, owner, target), EMBEDDED_ASSET_OWNERS)
+        lakefile = (project_root / "lakefile.lean").read_text(encoding="utf-8")
+        normalized = _normalized_whitespace(lakefile)
+        self.assertIn(
+            'input_dir previewRuntimeShowcaseAssets where path := "PreviewRuntimeShowcase/Chapters" '
+            'text := true filter := .extension "js"',
+            normalized,
+        )
+        self.assertIn("needs := #[previewRuntimeShowcaseAssets]", normalized)
 
     def test_run_with_heartbeat_reports_long_running_command(self) -> None:
         class FakeProcess:

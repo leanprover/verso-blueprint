@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-20
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -186,10 +186,9 @@ Current state:
    with 90/90 `vbp check` results while `LAKE_RESTORE_ARTIFACTS=false`
 4. maintainer commands share a repository-local cache partitioned by the
    nearest exact Lean toolchain while keeping every `.lake` directory private
-5. an isolated project-template consumer built in 162.78 seconds cold and 7.30
-   seconds warm (22.3x), while the real v4.33 FLT reference target built in
-   231.33 seconds cold and 31.90 seconds warm (7.25x); both warm runs kept VBP
-   artifacts in the cache and passed `vbp check`
+5. isolated project-template and real FLT integrations demonstrated large
+   cold-to-warm improvements while retaining cache-in-place artifacts and
+   passing `vbp check`; UPC-0020 owns the detailed measurements
 6. Lean Beam opened, synchronized, and served semantic hover data for a VBP
    source module with restoration disabled and canonical dependency `.olean`
    files absent
@@ -206,9 +205,8 @@ Work:
    forcing all artifacts into `.lake/build`; external filesystem consumers can
    opt into `LAKE_RESTORE_ARTIFACTS=true`, while the remaining editor boundary
    is tracked through UPC-0020
-3. keep the structured embedded-asset inventory covered against discovered
-   browser `include_str` references so graph, summary, bibliography, slides,
-   block, and shared static-web ownership is not rediscovered per feature
+3. keep direct contract tests between discovered browser `include_str`
+   references and the root and standalone-project Lake input declarations
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files
 

@@ -28,20 +28,22 @@ inputs would retain correctness while improving cache reuse and focused rebuilds
 
 ## Roadmap Decision
 
-Use the supported library-level `needs` mechanism on Lean v4.33 for correctness
-and artifact-cache safety. Track a narrowly scoped module-header or module-level
-dependency proposal upstream: the validation showed that the current mechanism
-invalidates all 24 Blueprint modules in the targeted `Graph` build closure when
-one embedded CSS file changes.
+Use the supported library-level `needs` mechanism on the maintained Lean v4.32
+and v4.33 release lines for correctness and artifact-cache safety. Track a
+narrowly scoped module-header or module-level dependency proposal upstream: the
+validation showed that the current mechanism invalidates all 24 Blueprint
+modules in the targeted `Graph` build closure when one embedded CSS file
+changes.
 
 ## Reproduction Status
 
 The missing-input bug reproduces on Lean v4.33 and v4.34.0-rc1: changing an
 `include_str` asset while leaving its Lean owner unchanged can restore a stale
-owner artifact. On v4.33, filtered `input_dir` and `input_file` targets attached
-to the library with `needs` correctly change the artifact key and restore the
-matching artifact contents. The correctness fix is validated; its broad
-invalidation cost is the remaining upstream pressure point.
+owner artifact. On the maintained v4.32 and v4.33 release lines, filtered
+`input_dir` and `input_file` targets attached to the library with `needs`
+correctly change the artifact key and restore the matching artifact contents.
+The correctness fix is validated; its broad invalidation cost is the remaining
+upstream pressure point.
 
 ## Preliminary Analysis
 
@@ -89,14 +91,9 @@ such a dependency automatically remains a separate design choice.
   `.olean`, C artifact, and every generated HTML page. Removing the marker
   restored the baseline artifact hashes in a one-second project build; the
   resulting site passed `vbp check` with 90 manifest and 90 HTML-cache entries.
-- Fresh-copy cache measurement: an isolated project-template build fell from
-  162.78 seconds cold to 7.30 seconds warm while retaining the library-wide
-  `needs` declarations and `LAKE_RESTORE_ARTIFACTS=false`; the warm VBP package
-  tree contained traces for 87 modules and no canonical VBP `.olean` files.
-- Real reference-project measurement: the v4.33 FLT catalog target, whose exact
-  project toolchain is `v4.33.0-rc1`, fell from 231.33 seconds cold to 31.90
-  seconds warm across a 4,394-job Lake build. The resulting 586-entry site
-  passed `vbp check`.
+- Downstream project-template and FLT integrations reused the corrected
+  artifacts and passed `vbp check`; UPC-0020 owns the cache-in-place performance
+  measurements and external-consumer evidence.
 
 ## Current Workaround
 
