@@ -53,14 +53,13 @@ restoration disabled.
 - With restoration enabled, Lake restored the five embedded-asset owner modules
   used by this fixture. The unused slides owner remained absent, as expected.
 - A fresh project-template package and consumer, with private `.lake`
-  directories, built in 162.78 seconds cold and 7.30 seconds warm. The warm VBP
-  package had 87 traces and no canonical VBP `.olean` files; its generated site
-  matched the cold site apart from the compiled timestamp and passed the 20/20
+  directories, showed a large warm-build improvement. The warm VBP package had
+  traces without canonical VBP `.olean` files; its generated site matched the
+  cold site apart from the compiled timestamp and passed `vbp check`.
+- The real FLT v4.33 reference target (`v4.33.0-rc1`) likewise showed a large
+  warm-build improvement. The warm package and project trees retained cache
+  traces without canonical `.olean` files, and the generated site passed
   `vbp check`.
-- The real FLT v4.33 reference target (`v4.33.0-rc1`) built 4,394 Lake jobs in
-  231.33 seconds cold and 31.90 seconds warm. The warm package and project trees
-  retained cache traces without canonical `.olean` files, and the generated
-  site passed the 586/586 `vbp check`.
 - Lean Beam 0.2.0-beta opened and synchronized
   `VersoBlueprint.Commands.Graph` against the warm cache, reported zero
   diagnostics and `saveReady: true`, and returned semantic hover information

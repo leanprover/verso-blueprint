@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-05-04
+Last updated: 2026-08-20
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its
@@ -82,6 +82,10 @@ an RC within the current release family. Their artifacts occupy a different
 cache directory from the package checkout's final-release toolchain. The
 shared cache is content-addressed and may be pruned as a unit for one toolchain;
 mutable `.lake` build directories remain private to each worktree or project.
+Use `scripts/with-blueprint-lake-cache --print-cache-dir` from the intended
+project directory to resolve the exact toolchain partition before inspecting or
+manually pruning it; the reference-cache `prune` command does not manage Lake's
+artifact cache.
 Consumers that independently read canonical `.lake/build` paths can opt into
 restoration; the narrower editor compatibility investigation remains recorded
 in UPC-0020.
@@ -229,12 +233,13 @@ browser assets, prefer one of these paths:
 ./scripts/validate-branch.sh
 ```
 
-The tracked owner inventory lives in `EMBEDDED_ASSET_OWNERS` in
-`scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
-asset, ensure that a Lake input covers it, add it to that inventory, and cover
-the mapping in the harness tests. Keep semantic asset ordering in the Lean
-`BlueprintAssetBundle` definitions; the Python inventory only verifies input
-ownership coverage.
+Harness tests discover browser `include_str` references directly from the Lean
+source and verify that the root package and standalone showcase Lake inputs
+cover them. When adding a new embedded browser asset, keep it under a declared
+filtered input or add an explicit `input_file`, and ensure that the owning Lean
+library declares the input with `needs`. Keep semantic asset ordering in the
+Lean `BlueprintAssetBundle` definitions; the coverage test protects only the
+build dependency edge.
 
 ### Generate Review Artifacts
 
@@ -553,10 +558,15 @@ dependency paths so local and CI cache layouts agree.
 
 | Role | Path | Ownership |
 | --- | --- | --- |
+| Lake artifact cache | `.worktrees/_lake-artifact-cache/<toolchain>/` | Shared and content-addressed; never moved or copied into a consumer's private `.lake` tree |
 | Disposable source checkout | `.worktrees/_reference-blueprints/cache/<source-identity>/` | Shared; refreshed by `sync` and safe to prune |
 | Warmed dependencies | `.worktrees/_reference-blueprints/deps/<source-identity>/{packages,path-builds}/` | Shared; remains resident while consumers are seeded |
 | Validation checkout | `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-identity>/` | Owned by one root checkout or linked worktree |
 | Generated site | `_out/.../reference-blueprints/<project-id>/` | Output artifact; never stored in a dependency cache |
+
+Lake artifacts remain in their exact-toolchain partition and are resolved by
+Lake jobs. They are independent of the source-identity caches below and are not
+copied during reference-project warm-up.
 
 Dependency packages and path-dependency build trees are copied from the shared
 cache into each validation checkout. The harness never moves them or lends

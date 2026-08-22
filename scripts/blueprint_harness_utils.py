@@ -4,52 +4,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import re
 import signal
 import subprocess
 import sys
 import time
-
-
-@dataclass(frozen=True)
-class EmbeddedAssetOwner:
-    asset: str
-    owner: str
-    target: str
-
-
-EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-api-common.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-data-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-page-runtime.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/inline-preview.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph-runtime-core.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Informal/Block/relation-panel.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-base.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-data.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-render.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-hydration.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-surface.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-template.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary/Html.lean", "VersoBlueprint.Commands.Summary.Html"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.css", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.mjs", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slide-runtime.mjs", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    EmbeddedAssetOwner("static-web/math.js", "src/VersoBlueprint/Macros.lean", "VersoBlueprint.Macros"),
-)
-
-INCLUDE_STR_RE = re.compile(r'include_str\s+"([^"]+)"')
 
 
 @dataclass(frozen=True)
@@ -169,41 +127,3 @@ def print_failure_summary(failures: list[StepFailure], *, prefix: str) -> int:
 
 def lean_low_priority_command(package_root: Path, *args: str) -> list[str]:
     return [str(package_root / "scripts" / "lean-low-priority"), *args]
-
-
-def _source_root_arg(package_root: Path, owner: Path) -> str:
-    src_root = package_root / "src"
-    try:
-        owner.relative_to(src_root)
-        return "src"
-    except ValueError:
-        return "."
-
-
-def _target_from_source(package_root: Path, source: Path) -> str:
-    source_root = package_root / _source_root_arg(package_root, source)
-    return ".".join(source.relative_to(source_root).with_suffix("").parts)
-
-
-def _normalized_relative_path(package_root: Path, path: Path) -> str:
-    return path.resolve().relative_to(package_root.resolve()).as_posix()
-
-
-def discover_embedded_asset_owners(package_root: Path) -> tuple[EmbeddedAssetOwner, ...]:
-    discovered: list[EmbeddedAssetOwner] = []
-    for owner in sorted((package_root / "src" / "VersoBlueprint").rglob("*.lean")):
-        source = owner.read_text(encoding="utf-8")
-        owner_rel = _normalized_relative_path(package_root, owner)
-        target = _target_from_source(package_root, owner)
-        for include_path in INCLUDE_STR_RE.findall(source):
-            asset = (owner.parent / include_path).resolve()
-            if asset.suffix not in {".css", ".js", ".mjs"}:
-                continue
-            discovered.append(
-                EmbeddedAssetOwner(
-                    asset=_normalized_relative_path(package_root, asset),
-                    owner=owner_rel,
-                    target=target,
-                )
-            )
-    return tuple(discovered)

@@ -189,6 +189,37 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
             )
             self.assertEqual(expected_cache.stat().st_mode & 0o777, 0o700)
 
+    @unittest.skipUnless(os.name == "posix", "umask is POSIX-specific")
+    def test_blueprint_lake_cache_preserves_child_umask(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_root = Path(tmp) / "cache"
+            wrapper = PACKAGE_ROOT / "scripts" / "with-blueprint-lake-cache"
+            result = self.run_command(
+                [
+                    "/bin/bash",
+                    "-c",
+                    'umask 0027; exec "$1" /bin/sh -c umask',
+                    "blueprint-cache-umask-test",
+                    str(wrapper),
+                ],
+                env=self.cache_environment(BP_LAKE_ARTIFACT_CACHE_ROOT=str(cache_root)),
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(result.stdout.strip(), "0027")
+
+    def test_blueprint_lake_cache_help_does_not_create_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_root = Path(tmp) / "cache"
+            result = self.run_command(
+                [str(PACKAGE_ROOT / "scripts" / "with-blueprint-lake-cache"), "--help"],
+                env=self.cache_environment(BP_LAKE_ARTIFACT_CACHE_ROOT=str(cache_root)),
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn("Run a command with Blueprint's shared", result.stdout)
+            self.assertFalse(cache_root.exists())
+
     def test_blueprint_lake_cache_preserves_explicit_lake_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache_dir = Path(tmp) / "explicit-cache"

@@ -16,6 +16,17 @@ while retaining toolchain scoping.
 EOF
 }
 
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 2
+    ;;
+esac
+
 script_dir="$(cd "$(dirname "$0")" && pwd -P)"
 package_root="$(cd "$script_dir/.." && pwd -P)"
 
@@ -52,7 +63,6 @@ if [[ ! -v LAKE_CACHE_DIR ]]; then
     cache_root="$repository_root/.worktrees/_lake-artifact-cache"
   fi
   LAKE_CACHE_DIR="$cache_root/$cache_toolchain"
-  umask 077
   install -d -m 700 -- "$cache_root" "$LAKE_CACHE_DIR"
   chmod 700 -- "$cache_root" "$LAKE_CACHE_DIR"
 fi
@@ -75,14 +85,6 @@ case "${1:-}" in
     printf 'LAKE_ARTIFACT_CACHE=%s\n' "$LAKE_ARTIFACT_CACHE"
     printf 'LAKE_RESTORE_ARTIFACTS=%s\n' "$LAKE_RESTORE_ARTIFACTS"
     exit 0
-    ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  "")
-    usage >&2
-    exit 2
     ;;
 esac
 

@@ -153,10 +153,11 @@ Browser asset composition is intentionally separate from physical emission.
 ordered CSS and any feature-local JavaScript fragments needed by a Blueprint
 feature. Manual pages consume CSS through Verso `HtmlAssets` and load runtime
 JavaScript through the generated ESM page runtime. Slides load runtime
-JavaScript through the generated ESM slide runtime. The Python
-`EMBEDDED_ASSET_OWNERS` inventory verifies that every browser `include_str`
-has a declared Lake input owner; it is not the semantic source of asset
-ordering or the build dependency edge.
+JavaScript through the generated ESM slide runtime. Harness tests discover
+browser `include_str` references directly from the Lean source and verify that
+the corresponding Lake inputs and library-level `needs` declarations cover
+them. These tests are not the semantic source of asset ordering; the Lean
+bundles remain authoritative for composition.
 
 Maintainer builds share only Lake's content-addressed, toolchain-scoped artifact
 cache. Project and worktree `.lake` directories remain private. Supported
