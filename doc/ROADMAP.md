@@ -212,6 +212,8 @@ Work:
    references and the root and standalone-project Lake input declarations
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files
+5. retire the local artifact-cache wrapper once UPC-0021's Lake-native,
+   workspace-local configuration and administration surface is available
 
 ### Validation and Reference Catalogs
 

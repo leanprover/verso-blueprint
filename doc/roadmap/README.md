@@ -103,6 +103,7 @@ work.
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
 - [`UPC-0017 Layout-Independent Signature Highlighting Cache`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md)
 - [`UPC-0020 Cache-in-Place External Consumer Compatibility`](./cards/UPC-0020-cache-in-place-external-consumer-compatibility/README.md)
+- [`UPC-0021 Workspace-Local Lake Cache Management`](./cards/UPC-0021-workspace-local-lake-cache-management/README.md)
 
 ## Resolved Cards
 

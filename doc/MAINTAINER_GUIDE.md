@@ -90,6 +90,11 @@ Consumers that independently read canonical `.lake/build` paths can opt into
 restoration; the narrower editor compatibility investigation remains recorded
 in UPC-0020.
 
+Treat `scripts/with-blueprint-lake-cache` as transitional maintainer tooling,
+not a permanent package interface. UPC-0021 tracks the Lake-native,
+workspace-local configuration and administration surface required to remove it
+without imposing VBP's cache policy on downstream packages.
+
 ### Agent-Facing `vbp` Helper
 
 `lake exe vbp ...` and `skills/verso-blueprint/` are maintained as the

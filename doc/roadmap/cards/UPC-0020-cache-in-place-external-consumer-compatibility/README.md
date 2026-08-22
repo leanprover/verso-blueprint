@@ -10,7 +10,7 @@ Issue: https://github.com/leanprover/lean4/issues/14435
 PR: none linked
 Upstream timing: none
 Removal target: none; the local canonical-output fallback was removed after maintained-release validation
-Related cards: UPC-0019
+Related cards: UPC-0019, UPC-0021
 
 ## Summary
 
