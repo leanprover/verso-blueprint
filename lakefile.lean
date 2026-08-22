@@ -18,12 +18,16 @@ input_file blueprintMathJs where
   path := "static-web/math.js"
   text := true
 
+input_file mathLintWorkerJs where
+  path := "static-web/katex-lint.mjs"
+  text := true
+
 -- Blueprint core library.
 @[default_target]
 lean_lib VersoBlueprint where
   srcDir := "src"
   roots := #[`VersoBlueprint]
-  needs := #[embeddedBlueprintAssets, blueprintMathJs]
+  needs := #[embeddedBlueprintAssets, blueprintMathJs, mathLintWorkerJs]
 
 @[default_target]
 lean_exe «vbp» where

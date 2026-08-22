@@ -12,16 +12,16 @@ from scripts.blueprint_harness_utils import run_with_heartbeat
 
 
 INCLUDE_STR_RE = re.compile(r'include_str\s+"([^"]+)"')
-BROWSER_ASSET_SUFFIXES = {".css", ".js", ".mjs"}
+EMBEDDED_TEXT_ASSET_SUFFIXES = {".css", ".js", ".mjs"}
 
 
-def _browser_include_assets(source_root: Path) -> set[Path]:
+def _embedded_text_assets(source_root: Path) -> set[Path]:
     assets: set[Path] = set()
     for owner in sorted(source_root.rglob("*.lean")):
         source = owner.read_text(encoding="utf-8")
         for include_path in INCLUDE_STR_RE.findall(source):
             asset = (owner.parent / include_path).resolve()
-            if asset.suffix in BROWSER_ASSET_SUFFIXES:
+            if asset.suffix in EMBEDDED_TEXT_ASSET_SUFFIXES:
                 assets.add(asset)
     return assets
 
@@ -31,18 +31,19 @@ def _normalized_whitespace(source: str) -> str:
 
 
 class TestBlueprintHarnessUtils(unittest.TestCase):
-    def test_blueprint_browser_include_strs_are_covered_by_lake_inputs(self) -> None:
+    def test_blueprint_embedded_text_assets_are_covered_by_lake_inputs(self) -> None:
         package_root = Path(__file__).resolve().parents[2]
         source_root = package_root / "src" / "VersoBlueprint"
         math_js = (package_root / "static-web" / "math.js").resolve()
-        assets = _browser_include_assets(source_root)
+        math_lint_worker_js = (package_root / "static-web" / "katex-lint.mjs").resolve()
+        assets = _embedded_text_assets(source_root)
         missing = {asset for asset in assets if not asset.is_file()}
         uncovered = {
             asset
             for asset in assets
             if not (
-                (asset.is_relative_to(source_root) and asset.suffix in BROWSER_ASSET_SUFFIXES)
-                or asset == math_js
+                (asset.is_relative_to(source_root) and asset.suffix in EMBEDDED_TEXT_ASSET_SUFFIXES)
+                or asset in {math_js, math_lint_worker_js}
             )
         }
 
@@ -61,16 +62,23 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             'input_file blueprintMathJs where path := "static-web/math.js" text := true',
             normalized,
         )
+        self.assertIn(
+            'input_file mathLintWorkerJs where path := "static-web/katex-lint.mjs" text := true',
+            normalized,
+        )
         library = normalized.split("lean_lib VersoBlueprint where", 1)[1].split(
             "@[default_target]", 1
         )[0]
-        self.assertIn("needs := #[embeddedBlueprintAssets, blueprintMathJs]", library)
+        self.assertIn(
+            "needs := #[embeddedBlueprintAssets, blueprintMathJs, mathLintWorkerJs]",
+            library,
+        )
 
     def test_preview_showcase_browser_include_strs_are_covered_by_lake_input(self) -> None:
         package_root = Path(__file__).resolve().parents[2]
         project_root = package_root / "tests" / "test_blueprints" / "preview_runtime_showcase"
         asset_root = (project_root / "PreviewRuntimeShowcase" / "Chapters").resolve()
-        assets = _browser_include_assets(asset_root)
+        assets = _embedded_text_assets(asset_root)
         missing = {asset for asset in assets if not asset.is_file()}
         uncovered = {
             asset

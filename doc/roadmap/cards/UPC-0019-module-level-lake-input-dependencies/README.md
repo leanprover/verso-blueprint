@@ -4,7 +4,7 @@ Status: open
 Kind: upstream-api
 Priority: medium
 Origin: upstream-lake
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-22
 Owner: none
 Issue: https://github.com/leanprover/lean4/issues/2762
 PR: https://github.com/leanprover/lean4/pull/7703
@@ -94,10 +94,13 @@ such a dependency automatically remains a separate design choice.
 - Downstream project-template and FLT integrations reused the corrected
   artifacts and passed `vbp check`; UPC-0020 owns the cache-in-place performance
   measurements and external-consumer evidence.
+- The private `katex-lint.mjs` worker is covered by the explicit
+  `mathLintWorkerJs` input and the library `needs` edge. Contract tests discover
+  textual `include_str` assets and reject an uncovered worker or browser input.
 
 ## Current Workaround
 
-Declare filtered asset directories and individual out-of-tree assets as Lake
-inputs, then attach them to the whole `VersoBlueprint` library with `needs`.
+Declare filtered asset directories and individual out-of-tree text assets as
+Lake inputs, then attach them to the whole `VersoBlueprint` library with `needs`.
 Cache-in-place compatibility for consumers outside Lake's build graph is
 tracked separately by UPC-0020.

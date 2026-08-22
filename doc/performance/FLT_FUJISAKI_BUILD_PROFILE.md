@@ -90,20 +90,25 @@ dependencies, so cache state explains an unknown portion of that difference.
 ## Cause and implementation
 
 The original exact-payload cache did not help Fujisaki's 135 mostly unique
-formulas. Each miss started a fresh Node process, imported the vendored KaTeX
-module, validated the shared prelude and one formula, wrote one JSON response,
-and exited.
+formulas. Each miss started a fresh Node process, loaded KaTeX, validated the
+shared prelude and one formula, wrote one JSON response, and exited.
 
 The replacement keeps one best-effort worker per Lean process:
 
-- Node imports KaTeX once and serves sequential newline-delimited JSON requests
-  over piped stdin/stdout.
+- Lean starts an embedded Node worker, initializes it once from Verso's public
+  embedded KaTeX string, and then serves sequential newline-delimited JSON
+  requests over piped stdin/stdout.
 - The worker caches prelude validation by trimmed prelude string.
 - Lean retains the exact-payload result cache and serializes concurrent requests
   with a lazily initialized mutex.
 - A spawn, transport, or protocol failure marks linting unavailable for the rest
   of the Lean process, preserving the existing non-fatal behavior without
   repeatedly trying to restart a broken worker.
+
+The embedded bootstrap preserves this measured persistent-worker design while
+removing filesystem lookup of both the Blueprint worker and Verso's KaTeX
+distribution. The worker input is declared to Lake, so its contents participate
+in Blueprint's artifact key.
 
 Live process inspection during the FLT run showed one worker child of Lean. The
 worker exited when Lean closed its stdin, and no Node process remained after the
@@ -114,8 +119,10 @@ compile.
 - The focused Lean math-lint test covers valid and invalid source spans, invalid
   preludes, concurrent calls, and repeated use of one invalid prelude.
 - The focused test also passes with a deliberately unavailable `node` command.
-- The JavaScript entrypoint passes `node --check` and a direct worker protocol
-  probe.
+- The JavaScript entrypoint passes `node --check`, and the Lean tests exercise
+  its embedded bootstrap and worker protocol.
+- Fresh default and alternate-`packagesDir` consumer builds pass with the Lake
+  artifact cache enabled and `LAKE_RESTORE_ARTIFACTS=false`.
 - `VersoBlueprint` builds successfully with the FLT RC1 toolchain, and the
   isolated Fujisaki compile completes with math lint enabled.
 
