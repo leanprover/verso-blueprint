@@ -1,6 +1,6 @@
 # Blueprint Roadmap Cards
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-22
 
 This directory tracks maintainer planning cards for scoped implementation and
 upstream follow-up work. Cards are not end-user setup docs, option references,
@@ -39,7 +39,6 @@ removal target.
 | Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-verso-slides-pipeline-hooks/README.md) | verso-slides | medium |
 | Highlighted code | [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md) | Verso | high |
 | Highlighted code | [`UPC-0014 Portable Hover Fragment Transfer`](./cards/UPC-0014-portable-hover-fragment-transfer/README.md) | Verso | medium |
-| Elaboration | [`UPC-0010 Package Asset Resolution During Elaboration`](./cards/UPC-0010-package-asset-resolution-during-elaboration/README.md) | Lake | medium |
 | Lake build graph | [`UPC-0019 Module-Level Lake Input Dependencies`](./cards/UPC-0019-module-level-lake-input-dependencies/README.md) | Lake | medium |
 | Directive parsing | [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md) | Verso | medium |
 
@@ -58,6 +57,7 @@ work.
 ## Resolved Cards
 
 - [`UPC-0005 Verso Slides Extra Head`](./cards/UPC-0005-verso-slides-extra-head/README.md)
+- [`UPC-0010 Package Asset Resolution During Elaboration`](./cards/UPC-0010-package-asset-resolution-during-elaboration/README.md)
 
 ## Card Rules
 

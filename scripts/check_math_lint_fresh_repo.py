@@ -16,9 +16,15 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from scripts.blueprint_harness_utils import lean_low_priority_command
 
-PROBE_SOURCE = """import VersoBlueprint.MathLint
+SMOKE_SOURCE = """import Verso
+import VersoManual
+import VersoBlueprint
 
+open Verso.Genre
+open Verso.Genre.Manual
 open Informal
+
+__CASE_IDENTITY__
 
 #eval show IO Unit from do
   let result ← Informal.MathLint.lint? {
@@ -30,15 +36,6 @@ open Informal
       IO.println s!"FAILURE: {failure.reason}"
   | none =>
       IO.println "NO_FAILURE"
-"""
-
-SMOKE_SOURCE = """import Verso
-import VersoManual
-import VersoBlueprint
-
-open Verso.Genre
-open Verso.Genre.Manual
-open Informal
 
 #doc (Manual) "Introduction" =>
 
@@ -167,8 +164,14 @@ def materialize_case(
         ),
         encoding="utf-8",
     )
-    (project_dir / "Probe.lean").write_text(PROBE_SOURCE, encoding="utf-8")
-    (project_dir / "Smoke.lean").write_text(SMOKE_SOURCE, encoding="utf-8")
+    # Keep each source distinct so the shared artifact cache cannot replay the
+    # consumer module from an earlier layout instead of exercising elaboration.
+    case_identity = f"{project_dir.parent.name}-{case.name}"
+    smoke_source = SMOKE_SOURCE.replace(
+        "__CASE_IDENTITY__",
+        f'def smokeCaseIdentity : String := "{case_identity}"',
+    )
+    (project_dir / "Smoke.lean").write_text(smoke_source, encoding="utf-8")
     return project_dir
 
 
@@ -179,31 +182,48 @@ def expected_packages_root(project_dir: Path, case: Case) -> Path:
 
 
 def run_case(project_dir: Path, case: Case) -> None:
-    update = run(lean_low_priority_command(PACKAGE_ROOT, "lake", "update", "VersoBlueprint"), cwd=project_dir)
+    update = run(
+        lean_low_priority_command(PACKAGE_ROOT, "lake", "update", "VersoBlueprint"),
+        cwd=project_dir,
+    )
     require_substring(update, "VersoBlueprint", context=f"{case.name} lake update")
 
     packages_root = expected_packages_root(project_dir, case)
     blueprint_dep = packages_root / "VersoBlueprint"
     if not blueprint_dep.exists():
         raise SystemExit(f"[math-lint-smoke] expected dependency checkout at {blueprint_dep}")
-    if case.packages_dir is not None and (project_dir / ".lake" / "packages" / "VersoBlueprint").exists():
+    default_blueprint_dep = project_dir / ".lake" / "packages" / "VersoBlueprint"
+    if case.packages_dir is not None and default_blueprint_dep.exists():
         raise SystemExit("[math-lint-smoke] alternate packagesDir case still populated `.lake/packages`")
 
     build = run(lean_low_priority_command(PACKAGE_ROOT, "lake", "build", "Smoke"), cwd=project_dir)
     require_substring(build, "KaTeX rejected blueprint math", context=f"{case.name} plain build")
-    require_substring(build, "Undefined control sequence: \\definitelynotacommand", context=f"{case.name} plain build")
+    require_substring(
+        build,
+        "Undefined control sequence: \\definitelynotacommand",
+        context=f"{case.name} plain build",
+    )
+    require_substring(
+        build,
+        "FAILURE: Undefined control sequence: \\undefinedmacro",
+        context=f"{case.name} Lake-built probe",
+    )
 
-    probe = run(lean_low_priority_command(PACKAGE_ROOT, "lake", "env", "lean", "Probe.lean"), cwd=project_dir)
-    require_substring(probe, "FAILURE: Undefined control sequence: \\undefinedmacro", context=f"{case.name} direct probe")
-
-    wfail = run(lean_low_priority_command(PACKAGE_ROOT, "lake", "--wfail", "build", "Smoke"), cwd=project_dir, expect=1)
+    wfail = run(
+        lean_low_priority_command(PACKAGE_ROOT, "lake", "--wfail", "build", "Smoke"),
+        cwd=project_dir,
+        expect=1,
+    )
     require_substring(wfail, "KaTeX rejected blueprint math", context=f"{case.name} wfail build")
     require_substring(wfail, "error: build failed", context=f"{case.name} wfail build")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Materialize fresh consumer Blueprint projects and verify KaTeX math lint warnings and --wfail behavior.",
+        description=(
+            "Materialize fresh consumer Blueprint projects and verify KaTeX math lint "
+            "warnings and --wfail behavior."
+        ),
     )
     args = parser.parse_args()
     _ = args

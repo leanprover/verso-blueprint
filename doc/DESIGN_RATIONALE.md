@@ -165,6 +165,11 @@ generator entry points consume cache artifact paths through Lake, so the shared
 cache defaults to `LAKE_RESTORE_ARTIFACTS=false` rather than copying artifacts
 back into canonical build directories.
 
+Elaboration-time MathLint resources use the same declared-input discipline but
+are not emitted browser assets. Blueprint embeds its Node worker in
+`VersoBlueprint.MathLint` and imports Verso's public embedded KaTeX string, so
+linting never infers a package root from source or `.olean` locations.
+
 ## Rendering Clients
 
 The same Blueprint object data is consumed in three broad ways:

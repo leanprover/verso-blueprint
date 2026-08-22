@@ -4,7 +4,7 @@ Status: candidate
 Kind: bug
 Priority: low
 Origin: upstream-lake
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-22
 Owner: none
 Issue: https://github.com/leanprover/lean4/issues/14435
 PR: none linked
@@ -24,9 +24,11 @@ output under `.lake/build` may require restoration or additional integration.
 No failure remains in Blueprint's supported generation paths or its tested
 Lean Beam integration. `lake lean`, `lake exe vbp build`, and a held Beam
 language-server session all consumed cached modules whose canonical `.olean`
-files were absent. Lean issue #14435 records a related editor failure after a
-clean artifact-cache build, so other editor and direct-filesystem consumers
-remain worth checking upstream.
+files were absent. Fresh MathLint consumers now also work through `lake build`
+without resolving package or artifact paths. A raw `lake env lean` probe still
+failed when an imported cache-in-place `.olean` was absent, confirming that
+direct-filesystem and editor consumers remain worth checking upstream alongside
+Lean issue #14435.
 
 ## Roadmap Decision
 
@@ -71,6 +73,12 @@ restoration disabled.
   `graph.css` rebuilt the expected 24-module closure and embedded the marker;
   restoring the CSS selected the byte-identical original synthetic trace and
   removed the canonical `Graph.olean` again.
+- Fresh v4.33 MathLint consumers with default and alternate `packagesDir`
+  layouts emitted the expected KaTeX warning, returned the exact lint failure,
+  and enforced `--wfail` through `lake build` with restoration disabled. A raw
+  warm-cache `lake env lean Probe.lean` control failed because the canonical
+  imported `VersoBlueprint.MathLint.olean` was absent; the smoke test now keeps
+  the probe in Lake's artifact-aware build graph.
 
 ## Preliminary Analysis
 
@@ -86,7 +94,9 @@ clean artifact-cache rebuild on v4.34 nightly and v4.33.0-rc1. Beam's held
 language-server path does not reproduce it on v4.32 or final v4.33, so the
 remaining question is narrower: which editor/server entry paths bypass Lake's
 resolved artifact locations, and whether those paths should request
-restoration automatically.
+restoration automatically. The raw MathLint probe demonstrates the same
+boundary without implicating MathLint's runtime resources: Lean failed before
+elaboration because its imported `.olean` was not at the canonical path.
 
 ## Scope Boundary
 
@@ -124,8 +134,12 @@ entry path that requests the necessary restoration.
 - v4.32 backport: cold and cache-in-place `lake test`, fresh project-template
   generation, Beam, and asset-change/restore selection all succeeded without a
   release-specific cache disable
+- MathLint consumer smoke: default and alternate `packagesDir` Lake builds
+  passed with restoration disabled; the raw `lake env lean` control reproduced
+  the missing canonical imported-object boundary
 
 ## Current Workaround
 
 None for supported VBP generation. Set `LAKE_RESTORE_ARTIFACTS=true` only when
-using an external tool that requires canonical build-directory artifacts.
+using an external tool, including an unintegrated raw `lake env lean` workflow,
+that requires canonical build-directory artifacts.

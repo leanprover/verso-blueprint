@@ -210,7 +210,7 @@ Browser tests that need the public Blueprint render API should use
 fixtures should wait for `window.VersoBlueprint.slides.hydrate`, which is the
 generated slide runtime's narrow rehydration hook, not a general render API.
 
-### Embedded Browser Assets
+### Embedded Text Inputs and Browser Assets
 
 Several browser assets are embedded into Lean modules with `include_str`, for
 example the preview runtime, graph, summary, bibliography, block, slide, and
@@ -218,6 +218,11 @@ math assets. The root `lakefile.lean` declares filtered CSS, JavaScript, and MJS
 inputs, plus the out-of-tree math asset, and attaches them to the
 `VersoBlueprint` library with `needs`. The standalone preview showcase declares
 its own JavaScript input directory.
+
+The private `katex-lint.mjs` Node worker is also a declared text input, but it
+is not a generated-site browser asset. `VersoBlueprint.MathLint` embeds that
+worker in its own artifact and initializes it from Verso's public embedded
+KaTeX string. It does not resolve package source or `.olean` paths at runtime.
 
 Artifact-generation and validation flows rely on those Lake edges rather than
 touching Lean sources, deleting cached outputs, or materializing canonical
@@ -233,13 +238,13 @@ browser assets, prefer one of these paths:
 ./scripts/validate-branch.sh
 ```
 
-Harness tests discover browser `include_str` references directly from the Lean
+Harness tests discover textual `include_str` references directly from the Lean
 source and verify that the root package and standalone showcase Lake inputs
-cover them. When adding a new embedded browser asset, keep it under a declared
+cover them. When adding a new embedded text asset, keep it under a declared
 filtered input or add an explicit `input_file`, and ensure that the owning Lean
-library declares the input with `needs`. Keep semantic asset ordering in the
-Lean `BlueprintAssetBundle` definitions; the coverage test protects only the
-build dependency edge.
+library declares the input with `needs`. Keep browser-asset ordering in the Lean
+`BlueprintAssetBundle` definitions; the coverage test protects only the build
+dependency edge.
 
 ### Generate Review Artifacts
 

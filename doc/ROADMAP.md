@@ -196,6 +196,9 @@ Current state:
    replay, a fresh downstream project-template generation, Lean Beam, and an
    asset-change/restore cycle; all passed with artifact caching enabled and
    restoration disabled
+8. MathLint embeds its declared Node worker and consumes Verso's embedded KaTeX
+   value, removing package-root and `.olean`-location inference; fresh default
+   and alternate-package consumers pass through Lake with restoration disabled
 
 Work:
 
@@ -205,7 +208,7 @@ Work:
    forcing all artifacts into `.lake/build`; external filesystem consumers can
    opt into `LAKE_RESTORE_ARTIFACTS=true`, while the remaining editor boundary
    is tracked through UPC-0020
-3. keep direct contract tests between discovered browser `include_str`
+3. keep direct contract tests between discovered textual `include_str`
    references and the root and standalone-project Lake input declarations
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files

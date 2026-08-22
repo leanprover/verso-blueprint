@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import Verso.Output.Html.KaTeX
 
 open Lean
 
@@ -81,24 +82,22 @@ private structure RawResult where
   inPrelude : Bool := false
 deriving FromJson
 
+private structure WorkerInit where
+  katexSource : String
+deriving ToJson
+
+private structure WorkerReady where
+  ready : Bool
+deriving FromJson
+
 /--
-Package-relative location of the vendored KaTeX lint entrypoint.
+The Node worker source embedded in this module's artifact.
 
-The package root is either the repository checkout itself or the Lake dependency root under
-`.lake/packages/VersoBlueprint`, so the script path must stay relative to that root rather than to
-an external repository slug.
+Keeping both the worker and Verso's public embedded KaTeX source in imported Lean artifacts makes
+the elaborator independent of package source and `.olean` filesystem locations.
 -/
-private def katexLintScriptPath : System.FilePath :=
-  "static-web" / "katex-lint.mjs"
-
-private def versoKatexModulePath : System.FilePath :=
-  "vendored-js" / "katex" / "katex.mjs"
-
-private structure RuntimePaths where
-  script : System.FilePath
-  katexModule : System.FilePath
-
-initialize runtimePathsRef : IO.Ref (Option (Option RuntimePaths)) ← IO.mkRef none
+private def katexLintWorkerSource : String :=
+  include_str "../../static-web/katex-lint.mjs"
 
 private abbrev WorkerChild := IO.Process.Child {
   stdin := .piped
@@ -139,62 +138,6 @@ private def withLintRequestMutex (action : IO α) : IO α := do
     action
   finally
     mutex.unlock
-
-private partial def findPackageAssetFrom
-    (dir : System.FilePath) (assetPath : System.FilePath) : IO (Option System.FilePath) := do
-  let candidate := dir / assetPath
-  if ← candidate.pathExists then
-    pure (some (← IO.FS.realPath candidate))
-  else
-    match dir.parent with
-    | some parent =>
-      if parent == dir then
-        pure none
-      else
-        findPackageAssetFrom parent assetPath
-    | none => pure none
-
-/--
-Locate a package-owned asset by starting from the module source or build output.
-
-We first try the source tree from `LEAN_SRC_PATH`, then fall back to the compiled `.olean` path from
-`LEAN_PATH`. Walking upward from either location lets us recover the package root in root checkouts,
-linked worktrees, and dependency checkouts without assuming a specific Lake `packagesDir`.
--/
-private def findPackageAsset (moduleName : Name) (assetPath : System.FilePath) : IO (Option System.FilePath) := do
-  let srcSearchPath ← Lean.getSrcSearchPath
-  let srcPath? ← srcSearchPath.findModuleWithExt "lean" moduleName
-  if let some srcPath := srcPath? then
-    let srcPath ← IO.FS.realPath srcPath
-    if let some dir := srcPath.parent then
-      if let some asset := ← findPackageAssetFrom dir assetPath then
-        return some asset
-  try
-    let oleanPath ← Lean.findOLean moduleName
-    let oleanPath ← IO.FS.realPath oleanPath
-    let some dir := oleanPath.parent
-      | return none
-    findPackageAssetFrom dir assetPath
-  catch _ =>
-    pure none
-
-/--
-Resolve the external files needed by the KaTeX math linter.
-
-These paths are resolved once per Lean process because they are stable for a given checkout.
--/
-private def runtimePaths : IO (Option RuntimePaths) := do
-  match ← runtimePathsRef.get with
-  | some cached => pure cached
-  | none =>
-    let resolved ← do
-      let some script ← findPackageAsset `VersoBlueprint.MathLint katexLintScriptPath
-        | return none
-      let some katexModule ← findPackageAsset `Verso.Output.Html.KaTeX versoKatexModulePath
-        | return none
-      pure (some { script, katexModule })
-    runtimePathsRef.set (some resolved)
-    pure resolved
 
 def enabled (opts : Options) : Bool :=
   opts.get verso.blueprint.math.lint.name verso.blueprint.math.lint.defValue
@@ -270,19 +213,6 @@ private def RawResult.toFailure : RawResult → Failure
         | none, none => .unknown
     }
 
-private def startWorker (paths : RuntimePaths) : IO (Option Worker) := do
-  try
-    let child ← IO.Process.spawn {
-      cmd := "node"
-      args := #[paths.script.toString, "--worker", paths.katexModule.toString]
-      stdin := .piped
-      stdout := .piped
-      stderr := .null
-    }
-    pure <| some { child }
-  catch _ =>
-    pure none
-
 private def stopWorker (worker : Worker) : IO Unit := do
   try
     worker.child.kill
@@ -292,6 +222,38 @@ private def stopWorker (worker : Worker) : IO Unit := do
     discard worker.child.wait
   catch _ =>
     pure ()
+
+private def startWorker : IO (Option Worker) := do
+  let child? ←
+    try
+      let child ← IO.Process.spawn {
+        cmd := "node"
+        args := #["--input-type=module", "--eval", katexLintWorkerSource]
+        stdin := .piped
+        stdout := .piped
+        stderr := .null
+      }
+      pure (some child)
+    catch _ =>
+      pure none
+  let some child := child?
+    | return none
+  let worker := { child }
+  try
+    let initJson := Json.compress <| toJson ({ katexSource := Verso.Output.Html.katex.js } : WorkerInit)
+    worker.child.stdin.putStr initJson
+    worker.child.stdin.putStr "\n"
+    worker.child.stdin.flush
+    let line ← worker.child.stdout.getLine
+    let ready := Json.parse line >>= fromJson? (α := WorkerReady)
+    match ready with
+    | .ok { ready := true } => pure (some worker)
+    | _ =>
+      stopWorker worker
+      pure none
+  catch _ =>
+    stopWorker worker
+    pure none
 
 private def requestWorker (worker : Worker) (payloadJson : String) : IO (Option RawResult) := do
   if (← worker.child.tryWait).isSome then
@@ -314,16 +276,9 @@ private def requestWithState
     (status : WorkerStatus) (payloadJson : String) : IO (WorkerStatus × Option RawResult) := do
   if let .unavailable := status then
     return (.unavailable, none)
-  let paths? ←
-    try
-      runtimePaths
-    catch _ =>
-      pure none
-  let some paths := paths?
-    | return (.unavailable, none)
   let worker? ←
     match status with
-    | .notStarted => startWorker paths
+    | .notStarted => startWorker
     | .running worker => pure (some worker)
     | .unavailable => pure none
   let some worker := worker?
