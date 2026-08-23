@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-23
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -199,6 +199,9 @@ Current state:
 8. MathLint embeds its declared Node worker and consumes Verso's embedded KaTeX
    value, removing package-root and `.olean`-location inference; fresh default
    and alternate-package consumers pass through Lake with restoration disabled
+9. an isolated integration test changes a declared embedded asset, removes the
+   private build tree between builds, verifies the output for both asset
+   versions, and confirms that restoring the original succeeds without rebuilding
 
 Work:
 
@@ -210,9 +213,7 @@ Work:
    is tracked through UPC-0020
 3. keep direct contract tests between discovered textual `include_str`
    references and the root and standalone-project Lake input declarations
-4. add a build-level or generated-output check that fails when emitted browser
-   assets drift from their source files
-5. retire the local artifact-cache wrapper once UPC-0021's Lake-native,
+4. retire the local artifact-cache wrapper once UPC-0021's Lake-native,
    workspace-local configuration and administration surface is available
 
 ### Validation and Reference Catalogs
