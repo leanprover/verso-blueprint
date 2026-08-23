@@ -153,9 +153,22 @@ Browser asset composition is intentionally separate from physical emission.
 ordered CSS and any feature-local JavaScript fragments needed by a Blueprint
 feature. Manual pages consume CSS through Verso `HtmlAssets` and load runtime
 JavaScript through the generated ESM page runtime. Slides load runtime
-JavaScript through the generated ESM slide runtime. The Python
-`EMBEDDED_ASSET_OWNERS` inventory remains rebuild metadata for `include_str`
-owner modules, not the semantic source of asset ordering.
+JavaScript through the generated ESM slide runtime. Harness tests discover
+browser `include_str` references directly from the Lean source and verify that
+the corresponding Lake inputs and library-level `needs` declarations cover
+them. These tests are not the semantic source of asset ordering; the Lean
+bundles remain authoritative for composition.
+
+Maintainer builds share only Lake's content-addressed, toolchain-scoped artifact
+cache. Project and worktree `.lake` directories remain private. Supported
+generator entry points consume cache artifact paths through Lake, so the shared
+cache defaults to `LAKE_RESTORE_ARTIFACTS=false` rather than copying artifacts
+back into canonical build directories.
+
+Elaboration-time MathLint resources use the same declared-input discipline but
+are not emitted browser assets. Blueprint embeds its Node worker in
+`VersoBlueprint.MathLint` and imports Verso's public embedded KaTeX string, so
+linting never infers a package root from source or `.olean` locations.
 
 ## Rendering Clients
 

@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-20
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -177,23 +177,43 @@ manual source touches or stale cached owner modules.
 
 Current state:
 
-1. the harness refreshes embedded asset owner mtimes and rebuilds targeted owner
-   modules before reference and test blueprint generation
-2. regression tests cover the mtime refresh and targeted rebuild behavior
-3. direct `include_str` ownership still remains the underlying Lean/Lake
-   dependency model
+1. filtered Lake inputs attached to the `VersoBlueprint` library with `needs`
+   make embedded-asset changes and artifact-cache keys correct
+2. the harness no longer mutates owner mtimes, deletes cached outputs, or
+   materializes canonical `.olean` files
+3. v4.33 asset-cache experiments covered changed and restored assets plus
+   cache-in-place generation through both `lake lean` and `lake exe vbp build`,
+   with 90/90 `vbp check` results while `LAKE_RESTORE_ARTIFACTS=false`
+4. maintainer commands share a repository-local cache partitioned by the
+   nearest exact Lean toolchain while keeping every `.lake` directory private
+5. isolated project-template and real FLT integrations demonstrated large
+   cold-to-warm improvements while retaining cache-in-place artifacts and
+   passing `vbp check`; UPC-0020 owns the detailed measurements
+6. Lean Beam opened, synchronized, and served semantic hover data for a VBP
+   source module with restoration disabled and canonical dependency `.olean`
+   files absent
+7. the paired v4.32 validation covered a cold build, a build-tree-free warm
+   replay, a fresh downstream project-template generation, Lean Beam, and an
+   asset-change/restore cycle; all passed with artifact caching enabled and
+   restoration disabled
+8. MathLint embeds its declared Node worker and consumes Verso's embedded KaTeX
+   value, removing package-root and `.olean`-location inference; fresh default
+   and alternate-package consumers pass through Lake with restoration disabled
 
 Work:
 
-1. keep the harness owner-module refresh path covered while it remains the
-   practical release mechanism
-2. replace the mtime workaround with a durable generated-or-staged Lean
-   dependency edge for browser assets
-3. keep the structured embedded-asset inventory covered against discovered
-   browser `include_str` references so graph, summary, bibliography, slides,
-   block, and shared static-web ownership is not rediscovered per feature
+1. pursue module-level Lake input dependencies through UPC-0019 so one asset
+   change does not invalidate every module in the library
+2. keep generation Lake-backed so cached artifact paths remain usable without
+   forcing all artifacts into `.lake/build`; external filesystem consumers can
+   opt into `LAKE_RESTORE_ARTIFACTS=true`, while the remaining editor boundary
+   is tracked through UPC-0020
+3. keep direct contract tests between discovered textual `include_str`
+   references and the root and standalone-project Lake input declarations
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files
+5. retire the local artifact-cache wrapper once UPC-0021's Lake-native,
+   workspace-local configuration and administration surface is available
 
 ### Validation and Reference Catalogs
 

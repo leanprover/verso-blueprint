@@ -19,7 +19,7 @@ from scripts.blueprint_harness_project_commands import (
     restore_tracked_project_manifest,
     snapshot_tracked_project_manifest,
 )
-from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
+from scripts.blueprint_harness_utils import lean_low_priority_command
 
 COLLATZ_STEP_HREF = "Collatz/Source-Entries/#--informal-preview-collatz_step--statement"
 COLLATZ_STEP_REWRITTEN = (
@@ -86,7 +86,6 @@ def slides_server(tmp_path_factory):
     manifest_path, html_cache_path = generate_project_template_preview_data(
         output_dir / "project-template-blueprint"
     )
-    rebuild_embedded_asset_owners(PACKAGE_ROOT)
     subprocess.run(
         ["scripts/lean-low-priority", "lake", "build", "VersoBlueprint.Slides"],
         cwd=PACKAGE_ROOT,

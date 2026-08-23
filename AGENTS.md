@@ -122,6 +122,14 @@
 
 - Run long `lake`, `lean`, `elan`, and `.lake/build/bin/*` commands via
   `scripts/lean-low-priority ...`.
+- `scripts/lean-low-priority` runs commands through the shared Lake artifact
+  cache at `.worktrees/_lake-artifact-cache/<toolchain>/`. It defaults
+  `LAKE_ARTIFACT_CACHE=true` and `LAKE_RESTORE_ARTIFACTS=false`, discovers the
+  nearest `lean-toolchain`, and preserves explicit Lake cache overrides. Use
+  `scripts/with-blueprint-lake-cache --print-config` to inspect the effective
+  environment. The cache-in-place configuration is validated for supported VBP
+  generation and Lean Beam; direct filesystem consumers may opt into
+  restoration.
 - Preferred user-facing interface:
   - `lake exe vbp build ...`
 - Main build/test commands:
@@ -150,21 +158,13 @@
 - The Python harness is maintainer tooling for this repository's in-repo
   own tests plus ephemeral checkout validations, not the preferred end-user
   interface.
-- Harnessed artifact-generation flows now proactively refresh the owner-module
-  mtimes for embedded package assets such as `open-target-details.mjs`,
-  `preview-ready.mjs`, `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
-  `preview-runtime-base.mjs`, `preview-runtime-data.mjs`,
-  `preview-runtime-render.mjs`, `preview-runtime-source-metadata.mjs`,
-  `preview-runtime-hydration.mjs`, `preview-runtime-lifecycle.mjs`,
-  `preview-runtime-surface.mjs`, `preview-runtime-template.mjs`,
-  `preview-runtime-api.mjs`, `inline-preview.mjs`,
-  `graph.css`, `graph-runtime-core.mjs`, `graph.mjs`, `summary.css`,
-  `bibliography.css`, `relation-panel.mjs`,
-  `blueprint-slides.css`, `blueprint-slides.mjs`, and `static-web/math.js` before build
-  steps run, remove those owner modules' cached build outputs, and then run a
-  targeted root `lake build` for those owner modules. This keeps downstream
-  generator projects from silently serving stale embedded assets when only the
-  asset files changed.
+- `lakefile.lean` declares embedded CSS, JavaScript, and MJS files as filtered
+  Lake inputs and attaches them to `VersoBlueprint` with `needs`; standalone
+  fixtures declare their own embedded inputs. Harnessed generation therefore
+  must not touch owner-module mtimes, delete cached outputs, or materialize
+  canonical `.olean` files. Supported generation runs through `lake lean` or
+  `lake exe vbp build`, both of which consume cache-in-place artifacts when
+  `LAKE_RESTORE_ARTIFACTS=false`.
 - Keep the two generated artifact families distinct:
   - Reference blueprints are known Blueprint projects built or validated as
     release examples by `./scripts/generate-reference-blueprints.sh`,
@@ -197,6 +197,9 @@
   - `_out/<worktree>/test-blueprints/{<slug>,preview_runtime_showcase,state-showcase}/`
 - Shared warmed source checkout cache for external git-checkout projects:
   - `.worktrees/_reference-blueprints/cache/<source-identity>/`
+- Shared content-addressed Lake artifact cache for all linked worktrees and
+  reference projects:
+  - `.worktrees/_lake-artifact-cache/<toolchain>/`
 - Shared warmed dependency cache for external git-checkout projects:
   - `.worktrees/_reference-blueprints/deps/<source-identity>/packages/`
   - `.worktrees/_reference-blueprints/deps/<source-identity>/path-builds/`

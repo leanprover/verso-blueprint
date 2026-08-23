@@ -27,7 +27,6 @@ from scripts.blueprint_harness_project_commands import (
     local_blueprint_dependency_override,
     maybe_in_repo_blueprint_dependency_override,
     project_lake_update_command,
-    rebuild_and_log_embedded_asset_owners,
     restore_tracked_project_manifest,
     rewrite_pinned_blueprint_dependency,
     run_project_update_build_generate,
@@ -893,7 +892,6 @@ def generate_in_repo_command_project(
 
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
-    rebuild_and_log_embedded_asset_owners(layout.package_root)
     discard_untracked_project_manifest(project_dir)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     try:
@@ -946,7 +944,6 @@ def generate_git_project(
     verbose: bool = False,
     record_build_metrics: bool = False,
 ) -> None:
-    rebuild_and_log_embedded_asset_owners(layout.package_root)
     cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False)
     checkout_root = sync_reference_local_checkout(layout, project, cache_dir)
     project_dir = checkout_root / project.project_root

@@ -21,7 +21,6 @@ from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_project_commands import (
     format_project_command,
     maybe_in_repo_blueprint_dependency_override,
-    rebuild_and_log_embedded_asset_owners,
     restore_tracked_project_manifest,
     run_project_lake_update,
     run_project_update_build_generate,
@@ -554,7 +553,6 @@ def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTe
     if not project_dir.exists():
         raise SystemExit(f"[blueprint-test-blueprints] missing project root for `{fixture.slug}`: {project_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    rebuild_and_log_embedded_asset_owners(package_root)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     try:
         with maybe_in_repo_blueprint_dependency_override(project_dir, package_root):
