@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-05-04
+Last updated: 2026-08-20
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its
@@ -49,6 +49,51 @@ python3 -m scripts.blueprint_harness --help
 python3 -m scripts.blueprint_reference_harness --help
 python3 -m scripts.blueprint_test_blueprints --help
 ```
+
+### Shared Lake Artifact Cache
+
+Long Lean and Lake commands run through `scripts/lean-low-priority`, which in
+turn applies `scripts/with-blueprint-lake-cache`. The wrapper discovers the
+nearest `lean-toolchain` from the command's working directory and initializes a
+repository-shared cache at:
+
+```text
+.worktrees/_lake-artifact-cache/<toolchain>/
+```
+
+The default environment is equivalent to:
+
+```bash
+export LAKE_CACHE_DIR="$(scripts/with-blueprint-lake-cache --print-cache-dir)"
+export LAKE_ARTIFACT_CACHE=true
+export LAKE_RESTORE_ARTIFACTS=false
+```
+
+Cache-in-place artifacts are supported by `lake lean`, `lake exe vbp build`,
+and the tested `lean-beam` language-server workflow on both maintained v4.32
+and v4.33 release lines. Explicit `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and
+`LAKE_RESTORE_ARTIFACTS` values take precedence. Use
+`scripts/with-blueprint-lake-cache --print-config` to inspect the effective
+configuration. `BP_LAKE_ARTIFACT_CACHE_ROOT` changes only the shared root while
+retaining toolchain scoping; it is useful for isolated measurements.
+
+The nearest-toolchain rule is important for reference projects that remain on
+an RC within the current release family. Their artifacts occupy a different
+cache directory from the package checkout's final-release toolchain. The
+shared cache is content-addressed and may be pruned as a unit for one toolchain;
+mutable `.lake` build directories remain private to each worktree or project.
+Use `scripts/with-blueprint-lake-cache --print-cache-dir` from the intended
+project directory to resolve the exact toolchain partition before inspecting or
+manually pruning it; the reference-cache `prune` command does not manage Lake's
+artifact cache.
+Consumers that independently read canonical `.lake/build` paths can opt into
+restoration; the narrower editor compatibility investigation remains recorded
+in UPC-0020.
+
+Treat `scripts/with-blueprint-lake-cache` as transitional maintainer tooling,
+not a permanent package interface. UPC-0021 tracks the Lake-native,
+workspace-local configuration and administration surface required to remove it
+without imposing VBP's cache policy on downstream packages.
 
 ### Agent-Facing `vbp` Helper
 
@@ -170,17 +215,27 @@ Browser tests that need the public Blueprint render API should use
 fixtures should wait for `window.VersoBlueprint.slides.hydrate`, which is the
 generated slide runtime's narrow rehydration hook, not a general render API.
 
-### Embedded Browser Assets
+### Embedded Text Inputs and Browser Assets
 
 Several browser assets are embedded into Lean modules with `include_str`, for
 example the preview runtime, graph, summary, bibliography, block, slide, and
-math assets. A JS/CSS-only edit can leave a focused Lean check looking at a
-stale owner module if you run that check directly.
+math assets. The root `lakefile.lean` declares filtered CSS, JavaScript, and MJS
+inputs, plus the out-of-tree math asset, and attaches them to the
+`VersoBlueprint` library with `needs`. The standalone preview showcase declares
+its own JavaScript input directory.
 
-The artifact-generation and validation scripts already refresh the embedded
-asset owner modules before generating reference or test Blueprint output. After
-editing embedded browser assets, prefer one of these paths before relying on
-generated HTML or browser tests:
+The private `katex-lint.mjs` Node worker is also a declared text input, but it
+is not a generated-site browser asset. `VersoBlueprint.MathLint` embeds that
+worker in its own artifact and initializes it from Verso's public embedded
+KaTeX string. It does not resolve package source or `.olean` paths at runtime.
+
+Artifact-generation and validation flows rely on those Lake edges rather than
+touching Lean sources, deleting cached outputs, or materializing canonical
+`.olean` files. Both supported generation paths, `lake lean` and
+`lake exe vbp build`, consume cache-in-place artifacts when
+`LAKE_RESTORE_ARTIFACTS=false`. Set that variable to `true` only for an external
+consumer that requires artifacts under `.lake/build`. After editing embedded
+browser assets, prefer one of these paths:
 
 ```bash
 ./scripts/generate-test-blueprints.sh <slug>
@@ -188,12 +243,13 @@ generated HTML or browser tests:
 ./scripts/validate-branch.sh
 ```
 
-The tracked owner inventory lives in `EMBEDDED_ASSET_OWNERS` in
-`scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
-asset, add it to that inventory and cover the mapping in the harness tests so
-artifact generation rebuilds the right Lean owner. Keep semantic asset ordering
-in the Lean `BlueprintAssetBundle` definitions; the Python inventory is only
-rebuild metadata.
+Harness tests discover textual `include_str` references directly from the Lean
+source and verify that the root package and standalone showcase Lake inputs
+cover them. When adding a new embedded text asset, keep it under a declared
+filtered input or add an explicit `input_file`, and ensure that the owning Lean
+library declares the input with `needs`. Keep browser-asset ordering in the Lean
+`BlueprintAssetBundle` definitions; the coverage test protects only the build
+dependency edge.
 
 ### Generate Review Artifacts
 
@@ -498,10 +554,15 @@ dependency paths so local and CI cache layouts agree.
 
 | Role | Path | Ownership |
 | --- | --- | --- |
+| Lake artifact cache | `.worktrees/_lake-artifact-cache/<toolchain>/` | Shared and content-addressed; never moved or copied into a consumer's private `.lake` tree |
 | Disposable source checkout | `.worktrees/_reference-blueprints/cache/<source-identity>/` | Shared; refreshed by `sync` and safe to prune |
 | Warmed dependencies | `.worktrees/_reference-blueprints/deps/<source-identity>/{packages,path-builds}/` | Shared; remains resident while consumers are seeded |
 | Validation checkout | `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-identity>/` | Owned by one root checkout or linked worktree |
 | Generated site | `_out/.../reference-blueprints/<project-id>/` | Output artifact; never stored in a dependency cache |
+
+Lake artifacts remain in their exact-toolchain partition and are resolved by
+Lake jobs. They are independent of the source-identity caches below and are not
+copied during reference-project warm-up.
 
 Dependency packages and path-dependency build trees are copied from the shared
 cache into each validation checkout. The harness never moves them or lends

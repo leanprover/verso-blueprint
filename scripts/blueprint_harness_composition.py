@@ -8,9 +8,7 @@ import re
 import shutil
 
 from scripts.blueprint_harness_project_commands import (
-    ensure_and_log_embedded_asset_owner_outputs,
     local_blueprint_dependency_override,
-    rebuild_and_log_embedded_asset_owners,
     run_project_lake_update,
 )
 from scripts.blueprint_harness_references import read_reference_toolchain
@@ -151,7 +149,6 @@ def compose_blueprint(package_root: Path, project: ComposedBlueprint, *, verbose
     if project.output_dir.exists():
         shutil.rmtree(project.output_dir)
     project.output_dir.mkdir(parents=True, exist_ok=True)
-    rebuild_and_log_embedded_asset_owners(package_root)
 
     manifest_path = project.project_dir / "lake-manifest.json"
     with preserve_file(manifest_path):
@@ -163,7 +160,6 @@ def compose_blueprint(package_root: Path, project: ComposedBlueprint, *, verbose
         ):
             run_project_lake_update(package_root, project.project_dir)
             ensure_composed_mathlib_cache(package_root, project.project_dir)
-            ensure_and_log_embedded_asset_owner_outputs(package_root)
             build_command = [
                 "lake",
                 "exe",

@@ -1,4 +1,3 @@
-import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 
 function sanitizeMessage(message) {
@@ -17,11 +16,16 @@ function readPayload(raw) {
   }
 }
 
-async function loadKatex(katexPath) {
-  if (!katexPath) return null;
+function loadKatex(katexSource) {
+  if (typeof katexSource !== "string" || !katexSource) return null;
   try {
-    const katexModule = await import(pathToFileURL(katexPath).href);
-    const loaded = katexModule.default ?? katexModule;
+    const katexModule = { exports: {} };
+    // This is Verso's compile-time embedded KaTeX distribution, not user input.
+    Function("module", "exports", katexSource)(
+      katexModule,
+      katexModule.exports
+    );
+    const loaded = katexModule.exports?.default ?? katexModule.exports;
     return typeof loaded.renderToString === "function" ? loaded : null;
   } catch {
     return null;
@@ -153,23 +157,31 @@ function lintPayload(payload, katex, preludeCache = null) {
 }
 
 async function runWorker() {
-  const katex = await loadKatex(process.argv[3] ?? "");
-  if (!katex) return false;
-
-  const preludeCache = new Map();
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
-  for await (const raw of lines) {
-    const result = lintPayload(readPayload(raw), katex, preludeCache);
+  const iterator = lines[Symbol.asyncIterator]();
+  const initialization = await iterator.next();
+  const init = initialization.done ? null : readPayload(initialization.value);
+  const katex = loadKatex(init?.katexSource);
+  if (!katex) {
+    lines.close();
+    return false;
+  }
+
+  process.stdout.write(`${JSON.stringify({ ready: true })}\n`);
+  const preludeCache = new Map();
+  while (true) {
+    const request = await iterator.next();
+    if (request.done) return true;
+    const result = lintPayload(readPayload(request.value), katex, preludeCache);
     if (!result) {
       lines.close();
       return false;
     }
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }
-  return true;
 }
 
-const ok = process.argv[2] === "--worker" && (await runWorker());
+const ok = await runWorker();
 if (!ok) {
   process.exitCode = 1;
 }

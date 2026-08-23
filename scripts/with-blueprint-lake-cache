@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/with-blueprint-lake-cache COMMAND [ARG...]
+  scripts/with-blueprint-lake-cache --print-cache-dir
+  scripts/with-blueprint-lake-cache --print-config
+
+Run a command with Blueprint's shared, toolchain-scoped Lake artifact cache.
+Explicit LAKE_CACHE_DIR, LAKE_ARTIFACT_CACHE, and LAKE_RESTORE_ARTIFACTS values
+are preserved. BP_LAKE_ARTIFACT_CACHE_ROOT can override the shared cache root
+while retaining toolchain scoping.
+EOF
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 2
+    ;;
+esac
+
+script_dir="$(cd "$(dirname "$0")" && pwd -P)"
+package_root="$(cd "$script_dir/.." && pwd -P)"
+
+find_toolchain_file() {
+  local candidate="$PWD"
+  while true; do
+    if [[ -f "$candidate/lean-toolchain" ]]; then
+      printf '%s\n' "$candidate/lean-toolchain"
+      return 0
+    fi
+    if [[ "$candidate" == "/" ]]; then
+      break
+    fi
+    candidate="$(dirname "$candidate")"
+  done
+  printf '%s\n' "$package_root/lean-toolchain"
+}
+
+if [[ ! -v LAKE_CACHE_DIR ]]; then
+  toolchain_file="$(find_toolchain_file)"
+  IFS= read -r lean_toolchain < "$toolchain_file"
+  if [[ -z "$lean_toolchain" ]]; then
+    echo "lean-toolchain is empty: $toolchain_file" >&2
+    exit 1
+  fi
+
+  cache_toolchain="${lean_toolchain//:/---}"
+  cache_toolchain="${cache_toolchain//\//--}"
+  if [[ -v BP_LAKE_ARTIFACT_CACHE_ROOT ]]; then
+    cache_root="$BP_LAKE_ARTIFACT_CACHE_ROOT"
+  else
+    git_common_dir="$(git -C "$package_root" rev-parse --path-format=absolute --git-common-dir)"
+    repository_root="$(cd "$git_common_dir/.." && pwd -P)"
+    cache_root="$repository_root/.worktrees/_lake-artifact-cache"
+  fi
+  LAKE_CACHE_DIR="$cache_root/$cache_toolchain"
+  install -d -m 700 -- "$cache_root" "$LAKE_CACHE_DIR"
+  chmod 700 -- "$cache_root" "$LAKE_CACHE_DIR"
+fi
+
+if [[ ! -v LAKE_ARTIFACT_CACHE ]]; then
+  LAKE_ARTIFACT_CACHE=true
+fi
+if [[ ! -v LAKE_RESTORE_ARTIFACTS ]]; then
+  LAKE_RESTORE_ARTIFACTS=false
+fi
+export LAKE_CACHE_DIR LAKE_ARTIFACT_CACHE LAKE_RESTORE_ARTIFACTS
+
+case "${1:-}" in
+  --print-cache-dir)
+    printf '%s\n' "$LAKE_CACHE_DIR"
+    exit 0
+    ;;
+  --print-config)
+    printf 'LAKE_CACHE_DIR=%s\n' "$LAKE_CACHE_DIR"
+    printf 'LAKE_ARTIFACT_CACHE=%s\n' "$LAKE_ARTIFACT_CACHE"
+    printf 'LAKE_RESTORE_ARTIFACTS=%s\n' "$LAKE_RESTORE_ARTIFACTS"
+    exit 0
+    ;;
+esac
+
+exec "$@"

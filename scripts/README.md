@@ -98,7 +98,12 @@ script map, not a second command reference.
 - `validate-reference-blueprints.sh`
   Thin wrapper for `python3 -m scripts.blueprint_reference_harness validate`.
 - `lean-low-priority`
-  Small wrapper that lowers scheduler priority for long Lean/Lake commands.
+  Small wrapper that lowers scheduler priority for long Lean/Lake commands and
+  runs them through the shared Blueprint Lake artifact-cache environment.
+- `with-blueprint-lake-cache`
+  Resolve the nearest `lean-toolchain`, initialize the repository-shared
+  toolchain-scoped Lake cache, default to cache-in-place artifacts, and execute
+  a command while preserving explicit Lake cache overrides.
 - `blueprint_harness.py`
   Worktree, branch-landing, and coordination CLI.
 - `blueprint_reference_harness.py`
