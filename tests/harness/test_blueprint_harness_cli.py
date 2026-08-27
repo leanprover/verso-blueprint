@@ -311,15 +311,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 "4.30-rc2",
                 "--verso-slides-ref",
                 "v4.30.0-rc2",
-                "--keep-maintenance",
-                "1",
                 "--deploy-pages",
                 "--skip-validation",
             ]
         )
         self.assertEqual(args.toolchain, "4.30-rc2")
         self.assertEqual(args.verso_slides_ref, "v4.30.0-rc2")
-        self.assertEqual(args.keep_maintenance, 1)
         self.assertTrue(args.deploy_pages)
         self.assertTrue(args.skip_validation)
 
@@ -779,40 +776,16 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 self.assertEqual(harness_mod.command_prepare_pr(args), 0)
 
         output = out.getvalue()
-        self.assertIn("base=v4.29.0", output)
-        self.assertIn("Open a draft PR against `leanprover/verso-blueprint:v4.29.0`", output)
         self.assertIn("Backport v4.29.0: release-line bootstrap", output)
         self.assertIn("Backport v4.28.0: release-line bootstrap", output)
         self.assertIn("recommended_merge_method=squash", output)
         self.assertIn("CI verifies this is a real release-line bootstrap", output)
 
-    def test_prepare_pr_rejects_release_line_bootstrap_without_previous_default(self) -> None:
-        args = argparse.Namespace(
-            title="chore: start Lean 4.30 release line",
-            summary=None,
-            change=None,
-            source_branch="chore/start-lean-4-30-release-line",
-            exempt=None,
-            release_line_bootstrap=True,
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.30.0",
-                required_backport_branches=(),
-            ),
-            require_checkout_role=lambda *_args, **_kwargs: None,
-        ):
-            with self.assertRaisesRegex(SystemExit, "require the previous default branch"):
-                harness_mod.command_prepare_pr(args)
-
     def test_prepare_pr_allows_squash_when_all_backports_are_exempt(self) -> None:
         out = io.StringIO()
         with redirect_stdout(out):
             harness_mod.print_public_pr_message_scaffold(
-                base_branch="v4.30.0",
+                default_dev="v4.30.0",
                 source_branch="docs/release-note",
                 title="doc: update release note",
                 backport_lines=[
@@ -1477,7 +1450,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 "v4.30.0-rc1",
             )
 
-    def test_start_release_line_retires_oldest_policy_and_project_targets(self) -> None:
+    def test_start_release_line_updates_policy_and_in_repo_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "branch-policy.json").write_text(
@@ -1516,10 +1489,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                             {
                                 "id": "project-template",
                                 "source": {"kind": "in_repo_project", "project_root": "project_template"},
-                                "targets": [
-                                    {"release": "v4.28.0"},
-                                    {"release": "v4.29.0"},
-                                ],
+                                "targets": [{"release": "v4.29.0"}],
                             },
                             {
                                 "id": "external",
@@ -1529,15 +1499,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                                     "project_root": ".",
                                 },
                                 "targets": [{"release": "v4.29.0", "ref": "abc"}],
-                            },
-                            {
-                                "id": "retired-external",
-                                "source": {
-                                    "kind": "git_checkout",
-                                    "repository": "https://github.com/example/retired.git",
-                                    "project_root": ".",
-                                },
-                                "targets": [{"release": "v4.28.0", "ref": "def"}],
                             },
                         ],
                     }
@@ -1555,7 +1516,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 verso_ref=None,
                 verso_slides_ref=None,
                 deploy_pages=False,
-                keep_maintenance=1,
                 skip_validation=True,
             )
             layout = SimpleNamespace(package_root=root)
@@ -1593,8 +1553,15 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 {
                     "version": 2,
                     "default_dev_branch": "v4.30.0",
-                    "required_backport_branches": ["v4.29.0"],
+                    "required_backport_branches": ["v4.29.0", "v4.28.0"],
                     "release_targets": [
+                        {
+                            "id": "v4.28.0",
+                            "toolchain": "v4.28.0",
+                            "verso_ref": "v4.28.0",
+                            "branch": "v4.28.0",
+                            "deploy_pages": False,
+                        },
                         {
                             "id": "v4.29.0",
                             "toolchain": "v4.29.0",
@@ -1615,10 +1582,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertNotIn("release_targets", manifest)
             self.assertEqual(
-                [project["id"] for project in manifest["projects"]],
-                ["project-template", "external"],
-            )
-            self.assertEqual(
                 manifest["projects"][0]["targets"],
                 [
                     {"release": "v4.29.0"},
@@ -1631,56 +1594,9 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             )
             self.assertEqual(
                 pull_request_template.read_text(encoding="utf-8"),
-                "This PR <summary>.\n\nBackport v4.29.0: pending\n",
+                "This PR <summary>.\n\nBackport v4.29.0: pending\nBackport v4.28.0: pending\n",
             )
-            self.assertIn("retired_releases=v4.28.0", out.getvalue())
             self.assertIn("set-default-dev-branch v4.30.0-rc2", out.getvalue())
-
-            policy_text = (root / "branch-policy.json").read_text(encoding="utf-8")
-            manifest_text = manifest_path.read_text(encoding="utf-8")
-            template_text = pull_request_template.read_text(encoding="utf-8")
-            with patched_attrs(
-                harness_mod,
-                detect_harness_layout=lambda _start=None: layout,
-                current_branch_name=lambda _checkout_root: "v4.30.0",
-                bump_toolchain_checkout=fake_bump,
-            ):
-                with redirect_stdout(io.StringIO()):
-                    self.assertEqual(harness_mod.command_start_release_line(args), 0)
-            self.assertEqual((root / "branch-policy.json").read_text(encoding="utf-8"), policy_text)
-            self.assertEqual(manifest_path.read_text(encoding="utf-8"), manifest_text)
-            self.assertEqual(pull_request_template.read_text(encoding="utf-8"), template_text)
-
-    def test_start_release_line_rejects_retiring_previous_default_before_mutation(self) -> None:
-        args = argparse.Namespace(
-            toolchain="4.30-rc2",
-            verso_ref=None,
-            verso_slides_ref=None,
-            deploy_pages=False,
-            keep_maintenance=0,
-            skip_validation=True,
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/package"))
-        called = False
-
-        def unexpected_bump(*_args, **_kwargs):
-            nonlocal called
-            called = True
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            current_branch_name=lambda _checkout_root: "v4.30.0",
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.29.0",
-                required_backport_branches=("v4.28.0",),
-            ),
-            bump_toolchain_checkout=unexpected_bump,
-        ):
-            with self.assertRaisesRegex(SystemExit, "retain the previous default-development branch"):
-                harness_mod.command_start_release_line(args)
-
-        self.assertFalse(called)
 
     def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
         args = argparse.Namespace(
@@ -1688,7 +1604,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             verso_ref="v4.29.0",
             verso_slides_ref=None,
             deploy_pages=False,
-            keep_maintenance=None,
             skip_validation=True,
         )
         layout = SimpleNamespace(package_root=Path("/tmp/package"))
@@ -2954,13 +2869,13 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             description=None,
             targets=(HarnessProjectTarget(release="v4.29.0", ref="deadbeef", publish_reference=True),),
         )
-        outdated = HarnessProject(
-            project_id="outdated-project",
+        sphere = HarnessProject(
+            project_id="spherepackingblueprint",
             source_kind="git_checkout",
             project_root=".",
             build_target=None,
             generator=None,
-            repository="https://github.com/example/outdated.git",
+            repository="https://github.com/example/sphere.git",
             ref=None,
             build_command=("lake", "build"),
             generate_command=VBP_BUILD_COMMAND,
@@ -2976,7 +2891,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 HarnessReleaseTarget("v4.28.0", "v4.28.0", "v4.28.0", "v4.28.0", False),
                 HarnessReleaseTarget("v4.29.0", "v4.29.0", "v4.29.0", "v4.29.0", True),
             ),
-            projects=(template, nop, outdated),
+            projects=(template, nop, sphere),
         )
         args = argparse.Namespace(manifest=None, project=None, release=None, outdated_only=True)
         layout = SimpleNamespace(package_root=Path("/tmp/package"), repo_root=Path("/tmp/repo"))
@@ -3026,7 +2941,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("outdated_projects=1", output)
         self.assertIn("downstream_pin_drift=0", output)
         self.assertIn("project=noperthedron", output)
-        self.assertNotIn("project=outdated-project", output)
+        self.assertNotIn("project=spherepackingblueprint", output)
 
     def test_reference_release_status_project_filter_includes_validation_only_targets(self) -> None:
         validation_project = HarnessProject(

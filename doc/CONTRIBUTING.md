@@ -26,9 +26,9 @@ This repository keeps local parallel work simple:
   default-dev slug with a release marker in front of it.
   Examples:
   - default-dev branch: `fix/backport-discipline`
-  - paired maintenance branch: `fix/backport-<release-marker>-backport-discipline`
+  - paired `v4.32.0` backport branch: `fix/backport-v432-backport-discipline`
   - default-dev docs branch: `docs/manual-cleanup`
-  - paired maintenance docs branch: `docs/backport-<release-marker>-manual-cleanup`
+  - paired `v4.32.0` docs backport branch: `docs/backport-v432-manual-cleanup`
 
 Prefer short, descriptive slugs over opaque branch names.
 
@@ -150,9 +150,9 @@ Do those upstream write actions only when they are explicitly requested.
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs
-  - use `python3 -m scripts.blueprint_harness prepare-backport-pr <release> --main-pr <pr>`
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>`
     to scaffold one paired backport PR branch name, title, and body
-  - apply the scaffolded release label, `backport-<release>`, to the
+  - apply the scaffolded release label, for example `backport-v4.32.0`, to the
     paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>`, or
@@ -166,9 +166,9 @@ Do those upstream write actions only when they are explicitly requested.
 - Record the pairing in the PR body using plain lines like:
 
 ```text
-Backport <release>: pending
-Backport <release>: #122
-Backport <release>: exempt: docs-only change
+Backport v4.32.0: pending
+Backport v4.32.0: #122
+Backport v4.32.0: exempt: docs-only change
 ```
 
 See the repository PR template for the preferred structure.
