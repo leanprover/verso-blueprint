@@ -1,12 +1,13 @@
 import Lake
 open Lake DSL
 
-require verso from git "https://github.com/leanprover/verso"@"v4.34.0-rc1"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.34.0-rc1"
+require verso from git "https://github.com/leanprover/verso"@"99e9df791e46ec647f81d98b109965f166b9b6b4"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.34.0-rc2"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
+require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 
 package VersoBlueprint where
-  precompileModules := false
+  precompileModules := true
   leanOptions := #[⟨`experimental.module, true⟩]
 
 -- Blueprint core library.
