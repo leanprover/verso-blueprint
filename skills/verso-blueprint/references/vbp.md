@@ -44,21 +44,16 @@ Defaults:
 
 `discover` reports the Lake-backed package, generator entry point, generator module, generator source file, and default output paths. Fields ending in `Guess`, such as `topLevelBlueprintModuleGuess` and `chapterCandidateGuesses`, are convention-based hints for agents and may be null or incomplete. The JSON includes `"apiStability":"unstable"` and a `discoveryErrors` array. When Lake workspace discovery fails or no generator entry point can be found, package and generator fields are null and `discoveryErrors` explains why.
 
-`build` discovers the generator entry point directly, builds only the
-Blueprint library's OLean dependency closure, prepares/elaborates the generator
-file with Lake, then runs the generator through Lean's interpreter:
+Once running, `build` loads the project workspace and reuses it to discover the
+generator and invoke Lake's Lean-file runner. The runner builds the generator's
+imports and executes the generator through Lean's interpreter:
 
 ```bash
-lake build +<BlueprintLibrary>:olean
-lake lean <GeneratorMain>.lean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
 ```
 
-The explicit `:olean` facet is important for Mathlib consumers: Lake's default
-`leanArts` facet also emits C and can otherwise trigger an unintended native
-dependency rebuild.
-
-`build --verbose` passes `--verbose` through to the generator run, enabling Blueprint generation phase progress after the Lake package build completes.
+`build --verbose` passes `--verbose` through to the generator run, enabling
+Blueprint generation phase progress after Lake has prepared the generator.
 Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX output.
 `--pdf-engine <cmd>` and `--pdf-runs <n>` are forwarded to the generator when
 the local project's `vbp` binary supports them; run `lake exe vbp --help` for the
@@ -67,8 +62,9 @@ exact local flag surface.
 `build --serve` builds once, then serves `<output>/html-multi` with a local static server and keeps running. Without `--port`, it tries port `8000` and falls back to an available port. With `--serve --port <n>`, it fails if the requested port is unavailable. `--port` is accepted only with `--serve`. The command prints the actual preview URL.
 
 `discover`, `query`, and `check` print compact JSON to stdout on success.
-`build` streams the attached Lake/generator stdout and stderr. If a build stage
-fails, `vbp` writes `vbp build: <stage> failed ...` to stderr and exits nonzero.
+`build` streams the attached Lake/generator stdout and stderr. If the generator
+run fails, `vbp` writes `vbp build: generator run failed ...` to stderr and
+exits nonzero.
 Argument errors print to stderr and exit with code 2. Missing or inconsistent
 generated data also prints an error to stderr and exits nonzero.
 
@@ -109,8 +105,6 @@ The command exits nonzero when generated data is missing, malformed, or internal
 For older projects, inspect the generator entry point, then use:
 
 ```bash
-lake build +<BlueprintLibrary>:olean
-lake lean <GeneratorMain>.lean
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-html-cache
