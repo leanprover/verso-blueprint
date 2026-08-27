@@ -997,12 +997,10 @@ The harness is now project-driven rather than hardcoded to one project.
 - keep each external Blueprint on its one intended current release target;
   move that target when the project advances instead of retaining published
   legacy targets for older releases
-- prefer `lake exe vbp build` for package-local generation; if the harness must
-  drive an external project explicitly, build only the Blueprint library's OLean
-  dependency closure with `lake build +<BlueprintLibrary>:olean`, followed by
-  `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...` when the
-  harness must drive an external project explicitly; do not use Lake's default
-  `leanArts` facet because it also emits C
+- prefer `lake exe vbp build` for package-local generation; once running, VBP
+  reuses its loaded Lake workspace for discovery and the workspace's Lean-file
+  runner. If the harness must drive an external project explicitly, use
+  `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean ...`
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency

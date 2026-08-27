@@ -35,7 +35,6 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("`build --verbose` passes `--verbose` through to the generator run", text)
         self.assertIn("lake exe vbp query [--site <dir>] <selector>", text)
         self.assertIn("lake exe vbp check [--site <dir>]", text)
-        self.assertIn("lake lean <GeneratorMain>.lean", text)
         self.assertIn("lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>", text)
         self.assertIn("selectors`: query selector forms", text)
         self.assertIn("does not require generated Blueprint data", text)
@@ -56,7 +55,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         self.assertIn("topLevelBlueprintModuleGuess", text)
         self.assertIn("chapterCandidateGuesses", text)
         self.assertIn("print compact JSON to stdout on success", text)
-        self.assertIn("writes `vbp build: <stage> failed ...` to stderr", text)
+        self.assertIn("writes `vbp build: generator run failed ...` to stderr", text)
         self.assertIn("fully unstable", text)
         self.assertIn("Fallback Without `vbp`", text)
 
@@ -76,8 +75,9 @@ class VersoBlueprintSkillTests(unittest.TestCase):
     def test_readme_marks_vbp_json_unstable(self) -> None:
         text = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Treat `vbp` query JSON as an unstable", text)
-        self.assertIn("not a public compatibility contract", " ".join(text.split()))
-        self.assertIn("not part of the documented integration API", text)
+        normalized = " ".join(text.split())
+        self.assertIn("not a public compatibility contract", normalized)
+        self.assertIn("not part of the documented integration API", normalized)
 
     def test_maintainer_guide_records_vbp_boundary(self) -> None:
         text = (PACKAGE_ROOT / "doc" / "MAINTAINER_GUIDE.md").read_text(encoding="utf-8")
