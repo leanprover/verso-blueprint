@@ -123,6 +123,11 @@ def external_catalog_data(
 
 
 class BlueprintHarnessProjectsTests(unittest.TestCase):
+    def oldest_required_backport_release(self) -> str:
+        required_backports = load_branch_policy(PACKAGE_ROOT).required_backport_branches
+        self.assertTrue(required_backports, "expected at least one required backport release")
+        return required_backports[-1]
+
     def test_command_with_pdf_appends_pdf_once(self) -> None:
         self.assertEqual(
             command_with_pdf(VBP_BUILD_COMMAND),
@@ -232,7 +237,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [
                 "project-template",
                 "noperthedron",
-                "spherepackingblueprint",
                 "verso-flt",
                 "verso-carleson",
             ],
@@ -273,7 +277,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_repositories = {
             "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
-            "spherepackingblueprint": "https://github.com/ejgallego/verso-sphere-packing.git",
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
             "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
         }
@@ -651,7 +654,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-        release = resolve_release_target(catalog, "v4.32.0", PACKAGE_ROOT)
+        maintenance_release = self.oldest_required_backport_release()
+        release = resolve_release_target(catalog, maintenance_release, PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
         matrix = reference_build_matrix(projects, release)
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
@@ -1100,7 +1104,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
-        self.assert_resolved_projects_match_manifest("v4.32.0")
+        maintenance_release = self.oldest_required_backport_release()
+        self.assert_resolved_projects_match_manifest(maintenance_release)
 
     def test_resolve_projects_for_default_release_uses_matching_targets(self) -> None:
         self.assert_resolved_projects_match_manifest(load_branch_policy(PACKAGE_ROOT).default_dev_branch)

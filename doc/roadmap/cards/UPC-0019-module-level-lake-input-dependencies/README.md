@@ -4,7 +4,7 @@ Status: open
 Kind: upstream-api
 Priority: medium
 Origin: upstream-lake
-Last reviewed: 2026-08-22
+Last reviewed: 2026-08-27
 Owner: none
 Issue: https://github.com/leanprover/lean4/issues/2762
 PR: https://github.com/leanprover/lean4/pull/7703
@@ -28,8 +28,8 @@ inputs would retain correctness while improving cache reuse and focused rebuilds
 
 ## Roadmap Decision
 
-Use the supported library-level `needs` mechanism on the maintained Lean v4.32
-and v4.33 release lines for correctness and artifact-cache safety. Track a
+Use the supported library-level `needs` mechanism on maintained Lean release
+lines for correctness and artifact-cache safety. Track a
 narrowly scoped module-header or module-level dependency proposal upstream: the
 validation showed that the current mechanism invalidates all 24 Blueprint
 modules in the targeted `Graph` build closure when one embedded CSS file
@@ -39,7 +39,7 @@ changes.
 
 The missing-input bug reproduces on Lean v4.33 and v4.34.0-rc1: changing an
 `include_str` asset while leaving its Lean owner unchanged can restore a stale
-owner artifact. On the maintained v4.32 and v4.33 release lines, filtered
+owner artifact. Validation on Lean v4.32 and v4.33 showed that filtered
 `input_dir` and `input_file` targets attached to the library with `needs`
 correctly change the artifact key and restore the matching artifact contents.
 The correctness fix is validated; its broad invalidation cost is the remaining

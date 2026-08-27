@@ -4,7 +4,7 @@ Status: candidate
 Kind: upstream-api
 Priority: medium
 Origin: upstream-lake
-Last reviewed: 2026-07-16
+Last reviewed: 2026-08-27
 Owner: none
 Issue: none linked
 PR: none linked
@@ -23,13 +23,14 @@ Blueprint's reference-project harness validates fresh external projects. On
 Lean v4.29.0, `.lake/package-overrides.json` and `lake --packages ... update`
 did not prevent an initial upstream clone when no manifest existed. The harness
 still rewrites cloned `lakefile.lean` dependencies before running `lake update`,
-but the current v4.32.0 behavior has not been isolated.
+but the behavior has not been rechecked on a currently supported release.
 
 ## Roadmap Decision
 
-Keep this as a candidate until the behavior is rechecked against v4.32.0. If it
-still reproduces, promote the card to `open`; otherwise resolve it and decide
-whether the harness rewrite can be simplified safely.
+Keep this as a candidate until the behavior is rechecked against the current
+default-development release. If it still reproduces, promote the card to
+`open`; otherwise resolve it and decide whether the harness rewrite can be
+simplified safely.
 
 ## Reproduction Status
 
