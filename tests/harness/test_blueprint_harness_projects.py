@@ -123,11 +123,6 @@ def external_catalog_data(
 
 
 class BlueprintHarnessProjectsTests(unittest.TestCase):
-    def oldest_required_backport_release(self) -> str:
-        required_backports = load_branch_policy(PACKAGE_ROOT).required_backport_branches
-        self.assertTrue(required_backports, "expected at least one required backport release")
-        return required_backports[-1]
-
     def test_command_with_pdf_appends_pdf_once(self) -> None:
         self.assertEqual(
             command_with_pdf(VBP_BUILD_COMMAND),
@@ -246,14 +241,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         release_id_set = set(release_ids)
         self.assertIn(branch_policy.default_dev_branch, release_ids)
         self.assertNotIn(branch_policy.default_dev_branch, branch_policy.required_backport_branches)
-        self.assertEqual(
-            branch_policy.required_backport_branches,
-            tuple(
-                reversed(
-                    [release_id for release_id in release_ids if release_id != branch_policy.default_dev_branch]
-                )
-            ),
-        )
+        self.assertEqual(branch_policy.required_backport_branches, ())
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
@@ -263,8 +251,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
         self.assertIsNotNone(default_template_target)
+        active_template_target = projects[0].target_for_release(current_release.release_id)
+        self.assertIsNotNone(active_template_target)
         self.assertEqual(
-            default_template_target.rc,
+            active_template_target.rc,
             release_candidate_name_or_none((PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")),
         )
         self.assertFalse(default_template_target.publish_reference)
@@ -654,8 +644,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-        maintenance_release = self.oldest_required_backport_release()
-        release = resolve_release_target(catalog, maintenance_release, PACKAGE_ROOT)
+        release = resolve_release_target(catalog, None, PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
         matrix = reference_build_matrix(projects, release)
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
@@ -1104,8 +1093,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
-        maintenance_release = self.oldest_required_backport_release()
-        self.assert_resolved_projects_match_manifest(maintenance_release)
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        current_release = resolve_release_target(catalog, None, PACKAGE_ROOT)
+        self.assert_resolved_projects_match_manifest(current_release.release_id)
 
     def test_resolve_projects_for_default_release_uses_matching_targets(self) -> None:
         self.assert_resolved_projects_match_manifest(load_branch_policy(PACKAGE_ROOT).default_dev_branch)

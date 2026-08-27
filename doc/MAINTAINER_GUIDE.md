@@ -69,11 +69,10 @@ export LAKE_ARTIFACT_CACHE=true
 export LAKE_RESTORE_ARTIFACTS=false
 ```
 
-Cache-in-place artifacts are supported by `lake lean` and `lake exe vbp build`
-on the maintained v4.33 and v4.34 release lines. The `lean-beam`
-language-server workflow has also been validated on v4.33. Explicit
-`LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values
-take precedence. Use
+Cache-in-place artifacts are supported by `lake lean`, `lake exe vbp build`,
+and the tested `lean-beam` language-server workflow on both maintained v4.32
+and v4.33 release lines. Explicit `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and
+`LAKE_RESTORE_ARTIFACTS` values take precedence. Use
 `scripts/with-blueprint-lake-cache --print-config` to inspect the effective
 configuration. `BP_LAKE_ARTIFACT_CACHE_ROOT` changes only the shared root while
 retaining toolchain scoping; it is useful for isolated measurements.
@@ -431,8 +430,8 @@ fixtures, and pin the matching `verso` and `verso-slides` releases or release
 candidates in the root package:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain 4.34-rc1
-python3 -m scripts.blueprint_harness bump-toolchain v4.34.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain 4.33-rc2
+python3 -m scripts.blueprint_harness bump-toolchain v4.33.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
@@ -442,9 +441,9 @@ the committed manifests for the root package, `project_template`, and
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release
-candidates use the official short RC name, for example `4.34-rc1`; the harness
+candidates use the official short RC name, for example `4.33-rc2`; the harness
 writes the corresponding Lean, `verso`, and `verso-slides` tag ref, such as
-`v4.34.0-rc1`.
+`v4.33.0-rc2`.
 The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ, or `--verso-slides-ref <tag>` for the corresponding
@@ -457,45 +456,38 @@ default-development branch, then let the harness do the branch-local release
 setup:
 
 ```bash
-python3 -m scripts.blueprint_harness start-release-line 4.34-rc1 --keep-maintenance 1
+python3 -m scripts.blueprint_harness start-release-line 4.33-rc2
 ```
 
-`--keep-maintenance COUNT` declares the desired number of inherited maintenance
-lines. It retires the remaining oldest contiguous suffix and must retain the
-previous default-development branch. Omitting it retains every inherited line.
-
-Run this from the new local branch, for example `v4.34.0`. The command:
+Run this from the new local branch, for example `v4.33.0`. The command:
 
 - rewrites the managed `lean-toolchain` files, the root `verso` and
   `verso-slides` pins, and the committed manifests for the root package,
   `project_template`, and the preview showcase
 - updates `branch-policy.json` so the new branch is the default-development
   line, the previous default-development branch becomes a required backport
-  target, the requested oldest maintenance suffix retires, and the new release
-  target is recorded
+  target, and the new release target is recorded
 - adds the new release target to in-repo CI fixtures such as
   `project-template` and records their RC override while the root package is on
   a release candidate; fixtures remain explicitly selectable for validation
   but are not added to the public reference catalog
-- removes retired release targets from the project catalog, including external
-  projects that have no remaining maintained target
 - rewrites the PR template's managed `Backport ...` lines from the resulting
   `branch-policy.json` backport sequence
 
-For release candidates, use the official short RC name such as `4.34-rc1`.
-The branch name remains the stable release branch, for example `v4.34.0`, while
-the command pins the managed root-package files to `v4.34.0-rc1`.
+For release candidates, use the official short RC name such as `4.33-rc2`.
+The branch name remains the stable release branch, for example `v4.33.0`, while
+the command pins the managed root-package files to `v4.33.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
 validated on the new Lean release. If an external project still uses a release
 candidate while VBP has moved further within that release family, record its
-exact compiler, for example `"reference_toolchain": "v4.34.0-rc1"`, on that
+exact compiler, for example `"reference_toolchain": "v4.33.0-rc1"`, on that
 project target in `tests/harness/projects.json`.
 
-Do not backport the branch-start commit to retained maintenance lines: that
-commit changes the actual Lean toolchain. Instead, update only the tracked
-branch policy metadata on each retained branch so the harness recognizes it as
+Do not backport the branch-start commit to older release lines: that commit
+changes the actual Lean toolchain. Instead, update only the tracked branch
+policy metadata on each older release branch so the harness recognizes them as
 backport-only:
 
 ```bash
@@ -504,20 +496,17 @@ python3 -m scripts.blueprint_harness set-default-dev-branch <new-default-dev-too
 
 Use the exact command printed by `start-release-line`. For version 2 policies,
 `set-default-dev-branch` also adds the new branch's baseline release target when
-the retained checkout does not have it yet and adds the corresponding target to
+the older checkout does not have it yet and adds the corresponding target to
 in-repo project metadata. Passing the printed RC ref preserves its target-level
-RC pin. The command preserves the retained checkout's own Lean toolchain,
-existing release targets, and required-backport list.
+RC pin. The command preserves the older checkout's own Lean toolchain, existing
+release targets, and required-backport list.
 
-Commit that metadata-only change separately on each retained maintenance branch,
-such as `v4.33.0`. Preserve its own Lean toolchain pin. Retired branches do not
-receive this metadata update.
+Commit that metadata-only change separately on each older branch that still
+carries `branch-policy.json`, such as `v4.32.0`. Preserve their own Lean
+toolchain pins.
 
 For the branch-start PR, run `prepare-pr --release-line-bootstrap`. This emits
 `Backport ...: release-line bootstrap` for each resulting maintenance line.
-The scaffold targets the first resulting maintenance line, which is the
-previous default-development branch, rather than the new default recorded by
-the PR head.
 The paired-backport check accepts that status in draft and ready PRs only after
 comparing the PR base with the head checkout and verifying that the Lean
 toolchain and branch policy advance coherently. The previous default and an
