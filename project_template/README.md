@@ -95,9 +95,8 @@ project helper:
 lake exe vbp build
 ```
 
-`vbp build` builds the Lean library artifacts, prepares the generator file, and
-then runs the generator through Lake's Lean wrapper without relying on a
-separate Lake executable target.
+`vbp build` discovers the generator, then uses Lake to build its imports and
+execute it without requiring a separate generator executable target.
 
 To build a PDF locally, run:
 
