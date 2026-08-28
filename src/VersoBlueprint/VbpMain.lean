@@ -86,11 +86,9 @@ def generatorModuleFromFile (path : FilePath) : String :=
       text
   text.replace "/" "."
 
-private structure ProjectInfo where
+private structure GeneratorContext where
   workspace : Lake.Workspace
-  packageName : String
   generatorFile : FilePath
-  generatorModule : String
 
 /--
 Resolve Lake relative to the Lean installation selected for the project.
@@ -192,7 +190,7 @@ private def findGeneratorFile? (cwd : FilePath) (packageName : String) : IO (Opt
       let rootFiles ← rootLeanFiles cwd
       firstGeneratorLikeFile? cwd rootFiles.toList
 
-private def projectInfo : IO (Except String ProjectInfo) := do
+private def generatorContext : IO (Except String GeneratorContext) := do
   let cwd ← IO.currentDir
   match ← loadWorkspace with
   | .error err => pure (.error err)
@@ -206,9 +204,7 @@ private def projectInfo : IO (Except String ProjectInfo) := do
       | some generatorFile =>
           pure (.ok {
             workspace,
-            packageName,
-            generatorFile,
-            generatorModule := generatorModuleFromFile generatorFile
+            generatorFile
           })
 
 private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : IO (Array String) := do
@@ -231,12 +227,13 @@ private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : 
 
 def discover : IO UInt32 := do
   let cwd ← IO.currentDir
-  let info? ← projectInfo
-  let (packageName?, generator?, generatorModule?, discoveryErrors) :=
-    match info? with
-    | .ok info =>
-        (some info.packageName, some info.generatorFile, some info.generatorModule, #[])
-    | .error err => (none, none, none, #[err])
+  let context? ← generatorContext
+  let (packageName?, generator?, discoveryErrors) :=
+    match context? with
+    | .ok context =>
+        (some context.workspace.root.prettyName, some context.generatorFile, #[])
+    | .error err => (none, none, #[err])
+  let generatorModule? := generator?.map generatorModuleFromFile
   let topLevel? ←
     match generator? with
     | none => pure none
@@ -384,13 +381,13 @@ private def pdfGeneratorArgs (opts : BuildOptions) : Array String :=
   | none => args
 
 private def generateSite (opts : BuildOptions) : IO UInt32 := do
-  match ← projectInfo with
+  match ← generatorContext with
   | .error err =>
       IO.eprintln err
       pure 1
-  | .ok info =>
-      let args := generatorLeanArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
-      runGenerator info.workspace info.generatorFile args
+  | .ok context =>
+      let args := generatorLeanArgs context.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
+      runGenerator context.workspace context.generatorFile args
 
 private def serveScript : String := String.intercalate "\n" [
   "import functools, http.server, socketserver, sys",
