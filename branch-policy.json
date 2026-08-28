@@ -7,7 +7,7 @@
   "release_targets": [
     {
       "id": "v4.33.0",
-      "toolchain": "v4.33.0",
+      "toolchain": "v4.33.1",
       "verso_ref": "v4.33.0",
       "branch": "v4.33.0",
       "deploy_pages": true
@@ -17,7 +17,7 @@
       "toolchain": "v4.34.0",
       "verso_ref": "v4.34.0",
       "branch": "v4.34.0",
-      "deploy_pages": false
+      "deploy_pages": true
     }
   ]
 }

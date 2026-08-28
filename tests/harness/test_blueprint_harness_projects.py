@@ -211,17 +211,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
 
-    def assert_single_maintained_release_target(
+    def assert_maintained_release_targets(
         self,
         project: HarnessProject,
         release_ids: set[str],
         *,
         publish_reference: bool | None = None,
     ) -> None:
-        self.assertEqual(len(project.targets), 1)
-        self.assertIn(project.targets[0].release, release_ids)
+        self.assertTrue(project.targets)
+        self.assertLessEqual({target.release for target in project.targets}, release_ids)
         if publish_reference is not None:
-            self.assertEqual(project.targets[0].publish_reference, publish_reference)
+            self.assertTrue(
+                all(target.publish_reference is publish_reference for target in project.targets)
+            )
 
     def test_default_manifest_contains_release_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
@@ -280,12 +282,17 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
             "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
         }
+        external_release_ids: set[str] = set()
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
             self.assertEqual(project.repository, expected_external_repositories[project.project_id])
-            self.assert_single_maintained_release_target(project, release_id_set, publish_reference=True)
+            self.assert_maintained_release_targets(
+                project, release_id_set, publish_reference=True
+            )
+            external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
+        self.assertEqual(external_release_ids, release_id_set)
 
     def test_selected_project_toolchain_uses_selected_release(self) -> None:
         project = external_project(selected_release="v4.29.0")
@@ -812,7 +819,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     "release_targets": [
                         {
                             "id": "v4.28.0",
-                            "toolchain": "v4.28.0",
+                            "toolchain": "v4.28.1",
                             "verso_ref": "v4.28.0",
                             "branch": "v4.28.0",
                             "deploy_pages": True,
@@ -837,6 +844,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.28.0",
                                     "ref": "old-controller-ref",
+                                    "reference_toolchain": "v4.28.0",
                                     "publish_reference": True,
                                 }
                             ],
@@ -919,7 +927,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         }
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["targets"],
-            [{"release": "v4.28.0", "ref": "old-controller-ref"}],
+            [
+                {
+                    "release": "v4.28.0",
+                    "ref": "old-controller-ref",
+                    "reference_toolchain": "v4.28.0",
+                }
+            ],
         )
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["source"]["project_root"],
