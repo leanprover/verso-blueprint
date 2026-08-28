@@ -384,9 +384,8 @@ reference projects publish on each Lean release line. Maintainers can inspect
 the current checkout's selected projects with
 `python3 -m scripts.blueprint_reference_harness projects`.
 
-Each external Blueprint is published only for its explicitly declared release
-targets. Noperthedron currently targets `v4.33.0`; FLT and Carleson target both
-`v4.33.0` and `v4.34.0`.
+Each external Blueprint is published only for its intended current release.
+Noperthedron currently targets `v4.33.0`; FLT and Carleson target `v4.34.0`.
 [Sphere Packing](https://github.com/ejgallego/verso-sphere-packing) remains on
 the retired `v4.32.0` line and is temporarily absent from the active catalog
 until it catches up. The in-repo starter template is a CI fixture rather than a
@@ -395,10 +394,8 @@ public reference entry; it continues to validate every maintained release line.
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site for v4.33.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.33.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site for v4.33.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.33.0/verso-flt/),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-flt/)
 - [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
-  [rendered site for v4.33.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.33.0/verso-carleson/),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
 
 ## Rendered Test Blueprints

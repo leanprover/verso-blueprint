@@ -230,6 +230,11 @@ def _load_project_targets(
     raw_targets = entry.get("targets")
     if not isinstance(raw_targets, list) or not raw_targets:
         raise ValueError(f"{context}: expected non-empty `targets` list")
+    if source_kind == GIT_CHECKOUT_SOURCE_KIND and len(raw_targets) != 1:
+        raise ValueError(
+            f"{context}: external reference projects must declare exactly one target; "
+            "move the existing target when bumping toolchains instead of retaining legacy targets"
+        )
 
     targets: list[HarnessProjectTarget] = []
     seen_releases: set[str] = set()
