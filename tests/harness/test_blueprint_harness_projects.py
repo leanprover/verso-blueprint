@@ -206,19 +206,17 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
 
-    def assert_maintained_release_targets(
+    def assert_single_maintained_release_target(
         self,
         project: HarnessProject,
         release_ids: set[str],
         *,
         publish_reference: bool | None = None,
     ) -> None:
-        self.assertTrue(project.targets)
-        self.assertLessEqual({target.release for target in project.targets}, release_ids)
+        self.assertEqual(len(project.targets), 1)
+        self.assertIn(project.targets[0].release, release_ids)
         if publish_reference is not None:
-            self.assertTrue(
-                all(target.publish_reference is publish_reference for target in project.targets)
-            )
+            self.assertEqual(project.targets[0].publish_reference, publish_reference)
 
     def test_default_manifest_contains_release_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
@@ -276,7 +274,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
             self.assertEqual(project.repository, expected_external_repositories[project.project_id])
-            self.assert_maintained_release_targets(
+            self.assert_single_maintained_release_target(
                 project, release_id_set, publish_reference=True
             )
             external_release_ids.update(target.release for target in project.targets)
@@ -1062,6 +1060,44 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(projects[0].git_checkout)
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[0].targets[0].reference_toolchain, "v4.29.0-rc1")
+
+    def test_git_checkout_project_rejects_legacy_release_target(self) -> None:
+        manifest_data = external_catalog_data(
+            vbp_toolchain="v4.33.1",
+            reference_toolchain="v4.33.1",
+        )
+        projects = manifest_data["projects"]
+        self.assertIsInstance(projects, list)
+        project = projects[0]
+        self.assertIsInstance(project, dict)
+        targets = project["targets"]
+        self.assertIsInstance(targets, list)
+        targets.insert(
+            0,
+            {
+                "release": "v4.32.0",
+                "ref": "legacy-reference-ref",
+                "reference_toolchain": "v4.32.0",
+            },
+        )
+        release_targets = manifest_data["release_targets"]
+        self.assertIsInstance(release_targets, list)
+        release_targets.insert(
+            0,
+            {
+                "id": "v4.32.0",
+                "toolchain": "v4.32.0",
+                "verso_ref": "v4.32.0",
+                "branch": "v4.32.0",
+                "deploy_pages": True,
+            },
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "external reference projects must declare exactly one target",
+        ):
+            load_project_catalog_data(manifest_data, "legacy-targets.json")
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {
