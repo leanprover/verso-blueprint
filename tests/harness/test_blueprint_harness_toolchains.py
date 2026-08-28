@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
+import json
+import re
 import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.blueprint_harness_branches import active_release_branch
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
@@ -323,10 +325,12 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
         assert match is not None
         self.assertEqual(match.group("ref"), active_release_branch(PACKAGE_ROOT))
 
-    def test_root_release_dependencies_track_the_exact_lean_release_ref(self) -> None:
+    def test_root_release_dependencies_track_managed_release_pins(self) -> None:
         text = (PACKAGE_ROOT / "lakefile.lean").read_text(encoding="utf-8")
         verso_match = next(toolchains_mod.VERSO_REQUIRE_PATTERN.finditer(text), None)
         slides_match = next(toolchains_mod.VERSO_SLIDES_REQUIRE_PATTERN.finditer(text), None)
+        manifest = json.loads((PACKAGE_ROOT / "lake-manifest.json").read_text(encoding="utf-8"))
+        manifest_refs = {package["name"]: package["inputRev"] for package in manifest["packages"]}
         lean_ref = toolchains_mod.normalize_lean_release_ref(
             (PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")
         )
@@ -335,8 +339,12 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
         self.assertIsNotNone(slides_match)
         assert verso_match is not None
         assert slides_match is not None
-        self.assertEqual(verso_match.group("ref"), lean_ref)
-        self.assertEqual(slides_match.group("ref"), lean_ref)
+        verso_ref = verso_match.group("ref")
+        slides_ref = slides_match.group("ref")
+        self.assertTrue(verso_ref == lean_ref or re.fullmatch(r"[0-9a-f]{40}", verso_ref))
+        self.assertEqual(verso_ref, manifest_refs["verso"])
+        self.assertEqual(slides_ref, lean_ref)
+        self.assertEqual(slides_ref, manifest_refs["«verso-slides»"])
 
 
 if __name__ == "__main__":
