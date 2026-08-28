@@ -182,9 +182,8 @@ that the included GitHub Pages workflow uses. Internally that script uses:
 lake exe vbp build
 ```
 
-Once running, the project helper loads the Lake workspace and reuses it for
-generator discovery and Lake's Lean-file runner. The runner builds the
-generator's imports and executes it. The corresponding lower-level command is:
+The project helper discovers the generator, then uses Lake to build its imports
+and execute it. The corresponding lower-level command is:
 
 ```bash
 lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
