@@ -6,6 +6,7 @@ require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 
 package VersoBlueprint where
+  -- Verso's precompiled-module support requires Lean 4.34.
   precompileModules := false
   leanOptions := #[⟨`experimental.module, true⟩]
 

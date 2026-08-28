@@ -85,23 +85,32 @@ def generatorModuleFromFile (path : FilePath) : String :=
       text
   text.replace "/" "."
 
-/-- Build only the Blueprint library's OLean dependency closure.
-
-The default `leanArts` facet also emits C, which can turn a Blueprint build in
-a Mathlib consumer into an accidental native rebuild of Mathlib. -/
-def packageOLeanTarget (packageName : String) : String :=
-  s!"+{packageName}:olean"
-
 structure ProjectInfo where
+  workspace : Lake.Workspace
   packageName : String
   generatorFile : FilePath
   generatorModule : String
 
+private def findLakeInstallForLean
+    (leanInstall : Lake.LeanInstall) : BaseIO (Option Lake.LakeInstall) := do
+  if let some home ← IO.getEnv "LAKE_HOME" then
+    let home := FilePath.mk home
+    if home == leanInstall.sysroot then
+      return some <| Lake.LakeInstall.ofLean leanInstall
+    else
+      return some { home }
+  let colocatedLake := leanInstall.binDir / Lake.lakeExe
+  if ← colocatedLake.pathExists then
+    return some <| Lake.LakeInstall.ofLean leanInstall
+  Lake.findLakeInstall?
+
 private def loadWorkspace : IO (Except String Lake.Workspace) := do
   let cwd ← IO.currentDir
-  let (elanInstall?, leanInstall?, lakeInstall?) ← Lake.findInstall?
+  let elanInstall? ← Lake.findElanInstall?
+  let leanInstall? ← Lake.findLeanInstall?
   let some leanInstall := leanInstall?
     | pure (.error "could not detect a Lean installation")
+  let lakeInstall? ← findLakeInstallForLean leanInstall
   let some lakeInstall := lakeInstall?
     | pure (.error "could not detect the configuration of the Lake installation")
   match ← (Lake.Env.compute lakeInstall leanInstall elanInstall?).toBaseIO with
@@ -187,6 +196,7 @@ private def projectInfo : IO (Except String ProjectInfo) := do
           pure (.error s!"could not find a Blueprint generator entry point; expected one of {candidates} or a root-level Lean file with `def main` using VersoBlueprint.PreviewManifest")
       | some generatorFile =>
           pure (.ok {
+            workspace,
             packageName,
             generatorFile,
             generatorModule := generatorModuleFromFile generatorFile
@@ -249,8 +259,7 @@ structure BuildOptions where
   port? : Option Nat := none
 
 structure BuildPlan where
-  packageOLeanTarget : String
-  generatorPrepareArgs : Array String
+  generatorFile : FilePath
   generatorArgs : Array String
 
 private def maxTcpPort : Nat := 65535
@@ -328,44 +337,27 @@ partial def parseSiteOptions : List String → SiteOptions → Except String Sit
   | "--site" :: [], _ => .error "missing value after --site"
   | arg :: args, opts => parseSiteOptions args { opts with rest := arg :: opts.rest }
 
-private def formatCommand (cmd : String) (args : Array String) : String :=
-  String.intercalate " " (cmd :: args.toList)
-
 private def runAttached (cmd : String) (args : Array String) : IO UInt32 := do
   let child ← IO.Process.spawn { cmd, args }
   child.wait
 
-private def runBuildStage (stage cmd : String) (args : Array String) : IO UInt32 := do
-  let code ← runAttached cmd args
+private def runGenerator (workspace : Lake.Workspace) (plan : BuildPlan) : IO UInt32 := do
+  let code ← workspace.evalLeanFile plan.generatorFile plan.generatorArgs
   unless code == 0 do
-    IO.eprintln s!"vbp build: {stage} failed with exit code {code}: {formatCommand cmd args}"
+    IO.eprintln s!"vbp build: generator run failed with exit code {code}: {plan.generatorFile}"
   pure code
 
-private structure BuildStage where
-  stage : String
-  cmd : String
-  args : Array String
-
-private partial def runBuildStages : List BuildStage → IO UInt32
-  | [] => pure 0
-  | stage :: rest => do
-      let code ← runBuildStage stage.stage stage.cmd stage.args
-      if code == 0 then
-        runBuildStages rest
-      else
-        pure code
-
 /--
-Run a generator through Lake's Lean wrapper.
+Run a generator through Lake's Lean setup.
 
 The raw environment-wrapped Lean interpreter form does not load package native
-libraries such as MD4Lean. The `lake lean Foo.lean -- --run Foo.lean ...` form
-does, while still using the package environment that the entry point needs.
+libraries such as MD4Lean. `Lake.Workspace.evalLeanFile` is the implementation
+behind `lake lean`; it builds the generator's imports, constructs the required
+module setup, and loads package native libraries while reusing the workspace
+that VBP already loaded for project discovery.
 -/
-private def generatorRunArgs (generatorFile output : FilePath) (verbose : Bool) : Array String :=
-  let args :=
-    #["lean", generatorFile.toString, "--", "--run", generatorFile.toString,
-      "--output", output.toString]
+def generatorLeanArgs (generatorFile output : FilePath) (verbose : Bool) : Array String :=
+  let args := #["--run", generatorFile.toString, "--output", output.toString]
   if verbose then
     args ++ #["--verbose"]
   else
@@ -381,15 +373,14 @@ private def pdfGeneratorArgs (opts : BuildOptions) : Array String :=
   | some runs => args ++ #[Informal.PreviewManifest.pdfRunsFlag, toString runs]
   | none => args
 
-private def buildPlan (opts : BuildOptions) : IO (Except String BuildPlan) := do
+private def buildPlan (opts : BuildOptions) : IO (Except String (Lake.Workspace × BuildPlan)) := do
   match ← projectInfo with
   | .error err => pure (.error err)
   | .ok info =>
-      pure (.ok {
-        packageOLeanTarget := packageOLeanTarget info.packageName,
-        generatorPrepareArgs := #["lean", info.generatorFile.toString],
-        generatorArgs := generatorRunArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
-      })
+      pure (.ok (info.workspace, {
+        generatorFile := info.generatorFile
+        generatorArgs := generatorLeanArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
+      }))
 
 private def serveScript : String := String.intercalate "\n" [
   "import functools, http.server, socketserver, sys",
@@ -438,12 +429,8 @@ def build (args : List String) : IO UInt32 := do
           | .error err =>
               IO.eprintln err
               pure 1
-          | .ok plan =>
-              let code ← runBuildStages [
-                { stage := "package OLean build", cmd := "lake", args := #["build", plan.packageOLeanTarget] },
-                { stage := "generator preparation", cmd := "lake", args := plan.generatorPrepareArgs },
-                { stage := "generator run", cmd := "lake", args := plan.generatorArgs }
-              ]
+          | .ok (workspace, plan) =>
+              let code ← runGenerator workspace plan
               if code != 0 then
                 pure code
               else if opts.serve then

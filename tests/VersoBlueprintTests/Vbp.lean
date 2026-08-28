@@ -534,9 +534,18 @@ private def graphNodePreviewKeys
         "ProjectTemplateMain" &&
       VersoBlueprint.Vbp.Main.generatorModuleFromFile
           (System.FilePath.mk "Blueprint" / "Main.lean") ==
-        "Blueprint.Main" &&
-      VersoBlueprint.Vbp.Main.packageOLeanTarget "ProjectTemplate" == "+ProjectTemplate:olean" &&
-      VersoBlueprint.Vbp.Main.packageOLeanTarget "Contents" == "+Contents:olean"
+        "Blueprint.Main"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.Main.generatorLeanArgs
+        "ProjectTemplateMain.lean" "_out/site" false ==
+      #["--run", "ProjectTemplateMain.lean", "--output", "_out/site"] &&
+    VersoBlueprint.Vbp.Main.generatorLeanArgs
+        "ProjectTemplateMain.lean" "_out/site" true ==
+      #["--run", "ProjectTemplateMain.lean", "--output", "_out/site", "--verbose"]
 
 /-- info: true -/
 #guard_msgs in
