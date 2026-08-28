@@ -52,7 +52,7 @@ lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
 ```
 
 `build --verbose` passes `--verbose` through to the generator run, enabling
-Blueprint generation phase progress after Lake has prepared the generator.
+Blueprint generation phase progress.
 Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX output.
 `--pdf-engine <cmd>` and `--pdf-runs <n>` are forwarded to the generator when
 the local project's `vbp` binary supports them; run `lake exe vbp --help` for the
