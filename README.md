@@ -459,9 +459,10 @@ project discovery, build/serve previews, generated-data queries, and
 post-edit checks.
 
 `lake exe vbp build` is the normal Blueprint generation interface for projects.
-It discovers the project generator entry point and runs it through Lake's Lean
-wrapper internally. Treat `vbp` query JSON as an unstable agent interface, not a
-public compatibility contract and not part of the documented integration API.
+Once running, VBP loads the project workspace and reuses it for both generator
+discovery and Lake's Lean-file runner. Treat `vbp` query JSON as an unstable
+agent interface, not a public compatibility contract and not part of the
+documented integration API.
 
 ### Maintainer CLI Split
 
