@@ -5,7 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Vbp
-import Lake.CLI.Main
+import Lake.CLI.Actions
+import Lake.Load.Workspace
 
 open Lean
 open System
@@ -85,12 +86,18 @@ def generatorModuleFromFile (path : FilePath) : String :=
       text
   text.replace "/" "."
 
-structure ProjectInfo where
+private structure GeneratorContext where
   workspace : Lake.Workspace
-  packageName : String
   generatorFile : FilePath
-  generatorModule : String
 
+/--
+Resolve Lake relative to the Lean installation selected for the project.
+
+Unlike the `lake` executable, `vbp` is built inside the project, so Lake cannot
+discover a co-located Lean installation from `IO.appPath`. In an Elan toolchain,
+`LAKE_HOME` can also name Lean's sysroot, whose Lake layout is represented by
+`LakeInstall.ofLean` rather than the standalone Lake build layout.
+-/
 private def findLakeInstallForLean
     (leanInstall : Lake.LeanInstall) : BaseIO (Option Lake.LakeInstall) := do
   if let some home ← IO.getEnv "LAKE_HOME" then
@@ -183,7 +190,7 @@ private def findGeneratorFile? (cwd : FilePath) (packageName : String) : IO (Opt
       let rootFiles ← rootLeanFiles cwd
       firstGeneratorLikeFile? cwd rootFiles.toList
 
-private def projectInfo : IO (Except String ProjectInfo) := do
+private def generatorContext : IO (Except String GeneratorContext) := do
   let cwd ← IO.currentDir
   match ← loadWorkspace with
   | .error err => pure (.error err)
@@ -197,9 +204,7 @@ private def projectInfo : IO (Except String ProjectInfo) := do
       | some generatorFile =>
           pure (.ok {
             workspace,
-            packageName,
-            generatorFile,
-            generatorModule := generatorModuleFromFile generatorFile
+            generatorFile
           })
 
 private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : IO (Array String) := do
@@ -222,12 +227,13 @@ private def chapterCandidates (cwd : FilePath) (packageName? : Option String) : 
 
 def discover : IO UInt32 := do
   let cwd ← IO.currentDir
-  let info? ← projectInfo
-  let (packageName?, generator?, generatorModule?, discoveryErrors) :=
-    match info? with
-    | .ok info =>
-        (some info.packageName, some info.generatorFile, some info.generatorModule, #[])
-    | .error err => (none, none, none, #[err])
+  let context? ← generatorContext
+  let (packageName?, generator?, discoveryErrors) :=
+    match context? with
+    | .ok context =>
+        (some context.workspace.root.prettyName, some context.generatorFile, #[])
+    | .error err => (none, none, #[err])
+  let generatorModule? := generator?.map generatorModuleFromFile
   let topLevel? ←
     match generator? with
     | none => pure none
@@ -257,10 +263,6 @@ structure BuildOptions where
   verbose : Bool := false
   serve : Bool := false
   port? : Option Nat := none
-
-structure BuildPlan where
-  generatorFile : FilePath
-  generatorArgs : Array String
 
 private def maxTcpPort : Nat := 65535
 
@@ -341,11 +343,16 @@ private def runAttached (cmd : String) (args : Array String) : IO UInt32 := do
   let child ← IO.Process.spawn { cmd, args }
   child.wait
 
-private def runGenerator (workspace : Lake.Workspace) (plan : BuildPlan) : IO UInt32 := do
-  let code ← workspace.evalLeanFile plan.generatorFile plan.generatorArgs
-  unless code == 0 do
-    IO.eprintln s!"vbp build: generator run failed with exit code {code}: {plan.generatorFile}"
-  pure code
+private def runGenerator
+    (context : GeneratorContext) (args : Array String) : IO UInt32 := do
+  try
+    let code ← context.workspace.evalLeanFile context.generatorFile args
+    unless code == 0 do
+      IO.eprintln s!"vbp build: generator run failed with exit code {code}: {context.generatorFile}"
+    pure code
+  catch err =>
+    IO.eprintln s!"vbp build: generator run failed: {err}"
+    pure 1
 
 /--
 Run a generator through Lake's Lean setup.
@@ -373,14 +380,14 @@ private def pdfGeneratorArgs (opts : BuildOptions) : Array String :=
   | some runs => args ++ #[Informal.PreviewManifest.pdfRunsFlag, toString runs]
   | none => args
 
-private def buildPlan (opts : BuildOptions) : IO (Except String (Lake.Workspace × BuildPlan)) := do
-  match ← projectInfo with
-  | .error err => pure (.error err)
-  | .ok info =>
-      pure (.ok (info.workspace, {
-        generatorFile := info.generatorFile
-        generatorArgs := generatorLeanArgs info.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
-      }))
+private def generateSite (opts : BuildOptions) : IO UInt32 := do
+  match ← generatorContext with
+  | .error err =>
+      IO.eprintln err
+      pure 1
+  | .ok context =>
+      let args := generatorLeanArgs context.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
+      runGenerator context args
 
 private def serveScript : String := String.intercalate "\n" [
   "import functools, http.server, socketserver, sys",
@@ -425,18 +432,13 @@ def build (args : List String) : IO UInt32 := do
           IO.eprintln err
           pure 2
       | .ok opts =>
-          match ← buildPlan opts with
-          | .error err =>
-              IO.eprintln err
-              pure 1
-          | .ok (workspace, plan) =>
-              let code ← runGenerator workspace plan
-              if code != 0 then
-                pure code
-              else if opts.serve then
-                serve opts.output opts.port?
-              else
-                pure 0
+          let code ← generateSite opts
+          if code != 0 then
+            pure code
+          else if opts.serve then
+            serve opts.output opts.port?
+          else
+            pure 0
 
 def query (args : List String) : IO UInt32 := do
   match parseSiteOptions args {} with

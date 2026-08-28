@@ -7,9 +7,9 @@ For package-facing usage, use `lake exe vbp build` or the project's Blueprint
 generator entry point, not the Python harness here. CI and Mathlib-heavy
 projects can run
 `lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output ...`
-after building `+<BlueprintLibrary>:olean`. Keep the explicit OLean facet so
-generation cannot trigger native C builds of Mathlib dependencies. Start with
-the top-level [`README.md`](../README.md) and [`doc/MANUAL.md`](../doc/MANUAL.md).
+when they need to drive the generator explicitly; Lake builds the generator's
+imports as part of that command. Start with the top-level
+[`README.md`](../README.md) and [`doc/MANUAL.md`](../doc/MANUAL.md).
 
 For repository maintenance, the canonical workflow document is
 [`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md). This README is

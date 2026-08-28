@@ -1163,11 +1163,9 @@ lake exe vbp build
 lake exe vbp build --serve
 ```
 
-Once running, it loads the project workspace and reuses it for generator
-discovery and Lake's Lean-file runner. The runner builds the generator's
-imports and executes it; VBP can then optionally serve the result. When a
-maintainer harness or advanced CI job cannot use `vbp`, the equivalent
-lower-level command is:
+It discovers the generator, then uses Lake to build its imports and execute it;
+VBP can optionally serve the result. When a maintainer harness or advanced CI
+job cannot use `vbp`, the equivalent lower-level command is:
 
 ```bash
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
