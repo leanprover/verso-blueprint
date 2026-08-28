@@ -18,8 +18,8 @@ package MissingImportBlueprint
 
 MISSING_IMPORT_GENERATOR = """import MissingBlueprintDependency
 
--- PreviewManifest marks this file as the Blueprint generator fixture.
-def main : IO Unit := pure ()
+def blueprintMain : IO Unit := pure ()
+def main : IO Unit := blueprintMain
 """
 
 MISSING_NEED_LAKEFILE = """import Lake
@@ -41,8 +41,8 @@ MISSING_NEED_MODULE = """def witness : Nat := 1
 
 MISSING_NEED_GENERATOR = """import MissingInputBlueprint
 
--- PreviewManifest marks this file as the Blueprint generator fixture.
-def main : IO Unit := pure ()
+def blueprintMain : IO Unit := pure ()
+def main : IO Unit := blueprintMain
 """
 
 
