@@ -44,9 +44,8 @@ Defaults:
 
 `discover` reports the Lake-backed package, generator entry point, generator module, generator source file, and default output paths. Fields ending in `Guess`, such as `topLevelBlueprintModuleGuess` and `chapterCandidateGuesses`, are convention-based hints for agents and may be null or incomplete. The JSON includes `"apiStability":"unstable"` and a `discoveryErrors` array. When Lake workspace discovery fails or no generator entry point can be found, package and generator fields are null and `discoveryErrors` explains why.
 
-Once running, `build` loads the project workspace and reuses it to discover the
-generator and invoke Lake's Lean-file runner. The runner builds the generator's
-imports and executes the generator through Lean's interpreter:
+`build` discovers the generator, then uses Lake's Lean-file runner to build its
+imports and execute it through Lean's interpreter:
 
 ```bash
 lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
