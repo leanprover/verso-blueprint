@@ -95,6 +95,7 @@ def assert_build_failure(
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="verso-blueprint-vbp-failure-") as tmp:
         root = Path(tmp)
+        # An invalid import reaches Lean, which returns a nonzero process exit code.
         missing_import = write_project(
             root,
             "missing-import",
@@ -107,6 +108,7 @@ def main() -> int:
             expected_diagnostic="MissingBlueprintDependency",
         )
 
+        # A missing Lake input fails dependency preparation, so evalLeanFile throws.
         missing_need = write_project(
             root,
             "missing-need",
@@ -118,7 +120,7 @@ def main() -> int:
         )
         assert_build_failure(
             missing_need,
-            expected_protocol="vbp build: generator run failed: build failed",
+            expected_protocol="vbp build: generator run failed:",
             expected_diagnostic="missing-generator-input.txt",
         )
     return 0

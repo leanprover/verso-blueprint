@@ -344,11 +344,11 @@ private def runAttached (cmd : String) (args : Array String) : IO UInt32 := do
   child.wait
 
 private def runGenerator
-    (workspace : Lake.Workspace) (generatorFile : FilePath) (args : Array String) : IO UInt32 := do
+    (context : GeneratorContext) (args : Array String) : IO UInt32 := do
   try
-    let code ← workspace.evalLeanFile generatorFile args
+    let code ← context.workspace.evalLeanFile context.generatorFile args
     unless code == 0 do
-      IO.eprintln s!"vbp build: generator run failed with exit code {code}: {generatorFile}"
+      IO.eprintln s!"vbp build: generator run failed with exit code {code}: {context.generatorFile}"
     pure code
   catch err =>
     IO.eprintln s!"vbp build: generator run failed: {err}"
@@ -387,7 +387,7 @@ private def generateSite (opts : BuildOptions) : IO UInt32 := do
       pure 1
   | .ok context =>
       let args := generatorLeanArgs context.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
-      runGenerator context.workspace context.generatorFile args
+      runGenerator context args
 
 private def serveScript : String := String.intercalate "\n" [
   "import functools, http.server, socketserver, sys",
