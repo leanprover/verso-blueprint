@@ -14,7 +14,7 @@
         },
         {
           "release": "v4.34.0",
-          "rc": "4.34-rc1"
+          "rc": "4.34-rc2"
         }
       ],
       "generate_command": [
@@ -38,7 +38,7 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "58e5b7e3ce38cc059d0dcd4f5604c666356026bb",
+          "ref": "a544f69b2337f3ee072d1d0ddd93d4dfce776f56",
           "publish_reference": true
         }
       ],
@@ -63,7 +63,14 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "bdba3568faf918df1aa3024c1e69df98e26b7e5d",
+          "ref": "45bd64912956de1905489f63e53ab92a1cf5deec",
+          "reference_toolchain": "v4.33.0",
+          "publish_reference": true
+        },
+        {
+          "release": "v4.34.0",
+          "ref": "f139c672f01368ec1046223a6d6c452f42c83068",
+          "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
       ],
@@ -88,7 +95,14 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "8810e9d67c7048705fbea66d6f5cf1bacb34f254",
+          "ref": "43a4a82e00fb2e107a535f97c779dcce237a78aa",
+          "reference_toolchain": "v4.33.0",
+          "publish_reference": true
+        },
+        {
+          "release": "v4.34.0",
+          "ref": "3388727088a0b6d211c1d3b29ed19aa4b2350305",
+          "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
       ],

@@ -625,7 +625,12 @@ def command_with_pdf(command: tuple[str, ...]) -> tuple[str, ...]:
     return (*command, "--pdf")
 
 
-def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False) -> dict[str, object]:
+def project_manifest_entry(
+    project: HarnessProject,
+    *,
+    release_toolchain: str,
+    include_pdf: bool = False,
+) -> dict[str, object]:
     if project.selected_release is None:
         raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
 
@@ -644,7 +649,7 @@ def project_manifest_entry(project: HarnessProject, *, include_pdf: bool = False
     if (
         project.selected_reference_toolchain is not None
         and project.selected_reference_toolchain
-        != normalize_lean_release_ref(project.selected_release)
+        != normalize_lean_release_ref(release_toolchain)
     ):
         target["reference_toolchain"] = project.selected_reference_toolchain
 
@@ -688,7 +693,13 @@ def release_project_manifest(
     return {
         "version": 2,
         "release_targets": [release_target_manifest_entry(target)],
-        "projects": [project_manifest_entry(project, include_pdf=include_pdf)],
+        "projects": [
+            project_manifest_entry(
+                project,
+                release_toolchain=target.release_toolchain,
+                include_pdf=include_pdf,
+            )
+        ],
     }
 
 

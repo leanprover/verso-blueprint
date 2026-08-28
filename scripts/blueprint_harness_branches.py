@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from scripts.blueprint_harness_releases import (
+    lean_release_family,
     normalize_lean_release_ref,
     release_branch_from_lean_ref,
 )
@@ -70,7 +71,29 @@ def active_release_branch(repo_root: Path) -> str:
     toolchain_path = repo_root / "lean-toolchain"
     if not toolchain_path.exists():
         raise SystemExit(f"[blueprint-harness] missing lean toolchain file: {toolchain_path}")
-    return release_branch_from_lean_ref(toolchain_path.read_text(encoding="utf-8"))
+    toolchain_branch = release_branch_from_lean_ref(toolchain_path.read_text(encoding="utf-8"))
+
+    policy_path = branch_policy_path(repo_root)
+    if not policy_path.exists():
+        return toolchain_branch
+    policy = load_branch_policy_text(
+        policy_path.read_text(encoding="utf-8"), source_path=policy_path
+    )
+    matching_targets = [
+        target
+        for target in policy.release_targets
+        if lean_release_family(target.release_id) == lean_release_family(toolchain_branch)
+    ]
+    if len(matching_targets) == 1:
+        return matching_targets[0].release_id
+    if not matching_targets:
+        return toolchain_branch
+
+    matching_ids = ", ".join(target.release_id for target in matching_targets)
+    raise SystemExit(
+        f"[blueprint-harness] ambiguous release targets for Lean toolchain `{toolchain_branch}`: "
+        f"{matching_ids}"
+    )
 
 
 def branch_policy_path(checkout_root: Path) -> Path:
