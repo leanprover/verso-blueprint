@@ -996,7 +996,8 @@ The harness is now project-driven rather than hardcoded to one project.
   `publish_reference: true` marker for the release-facing published catalog
 - keep each external Blueprint on its one intended current release target;
   move that target when the project advances instead of retaining published
-  legacy targets for older releases
+  legacy targets for older releases; manifest loading rejects external projects
+  with more than one target so this cannot silently expand the build matrix
 - prefer `lake exe vbp build` for package-local generation; once running, VBP
   reuses its loaded Lake workspace for discovery and the workspace's Lean-file
   runner. If the harness must drive an external project explicitly, use

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from scripts.blueprint_harness_branches import active_release_branch
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
+from scripts.blueprint_harness_releases import lean_release_family, lean_release_subversion
 import scripts.blueprint_harness_toolchains as toolchains_mod
 from tests.harness.release_fixtures import (
     SAMPLE_DEFAULT_RC_REF,
@@ -341,9 +342,16 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
         assert slides_match is not None
         verso_ref = verso_match.group("ref")
         slides_ref = slides_match.group("ref")
-        self.assertTrue(verso_ref == lean_ref or re.fullmatch(r"[0-9a-f]{40}", verso_ref))
+
+        def assert_compatible_release_pin(ref: str) -> None:
+            if re.fullmatch(r"[0-9a-f]{40}", ref):
+                return
+            self.assertEqual(lean_release_family(ref), lean_release_family(lean_ref))
+            self.assertLessEqual(lean_release_subversion(ref), lean_release_subversion(lean_ref))
+
+        assert_compatible_release_pin(verso_ref)
         self.assertEqual(verso_ref, manifest_refs["verso"])
-        self.assertEqual(slides_ref, lean_ref)
+        assert_compatible_release_pin(slides_ref)
         self.assertEqual(slides_ref, manifest_refs["«verso-slides»"])
 
 

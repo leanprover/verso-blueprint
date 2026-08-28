@@ -38,7 +38,7 @@
       "targets": [
         {
           "release": "v4.33.0",
-          "ref": "58e5b7e3ce38cc059d0dcd4f5604c666356026bb",
+          "ref": "109a7936a96707c5e233a1794b9e97ea7f5b51ac",
           "publish_reference": true
         }
       ],
@@ -62,8 +62,9 @@
       },
       "targets": [
         {
-          "release": "v4.33.0",
-          "ref": "bdba3568faf918df1aa3024c1e69df98e26b7e5d",
+          "release": "v4.34.0",
+          "ref": "071a39d68f5c6bc220c6f0b072b8f13ef2c7aa4d",
+          "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
       ],
@@ -87,8 +88,9 @@
       },
       "targets": [
         {
-          "release": "v4.33.0",
-          "ref": "8810e9d67c7048705fbea66d6f5cf1bacb34f254",
+          "release": "v4.34.0",
+          "ref": "ff7e1e6e4d0122f5eb5fc2b5eed5d9dfd78dfb7c",
+          "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
       ],

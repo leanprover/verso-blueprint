@@ -280,12 +280,17 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
             "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
         }
+        external_release_ids: set[str] = set()
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
             self.assertEqual(project.repository, expected_external_repositories[project.project_id])
-            self.assert_single_maintained_release_target(project, release_id_set, publish_reference=True)
+            self.assert_single_maintained_release_target(
+                project, release_id_set, publish_reference=True
+            )
+            external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
+        self.assertEqual(external_release_ids, release_id_set)
 
     def test_selected_project_toolchain_uses_selected_release(self) -> None:
         project = external_project(selected_release="v4.29.0")
@@ -812,7 +817,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     "release_targets": [
                         {
                             "id": "v4.28.0",
-                            "toolchain": "v4.28.0",
+                            "toolchain": "v4.28.1",
                             "verso_ref": "v4.28.0",
                             "branch": "v4.28.0",
                             "deploy_pages": True,
@@ -837,6 +842,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.28.0",
                                     "ref": "old-controller-ref",
+                                    "reference_toolchain": "v4.28.0",
                                     "publish_reference": True,
                                 }
                             ],
@@ -919,7 +925,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         }
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["targets"],
-            [{"release": "v4.28.0", "ref": "old-controller-ref"}],
+            [
+                {
+                    "release": "v4.28.0",
+                    "ref": "old-controller-ref",
+                    "reference_toolchain": "v4.28.0",
+                }
+            ],
         )
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["source"]["project_root"],
@@ -1059,6 +1071,44 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(projects[0].git_checkout)
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
         self.assertEqual(projects[0].targets[0].reference_toolchain, "v4.29.0-rc1")
+
+    def test_git_checkout_project_rejects_legacy_release_target(self) -> None:
+        manifest_data = external_catalog_data(
+            vbp_toolchain="v4.33.1",
+            reference_toolchain="v4.33.1",
+        )
+        projects = manifest_data["projects"]
+        self.assertIsInstance(projects, list)
+        project = projects[0]
+        self.assertIsInstance(project, dict)
+        targets = project["targets"]
+        self.assertIsInstance(targets, list)
+        targets.insert(
+            0,
+            {
+                "release": "v4.32.0",
+                "ref": "legacy-reference-ref",
+                "reference_toolchain": "v4.32.0",
+            },
+        )
+        release_targets = manifest_data["release_targets"]
+        self.assertIsInstance(release_targets, list)
+        release_targets.insert(
+            0,
+            {
+                "id": "v4.32.0",
+                "toolchain": "v4.32.0",
+                "verso_ref": "v4.32.0",
+                "branch": "v4.32.0",
+                "deploy_pages": True,
+            },
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "external reference projects must declare exactly one target",
+        ):
+            load_project_catalog_data(manifest_data, "legacy-targets.json")
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {
