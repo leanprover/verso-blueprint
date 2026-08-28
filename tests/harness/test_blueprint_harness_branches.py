@@ -51,6 +51,23 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
 
             self.assertEqual(branches_mod.active_release_branch(root), SAMPLE_NEXT_RELEASE)
 
+    def test_active_release_branch_uses_policy_release_id_for_point_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(root / "lean-toolchain", f"{lean_toolchain('v4.29.1')}\n")
+            self.write(
+                root / "branch-policy.json",
+                branch_policy_json(
+                    default_dev=SAMPLE_NEXT_RELEASE,
+                    release_targets=[
+                        release_target(SAMPLE_DEFAULT_RELEASE, toolchain="v4.29.1"),
+                        release_target(SAMPLE_NEXT_RELEASE),
+                    ],
+                ),
+            )
+
+            self.assertEqual(branches_mod.active_release_branch(root), SAMPLE_DEFAULT_RELEASE)
+
     def test_load_branch_policy_reads_required_backport_branches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
