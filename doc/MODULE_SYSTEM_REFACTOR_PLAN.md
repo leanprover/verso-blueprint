@@ -182,7 +182,7 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 18 of 93 production sources are modules; `ExternalDeclRender.Data` is the shared contract, `ExternalDeclRender` and `ExternalRefSnapshot` are meta-owned services, and `ProvedStatus` remains phase-neutral |
+| M2 — dependency leaves | in progress | 20 of 93 production sources are modules; the shared `Environment` extension and `DependencyAnalysis` now pass strict normal/meta consumers as prerequisites for the authoring chain |
 | M3 — phase-mixed features | pending | — |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |

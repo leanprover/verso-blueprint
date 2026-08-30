@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoBlueprint.Environment
+module
+
+public import Lean
+public import VersoBlueprint.Environment
+
+public section
 
 /-!
 LeanArchitect-style automatic dependency inference for Verso Blueprint.
