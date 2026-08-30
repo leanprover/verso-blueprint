@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Verso.Output.Html
-import VersoBlueprint.Graft.Node
-import VersoBlueprint.PreviewManifest
-import VersoBlueprint.PreviewManifest.BlockRender
+module
+
+public import Verso.Output.Html
+public import VersoBlueprint.Graft.Node
+public import VersoBlueprint.PreviewManifest
+public import VersoBlueprint.PreviewManifest.BlockRender
+
+public section
 
 namespace Informal.Graft
 
@@ -63,14 +67,12 @@ public def renderNotice (baseClass kind title detail : String) : Html :=
     </div>
   }}
 
-private def defaultRenderMissingNode (node : BlueprintNode) (title detail : String) : Html :=
-  .tag "div" node.renderedAttrs <|
-    renderNotice "bp_graft_node_notice" "error" title detail
-
 public structure ManifestRenderConfig where
   blockRenderConfig : Informal.PreviewManifest.BlockRender.RenderConfig := {}
   nodeAttrs : BlueprintNode → Array (String × String) := (·.renderedAttrs)
-  renderMissingNode : BlueprintNode → String → String → Html := defaultRenderMissingNode
+  renderMissingNode : BlueprintNode → String → String → Html := fun node title detail =>
+    .tag "div" node.renderedAttrs <|
+      renderNotice "bp_graft_node_notice" "error" title detail
   manifestUnavailableDetail : String :=
     "Provide a Blueprint preview manifest and rendered-fragment cache before rendering graft nodes."
 

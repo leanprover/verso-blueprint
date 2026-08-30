@@ -111,6 +111,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.GraphData,
     `VersoBlueprintModuleTests.GraftAssets,
     `VersoBlueprintModuleTests.GraftNode,
+    `VersoBlueprintModuleTests.GraftRender,
     `VersoBlueprintModuleTests.GroupAuthoring,
     `VersoBlueprintModuleTests.HoverRender,
     `VersoBlueprintModuleTests.Math,
