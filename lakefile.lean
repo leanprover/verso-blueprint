@@ -115,6 +115,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.HoverRender,
     `VersoBlueprintModuleTests.Math,
     `VersoBlueprintModuleTests.MathLeaves,
+    `VersoBlueprintModuleTests.PreviewBlockRender,
     `VersoBlueprintModuleTests.PreviewCli,
     `VersoBlueprintModuleTests.PreviewExternalMarkupRender,
     `VersoBlueprintModuleTests.PreviewManifest,
