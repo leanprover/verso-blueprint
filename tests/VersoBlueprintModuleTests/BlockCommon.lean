@@ -11,11 +11,13 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.MetadataView
+import VersoBlueprint.Informal.RustPanel
 meta import VersoBlueprint.Informal.Block.Assets
 meta import VersoBlueprint.Informal.Block.Common
 meta import VersoBlueprint.Informal.Block.RelatedPanel
 meta import VersoBlueprint.Informal.Block.Render
 meta import VersoBlueprint.Informal.MetadataView
+meta import VersoBlueprint.Informal.RustPanel
 
 namespace VersoBlueprintModuleTests.BlockCommon
 
@@ -63,6 +65,15 @@ local macro "relatedPanelContract" : term => do
     (cfg.chipText 2, cfg.chipTitle 2, cfg.panelTitle 2)
   return quote contract
 
+local macro "rustPanelHeaderContract" : term => do
+  let data : BlockData := {
+    kind := .proof
+    label := Name.mkSimple "module.rust.panel"
+    count := 1
+  }
+  let header := Informal.Rust.codePanelHeader data "ignored"
+  return quote (header.caption, header.number?)
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -71,6 +82,9 @@ local macro "relatedPanelContract" : term => do
   let metadataContract : Bool × Array String × Array String := metadataPresentationContract
   let renderContract : String × Bool × String × String := blockRenderContract
   let relationContract : String × String × String := relatedPanelContract
+  let rustHeader : String × Option String := rustPanelHeaderContract
+  let rustHtml := Informal.Rust.renderRawCodePanel
+    { caption := "Rust code" } "Rust module panel" "fn main() {}" |>.asString
   let statusHtml := BlockStatusMark.toHtml {
     status := .missing
     title := "Module status"
@@ -88,6 +102,8 @@ local macro "relatedPanelContract" : term => do
       "proof.contract" "" "Proof").asString.contains "bp_kind_proof_caption" &&
     relationContract ==
       ("used by 2", "Reverse dependencies for «module.target»", "Used by 2") &&
+    rustHeader == ("Rust code for proof", none) &&
+    rustHtml.contains "bp_code_panel" && rustHtml.contains "bp_rust_kw" &&
     RelatedPanel.statementAxisBadgeCode == "s" && RelatedPanel.proofAxisBadgeCode == "p" &&
     externalRenderFailureSummaryText 1 == "render failed for 1 declaration" &&
     appendExternalRenderFailureSummary "Lean" 2 ==
