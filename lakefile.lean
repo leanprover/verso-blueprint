@@ -90,7 +90,8 @@ lean_lib VersoBlueprintModuleTests where
   srcDir := "tests"
   roots := #[
     `VersoBlueprintModuleTests.Foundation,
-    `VersoBlueprintModuleTests.SourceData
+    `VersoBlueprintModuleTests.SourceData,
+    `VersoBlueprintModuleTests.UtilityLeaves
   ]
   requiresModuleSystem := true
 
