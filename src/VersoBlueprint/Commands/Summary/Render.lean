@@ -4,7 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Commands.Summary.Sections
+module
+
+public import VersoBlueprint.Commands.Summary.Sections
 
 /-!
 Compatibility import for the Blueprint summary renderer modules.
