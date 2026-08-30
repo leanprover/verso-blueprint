@@ -1,0 +1,40 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+
+module
+
+import VersoBlueprint.Git
+import VersoBlueprint.RuntimeCache
+
+namespace VersoBlueprintModuleTests.RuntimeServices
+
+open Lean
+
+/-- Pure Git URL normalization remains part of the runtime service contract. -/
+example : Option String :=
+  Informal.Git.githubRepositoryUrl? "git@github.com:leanprover/verso-blueprint.git"
+
+/-- Repository discovery remains an ordinary runtime operation. -/
+example (root : System.FilePath) : IO (Option Informal.Git.RepositoryInfo) :=
+  Informal.Git.repositoryInfoAtRoot? root
+
+/-- The cache exposes operations, not its storage representation. -/
+example : IO Unit :=
+  Informal.RuntimeCache.clear
+
+example (root : System.FilePath) (moduleName : Name)
+    (resolve : CoreM (Option System.FilePath)) : CoreM (Option System.FilePath) :=
+  Informal.RuntimeCache.cachedModuleSourcePath? root moduleName resolve
+
+example (sourceDir : System.FilePath) (resolve : IO (Option System.FilePath)) :
+    IO (Option System.FilePath) :=
+  Informal.RuntimeCache.cachedGitRoot? sourceDir resolve
+
+example (gitRoot : System.FilePath) (resolve : IO (Option Informal.Git.RepositoryInfo)) :
+    IO (Option Informal.Git.RepositoryInfo) :=
+  Informal.RuntimeCache.cachedGitRepoInfo? gitRoot resolve
+
+end VersoBlueprintModuleTests.RuntimeServices
