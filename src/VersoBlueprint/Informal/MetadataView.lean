@@ -4,7 +4,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Informal.Block.Model
+module
+
+public import VersoBlueprint.Informal.Block.Model
+
+public section
 
 namespace Informal
 
