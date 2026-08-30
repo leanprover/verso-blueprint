@@ -4,16 +4,20 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
-import VersoBlueprint.Informal.Block.Model
-import VersoBlueprint.Informal.GroupData
-import VersoBlueprint.Informal.LeanCodePreviewKey
-import VersoBlueprint.Graph
-import VersoBlueprint.PreviewCache
-import VersoBlueprint.Resolve
-import VersoBlueprint.Rust
-import VersoBlueprint.Source.Data
+module
+
+public import Lean
+public import VersoManual
+public import VersoBlueprint.Informal.Block.Model
+public import VersoBlueprint.Informal.GroupData
+public import VersoBlueprint.Informal.LeanCodePreviewKey
+public import VersoBlueprint.Graph
+public import VersoBlueprint.PreviewCache
+public import VersoBlueprint.Resolve
+public import VersoBlueprint.Rust
+public import VersoBlueprint.Source.Data
+
+public section
 
 /-!
 Typed accessors for Blueprint's traversal-time stores.

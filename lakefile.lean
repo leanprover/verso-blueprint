@@ -101,6 +101,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.MathLeaves,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.SourceData,
+    `VersoBlueprintModuleTests.TraversalIndex,
     `VersoBlueprintModuleTests.UtilityLeaves
   ]
   requiresModuleSystem := true
