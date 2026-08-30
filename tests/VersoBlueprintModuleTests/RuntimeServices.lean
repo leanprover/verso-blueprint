@@ -8,12 +8,14 @@ module
 
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
 import VersoBlueprint.RuntimeCache
 meta import VersoBlueprint.Commands.Common
+meta import VersoBlueprint.Lib.PreviewSource
 meta import VersoBlueprint.PreviewCache
 meta import VersoBlueprint.PreviewRender
 meta import VersoBlueprint.Resolve
@@ -30,6 +32,22 @@ local macro "previewRenderDefaultContract" : term => do
 example : IO Unit := previewRenderDefaultContract
 
 example : IO Unit := Informal.discardRenderError "normal contract"
+
+local macro "previewSourceContract" : term => do
+  let preview : Informal.PreviewSource.Preview := {}
+  let selection :=
+    Informal.PreviewSource.Selection.ofPreview (Name.mkSimple "preview") .proof preview
+  let contract : Bool × String × Bool :=
+    (preview.isEmpty, selection.key, selection.preview.isEmpty)
+  return quote contract
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let preview : Informal.PreviewSource.Preview := {}
+  (previewSourceContract : Bool × String × Bool) ==
+      (true, "preview--proof", true) &&
+    preview.isEmpty && !preview.nonEmpty
 
 /-- info: true -/
 #guard_msgs in
