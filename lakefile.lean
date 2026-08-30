@@ -129,6 +129,7 @@ lean_lib VersoBlueprintModuleTests where
   roots := #[
     `VersoBlueprintModuleTests.Attribute,
     `VersoBlueprintModuleTests.AuthorAuthoring,
+    `VersoBlueprintModuleTests.BibliographyAuthoring,
     `VersoBlueprintModuleTests.BlockAuthoring,
     `VersoBlueprintModuleTests.BlockCommon,
     `VersoBlueprintModuleTests.BlockStore,
