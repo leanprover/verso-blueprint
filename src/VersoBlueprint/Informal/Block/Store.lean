@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Informal.Block.Model
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoBlueprint.Informal.Block.Model
+public import VersoBlueprint.TraversalIndex
+
+public section
 
 /-!
 Traversal-time storage and numbering logic for informal blocks.
@@ -23,10 +27,10 @@ open Verso
 open Verso.Genre Manual
 
 /-- Traversal-state key for the next document-order informal block number. -/
-def numberingCounterState : Name := Lean.Name.mkSimple "Informal.Block.numberingCounter"
+abbrev numberingCounterState : Name := Lean.Name.mkSimple "Informal.Block.numberingCounter"
 
 /-- Traversal-state key for the next informal block number under each rendered prefix. -/
-def prefixNumberingCounterState : Name :=
+abbrev prefixNumberingCounterState : Name :=
   Lean.Name.mkSimple "Informal.Block.prefixNumberingCounter"
 
 /-- The next document-order informal block number, defaulting to `1`. -/
