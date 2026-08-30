@@ -96,6 +96,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.DependencyAnalysis,
     `VersoBlueprintModuleTests.ExternalDeclRender,
     `VersoBlueprintModuleTests.ExternalDeclRenderData,
+    `VersoBlueprintModuleTests.ExternalMarkupRender,
     `VersoBlueprintModuleTests.ExternalRefSnapshot,
     `VersoBlueprintModuleTests.ExternalMarkupView,
     `VersoBlueprintModuleTests.Foundation,
