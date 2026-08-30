@@ -133,6 +133,8 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.ExternalDeclRenderData,
     `VersoBlueprintModuleTests.ExternalRefSnapshot,
     `VersoBlueprintModuleTests.Foundation,
+    `VersoBlueprintModuleTests.Math,
+    `VersoBlueprintModuleTests.MathLeaves,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.SourceData,
     `VersoBlueprintModuleTests.UtilityLeaves

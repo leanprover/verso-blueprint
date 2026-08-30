@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso.Output.Html.KaTeX
+module
+
+public import Lean
+public import Verso.Output.Html.KaTeX
+
+public section
 
 open Lean
 
@@ -114,9 +118,9 @@ private inductive WorkerStatus where
   | unavailable
 deriving Inhabited
 
-initialize workerStatusRef : IO.Ref WorkerStatus ← IO.mkRef .notStarted
-initialize lintCacheRef : IO.Ref (Std.HashMap String (Option Failure)) ← IO.mkRef {}
-initialize lintRequestMutexRef : IO.Ref (Option Std.BaseMutex) ← IO.mkRef none
+private initialize workerStatusRef : IO.Ref WorkerStatus ← IO.mkRef .notStarted
+private initialize lintCacheRef : IO.Ref (Std.HashMap String (Option Failure)) ← IO.mkRef {}
+private initialize lintRequestMutexRef : IO.Ref (Option Std.BaseMutex) ← IO.mkRef none
 
 /--
 Create the request mutex lazily: this module runs in Lean's interpreter during elaboration, where

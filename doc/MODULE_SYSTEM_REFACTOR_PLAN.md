@@ -182,8 +182,8 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 20 of 93 production sources are modules; the shared `Environment` extension and `DependencyAnalysis` now pass strict normal/meta consumers as prerequisites for the authoring chain |
-| M3 — phase-mixed features | pending | — |
+| M2 — dependency leaves | in progress | 26 of 95 production sources are modules; TeX rendering, math linting, and shared TeX-prelude state now pass strict normal/meta consumers |
+| M3 — phase-mixed features | in progress | `Math.Data` owns the quoteable shared payload while `Math` owns traversal/rendering and meta expansion; `Macros.Data` similarly separates shared prelude state from syntax elaboration |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
 | M6 — incremental boundaries | pending | — |
