@@ -127,6 +127,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.MathLeaves,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.RustAuthoring,
+    `VersoBlueprintModuleTests.SourceAuthoring,
     `VersoBlueprintModuleTests.SourceData,
     `VersoBlueprintModuleTests.SourceMetadata,
     `VersoBlueprintModuleTests.TraversalIndex,
