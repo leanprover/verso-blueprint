@@ -109,7 +109,9 @@ lean_lib VersoBlueprintModuleTests where
   srcDir := "tests"
   roots := #[
     `VersoBlueprintModuleTests.Data,
+    `VersoBlueprintModuleTests.ExternalDeclRender,
     `VersoBlueprintModuleTests.ExternalDeclRenderData,
+    `VersoBlueprintModuleTests.ExternalRefSnapshot,
     `VersoBlueprintModuleTests.Foundation,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.SourceData,

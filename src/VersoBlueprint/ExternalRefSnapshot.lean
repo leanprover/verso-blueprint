@@ -4,12 +4,16 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoBlueprint.Data
-import VersoBlueprint.ProvedStatus
-import VersoBlueprint.ExternalDeclRender
-import VersoBlueprint.Git
-import VersoBlueprint.RuntimeCache
+module
+
+public meta import Lean
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.ProvedStatus
+public meta import VersoBlueprint.ExternalDeclRender
+public meta import VersoBlueprint.Git
+public meta import VersoBlueprint.RuntimeCache
+
+public meta section
 
 namespace Informal
 
