@@ -4,13 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
-import VersoBlueprint.Lib.HoverRender
+module
+
+public import Lean
+public import VersoManual
+public import VersoBlueprint.Lib.HoverRender
+
+public section
 
 namespace Informal
 
-private def discardRenderError (_msg : String) : IO Unit := pure ()
+def discardRenderError (_msg : String) : IO Unit := pure ()
 
 private def callbackLogger (logMessage : String → IO Unit) : Verso.Logger IO where
   log _severity text _loc := logMessage text
