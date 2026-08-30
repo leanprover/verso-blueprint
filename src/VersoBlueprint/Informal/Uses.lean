@@ -4,21 +4,28 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Uses.Config
-import VersoBlueprint.Informal.UseConfig
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.Lib.PreviewSource
-import VersoBlueprint.PreviewCache
-import VersoBlueprint.Profiling
-import VersoBlueprint.TeX
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Data
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Lib.HoverRender
+public import VersoBlueprint.Lib.PreviewSource
+public import VersoBlueprint.PreviewCache
+public import VersoBlueprint.TeX
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.Block
+public meta import VersoBlueprint.Informal.Uses.Config
+public meta import VersoBlueprint.Informal.UseConfig
+public meta import VersoBlueprint.Profiling
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -32,7 +39,10 @@ def usesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 
 structure InlineData where
   label : Data.Label
-deriving FromJson, ToJson, Quote
+deriving FromJson, ToJson
+
+meta instance : Quote InlineData where
+  quote data := Syntax.mkCApp ``InlineData.mk #[quote data.label]
 
 /-- A reference uses document numbering only for rendered nodes, and previews only
 when prose or a code-backed preview is available. HTML and TeX share the same title resolution. -/
@@ -95,6 +105,8 @@ inline_extension Inline.informal (data : InlineData) where
       else
         inlines.mapM goI
 
+meta section
+
 def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
     let data : InlineData := { label }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
@@ -116,5 +128,7 @@ def bpref : RoleExpanderOf BprefConfig
   | cfg, contents => do
     Profile.withDocElab "role" "bpref" <|
       nodeReferenceTerm cfg.label (← contents.mapM elabInline)
+
+end
 
 end Informal
