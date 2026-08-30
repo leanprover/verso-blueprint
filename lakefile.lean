@@ -137,6 +137,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.PreviewCli,
     `VersoBlueprintModuleTests.PreviewExternalMarkupRender,
     `VersoBlueprintModuleTests.PreviewManifest,
+    `VersoBlueprintModuleTests.PreviewRelatedPanel,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.RustAuthoring,
     `VersoBlueprintModuleTests.SerializedExtension,
