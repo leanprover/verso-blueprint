@@ -8,8 +8,10 @@ module
 
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.MetadataView
 meta import VersoBlueprint.Informal.Block.Assets
 meta import VersoBlueprint.Informal.Block.Common
+meta import VersoBlueprint.Informal.MetadataView
 
 namespace VersoBlueprintModuleTests.BlockCommon
 
@@ -31,11 +33,25 @@ local macro "blockAssetCountsContract" : term => do
     Informal.Block.Assets.blockAssetBundle.css.length,
     Informal.Block.Assets.blockAssetBundle.js.length)
 
+local macro "metadataPresentationContract" : term => do
+  let metadata : MetadataPresentation := {
+    ownerText := some "Ada"
+    priority := some "high"
+    prUrl := some "https://example.test/pr/7"
+    tags := #["module"]
+  }
+  let contract : Bool × Array String × Array String := (
+    metadata.hasAny,
+    metadata.summaryBadgeSpecs.map (·.text),
+    metadata.summaryActionLinks.map (·.label))
+  return quote contract
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let header : String × Option String := codePanelHeaderContract
   let assetCounts : Nat × Nat × Nat := blockAssetCountsContract
+  let metadataContract : Bool × Array String × Array String := metadataPresentationContract
   let statusHtml := BlockStatusMark.toHtml {
     status := .missing
     title := "Module status"
@@ -43,6 +59,8 @@ local macro "blockAssetCountsContract" : term => do
   header == ("Lean code for Lemma", some "2.4") &&
     assetCounts == (3, 7, 1) &&
     Informal.Block.Assets.css.contains ".bp_wrapper" &&
+    metadataContract == (true, #["owner: Ada", "priority: high", "tag: module"], #["PR"]) &&
+    !MetadataPresentation.hasAny {} &&
     externalRenderFailureSummaryText 1 == "render failed for 1 declaration" &&
     appendExternalRenderFailureSummary "Lean" 2 ==
       "Lean; render failed for 2 declarations" &&
