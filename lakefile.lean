@@ -90,6 +90,7 @@ lean_lib VersoBlueprintModuleTests where
   srcDir := "tests"
   roots := #[
     `VersoBlueprintModuleTests.Foundation,
+    `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.SourceData,
     `VersoBlueprintModuleTests.UtilityLeaves
   ]
