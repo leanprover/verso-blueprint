@@ -4,13 +4,18 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Docstring
-import VersoBlueprint.ExternalDeclRender.Data
-import VersoBlueprint.Lib.HtmlId
-import VersoBlueprint.Macros
+module
+
+public import VersoBlueprint.ExternalDeclRender.Data
+public meta import Lean
+public meta import Verso
+public meta import VersoManual
+public meta import VersoBlueprint.ExternalDeclRender.Data
+public meta import VersoBlueprint.Lib.HtmlId
+public meta import VersoBlueprint.Docstring
+public meta import VersoBlueprint.Macros
+
+public meta section
 
 open Lean Meta
 
