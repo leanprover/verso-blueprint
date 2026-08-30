@@ -4,13 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoBlueprint.Commands.Summary.Data
+module
+
+public import Lean
+public import VersoBlueprint.Commands.Summary.Data
 import VersoBlueprint.Commands.Summary.Order
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Common
+
+public section
 
 namespace Informal.Commands
 
