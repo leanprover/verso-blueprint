@@ -10,14 +10,21 @@ import VersoBlueprint.DirectiveArgParsing
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.LeanNameParsing
 import VersoBlueprint.Lib.HtmlId
+import VersoBlueprint.Lib.PreviewKey
 meta import VersoBlueprint.DirectiveArgParsing
 meta import VersoBlueprint.LabelNameParsing
 meta import VersoBlueprint.LeanNameParsing
 meta import VersoBlueprint.Lib.HtmlId
+meta import VersoBlueprint.Lib.PreviewKey
 
 namespace VersoBlueprintModuleTests.Foundation
 
 open Lean
+
+local macro "previewKeyContract" : term => do
+  match Informal.PreviewKey.ofString? " quoted " with
+  | some key => return quote key
+  | none => unreachable!
 
 /-- info: true -/
 #guard_msgs in
@@ -37,7 +44,15 @@ open Lean
     emptyLeanNameRejected &&
     Informal.LabelNameParsing.parse "thm:contract" == Name.mkSimple "thm:contract" &&
     Informal.HtmlId.key "alpha.beta" == "alpha-002Ebeta" &&
-    Informal.HtmlId.prefixed "bp" "" == "bp"
+    Informal.HtmlId.prefixed "bp" "" == "bp" &&
+    toString (previewKeyContract : Informal.PreviewKey) == "quoted" &&
+    Lean.toJson (previewKeyContract : Informal.PreviewKey) == Lean.Json.str "quoted" &&
+    (match Lean.fromJson? (α := Informal.PreviewKey) (Lean.Json.str " normalized ") with
+      | .ok key => toString key == "normalized"
+      | .error _ => false) &&
+    (match Lean.fromJson? (α := Informal.PreviewKey) (Lean.Json.str "  ") with
+      | .error _ => true
+      | .ok _ => false)
 
 set_option verso.blueprint.trimTeXLabelPrefix true in
 /-- info: true -/
