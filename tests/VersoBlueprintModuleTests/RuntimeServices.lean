@@ -9,17 +9,27 @@ module
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
 import VersoBlueprint.RuntimeCache
 meta import VersoBlueprint.Commands.Common
 meta import VersoBlueprint.PreviewCache
+meta import VersoBlueprint.PreviewRender
 meta import VersoBlueprint.Resolve
 meta import VersoBlueprint.Rust
 
 namespace VersoBlueprintModuleTests.RuntimeServices
 
 open Lean
+
+local macro "previewRenderDefaultContract" : term => do
+  let _discard : String → IO Unit := Informal.discardRenderError
+  `(Informal.discardRenderError "module contract")
+
+example : IO Unit := previewRenderDefaultContract
+
+example : IO Unit := Informal.discardRenderError "normal contract"
 
 /-- info: true -/
 #guard_msgs in
