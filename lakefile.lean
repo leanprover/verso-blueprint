@@ -110,6 +110,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.HoverRender,
     `VersoBlueprintModuleTests.Math,
     `VersoBlueprintModuleTests.MathLeaves,
+    `VersoBlueprintModuleTests.PreviewExternalMarkupRender,
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.RustAuthoring,
     `VersoBlueprintModuleTests.SerializedExtension,
