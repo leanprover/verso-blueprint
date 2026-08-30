@@ -4,11 +4,15 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Lib.HtmlId
-import VersoBlueprint.TraversalIndex
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Lib.HtmlId
+public import VersoBlueprint.TraversalIndex
+
+public section
 
 namespace Informal.HoverRender
 
@@ -49,7 +53,7 @@ def previewKey (s : String) : String :=
 def previewId (idPrefix value : String) : String :=
   Informal.HtmlId.prefixed idPrefix value
 
-def inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
+abbrev inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
 
 def inlinePreviewMarkerBlock : Verso.Genre.Manual.Block := {
   name := Name.mkSimple "Informal.inlinePreview.marker"
