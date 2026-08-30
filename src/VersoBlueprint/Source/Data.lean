@@ -4,7 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
+module
+
+public import Lean.Data.Json.FromToJson.Basic
+meta import Verso.Instances.Deriving
+
+public section
 
 namespace Informal.Source
 
