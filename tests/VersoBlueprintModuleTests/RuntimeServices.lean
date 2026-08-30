@@ -10,10 +10,12 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.Rust
 import VersoBlueprint.RuntimeCache
 meta import VersoBlueprint.Commands.Common
 meta import VersoBlueprint.PreviewCache
 meta import VersoBlueprint.Resolve
+meta import VersoBlueprint.Rust
 
 namespace VersoBlueprintModuleTests.RuntimeServices
 
@@ -31,6 +33,23 @@ open Lean
 
 local macro "previewKeyContract" : term => do
   return quote <| Informal.PreviewCache.key (Name.mkSimple "runtime.preview") .proof
+
+local macro "rustDataContract" : term => do
+  let data : Informal.Rust.InlineCodeData := {
+    label := Name.mkSimple "module.rust"
+    raw := "pub fn contract() -> u32 { 7 }"
+    foldCodeBlock := true
+  }
+  return quote data
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let data : Informal.Rust.InlineCodeData := rustDataContract
+  data.label == Name.mkSimple "module.rust" && data.foldCodeBlock &&
+    data.raw.contains "contract" &&
+    Informal.Rust.informalRustCodeDomain == Informal.Resolve.informalRustCodeDomainName &&
+    Informal.Rust.css.contains "bp_rust_kw"
 
 local macro "assetBundleContract" : term => do
   let assets := Informal.Commands.inlinePreviewAssetBundle

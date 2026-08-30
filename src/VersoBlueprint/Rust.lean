@@ -4,9 +4,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoBlueprint.Data
-import VersoBlueprint.Resolve
+module
+
+public import Lean
+public import VersoBlueprint.Data
+public import VersoBlueprint.Resolve
+
+public section
 
 namespace Informal.Rust
 
