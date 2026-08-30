@@ -8,8 +8,10 @@ module
 
 import VersoBlueprint.Data
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Informal.GroupData
 meta import VersoBlueprint.Data
 meta import VersoBlueprint.Informal.Block.Model
+meta import VersoBlueprint.Informal.GroupData
 
 namespace VersoBlueprintModuleTests.Data
 
@@ -44,6 +46,17 @@ local macro "blockDataContract" : term => do
   let labels : LabelMap Nat := Std.TreeMap.empty
   let data : Data := Data.empty
   labelRoundtripOk && labels.isEmpty && data.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let group : Informal.GroupBlockData := {
+    label := Name.mkSimple "module.group.model"
+    header := "Module group"
+  }
+  match fromJson? (α := Informal.GroupBlockData) (toJson group) with
+  | .ok decoded => decoded.label == group.label && decoded.header == group.header
+  | .error _ => false
 
 /-- info: true -/
 #guard_msgs in
