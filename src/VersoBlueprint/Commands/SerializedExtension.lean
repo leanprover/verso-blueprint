@@ -4,9 +4,15 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
 import Lean.Data.Json.Parser
-import Verso.Doc.Elab
-import VersoManual.Basic
+public import VersoManual.Basic
+public meta import Lean.Data.Json.Parser
+public meta import Verso.Doc.Elab
+public meta import VersoManual.Basic
+
+public section
 
 namespace Informal.Commands
 
@@ -26,6 +32,8 @@ def blockFromJsonString! (name : Name) (serialized : String) : Verso.Genre.Manua
     | .error error => panic! s!"invalid serialized Blueprint extension data: {error}"
   { name, data }
 
+meta section
+
 /--
 Serialize extension data into a compact string literal and reconstruct its Manual block when the
 generated document term is evaluated.
@@ -35,5 +43,7 @@ def serializedBlockTerm [ToJson α] (name : Name) (data : α) :
   let serialized := (toJson data).compress
   ``(Verso.Doc.Block.other
     (Informal.Commands.blockFromJsonString! $(quote name) $(quote serialized)) #[])
+
+end
 
 end Informal.Commands
