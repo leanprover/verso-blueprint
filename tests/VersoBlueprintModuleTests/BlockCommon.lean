@@ -8,9 +8,11 @@ module
 
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.MetadataView
 meta import VersoBlueprint.Informal.Block.Assets
 meta import VersoBlueprint.Informal.Block.Common
+meta import VersoBlueprint.Informal.Block.Render
 meta import VersoBlueprint.Informal.MetadataView
 
 namespace VersoBlueprintModuleTests.BlockCommon
@@ -46,12 +48,20 @@ local macro "metadataPresentationContract" : term => do
     metadata.summaryActionLinks.map (·.label))
   return quote contract
 
+local macro "blockRenderContract" : term => do
+  let style := BlockKindRenderStyle.ofInProgressKind (.statement .lemma)
+  let customKind := HeaderExtraKind.custom (Name.mkSimple "contract")
+  let contract : String × Bool × String × String :=
+    (style.kindText, style.showLabel, style.wrapperCss, customKind.slotKey)
+  return quote contract
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let header : String × Option String := codePanelHeaderContract
   let assetCounts : Nat × Nat × Nat := blockAssetCountsContract
   let metadataContract : Bool × Array String × Array String := metadataPresentationContract
+  let renderContract : String × Bool × String × String := blockRenderContract
   let statusHtml := BlockStatusMark.toHtml {
     status := .missing
     title := "Module status"
@@ -61,6 +71,12 @@ local macro "metadataPresentationContract" : term => do
     Informal.Block.Assets.css.contains ".bp_wrapper" &&
     metadataContract == (true, #["owner: Ada", "priority: high", "tag: module"], #["PR"]) &&
     !MetadataPresentation.hasAny {} &&
+    renderContract ==
+      ("Lemma", true,
+        "lemma_thmwrapper theorem-style-plain bp_kind_lemma bp_style_plain",
+        "custom_contract") &&
+    (renderBlockTitleRow (BlockKindRenderStyle.ofInProgressKind .proof)
+      "proof.contract" "" "Proof").asString.contains "bp_kind_proof_caption" &&
     externalRenderFailureSummaryText 1 == "render failed for 1 declaration" &&
     appendExternalRenderFailureSummary "Lean" 2 ==
       "Lean; render failed for 2 declarations" &&
