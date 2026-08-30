@@ -129,6 +129,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.SourceData,
     `VersoBlueprintModuleTests.SourceMetadata,
     `VersoBlueprintModuleTests.TraversalIndex,
+    `VersoBlueprintModuleTests.UsesAuthoring,
     `VersoBlueprintModuleTests.UtilityLeaves
   ]
   requiresModuleSystem := true
