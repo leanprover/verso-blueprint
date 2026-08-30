@@ -89,6 +89,42 @@ consumer requires a boundary that the existing generator entry points cannot
 express. The source imports, not a parallel API manifest, remain the source of
 truth for the public import graph.
 
+## Module Naming and Setup
+
+Name internal modules by feature owner first and responsibility second. Keep
+the existing feature module as the authoring facade when it is a useful public
+entry point; split only when a dependency or phase boundary requires it.
+
+| Name | Intended responsibility |
+| --- | --- |
+| `VersoBlueprint.<Feature>` | Public feature facade and authoring syntax |
+| `<Feature>.Data` or `<Feature>.Model` | Phase-neutral serialized data or feature-domain model |
+| `<Feature>.Config` | Phase-neutral configuration and parsing policy |
+| `<Feature>.Render` | HTML/TeX rendering implementation |
+| `<Feature>.Traversal` or `<Feature>.Store` | Traversal behavior or persistent state owned by the feature |
+| `<Feature>.Assets` or `<Feature>.Cli` | Asset declarations or command-line orchestration |
+| `VersoBlueprint.Lib.<Name>` | Small feature-independent utility with more than one natural owner |
+
+Prefer a precise responsibility such as `Render`, `Traversal`, or `Store` over
+`Runtime`. Do not introduce a facade, umbrella, or `Lib` module without a
+concrete consumer. This table is a naming convention, not a requirement that
+every feature acquire every suffix.
+
+Set up each production source with the smallest deliberate boundary:
+
+1. Start with `module`, followed by `public import` only for dependencies that
+   exported declarations expose or intentionally re-export.
+2. Use plain `import` for implementation-only dependencies and `meta import`
+   for elaborator-only dependencies. Use `import all` only for a narrow,
+   documented intra-package need; it is not a substitute for a public API.
+3. Put the intended external API in a `public section`; keep normalization,
+   constructors, proofs, and other representation helpers `private`.
+4. A phase-neutral module is defined once. A consumer that executes its API at
+   both phases imports that same module normally and with `meta import`.
+5. Re-export through one of the consumer-oriented roots only when that root's
+   contract needs the declaration. The import graph remains the only module
+   manifest; do not add a generator or parallel taxonomy.
+
 ## Design Rules
 
 These rules are acceptance conditions, not suggestions:
@@ -146,7 +182,7 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | First phase-neutral leaf slice: 5 of 93 production sources are modules |
+| M2 — dependency leaves | in progress | 6 of 93 production sources are modules; `PreviewKey` preserves its private constructor across normal/meta JSON and quotation consumers |
 | M3 — phase-mixed features | pending | — |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
