@@ -182,8 +182,8 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 65 of 97 production sources are modules; phase-neutral preview, style/hover/Lean-link/code-preview/external-code summaries/markup, manual-preview/source, informal-block/relation-panel/use-reference/inline-code/Rust-panel rendering, metadata data, asset-bundle, Lean/informal-block configuration/storage/traversal/authoring and group/source-metadata authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
-| M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` separates both runtime extensions from its meta code-block parsers and expanders |
+| M2 — dependency leaves | in progress | 66 of 97 production sources are modules; phase-neutral preview, style/hover/Lean-link/code-preview/external-code summaries/markup, manual-preview/source, informal-block/relation-panel/use-reference/inline-code/Rust-panel rendering, metadata data, asset-bundle, Lean/informal-block configuration/storage/traversal/authoring and group/source-metadata authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
+| M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` and `Informal.RustBlock` separate runtime extensions from meta code-block parsers and expanders |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
 | M6 — incremental boundaries | pending | — |
