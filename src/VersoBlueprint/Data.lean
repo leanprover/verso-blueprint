@@ -4,11 +4,18 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.Data.Json
-import Lean.Data.Lsp
-import VersoManual
-import VersoBlueprint.ExternalDeclRender
+module
+
+public import Lean
+public import Lean.Data.Json
+public import Lean.Data.Lsp
+public import SubVerso.Examples.Env
+public import VersoManual
+public import VersoBlueprint.ExternalDeclRender.Data
+meta import Verso.Instances.Deriving
+meta import VersoBlueprint.ExternalDeclRender.Data
+
+public section
 
 namespace Informal.Data
 
@@ -41,14 +48,14 @@ set_option doc.verso true
 -- set_option pp.rawOnError true
 
 -- informal object labels are names for now, but that could change
-def Label := Name
+@[expose] def Label := Name
 deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
 /-- Append a Blueprint label only when it is not already present. -/
 def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
 
-def LabelMap A := NameMap A
+@[expose] def LabelMap A := NameMap A
 
 instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
 
