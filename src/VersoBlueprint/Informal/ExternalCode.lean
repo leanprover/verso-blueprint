@@ -4,14 +4,26 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.DirectiveArgParsing
-import VersoBlueprint.ExternalRefSnapshot
-import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.LeanCodeLink
-import VersoBlueprint.LeanNameParsing
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.DirectiveArgParsing
+public import VersoBlueprint.ExternalRefSnapshot
+public import VersoBlueprint.Informal.Block.Common
+public import VersoBlueprint.Informal.LeanCodeLink
+public import VersoBlueprint.LeanNameParsing
+public meta import Lean
+public meta import Verso
+public meta import VersoManual
+public meta import VersoBlueprint.DirectiveArgParsing
+public meta import VersoBlueprint.ExternalRefSnapshot
+public meta import VersoBlueprint.Informal.Block.Common
+public meta import VersoBlueprint.Informal.LeanCodeLink
+public meta import VersoBlueprint.LeanNameParsing
+
+public section
 
 /-!
 Parsing and rendering support for external Lean declarations attached to an
@@ -28,7 +40,7 @@ namespace Informal
 If enabled, unresolved or ambiguous external Lean names in `(lean := "...")` are treated as
 errors instead of warnings.
 -/
-register_option verso.blueprint.externalCode.strictResolve : Bool := {
+meta register_option verso.blueprint.externalCode.strictResolve : Bool := {
   defValue := false
   descr := "Treat unresolved or ambiguous `(lean := ...)` external references as errors"
 }
@@ -55,6 +67,8 @@ def parseExternalCodeList (lean : Option String) :
         (acc.push extRef, invalid)
       | .error err =>
         (acc, invalid.push s!"{ref} ({err})")
+
+meta section
 
 private def parsedExternalRef (ref : Data.ExternalRef) : Data.ExternalRef :=
   { ref with canonical := ref.written.eraseMacroScopes }
@@ -127,6 +141,8 @@ def resolveExternalCodeList [MonadResolveName m] [MonadOptions m] [MonadLiftT Co
         logWarningAt labelSyntax m!"{msg}; keeping parsed name"
         let ref ← markExternalRefSnapshot (parsedExternalRef ref)
         pushExternalRefUnique label labelSyntax acc ref
+
+end
 
 end
 
