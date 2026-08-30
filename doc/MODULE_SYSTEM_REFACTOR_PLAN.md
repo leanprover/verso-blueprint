@@ -182,7 +182,7 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 7 of 93 production sources are modules; `Source.Data` exposes only Lean JSON at runtime and uses the Verso `Quote` deriving handler at meta phase |
+| M2 — dependency leaves | in progress | 11 of 93 production sources are modules; the second utility slice uses precise Lean/Verso imports and keeps runtime-only helpers out of the meta contract |
 | M3 — phase-mixed features | pending | — |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
