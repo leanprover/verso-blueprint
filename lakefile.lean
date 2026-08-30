@@ -77,6 +77,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintExternalMarkup,
     `VersoBlueprintTests.ExternalDeclRender,
     `VersoBlueprintTests.RuntimeCache,
+    `VersoBlueprintTests.SerializedExtension,
     `VersoBlueprintTests.TestBlueprintRegistryMeta,
     `VersoBlueprintTests.TestBlueprintRegistryChecks,
     `VersoBlueprintTests.TestBlueprintRegistryCoverage,

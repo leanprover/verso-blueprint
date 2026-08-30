@@ -9,6 +9,7 @@ import Lean.Elab.Command
 import Verso
 import VersoManual
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Commands.SerializedExtension
 import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Commands.Summary.Render
 
@@ -26,7 +27,7 @@ def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedP
   let summary ← buildSummary
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Blueprint summary for {summary.totalEntries} entries"
-  let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.summary $(quote summary)) #[])
+  let block ← serializedBlockTerm `Informal.Commands.Block.summary summary
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 

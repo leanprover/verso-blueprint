@@ -8,6 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Commands.SerializedExtension
 import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.GraphApi
@@ -51,7 +52,7 @@ structure GraphBlockData where
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
   match s.trimAscii.toString.toLower with
@@ -474,7 +475,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {graphModel.nodes.size} graph nodes"
   let graphData : GraphBlockData := { graphModel, options, previewMode, previewPlacement }
-  let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
+  let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
