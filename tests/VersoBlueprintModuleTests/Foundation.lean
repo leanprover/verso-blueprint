@@ -14,6 +14,7 @@ import VersoBlueprint.Lib.PreviewKey
 meta import VersoBlueprint.DirectiveArgParsing
 meta import VersoBlueprint.Informal.LabelArg
 meta import VersoBlueprint.Informal.UseConfig
+meta import VersoBlueprint.Informal.Uses.Config
 meta import VersoBlueprint.LabelNameParsing
 meta import VersoBlueprint.LeanNameParsing
 meta import VersoBlueprint.Lib.HtmlId
@@ -85,5 +86,22 @@ set_option verso.blueprint.trimTeXLabelPrefix true in
     invalid.origin == .manual && invalid.intent == .regular &&
     invalid.invalidOrigin == some "auto" && invalid.invalidIntent == some "tech" &&
     refs.all fun ref => ref.origin == .automatic && ref.intent == .technical
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let labelSyntax := mkIdent `usesConfigLabel
+  let uses : Informal.UsesConfig := {
+    label := Name.mkSimple "uses.config.contract"
+    labelSyntax
+    origin := .automatic
+    intent := .auxiliary
+  }
+  let bpref : Informal.BprefConfig := {
+    label := uses.label
+    labelSyntax
+  }
+  uses.label == bpref.label && uses.origin == .automatic && uses.intent == .auxiliary &&
+    uses.labelSyntax.getId == `usesConfigLabel && bpref.labelSyntax.getId == `usesConfigLabel
 
 end VersoBlueprintModuleTests.Foundation
