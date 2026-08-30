@@ -7,11 +7,32 @@ Author: Emilio J. Gallego Arias
 module
 
 import VersoBlueprint.Git
+import VersoBlueprint.PreviewCache
 import VersoBlueprint.RuntimeCache
+meta import VersoBlueprint.PreviewCache
 
 namespace VersoBlueprintModuleTests.RuntimeServices
 
 open Lean
+
+local macro "previewKeyContract" : term => do
+  return quote <| Informal.PreviewCache.key (Name.mkSimple "runtime.preview") .proof
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let label := Name.mkSimple "runtime.preview"
+  let entry := Informal.PreviewCache.Entry.ofBlocks label .proof #[]
+    (leanCodePreviewKeys := #["lean-preview"])
+  let jsonRoundTrip :=
+    match fromJson? (α := Informal.PreviewCache.Entry) (toJson entry) with
+    | .ok decoded =>
+      decoded.label == label && decoded.facet == .proof &&
+        decoded.leanCodePreviewKeys == #["lean-preview"]
+    | .error _ => false
+  (previewKeyContract : String) == Informal.PreviewCache.proofKey label &&
+    entry.metadata.label == label && entry.metadata.facet == .proof &&
+    !entry.hasRenderedBody && jsonRoundTrip
 
 /-- Pure Git URL normalization remains part of the runtime service contract. -/
 example : Option String :=
