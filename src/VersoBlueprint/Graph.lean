@@ -4,12 +4,16 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Model
-import VersoBlueprint.Lib.HtmlId
-import VersoBlueprint.Lib.PreviewKey
-import VersoBlueprint.PreviewCache
-import VersoBlueprint.ProvedStatus
+module
+
+public import VersoBlueprint.Environment
+public import VersoBlueprint.Informal.Block.Model
+public import VersoBlueprint.Lib.HtmlId
+public import VersoBlueprint.Lib.PreviewKey
+public import VersoBlueprint.PreviewCache
+public import VersoBlueprint.ProvedStatus
+
+public section
 
 namespace Informal.Graph
 
@@ -311,7 +315,8 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 3
+/-- Current schema version of finalized graph data. -/
+def graphDataSchemaVersion : Nat := 3
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -1718,8 +1723,8 @@ private structure GraphDataJson where
 deriving FromJson
 
 /-- Decode only finalized graph records whose materialized projections agree. -/
-instance : FromJson GraphData where
-  fromJson? json := do
+@[instance] opaque graphDataFromJson : FromJson GraphData := {
+  fromJson? := fun json => do
     let decoded ← fromJson? (α := GraphDataJson) json
     if decoded.schemaVersion != graphDataSchemaVersion then
       throw s!"unsupported graph schema version {decoded.schemaVersion}; expected {graphDataSchemaVersion}"
@@ -1754,5 +1759,6 @@ instance : FromJson GraphData where
       groups := decoded.groups
       variants := decoded.variants
     }
+}
 
 end Informal.Graph
