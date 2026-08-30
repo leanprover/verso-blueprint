@@ -7,7 +7,9 @@ Author: Emilio J. Gallego Arias
 module
 
 import VersoBlueprint.Graph
+import VersoBlueprint.GraphApi
 meta import VersoBlueprint.Graph
+meta import VersoBlueprint.GraphApi
 
 namespace VersoBlueprintModuleTests.Graph
 
@@ -19,6 +21,9 @@ open Informal.Graph
 local macro "quotedGraphOptions" : term => do
   let options : GraphOptions := { direction := .LR, pack := true }
   return quote options
+
+local macro "graphApiCacheKeyContract" : term => do
+  return quote <| Informal.GraphApi.cacheKey (default : Verso.Multi.InternalId)
 
 private def graphNode (label : Name) (statementUses : Array UseRef := #[]) : NodeData := {
   label
@@ -39,7 +44,12 @@ private def graphNode (label : Name) (statementUses : Array UseRef := #[]) : Nod
     ]
   }
   let finalized := model.finish "module-graph" options
+  let apiFinalized := Informal.GraphApi.finishData
+    (Verso.Genre.Manual.TraverseState.initialize {}) "module-graph-api" {} options
   options.direction == .LR && options.pack &&
+    (graphApiCacheKeyContract : String) ==
+      Informal.GraphApi.cacheKey (default : Verso.Multi.InternalId) &&
+    apiFinalized.key == "module-graph-api" && apiFinalized.nodes.isEmpty &&
     finalized.key == "module-graph" &&
     finalized.nodes.size == 2 && finalized.edges.size == 1 &&
     (match finalized.edges[0]? with
