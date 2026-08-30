@@ -131,6 +131,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.BlockAuthoring,
     `VersoBlueprintModuleTests.BlockCommon,
     `VersoBlueprintModuleTests.BlockStore,
+    `VersoBlueprintModuleTests.CodeAuthoring,
     `VersoBlueprintModuleTests.Data,
     `VersoBlueprintModuleTests.DependencyAnalysis,
     `VersoBlueprintModuleTests.ExternalDeclRender,
