@@ -4,10 +4,15 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Verso.Doc.ArgParse
-import Verso.Doc.Elab
+module
+
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewCache
+public meta import Verso.Doc.ArgParse
+public meta import Verso.Doc.Elab
+meta import Verso.Instances.Deriving
+
+public section
 
 namespace Informal.Graft
 
