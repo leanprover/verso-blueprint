@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Commands.Common
+module
+
+public import VersoManual
+public import VersoBlueprint.Commands.Common
 import VersoBlueprint.Macros
-import VersoBlueprint.StyleSwitcher
+public import VersoBlueprint.StyleSwitcher
+
+public section
 
 namespace Informal.Block.Assets
 
