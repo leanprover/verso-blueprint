@@ -7,8 +7,10 @@ Author: Emilio J. Gallego Arias
 module
 
 import VersoBlueprint.Informal.Group
+import VersoBlueprint.Lean
 meta import VersoBlueprint.Informal.Block.Config
 meta import VersoBlueprint.Informal.Group
+meta import VersoBlueprint.Lean
 
 namespace VersoBlueprintModuleTests.GroupAuthoring
 
@@ -26,6 +28,12 @@ local macro "blockConfigContract" : term => do
     (cfg.label, cfg.priority, cfg.tags)
   return quote contract
 
+local macro "leanAuthoringConfigContract" : term => do
+  let cfg := Informal.Lean.defaultConfig
+  let contract : Bool × Option Name × String :=
+    (cfg.show, cfg.name, cfg.outlineMeta)
+  return quote contract
+
 #docs (Manual) groupAuthoringContractDoc "Module Group Authoring" :=
 :::::::
 :::group "module.group.authoring"
@@ -41,6 +49,7 @@ A "quoted" module group.
     pure <|
       (blockConfigContract : Name × Option String × Array String) ==
         (Name.mkSimple "module.block.config", some "high", #["module", "authoring"]) &&
+      (leanAuthoringConfigContract : Bool × Option Name × String) == (true, none, " ") &&
       state.groups.get? (Name.mkSimple "module.group.authoring") ==
         some "A \"quoted\" module group."
 
