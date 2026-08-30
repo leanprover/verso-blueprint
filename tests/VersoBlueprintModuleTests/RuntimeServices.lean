@@ -9,13 +9,25 @@ module
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.Resolve
 import VersoBlueprint.RuntimeCache
 meta import VersoBlueprint.Commands.Common
 meta import VersoBlueprint.PreviewCache
+meta import VersoBlueprint.Resolve
 
 namespace VersoBlueprintModuleTests.RuntimeServices
 
 open Lean
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let label := `Contract.label
+  let decl := `Contract.declaration
+  Informal.Resolve.externalRenderedDeclTargetKey label decl ==
+      "14:Contract.label|20:Contract.declaration" &&
+    Informal.Resolve.informalDomainName == Name.mkSimple "Informal.Block.informal" &&
+    Informal.Resolve.informalPreviewDomainName == Name.mkSimple "Informal.Block.informalPreview"
 
 local macro "previewKeyContract" : term => do
   return quote <| Informal.PreviewCache.key (Name.mkSimple "runtime.preview") .proof
