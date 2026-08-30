@@ -270,6 +270,20 @@ private def externalMarkupBadgeText : Data.ExternalMarkupLanguage → String
 private def pushUniqueString (values : Array String) (value : String) : Array String :=
   if values.contains value then values else values.push value
 
+private def trimmedOptionalString (value? : Option String) : Option String := do
+  let rawValue ← value?
+  let value := rawValue.trimAscii.toString
+  if value.isEmpty then none else some value
+
+private def collectTrimmedUniqueBy {α : Type} (values : Array α)
+    (value? : α → Option String) : Array String :=
+  values.foldl
+    (init := #[])
+    fun collected item =>
+      match trimmedOptionalString (value? item) with
+      | some value => pushUniqueString collected value
+      | none => collected
+
 private def externalMarkupLanguages (markup : Array Data.ExternalMarkup) :
     Array Data.ExternalMarkupLanguage :=
   markup.foldl
@@ -369,11 +383,7 @@ private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) 
   {{<a class="bp_metadata_link bp_metadata_value" href={{href}}><code>s!"{value}"</code></a>}}
 
 private def sourceSpanPages (spans : Array Source.Span) : Array String :=
-  spans.foldl
-    (init := #[])
-    fun pages span =>
-      let page := span.page.trimAscii.toString
-      if page.isEmpty then pages else pushUniqueString pages page
+  collectTrimmedUniqueBy spans (·.page)
 
 private def sourcePagesSummary (pages : Array String) : String :=
   match pages.toList with
@@ -394,10 +404,16 @@ private def sourcePdfSpanSummary (span : Source.PdfSpan) : String :=
   | Option.some image => s!"pdf {span.path}; image {image}"
   | Option.none => s!"pdf {span.path}"
 
+private def pushOptionalSourceSummary (parts : Array String) (key : String)
+    (value? : Option String) : Array String :=
+  match trimmedOptionalString value? with
+  | some value => parts.push s!"{key} {value}"
+  | none => parts
+
 private def sourceSpanSummary (span : Source.Span) : String :=
-  let page := span.page.trimAscii.toString
-  let parts : Array String :=
-    if page.isEmpty then #[] else #[s!"page {page}"]
+  let parts := pushOptionalSourceSummary #[] "citation" span.citation
+  let parts := pushOptionalSourceSummary parts "anchor" span.anchor
+  let parts := pushOptionalSourceSummary parts "page" span.page
   let parts :=
     match span.text with
     | Option.some textRange => parts.push (sourceTextRangeSummary textRange)
@@ -407,6 +423,9 @@ private def sourceSpanSummary (span : Source.Span) : String :=
     | Option.some pdf => parts.push (sourcePdfSpanSummary pdf)
     | Option.none => parts
   String.intercalate "; " parts.toList
+
+private def sourceSpanCitations (spans : Array Source.Span) : Array String :=
+  collectTrimmedUniqueBy spans (·.citation)
 
 private def sourceRefSummary (sourceRef : Source.Ref) : String :=
   let pages := sourceSpanPages sourceRef.spans
@@ -425,10 +444,12 @@ private def sourceRefTitle (sourceRef : Source.Ref) : String :=
     s!"Original source document {sourceRef.document}: {String.intercalate " | " spanSummary}"
 
 private def sourceRefsChipText (sourceRefs : Array Source.Ref) : String :=
-  if sourceRefs.size == 1 then
-    "source 1"
-  else
-    s!"sources {sourceRefs.size}"
+  match sourceRefs.toList with
+  | [sourceRef] =>
+      match sourceSpanCitations sourceRef.spans |>.toList with
+      | [citation] => s!"source: {citation}"
+      | _ => "source 1"
+  | _ => s!"sources {sourceRefs.size}"
 
 private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
   if sourceRefs.size == 1 then
@@ -452,7 +473,7 @@ private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
 private def sourceSpanPreviewText (span : Source.Span) : String :=
   let summary := sourceSpanSummary span
   if summary.isEmpty then
-    "Source span recorded without page, text, or PDF location"
+    "Source span recorded without page, anchor, text, or PDF location"
   else
     summary
 

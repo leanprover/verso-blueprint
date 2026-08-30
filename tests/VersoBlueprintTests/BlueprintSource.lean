@@ -20,7 +20,10 @@ private def sourcedLabel : Name := Name.mkSimple "source.lemma"
 private def secondSourcedLabel : Name := Name.mkSimple "source.second"
 
 private def sourceRefHasPage (document page : String) (sourceRef : Informal.Source.Ref) : Bool :=
-  sourceRef.document == document && sourceRef.spans.any (fun span => span.page == page)
+  sourceRef.document == document && sourceRef.spans.any (fun span => span.page == some page)
+
+private def sourceRefHasAnchor (document anchor : String) (sourceRef : Informal.Source.Ref) : Bool :=
+  sourceRef.document == document && sourceRef.spans.any (fun span => span.anchor == some anchor)
 
 private def entryHasSourcePage
     (document page : String) (entry : Informal.PreviewManifest.Entry) : Bool :=
@@ -30,11 +33,21 @@ private def entryOptionHasSourcePage
     (document page : String) (entry? : Option Informal.PreviewManifest.Entry) : Bool :=
   entry?.any fun entry => entryHasSourcePage document page entry
 
+private def entryHasSourceAnchor
+    (document anchor : String) (entry : Informal.PreviewManifest.Entry) : Bool :=
+  entry.hasSourceDocument document && entry.sources.any (sourceRefHasAnchor document anchor)
+
+private def entryOptionHasSourceAnchor
+    (document anchor : String) (entry? : Option Informal.PreviewManifest.Entry) : Bool :=
+  entry?.any fun entry => entryHasSourceAnchor document anchor entry
+
 private def sourceRefHasRepresentationTheorySpan (sourceRef : Informal.Source.Ref) : Bool :=
   sourceRef.document == "paper" &&
     sourceRef.spans.any fun span =>
       let boxXMax := (span.pdf.bind (·.box)).map (·.xMax)
-      span.page == "12" &&
+      span.page == some "12" &&
+        span.anchor == some "lem:representation" &&
+        span.citation == some "Lemma 4.2" &&
         span.text.map (·.path) == some "source/pages/page-12.md" &&
         span.text.map (·.startLine) == some 41 &&
         span.text.map (·.endLine) == some 45 &&
@@ -69,6 +82,8 @@ source := {
   spans := #[
     {
       page := "12"
+      anchor := "lem:representation"
+      citation := "Lemma 4.2"
       text := some {
         path := "source/pages/page-12.md"
         startLine := 41
@@ -101,9 +116,10 @@ source := {
   document := "notes"
   spans := #[
     {
-      page := "A"
+      anchor := "itm:addition-right-identity"
+      citation := "Lemma 2.1(1)"
       text := some {
-        path := "source/notes/addition.md"
+        path := "source/notes/addition.tex"
         startLine := 1
         endLine := 3
       }
@@ -250,13 +266,69 @@ Invalid source metadata.
     let refErrors :=
       Informal.Source.Ref.validationErrors
         ({ document := "paper" } : Informal.Source.Ref)
+    let citationOnlySpanErrors :=
+      Informal.Source.Span.validationErrors
+        ({ citation := "Lemma 2.1(1)" } : Informal.Source.Span)
+    let anchorOnlySpanErrors :=
+      Informal.Source.Span.validationErrors
+        ({ anchor := "itm:addition-right-identity" } : Informal.Source.Span)
+    let anchoredTextSpanErrors :=
+      Informal.Source.Span.validationErrors
+        ({
+          anchor := "itm:addition-right-identity"
+          citation := "Lemma 2.1(1)"
+          text := some { path := "source.tex", startLine := 1, endLine := 3 }
+        } : Informal.Source.Span)
     let expectedDocumentErrors : Array Informal.Source.ValidationError := #[
       .emptyField "source document id",
       .pdfDocumentMissingPath
     ]
     let expectedRefErrors : Array Informal.Source.ValidationError := #[.refMissingSpan]
     documentErrors == expectedDocumentErrors &&
-      refErrors == expectedRefErrors
+      refErrors == expectedRefErrors &&
+      citationOnlySpanErrors == #[.spanMissingLocation] &&
+      anchorOnlySpanErrors.isEmpty &&
+      anchoredTextSpanErrors.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let sharedCitation := "Lemma 2.1(1)"
+    let paperSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[{ page := "12", citation := sharedCitation }]
+    }
+    let notesSource : Informal.Source.Ref := {
+      document := "notes"
+      spans := #[{ anchor := "itm:addition-right-identity", citation := sharedCitation }]
+    }
+    let uncitedSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[{ page := "12" }]
+    }
+    let ambiguousSource : Informal.Source.Ref := {
+      document := "paper"
+      spans := #[
+        { page := "12", citation := sharedCitation },
+        { page := "13", citation := "Lemma 2.1(2)" }
+      ]
+    }
+    let singleHtml? :=
+      (Informal.renderSourceHeaderExtra? #[paperSource]).map (·.html.asString)
+    let multipleHtml? :=
+      (Informal.renderSourceHeaderExtra? #[paperSource, notesSource]).map (·.html.asString)
+    let uncitedHtml? :=
+      (Informal.renderSourceHeaderExtra? #[uncitedSource]).map (·.html.asString)
+    let ambiguousHtml? :=
+      (Informal.renderSourceHeaderExtra? #[ambiguousSource]).map (·.html.asString)
+    singleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
+      multipleHtml?.any (hasSubstr · "sources 2") &&
+      !multipleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
+      uncitedHtml?.any (hasSubstr · "source 1") &&
+      !uncitedHtml?.any (hasSubstr · "source:") &&
+      ambiguousHtml?.any (hasSubstr · "source 1") &&
+      !ambiguousHtml?.any (hasSubstr · "source:")
 
 /-- info: true -/
 #guard_msgs in
@@ -265,17 +337,21 @@ Invalid source metadata.
     let (html, st) ← renderManualDocHtmlStringAndState extension_impls% sourceProvenanceDoc
     let sourceDocument? := Informal.TraversalIndex.SourceDocuments.data? st "paper"
     let sourceRef? := Informal.TraversalIndex.SourceRefs.data? st sourcedLabel
+    let secondSourceRef? := Informal.TraversalIndex.SourceRefs.data? st secondSourcedLabel
     let storageOk :=
-      match sourceDocument?, sourceRef? with
-      | some sourceDocument, some sourceRef =>
+      match sourceDocument?, sourceRef?, secondSourceRef? with
+      | some sourceDocument, some sourceRef, some secondSourceRef =>
           sourceDocument.id == "paper" &&
             sourceDocument.title == "Representation Theory" &&
             sourceDocument.kind == .pdf &&
             sourceDocument.pdf == some "source/paper.pdf" &&
             sourceDocument.pageRoot == some "source/pages" &&
             sourceDocument.imageRoot == some "source/pages/images" &&
-            sourceRefHasRepresentationTheorySpan sourceRef
-      | _, _ => false
+            sourceRefHasRepresentationTheorySpan sourceRef &&
+            sourceRefHasAnchor "notes" "itm:addition-right-identity" secondSourceRef &&
+            secondSourceRef.spans.any (fun span =>
+              span.page.isNone && span.citation == some "Lemma 2.1(1)")
+      | _, _, _ => false
     pure <|
       hasSubstr html "A sourced statement." &&
       !hasSubstr html "source/paper.pdf" &&
@@ -312,9 +388,9 @@ Invalid source metadata.
         entry.targetKind == .leanDecl &&
           entry.sources.size == 2 &&
           entryHasSourcePage "paper" "12" entry &&
-          entryHasSourcePage "notes" "A" entry) &&
+          entryHasSourceAnchor "notes" "itm:addition-right-identity" entry) &&
       entryOptionHasSourcePage "paper" "12" entry? &&
-      entryOptionHasSourcePage "notes" "A" secondEntry?
+      entryOptionHasSourceAnchor "notes" "itm:addition-right-identity" secondEntry?
 
 /-- info: true -/
 #guard_msgs in

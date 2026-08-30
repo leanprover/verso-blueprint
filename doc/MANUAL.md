@@ -646,6 +646,8 @@ source := {
   spans := #[
     {
       page := "12"
+      anchor := "lem:addition-right-identity"
+      citation := "Lemma 2.1(1)"
       text := some {
         path := "source/pages/page-12.md"
         startLine := 41
@@ -667,8 +669,53 @@ For every natural number $`n`, $`n + 0 = n`.
 The generated manifest exports declared documents in `sourceDocuments` and each
 manifest entry's original-source refs in `entry.sources`. Normal generated node
 shells also show a compact source chip when source provenance is present; open
-it to inspect the source document id, page summary, and recorded text/PDF span
-details.
+it to inspect the source document id, source-native anchor and citation, page
+summary, and recorded text/PDF span details.
+
+When an entry has exactly one source ref with one unique citation, the chip
+displays that citation as `source: ...`. A single ref without a unique citation
+uses `source 1`; entries that aggregate several refs use `sources N` so the
+compact label does not hide additional provenance.
+
+`anchor` is a stable identifier in the original source, such as a TeX
+`\label`; `citation` is the corresponding human-readable source identity, such
+as `Lemma 2.1(1)` or `Equation (2.4)`. These fields do not replace the
+Blueprint node's label or generated heading number. A node may therefore remain
+`Lemma 2.2` in the Blueprint while its source chip explicitly reads
+`source: Lemma 2.1(1)`. Keeping the identities separate avoids silently
+changing graph keys, Blueprint references, or site-local numbering to imitate
+the source document.
+
+For a text source such as the TeX input itself, omit `page` and use a source
+anchor, a text line range, or both:
+
+````md
+:::source_document "paper-tex"
+%%%
+title := "Representation Theory (TeX source)"
+kind := .text
+%%%
+:::
+
+:::lemma_ "addition_right_identity"
+%%%
+source := {
+  document := "paper-tex"
+  spans := #[{
+    anchor := "itm:addition-right-identity"
+    citation := "Lemma 2.1(1)"
+    text := some {
+      path := "paper.tex"
+      startLine := 439
+      endLine := 440
+    }
+  }]
+}
+%%%
+
+For every natural number $`n`, $`n + 0 = n`.
+:::
+````
 
 Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean code preview entries may contain multiple refs when
@@ -684,8 +731,8 @@ read the complete catalog with `loadSourceDocuments`.
 
 Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
 `api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
-render result. The API returns structured source-document metadata and recorded
-text/PDF spans.
+render result. The API returns structured source-document metadata, source
+identities, and text/PDF spans.
 Manifest entries also include `sourceLocation`, a lookup result for the authored
 Blueprint label/facet location or Lean declaration source. Browser clients that
 start from semantic names can call `resolveLabel`, or `resolveDeclaration` for

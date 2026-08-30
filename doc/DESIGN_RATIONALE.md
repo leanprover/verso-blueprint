@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-06-20
+Last updated: 2026-07-17
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -45,6 +45,23 @@ object, and what local formal/informal data belongs to it?" The
 traversal/rendering pass answers "how do these objects sit inside this rendered
 site?" Rendering and UI layers are expected to project from those two stages
 rather than invent parallel sources of truth.
+
+### Blueprint Identity and Original-Source Identity
+
+Blueprint labels and traversal-generated heading numbers identify nodes inside
+the Blueprint site. They must remain independent of identities inherited from
+an original TeX, PDF, or text source. A source span may therefore record a
+stable source-native `anchor` and a human-facing `citation` either alongside
+physical page, text, or PDF locations or, for an anchor-only span, instead of
+them. For example, a node generated as `Lemma 2.2` can point to `itm:ib-first`
+and display `source: Lemma 2.1(1)` without changing its graph key,
+cross-references, or intrinsic numbering.
+
+The source anchor is machine identity; the citation is presentation. Neither is
+reconstructed from visible prose, and neither is used as a substitute for the
+Blueprint node label. This is particularly important for Blueprints generated
+from TeX, where definitions or split list items may consume different
+Blueprint counters than the source theorem environment.
 
 ### Command Split
 

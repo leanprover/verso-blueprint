@@ -1239,7 +1239,14 @@ a `reason` and `diagnosticHtml` suitable for insertion into the page.
 `resolveSourceMetadata` is data-only: it returns source metadata and failure
 reasons, but no rendered HTML. It also does not load source PDFs, extracted
 text, or page images; callers use the returned paths and spans in the source UI
-they own.
+they own. Each span may carry a source-native `anchor` (for example a TeX
+`\label`) and a human-readable `citation` (for example `Lemma 2.1(1)`) in
+addition to its optional page, text range, and PDF location.
+
+Generated JSON includes every source-provenance field. Fields backed by Lean
+`Option` values are encoded as either their documented value or `null`, rather
+than being omitted. In particular, clients must handle page-less spans as
+`page: null` and use their anchor, text range, or PDF location instead.
 
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |
