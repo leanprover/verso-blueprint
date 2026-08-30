@@ -837,4 +837,18 @@ def Data.registerExternalMarkup (data : Data) (label : Label) (markup : External
     let externalMarkup ← mergeExternalMarkup label node.externalMarkup markup
     return data.insert label { node with externalMarkup }
 
+/-- Infotree entry corresponding to a node in the blueprint graph. -/
+structure NodeInfo where
+  label : Label
+  kind : Data.InProgressKind
+  /-- Formal declaration represented by this info node, when applicable. -/
+  decl? : Option Name := none
+deriving TypeName, Repr
+
+def NodeInfo.save [Monad m] [Elab.MonadInfoTree m]
+    (stx : Syntax) (label : Label) (kind : Data.InProgressKind)
+    (decl? : Option Name := none) : m Unit := do
+  Elab.pushInfoLeaf <|
+    .ofCustomInfo { stx := stx, value := Dynamic.mk ({ label, kind, decl? } : NodeInfo) }
+
 end
