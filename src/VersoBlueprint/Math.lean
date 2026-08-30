@@ -4,12 +4,24 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.MathLint
-import VersoBlueprint.Macros
-import VersoBlueprint.TeX
+module
+
+public import Lean
+public import VersoManual
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Math.Data
+public import VersoBlueprint.MathLint
+public import VersoBlueprint.Macros
+public import VersoBlueprint.TeX
+public meta import Lean
+public meta import VersoManual
+public meta import VersoBlueprint.Lib.ExtensionDecode
+public meta import VersoBlueprint.Math.Data
+public meta import VersoBlueprint.MathLint
+public meta import VersoBlueprint.Macros
+public meta import VersoBlueprint.TeX
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -18,17 +30,6 @@ namespace Informal.Math
 
 open Lean Elab Syntax
 open Lean.Doc.Syntax
-
-instance : Quote MathMode where
-  quote
-    | .inline => mkCApp ``Lean.Doc.MathMode.inline #[]
-    | .display => mkCApp ``Lean.Doc.MathMode.display #[]
-
-structure BpMathData where
-  mode : MathMode
-  source : String
-  texPrelude : String := ""
-deriving FromJson, ToJson, Repr, Quote
 
 private def mathClasses (mode : MathMode) : String :=
   "bp_math " ++ match mode with
@@ -57,7 +58,7 @@ private def isDisplayMathSource (source : String) : Bool :=
       source.startsWith ("\\begin{" ++ env ++ "}")
 
 /-- Narrow the warning site from the whole math literal down to the offending source slice when possible. -/
-private def lintWarningRef? [Monad m] [MonadFileMap m]
+private meta def lintWarningRef? [Monad m] [MonadFileMap m]
     (ref : TSyntax `str) (failure : Informal.MathLint.Failure) : m (Option Syntax) := do
   let some sourceSpan := (match failure.site with
     | .source source _katexInput => some source
@@ -74,7 +75,7 @@ private def lintWarningRef? [Monad m] [MonadFileMap m]
   return some <| Syntax.ofRange { start, stop }
 
 /-- Run the KaTeX lint check during elaboration and log a warning immediately instead of waiting for final HTML render. -/
-private def lintBpMathTerm [Monad m] [MonadLiftT IO m] [MonadOptions m]
+private meta def lintBpMathTerm [Monad m] [MonadLiftT IO m] [MonadOptions m]
     [MonadRef m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
     (ref : TSyntax `str) (mode : MathMode) (source texPrelude : String) : m Unit := do
   unless Informal.MathLint.enabled (← getOptions) do
@@ -135,7 +136,7 @@ inline_extension Inline.bpMath (data : BpMathData) where
       pure <| .tag "code" attrs (.text true source)
 
 /-- Build the serialized inline node shared by both the plain and linted elaboration paths. -/
-private def mkBpMathInlineTermCore [Monad m] [MonadQuotation m]
+private meta def mkBpMathInlineTermCore [Monad m] [MonadQuotation m]
     (mode : MathMode) (source texPrelude : String) : m (TSyntax `term) := do
   let data : BpMathData := { mode, source, texPrelude }
   ``(
@@ -144,13 +145,13 @@ private def mkBpMathInlineTermCore [Monad m] [MonadQuotation m]
       #[]
   )
 
-def mkBpMathInlineTerm [Monad m] [MonadEnv m] [MonadQuotation m]
+meta def mkBpMathInlineTerm [Monad m] [MonadEnv m] [MonadQuotation m]
     (mode : MathMode) (source : String) : m (TSyntax `term) := do
   let texPrelude ← Informal.Macros.getTexPrelude
   mkBpMathInlineTermCore mode source texPrelude
 
 /-- Same as `mkBpMathInlineTerm`, but emits an immediate warning before packaging the node. -/
-def mkBpMathInlineTermLinted [Monad m] [MonadEnv m] [MonadQuotation m]
+meta def mkBpMathInlineTermLinted [Monad m] [MonadEnv m] [MonadQuotation m]
     [MonadLiftT IO m] [MonadOptions m] [MonadRef m] [MonadLog m] [AddMessageContext m]
     [MonadFileMap m]
     (ref : TSyntax `str) (mode : MathMode) (source : String) : m (TSyntax `term) := do
