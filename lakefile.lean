@@ -121,6 +121,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.SummaryCollect,
     `VersoBlueprintModuleTests.SummaryData,
     `VersoBlueprintModuleTests.SummaryHtml,
+    `VersoBlueprintModuleTests.SummarySections,
     `VersoBlueprintModuleTests.TeXRuntime,
     `VersoBlueprintModuleTests.TraversalIndex,
     `VersoBlueprintModuleTests.UsesAuthoring,

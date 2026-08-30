@@ -4,16 +4,20 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Commands.Summary.Html
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Commands.Summary.Html
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
 import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
+
+public section
 
 /-!
 Section assembly and `Block.summary` registration for `blueprint_summary`.
