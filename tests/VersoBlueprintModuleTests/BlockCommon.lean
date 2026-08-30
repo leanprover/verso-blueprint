@@ -8,10 +8,12 @@ module
 
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.MetadataView
 meta import VersoBlueprint.Informal.Block.Assets
 meta import VersoBlueprint.Informal.Block.Common
+meta import VersoBlueprint.Informal.Block.RelatedPanel
 meta import VersoBlueprint.Informal.Block.Render
 meta import VersoBlueprint.Informal.MetadataView
 
@@ -55,6 +57,12 @@ local macro "blockRenderContract" : term => do
     (style.kindText, style.showLabel, style.wrapperCss, customKind.slotKey)
   return quote contract
 
+local macro "relatedPanelContract" : term => do
+  let cfg := RelatedPanel.usedByPanelConfig (some (Name.mkSimple "module.target"))
+  let contract : String × String × String :=
+    (cfg.chipText 2, cfg.chipTitle 2, cfg.panelTitle 2)
+  return quote contract
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -62,6 +70,7 @@ local macro "blockRenderContract" : term => do
   let assetCounts : Nat × Nat × Nat := blockAssetCountsContract
   let metadataContract : Bool × Array String × Array String := metadataPresentationContract
   let renderContract : String × Bool × String × String := blockRenderContract
+  let relationContract : String × String × String := relatedPanelContract
   let statusHtml := BlockStatusMark.toHtml {
     status := .missing
     title := "Module status"
@@ -77,6 +86,9 @@ local macro "blockRenderContract" : term => do
         "custom_contract") &&
     (renderBlockTitleRow (BlockKindRenderStyle.ofInProgressKind .proof)
       "proof.contract" "" "Proof").asString.contains "bp_kind_proof_caption" &&
+    relationContract ==
+      ("used by 2", "Reverse dependencies for «module.target»", "Used by 2") &&
+    RelatedPanel.statementAxisBadgeCode == "s" && RelatedPanel.proofAxisBadgeCode == "p" &&
     externalRenderFailureSummaryText 1 == "render failed for 1 declaration" &&
     appendExternalRenderFailureSummary "Lean" 2 ==
       "Lean; render failed for 2 declarations" &&

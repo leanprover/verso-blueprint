@@ -4,13 +4,19 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Informal.Block.Model
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.Lib.PreviewResources
-import VersoBlueprint.RenderingResolution
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Informal.Block.Model
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Lib.HoverRender
+public import VersoBlueprint.Lib.PreviewSource
+public import VersoBlueprint.TraversalIndex
+
+public import VersoBlueprint.Lib.PreviewResources
+public import VersoBlueprint.RenderingResolution
+
+public section
 
 /-!
 Rendering for the small relationship panels attached to informal blocks.
