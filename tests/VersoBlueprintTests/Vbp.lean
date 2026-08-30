@@ -1374,6 +1374,30 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 
 /-- info: true -/
 #guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  let staleManifestJson := Json.mkObj [
+    (Informal.PreviewManifest.manifestInternalSchemaVersionField,
+      toJson (Informal.PreviewManifest.manifestInternalSchemaVersion - 1)),
+    ("previews", Json.arr #[]),
+    ("groups", Json.arr #[]),
+    ("graphs", Json.arr #[]),
+    ("sourceDocuments", Json.arr #[])
+  ]
+  writeRawManifestOnlySite site staleManifestJson
+  try
+    let _ ← VersoBlueprint.Vbp.readManifestForSite site
+    pure false
+  catch err =>
+    let message := IO.Error.toString err
+    pure <|
+      message.contains "unsupported internal Blueprint manifest schema" &&
+        message.contains "found" &&
+        message.contains "expected" &&
+        message.contains "lake exe vbp build"
+
+/-- info: true -/
+#guard_msgs in
 #eval
   show Bool from
     match VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", "_out/custom", "--serve", "--port", "8080"] {} with

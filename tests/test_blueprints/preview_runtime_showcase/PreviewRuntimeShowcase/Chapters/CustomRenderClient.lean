@@ -498,6 +498,8 @@ source := {
   spans := #[
     {
       page := "42"
+      anchor := "thm:custom-client"
+      citation := "Theorem 4.2"
       text := some {
         path := "source/pages/page-42.md"
         startLine := 10
@@ -515,6 +517,15 @@ source := {
           xMax := 980
           yMax := 520
         }
+      }
+    },
+    {
+      anchor := "itm:custom-client"
+      citation := "Theorem 4.2"
+      text := some {
+        path := "source/custom-client.tex"
+        startLine := 80
+        endLine := 82
       }
     }
   ]
