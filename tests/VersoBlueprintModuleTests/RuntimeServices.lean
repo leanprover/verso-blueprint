@@ -6,9 +6,11 @@ Author: Emilio J. Gallego Arias
 
 module
 
+import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.RuntimeCache
+meta import VersoBlueprint.Commands.Common
 meta import VersoBlueprint.PreviewCache
 
 namespace VersoBlueprintModuleTests.RuntimeServices
@@ -17,6 +19,29 @@ open Lean
 
 local macro "previewKeyContract" : term => do
   return quote <| Informal.PreviewCache.key (Name.mkSimple "runtime.preview") .proof
+
+local macro "assetBundleContract" : term => do
+  let assets := Informal.Commands.inlinePreviewAssetBundle
+    (cssExtras := ["contract-css"])
+    (jsBefore := ["before-js"])
+    (jsAfter := ["after-js"])
+  return quote (assets.css.length, assets.js)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let assets := Informal.Commands.inlinePreviewAssetBundle
+    (cssExtras := ["contract-css"])
+    (jsBefore := ["before-js"])
+    (jsAfter := ["after-js"])
+  (assetBundleContract : Nat × List String) == (assets.css.length, assets.js) &&
+    assets.css == [
+      Informal.Commands.blueprintTokensCss,
+      "contract-css",
+      Informal.Commands.previewHeaderCss,
+      Informal.Commands.inlinePreviewCss
+    ] &&
+    assets.js == ["before-js", "after-js"]
 
 /-- info: true -/
 #guard_msgs in
