@@ -117,6 +117,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.ExternalRefSnapshot,
     `VersoBlueprintModuleTests.Foundation,
     `VersoBlueprintModuleTests.Graph,
+    `VersoBlueprintModuleTests.GroupAuthoring,
     `VersoBlueprintModuleTests.HoverRender,
     `VersoBlueprintModuleTests.Math,
     `VersoBlueprintModuleTests.MathLeaves,
