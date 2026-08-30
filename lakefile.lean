@@ -123,6 +123,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.ExternalMarkupView,
     `VersoBlueprintModuleTests.Foundation,
     `VersoBlueprintModuleTests.Graph,
+    `VersoBlueprintModuleTests.GraftNode,
     `VersoBlueprintModuleTests.GroupAuthoring,
     `VersoBlueprintModuleTests.HoverRender,
     `VersoBlueprintModuleTests.Math,
