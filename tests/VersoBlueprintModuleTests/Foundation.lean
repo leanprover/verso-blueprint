@@ -12,6 +12,7 @@ import VersoBlueprint.LeanNameParsing
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.PreviewKey
 meta import VersoBlueprint.DirectiveArgParsing
+meta import VersoBlueprint.Informal.LabelArg
 meta import VersoBlueprint.LabelNameParsing
 meta import VersoBlueprint.LeanNameParsing
 meta import VersoBlueprint.Lib.HtmlId
@@ -58,5 +59,16 @@ set_option verso.blueprint.trimTeXLabelPrefix true in
 /-- info: true -/
 #guard_msgs in
 #eval true
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let labelSyntax := mkIdent `authorWrittenLabel
+  let parsed := Informal.LabelArg.parse {
+    val := "module.authoring.label"
+    «syntax» := labelSyntax
+  }
+  parsed.label == Name.mkSimple "module.authoring.label" &&
+    parsed.labelSyntax.getId == `authorWrittenLabel
 
 end VersoBlueprintModuleTests.Foundation

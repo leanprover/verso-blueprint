@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
-import VersoBlueprint.Data
-import VersoBlueprint.LabelNameParsing
+module
+
+public meta import Lean
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.LabelNameParsing
+
+public meta section
 
 namespace Informal.LabelArg
 
