@@ -4,13 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
+module
+
+public import Lean.Data.Options
+
+public section
 
 namespace Informal.LabelNameParsing
 
 open Lean
 
-register_option verso.blueprint.trimTeXLabelPrefix : Bool := {
+public register_option verso.blueprint.trimTeXLabelPrefix : Bool := {
   defValue := false
   descr := "Trim TeX-style prefixes for informal-label-derived Lean names (`thm:foo` -> `foo`)"
 }
