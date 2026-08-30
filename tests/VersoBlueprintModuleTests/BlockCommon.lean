@@ -6,7 +6,9 @@ Author: Emilio J. Gallego Arias
 
 module
 
+import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+meta import VersoBlueprint.Informal.Block.Assets
 meta import VersoBlueprint.Informal.Block.Common
 
 namespace VersoBlueprintModuleTests.BlockCommon
@@ -23,15 +25,24 @@ local macro "codePanelHeaderContract" : term => do
   let header := codePanelHeader data "2.4"
   return quote (header.caption, header.number?)
 
+local macro "blockAssetCountsContract" : term => do
+  return quote (
+    Informal.Block.Assets.codeAssetBundle.css.length,
+    Informal.Block.Assets.blockAssetBundle.css.length,
+    Informal.Block.Assets.blockAssetBundle.js.length)
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let header : String × Option String := codePanelHeaderContract
+  let assetCounts : Nat × Nat × Nat := blockAssetCountsContract
   let statusHtml := BlockStatusMark.toHtml {
     status := .missing
     title := "Module status"
   } |>.asString
   header == ("Lean code for Lemma", some "2.4") &&
+    assetCounts == (3, 7, 1) &&
+    Informal.Block.Assets.css.contains ".bp_wrapper" &&
     externalRenderFailureSummaryText 1 == "render failed for 1 declaration" &&
     appendExternalRenderFailureSummary "Lean" 2 ==
       "Lean; render failed for 2 declarations" &&
