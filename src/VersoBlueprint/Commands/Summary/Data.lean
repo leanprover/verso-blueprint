@@ -18,14 +18,14 @@ structure SorryItem where
   decl : Name
   isTheorem : Bool := false
   status : Data.ProvedStatus := .proved
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure MissingLeanDeclItem where
   label : Name
   kind : String
   written : Name
   canonical : Name
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure RenderFailureItem where
   label : Name
@@ -33,13 +33,13 @@ structure RenderFailureItem where
   written : Name
   canonical : Name
   message : String
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure IndexItem where
   label : Name
   kind : String
   leanObjects : List Name := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 abbrev PendingInformalItem := IndexItem
 
@@ -47,14 +47,14 @@ structure ParentTheoremGroup where
   parent : Name
   header : String := ""
   entries : List IndexItem := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure EntryStatusCounts where
   completed : Nat := 0
   completedDepsNo : Nat := 0
   withSorries : Nat := 0
   noProof : Nat := 0
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure PriorityItem where
   label : Name
@@ -70,7 +70,7 @@ structure PriorityItem where
   directUses : Nat := 0
   downstreamUses : Nat := 0
   leanObjects : List Name := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure UsageItem where
   label : Name
@@ -80,7 +80,7 @@ structure UsageItem where
   directUses : Nat := 0
   downstreamUses : Nat := 0
   leanObjects : List Name := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure GroupHealthItem where
   parent : Name
@@ -93,14 +93,14 @@ structure GroupHealthItem where
   incompleteLeanEntries : Nat := 0
   unlockScore : Nat := 0
   nextPriority? : Option PriorityItem := none
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure CoverageSplit where
   readyToFormalize : Nat := 0
   formalizedWithoutAncestors : Nat := 0
   fullyClosed : Nat := 0
   blockedOrIncomplete : Nat := 0
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure DependencyLoadItem where
   label : Name
@@ -111,7 +111,7 @@ structure DependencyLoadItem where
   directUses : Nat := 0
   downstreamUses : Nat := 0
   leanObjects : List Name := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure DebtHotspotItem where
   parent : Name
@@ -120,7 +120,7 @@ structure DebtHotspotItem where
   incompleteDecls : Nat := 0
   missingDecls : Nat := 0
   totalDebt : Nat := 0
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure OwnerRollupItem where
   owner : Name
@@ -129,7 +129,7 @@ structure OwnerRollupItem where
   actionableEntries : Nat := 0
   quickWins : Nat := 0
   linkedPrs : Nat := 0
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure TagRollupItem where
   tag : String
@@ -137,7 +137,7 @@ structure TagRollupItem where
   actionableEntries : Nat := 0
   quickWins : Nat := 0
   linkedPrs : Nat := 0
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure MetadataEntryItem where
   label : Name
@@ -148,7 +148,7 @@ structure MetadataEntryItem where
   prUrl : Option String := none
   tags : List String := []
   leanObjects : List Name := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 structure Summary where
   showDebugDiagnostics : Bool := false
@@ -193,6 +193,6 @@ structure Summary where
   missingOwners : List MetadataEntryItem := []
   missingEffort : List MetadataEntryItem := []
   untaggedEntries : List MetadataEntryItem := []
-deriving Inhabited, FromJson, ToJson, Quote
+deriving Inhabited, FromJson, ToJson
 
 end Informal.Commands
