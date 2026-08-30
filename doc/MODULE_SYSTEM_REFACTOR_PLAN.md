@@ -182,8 +182,8 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 62 of 96 production sources are modules; phase-neutral preview, style/hover/Lean-link/code-preview/external-code summaries/markup, manual-preview/source, informal-block/relation-panel/use-reference rendering, metadata data, asset-bundle, Lean/informal-block configuration/storage/traversal/authoring and group/source-metadata authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
-| M3 — phase-mixed features | in progress | `Math.Data` and `Macros.Data` own their shared phase-neutral payloads; `Informal.Uses.Config` owns role arguments/parsers and `Informal.Uses` now separates normal rendering from meta role elaboration with strict dependency-metadata coverage |
+| M2 — dependency leaves | in progress | 64 of 97 production sources are modules; phase-neutral preview, style/hover/Lean-link/code-preview/external-code summaries/markup, manual-preview/source, informal-block/relation-panel/use-reference/inline-code rendering, metadata data, asset-bundle, Lean/informal-block configuration/storage/traversal/authoring and group/source-metadata authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
+| M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` separates both runtime extensions from its meta code-block parsers and expanders |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
 | M6 — incremental boundaries | pending | — |
