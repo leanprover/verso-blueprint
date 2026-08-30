@@ -8,6 +8,7 @@ module
 
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Git
+import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
@@ -15,6 +16,7 @@ import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
 import VersoBlueprint.RuntimeCache
 meta import VersoBlueprint.Commands.Common
+meta import VersoBlueprint.Informal.LeanCodePreview
 meta import VersoBlueprint.Lib.PreviewSource
 meta import VersoBlueprint.PreviewCache
 meta import VersoBlueprint.PreviewRender
@@ -41,13 +43,23 @@ local macro "previewSourceContract" : term => do
     (preview.isEmpty, selection.key, selection.preview.isEmpty)
   return quote contract
 
+local macro "leanCodePreviewContract" : term => do
+  let decl := Informal.Data.ExternalRef.ofName `Nat.add
+  let entry := Informal.LeanCodePreview.Entry.ofExternalDecl `Nat.add decl
+  let contract : Name × String × String :=
+    (entry.target, Informal.LeanCodePreview.title entry.target,
+      Informal.LeanCodePreview.lookupKey entry.target)
+  return quote contract
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let preview : Informal.PreviewSource.Preview := {}
   (previewSourceContract : Bool × String × Bool) ==
       (true, "preview--proof", true) &&
-    preview.isEmpty && !preview.nonEmpty
+    preview.isEmpty && !preview.nonEmpty &&
+    (leanCodePreviewContract : Name × String × String) ==
+      (`Nat.add, "Lean declaration Nat.add", "Informal.LeanCodePreview.Nat.add")
 
 /-- info: true -/
 #guard_msgs in
