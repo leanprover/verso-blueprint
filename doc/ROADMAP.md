@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-30
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Scoped planning cards live under [`roadmap/`](./roadmap/). Requests that should
@@ -25,6 +25,17 @@ architecture narrative. Those live in
    remove them
 
 ## Active Workstreams
+
+### Lean Module-System Refactor
+
+Goal: migrate the production VBP library to Lean's module system with a
+deliberate public API, explicit authoring/runtime phase boundaries, preserved
+Manual and Slides behavior, and verifiable incremental-build improvements.
+
+The execution order, non-goals, phase-mixed source audit, and completion gates
+live in [`MODULE_SYSTEM_REFACTOR_PLAN.md`](./MODULE_SYSTEM_REFACTOR_PLAN.md).
+Keep that document as the single source of truth for this refactor rather than
+duplicating its milestone checklist here.
 
 ### Rendering and Preview Boundary
 

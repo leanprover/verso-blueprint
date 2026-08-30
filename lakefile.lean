@@ -68,6 +68,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,
     `VersoBlueprintTests.BlueprintPreviewWiring,
+    `VersoBlueprintTests.BlueprintPublicRoot,
     `VersoBlueprintTests.BlueprintSource,
     `VersoBlueprintTests.BlueprintRustCode,
     `VersoBlueprintTests.BlueprintSummaryLinks,
