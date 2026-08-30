@@ -175,6 +175,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.TraversalIndex,
     `VersoBlueprintModuleTests.UsesAuthoring,
     `VersoBlueprintModuleTests.UtilityLeaves,
+    `VersoBlueprintModuleTests.VbpCli,
     `VersoBlueprintModuleTests.VbpLibrary,
     `VersoBlueprintModuleTests.Widget
   ]
