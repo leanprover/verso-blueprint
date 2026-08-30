@@ -7,7 +7,9 @@ Author: Emilio J. Gallego Arias
 module
 
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Informal.Block.Traversal
 meta import VersoBlueprint.Informal.Block.Store
+meta import VersoBlueprint.Informal.Block.Traversal
 
 namespace VersoBlueprintModuleTests.BlockStore
 
@@ -33,10 +35,17 @@ local macro "mergedBlockContract" : term => do
   }
   return quote (mergeStoredBlockData existing incoming)
 
+local macro "previewWritePolicyContract" : term => do
+  return quote (
+    shouldWritePreviewDataByIds (#[] : Array Nat) 4,
+    shouldWritePreviewDataByIds #[1, 4] 4,
+    shouldWritePreviewDataByIds #[1, 2] 4)
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let merged : StoredBlockData := mergedBlockContract
+  let writePolicy : Bool × Bool × Bool := previewWritePolicyContract
   let state : TraverseState := TraverseState.initialize default
   let (first, state) := reservePrefixBlockNumber state "2.4"
   let (second, _) := reservePrefixBlockNumber state "2.4"
@@ -45,6 +54,7 @@ local macro "mergedBlockContract" : term => do
     | _ => false) && merged.count == 3 &&
     merged.tags == #["existing", "incoming"] &&
     merged.statementUses.size == 1 &&
+    writePolicy == (true, true, false) &&
     numberingCounterState == Name.mkSimple "Informal.Block.numberingCounter" &&
     first == 1 && second == 2
 
