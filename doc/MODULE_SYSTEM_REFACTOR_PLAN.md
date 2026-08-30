@@ -182,7 +182,7 @@ local evidence report when updating the state.
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
-| M2 — dependency leaves | in progress | 32 of 96 production sources are modules; the phase-neutral preview and browser-asset models plus the converted authoring/runtime leaves now pass strict normal/meta consumers |
+| M2 — dependency leaves | in progress | 33 of 96 production sources are modules; phase-neutral preview, browser-asset, and informal-block models plus the converted authoring/runtime leaves now pass strict normal/meta consumers |
 | M3 — phase-mixed features | in progress | `Math.Data` and `Macros.Data` own their shared phase-neutral payloads; `Informal.Uses.Config` now owns role arguments/parsers while the rendering extension remains in `Informal.Uses` pending its runtime dependencies |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
