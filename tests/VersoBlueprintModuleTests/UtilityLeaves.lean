@@ -10,11 +10,19 @@ import VersoBlueprint.Html
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Process
+import VersoBlueprint.StyleSwitcher
 meta import VersoBlueprint.Informal.LeanCodePreviewKey
+meta import VersoBlueprint.StyleSwitcher
 
 namespace VersoBlueprintModuleTests.UtilityLeaves
 
 open Lean
+
+local macro "styleSwitcherJsContract" : term => do
+  return quote <| Informal.StyleSwitcher.js {
+    proofHider := true
+    hashReveal := false
+  }
 
 /-- Runtime-only process helper contract; the command is not executed by this test. -/
 example : IO (Option String) :=
@@ -38,6 +46,9 @@ example {m : Type → Type} {α : Type}
     Informal.LeanCodePreviewKey.lookupKey decl ==
       "Informal.LeanCodePreview.Example.Contract" &&
     Informal.LeanCodePreviewKey.inlineLookupKey label ==
-      "Informal.LeanCodePreview.Inline.section.example"
+      "Informal.LeanCodePreview.Inline.section.example" &&
+    (styleSwitcherJsContract : String).contains "const enableProofHider = true;" &&
+    !(styleSwitcherJsContract : String).contains "const enableHashReveal = true;" &&
+    Informal.StyleSwitcher.jsInteractive.contains "const enableHashReveal = true;"
 
 end VersoBlueprintModuleTests.UtilityLeaves
