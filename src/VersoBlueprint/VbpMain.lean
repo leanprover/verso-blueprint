@@ -4,9 +4,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Vbp
+module
+
+public import VersoBlueprint.Vbp
 import Lake.CLI.Actions
 import Lake.Load.Workspace
+
+public section
 
 open Lean
 open System
