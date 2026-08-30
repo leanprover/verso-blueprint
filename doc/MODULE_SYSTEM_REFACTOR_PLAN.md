@@ -145,8 +145,8 @@ local evidence report when updating the state.
 | Milestone | State | Evidence |
 | --- | --- | --- |
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
-| M1 — public roots | pending | — |
-| M2 — dependency leaves | pending | — |
+| M1 — public roots | in progress | `VersoBlueprintModuleTests.Foundation` module consumer |
+| M2 — dependency leaves | in progress | First phase-neutral leaf slice: 5 of 93 production sources are modules |
 | M3 — phase-mixed features | pending | — |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
