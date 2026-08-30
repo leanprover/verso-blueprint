@@ -4,14 +4,18 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.DocString.Extension
-import VersoManual
-import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.Environment
-import VersoBlueprint.ExternalRefSnapshot
-import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.Math
+module
+
+public meta import Lean
+public meta import Lean.DocString.Extension
+public meta import VersoManual
+public meta import VersoBlueprint.DependencyAnalysis
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.ExternalRefSnapshot
+public meta import VersoBlueprint.LabelNameParsing
+public meta import VersoBlueprint.Math
+
+public meta section
 
 namespace Informal
 
