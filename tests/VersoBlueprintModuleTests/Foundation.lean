@@ -13,6 +13,7 @@ import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.PreviewKey
 meta import VersoBlueprint.DirectiveArgParsing
 meta import VersoBlueprint.Informal.LabelArg
+meta import VersoBlueprint.Informal.UseConfig
 meta import VersoBlueprint.LabelNameParsing
 meta import VersoBlueprint.LeanNameParsing
 meta import VersoBlueprint.Lib.HtmlId
@@ -70,5 +71,19 @@ set_option verso.blueprint.trimTeXLabelPrefix true in
   }
   parsed.label == Name.mkSimple "module.authoring.label" &&
     parsed.labelSyntax.getId == `authorWrittenLabel
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let labels := Informal.UseConfig.parseLabels (some " source.one, source.two ")
+  let valid := Informal.UseConfig.parseMetadata (some " automatic ") (some " technical ")
+  let invalid := Informal.UseConfig.parseMetadata (some "auto") (some "tech")
+  let refs := Informal.UseConfig.refsForLabels labels valid
+  labels == #[Name.mkSimple "source.one", Name.mkSimple "source.two"] &&
+    valid.origin == .automatic && valid.intent == .technical &&
+    valid.invalidOrigin.isNone && valid.invalidIntent.isNone &&
+    invalid.origin == .manual && invalid.intent == .regular &&
+    invalid.invalidOrigin == some "auto" && invalid.invalidIntent == some "tech" &&
+    refs.all fun ref => ref.origin == .automatic && ref.intent == .technical
 
 end VersoBlueprintModuleTests.Foundation
