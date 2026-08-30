@@ -6,11 +6,28 @@ Author: Emilio J. Gallego Arias
 
 module
 
+import VersoBlueprint.Informal.ExternalCode
 meta import VersoBlueprint.ExternalDeclRender
+meta import VersoBlueprint.Informal.ExternalCode
 
 namespace VersoBlueprintModuleTests.ExternalDeclRender
 
 open Lean
+
+local macro "externalCodeParseContract" : term => do
+  let (refs, invalid) :=
+    Informal.ExternalCode.parseExternalCodeList (some "Nat.add, List.map")
+  let contract : Nat × Nat × Array Name :=
+    (refs.size, invalid.size, refs.map (·.written))
+  return quote contract
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let (emptyRefs, emptyInvalid) := Informal.ExternalCode.parseExternalCodeList none
+  (externalCodeParseContract : Nat × Nat × Array Name) ==
+      (2, 0, #[`Nat.add, `List.map]) &&
+    emptyRefs.isEmpty && emptyInvalid.isEmpty
 
 /-- info: true -/
 #guard_msgs in
