@@ -136,7 +136,8 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.TeXRuntime,
     `VersoBlueprintModuleTests.TraversalIndex,
     `VersoBlueprintModuleTests.UsesAuthoring,
-    `VersoBlueprintModuleTests.UtilityLeaves
+    `VersoBlueprintModuleTests.UtilityLeaves,
+    `VersoBlueprintModuleTests.Widget
   ]
   requiresModuleSystem := true
 
