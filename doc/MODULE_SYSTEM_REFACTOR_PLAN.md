@@ -186,7 +186,7 @@ local evidence report when updating the state.
 | M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` and `Informal.RustBlock` separate runtime extensions from meta code-block parsers and expanders |
 | M4 — roots and cutover | pending | — |
 | M5 — deliverables and legacy consumers | pending | — |
-| M6 — incremental boundaries | pending | — |
+| M6 — incremental boundaries | complete | Two consecutive warm runs of `scripts/check-incremental-module-boundaries.py`, 2026-08-31 |
 | M7 — documentation and final audit | pending | — |
 
 ## Milestones and Verification Gates
@@ -348,6 +348,17 @@ pass/fail criterion. It must include these scenarios:
 
 Record rebuilt module/job identities. Wall-clock and memory numbers may be
 reported as observations, but they are not correctness gates.
+
+Run the harness from the repository root:
+
+```bash
+python3 scripts/check-incremental-module-boundaries.py
+```
+
+The harness uses a fresh declaration nonce for each synthetic edit so the Lake
+artifact cache cannot replay a previous probe and obscure the rebuilt job set.
+It restores each source before proceeding and verifies that the final worktree
+status is identical to the initial status.
 
 Gate:
 

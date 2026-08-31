@@ -114,6 +114,8 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.GraftRender,
     `VersoBlueprintModuleTests.GroupAuthoring,
     `VersoBlueprintModuleTests.HoverRender,
+    `VersoBlueprintModuleTests.IncrementalAuthoring,
+    `VersoBlueprintModuleTests.IncrementalOwner,
     `VersoBlueprintModuleTests.Math,
     `VersoBlueprintModuleTests.MathLeaves,
     `VersoBlueprintModuleTests.PreviewBlockRender,
