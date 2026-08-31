@@ -100,6 +100,10 @@ script map, not a second command reference.
 - `lean-low-priority`
   Small wrapper that lowers scheduler priority for long Lean/Lake commands and
   runs them through the shared Blueprint Lake artifact-cache environment.
+- `check-incremental-module-boundaries.py`
+  Deterministic warm-build check for private implementation, runtime-renderer,
+  and public shared-data invalidation boundaries. It records rebuilt jobs and
+  restores the synthetic source edits before returning.
 - `with-blueprint-lake-cache`
   Resolve the nearest `lean-toolchain`, initialize the repository-shared
   toolchain-scoped Lake cache, default to cache-in-place artifacts, and execute
