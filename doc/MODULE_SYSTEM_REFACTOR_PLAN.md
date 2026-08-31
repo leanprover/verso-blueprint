@@ -185,7 +185,7 @@ local evidence report when updating the state.
 | M2 — dependency leaves | in progress | 94 of 99 production sources are modules; phase-neutral preview-manifest, style/hover/Lean-link/code-preview/external-code/citation/command-summary/command-graph data, ordering, collection, HTML/section/markup rendering, and citation/bibliography/summary/graph authoring, manual-preview/source, informal-block, graft, and manifest block/relation-panel/use-reference/inline-code/Rust-panel/preview-external-markup rendering, preview CLI, VBP query/check library and CLI, widget authoring, and TeX/PDF runtime services, metadata data, asset and graft-asset bundles, serialized command blocks, Lean/informal-block/graft-node configuration/storage/traversal/authoring and author/group/source authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
 | M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` and `Informal.RustBlock` separate runtime extensions from meta code-block parsers and expanders |
 | M4 — roots and cutover | pending | — |
-| M5 — deliverables and legacy consumers | pending | — |
+| M5 — deliverables and legacy consumers | in progress | Test-blueprint/browser, FLT, Carleson, and project-template validation green at 94 of 99 production modules, 2026-08-31; rerun after the Slides/root cutover |
 | M6 — incremental boundaries | complete | Two consecutive warm runs of `scripts/check-incremental-module-boundaries.py`, 2026-08-31 |
 | M7 — documentation and final audit | pending | — |
 
