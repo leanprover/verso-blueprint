@@ -5,7 +5,7 @@ set -euo pipefail
 package_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$package_root"
 
-python3 scripts/check-module-boundaries.py
+python3 scripts/check-module-boundaries.py --require-all
 ./scripts/lean-low-priority lake build VersoBlueprintModuleTests
 ./scripts/lean-low-priority lake test
 ./scripts/lean-low-priority lake build vbp
