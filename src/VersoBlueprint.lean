@@ -4,59 +4,44 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias, David Thrane Christiansen
 -/
 
--- XXX VersoManual is not module yet
--- module
+module
 
--- Blueprint library extending the Verso `Manual` genre.
+-- Blueprint authoring library extending the Verso `Manual` genre.
 
-import Lean.Elab.InfoTree.Types
+public import VersoManual
+public import VersoBlueprint.Cite
+public import VersoBlueprint.Commands.Bibliography
+public import VersoBlueprint.Commands.Graph
+public import VersoBlueprint.Commands.Summary
+public import VersoBlueprint.Graft
+public import VersoBlueprint.Informal.Author
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Code
+public import VersoBlueprint.Informal.Group
+public import VersoBlueprint.Informal.RustBlock
+public import VersoBlueprint.Informal.Uses
+public import VersoBlueprint.Lean
+public import VersoBlueprint.Macros
+public import VersoBlueprint.Math
+public import VersoBlueprint.Source
+public meta import VersoManual
+public meta import VersoBlueprint.Attribute
+public meta import VersoBlueprint.Cite
+public meta import VersoBlueprint.Commands.Bibliography
+public meta import VersoBlueprint.Commands.Graph
+public meta import VersoBlueprint.Commands.Summary
+public meta import VersoBlueprint.Graft
+public meta import VersoBlueprint.Informal.Author
+public meta import VersoBlueprint.Informal.Block
+public meta import VersoBlueprint.Informal.Code
+public meta import VersoBlueprint.Informal.Group
+public meta import VersoBlueprint.Informal.RustBlock
+public meta import VersoBlueprint.Informal.Uses
+public meta import VersoBlueprint.Lean
+public meta import VersoBlueprint.Macros
+public meta import VersoBlueprint.Math
+public meta import VersoBlueprint.Source
 
-import VersoManual
-
-import VersoBlueprint.Data
-import VersoBlueprint.ProvedStatus
-import VersoBlueprint.Process
-import VersoBlueprint.Git
-import VersoBlueprint.Html
-import VersoBlueprint.RuntimeCache
-import VersoBlueprint.ExternalRefSnapshot
-import VersoBlueprint.Macros
-import VersoBlueprint.Math
-import VersoBlueprint.Rust
-import VersoBlueprint.Source
-import VersoBlueprint.Environment
-import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.Attribute
-import VersoBlueprint.Cite
-import VersoBlueprint.Commands.Graph
-import VersoBlueprint.GraphApi
-import VersoBlueprint.Commands.Summary
-import VersoBlueprint.Commands.Bibliography
-import VersoBlueprint.Informal.Block.Assets
-import VersoBlueprint.Informal.Block.Config
-import VersoBlueprint.Informal.Code
-import VersoBlueprint.Informal.RustBlock
-import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.Block.RelatedPanel
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Block.Traversal
-import VersoBlueprint.Informal.MetadataView
-import VersoBlueprint.Informal.LeanCodePreviewKey
-import VersoBlueprint.Informal.LeanCodePreview
-import VersoBlueprint.Informal.GroupData
-import VersoBlueprint.Informal.Group
-import VersoBlueprint.Informal.Author
-import VersoBlueprint.Informal.Uses
-import VersoBlueprint.ExternalDeclRender
-import VersoBlueprint.Lean
-import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.LeanNameParsing
-import VersoBlueprint.PreviewCache
-import VersoBlueprint.PreviewManifest
-import VersoBlueprint.Graft
-import VersoBlueprint.Resolve
-import VersoBlueprint.TraversalIndex
-import VersoBlueprint.StyleSwitcher
-import VersoBlueprint.Profiling
+public section
 
 set_option doc.verso true
