@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-06-20
+Last updated: 2026-09-01
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -18,6 +18,49 @@ Those responsibilities live in
 [`ROADMAP.md`](./ROADMAP.md).
 
 ## Architecture Snapshot
+
+### Lean Module Boundaries
+
+`VersoBlueprint` is a module-system library. Every production Lean source has a
+`module` header, the Lake library sets `requiresModuleSystem := true`, and the
+standard Lean test gate rejects a production source that falls back to the
+legacy import model.
+
+The public roots are organized by consumer rather than by one all-inclusive
+umbrella:
+
+- `VersoBlueprint` is the authoring root. It publicly exposes the Manual
+  authoring features—blocks, groups, authors, uses, code attachments,
+  citations, graph/summary/bibliography commands, math, source metadata, and
+  graft syntax—but does not make generator orchestration an implicit part of
+  that contract.
+- `VersoBlueprint.PreviewManifest` is the generator and generated-data root.
+  Blueprint project entry points and custom generators import it explicitly.
+- `VersoBlueprint.Slides` is the Slides integration root. It owns the
+  Blueprint-aware Slides configuration, assets, and generator wrapper.
+
+Module consumers import the normal and meta facets of the root they use. The
+normal facet carries data and runtime declarations; the meta facet carries
+directives, roles, attributes, and other elaborators. For example, an authoring
+module uses both `import VersoBlueprint` and `meta import VersoBlueprint`.
+Legacy non-module consumers still compile and are covered by the downstream
+validation catalog, but Lean emits its normal recommendation that they add a
+module header.
+
+Internal modules follow feature ownership first and phase responsibility
+second. Phase-neutral data used by elaboration and rendering has one owner,
+such as `Math.Data`, `Macros.Data`, `Informal.Code.Data`, or command-specific
+`Data` modules. Authoring facades import that owner at both phases when needed;
+renderers import only the normal facet. Runtime responsibilities use precise
+names such as `Render`, `Traversal`, `Store`, `Assets`, and `Cli`. This avoids
+duplicating phase-shared values and keeps renderer-only changes out of the
+authoring rebuild closure.
+
+Public imports are part of these root contracts. Implementation imports remain
+private, and there is no parallel API manifest: the source import graph is the
+source of truth. The strict `VersoBlueprintModuleTests` consumers verify the
+roots without `allowNonModules`, including the public-surface regression where
+opening both `Lean` and `Verso` must not make `Doc.Block` ambiguous.
 
 ### Canonical Semantic Source
 
