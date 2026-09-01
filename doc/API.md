@@ -34,6 +34,7 @@ first. The short version is:
 ## Contents
 
 - [API Scope and Compatibility](#api-scope-and-compatibility)
+- [Lean Module Imports](#lean-module-imports)
 - [Choosing an API](#choosing-an-api)
 - [Rendering Path Map](#rendering-path-map)
 - [Generated Data Files](#generated-data-files)
@@ -58,6 +59,38 @@ Bundled helper APIs are narrower. They exist so Blueprint's own graph, summary,
 relation-panel, inline-preview, and slide scripts can share runtime mechanics.
 They are not part of the public custom-client surface unless promoted into the
 tables below.
+
+## Lean Module Imports
+
+Blueprint's Lean library requires the module system. New Lean consumers should
+start with `module` and import both facets of the public root that matches their
+job:
+
+| Consumer | Public root |
+| --- | --- |
+| Manual authoring | `VersoBlueprint` |
+| Site generation and generated-data integration | `VersoBlueprint.PreviewManifest` |
+| Slides authoring and generation | `VersoBlueprint.Slides` |
+
+For example, a Blueprint authoring module starts with:
+
+```lean
+module
+
+import VersoBlueprint
+meta import VersoBlueprint
+```
+
+The ordinary import provides the feature data and runtime declarations. The
+meta import provides authoring elaborators such as directives, roles,
+attributes, and command syntax. Generator and Slides modules use the same
+pattern with their respective roots. Import implementation submodules only
+when an integration needs their documented API; do not use them to reconstruct
+the authoring umbrella.
+
+Legacy files without a `module` header still compile against the current
+package, but Lean recommends migrating them. The package does not use
+`allowNonModules` as a compatibility layer.
 
 Browser clients should use the generated ESM modules. `api/preview.mjs` imports
 the renderer directly and exposes `createPreview()` so each client makes its
