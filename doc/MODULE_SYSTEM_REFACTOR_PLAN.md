@@ -183,11 +183,11 @@ local evidence report when updating the state.
 | M0 — behavioral and API contract | complete | Local M0 validation matrix, 2026-08-30 |
 | M1 — public roots | complete | Strict `PublicRoot`, `PreviewManifest`, and `Slides` module consumers plus the legacy Lean suite, 2026-09-01 |
 | M2 — dependency leaves | complete | 100 of 100 dependency and feature sources are modules; phase-neutral preview-manifest, style/hover/Lean-link/code-preview/external-code/citation/command-summary/command-graph data, ordering, collection, HTML/section/markup rendering, and citation/bibliography/summary/graph/graft authoring, manual-preview/source, informal-block, graft, and manifest block/relation-panel/use-reference/inline-code/Rust-panel/preview-external-markup/Slides-node rendering, preview CLI, VBP query/check library and CLI, widget and Slides-node attribute/authoring, Slides integration, and TeX/PDF runtime services, metadata data, core/graft/Slides asset bundles, serialized command blocks, Lean/informal-block/graft-node configuration/storage/traversal/authoring and author/group/source authoring, typed traversal-store, Rust-code, and graph model/API modules now pass strict module consumers |
-| M3 — phase-mixed features | in progress | `Math.Data`, `Macros.Data`, and `Informal.Code.Data` own shared phase-neutral payloads; `Informal.Uses` separates normal rendering from meta role elaboration, while `Informal.Code` and `Informal.RustBlock` separate runtime extensions from meta code-block parsers and expanders |
+| M3 — phase-mixed features | complete | Shared data has one owner in each audited feature; strict consumers and the full Lean/browser/reference matrix are green, 2026-09-01 |
 | M4 — roots and cutover | complete | 101 of 101 production sources are modules, `VersoBlueprint` requires the module system, and the M4 gate is green, 2026-09-01 |
-| M5 — deliverables and legacy consumers | in progress | Test-blueprint/browser, FLT, Carleson, and project-template validation green at 94 of 99 production modules, 2026-08-31; rerun after the Slides/root cutover |
-| M6 — incremental boundaries | complete | Two consecutive warm runs of `scripts/check-incremental-module-boundaries.py`, 2026-08-31 |
-| M7 — documentation and final audit | pending | — |
+| M5 — deliverables and legacy consumers | complete | Test blueprints (`61 passed`, `55 skipped` browser tests), FLT, Carleson, and project-template validation are green after cutover, 2026-09-01 |
+| M6 — incremental boundaries | complete | Deterministic private/runtime/public probes green after cutover; restored worktree unchanged, 2026-09-01 |
+| M7 — documentation and final audit | in progress | Design, API, authoring, and maintainer module guidance updated; final CI remains, 2026-09-01 |
 
 ## Milestones and Verification Gates
 
