@@ -31,6 +31,7 @@ lean_lib VersoBlueprint where
   roots := #[`VersoBlueprint]
   precompileModules := true
   needs := #[embeddedBlueprintAssets, blueprintMathJs, mathLintWorkerJs]
+  requiresModuleSystem := true
 
 @[default_target]
 lean_exe «vbp» where
