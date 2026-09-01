@@ -185,6 +185,16 @@ That command runs Lean tests, Python harness tests, reference blueprint
 generation, test-blueprint generation, and configured panel/browser
 regressions.
 
+The production library is module-system-only. `scripts/run-lean-tests.sh`
+runs `scripts/check-module-boundaries.py --require-all` and builds the strict
+`VersoBlueprintModuleTests` consumers before the legacy suite. Do not repair a
+boundary failure with `allowNonModules` or `backward.privateInPublic`. Add a
+strict consumer for a changed public root or phase boundary, and keep an
+intentional legacy consumer in the wider validation matrix when compatibility
+with non-module downstream projects matters. Legacy fixtures may emit Lean's
+advisory migration warning after importing the module-only library; new
+fixtures should use `module` unless they exist specifically to test that path.
+
 For rendering-specific changes, use a cheaper progression first:
 
 ```bash
