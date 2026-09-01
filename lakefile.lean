@@ -164,6 +164,7 @@ lean_lib VersoBlueprintModuleTests where
     `VersoBlueprintModuleTests.RuntimeServices,
     `VersoBlueprintModuleTests.RustAuthoring,
     `VersoBlueprintModuleTests.SerializedExtension,
+    `VersoBlueprintModuleTests.SlidesAssets,
     `VersoBlueprintModuleTests.SlidesNode,
     `VersoBlueprintModuleTests.SlidesRender,
     `VersoBlueprintModuleTests.SourceAuthoring,
