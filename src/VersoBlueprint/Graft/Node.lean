@@ -10,7 +10,7 @@ import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewCache
 public meta import Verso.Doc.ArgParse
 public meta import Verso.Doc.Elab
-meta import Verso.Instances.Deriving
+meta import Verso.Instances.Deriving -- shake: keep
 
 public section
 

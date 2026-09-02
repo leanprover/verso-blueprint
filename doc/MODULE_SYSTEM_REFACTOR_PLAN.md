@@ -1,6 +1,6 @@
 # Lean Module-System Refactor Plan
 
-Last reviewed: 2026-08-30
+Last reviewed: 2026-09-02
 
 This document is the execution plan and verification contract for converting
 the `VersoBlueprint` library to Lean's module system. The repository roadmap
@@ -187,7 +187,7 @@ local evidence report when updating the state.
 | M4 — roots and cutover | complete | 101 of 101 production sources are modules, `VersoBlueprint` requires the module system, and the M4 gate is green, 2026-09-01 |
 | M5 — deliverables and legacy consumers | complete | Test blueprints (`61 passed`, `55 skipped` browser tests), FLT, Carleson, and project-template validation are green after cutover, 2026-09-01 |
 | M6 — incremental boundaries | complete | Deterministic private/runtime/public probes green after cutover; restored worktree unchanged, 2026-09-01 |
-| M7 — documentation and final audit | in progress | Design, API, authoring, and maintainer module guidance updated; final CI remains, 2026-09-01 |
+| M7 — documentation and final audit | in progress | Public-root API comparison and all 24 Lake Shake findings reviewed; project template migrated and fresh/incremental smoke green; final CI remains, 2026-09-02 |
 
 ## Milestones and Verification Gates
 
@@ -324,8 +324,10 @@ uv run --project tests/browser --extra test python -m pytest \
 
 Required outcomes:
 
-- FLT, Carleson, and the explicit project-template fixture compile without
-  migrating their Blueprint sources merely to accommodate VBP.
+- FLT and Carleson compile without migrating their Blueprint sources merely to
+  accommodate VBP. The project-template fixture intentionally demonstrates the
+  module-system authoring and generator pattern and passes fresh-project and
+  incremental-edit validation.
 - Manual and Slides sites retain registered extensions, assets, navigation,
   graph/summary/bibliography output, previews, and graft behavior.
 - Output comparison finds no unexplained semantic changes.
@@ -379,6 +381,72 @@ Deliverables:
 - Remove this plan's obsolete implementation detail or mark completed
   milestones with durable evidence; do not leave a second description of the
   final architecture here and in the design rationale.
+
+#### Public-root compatibility audit
+
+The final root review compared the declarations made available by
+`import VersoBlueprint` at baseline commit `ca626021` with a strict module
+consumer importing the candidate root in both ordinary and meta phases. Names
+were attributed by owning module, rather than namespace, because most of the
+public Lean API lives under `Informal`.
+
+- The legacy umbrella loaded 10,421 VBP-owned declarations.
+- The curated module root loads 7,780 VBP-owned declarations.
+- 2,678 declarations are no longer loaded. The removals are the intended
+  combination of generator/runtime modules moved behind their own roots and
+  implementation helpers made private.
+- The 37 candidate-only names are compiler-generated quotation matchers or
+  private generated declarations; the audit found no new human-named public
+  declaration.
+
+The comparison found and corrected four concrete boundary mistakes: the
+authoring root now publicly exposes `Verso.Doc` so an imported Blueprint can
+export its `#doc`; the pre-refactor `instFromJsonGraphData` instance name is
+preserved; `graphDataSchemaVersion` remains private; and the private default
+render-error callback is no longer widened or tested as public API. The strict
+public-root fixtures, legacy public-root fixture, and modular project template
+exercise the retained supported surface. The removed broad generator access is
+intentional: generator code imports `VersoBlueprint.PreviewManifest`.
+
+#### Lake Shake audit
+
+`lake shake --keep-public --keep-implied VersoBlueprint` initially reported 24
+source files. Every finding was reviewed manually; `--fix` was not used. The
+disposition is deliberately conservative because an import may supply deriving
+handlers, syntax, extension registration, or imported environment metadata
+that is not represented as an ordinary constant dependency.
+
+| File | Disposition | Reason |
+| --- | --- | --- |
+| `ExternalDeclRender/Data.lean` | keep and annotate | `Verso.Instances.Deriving` supplies compile-time deriving behavior. |
+| `Data.lean` | keep and annotate | The deriving import and meta copy of external-render data support phase-correct quotation generation. |
+| `Lib/HtmlId.lean` | keep | The direct `Lean` dependency owns the `native_decide` proof used by the implementation. |
+| `Source/Data.lean` | keep and annotate | `Verso.Instances.Deriving` is an elaboration-time plugin dependency. |
+| `Cite.lean` | keep | The meta imports state the citation authoring elaborator's direct dependencies; transitive availability is not its contract. |
+| `Commands/Bibliography.lean` | keep | Preview, resolution, traversal, and elaboration imports are direct dependencies of the registered block extension. |
+| `Commands/SerializedExtension.lean` | keep | `Json.parse` is used directly by the runtime reconstruction helper. |
+| `Commands/Graph.lean` | keep | The command elaborator directly uses serialized-extension and environment services at meta phase. |
+| `Commands/Summary/Order.lean` | keep | The implementation directly uses Lean names and ordering support. |
+| `ExternalDeclRender.lean` | add and annotate | Directly import `VersoManual.Docstring`; its declaration API and imported docstring metadata are both required. |
+| `ExternalRefSnapshot.lean` | reject suggested widening | This is a meta service; public normal imports would create an unintended normal-phase API. |
+| `Commands/Summary.lean` | keep | The meta command directly constructs a serialized block. |
+| `Graft/Node.lean` | keep deriving; reject widening | Keep the deriving plugin; do not re-export `Verso.Doc.Elab.Monad` from the normal API. |
+| `Informal/LabelArg.lean` | reject suggested widening | The parser is meta-only and should not re-export normal `Data`. |
+| `Informal/UseConfig.lean` | reject suggested widening | The configuration parser is meta-only and should not add a normal-phase facade. |
+| `Profiling.lean` | keep | `Lean.Data.Options` directly owns the registered profiling option API. |
+| `Math/Data.lean` | keep and annotate | `Verso.Instances.Deriving` is required while deriving quotation support. |
+| `PreviewManifest.lean` | keep | Resolution and preview-source imports are explicit generator dependencies in their respective phases. |
+| `Graft.lean` | keep; reject suggested widening | The runtime imports implement Manual/Slides dispatch; publicly re-exporting `Slides.Node` would widen the authoring root. |
+| `Informal/Author.lean` | reject suggested widening | Author parsing is meta-only; normal `Data` should remain behind the authoring root. |
+| `Informal/RustBlock.lean` | reject suggested widening | `Informal.Code` is needed by the meta directive, not as a new normal re-export. |
+| `Informal/Uses/Config.lean` | reject suggested widening | The supporting parsers are meta-only implementation dependencies. |
+| `Informal/Uses.lean` | reject suggested widening | `Uses.Config` supports the role elaborator and is not a normal runtime facade. |
+| `Attribute.lean` | reject suggested phase growth | The attribute is meta-only; adding normal imports for private meta implementation references would broaden its normal closure. |
+
+After the review, the five deriving/plugin dependencies and the docstring
+metadata dependency carry `shake: keep` annotations. The remaining diagnostics
+are recorded decisions to retain direct dependencies or reject API/phase
+widening; Lake Shake remains advisory rather than a zero-warning gate.
 
 Final gate:
 

@@ -1,1 +1,3 @@
-import ProjectTemplate.Blueprint
+module
+
+public import ProjectTemplate.Blueprint

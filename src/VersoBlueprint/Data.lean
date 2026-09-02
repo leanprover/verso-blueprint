@@ -12,8 +12,8 @@ public import Lean.Data.Lsp
 public import SubVerso.Examples.Env
 public import VersoManual
 public import VersoBlueprint.ExternalDeclRender.Data
-meta import Verso.Instances.Deriving
-meta import VersoBlueprint.ExternalDeclRender.Data
+meta import Verso.Instances.Deriving -- shake: keep
+meta import VersoBlueprint.ExternalDeclRender.Data -- shake: keep
 
 public section
 
