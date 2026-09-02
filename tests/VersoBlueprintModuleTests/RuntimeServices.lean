@@ -27,14 +27,6 @@ namespace VersoBlueprintModuleTests.RuntimeServices
 
 open Lean
 
-local macro "previewRenderDefaultContract" : term => do
-  let _discard : String → IO Unit := Informal.discardRenderError
-  `(Informal.discardRenderError "module contract")
-
-example : IO Unit := previewRenderDefaultContract
-
-example : IO Unit := Informal.discardRenderError "normal contract"
-
 local macro "previewSourceContract" : term => do
   let preview : Informal.PreviewSource.Preview := {}
   let selection :=

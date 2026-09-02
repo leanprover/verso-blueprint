@@ -7,7 +7,7 @@ Author: Emilio J. Gallego Arias
 module
 
 public import Lean.Data.Json.FromToJson.Basic
-meta import Verso.Instances.Deriving
+meta import Verso.Instances.Deriving -- shake: keep
 
 public section
 

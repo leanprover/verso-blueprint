@@ -8,6 +8,7 @@ module
 
 -- Blueprint authoring library extending the Verso `Manual` genre.
 
+public import Verso.Doc
 public import VersoManual
 public import VersoBlueprint.Cite
 public import VersoBlueprint.Commands.Bibliography

@@ -315,8 +315,7 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-/-- Current schema version of finalized graph data. -/
-def graphDataSchemaVersion : Nat := 3
+private def graphDataSchemaVersion : Nat := 3
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -334,7 +333,7 @@ contracts.
 -/
 structure GraphData where
   private mk ::
-  schemaVersion : Nat := graphDataSchemaVersion
+  schemaVersion : Nat := 3
   /-- Stable key identifying this graph block. -/
   key : String := "graph"
   nodes : Array NodeData := #[]
@@ -1723,7 +1722,7 @@ private structure GraphDataJson where
 deriving FromJson
 
 /-- Decode only finalized graph records whose materialized projections agree. -/
-@[instance] opaque graphDataFromJson : FromJson GraphData := {
+@[instance] opaque instFromJsonGraphData : FromJson GraphData := {
   fromJson? := fun json => do
     let decoded ← fromJson? (α := GraphDataJson) json
     if decoded.schemaVersion != graphDataSchemaVersion then

@@ -8,7 +8,7 @@ module
 
 public import Lean
 public import VersoManual
-meta import Verso.Instances.Deriving
+meta import Verso.Instances.Deriving -- shake: keep
 
 public section
 

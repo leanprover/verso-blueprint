@@ -77,16 +77,20 @@ For example, a Blueprint authoring module starts with:
 ```lean
 module
 
-import VersoBlueprint
+public import VersoBlueprint
 meta import VersoBlueprint
+
+public section
 ```
 
 The ordinary import provides the feature data and runtime declarations. The
 meta import provides authoring elaborators such as directives, roles,
-attributes, and command syntax. Generator and Slides modules use the same
-pattern with their respective roots. Import implementation submodules only
-when an integration needs their documented API; do not use them to reconstruct
-the authoring umbrella.
+attributes, and command syntax. Use `public import` and `public section` when
+the module exports a `#doc` that another module will include or render; a
+private leaf that is never imported can use plain `import`. Generator and
+Slides modules use the same two-phase pattern with their respective roots.
+Import implementation submodules only when an integration needs their
+documented API; do not use them to reconstruct the authoring umbrella.
 
 Legacy files without a `module` header still compile against the current
 package, but Lean recommends migrating them. The package does not use
