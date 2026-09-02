@@ -4,7 +4,7 @@ open Lake DSL
 -- Verso #971 landed after RC2; pin its merge and matching SubVerso API until
 -- the next 4.34 release tag contains both.
 require verso from git "https://github.com/leanprover/verso"@"99e9df791e46ec647f81d98b109965f166b9b6b4"
-require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"eba72ccb421f840a2501081381b17d39335e1a84"
+require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"c7363df54d00f32f478ba57732bc4ede5cd37317"
 require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
 
