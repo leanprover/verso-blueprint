@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 module
 
+import VersoManual.Docstring -- shake: keep
 public import VersoBlueprint.ExternalDeclRender.Data
 public meta import Lean
 public meta import Verso
