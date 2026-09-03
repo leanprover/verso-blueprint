@@ -453,7 +453,9 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
 ````
 
 This is the clearest way to connect a Blueprint entry to local formalization
-work in the same project.
+work in the same project. Declarations introduced by these blocks are public:
+their written names and Blueprint metadata remain available to modules that
+import the containing document.
 
 ### Compiled code tagged with `@[blueprint]`
 

@@ -4,7 +4,7 @@ open Lake DSL
 -- Pin the matching post-RC2 Verso/SubVerso API and the split-page section
 -- anchor fix until a release tag includes both.
 require verso from git "https://github.com/leanprover/verso"@"52c8c9557bcb5cc8c0edc0ee37e74311a3d53ee9"
-require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"8ecadf319d6b0f6cd97bf204a821e734e6afd480"
+require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"37378dab6685314b6d21f5c6ce96db53d7392a8e"
 require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
 
@@ -85,7 +85,6 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,
     `VersoBlueprintTests.BlueprintPreviewWiring,
-    `VersoBlueprintTests.BlueprintPublicRoot,
     `VersoBlueprintTests.BlueprintSource,
     `VersoBlueprintTests.BlueprintSourceIdentity,
     `VersoBlueprintTests.BlueprintRustCode,
@@ -104,68 +103,13 @@ lean_lib VersoBlueprintTests where
   ]
 
 @[default_target]
-lean_lib VersoBlueprintModuleTests where
+lean_lib VersoBlueprintBoundaryTests where
   srcDir := "tests"
   roots := #[
-    `VersoBlueprintModuleTests.Attribute,
-    `VersoBlueprintModuleTests.AuthorAuthoring,
-    `VersoBlueprintModuleTests.BibliographyAuthoring,
-    `VersoBlueprintModuleTests.BlockAuthoring,
-    `VersoBlueprintModuleTests.BlockCommon,
-    `VersoBlueprintModuleTests.BlockStore,
-    `VersoBlueprintModuleTests.CodeAuthoring,
-    `VersoBlueprintModuleTests.CiteAuthoring,
-    `VersoBlueprintModuleTests.CiteData,
-    `VersoBlueprintModuleTests.Data,
-    `VersoBlueprintModuleTests.DependencyAnalysis,
-    `VersoBlueprintModuleTests.ExternalDeclRender,
-    `VersoBlueprintModuleTests.ExternalDeclRenderData,
-    `VersoBlueprintModuleTests.ExternalMarkupRender,
-    `VersoBlueprintModuleTests.ExternalRefSnapshot,
-    `VersoBlueprintModuleTests.ExternalMarkupView,
-    `VersoBlueprintModuleTests.Foundation,
-    `VersoBlueprintModuleTests.Graph,
-    `VersoBlueprintModuleTests.GraphAuthoring,
-    `VersoBlueprintModuleTests.GraphData,
-    `VersoBlueprintModuleTests.GraftAssets,
-    `VersoBlueprintModuleTests.GraftAuthoring,
-    `VersoBlueprintModuleTests.GraftNode,
-    `VersoBlueprintModuleTests.GraftRender,
-    `VersoBlueprintModuleTests.GroupAuthoring,
-    `VersoBlueprintModuleTests.HoverRender,
-    `VersoBlueprintModuleTests.IncrementalAuthoring,
-    `VersoBlueprintModuleTests.IncrementalOwner,
-    `VersoBlueprintModuleTests.Math,
-    `VersoBlueprintModuleTests.MathLeaves,
-    `VersoBlueprintModuleTests.PreviewBlockRender,
-    `VersoBlueprintModuleTests.PreviewCli,
-    `VersoBlueprintModuleTests.PreviewExternalMarkupRender,
-    `VersoBlueprintModuleTests.PreviewManifest,
-    `VersoBlueprintModuleTests.PreviewRelatedPanel,
-    `VersoBlueprintModuleTests.PublicRoot,
-    `VersoBlueprintModuleTests.RuntimeServices,
-    `VersoBlueprintModuleTests.RustAuthoring,
-    `VersoBlueprintModuleTests.SerializedExtension,
-    `VersoBlueprintModuleTests.Slides,
-    `VersoBlueprintModuleTests.SlidesAssets,
-    `VersoBlueprintModuleTests.SlidesNode,
-    `VersoBlueprintModuleTests.SlidesRender,
-    `VersoBlueprintModuleTests.SourceAuthoring,
-    `VersoBlueprintModuleTests.SourceData,
-    `VersoBlueprintModuleTests.SourceMetadata,
-    `VersoBlueprintModuleTests.SummaryAuthoring,
-    `VersoBlueprintModuleTests.SummaryCollect,
-    `VersoBlueprintModuleTests.SummaryData,
-    `VersoBlueprintModuleTests.SummaryHtml,
-    `VersoBlueprintModuleTests.SummaryRender,
-    `VersoBlueprintModuleTests.SummarySections,
-    `VersoBlueprintModuleTests.TeXRuntime,
-    `VersoBlueprintModuleTests.TraversalIndex,
-    `VersoBlueprintModuleTests.UsesAuthoring,
-    `VersoBlueprintModuleTests.UtilityLeaves,
-    `VersoBlueprintModuleTests.VbpCli,
-    `VersoBlueprintModuleTests.VbpLibrary,
-    `VersoBlueprintModuleTests.Widget
+    `VersoBlueprintBoundaryTests.AuthoringRoot,
+    `VersoBlueprintBoundaryTests.AuthoringDocumentImport,
+    `VersoBlueprintBoundaryTests.GeneratorRoot,
+    `VersoBlueprintBoundaryTests.SlidesRoot
   ]
   requiresModuleSystem := true
 
