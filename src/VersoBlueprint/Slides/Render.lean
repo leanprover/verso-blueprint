@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Verso.Output.Html
-import VersoBlueprint.Graft.Render
+module
+
+public import Verso.Output.Html
+public import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Slides.Node
+
+public section
 
 namespace Informal.Slides
 

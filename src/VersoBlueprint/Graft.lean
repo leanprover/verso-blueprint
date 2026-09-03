@@ -4,18 +4,27 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoSlides
-import Verso.Doc.Elab
+module
+
+public import VersoManual
+public import VersoSlides
+public import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.LeanCodePreview
-import VersoBlueprint.Graft.Assets
-import VersoBlueprint.Graft.Node
-import VersoBlueprint.Graft.Render
+public import VersoBlueprint.Graft.Assets
+public import VersoBlueprint.Graft.Node
+public import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Slides.Node
 import VersoBlueprint.TeX
+public meta import VersoManual
+public meta import VersoSlides
+public meta import Verso.Doc.Elab
+public meta import VersoBlueprint.Graft.Node
+public meta import VersoBlueprint.Slides.Node
+
+public section
 
 set_option doc.verso true
 

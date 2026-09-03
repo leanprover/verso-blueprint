@@ -4,8 +4,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoBlueprint.Git
+module
+
+public import Lean.CoreM
+public import Std.Data.HashMap
+public import VersoBlueprint.Git
+
+public section
 
 namespace Informal.RuntimeCache
 
@@ -19,13 +24,13 @@ This is intentionally a small in-process backend. The public helpers below take
 fallback resolver actions, which keeps callers independent of the storage
 strategy and leaves room for a later Lake/build-local file cache.
 -/
-structure State where
+private structure State where
   moduleSourcePaths : Std.HashMap String (Option System.FilePath) := {}
   gitRootsBySourceDir : Std.HashMap String (Option System.FilePath) := {}
   gitRepoInfoByRoot : Std.HashMap String (Option Git.RepositoryInfo) := {}
 deriving Inhabited
 
-initialize stateRef : IO.Ref State ← IO.mkRef {}
+private initialize stateRef : IO.Ref State ← IO.mkRef {}
 
 /--
 Clear the in-process runtime cache.

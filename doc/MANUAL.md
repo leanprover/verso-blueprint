@@ -11,6 +11,7 @@ If you are starting a first project, read
 ## Contents
 
 - [Mental Model](#mental-model)
+- [Lean Module Setup](#lean-module-setup)
 - [Labels and Node Identity](#labels-and-node-identity)
 - [Minimal Project Shape](#minimal-project-shape)
 - [The Blueprint Top-Level File](#the-blueprint-top-level-file)
@@ -40,6 +41,44 @@ A Blueprint project usually owns three things:
 The Blueprint top-level file is often called `Contents.lean` in existing
 projects, but the filename is not special. What matters is that one module
 assembles the chapters and chooses the rendered overview pages.
+
+## Lean Module Setup
+
+Verso Blueprint is a module-system package. New authoring files should begin
+with the module header and import both facets of the public authoring root:
+
+```lean
+module
+
+import VersoBlueprint
+meta import VersoBlueprint
+```
+
+`VersoBlueprint` already exposes the supported authoring surface, including
+the graph, summary, bibliography, and graft commands. Direct imports of those
+feature modules are only needed when code intentionally consumes their
+documented feature-specific API.
+
+Use the corresponding dedicated root for the other two public workflows:
+
+```lean
+module
+
+import VersoBlueprint.PreviewManifest
+meta import VersoBlueprint.PreviewManifest
+```
+
+for a site generator, and:
+
+```lean
+module
+
+import VersoBlueprint.Slides
+meta import VersoBlueprint.Slides
+```
+
+for Slides authoring or generation. Existing non-module projects still compile
+while migrating, but Lean will recommend adding a module header.
 
 ## Labels and Node Identity
 
@@ -269,7 +308,9 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
 ````
 
 This is the clearest way to connect a Blueprint entry to local formalization
-work in the same project.
+work in the same project. Declarations introduced by these blocks are public:
+their written names and Blueprint metadata remain available to modules that
+import the containing document.
 
 ### Compiled code tagged with `@[blueprint "addition_assoc_compiled"]`
 
@@ -1319,8 +1360,13 @@ prefixes with document-order block counts.
 
 The widget surface is experimental.
 
-To enable it, import `VersoBlueprint.Widget` explicitly in the project that
-wants to use it.
+Enable its meta-only interface explicitly in the project that uses it:
+
+```lean
+module
+
+meta import VersoBlueprint.Widget
+```
 
 ## Current Limits
 

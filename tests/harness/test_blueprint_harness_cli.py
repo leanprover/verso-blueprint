@@ -2768,11 +2768,29 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             select_release_projects=lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", []),
             require_checkout_release=lambda _layout, release_id, *, command_name: None,
             should_use_local_build=lambda _layout, _allow_local_build: False,
-            find_prebuilt_lean_test_artifact=lambda _package_root: Path("/tmp/VersoBlueprintTests.olean"),
+            find_prebuilt_lean_test_marker=lambda _package_root: Path("/tmp/VersoBlueprintTests/Vbp.trace"),
             run_capturing_failure=lambda _step, _command, cwd: None,
             generate_projects=lambda *_args, **_kwargs: None,
         ):
             self.assertEqual(reference_harness_mod.command_validate(args), 0)
+
+    def test_prebuilt_lean_test_marker_uses_a_declared_test_root_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp)
+            marker = (
+                package_root
+                / ".lake"
+                / "build"
+                / "lib"
+                / "lean"
+                / "VersoBlueprintTests"
+                / "Vbp.trace"
+            )
+
+            self.assertIsNone(reference_harness_mod.find_prebuilt_lean_test_marker(package_root))
+            marker.parent.mkdir(parents=True)
+            marker.touch()
+            self.assertEqual(reference_harness_mod.find_prebuilt_lean_test_marker(package_root), marker)
 
     def test_reference_validate_rejects_unsafe_root_release_without_override(self) -> None:
         args = argparse.Namespace(

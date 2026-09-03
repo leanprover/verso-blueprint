@@ -4,22 +4,29 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.Elab.Command
-import Verso
-import VersoManual
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Commands.SerializedExtension
-import VersoBlueprint.Commands.Summary.Collect
-import VersoBlueprint.Commands.Summary.Render
+module
+
+public import VersoManual
+public import VersoBlueprint.Commands.SerializedExtension
+public import VersoBlueprint.Commands.Summary.Collect
+public import VersoBlueprint.Commands.Summary.Sections
+meta import Lean
+meta import Lean.Elab.Command
+meta import Verso
+public meta import VersoManual
+meta import VersoBlueprint.Commands.Common
+meta import VersoBlueprint.Commands.SerializedExtension
+meta import VersoBlueprint.Commands.Summary.Collect
+
+public section
 
 namespace Informal.Commands
 
 open Lean Elab Command
-open Informal Data Environment
+open Informal
 
 open Verso Doc Elab Syntax in
-def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
+private meta def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
   let titlePreview := "Blueprint Summary"
   let titleInlines ← `(inline | "Blueprint Summary")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)

@@ -4,23 +4,35 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Assets
-import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.LeanCodePreview
-import VersoBlueprint.Informal.CodeSummary
-import VersoBlueprint.Informal.ExternalMarkupView
-import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.Lean
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Profiling
-import VersoBlueprint.Resolve
-import VersoBlueprint.TeX
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Data
+public import VersoBlueprint.Informal.Block.Assets
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Block.Common
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Informal.LeanCodePreview
+public import VersoBlueprint.Informal.Code.Data
+public import VersoBlueprint.Informal.CodeSummary
+public import VersoBlueprint.Informal.ExternalMarkupView
+public import VersoBlueprint.Lean
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Resolve
+public import VersoBlueprint.TeX
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.DependencyAnalysis
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.Block
+public meta import VersoBlueprint.Informal.Block.Common
+public meta import VersoBlueprint.Informal.Code.Data
+public meta import VersoBlueprint.LabelNameParsing
+public meta import VersoBlueprint.Lean
+public meta import VersoBlueprint.Profiling
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -137,6 +149,8 @@ block_extension Block.informalCode (data : InlineCodeData) where
       pure <| mkCodePanel panelHeader panelSummary.summaryTitle panelSummary.indicator panelBody panelAttrs
         (folded := foldCodeBlock)
 
+meta section
+
 structure CodeConfig where
   label : Data.Label
   leanLabel : Name
@@ -164,30 +178,6 @@ instance : FromArgs CodeConfig m where
   fromArgs := CodeConfig.parse
 
 end
-
-/-- How external markup code blocks should be rendered in the current document. -/
-inductive ExternalMarkupDisplayMode where
-  | hidden
-  | summary
-  | source
-deriving Repr, Inhabited, BEq, ToJson, FromJson, Quote
-
-def ExternalMarkupDisplayMode.parse? (raw : String) : Option ExternalMarkupDisplayMode :=
-  match raw.trimAscii.toString.toLower with
-  | "hidden" | "hide" | "none" => some .hidden
-  | "summary" | "metadata" => some .summary
-  | "source" | "raw" => some .source
-  | _ => none
-
-register_option verso.blueprint.externalMarkup.display : String := {
-  defValue := "hidden"
-  descr := "Default display mode for external markup blocks: `hidden` (default), `summary`, or `source`"
-}
-
-def ExternalMarkupDisplayMode.fromOptions (opts : Lean.Options) : ExternalMarkupDisplayMode :=
-  match ExternalMarkupDisplayMode.parse? (verso.blueprint.externalMarkup.display.get opts) with
-  | some mode => mode
-  | none => .hidden
 
 structure ExternalMarkupConfig where
   label? : Option Data.Label := none
@@ -261,11 +251,7 @@ instance : FromArgs ExternalMarkupConfig m where
 
 end
 
-structure ExternalMarkupBlockData where
-  label : Data.Label
-  markup : Data.ExternalMarkup
-  display : ExternalMarkupDisplayMode := .hidden
-deriving Repr, Inhabited, FromJson, ToJson, Quote
+end
 
 block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
@@ -316,6 +302,8 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
         | .hidden => .empty
         | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
         | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
+
+meta section
 
 private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM Data.SourceLocationResult := do
   match ← Data.SourceLocation.ofSyntax? stx with
@@ -435,5 +423,7 @@ def tex : CodeBlockExpanderOf ExternalMarkupConfig
 def md : CodeBlockExpanderOf ExternalMarkupConfig
   | cfg, contents => do
     Profile.withDocElab "code_block" "md" <| externalMarkupImpl .markdown cfg contents
+
+end
 
 end Informal

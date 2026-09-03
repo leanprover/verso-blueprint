@@ -4,15 +4,19 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Std.Data.HashMap
-import VersoSlides
+module
+
+public import Std.Data.HashMap
+public import VersoSlides
 import VersoManual
-import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
+
+public section
 
 namespace Informal.Slides
 

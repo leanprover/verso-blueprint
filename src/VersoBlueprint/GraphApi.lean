@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Graph
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Lib.PreviewSource
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoBlueprint.Graph
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Lib.PreviewSource
+public import VersoBlueprint.TraversalIndex
+
+public section
 
 /-!
 Public graph-data helpers.

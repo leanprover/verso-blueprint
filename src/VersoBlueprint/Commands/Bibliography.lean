@@ -4,16 +4,25 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Cite
-import VersoBlueprint.Commands.Common
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Cite
+public import VersoBlueprint.Commands.Common
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
+meta import Lean
+meta import Verso
+public meta import VersoManual
+public meta import VersoBlueprint.Cite
+meta import VersoBlueprint.Commands.Common
+
+public section
 
 namespace Informal.Commands
 
@@ -146,8 +155,10 @@ block_extension Block.bibliography (biblio : BibliographyData) where
   extraCss := bibliographyAssetBundle.css
   extraJs := bibliographyAssetBundle.js
 
+meta section
+
 open Verso Doc Elab Syntax in
-def mkBibliographyPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
+private def mkBibliographyPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
   let titlePreview := "Blueprint Bibliography"
   let titleInlines ← `(inline | "Blueprint Bibliography")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
@@ -171,5 +182,7 @@ public meta def blueprintBibliographyCmd : PartCommand
     closePartsUntil 1 endPos
     addPart (← mkBibliographyPart stx endPos)
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
+
+end
 
 end Informal.Commands

@@ -368,8 +368,13 @@ await preview.renderNode(container, {
 
 ### Widget
 
-The widget surface is experimental. Import `VersoBlueprint.Widget` explicitly if
-you want to enable it.
+The widget surface is experimental. Enable its meta-only interface explicitly:
+
+```lean
+module
+
+meta import VersoBlueprint.Widget
+```
 
 ## Reference Blueprints
 

@@ -4,13 +4,15 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
-import VersoBlueprint.Lib.HoverRender
+module
+
+public import Lean
+public import VersoManual
+public import VersoBlueprint.Lib.HoverRender
+
+public section
 
 namespace Informal
-
-private def discardRenderError (_msg : String) : IO Unit := pure ()
 
 private def callbackLogger (logMessage : String → IO Unit) : Verso.Logger IO where
   log _severity text _loc := logMessage text
@@ -35,7 +37,7 @@ private def initTraverseState (impls : Verso.Genre.Manual.ExtensionImpls) : Vers
 def traverseManualBlocks
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
     (impls : Verso.Genre.Manual.ExtensionImpls)
-    (logError : String → IO Unit := discardRenderError) :
+    (logError : String → IO Unit := fun _ => pure ()) :
     IO (Array (Verso.Doc.Block Verso.Genre.Manual) × Verso.Genre.Manual.TraverseState) := do
   let ctxt : Verso.Genre.Manual.TraverseContext := {}
   let mut st := initTraverseState impls
@@ -57,7 +59,7 @@ def renderManualHtmlWithStateAndHovers
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (st : Verso.Genre.Manual.TraverseState)
     (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
-    (logError : String → IO Unit := discardRenderError)
+    (logError : String → IO Unit := fun _ => pure ())
     (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
     IO RenderedManualHtml := do
   let opts : Verso.Doc.Html.Options := {
@@ -90,7 +92,7 @@ def renderManualHtmlWithState
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (st : Verso.Genre.Manual.TraverseState)
     (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
-    (logError : String → IO Unit := discardRenderError) :
+    (logError : String → IO Unit := fun _ => pure ()) :
     IO Verso.Output.Html := do
   return (← renderManualHtmlWithStateAndHovers htmlState impls st linkTargets (logError := logError)).html
 
@@ -99,7 +101,7 @@ def renderManualBlocksHtmlWithStateAndHovers
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (st : Verso.Genre.Manual.TraverseState)
     (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
-    (logError : String → IO Unit := discardRenderError)
+    (logError : String → IO Unit := fun _ => pure ())
     (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
     IO RenderedManualHtml := do
   let block := Verso.Doc.Block.concat blocks
@@ -112,7 +114,7 @@ def renderManualBlocksHtmlWithState
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (st : Verso.Genre.Manual.TraverseState)
     (linkTargets : Verso.Code.LinkTargets Verso.Genre.Manual.TraverseContext := st.localTargets)
-    (logError : String → IO Unit := discardRenderError) :
+    (logError : String → IO Unit := fun _ => pure ()) :
     IO Verso.Output.Html := do
   return (← renderManualBlocksHtmlWithStateAndHovers blocks impls st linkTargets
     (logError := logError)).html
@@ -120,7 +122,7 @@ def renderManualBlocksHtmlWithState
 private def renderManualBlocksHtml
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
     (impls : Verso.Genre.Manual.ExtensionImpls)
-    (logError : String → IO Unit := discardRenderError) : IO Verso.Output.Html := do
+    (logError : String → IO Unit := fun _ => pure ()) : IO Verso.Output.Html := do
   let (blocks, st) ← traverseManualBlocks blocks impls logError
   renderManualBlocksHtmlWithState blocks impls st (logError := logError)
 

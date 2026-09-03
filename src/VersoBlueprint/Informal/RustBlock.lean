@@ -4,17 +4,25 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Assets
-import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Code
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Profiling
-import VersoBlueprint.Informal.RustPanel
-import VersoBlueprint.TeX
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Informal.Block.Assets
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Block.Common
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Informal.RustPanel
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.TeX
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.Block.Common
+public meta import VersoBlueprint.Informal.Code
+public meta import VersoBlueprint.Profiling
+public meta import VersoBlueprint.Rust
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -67,6 +75,8 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       pure <| Informal.Rust.renderRawCodePanel panelHeader s!"Rust code for {cdata.label}" cdata.raw
         attrs (folded := cdata.foldCodeBlock)
 
+meta section
+
 private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
     let data : Informal.Rust.InlineCodeData := {
@@ -81,5 +91,7 @@ private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
 def rust : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
     Profile.withDocElab "code_block" "rust" <| rustImpl cfg contents
+
+end
 
 end Informal

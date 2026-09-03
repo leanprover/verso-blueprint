@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import VersoManual
+module
+
+public import Lean
+public import VersoManual
+
+public section
 
 /-!
 Shared link-resolution policies for Blueprint renderers.

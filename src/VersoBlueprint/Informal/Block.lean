@@ -4,34 +4,43 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias, David Thrane Christiansen
 -/
 
--- XXX VersoManual is not module yet
--- module
+module
 
 -- Blueprint library extending the Verso `Manual` genre.
 
-import Lean.Elab.InfoTree.Types
+public import Lean.Elab.InfoTree.Types
 
-import VersoManual
+public import VersoManual
 
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Assets
-import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.Block.Config
-import VersoBlueprint.Informal.Block.RelatedPanel
-import VersoBlueprint.Informal.Block.Render
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Block.Traversal
-import VersoBlueprint.Informal.CodeSummary
-import VersoBlueprint.Informal.ExternalCode
-import VersoBlueprint.Informal.ExternalMarkupRender
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Resolve
-import VersoBlueprint.Source.Metadata
-import VersoBlueprint.TeX
-import VersoBlueprint.TraversalIndex
-import VersoBlueprint.Profiling
+public import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Data
+public import VersoBlueprint.Environment
+public import VersoBlueprint.Informal.Block.Assets
+public import VersoBlueprint.Informal.Block.Common
+public import VersoBlueprint.Informal.Block.Config
+public import VersoBlueprint.Informal.Block.RelatedPanel
+public import VersoBlueprint.Informal.Block.Render
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Informal.Block.Traversal
+public import VersoBlueprint.Informal.CodeSummary
+public import VersoBlueprint.Informal.ExternalCode
+public import VersoBlueprint.Informal.ExternalMarkupRender
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Resolve
+public import VersoBlueprint.Source.Metadata
+public import VersoBlueprint.TeX
+public import VersoBlueprint.TraversalIndex
+public import VersoBlueprint.Profiling
+public meta import Lean.Elab.InfoTree.Types
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.Block.Common
+public meta import VersoBlueprint.Informal.Block.Config
+public meta import VersoBlueprint.Source.Metadata
+public meta import VersoBlueprint.Profiling
+
+public section
 
 set_option doc.verso true
 
@@ -200,6 +209,8 @@ block_extension Block.informal (data : BlockData) where
           companionPanels := #[externalPanel]
         }
 
+meta section
+
 private structure ParsedDirectiveContents where
   sourceRef? : Option Source.Ref := none
   body : Array (TSyntax `block) := #[]
@@ -349,5 +360,7 @@ private def expander (kind : Data.NodeKind) (isProof : Bool := false) : Directiv
 @[directive] def «theorem» := expander .theorem
 @[directive] def «corollary» := expander .corollary
 @[directive] def «proof» := expander .lemma (isProof := true)
+
+end
 
 end Informal

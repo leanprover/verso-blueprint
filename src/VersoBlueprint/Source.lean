@@ -4,11 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Profiling
-import VersoBlueprint.Source.Metadata
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Source.Metadata
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Profiling
+public meta import VersoBlueprint.Source.Metadata
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -16,6 +22,8 @@ open Verso.ArgParse
 open Lean Elab
 
 namespace Informal.Source
+
+meta section
 
 structure DocumentConfig where
   id : String
@@ -37,6 +45,8 @@ instance : FromArgs DocumentConfig m where
 
 end
 
+end
+
 block_extension Block.sourceDocument (document : Document) where
   data := toJson document
   traverse _id data _contents := do
@@ -54,6 +64,8 @@ block_extension Block.sourceDocument (document : Document) where
   toHtml :=
     open Verso.Doc.Html in
     some <| fun _ _ _ _ _ => pure .empty
+
+meta section
 
 private def reportUnexpectedSourceDocumentBlock
     (cfg : DocumentConfig) (block : TSyntax `block) : DocElabM Unit := do
@@ -91,12 +103,18 @@ def sourceDocumentDirective : DirectiveExpanderOf DocumentConfig
     Profile.withDocElab "directive" "source_document" <|
       sourceDocumentExpanderImpl cfg contents
 
+end
+
 end Informal.Source
 
 namespace Informal
 
+meta section
+
 @[directive]
 def source_document : DirectiveExpanderOf Source.DocumentConfig :=
   Source.sourceDocumentDirective
+
+end
 
 end Informal

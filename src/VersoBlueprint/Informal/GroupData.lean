@@ -4,10 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Data
+module
+
+public import Lean
+public import VersoBlueprint.Data
+
+public section
 
 namespace Informal
 

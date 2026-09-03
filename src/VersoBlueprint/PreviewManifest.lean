@@ -4,31 +4,38 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.Elab.Command
-import Std.Data.HashMap
-import Std.Data.HashSet
-import VersoManual
-import VersoManual.HighlightedCode
-import VersoBlueprint.Cite
-import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.Group
-import VersoBlueprint.Informal.LeanCodePreview
-import VersoBlueprint.Lib.PreviewSource
-import VersoBlueprint.PreviewCache
-import VersoBlueprint.PreviewManifest.Cli
-import VersoBlueprint.PreviewManifest.ExternalMarkupRender
-import VersoBlueprint.PreviewRender
-import VersoBlueprint.GraphApi
+module
+
+public import Lean
+public import Lean.Elab.Command
+public import Std.Data.HashMap
+public import Std.Data.HashSet
+public import VersoManual
+public import VersoManual.HighlightedCode
+public import VersoBlueprint.Cite
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Informal.Group
+public import VersoBlueprint.Informal.LeanCodePreview
+public import VersoBlueprint.Lib.PreviewSource
+public import VersoBlueprint.PreviewCache
+public import VersoBlueprint.PreviewManifest.Cli
+public import VersoBlueprint.PreviewManifest.ExternalMarkupRender
+public import VersoBlueprint.PreviewRender
+public import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
-import VersoBlueprint.Html
+public import VersoBlueprint.Html
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
-import VersoBlueprint.Source.Data
+public import VersoBlueprint.Source.Data
 import VersoBlueprint.TeX.Cleanup
-import VersoBlueprint.TeX.Pdf
-import VersoBlueprint.TraversalIndex
+public import VersoBlueprint.TeX.Pdf
+public import VersoBlueprint.TraversalIndex
+meta import Lean
+meta import Std.Data.HashSet
+meta import VersoBlueprint.Lib.PreviewSource
+
+public section
 
 namespace Informal.PreviewManifest
 
@@ -891,19 +898,22 @@ structure RelatedEntry where
   axes : Array RelationAxis := #[]
 deriving Inhabited, Repr, ToJson
 
-private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback : α) :
-    Except String α :=
-  match json.getObjVal? field with
-  | .ok value => fromJson? value
-  | .error _ => pure fallback
-
 instance : FromJson RelatedEntry where
   fromJson? json := do
     let label ← json.getObjValAs? Name "label"
     let title ← json.getObjValAs? String "title"
-    let href ← jsonObjValAsD json "href" (none : Option String)
-    let previewKey ← jsonObjValAsD json "previewKey" (none : Option Informal.PreviewKey)
-    let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
+    let href ←
+      match json.getObjVal? "href" with
+      | .ok value => fromJson? value
+      | .error _ => pure (none : Option String)
+    let previewKey ←
+      match json.getObjVal? "previewKey" with
+      | .ok value => fromJson? value
+      | .error _ => pure (none : Option Informal.PreviewKey)
+    let axes ←
+      match json.getObjVal? "axes" with
+      | .ok value => fromJson? value
+      | .error _ => pure (#[] : Array RelationAxis)
     pure { label, title, href, previewKey, axes }
 
 /-- Manifest-owned group metadata shared by all informal nodes in the group. -/
@@ -1711,6 +1721,8 @@ def readFileWithoutGraphs (path : System.FilePath) : IO File := do
         json.setObjVal! "graphs" (Json.arr #[])
   | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
+meta section
+
 private structure SchemaState where
   seen : Std.HashSet Name := {}
   defs : Array (String × Json) := #[]
@@ -1836,10 +1848,12 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
   | _ =>
       throwError "Unsupported schema type: {ty}"
 
+end
+
 syntax (name := previewManifestSchema) "previewManifestSchema%" : term
 
 @[term_elab previewManifestSchema]
-def elabPreviewManifestSchema : TermElab := fun _ _ => do
+public meta def elabPreviewManifestSchema : TermElab := fun _ _ => do
   let rootTy := Lean.mkConst ``Informal.PreviewManifest.File
   let (_rootRef, st) ← Meta.liftMetaM <| (schemaForType rootTy).run {}
   let defs := st.defs.qsort (fun a b => a.1 < b.1)
