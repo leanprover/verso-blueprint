@@ -9,7 +9,7 @@ module
 import VersoBlueprint.Slides
 meta import VersoBlueprint.Slides
 
-namespace VersoBlueprintModuleTests.Slides
+namespace VersoBlueprintBoundaryTests.SlidesRoot
 
 example :
     (config : VersoSlides.Config) →
@@ -28,4 +28,4 @@ example :
   config.extraCss.any
     (·.filename == Informal.Slides.blueprintSlidesCssFilename)
 
-end VersoBlueprintModuleTests.Slides
+end VersoBlueprintBoundaryTests.SlidesRoot

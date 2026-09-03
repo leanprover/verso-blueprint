@@ -309,7 +309,10 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
     let envBefore ← getEnv
     let col? := (← getRef).getPos? |>.map (← getFileMap).utf8PosToLspPos |>.map (·.character)
     let origScopes := (← getScopes).modifyHead fun sc =>
-      { sc with opts := pp.tagAppFns.set (Elab.async.set sc.opts false) true }
+      let opts := pp.tagAppFns.set (Elab.async.set sc.opts false) true
+      -- Documented declarations must keep their written names and remain
+      -- available to modules that import the containing Blueprint document.
+      { sc with opts, isPublic := true }
 
     let altStr ← parserInputString str
     let ictx := Parser.mkInputContext altStr (← getFileName)

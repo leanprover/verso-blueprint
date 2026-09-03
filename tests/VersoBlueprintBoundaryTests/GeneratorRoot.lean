@@ -9,7 +9,7 @@ module
 import VersoBlueprint.PreviewManifest
 meta import VersoBlueprint.PreviewManifest
 
-namespace VersoBlueprintModuleTests.PreviewManifest
+namespace VersoBlueprintBoundaryTests.GeneratorRoot
 
 open Lean
 
@@ -29,4 +29,4 @@ open Lean
     Informal.PreviewManifest.manifestInternalSchemaVersion == 3 &&
     Informal.PreviewManifest.schemaString != ""
 
-end VersoBlueprintModuleTests.PreviewManifest
+end VersoBlueprintBoundaryTests.GeneratorRoot

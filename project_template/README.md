@@ -73,7 +73,8 @@ The `public import` lets another module include the exported document. The
 `meta import` loads Blueprint's directives, roles, and other authoring
 elaborators. The generator follows the same two-phase pattern with
 `VersoBlueprint.PreviewManifest` and meta-imports the top-level Blueprint so
-`%doc` can evaluate it.
+`%doc` can evaluate it. Declarations written in Blueprint Lean code blocks are
+public, so imported chapters retain their code panels and formalization status.
 
 ## What the template demonstrates
 
