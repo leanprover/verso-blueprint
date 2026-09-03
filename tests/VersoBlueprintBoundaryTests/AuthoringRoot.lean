@@ -10,7 +10,7 @@ module
 import VersoBlueprint
 meta import VersoBlueprint
 
-namespace VersoBlueprintModuleTests.PublicRoot
+namespace VersoBlueprintBoundaryTests.AuthoringRoot
 
 open Lean Verso
 open Genre Manual
@@ -69,4 +69,4 @@ The proof uses the same base statement.
 {blueprint_bibliography}
 :::::::
 
-end VersoBlueprintModuleTests.PublicRoot
+end VersoBlueprintBoundaryTests.AuthoringRoot

@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-08-20
+Last updated: 2026-09-03
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its
@@ -186,14 +186,11 @@ generation, test-blueprint generation, and configured panel/browser
 regressions.
 
 The production library is module-system-only. `scripts/run-lean-tests.sh`
-runs `scripts/check-module-boundaries.py --require-all` and builds the strict
-`VersoBlueprintModuleTests` consumers before the legacy suite. Do not repair a
-boundary failure with `allowNonModules` or `backward.privateInPublic`. Add a
-strict consumer for a changed public root or phase boundary, and keep an
-intentional legacy consumer in the wider validation matrix when compatibility
-with non-module downstream projects matters. Legacy fixtures may emit Lean's
-advisory migration warning after importing the module-only library; new
-fixtures should use `module` unless they exist specifically to test that path.
+runs `scripts/check-module-boundaries.py` and builds the strict
+`VersoBlueprintBoundaryTests` consumers for the three public roots before the
+behavioral suite. Do not repair a boundary failure with `allowNonModules` or
+`backward.privateInPublic`. Add a focused strict consumer only when introducing
+or changing a supported public root. New fixtures should use `module`.
 
 For rendering-specific changes, use a cheaper progression first:
 
