@@ -6,8 +6,6 @@ Author: Emilio J. Gallego Arias
 
 module
 
-import Lean
-
 public section
 
 namespace Informal.HtmlId
