@@ -108,6 +108,19 @@ def main() -> int:
             raise SystemExit(
                 "[project-template-smoke] imported chapter lost its Lean code preview metadata",
             )
+        code_data = code_node.get("codeData")
+        inline = code_data.get("inline") if isinstance(code_data, dict) else None
+        code = inline.get("code") if isinstance(inline, dict) else None
+        defined_theorems = code.get("definedTheorems") if isinstance(code, dict) else None
+        expected_theorem = {"name": "multiplication_one_right", "provedStatus": "proved"}
+        if not isinstance(defined_theorems, list) or not any(
+            isinstance(theorem, dict)
+            and all(theorem.get(field) == value for field, value in expected_theorem.items())
+            for theorem in defined_theorems
+        ):
+            raise SystemExit(
+                "[project-template-smoke] imported chapter lost its proved Lean declaration",
+            )
         uses_output = run_capture(
             lean_low_priority_command(PACKAGE_ROOT, "lake", "exe", "vbp", "query", "uses", "collatz_step"),
             cwd=fresh_root,

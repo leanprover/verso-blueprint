@@ -187,10 +187,11 @@ regressions.
 
 The production library is module-system-only. `scripts/run-lean-tests.sh`
 runs `scripts/check-module-boundaries.py` and builds the strict
-`VersoBlueprintBoundaryTests` consumers for the three public roots before the
-behavioral suite. Do not repair a boundary failure with `allowNonModules` or
+`VersoBlueprintBoundaryTests` consumers for the three supported workflow roots
+and the experimental Widget entry point before the behavioral suite. Do not
+repair a boundary failure with `allowNonModules` or
 `backward.privateInPublic`. Add a focused strict consumer only when introducing
-or changing a supported public root. New fixtures should use `module`.
+or changing a documented entry point. New fixtures should use `module`.
 
 For rendering-specific changes, use a cheaper progression first:
 
