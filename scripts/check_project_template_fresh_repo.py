@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import secrets
 import shlex
@@ -36,6 +37,13 @@ def run_capture(command: list[str], *, cwd: Path) -> str:
     )
     print(result.stdout, end="")
     return result.stdout
+
+
+def parse_json_output(output: str) -> dict[str, object]:
+    for line in reversed(output.splitlines()):
+        if line.startswith("{"):
+            return json.loads(line)
+    raise SystemExit("[project-template-smoke] command produced no JSON object")
 
 
 def generated_site_contains(site_root: Path, text: str) -> bool:
@@ -82,6 +90,24 @@ def main() -> int:
         )
         if "addition_spec" not in node_output:
             raise SystemExit("[project-template-smoke] expected addition_spec in generated manifest")
+        code_node_output = run_capture(
+            lean_low_priority_command(
+                PACKAGE_ROOT,
+                "lake",
+                "exe",
+                "vbp",
+                "query",
+                "node",
+                "multiplication_one_right",
+            ),
+            cwd=fresh_root,
+        )
+        code_node = parse_json_output(code_node_output)
+        expected_code_keys = ["Informal.LeanCodePreview.Inline.multiplication_one_right"]
+        if code_node.get("leanCodePreviewKeys") != expected_code_keys:
+            raise SystemExit(
+                "[project-template-smoke] imported chapter lost its Lean code preview metadata",
+            )
         uses_output = run_capture(
             lean_low_priority_command(PACKAGE_ROOT, "lake", "exe", "vbp", "query", "uses", "collatz_step"),
             cwd=fresh_root,

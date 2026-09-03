@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-09-01
+Last updated: 2026-09-03
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -58,9 +58,10 @@ authoring rebuild closure.
 
 Public imports are part of these root contracts. Implementation imports remain
 private, and there is no parallel API manifest: the source import graph is the
-source of truth. The strict `VersoBlueprintModuleTests` consumers verify the
-roots without `allowNonModules`, including the public-surface regression where
-opening both `Lean` and `Verso` must not make `Doc.Block` ambiguous.
+source of truth. The strict `VersoBlueprintBoundaryTests` consumers verify the
+three public roots without `allowNonModules`, including the public-surface
+regression where opening both `Lean` and `Verso` must not make `Doc.Block`
+ambiguous.
 
 ### Canonical Semantic Source
 
