@@ -611,8 +611,16 @@ def ensure_prebuilt_executable(package_root: Path, exe_name: str) -> Path:
     return path
 
 
-def find_prebuilt_lean_test_artifact(package_root: Path) -> Path | None:
-    path = package_root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprintTests.olean"
+def find_prebuilt_lean_test_marker(package_root: Path) -> Path | None:
+    path = (
+        package_root
+        / ".lake"
+        / "build"
+        / "lib"
+        / "lean"
+        / "VersoBlueprintTests"
+        / "Vbp.trace"
+    )
     return path if path.exists() else None
 
 
@@ -827,18 +835,18 @@ def lean_test_validation_failures(layout, *, use_local_build: bool) -> list[Step
         )
         return [failure] if failure is not None else []
 
-    test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
-    if test_artifact is None:
+    test_marker = find_prebuilt_lean_test_marker(layout.package_root)
+    if test_marker is None:
         return [
             StepFailure(
                 "lean tests",
-                "no prebuilt Lean test library found in the current worktree `.lake/`; "
+                "no prebuilt Lean test marker found in the current worktree `.lake/`; "
                 "run `python3 -m scripts.blueprint_harness sync-root-lake` after "
                 "building from the root checkout, or use `--allow-local-build`",
             )
         ]
 
-    print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
+    print(f"[blueprint-reference-harness] using prebuilt Lean test marker: {test_marker}")
     return []
 
 

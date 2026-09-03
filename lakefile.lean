@@ -92,7 +92,8 @@ lean_lib VersoBlueprintBoundaryTests where
     `VersoBlueprintBoundaryTests.AuthoringRoot,
     `VersoBlueprintBoundaryTests.AuthoringDocumentImport,
     `VersoBlueprintBoundaryTests.GeneratorRoot,
-    `VersoBlueprintBoundaryTests.SlidesRoot
+    `VersoBlueprintBoundaryTests.SlidesRoot,
+    `VersoBlueprintBoundaryTests.WidgetRoot
   ]
   requiresModuleSystem := true
 

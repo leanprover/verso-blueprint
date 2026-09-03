@@ -1360,8 +1360,13 @@ prefixes with document-order block counts.
 
 The widget surface is experimental.
 
-To enable it, import `VersoBlueprint.Widget` explicitly in the project that
-wants to use it.
+Enable its meta-only interface explicitly in the project that uses it:
+
+```lean
+module
+
+meta import VersoBlueprint.Widget
+```
 
 ## Current Limits
 
