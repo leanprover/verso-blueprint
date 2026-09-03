@@ -9,7 +9,7 @@ module
 public import VersoManual
 public import VersoBlueprint.Commands.SerializedExtension
 public import VersoBlueprint.Commands.Summary.Collect
-public import VersoBlueprint.Commands.Summary.Render
+public import VersoBlueprint.Commands.Summary.Sections
 meta import Lean
 meta import Lean.Elab.Command
 meta import Verso

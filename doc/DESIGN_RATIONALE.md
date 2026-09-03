@@ -59,9 +59,9 @@ authoring rebuild closure.
 Public imports are part of these root contracts. Implementation imports remain
 private, and there is no parallel API manifest: the source import graph is the
 source of truth. The strict `VersoBlueprintBoundaryTests` consumers verify the
-three public roots without `allowNonModules`, including the public-surface
-regression where opening both `Lean` and `Verso` must not make `Doc.Block`
-ambiguous.
+three supported workflow roots and the experimental Widget entry point without
+`allowNonModules`, including the public-surface regression where opening both
+`Lean` and `Verso` must not make `Doc.Block` ambiguous.
 
 ### Canonical Semantic Source
 
