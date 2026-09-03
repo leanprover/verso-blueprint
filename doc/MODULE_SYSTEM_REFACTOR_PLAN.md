@@ -1,6 +1,6 @@
 # Lean Module-System Refactor Plan
 
-Last reviewed: 2026-09-02
+Last reviewed: 2026-09-03
 
 This document is the execution plan and verification contract for converting
 the `VersoBlueprint` library to Lean's module system. The repository roadmap
@@ -187,7 +187,7 @@ local evidence report when updating the state.
 | M4 — roots and cutover | complete | 101 of 101 production sources are modules, `VersoBlueprint` requires the module system, and the M4 gate is green, 2026-09-01 |
 | M5 — deliverables and legacy consumers | complete | Test blueprints (`61 passed`, `55 skipped` browser tests), FLT, Carleson, and project-template validation are green after cutover, 2026-09-01 |
 | M6 — incremental boundaries | complete | Deterministic private/runtime/public probes green after cutover; restored worktree unchanged, 2026-09-01 |
-| M7 — documentation and final audit | in progress | Public-root API comparison and all 24 Lake Shake findings reviewed; project template migrated and fresh/incremental smoke green; final CI remains, 2026-09-02 |
+| M7 — documentation and final audit | in progress | Public-root API comparison and all 24 Lake Shake findings reviewed; project template migrated and fresh/incremental smoke green; final CI remains, 2026-09-03 |
 
 ## Milestones and Verification Gates
 
@@ -391,8 +391,8 @@ were attributed by owning module, rather than namespace, because most of the
 public Lean API lives under `Informal`.
 
 - The legacy umbrella loaded 10,421 VBP-owned declarations.
-- The curated module root loads 7,780 VBP-owned declarations.
-- 2,678 declarations are no longer loaded. The removals are the intended
+- The curated module root loads 7,779 VBP-owned declarations.
+- 2,679 declarations are no longer loaded. The removals are the intended
   combination of generator/runtime modules moved behind their own roots and
   implementation helpers made private.
 - The 37 candidate-only names are compiler-generated quotation matchers or
@@ -406,7 +406,9 @@ preserved; `graphDataSchemaVersion` remains private; and the private default
 render-error callback is no longer widened or tested as public API. The strict
 public-root fixtures, legacy public-root fixture, and modular project template
 exercise the retained supported surface. The removed broad generator access is
-intentional: generator code imports `VersoBlueprint.PreviewManifest`.
+intentional: generator code imports `VersoBlueprint.PreviewManifest`. The
+private `GraphData` constructor no longer carries an unused field default, so
+its compiler-generated default helper is intentionally among the removals.
 
 #### Lake Shake audit
 
@@ -420,7 +422,7 @@ that is not represented as an ordinary constant dependency.
 | --- | --- | --- |
 | `ExternalDeclRender/Data.lean` | keep and annotate | `Verso.Instances.Deriving` supplies compile-time deriving behavior. |
 | `Data.lean` | keep and annotate | The deriving import and meta copy of external-render data support phase-correct quotation generation. |
-| `Lib/HtmlId.lean` | keep | The direct `Lean` dependency owns the `native_decide` proof used by the implementation. |
+| `Lib/HtmlId.lean` | remove | An exact no-import compile confirms that `native_decide` is available without the no-op direct import. |
 | `Source/Data.lean` | keep and annotate | `Verso.Instances.Deriving` is an elaboration-time plugin dependency. |
 | `Cite.lean` | keep | The meta imports state the citation authoring elaborator's direct dependencies; transitive availability is not its contract. |
 | `Commands/Bibliography.lean` | keep | Preview, resolution, traversal, and elaboration imports are direct dependencies of the registered block extension. |
@@ -443,10 +445,11 @@ that is not represented as an ordinary constant dependency.
 | `Informal/Uses.lean` | reject suggested widening | `Uses.Config` supports the role elaborator and is not a normal runtime facade. |
 | `Attribute.lean` | reject suggested phase growth | The attribute is meta-only; adding normal imports for private meta implementation references would broaden its normal closure. |
 
-After the review, the five deriving/plugin dependencies and the docstring
-metadata dependency carry `shake: keep` annotations. The remaining diagnostics
-are recorded decisions to retain direct dependencies or reject API/phase
-widening; Lake Shake remains advisory rather than a zero-warning gate.
+After the review, the no-op `HtmlId` import was removed, while the five
+deriving/plugin dependencies and the docstring metadata dependency carry
+`shake: keep` annotations. The remaining diagnostics are recorded decisions to
+retain direct dependencies or reject API/phase widening; Lake Shake remains
+advisory rather than a zero-warning gate.
 
 Final gate:
 
