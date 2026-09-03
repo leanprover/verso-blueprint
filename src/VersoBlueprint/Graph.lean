@@ -333,7 +333,7 @@ contracts.
 -/
 structure GraphData where
   private mk ::
-  schemaVersion : Nat := 3
+  schemaVersion : Nat
   /-- Stable key identifying this graph block. -/
   key : String := "graph"
   nodes : Array NodeData := #[]
