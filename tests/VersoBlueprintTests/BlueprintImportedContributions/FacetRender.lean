@@ -75,3 +75,34 @@ def facetBlueprint : BlueprintDocument := .capture
             throw <| IO.userError "Public node target and provenance disagreed with the selected body"
       unless (← errors.get).isEmpty do
         throw <| IO.userError s!"Facet rendering reported errors: {← errors.get}"
+
+-- Captured chapters do not imply rendered bodies. Inline references must follow
+-- the selected preview even when the completed statement chapter is omitted.
+#eval show IO Unit from do
+  let part := facetBlueprint.text
+  for (order, expected) in #[
+      (#[0], none),
+      (#[0, 2], some PreviewCache.Facet.proof),
+      (#[2, 0], some PreviewCache.Facet.proof),
+      (#[0, 1, 2], some PreviewCache.Facet.statement)] do
+    let text := { part with subParts := order.map (part.subParts[·]!) }
+    let doc : Doc.VersoDoc Manual := .mk (fun _ => text) "{}"
+    let errors ← IO.mkRef (#[] : Array String)
+    let (blocks, state) ← traverseManualDocBlocksAndState extension_impls% doc
+      (fun error => errors.modify (·.push error)) (model := facetBlueprint.model)
+    -- Root paragraphs contain the authored bpref roles, independently of chapter bodies.
+    let references := blocks.filter fun block => match block with | .para _ => true | _ => false
+    let html ← renderManualBlocksHtmlWithState references extension_impls% state
+    let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
+      (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
+    match expected with
+    | none =>
+        unless !hasSubstr html.asString "bp_inline_preview_ref" do
+          throw <| IO.userError "A placeholder reference offered a nonexistent preview"
+    | some facet =>
+        let key := PreviewCache.key `filled_facet facet
+        unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
+            (files.htmlCache.findHtml? key).isSome do
+          throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
+    unless (← errors.get).isEmpty do
+      throw <| IO.userError s!"Partial chapter rendering errors: {← errors.get}"

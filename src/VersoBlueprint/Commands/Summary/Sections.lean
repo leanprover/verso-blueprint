@@ -396,12 +396,9 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       | .error message => Verso.reportError message; pure none
     let some data := resolved? | pure .empty
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
-      match Informal.PreviewSource.traversalSelection? s label with
-      | some selection => keys.insert label selection.key
-      | Option.none =>
-        match Informal.PreviewSource.traversalExternalMarkupLookupKey? s label with
-        | some key => keys.insert label key
-        | Option.none => keys
+      match Informal.PreviewSource.traversalPreviewCandidateKey? s label with
+      | some key => keys.insert label (toString key)
+      | Option.none => keys
     let ctx : SummaryHtmlContext := {
       entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
       declHref? := fun label decl =>

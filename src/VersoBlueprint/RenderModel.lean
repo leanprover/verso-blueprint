@@ -18,7 +18,7 @@ Runtime rendering data captured after project imports. Its nodes become the trav
 canonical registry; blocks contain references and presentation settings only.
 -/
 structure RenderModel where
-  nodes : Lean.NameMap RenderNode := {}
+  nodes : Array RenderNode := #[]
   graph : Graph.GraphModel := {}
   summary : Commands.Summary := {}
 deriving Inhabited
@@ -28,7 +28,7 @@ def RenderModel.fromJsonString! (serialized : String) : RenderModel := Id.run do
   let .ok (nodes, graph, summary) :=
       fromJson? (α := Array RenderNode × Graph.GraphModel × Commands.Summary) json
     | panic! "invalid Blueprint render model data"
-  return { nodes := nodes.foldl (fun acc node => acc.insert node.label node) {}, graph, summary }
+  return { nodes, graph, summary }
 
 /-- Capture runtime data without carrying a Lean environment into the generator. -/
 elab "blueprint_render_model%" : term => do
@@ -43,7 +43,7 @@ elab "blueprint_render_model%" : term => do
 
 /-- Initialize the same node registry later completed by document traversal. -/
 def RenderModel.install (model : RenderModel) (state : TraverseState) : TraverseState :=
-  let state := model.nodes.foldl (fun state _ node => TraversalIndex.Nodes.saveNode state node) state
+  let state := TraversalIndex.Nodes.install state model.nodes
   let state := TraversalIndex.RenderOverviews.saveData state `graph model.graph
   TraversalIndex.RenderOverviews.saveData state `summary model.summary
 

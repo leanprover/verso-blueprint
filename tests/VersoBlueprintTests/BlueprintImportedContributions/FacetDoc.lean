@@ -6,9 +6,11 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.FacetStatement
 import VersoBlueprintTests.BlueprintImportedContributions.FacetProof
 
-open Verso.Genre
+open Verso.Genre Informal
 
 #doc (Manual) "Completed facets" =>
+
+See {bpref "filled_facet"}[] or {bpref "filled_facet"}[the completed result].
 
 {include 0 VersoBlueprintTests.BlueprintImportedContributions.FacetPlaceholder}
 {include 0 VersoBlueprintTests.BlueprintImportedContributions.FacetStatement}

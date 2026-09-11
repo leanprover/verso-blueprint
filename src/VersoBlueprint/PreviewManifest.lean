@@ -2198,7 +2198,7 @@ private def buildTraversalEntries
       let entry := stored.entry
       if !entry.hasRenderedBody then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString

@@ -49,17 +49,13 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let label := Name.mkSimple "preview.proof_fallback"
     let entry? := Informal.PreviewSource.traversalEntry? st label
     let lookupKey? := Informal.PreviewSource.traversalLookupKey? st label
-    let selection? := Informal.PreviewSource.traversalSelection? st label
     pure <|
-      match entry?, lookupKey?, selection? with
-      | some entry, some lookupKey, some selection =>
+      match entry?, lookupKey? with
+      | some entry, some lookupKey =>
         entry.facet == .proof &&
-        selection.facet == .proof &&
-        selection.key == lookupKey &&
-        selection.preview.blocks.size == entry.blocks.size &&
         !entry.blocks.isEmpty &&
         lookupKey == PreviewCache.proofKey label
-      | _, _, _ => false
+      | _, _ => false
 
 /-- info: true -/
 #guard_msgs in

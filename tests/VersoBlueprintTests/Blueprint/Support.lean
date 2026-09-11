@@ -47,6 +47,13 @@ private def discardLogger : Logger IO where
   errors := pure #[]
   warnings := pure #[]
 
+def renderManualBlocksTeXWithState (impls : ExtensionImpls)
+    (blocks : Array (Doc.Block Genre.Manual)) (state : TraverseState) : IO String := do
+  let (tex, _) ← ((Doc.Block.concat blocks).toTeX
+    (m := ReaderT ExtensionImpls (BuildLogT IO))
+    ({ headerLevel := none }, {}, state, {}) {}).run impls |>.run discardLogger
+  pure tex.asString
+
 /-- Keep extension impls explicit so each test renders with its own imported extension set. -/
 def renderManualDocHtmlAndState
     (impls : ExtensionImpls)

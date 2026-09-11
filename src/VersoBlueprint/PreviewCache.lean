@@ -26,6 +26,11 @@ def Facet.ofInProgressKind : Informal.Data.InProgressKind → Facet
   | .statement _ => .statement
   | .proof => .proof
 
+/-- Select the first available facet, preferring the statement over the proof.
+The caller decides which payloads are available (for example, nonempty bodies). -/
+def Facet.select? {α : Type} (fetch : Facet → Option α) : Option (Facet × α) :=
+  ((.statement, ·) <$> fetch .statement) <|> ((.proof, ·) <$> fetch .proof)
+
 def key (label : Name) (facet : Facet) : String :=
   s!"{label}--{facet.suffix}"
 
@@ -56,19 +61,6 @@ structure Metadata where
 deriving Inhabited, Repr, ToJson, FromJson
 
 /--
-Rendered preview body stored during traversal.
-
-`blocks` are already in the Manual genre and can be rendered by later HTML
-consumers. Empty body blocks do not imply empty semantic metadata.
--/
-structure RenderedBody where
-  blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-deriving Inhabited, Repr, ToJson, FromJson
-
-def RenderedBody.hasRenderedBody (body : RenderedBody) : Bool :=
-  !body.blocks.isEmpty
-
-/--
 The selected facet's target and provenance. This projection can be decoded
 without decoding its document body when resolving links or source metadata.
 -/
@@ -97,24 +89,8 @@ def Entry.metadata (entry : Entry) : Metadata := {
   leanCodePreviewKeys := entry.leanCodePreviewKeys
 }
 
-def Entry.renderedBody (entry : Entry) : RenderedBody := {
-  blocks := entry.blocks
-}
-
 def Entry.hasRenderedBody (entry : Entry) : Bool :=
-  entry.renderedBody.hasRenderedBody
-
-def Entry.ofMetadataAndBody (metadata : Metadata) (body : RenderedBody := {})
-    (sourceLocation : Informal.Data.SourceLocationResult :=
-      Informal.Data.SourceLocationResult.unavailable "preview source location unavailable")
-    (sourceRef : Option Informal.Source.Ref := none) : Entry := {
-  label := metadata.label
-  facet := metadata.facet
-  blocks := body.blocks
-  sourceLocation
-  sourceRef
-  leanCodePreviewKeys := metadata.leanCodePreviewKeys
-}
+  !entry.blocks.isEmpty
 
 def Entry.ofBlocks (label : Name) (facet : Facet)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
@@ -122,10 +98,6 @@ def Entry.ofBlocks (label : Name) (facet : Facet)
       Informal.Data.SourceLocationResult.unavailable "preview source location unavailable")
     (leanCodePreviewKeys : Array String := #[])
     (sourceRef : Option Informal.Source.Ref := none) : Entry :=
-  Entry.ofMetadataAndBody
-    { label, facet, leanCodePreviewKeys }
-    { blocks }
-    sourceLocation
-    sourceRef
+  { label, facet, blocks, sourceLocation, leanCodePreviewKeys, sourceRef }
 
 end Informal.PreviewCache
