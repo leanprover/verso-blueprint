@@ -69,9 +69,7 @@ block_extension Block.informal (data : BlockOccurrence) where
     | none =>
       pure none
     | some occurrence =>
-      let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
-        | pure none
-      registerTraversedBlock id blockData _contents
+      registerTraversedBlock id occurrence _contents
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
       let .ok occurrence := fromJson? (α := BlockOccurrence) data

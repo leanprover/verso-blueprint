@@ -156,17 +156,17 @@ the same numbering, relations, previews, and generated-data path as authored
 Blueprint blocks.
 -/
 open Verso Doc Elab Genre Manual in
-block_extension Block.blueprintAttributeNodeSource (data : Informal.BlockData) where
+block_extension Block.blueprintAttributeNodeSource (data : Informal.BlockOccurrence) where
   data := toJson data
   usePackages := Informal.TeX.standardMathUsePackages
   traverse id data contents := do
-    let some blockData ←
+    let some occurrence ←
         Informal.ExtensionDecode.decode?
-          (α := Informal.BlockData)
+          (α := Informal.BlockOccurrence)
           data
           (fun err => s!"Malformed attribute-owned Blueprint node data ({err}): {data}")
       | pure none
-    Informal.registerTraversedBlock id blockData contents
+    Informal.registerTraversedBlock id occurrence contents
     pure none
   toTeX := some <| fun _goI _goB _id _data _blocks => pure .empty
   toHtml := some <| fun _goI _goB id _data _blocks => do
@@ -258,9 +258,9 @@ private meta def persistedManualBlockTerm
   let jsonText := Lean.toJson block |>.compress
   `(Informal.Graft.persistedManualBlockFromJson $(quote jsonText))
 
-private meta def attributeNodeBlockData?
+private meta def attributeNodeOccurrence?
     (cfg : Informal.Graft.BlueprintNodeConfig) :
-    DocElabM (Option (Informal.BlockData × Array Syntax)) := do
+    DocElabM (Option (Informal.BlockOccurrence × Array Syntax)) := do
   let graftNode := cfg.toNode
   let label := Informal.LabelNameParsing.parse graftNode.label
   let some node ← Informal.Environment.getNode? label
@@ -276,10 +276,6 @@ private meta def attributeNodeBlockData?
       else
         statement.previewBlocks.mapM fun block =>
           return (← persistedManualBlockTerm block).raw
-  let ownerInfo? ←
-    match node.owner with
-    | some owner => Informal.Environment.getAuthor? owner
-    | none => pure none
   let opts ← getOptions
   let sourceLocation :=
     match ← Informal.Data.SourceLocation.ofSyntax? (← getRef) with
@@ -287,9 +283,7 @@ private meta def attributeNodeBlockData?
     | none =>
       Informal.Data.SourceLocationResult.unavailable
         s!"placement source location unavailable for {label}"
-  let blockData : Informal.BlockData := {
-    kind := .statement node.kind
-    codeData := Informal.BlockCodeData.ofExternalRefs node.externalRefs
+  let occurrence : Informal.BlockOccurrence := {
     label
     sourceLocation
     foldProofBlock := verso.blueprint.foldProofBlocks.get opts
@@ -299,8 +293,7 @@ private meta def attributeNodeBlockData?
     subNumberingPrefix := Informal.subNumberingPrefix opts
     subNumberingCounter := Informal.subNumberingCounter opts
   }
-  let blockData := blockData.withSemanticNodeMetadata (some node) ownerInfo?
-  pure <| some (blockData, statementStxs)
+  pure <| some (occurrence, statementStxs)
 
 private meta def manualBlueprintNodeBlock
     (cfg : Informal.Graft.BlueprintNodeConfig) : DocElabM Term := do
@@ -308,12 +301,12 @@ private meta def manualBlueprintNodeBlock
     ``(Verso.Doc.Block.other
         (Informal.Graft.Block.blueprintGraftNode $(quote cfg))
         #[])
-  let some (blockData, statementStxs) ← attributeNodeBlockData? cfg
+  let some (occurrence, statementStxs) ← attributeNodeOccurrence? cfg
     | return graft
   let statementTerms : Array (TSyntax `term) := statementStxs.map fun stx => ⟨stx⟩
   ``(Verso.Doc.Block.concat #[
       Verso.Doc.Block.other
-        (Informal.Graft.Block.blueprintAttributeNodeSource $(quote blockData))
+        (Informal.Graft.Block.blueprintAttributeNodeSource $(quote occurrence))
         #[$statementTerms,*],
       $graft
     ])

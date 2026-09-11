@@ -312,7 +312,9 @@ The same flow can be read as four contracts:
    store. Traversal enriches it with its canonical occurrence and anchor ids.
    The temporary `BlockData` view combines the shared semantics with a requested
    occurrence; it is not separately persisted. Numbering and statement/proof
-   occurrence selection remain traversal responsibilities. The model's captured
+   occurrence selection remain traversal responsibilities. Captured nodes without
+   a rendered occurrence keep their authored labels as preview titles rather than
+   acquiring synthetic numbered headings. The model's captured
    graph and summary live in `RenderOverviews`, and custom overview blocks can
    select their own explicitly supplied data. Graph occurrences store only their
    selection and options, resolving the shared project topology at finalization.
@@ -342,7 +344,9 @@ The same flow can be read as four contracts:
 
    An imported attribute-owned node has no source block of its own, so a Manual
    `{blueprint_node}` placement expands to an invisible materialization block
-   followed by the ordinary graft. The materializer writes the same node,
+   followed by the ordinary graft. Like authored blocks, it stores only a
+   `BlockOccurrence` and resolves semantics from the captured `RenderModel`
+   during traversal. The materializer writes the same occurrence,
    statement-preview, Lean-code, anchor, numbering, and relation indexes as an
    informal statement block; its only HTML is the empty destination anchor
    immediately before the visible graft. This keeps placement phase-safe
