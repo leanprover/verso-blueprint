@@ -347,9 +347,10 @@ structure GraphData where
   variants : Array GraphRenderVariant := #[]
 deriving Repr, ToJson
 
-/-- Traversal-time graph cache payload, before href/title finalization. -/
+/-- Graph occurrence selection and options; project topology is stored once in RenderOverviews. -/
 structure CachedGraphData where
-  model : GraphModel
+  /-- `none` selects the captured project graph; `some` supplies a custom graph. -/
+  model : Option GraphModel := none
   options : GraphOptions
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 

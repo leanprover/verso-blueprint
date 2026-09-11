@@ -1861,24 +1861,26 @@ private def xrefExcludedDomainNames : Array Name :=
 private def isPublicXrefDomain (name : Name) : Bool :=
   !xrefExcludedDomainNames.any (· == name)
 
-private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
+private def publicXrefDomains (state : TraverseState) :
     Verso.NameMap Verso.Multi.Domain := Id.run do
   let mut publicDomains : Verso.NameMap Verso.Multi.Domain := {}
-  for (name, domain) in domains do
+  for (name, domain) in state.domains do
     if isPublicXrefDomain name then
       let domain := if name == Informal.TraversalIndex.Nodes.domainName then
         { domain with objects := domain.objects.filterMap fun _ obj => do
             if obj.ids.isEmpty then none else do
               let node ← (fromJson? (α := Informal.RenderNode) obj.data).toOption
               -- Public links need resolved node metadata, not code rendering payloads.
-              let data : Informal.BlockData := { node.toBlockData with codeData := none }
-              some { obj with data := toJson data } }
+              let canonical := Informal.TraversalIndex.Nodes.resolveCanonical state node
+              let data : Informal.BlockData := { canonical with codeData := none }
+              let target ← Informal.TraversalIndex.Nodes.target? state node.label
+              some { obj with data := toJson data, ids := { target } } }
         else domain
       publicDomains := publicDomains.insert! name domain
   publicDomains
 
 def buildPublicXrefJson (state : TraverseState) : Json :=
-  Verso.Multi.xrefJson (publicXrefDomains state.domains) state.externalTags
+  Verso.Multi.xrefJson (publicXrefDomains state) state.externalTags
 
 private def replaceFindPageXref (html xrefJson : String) : Option String :=
   let marker := "window.xref = "
@@ -1907,18 +1909,19 @@ def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Ge
     | none => logError s!"Blueprint xref filter: could not find embedded xref payload in {findIndex}"
 
 private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  match Informal.TraversalIndex.Nodes.data? state label with
+  match Informal.TraversalIndex.Nodes.capturedData? state label with
   | some blockData => some (blockData.withResolvedNumbering state)
   | none => none
 
 private def blockTitle (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) : String :=
+  if !Informal.TraversalIndex.Nodes.hasRenderedOccurrence state label then labelString label else
   match blockData? <|> blockInfo? state label with
   | some blockData =>
       match facet with
       | .proof => blockData.displayProofTitle state
       | .statement => blockData.displayTitle state
-  | none => label.toString
+  | none => labelString label
 
 private structure BlockHeadingParts where
   caption : String
@@ -1927,6 +1930,7 @@ private structure BlockHeadingParts where
 private def blockHeadingParts? (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
     Option BlockHeadingParts := do
+  guard (Informal.TraversalIndex.Nodes.hasRenderedOccurrence state label)
   let blockData ← blockData? <|> blockInfo? state label
   let numberText := blockData.displayNumber state
   match facet with
@@ -1956,26 +1960,6 @@ private def blockKind? (blockData? : Option Informal.BlockData) : Option Informa
 private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
   (Informal.TraversalIndex.ExternalMarkup.data? state label).map (·.markup.toArray) |>.getD #[]
-
-private def sourceRef? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
-  Informal.TraversalIndex.SourceRefs.data? state label
-
-private def sourceRefsForBlockLabel (state : TraverseState) (label : Name) :
-    Array Informal.Source.Ref :=
-  match sourceRef? state label with
-  | some sourceRef => #[sourceRef]
-  | none => #[]
-
-private def sourceRefsByCanonicalLabel (state : TraverseState) :
-    Std.HashMap String Informal.Source.Ref := Id.run do
-  let mut refs : Std.HashMap String Informal.Source.Ref := {}
-  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
-    match decoded with
-    | .ok stored =>
-        refs := refs.insert stored.canonicalName stored.data
-    | .error _ =>
-        pure ()
-  refs
 
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
   match Informal.TraversalIndex.Groups.data? state parent with
@@ -2030,11 +2014,10 @@ private def blockCodeData?
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
   let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
-  let sourceRefsByLabel := sourceRefsByCanonicalLabel state
   for decoded in Informal.PreviewSource.traversalStoredEntries state do
     match decoded with
     | .ok stored =>
-        if let some sourceRef := sourceRefsByLabel.get? stored.entry.label.toString then
+        if let some sourceRef := stored.entry.sourceRef then
           for key in blockLeanCodePreviewKeys state stored.entry.label stored.entry do
             let current := (sources.get? key).getD #[]
             sources := sources.insert key (pushUnique current sourceRef)
@@ -2180,7 +2163,7 @@ private def blockSemanticManifestEntry
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
-    sources := sourceRefsForBlockLabel state preview.label
+    sources := preview.sourceRef.toArray
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state ·) |>.getD #[]
   }
@@ -2479,13 +2462,14 @@ private def validateSourceRefs
     (logError : String → IO Unit)
     (documents : Array Informal.Source.Document)
     (state : TraverseState) : IO Unit := do
-  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
+  for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed source-ref entry {err.canonicalName}: {err.message}"
     | .ok stored =>
-      unless documents.any (fun doc => doc.id == stored.data.document) do
-        logError s!"Blueprint manifest: source ref for label {stored.canonicalName} references unknown source document '{stored.data.document}'"
+      if let some sourceRef := stored.data.sourceRef then
+        unless documents.any (fun doc => doc.id == sourceRef.document) do
+          logError s!"Blueprint manifest: source ref for facet {stored.canonicalName} references unknown source document '{sourceRef.document}'"
 
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a

@@ -320,12 +320,12 @@ private def nestedGroupModel : GraphModel := {
     | .error _ => true
     | .ok _ => false)
 
-/- The traversal cache contains only the canonical semantic model and options. -/
+/- Custom graph occurrences contain their canonical model and options. -/
 /-- info: true -/
 #guard_msgs in
 #eval
   let cached : CachedGraphData := {
-    model := nestedGroupModel.canonicalize
+    model := some nestedGroupModel.canonicalize
     options := { direction := .LR, pack := true }
   }
   let json := Json.compress (toJson cached)

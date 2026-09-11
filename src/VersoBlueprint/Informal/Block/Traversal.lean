@@ -35,7 +35,7 @@ private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRe
   | .statement _, some codeData => codeData.externalDecls
   | _, _ => #[]
 
-/-- Store the rendered block body used by hover previews and Blueprint preview data. -/
+/-- Select a facet occurrence, preferring its filled body over earlier placeholders. -/
 def registerBlockPreviewData
     {m}
     [Monad m]
@@ -51,17 +51,20 @@ def registerBlockPreviewData
   let leanCodePreviewKeys :=
     (externalDeclsOfBlock blockData).map fun decl =>
       Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
-  let previewData := toJson <|
+  let previewData :=
     PreviewCache.Entry.ofBlocks blockData.label previewFacet contents
       (sourceLocation := blockData.sourceLocation)
       (leanCodePreviewKeys := leanCodePreviewKeys)
-  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
-  if shouldWritePreviewData existingPreview? id then
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
-  if existingPreview?.isNone then
+      (sourceRef := blockData.sourceRef)
+  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.entry? (← get) previewKey
+  let fillsPlaceholder :=
+    previewData.hasRenderedBody &&
+      !existingPreview?.any (·.hasRenderedBody)
+  let sameWriter := existingPreview?.any (·.target == some id)
+  if existingPreview?.isNone || sameWriter || fillsPlaceholder then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-preview-{previewKey}"
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveId s previewKey id
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveSelected s id previewData
 
 private def registerExternalCodePreview
     {m}

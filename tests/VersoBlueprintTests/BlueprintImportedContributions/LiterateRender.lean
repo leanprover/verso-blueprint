@@ -25,7 +25,10 @@ def literateBlueprint : BlueprintDocument := .capture
     }
     let state := TraversalIndex.SourceDocuments.saveData state source.document {
       id := source.document, title := "Literate notes", kind := .text }
-    let state := TraversalIndex.SourceRefs.saveData state `key_theorem source
+    let key := PreviewCache.key `key_theorem .statement
+    let some preview := TraversalIndex.TraversalPreviews.entry? state key
+      | throw <| IO.userError "Missing statement occurrence"
+    let state := TraversalIndex.TraversalPreviews.saveData state key (toJson { preview with sourceRef := some source })
     let blocks := TraversalIndex.InlineCode.blocks state `key_theorem
     unless blocks.size == 2 && blocks[0]!.blockId != blocks[1]!.blockId do
       throw <| IO.userError "Literate blocks did not retain distinct identities"

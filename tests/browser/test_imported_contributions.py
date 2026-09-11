@@ -2,9 +2,10 @@ import json
 import subprocess
 import sys
 import urllib.request
+from urllib.parse import urljoin
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from scripts.blueprint_harness_paths import canonical_test_blueprint_output_dir
 from support import (
@@ -18,7 +19,7 @@ from support import (
 
 @pytest.fixture(
     scope="module",
-    params=["imported-late-attachments", "imported-literate-attachments"],
+    params=["imported-late-attachments", "imported-literate-attachments", "imported-filled-facets"],
 )
 def imported_site(request):
     slug = request.param
@@ -53,7 +54,8 @@ def test_captured_imports_reach_generated_previews(imported_site, page: Page):
     with urllib.request.urlopen(f"{server}/-verso-data/blueprint-manifest.json") as response:
         manifest = json.load(response)
     entries = {entry["key"]: entry for entry in manifest["previews"]}
-    statement = entries["key_theorem--statement"]
+    label = "filled_facet" if slug == "imported-filled-facets" else "key_theorem"
+    statement = entries[f"{label}--statement"]
     page.goto(f"{server}/")
 
     if slug == "imported-late-attachments":
@@ -69,7 +71,7 @@ def test_captured_imports_reach_generated_previews(imported_site, page: Page):
         assert graph_node["proofUses"] == proof["proofUses"]
         keys = [statement["key"], proof["key"]]
         expected_text = ["A statement declared in this module", "A proof declared in a different module"]
-    else:
+    elif slug == "imported-literate-attachments":
         keys = statement["leanCodePreviewKeys"]
         assert len(keys) == len(set(keys)) == 2
         assert all(entries[key]["title"] == "Lean code for key_theorem" for key in keys)
@@ -77,6 +79,36 @@ def test_captured_imports_reach_generated_previews(imported_site, page: Page):
         assert any("InlineAttachment.lean" in path for path in paths)
         assert any("LiterateSecond.lean" in path for path in paths)
         expected_text = ["inlineAttached", "inlineSecond"]
+    else:
+        proof = entries["filled_facet--proof"]
+        keys = [statement["key"], proof["key"]]
+        expected_text = [
+            "A completed statement from page one.",
+            "A completed proof from page two.",
+        ]
+        for entry, source_page, source_module, source_document in [
+            (statement, "1", "FacetStatement.lean", "facet-paper"),
+            (proof, "2", "FacetProof.lean", "facet-proof-paper"),
+        ]:
+            assert [span["page"] for source in entry["sources"] for span in source["spans"]] == [source_page]
+            assert [source["document"] for source in entry["sources"]] == [source_document]
+            assert source_module in entry["sourceLocation"]["location"]["path"]
+            assert len(entry["leanCodePreviewKeys"]) == 1
+            code = entries[entry["leanCodePreviewKeys"][0]]
+            assert {source["document"] for source in code["sources"]} == {"facet-paper", "facet-proof-paper"}
+            page.goto(urljoin(f"{server}/", entry["href"]))
+            source_slot = page.locator(":target .bp_extra_slot_source")
+            source_slot.locator(".bp_source_ref_chip").hover()
+            source_preview = source_slot.locator(".bp_source_ref_preview_body")
+            expect(source_preview).to_be_visible()
+            expect(source_preview).to_contain_text(f"{source_document} p. {source_page}")
+        graph_node = next(
+            node for graph in manifest["graphs"] for node in graph["nodes"]
+            if node["label"] == label
+        )
+        assert graph_node["href"] == statement["href"]
+        page.goto(urljoin(f"{server}/", statement["href"]))
+        expect(page.locator(":target")).to_contain_text(expected_text[0])
 
     rendered = page.evaluate(
         """async (keys) => {

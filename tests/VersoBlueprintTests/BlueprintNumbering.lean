@@ -17,6 +17,11 @@ open Verso.Genre Manual
 private def emptyState : TraverseState :=
   TraverseState.initialize default
 
+private def completedOccurrence (data : BlockData) : TraverseState :=
+  let (id, state) := (freshId : StateM TraverseState Verso.Multi.InternalId).run emptyState
+  let state := Informal.TraversalIndex.Nodes.saveNode state (RenderNode.ofBlockData data)
+  Informal.TraversalIndex.Nodes.saveId state data.label id
+
 private def header (title : String) (number? : Option Numbering) : PartHeader := {
   titleString := title
   metadata := number?.map fun number => { ({} : PartMetadata) with assignedNumber := some number }
@@ -80,10 +85,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     numberingMode := .sub
     partPrefix := some "1.3"
   }
-  let state :=
-    Informal.TraversalIndex.Nodes.saveNode
-      (TraverseState.initialize default)
-      (RenderNode.ofBlockData stored)
+  let state := completedOccurrence stored
   let renderData := { stored with count := 120 }
   renderData.displayNumber state == "1.3.9" &&
   renderData.displayTitle state == "Lemma 1.3.9"
@@ -124,10 +126,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     partPrefix := some "2"
     globalCount := some 11
   }
-  let state :=
-    Informal.TraversalIndex.Nodes.saveNode
-      (TraverseState.initialize default)
-      (RenderNode.ofBlockData stored)
+  let state := completedOccurrence stored
   let proofRef : BlockData := {
     kind := .proof
     label := stored.label

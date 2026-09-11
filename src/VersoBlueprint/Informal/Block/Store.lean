@@ -10,10 +10,9 @@ import VersoBlueprint.TraversalIndex
 /-!
 Traversal-time storage and numbering logic for informal blocks.
 
-The renderer receives local block data from the directive syntax, but final HTML
-needs document-order numbers, optional section prefixes, and metadata gathered
-from all occurrences of a label. This module owns that stored view and exposes
-small helpers for rendering code to ask for display numbers and titles.
+The renderer resolves checked node semantics through the captured registry.
+This module supplies document-order numbers and section prefixes, reusing one
+number for repeated occurrences of a label.
 -/
 
 namespace Informal
@@ -123,11 +122,11 @@ private def BlockData.withReservedNumbering
 
 /-- Look up the stored semantic payload for an informal block label. -/
 def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.storedData? st label
+  Informal.TraversalIndex.Nodes.renderedData? st label
 
 /-- Look up stored informal block data in render-facing `BlockData` form. -/
 def resolveBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.data? st label
+  Informal.TraversalIndex.Nodes.capturedData? st label
 
 /-- Merge occurrence facts after resolving both occurrences through the shared node registry. -/
 def mergeBlockOccurrences (existing incoming : BlockData) : BlockData :=
@@ -261,9 +260,7 @@ def saveTraversedBlockData
     m Unit := do
   let label := blockData.label
   let state ← get
-  -- An explicit model may already supply occurrence data without traversal anchors.
-  let existing := if (Informal.TraversalIndex.Nodes.object? state label).any (fun obj => !obj.ids.isEmpty)
-    then Informal.TraversalIndex.Nodes.storedData? state label else none
+  let existing := Informal.TraversalIndex.Nodes.renderedData? state label
   match existing with
   | some existing =>
     let mergedData := mergeBlockOccurrences existing blockData

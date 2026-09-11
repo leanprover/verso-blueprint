@@ -110,7 +110,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match Informal.TraversalIndex.Nodes.data? s label with
+        match Informal.TraversalIndex.Nodes.capturedData? s label with
         | some b =>
           let b := b.withResolvedNumberingInContext s ctxt
           codePanelHeader b (b.displayNumber s)

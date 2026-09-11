@@ -110,6 +110,18 @@ private def modifyObjectData
     (f : Json → Json) : TraverseState :=
   state.modifyDomainObjectData domain canonicalName f
 
+/-- Select one canonical facet target without discarding other occurrence locations. -/
+private def preferredPreviewOccurrence? (state : TraverseState) (label : Name) :
+    Option PreviewCache.Occurrence := do
+  let candidates : Array Verso.Multi.Object := #[PreviewCache.Facet.statement, .proof].filterMap fun facet =>
+    state.getDomainObject? Resolve.informalPreviewDomainName (PreviewCache.key label facet)
+  -- Inspect the JSON array's size without decoding the document body for every
+  -- link or metadata lookup. Occurrence decoding ignores the body field.
+  let filled := candidates.find? fun (object : Verso.Multi.Object) =>
+    (object.data.getObjVal? "blocks" >>= Json.getArr?).toOption.any (fun blocks => !blocks.isEmpty)
+  let selected ← filled <|> candidates[0]?
+  (fromJson? selected.data).toOption
+
 /-- Supply a rendering context through Verso's normal initialization hook. -/
 def withInitializer (impls : ExtensionImpls) (initializeState : TraverseState → TraverseState) : ExtensionImpls :=
   impls.insertBlock `Informal.renderModel {
@@ -137,21 +149,39 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def node? (state : TraverseState) (label : Name) : Option Informal.RenderNode :=
   objectData? state domainName label.toString
 
+/-- Resolve canonical source metadata from the selected facet while preserving node numbering. -/
+def resolveCanonical (state : TraverseState) (node : Informal.RenderNode) : Informal.BlockData :=
+  let data := node.toBlockData
+  match preferredPreviewOccurrence? state node.label with
+  | none => data
+  | some occurrence => { data with
+      sourceLocation := occurrence.sourceLocation
+      sourceRef := occurrence.sourceRef }
+
 /-- Rendering metadata is available even before this node has a document occurrence. -/
-def data? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  (node? state label).map (·.toBlockData)
+def capturedData? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
+  (node? state label).map (resolveCanonical state)
 
 /-- Canonical occurrence data is present only for traversed nodes. -/
-def storedData? (state : TraverseState) (label : Name) : Option Informal.BlockData := do
-  let node ← node? state label
-  let occurrence ← node.occurrence
-  return node.resolve occurrence
+def hasRenderedOccurrence (state : TraverseState) (label : Name) : Bool :=
+  (object? state label).any fun object =>
+    !object.ids.isEmpty && (object.data.getObjVal? "occurrence").toOption.any (· != .null)
+
+/-- Resolve a node only after traversal has allocated its occurrence and target. -/
+def renderedData? (state : TraverseState) (label : Name) : Option Informal.BlockData := do
+  guard (hasRenderedOccurrence state label)
+  capturedData? state label
 
 def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Option Informal.BlockData :=
   (node? state occurrence.label).map (·.resolve occurrence)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
+  ((preferredPreviewOccurrence? state label).bind (·.target)).bind (fun id => (state.externalTags[id]?).map (·.relativeLink)) <|>
+    Resolve.resolveDomainHref? state domainName label.toString
+
+/-- The selected body target when available, otherwise the first traversal target. -/
+def target? (state : TraverseState) (label : Name) : Option Verso.Multi.InternalId :=
+  (preferredPreviewOccurrence? state label).bind (·.target) <|> (object? state label).bind (·.ids.toArray[0]?)
 
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
@@ -160,9 +190,13 @@ def saveNode (state : TraverseState) (node : Informal.RenderNode) : TraverseStat
   saveObjectData state domainName node.label.toString (toJson node)
 
 def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrence) : TraverseState :=
-  match node? state occurrence.label with
+  match object? state occurrence.label with
   | none => state
-  | some node => saveNode state { node with occurrence := some occurrence }
+  | some object =>
+    -- The occurrence is the only mutable part of the captured record. Preserve
+    -- external declaration payloads without decoding or serializing them again.
+    saveObjectData state domainName occurrence.label.toString
+      (object.data.setObjVal! "occurrence" (toJson (some occurrence)))
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
@@ -186,8 +220,10 @@ def entries (state : TraverseState) :
   (allEntries state).filterMap fun decoded =>
     match decoded with
     | .error err => some (.error err)
-    | .ok stored => stored.data.occurrence.map fun occurrence =>
-      .ok { canonicalName := stored.canonicalName, data := stored.data.resolve occurrence }
+    | .ok stored =>
+      if !hasRenderedOccurrence state stored.data.label then none else
+        stored.data.occurrence.map fun occurrence =>
+          .ok { canonicalName := stored.canonicalName, data := stored.data.resolve occurrence }
 
 end Nodes
 
@@ -202,8 +238,10 @@ def spec : StoreSpec := {
   summary := "Project overviews selected by the generator and reused by traversal and rendering."
 }
 
-def data? [FromJson α] (state : TraverseState) (name : Name) : Option α :=
-  objectData? state spec.name name.toString
+def required [FromJson α] (state : TraverseState) (name : Name) : Except String α := do
+  let some object := state.getDomainObject? spec.name name.toString
+    | throw s!"Missing captured Blueprint {name}; initialize traversal with the document's RenderModel"
+  fromJson? object.data |>.mapError (fun error => s!"Malformed captured Blueprint {name}: {error}")
 
 def saveData [ToJson α] (state : TraverseState) (name : Name) (data : α) : TraverseState :=
   saveObjectData state spec.name name.toString (toJson data)
@@ -322,34 +360,6 @@ def entries (state : TraverseState) :
 
 end SourceDocuments
 
-namespace SourceRefs
-
-def spec : StoreSpec := {
-  name := Resolve.sourceRefDomainName
-  kind := .semanticDomain
-  key := "informal label"
-  value := "Source.Ref provenance metadata"
-  summary := "Semantic index for original-source spans attached to Blueprint nodes."
-}
-
-def domainName : Name := spec.name
-
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
-
-def data? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
-  objectData? state domainName label.toString
-
-def saveData (state : TraverseState) (label : Name) (data : Informal.Source.Ref) :
-    TraverseState :=
-  saveObjectData state domainName label.toString (toJson data)
-
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry Informal.Source.Ref)) :=
-  decodeStoreEntries state domainName
-
-end SourceRefs
-
 namespace ExternalMarkup
 
 def spec : StoreSpec := {
@@ -446,8 +456,8 @@ def spec : StoreSpec := {
   name := Resolve.informalPreviewDomainName
   kind := .runtimeCache
   key := "(informal label, preview facet)"
-  value := "PreviewCache.Entry plus preview anchor ids"
-  summary := "Traversal-cached statement/proof preview payloads keyed by `(label, facet)`."
+  value := "Selected facet body, source location, provenance, and canonical target"
+  summary := "One selected occurrence per statement/proof facet, preferring a nonempty body."
 }
 
 def domainName : Name := spec.name
@@ -462,7 +472,8 @@ def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.E
   objectData? state domainName previewKey
 
 def href? (state : TraverseState) (previewKey : String) : Option String :=
-  Resolve.resolveDomainHref? state domainName previewKey
+  (objectData? (α := PreviewCache.Occurrence) state domainName previewKey).bind (·.target) |>.bind fun id =>
+    (state.externalTags[id]?).map (·.relativeLink)
 
 def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
     Option String :=
@@ -474,6 +485,13 @@ def saveId
 
 def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
   saveObjectData state domainName previewKey data
+
+/-- Commit a selected facet's body, source metadata, and target together. -/
+def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
+    (entry : PreviewCache.Entry) : TraverseState :=
+  let previewKey := key entry.label entry.facet
+  saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
+
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
@@ -694,7 +712,6 @@ def allSpecs : Array StoreSpec := #[
   InlineCode.labelSpec,
   RustInlineCode.spec,
   SourceDocuments.spec,
-  SourceRefs.spec,
   ExternalMarkup.spec,
   Groups.spec,
   Graphs.spec,

@@ -10,6 +10,24 @@ open Lean Informal
 
 run_cmd Environment.contribute `key_theorem { priority := some "high" }
 
+-- A rejected new label must not reserve its requested number or export/index
+-- any of its otherwise valid data.
+/-- error: Label rejected_new_node declares conflicting proof dependency intents for 'dep' (manual): existing 'regular', new 'technical' -/
+#guard_msgs in
+#eval show CoreM Unit from do
+  let before := Environment.informalExt.getState (← getEnv)
+  Environment.contribute `rejected_new_node {
+    count := before.nextCount + 100
+    proofUses := #[{ label := `dep }, { label := `dep, intent := .technical }]
+    leanCode := #[.external #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]]
+  }
+  let after := Environment.informalExt.getState (← getEnv)
+  unless reprStr before.data == reprStr after.data &&
+      before.nextCount == after.nextCount &&
+      reprStr before.localContributions == reprStr after.localContributions &&
+      before.leanNameLabels.toArray == after.leanNameLabels.toArray do
+    throwError "Rejected new label changed one of the node stores"
+
 -- A rejected contribution must not leak its otherwise valid proof, tags, code,
 -- exports, or declaration-index changes.
 /-- error: Label key_theorem declares conflicting priorities: existing 'high', new 'low' -/
@@ -17,6 +35,7 @@ run_cmd Environment.contribute `key_theorem { priority := some "high" }
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
   Environment.contribute `key_theorem {
+    count := before.nextCount + 100
     priority := some "low"
     tags := #["rejected"]
     proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
@@ -24,6 +43,7 @@ run_cmd Environment.contribute `key_theorem { priority := some "high" }
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before.data == reprStr after.data &&
+      before.nextCount == after.nextCount &&
       reprStr before.localContributions == reprStr after.localContributions &&
       before.leanNameLabels.toArray == after.leanNameLabels.toArray do
     throwError "Rejected contribution changed one of the node stores"

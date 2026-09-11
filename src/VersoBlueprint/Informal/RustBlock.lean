@@ -59,7 +59,7 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match Informal.TraversalIndex.Nodes.data? s cdata.label with
+        match Informal.TraversalIndex.Nodes.capturedData? s cdata.label with
         | some b =>
           let b := b.withResolvedNumberingInContext s ctxt
           Informal.Rust.codePanelHeader b (b.displayNumber s)

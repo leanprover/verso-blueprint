@@ -287,16 +287,17 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let some info := (← getEnv).find? decl
     | throwError "unknown declaration '{decl}'"
   validateDeclKind decl info
-  let statement? ← statementFromDocstring? decl ref
+  -- Only the declaration introducing a label owns its implicit statement.
+  -- Attachments never compete with or fill an existing node's informal prose.
+  let current? ← Environment.getNode? label
+  let statement? ← if current?.isNone then statementFromDocstring? decl ref else pure none
   let deps ← resolveAutoDeps decl label info cfg
   let opts ← getOptions
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  let current? ← Environment.getNode? label
-  let needsBody := !current?.any (·.hasStatementBody)
   Environment.contribute label {
-    statementBody := if needsBody then statement? else none
+    statementBody := statement?
     statementUses := deps.statement
     proofUses := deps.proof
     leanCode := #[.external #[extRef]]

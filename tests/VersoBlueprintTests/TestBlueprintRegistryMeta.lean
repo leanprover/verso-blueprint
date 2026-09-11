@@ -19,11 +19,19 @@ deriving Lean.ToJson
 
 def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
   {
+    slug := "imported-filled-facets"
+    title := "Filled statement and proof facets"
+    category := "Imports"
+    summary := "Filled placeholders retain their body targets and separate statement/proof source provenance."
+    tags := #["imports", "preview", "sources"]
+    kind := "curated_doc"
+  },
+  {
     slug := "imported-late-attachments"
     title := "Late imported attachments"
     category := "Imports"
-    summary := "Compiled chapters refreshed with later dependencies, metadata, and Lean associations."
-    tags := #["imports", "snapshot", "preview"]
+    summary := "Compiled chapters resolve later dependencies, metadata, and Lean associations."
+    tags := #["imports", "render-model", "preview"]
     kind := "curated_doc"
   },
   {

@@ -198,16 +198,20 @@ def generateBlueprint (document : Informal.BlueprintDocument) (args : List Strin
 
 Direct Verso callers use `document.model.withExtensions impls` for traversal,
 then retain its returned state for HTML, TeX, preview generation, and saved-state
-workflows. There is no `document.toPart` projection step. `RenderModel.install`
+workflows. `RenderModel.install`
 provides the equivalent operation for callers that own traversal initialization.
 The model contains runtime data and does not require a Lean environment at render
 time. Missing node references produce a traversal diagnostic.
 
 Summaries cover the captured project environment; graphs select nodes with
-rendered targets or preview candidates. `Nodes.allEntries` includes every
+rendered targets or preview candidates. Preview titles use document numbers
+only for traversed nodes; source-only entries retain their labels.
+`Nodes.allEntries` includes every
 captured node, while `Nodes.entries` includes only traversed occurrences for
 numbering and relation indexes. A multi-project generator captures each project
 in its own module and collects the resulting `BlueprintDocument` values.
+`Nodes.capturedData?` resolves captured metadata even without an occurrence;
+`Nodes.renderedData?` requires a traversed occurrence and target.
 Synthetic renderers explicitly construct a model, using `RenderNode.ofBlockData`
 when convenient; an empty model no longer means “trust metadata embedded in the
 chapter.” Every fixture in the repository catalog passes its selected model.
@@ -216,11 +220,16 @@ chapter.” Every fixture in the repository catalog passes its selected model.
 `some graph` selects a custom graph, including an explicitly empty one.
 `SummaryBlockData` similarly selects a project or supplied summary while keeping
 `showDebugDiagnostics` local to the summary occurrence.
+Both overview resolvers return `Except String`: a missing or malformed captured
+model is an error. An explicitly supplied empty model remains valid.
 
-Migration from the interim snapshot API: replace `DocumentSnapshot` and
-`blueprint_snapshot%` with `RenderModel` and `blueprint_render_model%`, forward
-`model := document.model`, and initialize extensions instead of calling
-`snapshot.apply`. Rebuild downstream Lean modules and generated output.
+Rebuild downstream Lean modules and generated output when adopting this API.
+
+`TraversalPreviews` selects one occurrence per `(label, facet)`, preferring a
+nonempty body over a placeholder. Its entry owns the body, canonical target,
+Lean source location and original-source reference. Node links and public
+cross-references use the selected body target; document numbering remains stable
+across repeated occurrences. Manifest `sources` come from each selected facet.
 
 Literate code is represented by `InlineCodeBlocks`, an ordered collection of
 `InlineCodeData` records. Each record has its own `blockId`, derived from the source
@@ -542,9 +551,11 @@ def allRenderedGraphEntries
   Informal.GraphApi.cachedEntries state
 ```
 
-Graph traversal caches store only canonical `GraphModel` plus `GraphOptions`.
-They do not cache edges, group children, or render variants, so topology changes
-cannot reuse a stale rendered projection and the cache stays smaller.
+Graph traversal caches store model selection and `GraphOptions`.
+`CachedGraphData.model := none` selects the shared captured project graph;
+`some model` supplies canonical topology for a custom graph. Project graph
+occurrences do not copy topology. No occurrence caches derived edges, group
+children, or render variants.
 `cachedEntries` preserves malformed traversal-cache records as `DecodeError`
 values and successful records as canonical-name/data pairs, so callers can
 report corruption instead of silently omitting graphs. The generated-manifest

@@ -67,6 +67,8 @@ data.
 -/
 structure State where
   data : NameMap RegisteredNode := {}
+  /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
+  nextCount : Nat := 1
   /-- Only registrations made in this module, in registration order per label. -/
   localContributions : NameMap (Array NodeContribution) := {}
   groups : NameMap String := {}
@@ -131,11 +133,12 @@ private def addLeanDeclLabel
   let labels := leanNameLabels.getD decl #[]
   leanNameLabels.insert decl (pushLabelUnique labels label)
 
-private def addNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
+private def addContributionLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (contributions : Array NodeContribution) :
     NameMap (Array Label) :=
-  node.leanDecls.foldl (init := leanNameLabels) fun acc decl =>
-    addLeanDeclLabel acc decl label
+  contributions.foldl (init := leanNameLabels) fun acc contribution =>
+    contribution.leanCode.foldl (init := acc) fun acc code =>
+      code.leanDecls.foldl (init := acc) fun acc decl => addLeanDeclLabel acc decl label
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
@@ -151,7 +154,8 @@ private def State.addNode (state : State) (label origin contributor : Name)
     modules := pushUnique (previous.map (·.modules) |>.getD #[]) contributor }
   return { state with
     data := state.data.insert label registered
-    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
+    nextCount := max state.nextCount (node.count + 1)
+    leanNameLabels := addContributionLeanDeclLabels state.leanNameLabels label contributions
     localContributions := if isLocal then
       state.localContributions.insert label
         (state.localContributions.getD label #[] ++ contributions)
@@ -317,7 +321,7 @@ def pop (ref : Syntax) : m Nat := do
       let contribution : NodeContribution := {
         kind := match cur.kind with | .statement kind => some kind | .proof => none
         count := match cur.kind with
-          | .statement _ => state.data.foldl (fun n _ node => max n node.count) 0 + 1
+          | .statement _ => state.nextCount
           | .proof => 0
         statementBody := match cur.kind with | .statement _ => some payload | .proof => none
         proofBody := match cur.kind with | .statement _ => none | .proof => some payload
