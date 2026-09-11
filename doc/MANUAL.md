@@ -91,11 +91,15 @@ The merge rules are:
 | Tags | Unique union |
 | External Lean associations | Union by canonical declaration, preferring resolved information |
 | Literate Lean code | Keep every distinct block, its declarations, and its code preview |
+| Attribute docstrings | The declaration introducing a label may supply its initial statement; later attributes attach code and dependencies only |
 | Rust code | At most one attachment |
 | External markup | At most one attachment per language and slot |
 
-A bodyless placeholder can later acquire a statement or proof body. An explicit
-statement kind belongs to the author: attaching a Lean theorem to an informal
+A bodyless placeholder can later acquire an explicit statement or proof body.
+When both the placeholder and filled chapter are included, previews and links
+select the filled body regardless of chapter order. The selected occurrence
+also supplies that facet's source location and original-source provenance.
+An explicit statement kind belongs to the author: attaching a Lean theorem to an informal
 lemma keeps the informal node a lemma. For a Lean-only node without an authored
 kind, a theorem association takes precedence over a definition association, whether
 the declarations come from attributes or literate Lean blocks. Dependencies alone
@@ -379,8 +383,14 @@ theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
 This mode is useful when the formal declaration already exists as ordinary Lean
 code and you want to register it as a Blueprint node.
 
-If the declaration has a docstring, Blueprint tries to reuse it as the informal
-statement body for that Lean-owned node. Plain docstrings are parsed through the
+When an attribute introduces a new label, Blueprint tries to reuse that
+declaration's docstring as the initial informal statement. Attributes targeting
+an existing label attach code and dependencies only: their docstrings neither
+replace a statement nor fill a bodyless placeholder. Use an explicit statement
+directive to fill a shared placeholder. This rule also applies when attachments
+come from sibling modules.
+
+Plain docstrings are parsed through the
 manual Markdown path when possible, and richer internal docstring structures are
 converted into Manual blocks directly. If no docstring is available, the node is
 still registered, but there is no imported informal statement body.
@@ -704,7 +714,8 @@ Current behavior:
 
 Blueprint can record a three-level source provenance chain for audit tooling:
 original source document, Verso Blueprint node, and associated Lean material.
-This phase stores the source-document catalog and node-local source spans.
+This phase stores the source-document catalog and source spans for each
+statement/proof facet.
 Generated Blueprint node shells show a compact source chip when a node has
 source provenance. The chip opens a lightweight source preview with the
 document id and recorded span details. Fuller source review interfaces such as
@@ -730,6 +741,11 @@ Attach source provenance to a Blueprint node with a leading metadata block
 inside the node directive. The metadata block must be the first block in the
 directive body; a later metadata block is rejected so that provenance is easy to
 find and strip before rendering the visible statement.
+
+A statement and its proof can cite different pages or different source
+documents. Each facet's generated preview retains its own provenance. When
+several facets share a Lean-code preview, that preview lists their combined
+source references.
 
 ````md
 :::lemma_ "addition_right_identity"

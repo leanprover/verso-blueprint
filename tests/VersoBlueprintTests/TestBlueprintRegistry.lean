@@ -19,6 +19,7 @@ import VersoBlueprintTests.BlueprintSummaryLinks.Shared
 import VersoBlueprintTests.BlueprintTexMacros
 import VersoBlueprintTests.BlueprintImportedContributions.LateRender
 import VersoBlueprintTests.BlueprintImportedContributions.LiterateRender
+import VersoBlueprintTests.BlueprintImportedContributions.FacetRender
 import VersoBlueprintTests.TestBlueprintRegistryMeta
 
 namespace Verso.VersoBlueprintTests.TestBlueprintRegistry
@@ -58,6 +59,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option Informal.Blueprint
   | "single-declared-group" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.singleDeclaredGroupDocBlueprint
   | "imported-late-attachments" => some _root_.lateBlueprint
   | "imported-literate-attachments" => some _root_.literateBlueprint
+  | "imported-filled-facets" => some _root_.facetBlueprint
   | _ => none
 
 def curatedTestBlueprintDocSlugs : Array String :=

@@ -838,6 +838,11 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
       | return false
+    -- Captured source-only nodes retain their semantics without inventing a
+    -- document number or structured numbered heading.
+    unless witnessEntry.title == "external.witness" && witnessEntry.displayCaption.isNone &&
+        witnessEntry.displayLabel.isNone && witnessEntry.kind.isSome do
+      throw <| IO.userError s!"Source-only preview invented a numbered heading: {toJson witnessEntry}"
     let some witnessHtml := witnessFiles.htmlCache.findHtml? witnessKey
       | return false
     let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey

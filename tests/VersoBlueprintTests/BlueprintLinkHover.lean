@@ -228,7 +228,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls hoverUseIntentDoc
     let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
     let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
-    match Informal.TraversalIndex.Nodes.data? st (Name.mkSimple "lem:hover.intent.node") with
+    match Informal.TraversalIndex.Nodes.capturedData? st (Name.mkSimple "lem:hover.intent.node") with
     | some block =>
       let hidden? := block.statementUses.find? (·.label == hiddenLabel)
       let inline? := block.statementUses.find? (·.label == inlineLabel)

@@ -78,9 +78,11 @@ private def cachedStatement
       #[{ label := target, origin := .automatic, intent := .auxiliary }] (some group)
     let emptyData := cachedStatement empty 2
     let state : Verso.Genre.Manual.TraverseState := .initialize {}
-    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData targetData)
-    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData sourceData)
-    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData emptyData)
+    let state := #[targetData, sourceData, emptyData].foldl (init := state) fun state data =>
+      let (id, state) := (Verso.Genre.Manual.freshId :
+        StateM Verso.Genre.Manual.TraverseState Verso.Multi.InternalId).run state
+      let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData data)
+      Informal.TraversalIndex.Nodes.saveId state data.label id
     let state := Informal.PreviewManifest.PreparedRendererState.prepare state |>.state
     let targetEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target
     let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source

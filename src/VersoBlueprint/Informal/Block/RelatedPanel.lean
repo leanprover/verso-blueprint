@@ -50,7 +50,7 @@ private def blockSummaryTitle (ctx : RelationContext) (data : BlockData) : Strin
   data.displayTitle ctx.state
 
 private def storedBlockByLabel? (ctx : RelationContext) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.data? ctx.state label
+  Informal.TraversalIndex.Nodes.capturedData? ctx.state label
 
 private def groupRenderInfo?
     (ctx : RelationContext) (data : BlockData) : Option GroupRenderInfo := do

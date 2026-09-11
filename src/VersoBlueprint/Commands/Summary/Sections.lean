@@ -376,9 +376,11 @@ structure SummaryBlockData where
   showDebugDiagnostics : Bool := summary.any (·.showDebugDiagnostics)
 deriving FromJson, ToJson
 
-def SummaryBlockData.resolve (data : SummaryBlockData) (state : TraverseState) : Summary :=
-  let summary := (data.summary <|> Informal.TraversalIndex.RenderOverviews.data? state `summary).getD {}
-  { summary with showDebugDiagnostics := data.showDebugDiagnostics }
+def SummaryBlockData.resolve (data : SummaryBlockData) (state : TraverseState) : Except String Summary := do
+  let summary ← match data.summary with
+    | some summary => pure summary
+    | Option.none => Informal.TraversalIndex.RenderOverviews.required state `summary
+  return { summary with showDebugDiagnostics := data.showDebugDiagnostics }
 
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
@@ -389,7 +391,10 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
           (fun err => s!"Malformed data in Block.summary.toHtml ({err})")
       | pure .empty
     let s ← HtmlT.state
-    let data := data.resolve s
+    let resolved? ← match data.resolve s with
+      | .ok data => pure (some data)
+      | .error message => Verso.reportError message; pure none
+    let some data := resolved? | pure .empty
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
       match Informal.PreviewSource.traversalSelection? s label with
       | some selection => keys.insert label selection.key

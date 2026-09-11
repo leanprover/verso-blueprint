@@ -102,7 +102,7 @@ def lateBlueprint : Informal.BlueprintDocument := .capture graphDoc.toPart
     | throw <| IO.userError "Could not restore the rendering registry"
   let restoredHtml ← Informal.renderManualBlocksHtmlWithState traversed extension_impls% restored
   unless hasSubstr restoredHtml.asString "Nested proof" &&
-      (Informal.TraversalIndex.Nodes.data? restored `key_theorem).any (·.tags.contains "late") do
+      (Informal.TraversalIndex.Nodes.capturedData? restored `key_theorem).any (·.tags.contains "late") do
     throw <| IO.userError "Restored traversal lost the captured rendering context"
   let build state := Informal.PreviewManifest.buildPreviewDataFiles extension_impls%
     (fun message => throw <| IO.userError message)
