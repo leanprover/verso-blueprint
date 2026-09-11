@@ -57,18 +57,21 @@ Elaboration, traversal, and rendering are standard, using {ref VersoManual} help
 -/
 
 /- Informal custom blocks -/
-block_extension Block.informal (data : BlockData) where
+block_extension Block.informal (data : BlockOccurrence) where
   -- for TOC
   -- localContentItem _ _ _ := none
   data := toJson data
   usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     -- XXX: (maybe) lift the Except into the main monad error thread
-    match ← ExtensionDecode.decode? (α := BlockData) data
+    match ← ExtensionDecode.decode? (α := BlockOccurrence) data
         (fun err => s!"Malformed data ({err}): {data}") with
     | none =>
       pure none
-    | some blockData =>
+    | some occurrence =>
+      let some blockData := TraversalIndex.Nodes.resolve? (← get) occurrence
+        | Verso.reportError s!"Missing rendering node '{occurrence.label}'; initialize traversal with the document's RenderModel"
+          pure none
       let blockData := blockData.withTraversalNumberingContext (← read)
       registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
@@ -81,10 +84,13 @@ block_extension Block.informal (data : BlockData) where
             modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
-      let .ok data := fromJson? (α := BlockData) data
+      let .ok occurrence := fromJson? (α := BlockOccurrence) data
         | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
           pure .empty
       let st ← Verso.Doc.TeX.state
+      let some data := TraversalIndex.Nodes.resolve? st occurrence
+        | Verso.reportError s!"Missing rendering node '{occurrence.label}'"
+          pure .empty
       let data := data.withResolvedNumbering st
       let title := data.displayTitle st
       let body ← blocks.mapM goB
@@ -95,12 +101,15 @@ block_extension Block.informal (data : BlockData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      match ← ExtensionDecode.decode? (α := BlockData) data
+      match ← ExtensionDecode.decode? (α := BlockOccurrence) data
           (fun err => s!"Malformed data ({err}): {data}") with
       | none =>
         pure .empty
-      | some data =>
+      | some occurrence =>
         let s ← HtmlT.state
+        let some data := TraversalIndex.Nodes.resolve? s occurrence
+          | Verso.reportError s!"Missing rendering node '{occurrence.label}'"
+            pure .empty
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
         let relatedPanelContext := RelatedPanel.RelationContext.ofState s
@@ -275,29 +284,14 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     Environment.setPreviewBlocks previewBlocks
     let count ← Environment.pop blockRef
     liftM <| DependencyAnalysis.attachInferredUseRefs label { proof := resolved.proofUses }
-    let node? ← Environment.getNode? label
-    let blockKind : Data.InProgressKind ←
-      if isProof then
-        pure .proof
-      else
-        let nodeKind ←
-          match node? with
-            | some node => pure node.kind
-            | none =>
-              logErrorAt resolved.labelSyntax m!"Internal error: missing node '{label}' after environment registration"
-              pure kind
-        pure <| .statement nodeKind
-    let ownerInfo? ← match node?.bind (·.owner) with
-      | some owner => Environment.getAuthor? owner
-      | none => pure none
     let opts ← getOptions
     let sourceLocation :=
       match ← Data.SourceLocation.ofSyntax? resolved.labelSyntax with
       | some location => Data.SourceLocationResult.found location
       | none =>
         Data.SourceLocationResult.unavailable s!"label source location unavailable for {label}"
-    let data : BlockData := {
-      kind := blockKind
+    let data : BlockOccurrence := {
+      isProof
       sourceRef := parsedContents.sourceRef?
       label
       sourceLocation
@@ -308,9 +302,6 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       subNumberingPrefix := subNumberingPrefix opts
       subNumberingCounter := subNumberingCounter opts
     }
-    let data := match node? with
-      | some node => data.withSemanticData (NodeSnapshot.ofNode label node ownerInfo?)
-      | none => data
     ``(Block.other (Block.informal $(quote data)) $retainedContents)
 
 private def directiveName (kind : Data.NodeKind) (isProof : Bool): String :=

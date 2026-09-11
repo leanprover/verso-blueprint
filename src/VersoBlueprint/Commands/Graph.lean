@@ -48,11 +48,15 @@ register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
 }
 
 structure GraphBlockData where
-  graphModel : Informal.Graph.GraphModel
+  graphModel : Option Informal.Graph.GraphModel := none
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
 deriving Inhabited, FromJson, ToJson
+
+/-- Custom graphs supply a model; project graphs use the initialized rendering registry. -/
+def GraphBlockData.resolveModel (data : GraphBlockData) (state : Verso.Genre.Manual.TraverseState) : Informal.Graph.GraphModel :=
+  (data.graphModel <|> Informal.TraversalIndex.RenderOverviews.data? state `graph).getD {}
 
 def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
   match s.trimAscii.toString.toLower with
@@ -88,7 +92,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
           (fun _ => "Malformed data in Block.graph.traverse") with
       | some graphData =>
         modify fun state =>
-          Informal.GraphApi.saveData state id graphData.graphModel graphData.options
+          Informal.GraphApi.saveData state id (graphData.resolveModel state) graphData.options
       | Option.none =>
         pure ()
       return none
@@ -104,11 +108,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
         match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
             (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
         | some graphData => pure graphData
-        | Option.none => pure { graphModel := {}, options := {} }
+        | Option.none => pure { graphModel := some {}, options := {} }
       let s ← HtmlT.state
       let publicGraphData :=
         Informal.GraphApi.finishDataForBlock
-          s id graphData.graphModel graphData.options
+          s id (graphData.resolveModel s) graphData.options
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
@@ -474,8 +478,8 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let graphModel ← buildAll
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {graphModel.nodes.size} graph nodes"
-  let graphData : GraphBlockData := { graphModel, options, previewMode, previewPlacement }
-  let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData (fromEnvironment := true)
+  let graphData : GraphBlockData := { options, previewMode, previewPlacement }
+  let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 

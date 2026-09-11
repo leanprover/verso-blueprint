@@ -20,7 +20,7 @@ import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewManifest.Cli
 import VersoBlueprint.PreviewManifest.ExternalMarkupRender
 import VersoBlueprint.PreviewRender
-import VersoBlueprint.DocumentSnapshot
+import VersoBlueprint.RenderModel
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
@@ -687,7 +687,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 4
+def manifestInternalSchemaVersion : Nat := 5
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -927,13 +927,11 @@ titles, hrefs, relations, code associations, ownership, tags, and other
 metadata. Do not add rendered HTML bodies here; put reusable presentation in
 `HtmlCache.Entry` and join it to this semantic entry by `key` at render time.
 -/
-structure Entry where
+structure Entry extends Informal.BlockMetadata where
   /-- Composite manifest lookup key for this target family. -/
   key : String
   /-- Manifest target family. -/
   targetKind : EntryKind
-  /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
-  label : Name
   /-- Authored/display label text, preserving string-authored punctuation without pretty-name quoting. -/
   authoredLabel : String := labelString label
   /-- Which preview variant this entry contains; non-block entries use `statement`. -/
@@ -951,14 +949,8 @@ structure Entry where
   /-- Source location lookup result for this manifest entry. -/
   sourceLocation : Informal.Data.SourceLocationResult :=
     Informal.Data.SourceLocationResult.unavailable "source location unavailable for this manifest entry"
-  /-- Parent/group label for this informal node, if any. -/
-  parent : Option Name := none
   /-- Resolved display title for the parent/group, if any. -/
   parentTitle : Option String := none
-  /-- Structured statement use metadata, preserving origin and intent tags. -/
-  statementUses : Array Informal.Data.UseRef := #[]
-  /-- Structured proof use metadata, preserving origin and intent tags. -/
-  proofUses : Array Informal.Data.UseRef := #[]
   /-- Manifest/cache-backed preview keys for Lean code previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
@@ -971,14 +963,6 @@ structure Entry where
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
   usedBy : Array RelatedEntry := #[]
-  /-- Resolved display name of the assigned owner, if available. -/
-  ownerDisplayName : Option String := none
-  /-- Normalized tags attached to this informal node. -/
-  tags : Array String := #[]
-  /-- Declared triage priority for this informal node, if any. -/
-  priority : Option String := none
-  /-- Declared effort estimate for this informal node, if any. -/
-  effort : Option String := none
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
@@ -1791,17 +1775,22 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
         return jsonSchemaRef name
       modify fun st => { st with seen := st.seen.insert name }
       let env ← getEnv
-      if let some info := getStructureInfo? env name then
+      if isStructure env name then
         let mut properties : List (String × Json) := []
         let mut required : Array Json := #[]
-        for fieldInfo in info.fieldInfo do
-          let schema ← schemaForType (← fieldType fieldInfo.projFn)
-          let docs? ← findDocString? env fieldInfo.projFn
+        -- Match derived ToJson: inherited fields are flattened, not parent-object properties.
+        for field in getStructureFieldsFlattened env name (includeSubobjectFields := false) do
+          let some owner := findField? env name field
+            | throwError "Missing owner for schema field {name}.{field}"
+          let some projection := getProjFnForField? env owner field
+            | throwError "Missing projection for schema field {name}.{field}"
+          let schema ← schemaForType (← fieldType projection)
+          let docs? ← findDocString? env projection
           let schema :=
             match docs? with
             | some docs => schemaWithDescription schema docs
             | none => schema
-          let key := fieldKey fieldInfo.fieldName
+          let key := fieldKey field
           properties := properties.concat (key, schema)
           required := required.push (Json.str key)
         let schema := Json.mkObj [
@@ -1877,6 +1866,14 @@ private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
   let mut publicDomains : Verso.NameMap Verso.Multi.Domain := {}
   for (name, domain) in domains do
     if isPublicXrefDomain name then
+      let domain := if name == Informal.TraversalIndex.Nodes.domainName then
+        { domain with objects := domain.objects.filterMap fun _ obj => do
+            if obj.ids.isEmpty then none else do
+              let node ← (fromJson? (α := Informal.RenderNode) obj.data).toOption
+              -- Public links need resolved node metadata, not code rendering payloads.
+              let data : Informal.BlockData := { node.toBlockData with codeData := none }
+              some { obj with data := toJson data } }
+        else domain
       publicDomains := publicDomains.insert! name domain
   publicDomains
 
@@ -2171,7 +2168,7 @@ private def blockSemanticManifestEntry
   {
     key
     targetKind
-    label := preview.label
+    toBlockMetadata := blockData?.map (·.toBlockMetadata) |>.getD { label := preview.label }
     facet := preview.facet
     kind := blockKind? blockData?
     title := blockTitle state preview.label preview.facet blockData?
@@ -2179,20 +2176,13 @@ private def blockSemanticManifestEntry
     displayLabel := headingParts?.map (·.label)
     href := blockHref state preview.label preview.facet
     sourceLocation := preview.sourceLocation
-    parent := blockData?.bind (·.parent)
     parentTitle := blockParentTitle? state blockData?
-    statementUses := blockData?.map (·.statementUses) |>.getD #[]
-    proofUses := blockData?.map (·.proofUses) |>.getD #[]
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := sourceRefsForBlockLabel state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
     usedBy := blockData?.map (buildUsedByRelations state ·) |>.getD #[]
-    ownerDisplayName := blockData?.bind (·.ownerDisplayName)
-    tags := blockData?.map (·.tags) |>.getD #[]
-    priority := blockData?.bind (·.priority)
-    effort := blockData?.bind (·.effort)
   }
 
 def blockEntryOfTraversalPreview
@@ -2790,8 +2780,8 @@ def blueprintMain (text : Part Manual)
     (config : RenderConfig := {})
     (extraSteps : List BlueprintExtraStep := [])
     (pdfOptions : PdfOptions := {})
-    (snapshot : DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 :=
-  blueprintMainCore (snapshot.apply text) extensionImpls options config extraSteps pdfOptions
+    (model : RenderModel := by exact blueprint_render_model%) : IO UInt32 :=
+  blueprintMainCore text (model.withExtensions extensionImpls) options config extraSteps pdfOptions
 
 def blueprintMainWithPreviewData
     (text : Part Manual)
@@ -2799,8 +2789,8 @@ def blueprintMainWithPreviewData
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
     (extraSteps : List BlueprintExtraStep := [])
-    (snapshot : DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 := do
-  let text := snapshot.apply text
+    (model : RenderModel := by exact blueprint_render_model%) : IO UInt32 := do
+  let extensionImpls := model.withExtensions extensionImpls
   let config := withBlueprintAssets config
   let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then

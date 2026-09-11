@@ -93,7 +93,7 @@ Resolve the appended number for a sub-numbered block.
 Only `SubNumberingCounter.prefix` reserves a new prefix-local number. In
 document-order mode, the block keeps the elaboration-time `count`.
 -/
-def reserveSubBlockNumber (st : TraverseState) (data : StoredBlockData) : Nat × TraverseState :=
+def reserveSubBlockNumber (st : TraverseState) (data : BlockData) : Nat × TraverseState :=
   match data.subNumberingCounter, data.partPrefix with
   | .prefix, some partPrefix => reservePrefixBlockNumber st partPrefix
   | _, _ => (data.count, st)
@@ -109,8 +109,8 @@ Reserve the traversal numbers for a newly seen block.
 Every stored block gets a document-order `globalCount`. Sub-numbered blocks may
 also replace `count` with a prefix-local count, depending on their policy.
 -/
-private def StoredBlockData.withReservedNumbering
-    (data : StoredBlockData) (st : TraverseState) : StoredBlockData × TraverseState :=
+private def BlockData.withReservedNumbering
+    (data : BlockData) (st : TraverseState) : BlockData × TraverseState :=
   let (globalCount, st) :=
     match data.globalCount with
     | some globalCount => (globalCount, st)
@@ -122,15 +122,15 @@ private def StoredBlockData.withReservedNumbering
   ({ data with count, globalCount := some globalCount }, st)
 
 /-- Look up the stored semantic payload for an informal block label. -/
-def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option StoredBlockData :=
+def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
   Informal.TraversalIndex.Nodes.storedData? st label
 
 /-- Look up stored informal block data in render-facing `BlockData` form. -/
-def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  (resolveStoredNodeData? st label).map (·.toBlockData)
+def resolveBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
+  Informal.TraversalIndex.Nodes.data? st label
 
-/-- Merge occurrence facts after document projection has supplied the checked semantic metadata. -/
-def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData :=
+/-- Merge occurrence facts after resolving both occurrences through the shared node registry. -/
+def mergeBlockOccurrences (existing incoming : BlockData) : BlockData :=
   let kind :=
     match existing.kind, incoming.kind with
     | .statement _, _ => existing.kind
@@ -163,12 +163,12 @@ private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=
   sortStoredBlocks <|
     Informal.TraversalIndex.Nodes.entries state |>.filterMap fun
-      | .ok stored => some stored.data.toBlockData
+      | .ok stored => some stored.data
       | .error _ => none
 
 /-- Overlay stored numbering onto render-time block data. -/
 private def BlockData.withStoredNumbering
-    (data : BlockData) (stored : StoredBlockData) (fallbackPrefix? : Option String := none) :
+    (data : BlockData) (stored : BlockData) (fallbackPrefix? : Option String := none) :
     BlockData :=
   { data with
       count := stored.count
@@ -260,20 +260,21 @@ def saveTraversedBlockData
     (blockData : BlockData) :
     m Unit := do
   let label := blockData.label
-  let storedBlockData := blockData.toStoredData
-  match Informal.TraversalIndex.Nodes.storedData? (← get) label with
+  let state ← get
+  -- An explicit model may already supply occurrence data without traversal anchors.
+  let existing := if (Informal.TraversalIndex.Nodes.object? state label).any (fun obj => !obj.ids.isEmpty)
+    then Informal.TraversalIndex.Nodes.storedData? state label else none
+  match existing with
   | some existing =>
-    unless existing.toBlockMetadata == storedBlockData.toBlockMetadata do
-      Verso.reportError s!"Inconsistent Blueprint metadata for '{label}'; capture and apply the document's final semantic snapshot before traversal"
-    let mergedData := mergeStoredBlockData existing storedBlockData
-    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
+    let mergedData := mergeBlockOccurrences existing blockData
+    modify λ s => Informal.TraversalIndex.Nodes.saveOccurrence s mergedData.toOccurrence
   | none =>
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
     modify fun st =>
-      let (storedBlockData, st) := storedBlockData.withReservedNumbering st
+      let (storedBlockData, st) := blockData.withReservedNumbering st
       st
         |> (fun st => Informal.TraversalIndex.Nodes.saveId st label id)
-        |> (fun st => Informal.TraversalIndex.Nodes.saveData st label (toJson storedBlockData))
+        |> (fun st => Informal.TraversalIndex.Nodes.saveOccurrence st storedBlockData.toOccurrence)
 
 end Informal

@@ -128,6 +128,10 @@ open Informal.PreviewManifest
         entryProps.contains "usedBy" &&
         !entryProps.contains "group" &&
         entryProps.contains "ownerDisplayName" &&
+        entryProps.contains "ownerUrl" &&
+        entryProps.contains "ownerImageUrl" &&
+        entryProps.contains "prUrl" &&
+        !entryProps.contains "toBlockMetadata" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&
         entryProps.contains "effort" &&

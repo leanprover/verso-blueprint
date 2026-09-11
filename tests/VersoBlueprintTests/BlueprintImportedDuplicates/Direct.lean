@@ -33,6 +33,8 @@ error: Duplicate imported blueprint author id '«dup.imported.author»'
 {blueprint_summary}
 :::::::
 
+def directImportedDuplicateDocBlueprint : Informal.BlueprintDocument := .capture directImportedDuplicateDoc.toPart
+
 /-- info: true -/
 #guard_msgs in
 #eval

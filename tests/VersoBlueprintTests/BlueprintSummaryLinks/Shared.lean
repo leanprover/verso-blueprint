@@ -23,7 +23,7 @@ private def syntheticSummaryDoc (summary : Informal.Commands.Summary) : Doc.Vers
         #[]
         "Synthetic Summary"
         none
-        #[Doc.Block.other (Informal.Commands.Block.summary summary) #[]]
+        #[Doc.Block.other (Informal.Commands.Block.summary { summary := some summary }) #[]]
         #[])
     "{}"
 

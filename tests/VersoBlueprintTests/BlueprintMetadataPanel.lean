@@ -50,4 +50,14 @@ def metadataPanelDocBlueprint : Informal.BlueprintDocument := .capture metadataP
       hasSubstr out "https://github.com/example/repo/pull/7"
     )
 
+-- Page rendering and manifest metadata share the complete owner/triage record.
+#eval show IO Unit from do
+  let files ← buildManualPreviewDataFiles manualImpls metadataPanelDoc
+  let some entry := files.manifest.previews.find? (·.authoredLabel == "def:meta.panel")
+    | throw <| IO.userError "Missing metadata preview"
+  unless entry.ownerUrl == some "https://example.com/alice" &&
+      entry.ownerImageUrl == some "https://example.com/alice.png" &&
+      entry.prUrl == some "https://github.com/example/repo/pull/7" do
+    throw <| IO.userError "The manifest lost metadata available to page rendering"
+
 end Verso.VersoBlueprintTests.BlueprintMetadataPanel

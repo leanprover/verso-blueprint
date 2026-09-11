@@ -38,9 +38,9 @@ def traverseManualDocBlocksAndState
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual)
     (logError : String → IO Unit := fun _ => pure ())
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) :
+    (model : Informal.RenderModel := by exact blueprint_render_model%) :
     IO (Array (Doc.Block Genre.Manual) × TraverseState) :=
-  Informal.traverseManualBlocks (collectBlocks (snapshot.apply doc.toPart)) impls logError
+  Informal.traverseManualBlocks (collectBlocks doc.toPart) (model.withExtensions impls) logError
 
 private def discardLogger : Logger IO where
   log _severity _text _loc := pure ()
@@ -51,11 +51,11 @@ private def discardLogger : Logger IO where
 def renderManualDocHtmlAndState
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual)
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO (Output.Html × TraverseState) := do
+    (model : Informal.RenderModel := by exact blueprint_render_model%) : IO (Output.Html × TraverseState) := do
   let opts : Doc.Html.Options := {
     headerLevel := 1
   }
-  let (blocks, st) ← traverseManualDocBlocksAndState impls doc (snapshot := snapshot)
+  let (blocks, st) ← traverseManualDocBlocksAndState impls doc (model := model)
   let ctxt : TraverseContext := {}
   let definitionIds : Lean.NameMap String := {}
   let linkTargets : Code.LinkTargets TraverseContext := {}
@@ -74,29 +74,29 @@ def renderManualDocHtmlAndState
   pure (html, st)
 
 def renderManualDocHtml (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre.Manual)
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO Output.Html := do
-  let (html, _st) ← renderManualDocHtmlAndState impls doc (snapshot := snapshot)
+    (model : Informal.RenderModel := by exact blueprint_render_model%) : IO Output.Html := do
+  let (html, _st) ← renderManualDocHtmlAndState impls doc (model := model)
   pure html
 
 def renderManualDocHtmlStringAndState
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual)
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO (String × TraverseState) := do
-  let (html, st) ← renderManualDocHtmlAndState impls doc (snapshot := snapshot)
+    (model : Informal.RenderModel := by exact blueprint_render_model%) : IO (String × TraverseState) := do
+  let (html, st) ← renderManualDocHtmlAndState impls doc (model := model)
   pure (html.asString, st)
 
 def renderManualDocHtmlString (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre.Manual)
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO String := do
-  let html ← renderManualDocHtml impls doc (snapshot := snapshot)
+    (model : Informal.RenderModel := by exact blueprint_render_model%) : IO String := do
+  let html ← renderManualDocHtml impls doc (model := model)
   pure html.asString
 
 def buildManualPreviewDataFiles
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual)
     (logError : String → IO Unit := fun _ => pure ())
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) :
+    (model : Informal.RenderModel := by exact blueprint_render_model%) :
     IO Informal.PreviewManifest.Files := do
-  let (_html, st) ← renderManualDocHtmlStringAndState impls doc (snapshot := snapshot)
+  let (_html, st) ← renderManualDocHtmlStringAndState impls doc (model := model)
   Informal.PreviewManifest.buildPreviewDataFiles impls logError
     (Informal.PreviewManifest.PreparedPreviewState.prepare st)
 

@@ -110,14 +110,23 @@ private def modifyObjectData
     (f : Json → Json) : TraverseState :=
   state.modifyDomainObjectData domain canonicalName f
 
+/-- Supply a rendering context through Verso's normal initialization hook. -/
+def withInitializer (impls : ExtensionImpls) (initializeState : TraverseState → TraverseState) : ExtensionImpls :=
+  impls.insertBlock `Informal.renderModel {
+    init := initializeState
+    traverse := fun _ _ _ => pure none
+    toHtml := none
+    toTeX := none
+  }
+
 namespace Nodes
 
 def spec : StoreSpec := {
   name := Resolve.informalDomainName
   kind := .semanticDomain
   key := "informal label"
-  value := "StoredBlockData plus node anchor ids"
-  summary := "Canonical traversal index for Blueprint node anchors and lightweight node metadata."
+  value := "RenderNode plus node anchor ids"
+  summary := "Shared rendering nodes, initialized at capture and completed by traversal."
 }
 
 def domainName : Name := spec.name
@@ -125,11 +134,21 @@ def domainName : Name := spec.name
 def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName label.toString
 
-def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData :=
+def node? (state : TraverseState) (label : Name) : Option Informal.RenderNode :=
   objectData? state domainName label.toString
 
+/-- Rendering metadata is available even before this node has a document occurrence. -/
 def data? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  (storedData? state label).map (·.toBlockData)
+  (node? state label).map (·.toBlockData)
+
+/-- Canonical occurrence data is present only for traversed nodes. -/
+def storedData? (state : TraverseState) (label : Name) : Option Informal.BlockData := do
+  let node ← node? state label
+  let occurrence ← node.occurrence
+  return node.resolve occurrence
+
+def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Option Informal.BlockData :=
+  (node? state occurrence.label).map (·.resolve occurrence)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
   Resolve.resolveDomainHref? state domainName label.toString
@@ -137,18 +156,59 @@ def href? (state : TraverseState) (label : Name) : Option String :=
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 
-def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
-  saveObjectData state domainName label.toString data
+def saveNode (state : TraverseState) (node : Informal.RenderNode) : TraverseState :=
+  saveObjectData state domainName node.label.toString (toJson node)
+
+def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrence) : TraverseState :=
+  match node? state occurrence.label with
+  | none => state
+  | some node => saveNode state { node with occurrence := some occurrence }
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
-/-- Decode every informal-node store entry, preserving per-entry decode errors. -/
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry Informal.StoredBlockData)) :=
+/-- Capture the rendering projection without retaining elaboration or provenance state. -/
+def capture (state : Informal.Environment.State) : Array Informal.RenderNode :=
+  state.data.toArray.map fun (label, node) =>
+    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+
+def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
+  nodes.foldl saveNode state
+
+/-- Every captured node, including nodes without a rendered occurrence. -/
+def allEntries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.RenderNode)) :=
   decodeStoreEntries state domainName
 
+/-- Only traversed nodes participate in document numbering and relation indexes. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.BlockData)) :=
+  (allEntries state).filterMap fun decoded =>
+    match decoded with
+    | .error err => some (.error err)
+    | .ok stored => stored.data.occurrence.map fun occurrence =>
+      .ok { canonicalName := stored.canonicalName, data := stored.data.resolve occurrence }
+
 end Nodes
+
+/- Project overviews captured alongside the shared rendering nodes. -/
+namespace RenderOverviews
+
+def spec : StoreSpec := {
+  name := `Informal.renderOverviews
+  kind := .internalIndex
+  key := "overview name"
+  value := "Typed captured graph or summary data"
+  summary := "Project overviews selected by the generator and reused by traversal and rendering."
+}
+
+def data? [FromJson α] (state : TraverseState) (name : Name) : Option α :=
+  objectData? state spec.name name.toString
+
+def saveData [ToJson α] (state : TraverseState) (name : Name) (data : α) : TraverseState :=
+  saveObjectData state spec.name name.toString (toJson data)
+
+end RenderOverviews
 
 namespace InlineCode
 
@@ -629,6 +689,7 @@ compare against one source location instead of rediscovering each domain name.
 -/
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
+  RenderOverviews.spec,
   InlineCode.spec,
   InlineCode.labelSpec,
   RustInlineCode.spec,

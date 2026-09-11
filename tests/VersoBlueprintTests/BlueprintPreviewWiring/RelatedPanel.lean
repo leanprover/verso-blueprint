@@ -29,7 +29,7 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
 private def cachedStatement
     (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[])
     (parent : Option Informal.Data.Parent := none) :
-    Informal.StoredBlockData :=
+    Informal.BlockData :=
   {
     kind := .statement .definition
     label
@@ -78,9 +78,9 @@ private def cachedStatement
       #[{ label := target, origin := .automatic, intent := .auxiliary }] (some group)
     let emptyData := cachedStatement empty 2
     let state : Verso.Genre.Manual.TraverseState := .initialize {}
-    let state := Informal.TraversalIndex.Nodes.saveData state target (Lean.toJson targetData)
-    let state := Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceData)
-    let state := Informal.TraversalIndex.Nodes.saveData state empty (Lean.toJson emptyData)
+    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData targetData)
+    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData sourceData)
+    let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData emptyData)
     let state := Informal.PreviewManifest.PreparedRendererState.prepare state |>.state
     let targetEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target
     let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source
@@ -88,7 +88,7 @@ private def cachedStatement
     let groupMembers := Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state group
     let sourceWithoutRelations := cachedStatement source 1
     let cacheOnlyState :=
-      Informal.TraversalIndex.Nodes.saveData state source (Lean.toJson sourceWithoutRelations)
+      Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData sourceWithoutRelations)
     let targetPreview := Informal.PreviewCache.Entry.ofBlocks target .statement #[]
     let targetManifestEntry :=
       Informal.PreviewManifest.blockEntryOfTraversalPreview cacheOnlyState targetPreview

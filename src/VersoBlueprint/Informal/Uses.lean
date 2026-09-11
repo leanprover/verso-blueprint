@@ -90,7 +90,6 @@ end
 
 structure InlineData where
   label : Data.Label
-  block : Option BlockData
 deriving FromJson, ToJson, Quote
 
 private def blockHoverTitle
@@ -129,22 +128,11 @@ inline_extension Inline.informal (data : InlineData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun goI _id data inlines => do
-      let some { label, block } ← ExtensionDecode.decode? (α := InlineData) data
+      let some { label } ← ExtensionDecode.decode? (α := InlineData) data
           (fun _ => "Malformed data in Inline.informal traversal")
         | pure .empty
       let st ← HtmlT.state
-      let storedBlock? := resolveStoredBlockData? st label
-      let resolvedBlock : Option BlockData :=
-        match block, storedBlock? with
-        | some b, some stored =>
-          some {
-            b with
-            partPrefix := b.partPrefix <|> stored.partPrefix
-            globalCount := b.globalCount <|> stored.globalCount
-          }
-        | none, some stored => some stored
-        | some b, none => some b
-        | none, none => none
+      let resolvedBlock := resolveBlockData? st label
       let href : Option String :=
         Informal.TraversalIndex.Nodes.href? st label
       let renderedInlines ← inlines.mapM goI
@@ -178,18 +166,7 @@ inline_extension Inline.informal (data : InlineData) where
           pure .empty
       if inlines.isEmpty then
         let st ← Verso.Doc.TeX.state
-        let storedBlock? := resolveStoredBlockData? st inlineData.label
-        let resolvedBlock : Option BlockData :=
-          match inlineData.block, storedBlock? with
-          | some b, some stored =>
-            some {
-              b with
-              partPrefix := b.partPrefix <|> stored.partPrefix
-              globalCount := b.globalCount <|> stored.globalCount
-            }
-          | none, some stored => some stored
-          | some b, none => some b
-          | none, none => none
+        let resolvedBlock := resolveBlockData? st inlineData.label
         match resolvedBlock with
         | some block =>
           let block := block.withResolvedNumbering st
@@ -201,8 +178,7 @@ inline_extension Inline.informal (data : InlineData) where
 
 private def nodeRefTerm (label : Data.Label) (contents : Array (TSyntax `inline)) : DocElabM Term := do
     let contents ← contents.mapM elabInline
-    let node ← Environment.getNode? label
-    let data : InlineData := { label, block := node.map (BlockData.ofNode label ·) }
+    let data : InlineData := { label }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
 
 @[role]

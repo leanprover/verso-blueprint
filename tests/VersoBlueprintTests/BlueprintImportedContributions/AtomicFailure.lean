@@ -25,9 +25,7 @@ run_cmd Environment.contribute `key_theorem { priority := some "high" }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before.data == reprStr after.data &&
       reprStr before.localContributions == reprStr after.localContributions &&
-      before.leanNameLabels.toArray == after.leanNameLabels.toArray &&
-      before.nodeOrigins.toArray == after.nodeOrigins.toArray &&
-      before.nodeModules.toArray == after.nodeModules.toArray do
+      before.leanNameLabels.toArray == after.leanNameLabels.toArray do
     throwError "Rejected contribution changed one of the node stores"
 
 -- Repeating equal single-valued metadata is idempotent and does not warn.

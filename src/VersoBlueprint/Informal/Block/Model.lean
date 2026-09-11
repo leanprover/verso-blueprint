@@ -119,8 +119,6 @@ structure InlineCodeData where
   label : Data.Label
   definedDefs : Array CodeDeclData := #[]
   definedTheorems : Array CodeDeclData := #[]
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
@@ -176,32 +174,34 @@ def BlockCodeData.externalDecls : BlockCodeData → Array Data.ExternalRef
 
 /-- Shared semantic metadata; occurrence numbering, sources, and folding live separately. -/
 structure BlockMetadata where
+  /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
   label : Data.Label
+  /-- Parent/group label for this informal node, if any. -/
   parent : Option Data.Parent := none
+  /-- Structured statement use metadata, preserving origin and intent tags. -/
   statementUses : Array Data.UseRef := #[]
+  /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Data.UseRef := #[]
+  /-- Assigned owner identifier, if any. -/
   owner : Option Data.AuthorId := none
+  /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
+  /-- Link to the assigned owner, if available. -/
   ownerUrl : Option String := none
+  /-- Image URL for the assigned owner, if available. -/
   ownerImageUrl : Option String := none
+  /-- Normalized tags attached to this informal node. -/
   tags : Array String := #[]
+  /-- Declared effort estimate for this informal node, if any. -/
   effort : Option String := none
+  /-- Declared triage priority for this informal node, if any. -/
   priority : Option String := none
+  /-- Pull request associated with this informal node, if any. -/
   prUrl : Option String := none
-deriving BEq, FromJson, ToJson, Quote
+deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 
-/-- Runtime semantic node projection, without document occurrence settings. -/
-structure NodeSnapshot extends BlockMetadata where
-  kind : Data.NodeKind := .lemma
-  externalRefs : Array Data.ExternalRef := #[]
-  /-- Initial numbering fallback for references without a traversed occurrence. -/
-  initialCount : Nat := 0
-deriving FromJson, ToJson, Quote
-
-structure BlockData extends BlockMetadata where
-  kind : Data.InProgressKind := .proof
-  /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
-  codeData : Option BlockCodeData := none
+/-- Source and presentation settings belonging to one document occurrence. -/
+structure BlockPresentation where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
   /-- Source location result for the user-written label token. -/
@@ -228,9 +228,31 @@ structure BlockData extends BlockMetadata where
   globalCount : Option Nat := none
 deriving FromJson, ToJson, Quote
 
-/-- Project the assembled node's semantic fields into the renderer's block representation. -/
-def NodeSnapshot.ofNode (label : Data.Label) (node : Data.Node)
-    (author : Option Data.AuthorInfo := none) : NodeSnapshot := {
+/-- A compiled document occurrence: identity and presentation, without copied node semantics. -/
+structure BlockOccurrence extends BlockPresentation where
+  label : Data.Label
+  isProof : Bool := false
+deriving FromJson, ToJson, Quote
+
+/--
+The shared node record used by capture, traversal, and manifest construction.
+Traversal supplies the canonical occurrence; semantic metadata is captured once.
+-/
+structure RenderNode extends BlockMetadata where
+  kind : Data.NodeKind := .lemma
+  externalRefs : Array Data.ExternalRef := #[]
+  initialCount : Nat := 0
+  occurrence : Option BlockOccurrence := none
+deriving FromJson, ToJson, Quote
+
+/-- A resolved rendering view, assembled from a node and a document occurrence. -/
+structure BlockData extends BlockMetadata, BlockPresentation where
+  kind : Data.InProgressKind := .proof
+  codeData : Option BlockCodeData := none
+deriving FromJson, ToJson, Quote
+
+def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
+    (author : Option Data.AuthorInfo := none) : RenderNode := {
   label
   kind := node.kind
   initialCount := node.count
@@ -248,85 +270,35 @@ def NodeSnapshot.ofNode (label : Data.Label) (node : Data.Node)
   prUrl := node.prUrl
 }
 
-def NodeSnapshot.toBlockData (node : NodeSnapshot) : BlockData := {
+def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {
+  label := data.label
+  isProof := match data.kind with | .proof => true | .statement _ => false
+  toBlockPresentation := data.toBlockPresentation
+}
+
+def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : BlockData := {
   toBlockMetadata := node.toBlockMetadata
-  kind := .statement node.kind
-  codeData := BlockCodeData.ofExternalRefs node.externalRefs
-  count := node.initialCount
+  kind := if occurrence.isProof then .proof else .statement node.kind
+  codeData := if occurrence.isProof then none else BlockCodeData.ofExternalRefs node.externalRefs
+  toBlockPresentation := occurrence.toBlockPresentation
 }
 
-def BlockData.ofNode (label : Data.Label) (node : Data.Node)
-    (author : Option Data.AuthorInfo := none) : BlockData :=
-  (NodeSnapshot.ofNode label node author).toBlockData
+def RenderNode.toBlockData (node : RenderNode) : BlockData :=
+  node.resolve (node.occurrence.getD { label := node.label, count := node.initialCount })
 
-/-- Refresh semantics while retaining this occurrence's facet, source, and numbering. -/
-def BlockData.withSemanticData (data : BlockData) (semantic : NodeSnapshot) : BlockData := {
-  data with
-  toBlockMetadata := semantic.toBlockMetadata
-  kind := match data.kind with | .proof => .proof | .statement _ => .statement semantic.kind
-  codeData := match data.kind with
-    | .proof => none
-    | .statement _ => BlockCodeData.ofExternalRefs semantic.externalRefs
-}
-
-/--
-Slim traversal-store payload for Blueprint node metadata.
-
-Unlike `BlockData`, this intentionally excludes `codeData`. Code-specific
-render/runtime payloads belong to dedicated traversal indexes rather than the
-main semantic node index.
--/
-structure StoredBlockData extends BlockMetadata where
-  kind : Data.InProgressKind := .proof
-  /-- Source location result for the user-written label token. -/
-  sourceLocation : Data.SourceLocationResult :=
-    Data.SourceLocationResult.unavailable "label source location unavailable"
-  count : Nat
-  numberingMode : NumberingMode := .sub
-  /-- Prefix policy for `numberingMode = .sub`. -/
-  subNumberingPrefix : SubNumberingPrefix := .full
-  /-- Counter policy for `numberingMode = .sub`. -/
-  subNumberingCounter : SubNumberingCounter := .prefix
-  partPrefix : Option String := none
-  globalCount : Option Nat := none
-deriving FromJson, ToJson, Quote
-
-def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
+/-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
+def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   toBlockMetadata := data.toBlockMetadata
-  kind := data.kind
-  sourceLocation := data.sourceLocation
-  count := data.count
-  numberingMode := data.numberingMode
-  subNumberingPrefix := data.subNumberingPrefix
-  subNumberingCounter := data.subNumberingCounter
-  partPrefix := data.partPrefix
-  globalCount := data.globalCount
-}
-
-def StoredBlockData.toBlockData (data : StoredBlockData)
-    (codeData : Option BlockCodeData := none) : BlockData := {
-  toBlockMetadata := data.toBlockMetadata
-  kind := data.kind
-  codeData
-  sourceLocation := data.sourceLocation
-  count := data.count
-  numberingMode := data.numberingMode
-  subNumberingPrefix := data.subNumberingPrefix
-  subNumberingCounter := data.subNumberingCounter
-  partPrefix := data.partPrefix
-  globalCount := data.globalCount
+  kind := match data.kind with | .statement kind => kind | .proof => .lemma
+  externalRefs := data.codeData.map (·.externalDecls) |>.getD #[]
+  initialCount := data.count
+  occurrence := some data.toOccurrence
 }
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
   Data.UseRef.labels data.statementUses
 
 def BlockData.proofDeps (data : BlockData) : Array Data.Label :=
-  Data.UseRef.labels data.proofUses
-
-def StoredBlockData.statementDeps (data : StoredBlockData) : Array Data.Label :=
-  Data.UseRef.labels data.statementUses
-
-def StoredBlockData.proofDeps (data : StoredBlockData) : Array Data.Label :=
   Data.UseRef.labels data.proofUses
 
 end Informal

@@ -308,8 +308,11 @@ private structure SummaryBuildContext where
   reverseMap : NameMap (Array Name)
 
 private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildContext :=
-  let entries := state.data.toArray
-  let parentChildren := state.data.parentChildren
+  let entries := state.data.toArray.map fun (label, node) => (label, node.toNode)
+  let parentChildren := state.data.foldl (init := ({} : NameMap (Array Name))) fun acc child node =>
+    match node.parent with
+    | none => acc
+    | some parent => acc.insert parent ((acc.getD parent #[]).push child)
   let external : Informal.Graph.ExternalCodeStatus := {}
   let (usageMap, reverseMap) := buildUsageMaps entries
   {

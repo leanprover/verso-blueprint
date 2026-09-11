@@ -327,13 +327,12 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
     let definedTheorems ← res.definedTheorems.mapM fun decl => do
       let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
       pure <| CodeDeclData.ofLiterateThm decl sourceLocation
-    let mut inferredUseRefs : DependencyAnalysis.InferredUseRefs := {}
     let codeRef ← getRef
     Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems
     if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
       let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
       let deps ← liftM <| DependencyAnalysis.inferDecls decls
-      inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
+      let inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
       liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label inferredUseRefs
     let some position := codeRef.getPos?
       | throwError "Blueprint code blocks require a source position"
@@ -343,8 +342,6 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       label := cfg.label
       definedDefs
       definedTheorems
-      statementUses := inferredUseRefs.statement
-      proofUses := inferredUseRefs.proof
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
       foldProofs := verso.blueprint.foldProofs.get (← getOptions)
     }

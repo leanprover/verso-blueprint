@@ -601,13 +601,6 @@ structure NodeContribution where
   prUrl : Option String := none
 deriving Repr, Inhabited
 
-/-- Map of labels to Node data -/
-def Data := LabelMap Node
-deriving Repr, Inhabited
-
-/-- The empty Blueprint node database. -/
-def Data.empty : Data := Std.TreeMap.empty
-
 private def pushExternalRefUnique (refs : Array ExternalRef) (ref : ExternalRef) : Array ExternalRef :=
   let canonical := ref.canonical.eraseMacroScopes
   if refs.any (fun current => current.canonical.eraseMacroScopes == canonical) then
@@ -652,14 +645,6 @@ private def inferredNodeKind (code : Array CodeRef) : NodeKind := Id.run do
       if !block.definedDefs.isEmpty then kind := .definition
   return kind
 
-def Data.parentChildren (data : Data) : LabelMap (Array Label) :=
-  data.foldl (init := (Std.TreeMap.empty : LabelMap (Array Label))) fun acc child node =>
-    match node.parent with
-    | none => acc
-    | some parent =>
-      let children := acc.getD parent #[]
-      acc.insert parent (children.push child)
-
 private def mergeAssociatedCodeRefs (current : Array CodeRef) (incoming : CodeRef) : Array CodeRef :=
   match incoming with
   | .external incomingRefs =>
@@ -676,10 +661,6 @@ private def mergeAssociatedCodeRefs (current : Array CodeRef) (incoming : CodeRe
       nonExternal.push (.external externalRefs)
   | .literate code =>
     current.push (.literate code)
-
-/-- Next declaration number for a statement introduced in the current environment. -/
-def Data.nextCount (data : Data) : Nat :=
-  data.foldl (init := 0) (fun count _label node => max count node.count) + 1
 
 private abbrev MergeM := StateM (Array String)
 
