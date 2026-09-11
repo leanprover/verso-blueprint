@@ -1850,10 +1850,21 @@ class TestPreviewRuntimeRegressions:
                                     spans: [
                                         {
                                             page: "42",
+                                            anchor: null,
+                                            citation: null,
+                                            text: null,
                                             pdf: {
                                                 path: "source/pages/p42.pdf",
-                                                image: "source/pages/images/p42.png"
+                                                image: "source/pages/images/p42.png",
+                                                box: null
                                             }
+                                        },
+                                        {
+                                            page: null,
+                                            anchor: "thm:custom-render",
+                                            citation: "Theorem 4.2",
+                                            text: null,
+                                            pdf: null
                                         }
                                     ]
                                 }
@@ -1899,6 +1910,7 @@ class TestPreviewRuntimeRegressions:
                 const previewEntry = await preview.loadManifestEntry(
                     preview.statementPreviewKey("sample_node")
                 );
+                const previewSourceMetadata = await preview.resolveSourceMetadata(previewEntry);
 
                 return {
                     dataCalls: dataCalls.length,
@@ -1919,11 +1931,13 @@ class TestPreviewRuntimeRegressions:
                         typeof resolveSourceMetadataFromDataModule === "function",
                     dataSourceMetadataOk: sourceMetadata.ok,
                     dataSourceMetadataDocumentTitle: sourceMetadata.sources[0].document.title,
-                    dataSourceMetadataPage: sourceMetadata.sources[0].spans[0].page,
+                    dataSourceMetadataSpans: sourceMetadata.sources[0].spans,
                     moduleSourceMetadataOk: moduleSourceMetadata.ok,
                     moduleSourceMetadataDocumentTitle:
                         moduleSourceMetadata.sources[0].document.title,
-                    moduleSourceMetadataPage: moduleSourceMetadata.sources[0].spans[0].page,
+                    moduleSourceMetadataSpans: moduleSourceMetadata.sources[0].spans,
+                    previewSourceMetadataOk: previewSourceMetadata.ok,
+                    previewSourceMetadataSpans: previewSourceMetadata.sources[0].spans,
                     previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
                     previewSourceDocumentCount: previewSourceDocuments.length,
                     previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
@@ -1948,10 +1962,35 @@ class TestPreviewRuntimeRegressions:
         assert result["moduleHasSourceMetadataResolver"] is True
         assert result["dataSourceMetadataOk"] is True
         assert result["dataSourceMetadataDocumentTitle"] == "Representation Theory"
-        assert result["dataSourceMetadataPage"] == "42"
         assert result["moduleSourceMetadataOk"] is True
         assert result["moduleSourceMetadataDocumentTitle"] == "Representation Theory"
-        assert result["moduleSourceMetadataPage"] == "42"
+        assert result["previewSourceMetadataOk"] is True
+        expected_spans = [
+            {
+                "page": "42",
+                "anchor": None,
+                "citation": None,
+                "text": None,
+                "pdf": {
+                    "path": "source/pages/p42.pdf",
+                    "image": "source/pages/images/p42.png",
+                    "box": None,
+                },
+            },
+            {
+                "page": None,
+                "anchor": "thm:custom-render",
+                "citation": "Theorem 4.2",
+                "text": None,
+                "pdf": None,
+            },
+        ]
+        for key in (
+            "dataSourceMetadataSpans",
+            "moduleSourceMetadataSpans",
+            "previewSourceMetadataSpans",
+        ):
+            assert result[key] == expected_spans, key
         assert result["previewSourceDocumentId"] == "paper"
         assert result["previewSourceDocumentCount"] == 1
         assert result["previewEntrySourceDocument"] == "paper"
@@ -1995,6 +2034,8 @@ class TestPreviewRuntimeRegressions:
                                     spans: [
                                         {
                                             page: "42",
+                                            anchor: "thm:custom-render",
+                                            citation: "Theorem 4.2",
                                             text: {
                                                 path: "source/pages/page-42.md",
                                                 startLine: 10,
@@ -2038,8 +2079,13 @@ class TestPreviewRuntimeRegressions:
                                     spans: [
                                         {
                                             page: "43",
+                                            anchor: null,
+                                            citation: null,
+                                            text: null,
                                             pdf: {
-                                                path: "source/pages/page-43.pdf"
+                                                path: "source/pages/page-43.pdf",
+                                                image: null,
+                                                box: null
                                             }
                                         }
                                     ]
@@ -2051,7 +2097,8 @@ class TestPreviewRuntimeRegressions:
                             label: "unsourced",
                             authoredLabel: "unsourced",
                             facet: "statement",
-                            sourceLocation: unavailableSourceLocation
+                            sourceLocation: unavailableSourceLocation,
+                            sources: []
                         },
                         {
                             key: "unknown_source_document--statement",
@@ -2064,7 +2111,11 @@ class TestPreviewRuntimeRegressions:
                                     document: "missing-paper",
                                     spans: [
                                         {
-                                            page: "44"
+                                            page: "44",
+                                            anchor: null,
+                                            citation: null,
+                                            text: null,
+                                            pdf: null
                                         }
                                     ]
                                 }
@@ -2119,6 +2170,8 @@ class TestPreviewRuntimeRegressions:
                         sourceCount: native.sources.length,
                         documentTitle: native.sources[0].document.title,
                         documentId: native.sources[0].documentId,
+                        anchor: native.sources[0].spans[0].anchor,
+                        citation: native.sources[0].spans[0].citation,
                         textPath: native.sources[0].spans[0].text.path,
                         textStartLine: native.sources[0].spans[0].text.startLine,
                         textEndLine: native.sources[0].spans[0].text.endLine,
@@ -2178,6 +2231,8 @@ class TestPreviewRuntimeRegressions:
         assert result["native"]["sourceCount"] == 1
         assert result["native"]["documentTitle"] == "Representation Theory"
         assert result["native"]["documentId"] == "paper"
+        assert result["native"]["anchor"] == "thm:custom-render"
+        assert result["native"]["citation"] == "Theorem 4.2"
         assert result["native"]["textPath"] == "source/pages/page-42.md"
         assert result["native"]["textStartLine"] == 10
         assert result["native"]["textEndLine"] == 12
