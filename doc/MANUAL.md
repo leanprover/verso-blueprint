@@ -64,6 +64,19 @@ These identifiers are used by:
 
 Choose labels early and treat them as stable project identifiers.
 
+A statement and its proof may live in different modules. The proof module must
+import the statement module and use the same label in `:::proof`. A later module
+can also import the statement and attach Lean code, Rust code, or external markup
+to its label. When those modules are imported together, Blueprint combines their
+contributions into one node, preserving statement and proof dependencies
+separately. Include the relevant chapter modules in the top-level document to
+render their content.
+
+Two modules that independently introduce the same label are still duplicates.
+Likewise, two sibling modules that each supply a proof body for the same imported
+statement conflict, even if their proof text is identical. Re-exporting a shared
+module does not create a duplicate.
+
 Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.

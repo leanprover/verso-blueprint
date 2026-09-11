@@ -233,6 +233,23 @@ The same flow can be read as four contracts:
    and imported through compiled oleans, so downstream modules see one merged
    object database.
 
+   Node exports contain only each module's local `NodeContribution` records,
+   together with the module that originally introduced the label. Imported
+   statements, proofs, code associations, and metadata are assembled with the
+   same merge rules used during local registration. This permits a proof or
+   attachment to extend an imported statement without exporting that statement
+   again, and permits independent sibling extensions to accumulate. Different
+   label origins and competing bodies or single-valued attachments remain
+   conflicts. `State.data` holds the assembled view; `localContributions` holds
+   only the registrations to export. Invalid local contributions are diagnosed
+   and rejected before either store is updated.
+
+   Custom registration code should call `Informal.Environment.contribute` with
+   locally supplied fields instead of updating and re-exporting a whole node.
+   This replaces `modifyDataForLabel` and the old `Data.register*` helpers.
+   Downstream Lean modules must be rebuilt when updating from the former
+   full-node extension format; Blueprint authoring syntax is unchanged.
+
 2. **Environment to traversal.**
    During Verso traversal, Blueprint reads the semantic environment and writes
    render-time indexes into `TraverseState` through `TraversalIndex`. This is

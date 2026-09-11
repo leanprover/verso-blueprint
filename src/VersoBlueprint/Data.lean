@@ -566,6 +566,27 @@ structure Node where
   prUrl : Option String := none
 deriving Repr, Inhabited
 
+/--
+Fields supplied by one registration, without inherited node data. Bodyless
+statement/proof payloads contribute dependencies to an existing body. {lit}`kind`
+is optional so a proof or code attachment cannot reset the statement's kind.
+-/
+structure NodeContribution where
+  kind : Option NodeKind := none
+  count : Nat := 0
+  statement : Option InformalData := none
+  proof : Option InformalData := none
+  leanCode : Array CodeRef := #[]
+  rustCode : Option RustInlineCode := none
+  externalMarkup : ExternalMarkupSet := {}
+  parent : Option Parent := none
+  priority : Option String := none
+  owner : Option AuthorId := none
+  tags : Array String := #[]
+  effort : Option String := none
+  prUrl : Option String := none
+deriving Repr, Inhabited
+
 /-- Map of labels to Node data -/
 def Data := LabelMap Node
 deriving Repr, Inhabited
@@ -609,7 +630,7 @@ def Data.parentChildren (data : Data) : LabelMap (Array Label) :=
 
 section
 
-variable [Monad m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
+variable [Monad m]
 
 private def mergeAssociatedCodeRefs (current : Array CodeRef) (incoming : CodeRef) : Array CodeRef :=
   match incoming with
@@ -628,18 +649,14 @@ private def mergeAssociatedCodeRefs (current : Array CodeRef) (incoming : CodeRe
   | .literate code =>
     current.push (.literate code)
 
-private def Node.withCodeRef (node : Node) (codeRef : CodeRef) : Node :=
-  {
-    node with
-      leanCode := mergeAssociatedCodeRefs node.leanCode codeRef
-  }
+variable (report : MessageSeverity → MessageData → m Unit)
 
 private def mergeRustCode (label : Label) (current : Option RustInlineCode) (incoming : RustInlineCode) :
     m (Option RustInlineCode) := do
   match current with
   | none => return some incoming
   | some _ =>
-    logError m!"Label {label} already has associated Rust code"
+    report .error m!"Label {label} already has associated Rust code"
     return current
 
 private def mergeParent (label : Label) (current incoming : Option Parent) : m (Option Parent) := do
@@ -649,10 +666,10 @@ private def mergeParent (label : Label) (current incoming : Option Parent) : m (
   | none, some parent => return some parent
   | some currentParent, some incomingParent =>
     if currentParent = incomingParent then
-      logWarning m!"Label {label} repeats '(parent := \"{currentParent}\")'; keeping the same parent"
+      report .warning m!"Label {label} repeats '(parent := \"{currentParent}\")'; keeping the same parent"
       return some currentParent
     else
-      logError m!"Label {label} declares conflicting parents: existing '{currentParent}', new '{incomingParent}'"
+      report .error m!"Label {label} declares conflicting parents: existing '{currentParent}', new '{incomingParent}'"
       return some currentParent
 
 private def mergePriority (label : Label) (current incoming : Option String) : m (Option String) := do
@@ -662,10 +679,10 @@ private def mergePriority (label : Label) (current incoming : Option String) : m
   | none, some priority => return some priority
   | some currentPriority, some incomingPriority =>
     if currentPriority = incomingPriority then
-      logWarning m!"Label {label} repeats '(priority := \"{currentPriority}\")'; keeping the same priority"
+      report .warning m!"Label {label} repeats '(priority := \"{currentPriority}\")'; keeping the same priority"
       return some currentPriority
     else
-      logError m!"Label {label} declares conflicting priorities: existing '{currentPriority}', new '{incomingPriority}'"
+      report .error m!"Label {label} declares conflicting priorities: existing '{currentPriority}', new '{incomingPriority}'"
       return some currentPriority
 
 private def mergeOwner (label : Label) (current incoming : Option AuthorId) : m (Option AuthorId) := do
@@ -675,10 +692,10 @@ private def mergeOwner (label : Label) (current incoming : Option AuthorId) : m 
   | none, some owner => return some owner
   | some currentOwner, some incomingOwner =>
     if currentOwner = incomingOwner then
-      logWarning m!"Label {label} repeats '(owner := \"{currentOwner}\")'; keeping the same owner"
+      report .warning m!"Label {label} repeats '(owner := \"{currentOwner}\")'; keeping the same owner"
       return some currentOwner
     else
-      logError m!"Label {label} declares conflicting owners: existing '{currentOwner}', new '{incomingOwner}'"
+      report .error m!"Label {label} declares conflicting owners: existing '{currentOwner}', new '{incomingOwner}'"
       return some currentOwner
 
 private def mergeEffort (label : Label) (current incoming : Option String) : m (Option String) := do
@@ -688,10 +705,10 @@ private def mergeEffort (label : Label) (current incoming : Option String) : m (
   | none, some effort => return some effort
   | some currentEffort, some incomingEffort =>
     if currentEffort = incomingEffort then
-      logWarning m!"Label {label} repeats '(effort := \"{currentEffort}\")'; keeping the same effort"
+      report .warning m!"Label {label} repeats '(effort := \"{currentEffort}\")'; keeping the same effort"
       return some currentEffort
     else
-      logError m!"Label {label} declares conflicting effort values: existing '{currentEffort}', new '{incomingEffort}'"
+      report .error m!"Label {label} declares conflicting effort values: existing '{currentEffort}', new '{incomingEffort}'"
       return some currentEffort
 
 private def mergePrUrl (label : Label) (current incoming : Option String) : m (Option String) := do
@@ -701,140 +718,68 @@ private def mergePrUrl (label : Label) (current incoming : Option String) : m (O
   | none, some url => return some url
   | some currentUrl, some incomingUrl =>
     if currentUrl = incomingUrl then
-      logWarning m!"Label {label} repeats '(pr_url := \"{currentUrl}\")'; keeping the same URL"
+      report .warning m!"Label {label} repeats '(pr_url := \"{currentUrl}\")'; keeping the same URL"
       return some currentUrl
     else
-      logError m!"Label {label} declares conflicting PR URLs: existing '{currentUrl}', new '{incomingUrl}'"
+      report .error m!"Label {label} declares conflicting PR URLs: existing '{currentUrl}', new '{incomingUrl}'"
       return some currentUrl
 
 private def mergeTags (current incoming : Array String) : Array String :=
   incoming.foldl (init := current) fun acc tag =>
     if acc.contains tag then acc else acc.push tag
 
-private def fillBodylessPayload (current incoming : InformalData) : InformalData :=
-  { incoming with deps := UseRef.mergeByLabel current.deps incoming.deps }
-
-private def fillPayload? (current? : Option InformalData) (incoming : InformalData) :
-    Option InformalData :=
-  match current? with
-  | none => some incoming
-  | some current =>
-    if current.hasBody then
-      none
+private def mergePayload (label : Label) (side : String)
+    (current incoming : Option InformalData) : m (Option InformalData) := do
+  match current, incoming with
+  | none, _ => return incoming
+  | _, none => return current
+  | some current, some incoming =>
+    if current.hasBody && incoming.hasBody then
+      report .error m!"Label {label} already has a {side}"
+      return some current
     else
-      some (fillBodylessPayload current incoming)
+      let payload := if incoming.hasBody then incoming else current
+      return some { payload with deps := UseRef.mergeByLabel current.deps incoming.deps }
 
-private def Data.nextCount (data : Data) : Nat :=
+/-- Next declaration number for a statement introduced in the current environment. -/
+def Data.nextCount (data : Data) : Nat :=
   data.foldl (init := 0) (fun count _label node => max count node.count) + 1
-
-private def Node.countOrNext (node : Node) (nextCount : Nat) : Nat :=
-  if node.count == 0 then nextCount else node.count
 
 private def mergeExternalMarkup (label : Label)
     (current : ExternalMarkupSet) (incoming : ExternalMarkup)
     : m ExternalMarkupSet := do
   let key := incoming.key
   if current.contains key then
-    logError m!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
+    report .error m!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
     return current
   else
     return current.insert incoming
 
-def Data.registerCodeRef (data : Data) (label : Label) (codeRef : CodeRef) : m Data := do
-  match data.get? label with
-  | none =>
-    return data.insert label (({} : Node).withCodeRef codeRef)
-  | some node =>
-    return data.insert label (node.withCodeRef codeRef)
-
-def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload : InformalData)
-    (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
-    (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) : m Data := do
-  let applyHints (node : Node) : m Node := do
-    let node :=
-      match codeHint with
-      | none => node
-      | some hint => node.withCodeRef hint
-    let parent ← mergeParent label node.parent parent
-    let priority ← mergePriority label node.priority priority
-    let owner ← mergeOwner label node.owner owner
-    let effort ← mergeEffort label node.effort effort
-    let prUrl ← mergePrUrl label node.prUrl prUrl
-    let tags := mergeTags node.tags tags
-    return { node with parent, priority, owner, tags, effort, prUrl }
-  let nextCount := data.nextCount
-  match data.get? label, kind with
-  -- First statement for a fresh label.
-  | none, .statement nodeKind =>
-    let count := nextCount
-    let node ← applyHints {
-      statement := some payload
-      count
-      kind := nodeKind
-    }
-    return data.insert label node
-  -- Proof without a corresponding statement is weird, ignore?
-  | none, .proof =>
-    logError m!"No statement for proof with label {label}"
-    return data
-  -- Late statement fill for an existing placeholder node.
-  | some node, .statement nodeKind =>
-    match fillPayload? node.statement payload with
-    | some statement =>
-      let count := node.countOrNext nextCount
-      let node ← applyHints {
-        node with
-          kind := nodeKind
-          count
-          statement := some statement
-      }
-      return data.insert label node
-    | none =>
-      -- logError m!"Duplicated entry for {label}"
-      return data
-  -- Register proof for an existing statement.
-  | some node, .proof =>
-    if node.statement.isNone then
-      logError m!"Cannot register proof for {label}: statement dependencies are missing"
-      return data
-    else
-      match fillPayload? node.proof payload with
-      | some proof =>
-        let node ← applyHints {
-          node with
-            proof := some proof
-        }
-        return data.insert label node
-      | none =>
-        -- logError m!"{label} already has a proof"
-        return data
-
-/-- Register Lean code and code metadata for an informal object label. -/
-def Data.registerCode (data : Data) (label : Label) (code : Syntax)
-    (definedDefs : Array LiterateDef := #[]) (definedTheorems : Array LiterateThm := #[]) : m Data := do
-  let literate : CodeRef := .literate { stx := code, definedDefs, definedTheorems }
-  match data.get? label with
-  | none =>
-    return data.insert label (({} : Node).withCodeRef literate)
-  | some node =>
-    return data.insert label (node.withCodeRef literate)
-
-def Data.registerRustCode (data : Data) (label : Label) (code : RustInlineCode) : m Data := do
-  match data.get? label with
-  | none =>
-    return data.insert label { rustCode := some code }
-  | some node =>
-    let rustCode ← mergeRustCode label node.rustCode code
-    return data.insert label { node with rustCode }
-
-/-- Register external markup for an informal object label. -/
-def Data.registerExternalMarkup (data : Data) (label : Label) (markup : ExternalMarkup) : m Data := do
-  match data.get? label with
-  | none =>
-    return data.insert label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
-  | some node =>
-    let externalMarkup ← mergeExternalMarkup label node.externalMarkup markup
-    return data.insert label { node with externalMarkup }
+/--
+Assemble a registration using the same rules during local elaboration and import.
+The caller supplies diagnostic handling: local elaboration logs the messages,
+while import assembly records conflicts for later reporting.
+-/
+def Node.applyContribution (label : Label) (node : Node) (incoming : NodeContribution) : m Node := do
+  let statement ← mergePayload report label "statement" node.statement incoming.statement
+  let proof ← mergePayload report label "proof" node.proof incoming.proof
+  let rustCode ← match incoming.rustCode with
+    | none => pure node.rustCode
+    | some code => mergeRustCode report label node.rustCode code
+  let externalMarkup ← incoming.externalMarkup.toArray.foldlM
+    (mergeExternalMarkup report label) node.externalMarkup
+  let parent ← mergeParent report label node.parent incoming.parent
+  let priority ← mergePriority report label node.priority incoming.priority
+  let owner ← mergeOwner report label node.owner incoming.owner
+  let effort ← mergeEffort report label node.effort incoming.effort
+  let prUrl ← mergePrUrl report label node.prUrl incoming.prUrl
+  return {
+    kind := if incoming.statement.isSome || node.statement.isNone then
+      incoming.kind.getD node.kind else node.kind
+    count := if node.count == 0 then incoming.count else node.count
+    statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl
+    leanCode := incoming.leanCode.foldl mergeAssociatedCodeRefs node.leanCode
+    tags := mergeTags node.tags incoming.tags
+  }
 
 end
