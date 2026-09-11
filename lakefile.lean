@@ -42,6 +42,13 @@ lean_lib VersoBlueprintTests where
   roots := #[
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
+    `VersoBlueprintTests.BlueprintImportedContributions,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofs,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofsReverse,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingStatements,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingMetadata,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingMarkup,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingRust,
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,

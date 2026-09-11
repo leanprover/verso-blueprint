@@ -282,22 +282,6 @@ private def resolveAutoDeps
   let proof ← mergeAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
-private def payloadWithDeps
-    (ref : Syntax) (deps : Array Data.UseRef) (incoming? existing? : Option Data.InformalData) :
-    Option Data.InformalData :=
-  let mergeDeps (payload : Data.InformalData) : Data.InformalData :=
-    { payload with deps := deps.foldl Data.UseRef.pushMergeByLabel payload.deps }
-  match existing? with
-  | some payload => some (mergeDeps payload)
-  | none =>
-    match incoming? with
-    | some payload => some (mergeDeps payload)
-    | none =>
-      if deps.isEmpty then
-        none
-      else
-        some { stx := ref, deps }
-
 private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
@@ -310,22 +294,18 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  Environment.modifyDataForLabel label fun data => do
-    let data ← data.registerCodeRef label (.external #[extRef])
-    let data :=
-      match data.get? label with
-      | some node =>
-        let node :=
-          if node.statement.isNone then
-            { node with kind := declKind }
-          else
-            node
-        let statement := payloadWithDeps ref deps.statement statement? node.statement
-        let proof := payloadWithDeps ref deps.proof none node.proof
-        let node := { node with statement, proof }
-        data.insert label node
-      | none => data
-    return data
+  let current? ← Environment.getNode? label
+  let needsStatement := (current?.bind (·.statement)).isNone
+  let payload (useRefs : Array Data.UseRef) (body : Option Data.InformalData) :=
+    match body with
+    | some body => some { body with deps := Data.UseRef.mergeByLabel body.deps useRefs }
+    | none => if useRefs.isEmpty then none else some { stx := ref, deps := useRefs }
+  Environment.contribute label {
+    kind := if needsStatement then some declKind else none
+    statement := payload deps.statement (if needsStatement then statement? else none)
+    proof := payload deps.proof none
+    leanCode := #[.external #[extRef]]
+  }
 
 open Lean in
 initialize
