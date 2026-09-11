@@ -306,8 +306,11 @@ file cannot by itself establish their cross-artifact reference invariants;
 
 Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
-of zero or more refs pointing back to those documents. An abbreviated excerpt
-looks like this:
+of zero or more refs pointing back to those documents.
+
+The following excerpt omits unrelated manifest-entry fields but includes every
+field of the source-provenance objects. Optional values are emitted as `null`
+when absent, rather than omitted:
 
 ```json
 {
@@ -329,10 +332,14 @@ looks like this:
           "spans": [
             {
               "page": "12",
+              "anchor": "lem:representation",
+              "citation": "Lemma 4.2",
               "text": {
                 "path": "source/pages/page-12.md",
                 "startLine": 41,
-                "endLine": 45
+                "endLine": 45,
+                "startCharacter": null,
+                "endCharacter": null
               },
               "pdf": {
                 "path": "source/pages/page-12.pdf",

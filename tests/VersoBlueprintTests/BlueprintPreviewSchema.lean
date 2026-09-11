@@ -5,6 +5,58 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSchema
 open Lean
 open Informal.PreviewManifest
 
+private def stringSchema (schema : Json) : Bool :=
+  (schema.getObjValAs? String "type" |>.toOption) == some "string"
+
+private def stringSchemaHasMinLengthOne (schema : Json) : Bool :=
+  stringSchema schema && (schema.getObjValAs? Nat "minLength" |>.toOption) == some 1
+
+private def integerSchema (schema : Json) : Bool :=
+  (schema.getObjValAs? String "type" |>.toOption) == some "integer"
+
+private def refSchema (expected : String) (schema : Json) : Bool :=
+  (schema.getObjValAs? String "$ref" |>.toOption) == some expected
+
+private def schemaHasValueNull (valueSchema : Json → Bool) (schema : Json) : Bool :=
+  match schema.getObjValAs? (Array Json) "anyOf" with
+  | .error _ => false
+  | .ok schemas =>
+      schemas.any valueSchema &&
+        schemas.any (fun schema =>
+          (schema.getObjValAs? String "type" |>.toOption) == some "null")
+
+private def schemaHasStringNull : Json → Bool := schemaHasValueNull stringSchema
+
+private def schemaHasNonEmptyStringNull : Json → Bool :=
+  schemaHasValueNull stringSchemaHasMinLengthOne
+
+private def schemaHasIntegerNull : Json → Bool := schemaHasValueNull integerSchema
+
+private def schemaHasRefNull (expected : String) : Json → Bool :=
+  schemaHasValueNull (refSchema expected)
+
+/-- Check required properties with structure- and field-specific failure messages. -/
+private def checkObjectSchema (name : String) (fields : Array (String × (Json → Bool)))
+    (absent : Array String := #[]) : IO Unit := do
+  let .ok defs := schemaJson.getObjVal? "$defs"
+    | throw <| IO.userError "Schema is missing $defs"
+  let .ok schema := defs.getObjVal? name
+    | throw <| IO.userError s!"Missing schema: {name}"
+  let .ok propertiesJson := schema.getObjVal? "properties"
+    | throw <| IO.userError s!"{name}: missing properties"
+  let .ok properties := propertiesJson.getObj?
+    | throw <| IO.userError s!"{name}: properties is not an object"
+  let .ok required := schema.getObjValAs? (Array String) "required"
+    | throw <| IO.userError s!"{name}: missing or invalid required fields"
+  for (field, predicate) in fields do
+    unless required.contains field do
+      throw <| IO.userError s!"{name}.{field}: not required"
+    unless (properties.get? field).any predicate do
+      throw <| IO.userError s!"{name}.{field}: missing or unexpected property schema"
+  for field in absent do
+    if properties.contains field || required.contains field then
+      throw <| IO.userError s!"{name}.{field}: obsolete field still present"
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -31,61 +83,7 @@ open Informal.PreviewManifest
         fromJson? (α := Array String) requiredJson |>.toOption
       let some relatedEntrySchema := defs.get? "Informal.PreviewManifest.RelatedEntry" | return false
       let some graphNodeSchema := defs.get? "Informal.Graph.NodeData" | return false
-      let some sourceDocumentSchema := defs.get? "Informal.Source.Document" | return false
-      let Except.ok sourceDocumentPropsJson :=
-        Json.getObjVal? sourceDocumentSchema "properties" | return false
-      let Except.ok sourceDocumentProps := sourceDocumentPropsJson.getObj? | return false
-      let sourceDocumentRequired? := do
-        let requiredJson ← sourceDocumentSchema.getObjVal? "required" |>.toOption
-        fromJson? (α := Array String) requiredJson |>.toOption
-      let some sourceSpanSchema := defs.get? "Informal.Source.Span" | return false
-      let Except.ok sourceSpanPropsJson := Json.getObjVal? sourceSpanSchema "properties" | return false
-      let Except.ok sourceSpanProps := sourceSpanPropsJson.getObj? | return false
-      let sourceSpanRequired? := do
-        let requiredJson ← sourceSpanSchema.getObjVal? "required" |>.toOption
-        fromJson? (α := Array String) requiredJson |>.toOption
-      let some sourceTextRangeSchema := defs.get? "Informal.Source.TextRange" | return false
-      let Except.ok sourceTextRangePropsJson :=
-        Json.getObjVal? sourceTextRangeSchema "properties" | return false
-      let Except.ok sourceTextRangeProps := sourceTextRangePropsJson.getObj? | return false
-      let sourceTextRangeRequired? := do
-        let requiredJson ← sourceTextRangeSchema.getObjVal? "required" |>.toOption
-        fromJson? (α := Array String) requiredJson |>.toOption
-      let some sourcePdfSpanSchema := defs.get? "Informal.Source.PdfSpan" | return false
-      let Except.ok sourcePdfSpanPropsJson :=
-        Json.getObjVal? sourcePdfSpanSchema "properties" | return false
-      let Except.ok sourcePdfSpanProps := sourcePdfSpanPropsJson.getObj? | return false
-      let sourcePdfSpanRequired? := do
-        let requiredJson ← sourcePdfSpanSchema.getObjVal? "required" |>.toOption
-        fromJson? (α := Array String) requiredJson |>.toOption
       let schemaText := schema.compress
-      let stringSchemaHasMinLengthOne (schema : Json) : Bool :=
-        (schema.getObjValAs? String "type" |>.toOption) == some "string" &&
-          (schema.getObjValAs? Nat "minLength" |>.toOption) == some 1
-      let stringSchema (schema : Json) : Bool :=
-        (schema.getObjValAs? String "type" |>.toOption) == some "string"
-      let integerSchema (schema : Json) : Bool :=
-        (schema.getObjValAs? String "type" |>.toOption) == some "integer"
-      let refSchema (expected : String) (schema : Json) : Bool :=
-        (schema.getObjValAs? String "$ref" |>.toOption) == some expected
-      let schemaHasValueNull (valueSchema : Json → Bool) (schema : Json) : Bool :=
-        match Json.getObjVal? schema "anyOf" with
-        | Except.error _ => false
-        | Except.ok anyOfJson =>
-            match anyOfJson.getArr? with
-            | Except.error _ => false
-            | Except.ok schemas =>
-                schemas.any valueSchema &&
-                schemas.any (fun (schema : Json) =>
-                  (schema.getObjValAs? String "type" |>.toOption) == some "null")
-      let schemaHasStringNull (schema : Json) : Bool :=
-        schemaHasValueNull stringSchema schema
-      let schemaHasNonEmptyStringNull (schema : Json) : Bool :=
-        schemaHasValueNull stringSchemaHasMinLengthOne schema
-      let schemaHasIntegerNull (schema : Json) : Bool :=
-        schemaHasValueNull integerSchema schema
-      let schemaHasRefNull (expected : String) (schema : Json) : Bool :=
-        schemaHasValueNull (refSchema expected) schema
       let previewKeySchemaHasNonEmptyStringNull (schema : Json) : Bool :=
         match Json.getObjVal? schema "properties" with
         | Except.error _ => false
@@ -129,10 +127,6 @@ open Informal.PreviewManifest
         authoredLabelJson.getObjValAs? String "description" |>.toOption
       let some fileRequired := fileRequired? | return false
       let some entryRequired := entryRequired? | return false
-      let some sourceDocumentRequired := sourceDocumentRequired? | return false
-      let some sourceSpanRequired := sourceSpanRequired? | return false
-      let some sourceTextRangeRequired := sourceTextRangeRequired? | return false
-      let some sourcePdfSpanRequired := sourcePdfSpanRequired? | return false
       let some useRefProps := useRefProps? | return false
       let displayCaptionDesc? := do
         let displayCaptionJson ← entryProps.get? "displayCaption"
@@ -217,48 +211,8 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.ExternalMarkup" &&
         defs.contains "Informal.Data.ExternalMarkupLanguage" &&
         defs.contains "Informal.Data.ExternalMarkupLocation" &&
-        defs.contains "Informal.Source.Document" &&
         defs.contains "Informal.Source.DocumentKind" &&
-        !sourceDocumentProps.contains "toDocumentMetadata" &&
-        sourceDocumentRequired.contains "id" &&
-        sourceDocumentRequired.contains "title" &&
-        sourceDocumentRequired.contains "kind" &&
-        sourceDocumentRequired.contains "pdf" &&
-        sourceDocumentRequired.contains "pageRoot" &&
-        sourceDocumentRequired.contains "imageRoot" &&
-        (sourceDocumentProps.get? "pdf").any schemaHasStringNull &&
-        (sourceDocumentProps.get? "pageRoot").any schemaHasStringNull &&
-        (sourceDocumentProps.get? "imageRoot").any schemaHasStringNull &&
         defs.contains "Informal.Source.Ref" &&
-        defs.contains "Informal.Source.Span" &&
-        sourceSpanProps.contains "page" &&
-        sourceSpanProps.contains "anchor" &&
-        sourceSpanProps.contains "citation" &&
-        sourceSpanProps.contains "text" &&
-        sourceSpanProps.contains "pdf" &&
-        sourceSpanRequired.contains "page" &&
-        sourceSpanRequired.contains "anchor" &&
-        sourceSpanRequired.contains "citation" &&
-        sourceSpanRequired.contains "text" &&
-        sourceSpanRequired.contains "pdf" &&
-        (sourceSpanProps.get? "page").any schemaHasStringNull &&
-        (sourceSpanProps.get? "anchor").any schemaHasStringNull &&
-        (sourceSpanProps.get? "citation").any schemaHasStringNull &&
-        (sourceSpanProps.get? "text").any
-          (schemaHasRefNull "#/$defs/Informal.Source.TextRange") &&
-        (sourceSpanProps.get? "pdf").any
-          (schemaHasRefNull "#/$defs/Informal.Source.PdfSpan") &&
-        defs.contains "Informal.Source.TextRange" &&
-        sourceTextRangeRequired.contains "startCharacter" &&
-        sourceTextRangeRequired.contains "endCharacter" &&
-        (sourceTextRangeProps.get? "startCharacter").any schemaHasIntegerNull &&
-        (sourceTextRangeProps.get? "endCharacter").any schemaHasIntegerNull &&
-        defs.contains "Informal.Source.PdfSpan" &&
-        sourcePdfSpanRequired.contains "image" &&
-        sourcePdfSpanRequired.contains "box" &&
-        (sourcePdfSpanProps.get? "image").any schemaHasStringNull &&
-        (sourcePdfSpanProps.get? "box").any
-          (schemaHasRefNull "#/$defs/Informal.Source.PdfBox") &&
         defs.contains "Informal.Source.PdfBox" &&
         defs.contains "Informal.Data.SourceLocation" &&
         defs.contains "Informal.Data.SourceLocationResult" &&
@@ -266,5 +220,40 @@ open Informal.PreviewManifest
         defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.Document" #[
+  ("id", stringSchema),
+  ("title", stringSchema),
+  ("kind", refSchema "#/$defs/Informal.Source.DocumentKind"),
+  ("pdf", schemaHasStringNull),
+  ("pageRoot", schemaHasStringNull),
+  ("imageRoot", schemaHasStringNull)
+] #["toDocumentMetadata"]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.Span" #[
+  ("page", schemaHasStringNull),
+  ("anchor", schemaHasStringNull),
+  ("citation", schemaHasStringNull),
+  ("text", schemaHasRefNull "#/$defs/Informal.Source.TextRange"),
+  ("pdf", schemaHasRefNull "#/$defs/Informal.Source.PdfSpan")
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.TextRange" #[
+  ("path", stringSchema),
+  ("startLine", integerSchema),
+  ("endLine", integerSchema),
+  ("startCharacter", schemaHasIntegerNull),
+  ("endCharacter", schemaHasIntegerNull)
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.PdfSpan" #[
+  ("path", stringSchema),
+  ("image", schemaHasStringNull),
+  ("box", schemaHasRefNull "#/$defs/Informal.Source.PdfBox")
+]
 
 end Verso.VersoBlueprintTests.BlueprintPreviewSchema
