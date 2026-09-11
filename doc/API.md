@@ -169,17 +169,22 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
-Generator-side data flow is final semantic data, document projection, traversal,
-then public JSON. `blueprintMain` and `blueprintMainWithPreviewData` automatically
-capture `Informal.DocumentSnapshot` in the calling Lean environment. Capture
-happens after the generator's imports, so attachments to already-compiled
-chapters are visible. The snapshot refreshes block and reference metadata, plus
-environment-generated graph and summary data, before traversal. Bodies, source
-locations, folding options, numbering settings, and custom overview models remain
-owned by their document occurrences.
+Generator-side data flow is capture, traversal, then rendering and public JSON.
+`blueprintMain` and `blueprintMainWithPreviewData` automatically capture an
+`Informal.RenderModel` after the generator's imports. Compiled chapter blocks
+contain `BlockOccurrence` values: a label, statement/proof facet, source location,
+and presentation settings. Inline references contain only their label. They do
+not embed semantic node metadata or need a later document-rewriting pass.
 
-For wrappers and collections of documents, capture once after all project imports
-and pass the document together with its selected semantic environment:
+The model initializes `TraversalIndex.Nodes` with `RenderNode` records before
+Verso traversal starts. Traversal completes those same records with canonical
+occurrences and anchors. Page rendering and manifest construction resolve their
+metadata from this registry. `BlockData` is a temporary resolved view, not a
+second serialized node store. `BlockMetadata` supplies the common fields used by
+both rendering nodes and manifest entries, including ownership and PR links.
+
+For wrappers and collections, capture once after all project imports and pass the
+document together with its rendering context:
 
 ```lean
 def projectDocument : Informal.BlueprintDocument :=
@@ -188,22 +193,34 @@ def projectDocument : Informal.BlueprintDocument :=
 def generateBlueprint (document : Informal.BlueprintDocument) (args : List String)
     (impls : Verso.Genre.Manual.ExtensionImpls) : IO UInt32 :=
   Informal.PreviewManifest.blueprintMainWithPreviewData document.text args impls
-    (snapshot := document.snapshot)
+    (model := document.model)
 ```
 
-Direct rendering code can use `document.toPart` (or `snapshot.apply text`) before
-its own Verso traversal. Capture once and reuse the result for multiple output modes.
-The snapshot contains typed node and summary data; block numbering, source locations,
-and folding remain properties of occurrences. Traversal checks that repeated
-occurrences agree on their projected semantic metadata.
+Direct Verso callers use `document.model.withExtensions impls` for traversal,
+then retain its returned state for HTML, TeX, preview generation, and saved-state
+workflows. There is no `document.toPart` projection step. `RenderModel.install`
+provides the equivalent operation for callers that own traversal initialization.
+The model contains runtime data and does not require a Lean environment at render
+time. Missing node references produce a traversal diagnostic.
 
-Summaries cover the captured project environment; graphs select nodes with rendered
-targets or preview candidates. A multi-project generator should capture each project
-in its own module and collect the resulting `BlueprintDocument` values. A renderer
-for synthetic or deliberately invalid fixtures can pass `(snapshot := {})` to
-render exactly the supplied document data without reading the renderer module's
-unrelated imports. The repository's fixture catalog forwards each valid fixture's
-own snapshot; only deliberately invalid import fixtures opt out.
+Summaries cover the captured project environment; graphs select nodes with
+rendered targets or preview candidates. `Nodes.allEntries` includes every
+captured node, while `Nodes.entries` includes only traversed occurrences for
+numbering and relation indexes. A multi-project generator captures each project
+in its own module and collects the resulting `BlueprintDocument` values.
+Synthetic renderers explicitly construct a model, using `RenderNode.ofBlockData`
+when convenient; an empty model no longer means “trust metadata embedded in the
+chapter.” Every fixture in the repository catalog passes its selected model.
+
+`GraphBlockData.graphModel := none` selects the captured project graph;
+`some graph` selects a custom graph, including an explicitly empty one.
+`SummaryBlockData` similarly selects a project or supplied summary while keeping
+`showDebugDiagnostics` local to the summary occurrence.
+
+Migration from the interim snapshot API: replace `DocumentSnapshot` and
+`blueprint_snapshot%` with `RenderModel` and `blueprint_render_model%`, forward
+`model := document.model`, and initialize extensions instead of calling
+`snapshot.apply`. Rebuild downstream Lean modules and generated output.
 
 Literate code is represented by `InlineCodeBlocks`, an ordered collection of
 `InlineCodeData` records. Each record has its own `blockId`, derived from the source
@@ -211,8 +228,8 @@ module and byte position. `TraversalIndex.InlineCode.blocks` selects all blocks 
 a label; `forDecl?` finds the block owning a declaration. `BlockCodeData.inline`
 carries the collection, and `leanCodePreviewKeys` contains a key for every block.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
-The manifest schema marker is now 4: old artifacts must be regenerated for the
-collection-valued inline code data and source-based preview identities.
+The manifest schema marker is now 5: regenerate old artifacts for the shared
+metadata fields, collection-valued inline code data, and source-based preview identities.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
@@ -220,7 +237,7 @@ state and traversal domains. Before HTML emission, the standard pipeline crosses
 the explicit `PreparedRendererState` boundary. Renderer preparation applies the
 Blueprint HTML asset patches and owns the `PreparedPreviewState` that installs
 the relation indexes consumed by manifest construction. Verso's HTML emitters
-receive the projected traversal state, while Blueprint post-render
+receive the completed traversal state, while Blueprint post-render
 `BlueprintExtraStep`s receive the prepared wrapper and therefore cannot assume
 that a raw state was patched by an earlier caller. Direct preview-data callers
 cross the narrower boundary with `PreparedPreviewState.prepare`. Custom steps

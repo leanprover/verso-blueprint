@@ -148,6 +148,9 @@ private unsafe def getExtensionImpls : Lean.Elab.Term.TermElabM Verso.Genre.Manu
 private unsafe def renderPreviewBlocksHtmlUnsafe
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
   let impls ← getExtensionImpls
+  let state := Informal.Environment.informalExt.getState (← Lean.getEnv)
+  let nodes := TraversalIndex.Nodes.capture state
+  let impls := TraversalIndex.withInitializer impls (fun state => TraversalIndex.Nodes.install state nodes)
   monadLift <| renderManualBlocksHtml blocks impls
 
 /-- Render manual preview blocks to HTML using the manual renderer. -/

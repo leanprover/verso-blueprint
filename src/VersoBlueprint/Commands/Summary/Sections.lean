@@ -370,15 +370,26 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
             "bp_summary_subsection bp_summary_subsection_warn"}}
       }}
 
+/-- A summary occurrence selects either project data or an explicitly supplied model. -/
+structure SummaryBlockData where
+  summary : Option Summary := none
+  showDebugDiagnostics : Bool := summary.any (·.showDebugDiagnostics)
+deriving FromJson, ToJson
+
+def SummaryBlockData.resolve (data : SummaryBlockData) (state : TraverseState) : Summary :=
+  let summary := (data.summary <|> Informal.TraversalIndex.RenderOverviews.data? state `summary).getD {}
+  { summary with showDebugDiagnostics := data.showDebugDiagnostics }
+
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
         Informal.ExtensionDecode.decode?
-          (α := Summary)
+          (α := SummaryBlockData)
           json
           (fun err => s!"Malformed data in Block.summary.toHtml ({err})")
       | pure .empty
     let s ← HtmlT.state
+    let data := data.resolve s
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
       match Informal.PreviewSource.traversalSelection? s label with
       | some selection => keys.insert label selection.key
@@ -420,7 +431,7 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
     }}
 
 open Verso Doc Elab Genre Manual in
-block_extension Block.summary (summary : Summary) where
+block_extension Block.summary (summary : SummaryBlockData) where
   data := toJson summary
   usePackages := Informal.TeX.standardMathUsePackages
   traverse _id _data _contents := do

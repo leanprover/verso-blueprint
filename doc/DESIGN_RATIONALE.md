@@ -243,8 +243,10 @@ The same flow can be read as four contracts:
 
    `Node.applyContributions` is a pure checked reducer shared by local
    registration and import replay. It returns either the accepted node or its
-   conflict reasons. `State.data`, label provenance, local exports, and the
-   declaration-to-label index are committed together after acceptance. Import
+   conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
+   its introducing module, and its contributing modules. Provenance cannot lose
+   its corresponding node through separate map updates. The registered node,
+   local exports, and declaration-to-label index are committed together after acceptance. Import
    diagnostics retain the reasons and contributing module names. Equal scalar
    metadata is idempotent; competing bodies, attachment slots, and equally
    authoritative dependency intents are errors.
@@ -263,34 +265,40 @@ The same flow can be read as four contracts:
    Blueprint authoring syntax is unchanged.
 
 2. **Environment to traversal.**
-   `blueprintMain` and `blueprintMainWithPreviewData` capture a
-   `DocumentSnapshot` in the generator's Lean environment, after its imports.
-   The capture serializes a compact runtime projection; it does not import or
-   reconstruct a Lean environment at runtime. Before traversal, one pure pass
-   refreshes semantic fields on every included block and inline reference.
-   Environment-generated graph and summary blocks are refreshed as well;
-   custom overview models keep their supplied data.
+   `blueprintMain` and `blueprintMainWithPreviewData` capture a `RenderModel`
+   after the generator's imports. Capture serializes the runtime rendering
+   projection without carrying a Lean environment into the generator.
+   The model initializes Verso's traversal state through a standard extension
+   initializer, before visiting any chapter, title, or nested block.
 
-   This boundary matters for separately compiled chapters: their original
-   block metadata cannot see later proof or attribute contributions. Refreshing
-   from the final assembled view prevents graphs and previews from disagreeing
-   about dependencies, code associations, or triage metadata. The pass preserves
-   each occurrence's body, source location, folding options, and numbering
-   configuration, and traverses nested block/inline containers.
+   Compiled chapters contain labels and `BlockOccurrence` presentation data.
+   Their bodies, source locations, folding, and numbering policies remain local
+   to each occurrence. Node semantics are resolved from the initialized registry,
+   so later proof or attribute contributions require no AST rewriting and cannot
+   leave stale semantic copies inside an earlier chapter or inline reference.
 
-   Verso traversal then writes render-time indexes into `TraverseState` through
-   `TraversalIndex`: rendered anchors, numbering caches, code-panel destinations,
-   group and reverse-use panels, citation use sites, statement/proof preview
-   entries, Lean code preview entries, public graph data, and external declaration
-   row anchors. These site-local facts remain outside `Environment.State`.
-   `BlockMetadata` is shared by semantic snapshots and occurrence records, so
-   projection replaces one metadata record rather than maintaining several field
-   lists. Traversal merges numbering and statement/proof occurrence facts; it
-   checks semantic agreement instead of selecting a second metadata policy.
-   `BlueprintDocument` pairs a document with its captured snapshot for wrappers
-   and multi-document collections; [the API guide](API.md) describes the boundary.
-   Summaries retain a typed payload and preserve occurrence-specific diagnostic
-   visibility when refreshed.
+   `RenderNode` is shared by capture and the canonical `TraversalIndex.Nodes`
+   store. Traversal enriches it with its canonical occurrence and anchor ids.
+   The temporary `BlockData` view combines the shared semantics with a requested
+   occurrence; it is not separately persisted. Numbering and statement/proof
+   occurrence selection remain traversal responsibilities. The model's captured
+   graph and summary live in `RenderOverviews`, and custom overview blocks can
+   select their own explicitly supplied data.
+
+   Preview bodies, inline code panels, citations, and runtime assets retain their
+   dedicated traversal stores. Together with the node registry, these form the
+   completed state passed to page rendering and manifest construction through
+   `PreparedRendererState`. `BlockMetadata` supplies the portable fields shared
+   with manifest entries, avoiding parallel field lists and preserving owner and
+   PR-link metadata. JSON schema generation flattens inherited fields using the
+   same field enumeration as Lean's derived JSON instances.
+
+   `BlueprintDocument` pairs a document with its rendering model for wrappers and
+   multi-document collections. Captured summaries cover the selected project;
+   graph and relation enumeration distinguish rendered occurrences from other
+   captured nodes. An empty model is an empty rendering context, not a bypass
+   for stale chapter metadata. See [the API guide](API.md) for direct traversal
+   and synthetic-renderer usage.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.
@@ -332,7 +340,7 @@ that owner.
 
 | Fact family | Owner | Stored as | Main consumers |
 | --- | --- | --- | --- |
-| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` and related environment maps | traversal, graph, summary, manifest construction |
+| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` registered nodes; captured `RenderNode` records for rendering | traversal, graph, summary, manifest construction |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
@@ -780,9 +788,11 @@ The generation boundary is:
 
 ```text
 Lean/Verso source modules
-  -> Manual traversal state and traversal domains
+  -> RenderModel capture + compiled occurrence references
+  -> initialized node registry
+  -> Manual traversal completes occurrence facts and preview stores
   -> PreparedRendererState
-       |-> projected TraverseState -> Manual HTML emission
+       |-> completed TraverseState -> Manual HTML emission
        `-> BlueprintExtraStep post-render steps
              `-> PreparedPreviewState
                    -> PreviewManifest.buildPreviewDataFiles
@@ -1224,7 +1234,8 @@ the operational detail that is easier to read in prose.
 
 | Index | Role | Functional map | Value description |
 | --- | --- | --- | --- |
-| `Nodes` | semantic domain | informal label -> `StoredBlockData` plus node anchor ids | Lightweight semantic node metadata: kind, parent/group, numbering caches, declared dependencies, ownership, tags, effort, priority, and PR URL. It deliberately excludes code/render payloads. |
+| `Nodes` | semantic domain | informal label -> `RenderNode` plus node anchor ids | Captured node semantics and external declarations, enriched by traversal with the canonical occurrence and its numbering/source settings. |
+| `RenderOverviews` | internal index | overview name -> captured graph or summary | Project overview data selected by the generator; custom blocks may supply their own models. |
 | `InlineCode` | internal index | source code-block identity -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof/code folding settings, and the code panel destination. |
 | `RustInlineCode` | internal index | informal label -> `Rust.InlineCodeData` plus code-panel anchor ids | Inline Rust code data for a node: raw source text and code-panel folding settings. |
 | `ExternalMarkup` | semantic domain | informal label -> `ExternalMarkupSet` plus markup block anchor ids | Raw imported TeX/Markdown attachments keyed by language and slot, with optional project-relative LSP ranges for source comparison tooling. |
@@ -1243,7 +1254,8 @@ reasons:
 
 | Index | Main writers | Main readers | Normalization rule |
 | --- | --- | --- | --- |
-| `Nodes` | Informal block traversal | `TraversalIndex.Nodes.data?`, `TraversalIndex.Nodes.entries`, node rendering, graph finalization, relation-panel construction, and preview-manifest construction | Keep lightweight semantic node facts and node anchors in one traversal store. Bulk readers enumerate through `Nodes.entries` and keep any display-order or normalization policy in their own layer. |
+| `Nodes` | Rendering-model initialization and informal block traversal | `TraversalIndex.Nodes.data?`, `TraversalIndex.Nodes.entries`, node rendering, graph finalization, relation-panel construction, and preview-manifest construction | Capture node semantics once, then add canonical occurrence data and anchors to the same record. Bulk readers use `Nodes.allEntries` for the captured project or `Nodes.entries` for document occurrences. |
+| `RenderOverviews` | Rendering-model initialization | Graph and summary blocks | Capture project graph and summary data once; occurrences keep their own display options and may explicitly select custom data. |
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store every distinct inline Lean code block under its source identity. The label index retains block identities in document order, and statement headers, summaries, and manifests resolve the complete collection. Inline code takes precedence over external declaration hints for the heading source when both are available. |
 | `RustInlineCode` | `Block.informalRustCode.traverse` | `TraversalIndex.RustInlineCode.object?`, `TraversalIndex.RustInlineCode.data?`, and Rust code-panel rendering | Store Rust code-panel payloads outside `Nodes` so the semantic node index stays language-neutral while renderers still get a typed code-panel source. |
 | `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, `Informal.ExternalMarkupView`, preview-manifest construction, `PreviewManifest/ExternalMarkupRender.lean`, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies selected by `Informal.ExternalMarkupRender.Config`. |
@@ -1255,10 +1267,12 @@ reasons:
 | `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
 | `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelGroupMembersCache.data?`, group relation-panel rendering, and same-document graft construction | Store ordered statement labels once per parent label. Resolve canonical member data through `Nodes` instead of copying full statement records into the group cache. |
 
-In particular, the main Blueprint node index is now intentionally slimmer than
-the full `BlockData` payload used by block rendering. Code-specific
-render/runtime data such as `codeData` belongs to dedicated traversal indexes
-and block-local rendering inputs, not to the semantic node index itself.
+The node registry retains external declaration rendering data captured during
+elaboration. Literate code panels and preview bodies have their own stores;
+renderers assemble the temporary `BlockData.codeData` view from these sources.
+Public `xref.json` exports only anchored nodes and projects their resolved
+metadata without code rendering payloads. Saved traversal state retains the
+complete registry so rendering can resume without a Lean environment.
 
 Most traversal payloads use compact internal JSON to keep repeated preview and
 cross-reference data small. That JSON is not a public interchange schema:

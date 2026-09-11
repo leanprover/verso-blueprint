@@ -21,7 +21,7 @@ namespace Verso.VersoBlueprintTests.SerializedExtension
 /-- info: true -/
 #guard_msgs in
 #eval
-  let summary : Informal.Commands.Summary := { totalEntries := 3, theorems := 2 }
+  let summary : Informal.Commands.SummaryBlockData := { summary := some { totalEntries := 3, theorems := 2 } }
   let direct := Informal.Commands.Block.summary summary
   let serialized := Informal.Commands.blockFromJsonString!
     `Informal.Commands.Block.summary (Lean.toJson summary).compress

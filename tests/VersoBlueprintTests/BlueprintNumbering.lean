@@ -81,10 +81,9 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     partPrefix := some "1.3"
   }
   let state :=
-    Informal.TraversalIndex.Nodes.saveData
+    Informal.TraversalIndex.Nodes.saveNode
       (TraverseState.initialize default)
-      stored.label
-      (toJson stored.toStoredData)
+      (RenderNode.ofBlockData stored)
   let renderData := { stored with count := 120 }
   renderData.displayNumber state == "1.3.9" &&
   renderData.displayTitle state == "Lemma 1.3.9"
@@ -102,7 +101,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
 /-- info: true -/
 #guard_msgs in
 #eval
-  let data : StoredBlockData := {
+  let data : BlockData := {
     kind := .statement .theorem
     label := `bp.numbering.documentCounter
     count := 42
@@ -126,10 +125,9 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     globalCount := some 11
   }
   let state :=
-    Informal.TraversalIndex.Nodes.saveData
+    Informal.TraversalIndex.Nodes.saveNode
       (TraverseState.initialize default)
-      stored.label
-      (toJson stored.toStoredData)
+      (RenderNode.ofBlockData stored)
   let proofRef : BlockData := {
     kind := .proof
     label := stored.label

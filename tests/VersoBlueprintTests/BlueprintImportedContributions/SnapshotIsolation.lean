@@ -23,28 +23,46 @@ def isolatedBlueprint : BlueprintDocument := .capture isolatedDocument.toPart
 @[blueprint "unrelated_theorem"] theorem unrelatedTheorem : True := trivial
 
 #eval show IO Unit from do
-  let current : DocumentSnapshot := blueprint_snapshot%
-  unless isolatedBlueprint.snapshot.summary.totalEntries == 1 && current.summary.totalEntries == 2 do
+  let current : RenderModel := blueprint_render_model%
+  unless isolatedBlueprint.model.summary.totalEntries == 1 && current.summary.totalEntries == 2 do
     throw <| IO.userError "A captured project followed the caller's unrelated environment"
   let html ← renderManualDocHtmlString extension_impls% isolatedDocument
-    (snapshot := isolatedBlueprint.snapshot)
+    (model := isolatedBlueprint.model)
   unless !hasSubstr html "unrelatedTheorem" do
     throw <| IO.userError "An isolated summary acquired an unrelated declaration"
 
-  let summary := Commands.blockFromJsonString! ``Commands.Block.summary
-    (toJson ({ showDebugDiagnostics := true } : Commands.Summary)).compress true
-  let .other refreshed _ := current.block (.other summary #[])
-    | throw <| IO.userError "Projection changed the summary container"
-  let .ok (data : Commands.Summary) := fromJson? refreshed.data
-    | throw <| IO.userError "Projection lost the typed summary payload"
+  let state := current.install (Verso.Genre.Manual.TraverseState.initialize {})
+  let request : Commands.SummaryBlockData := { showDebugDiagnostics := true }
+  let data := request.resolve state
   unless data.showDebugDiagnostics && data.totalEntries == 2 do
-    throw <| IO.userError "Projection changed occurrence-specific diagnostic visibility"
+    throw <| IO.userError "Shared summary resolution lost occurrence-specific diagnostic visibility"
+  let custom : Commands.SummaryBlockData := { summary := some { totalEntries := 17 } }
+  unless (custom.resolve state).totalEntries == 17 do
+    throw <| IO.userError "The project summary replaced an explicitly supplied summary"
 
   let errors ← IO.mkRef (#[] : Array String)
-  let a : BlockData := { label := `raw_conflict, count := 1, effort := some "small" }
-  let b := { a with effort := some "large" }
+  let missing : BlockOccurrence := { label := `unregistered, count := 1 }
   let _ ← Informal.traverseManualBlocks
-    #[.other (Block.informal a) #[], .other (Block.informal b) #[]]
-    extension_impls% (fun message => errors.modify (·.push message))
-  unless (← errors.get).any (·.contains "Inconsistent Blueprint metadata") do
-    throw <| IO.userError "Traversal silently selected conflicting unprojected semantics"
+    #[.other (Block.informal missing) #[]]
+    (current.withExtensions extension_impls%) (fun message => errors.modify (·.push message))
+  unless (← errors.get).any (·.contains "Missing rendering node") do
+    throw <| IO.userError "Traversal silently accepted a reference outside its rendering context"
+
+-- Explicit models can be built outside elaboration and still acquire traversal anchors.
+#eval show IO Unit from do
+  let node := RenderNode.ofBlockData {
+    label := `synthetic
+    kind := .statement .theorem
+    count := 1
+    tags := #["synthetic"]
+  }
+  let model : RenderModel := { nodes := ({} : Lean.NameMap RenderNode).insert node.label node }
+  let (blocks, state) ← Informal.traverseManualBlocks
+    #[.other (Block.informal node.toBlockData.toOccurrence) #[.para #[.text "Synthetic theorem"]]]
+    (model.withExtensions extension_impls%)
+  unless (TraversalIndex.Nodes.href? state node.label).isSome &&
+      (TraversalIndex.Nodes.storedData? state node.label).any (·.globalCount.isSome) do
+    throw <| IO.userError "An explicitly supplied occurrence prevented anchor and numbering allocation"
+  let html ← Informal.renderManualBlocksHtmlWithState blocks extension_impls% state
+  unless hasSubstr html.asString "Synthetic theorem" && hasSubstr html.asString "synthetic" do
+    throw <| IO.userError "A synthetic rendering model lost its body or metadata"

@@ -40,7 +40,8 @@ def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool :
   .literate { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
 
 def mkState (entries : List (Name × Node)) : Environment.State :=
-  let data : Data := entries.foldl (init := Data.empty) fun acc (label, node) => acc.insert label node
+  let data := entries.foldl (init := ({} : Lean.NameMap Environment.RegisteredNode)) fun acc (label, node) =>
+    acc.insert label { toNode := node, origin := `BlueprintGraph.Shared }
   { data }
 
 def hasNodeWith {Ref : Type} (g : Graph Ref) (label : Name) (p : GraphNode Ref → Bool) : Bool :=

@@ -30,7 +30,7 @@ def main (args : List String) : IO UInt32 := do
         doc.text
         rest
         manualImpls
-        (snapshot := doc.snapshot)
+        (model := doc.model)
     | none =>
       IO.eprintln s!"unknown curated test blueprint `{slug}`"
       usage

@@ -79,7 +79,7 @@ def nestedPopState : Environment.State :=
   match nestedPopState.popNested? with
   | none => false
   | some st =>
-    let labels : Array String := st.data.toArray.map (fun (entry : Name × Node) => toString entry.1)
+    let labels : Array String := st.data.toArray.map (fun (entry : Lean.Name × Environment.RegisteredNode) => toString entry.1)
     st.stack.length == 1 &&
     (match st.stack.head? with | some frame => toString frame.label == "outer" | none => false) &&
     st.data.size == nestedPopState.data.size &&

@@ -49,6 +49,14 @@ structure ImportedConflict where
   modules : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq
 
+/-- A checked node and the module provenance of its accepted contributions. -/
+structure RegisteredNode extends Node where
+  origin : Name
+  modules : Array Name := #[]
+deriving Inhabited, Repr
+
+instance : Coe RegisteredNode Node := ⟨RegisteredNode.toNode⟩
+
 /--
 Persisted semantic state collected during elaboration.
 
@@ -58,11 +66,7 @@ facts out of this environment extension unless they become stable semantic
 data.
 -/
 structure State where
-  data : Data := Data.empty
-  /-- The module that first introduced each label, inherited by later extensions. -/
-  nodeOrigins : NameMap Name := {}
-  /-- Modules supplying the accepted fields, retained for conflict diagnostics. -/
-  nodeModules : NameMap (Array Name) := {}
+  data : NameMap RegisteredNode := {}
   /-- Only registrations made in this module, in registration order per label. -/
   localContributions : NameMap (Array NodeContribution) := {}
   groups : NameMap String := {}
@@ -136,15 +140,17 @@ private def addNodeLeanDeclLabels
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
     (contributions : Array NodeContribution) (isLocal : Bool) : Except (Array String) State := do
-  if let some previousOrigin := state.nodeOrigins.get? label then
-    if previousOrigin != origin then
-      throw #[s!"Label {label} was independently introduced in '{previousOrigin}' and '{origin}'"]
-  let node ← (state.data.getD label {}).applyContributions label contributions
+  let previous := state.data.get? label
+  if let some previous := previous then
+    if previous.origin != origin then
+      throw #[s!"Label {label} was independently introduced in '{previous.origin}' and '{origin}'"]
+  let node ← (previous.map RegisteredNode.toNode |>.getD {}).applyContributions label contributions
+  let registered : RegisteredNode := {
+    toNode := node
+    origin
+    modules := pushUnique (previous.map (·.modules) |>.getD #[]) contributor }
   return { state with
-    data := state.data.insert label node
-    nodeOrigins := state.nodeOrigins.insert label origin
-    nodeModules := state.nodeModules.insert label
-      (pushUnique (state.nodeModules.getD label #[]) contributor)
+    data := state.data.insert label registered
     leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
     localContributions := if isLocal then
       state.localContributions.insert label
@@ -159,7 +165,7 @@ private def State.addEntry (state : State) (entry : Entry) (isLocal : Bool) : St
     | .error reasons =>
       { state with
         importedConflicts := pushImportedConflict state.importedConflicts .node label
-          reasons (pushUnique (state.nodeModules.getD label #[]) contributor) }
+          reasons (pushUnique ((state.data.get? label).map (·.modules) |>.getD #[]) contributor) }
   | .group label header =>
     if state.groups.contains label then
       { state with importedConflicts := pushImportedConflict state.importedConflicts .group label }
@@ -192,8 +198,8 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           { contribution with
             statementBody := contribution.statementBody.map compact
             proofBody := contribution.proofBody.map compact }
-        match state.nodeOrigins.get? name with
-        | some origin => Entry.node name origin env.mainModule contributions
+        match state.data.get? name with
+        | some node => Entry.node name node.origin env.mainModule contributions
         | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
@@ -230,7 +236,8 @@ def contribute (label : Label) (contribution : NodeContribution) : m Unit := do
   reportImportedConflicts
   let mainModule ← getMainModule
   modifyM fun state => do
-    match state.addNode label (state.nodeOrigins.getD label mainModule) mainModule #[contribution] true with
+    let origin := (state.data.get? label).map (·.origin) |>.getD mainModule
+    match state.addNode label origin mainModule #[contribution] true with
     | .ok state => return state
     | .error reasons =>
       for reason in reasons do logError reason
@@ -309,7 +316,9 @@ def pop (ref : Syntax) : m Nat := do
       }
       let contribution : NodeContribution := {
         kind := match cur.kind with | .statement kind => some kind | .proof => none
-        count := match cur.kind with | .statement _ => state.data.nextCount | .proof => 0
+        count := match cur.kind with
+          | .statement _ => state.data.foldl (fun n _ node => max n node.count) 0 + 1
+          | .proof => 0
         statementBody := match cur.kind with | .statement _ => some payload | .proof => none
         proofBody := match cur.kind with | .statement _ => none | .proof => some payload
         statementUses := match cur.kind with | .statement _ => cur.deps | .proof => #[]
@@ -370,7 +379,7 @@ def registerExternalMarkup (label : Label) (markup : ExternalMarkup) : m Unit :=
   contribute label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
 
 def getNode? (label : Label) : m (Option Node) := do
-  return (informalExt.getState (← getEnv)).data.get? label
+  return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)
 
 def labelsForLeanDecl (decl : Name) : m (Array Label) := do
   return (informalExt.getState (← getEnv)).leanNameLabels.getD decl.eraseMacroScopes #[]

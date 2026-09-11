@@ -27,7 +27,8 @@ def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedP
   let summary ← buildSummary
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Blueprint summary for {summary.totalEntries} entries"
-  let block ← serializedBlockTerm `Informal.Commands.Block.summary summary (fromEnvironment := true)
+  let block ← serializedBlockTerm `Informal.Commands.Block.summary
+    ({ showDebugDiagnostics := summary.showDebugDiagnostics } : SummaryBlockData)
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 

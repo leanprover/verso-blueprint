@@ -153,8 +153,8 @@ open Verso.Genre
 
 Imports supply semantic visibility; `include` renders chapter content. Import
 later Lean attachment modules before defining the generator. The standard
-Blueprint generator captures the final semantic data and refreshes the included
-chapters before rendering, so later dependencies and metadata appear in headers,
+Blueprint generator captures the final semantic data and resolves chapter labels
+against it during rendering, so later dependencies and metadata appear in headers,
 previews, and overview pages, including documents without a graph.
 
 Use `uses` when the current node depends on the target and should add an edge to
