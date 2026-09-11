@@ -23,8 +23,8 @@ abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 Dedicated traversal domain for Lean code previews emitted as preview data.
 
 Unlike `PreviewCache`, this domain is only for Lean-code preview bodies.
-External entries target Lean declarations; inline entries target the owning
-Blueprint code label.
+External entries target Lean declarations; inline entries target the individual
+source code-block identity.
 -/
 def domainName : Name := Informal.LeanCodePreviewKey.domainName
 /--
@@ -40,7 +40,7 @@ def lookupKey (decl : Name) : String :=
   Informal.LeanCodePreviewKey.lookupKey decl
 
 inductive Source where
-  | inlineBlocks (blocks : Array ManualBlock) (sourceLocation : Informal.Data.SourceLocationResult)
+  | inlineBlocks (label : Name) (blocks : Array ManualBlock) (sourceLocation : Informal.Data.SourceLocationResult)
   | externalDecl (decl : Informal.Data.ExternalRef)
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -48,7 +48,7 @@ deriving Inhabited, Repr, ToJson, FromJson
 Canonical Lean-code preview payload.
 
 External declaration previews use the declaration name as the target. Inline
-code previews use the inline Blueprint code label as the target, so multiple
+code previews use the source code-block identity as the target, so multiple
 declarations from the same inline block share one preview entry.
 -/
 structure Entry where
@@ -57,10 +57,10 @@ structure Entry where
 deriving Inhabited, Repr, ToJson, FromJson
 
 def Entry.ofInlineBlocks
-    (target : Name)
+    (target label : Name)
     (blocks : Array ManualBlock)
     (sourceLocation : Informal.Data.SourceLocationResult) : Entry :=
-  { target := target.eraseMacroScopes, source := .inlineBlocks blocks sourceLocation }
+  { target := target.eraseMacroScopes, source := .inlineBlocks label blocks sourceLocation }
 
 def Entry.ofExternalDecl (target : Name) (decl : Informal.Data.ExternalRef) : Entry :=
   { target := target.eraseMacroScopes, source := .externalDecl decl }
@@ -76,7 +76,7 @@ def renderWithState
     (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
     IO Informal.RenderedManualHtml := do
   match entry.source with
-  | .inlineBlocks blocks _sourceLocation =>
+  | .inlineBlocks _label blocks _sourceLocation =>
     Informal.renderManualBlocksHtmlWithStateAndHovers blocks impls state
       (logError := logError) (hoverState := hoverState)
   | .externalDecl decl =>

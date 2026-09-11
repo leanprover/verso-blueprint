@@ -103,6 +103,9 @@ Statement depending on {uses "def:showcase.ghost"}[].
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShowcaseDoc.toPart
+
 /-- info: true -/
 #guard_msgs in
 #eval

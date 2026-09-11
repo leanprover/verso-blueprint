@@ -74,6 +74,9 @@ Depends on {uses "def:preview.base"}[].
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def previewWiringDocBlueprint : Informal.BlueprintDocument := .capture previewWiringDoc.toPart
+
 #docs (Genre.Manual) usedByPreviewDoc "Blueprint Used-By Preview Wiring" :=
 :::::::
 :::definition "def:used.target"
@@ -96,6 +99,9 @@ Separate theorem with a proof-only dependency.
 Proof depends on {uses "def:used.target" (intent := "auxiliary")}[].
 :::
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def usedByPreviewDocBlueprint : Informal.BlueprintDocument := .capture usedByPreviewDoc.toPart
 
 #docs (Genre.Manual) usesPreviewDoc "Blueprint Uses Preview Wiring" :=
 :::::::
@@ -135,6 +141,9 @@ Statement depends on {uses "def:used.single"}[].
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def usedBySinglePreviewDocBlueprint : Informal.BlueprintDocument := .capture usedBySinglePreviewDoc.toPart
+
 #docs (Genre.Manual) leanStatusChipDoc "Blueprint Lean Status Chip Wiring" :=
 :::::::
 :::definition "def:status.proved"
@@ -167,6 +176,9 @@ Statement without Lean code.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def leanStatusChipDocBlueprint : Informal.BlueprintDocument := .capture leanStatusChipDoc.toPart
+
 #docs (Genre.Manual) leanCodeLinkPreviewDoc "Blueprint Lean Code Link Preview Wiring" :=
 :::::::
 :::definition "def:code.preview" (lean := "Nat.add")
@@ -175,6 +187,9 @@ Statement with an associated Lean declaration link in the summary.
 
 {blueprint_summary}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def leanCodeLinkPreviewDocBlueprint : Informal.BlueprintDocument := .capture leanCodeLinkPreviewDoc.toPart
 
 namespace ShortExternalPreview
 
@@ -242,6 +257,9 @@ Statement depends on {uses "def:group.target"}[].
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def groupPreviewDocBlueprint : Informal.BlueprintDocument := .capture groupPreviewDoc.toPart
+
 #docs (Genre.Manual) missingGroupPreviewDoc "Blueprint Missing Group Preview Wiring" :=
 :::::::
 :::definition "def:group.missing.target" (parent := "grp:missing")
@@ -253,6 +271,9 @@ Peer statement sharing the undeclared parent.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def missingGroupPreviewDocBlueprint : Informal.BlueprintDocument := .capture missingGroupPreviewDoc.toPart
+
 #docs (Genre.Manual) singleDeclaredGroupDoc "Blueprint Single Declared Group Wiring" :=
 :::::::
 :::group "grp:solo"
@@ -263,5 +284,8 @@ Solo group title.
 Only entry in its declared group.
 :::
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def singleDeclaredGroupDocBlueprint : Informal.BlueprintDocument := .capture singleDeclaredGroupDoc.toPart
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared

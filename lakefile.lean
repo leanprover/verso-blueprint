@@ -53,6 +53,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingRust,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingIntents,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingIntentsReverse,
+    `VersoBlueprintTests.BlueprintImportedContributions.AuthorityForward,
+    `VersoBlueprintTests.BlueprintImportedContributions.AuthorityReverse,
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,

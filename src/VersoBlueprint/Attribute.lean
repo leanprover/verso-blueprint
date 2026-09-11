@@ -48,9 +48,9 @@ private structure BlueprintAttrConfig where
   proofUses : AutoDepEntries := {}
 deriving Inhabited, Repr
 
-private def classifyDeclKind (decl : Name) (info : ConstantInfo) : CoreM Data.NodeKind :=
+private def validateDeclKind (decl : Name) (info : ConstantInfo) : CoreM Unit :=
   match Informal.Data.ConstantInfo.blueprintNodeKind? info with
-  | some kind => pure kind
+  | some _ => pure ()
   | none =>
     throwError "invalid '[blueprint]' target '{decl}': expected a definition-like declaration or theorem, got {Informal.Data.ConstantInfo.blueprintKindText info}"
 
@@ -286,7 +286,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
     | throwError "unknown declaration '{decl}'"
-  let declKind ← classifyDeclKind decl info
+  validateDeclKind decl info
   let statement? ← statementFromDocstring? decl ref
   let deps ← resolveAutoDeps decl label info cfg
   let opts ← getOptions
@@ -294,9 +294,8 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
   let current? ← Environment.getNode? label
-  let needsBody := !(current?.bind (·.statement)).any (·.hasBody)
+  let needsBody := !current?.any (·.hasStatementBody)
   Environment.contribute label {
-    inferredKind := some declKind
     statementBody := if needsBody then statement? else none
     statementUses := deps.statement
     proofUses := deps.proof

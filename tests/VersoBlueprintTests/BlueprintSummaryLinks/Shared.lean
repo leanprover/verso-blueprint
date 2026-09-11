@@ -49,6 +49,9 @@ External declaration wiring test.
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def externalSummaryLinksDocBlueprint : Informal.BlueprintDocument := .capture externalSummaryLinksDoc.toPart
+
 /--
 warning: Label «def:blocker.missing»: external Lean name 'Nat.nope' could not be resolved in current namespace/open declarations; keeping parsed name
 -/
@@ -70,6 +73,9 @@ theorem summaryBlockerSorry : True := by
 
 {blueprint_summary}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def summaryBlockersDocBlueprint : Informal.BlueprintDocument := .capture summaryBlockersDoc.toPart
 
 #docs (Genre.Manual) summaryTriageDoc "Summary Triage" :=
 :::::::
@@ -161,5 +167,8 @@ Proof uses {uses "def:triage.01"}[] and {uses "def:triage.02"}[].
 
 {blueprint_summary}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def summaryTriageDocBlueprint : Informal.BlueprintDocument := .capture summaryTriageDoc.toPart
 
 end Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared

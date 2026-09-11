@@ -61,6 +61,9 @@ $$`\sum_{i=0}^{n} i = n`.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def manualSideBySideGraftDocBlueprint : Informal.BlueprintDocument := .capture manualSideBySideGraftDoc.toPart
+
 private def graftNode (label : String) : Informal.Graft.BlueprintNode :=
   ({ label := label } : Informal.Graft.BlueprintNodeConfig).toNode
 

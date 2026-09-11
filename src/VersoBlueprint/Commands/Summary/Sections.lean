@@ -391,12 +391,8 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       declHref? := fun label decl =>
         Resolve.resolveInformalDeclHref? s label decl
       declPreviewLookupKey? := fun label decl => do
-        let codeData ← Informal.TraversalIndex.InlineCode.data? s label
-        if codeData.declarations.any (fun candidate =>
-            candidate.name.eraseMacroScopes == decl.eraseMacroScopes) then
-          some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label)
-        else
-          none
+        let block ← Informal.TraversalIndex.InlineCode.forDecl? s label decl
+        some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
       previewLookupKey? := fun label => previewLookupKeys.get? label
     }
     let previewPanel := Informal.HoverRender.summaryPreviewPanel

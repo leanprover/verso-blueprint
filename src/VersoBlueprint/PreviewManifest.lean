@@ -687,7 +687,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 3
+def manifestInternalSchemaVersion : Nat := 4
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1996,13 +1996,9 @@ private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 
 private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array String :=
-  match Informal.TraversalIndex.InlineCode.data? state label with
-  | none => #[]
-  | some codeData =>
-    if codeData.declarations.isEmpty then
-      #[]
-    else
-      #[Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label]
+  (Informal.TraversalIndex.InlineCode.blocks state label).filterMap fun block =>
+    if block.declarations.isEmpty then none else
+      some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
 
 private def blockLeanCodePreviewKeys
     (state : TraverseState)
@@ -2025,14 +2021,14 @@ private def blockCodeData?
     (label : Name)
     (entry : PreviewCache.Entry)
     (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
-  let inline? := Informal.TraversalIndex.InlineCode.data? state label
+  let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks state label
   let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
   let external? :=
     if externalDecls.isEmpty then
       blockData?.bind (·.codeData)
     else
       some (Informal.BlockCodeData.external externalDecls)
-  Informal.BlockCodeData.ofHintAndInline external? inline?
+  Informal.BlockCodeData.ofHintAndInline external? inlineBlocks
 
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
@@ -2042,7 +2038,7 @@ private def leanCodePreviewSourceRefs (state : TraverseState) :
     match decoded with
     | .ok stored =>
         if let some sourceRef := sourceRefsByLabel.get? stored.entry.label.toString then
-          for key in stored.entry.leanCodePreviewKeys do
+          for key in blockLeanCodePreviewKeys state stored.entry.label stored.entry do
             let current := (sources.get? key).getD #[]
             sources := sources.insert key (pushUnique current sourceRef)
     | .error _ =>
@@ -2312,7 +2308,7 @@ private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entr
     Informal.Data.SourceLocationResult :=
   match entry.source with
   | .externalDecl decl => externalDeclSourceLocation decl
-  | .inlineBlocks _ sourceLocation => sourceLocation
+  | .inlineBlocks _ _ sourceLocation => sourceLocation
 
 private def leanCodePreviewManifestEntry
     (state : TraverseState)
@@ -2328,7 +2324,7 @@ private def leanCodePreviewManifestEntry
   facet := .statement
   title :=
     match entry.source with
-    | .inlineBlocks .. => s!"Lean code for {entry.target}"
+    | .inlineBlocks label .. => s!"Lean code for {label}"
     | .externalDecl _ => Informal.LeanCodePreview.title entry.target
   sources := (sourceRefs.get? key).getD #[]
   href := Informal.TraversalIndex.LeanCodePreviews.href? state key

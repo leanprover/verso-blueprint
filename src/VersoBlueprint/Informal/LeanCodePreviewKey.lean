@@ -30,10 +30,10 @@ def targetName (decl : Name) : Name :=
 def lookupKey (decl : Name) : String :=
   (targetName decl).toString
 
-def inlineTargetName (label : Name) : Name :=
-  appendName inlineNamespaceRoot label.eraseMacroScopes
+def inlineTargetName (blockId : Name) : Name :=
+  appendName inlineNamespaceRoot blockId.eraseMacroScopes
 
-def inlineLookupKey (label : Name) : String :=
-  (inlineTargetName label).toString
+def inlineLookupKey (blockId : Name) : String :=
+  (inlineTargetName blockId).toString
 
 end Informal.LeanCodePreviewKey

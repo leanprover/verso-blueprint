@@ -228,29 +228,27 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
       present := decl.present
     }
 
-private def summaryPreviewItems (label : Data.Label) (cdata : ComputedData)
+private def summaryPreviewItems (cdata : ComputedData)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   match cdata.source with
   | some (.inline codeData) =>
-    inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf
-      (some <| Informal.LeanCodePreviewKey.inlineLookupKey label)
+    codeData.flatMap fun block =>
+      inlineDeclSummaryItems block.definedDefs block.definedTheorems hrefOf
+        (some <| Informal.LeanCodePreviewKey.inlineLookupKey block.blockId)
   | some (.external decls) =>
     externalDeclSummaryItems decls hrefOf
   | none =>
     #[]
 
-private def summaryPreviewEmptyText (_cdata : ComputedData) : String :=
-  "No associated Lean code or declarations."
-
-private def renderSummaryPreview (label : Data.Label) (cdata : ComputedData)
+private def renderSummaryPreview (cdata : ComputedData)
     (hrefOf : Name → Option String) : Output.Html :=
-  let items := summaryPreviewItems label cdata hrefOf
+  let items := summaryPreviewItems cdata hrefOf
   let sectionTitle :=
     if items.isEmpty then "Lean status" else "Associated Lean declarations"
   let sections := #[{
     title := sectionTitle
     items
-    emptyText := summaryPreviewEmptyText cdata
+    emptyText := "No associated Lean code or declarations."
   }]
   let failures :=
     match cdata.source with
@@ -397,7 +395,7 @@ private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockSta
     else
       completionStatusMark health.statementAxisCount health.proofAxisCount
 
-private def inlineStatusMark (codeData : InlineCodeData) : BlockStatusMark :=
+private def inlineStatusMark (codeData : InlineCodeBlocks) : BlockStatusMark :=
   let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.inline codeData))
   if health.hasAxiomLike then
     {
@@ -484,11 +482,11 @@ private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
     </span>
   }}
 
-private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCodeData)
+private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCodeBlocks)
     (hrefOf : Name → Option String) : PanelIndicatorParts :=
   open Verso.Output.Html in
-  let orderedDecls := sortDeclsByCommand (codeData.definedDefs ++ codeData.definedTheorems)
-  let previewBody := renderSummaryPreview label { source := some (.inline codeData) } hrefOf
+  let orderedDecls := codeData.flatMap fun block => sortDeclsByCommand block.declarations
+  let previewBody := renderSummaryPreview { source := some (.inline codeData) } hrefOf
   let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
   let indicator : Output.Html :=
     if orderedDecls.isEmpty then
@@ -599,7 +597,7 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
   open Verso.Output.Html in
   let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
   let renderHealth := externalRenderHealth decls
-  let previewBody := renderSummaryPreview label { source := some (.external decls) } hrefOf
+  let previewBody := renderSummaryPreview { source := some (.external decls) } hrefOf
   let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
     s!"Lean code for {label}: " ++ appendRenderHealthSummary
@@ -653,7 +651,7 @@ def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Opt
   | .proof => {}
   | .statement statementKind =>
     let externalDecls := cdata.source.map BlockCodeData.externalDecls |>.getD #[]
-    let codeEntryPreviewBody := renderSummaryPreview data.label cdata hrefOf
+    let codeEntryPreviewBody := renderSummaryPreview cdata hrefOf
     let previewTitle := s!"{data.label}"
     if !externalDecls.isEmpty then
       let health := Informal.Graph.codeHealthOfBlockSource statementKind {} cdata.source

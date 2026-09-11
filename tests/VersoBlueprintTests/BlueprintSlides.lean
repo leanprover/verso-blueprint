@@ -295,8 +295,10 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor usedByPreviewDoc
     let cache := files.htmlCache
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
-      (Lean.Name.mkSimple "def:used.target")
+    let some owner := files.manifest.findEntry?
+        (Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target"))
+      | return false
+    let some codeKey := owner.leanCodePreviewKeys[0]? | return false
     let some codeHtml := cache.findHtml? codeKey
       | return false
     pure <|
@@ -314,8 +316,10 @@ private def writeSlidesPreviewDataFiles
     let files ← buildPreviewDataFor usedByPreviewDoc
     let file := files.manifest
     let blockKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target")
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
-      (Lean.Name.mkSimple "def:used.target")
+    let some owner := files.manifest.findEntry?
+        (Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target"))
+      | return false
+    let some codeKey := owner.leanCodePreviewKeys[0]? | return false
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
     pure <|

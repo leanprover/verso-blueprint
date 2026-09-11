@@ -27,6 +27,9 @@ Metadata panel body.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def metadataPanelDocBlueprint : Informal.BlueprintDocument := .capture metadataPanelDoc.toPart
+
 /-- info: true -/
 #guard_msgs in
 #eval

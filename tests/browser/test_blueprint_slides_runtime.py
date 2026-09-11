@@ -193,9 +193,10 @@ class TestBlueprintSlidesRuntime:
         )
         assert multiplication_entry["title"] == "Theorem 2.2"
         assert multiplication_proof_entry["title"] == "Proof for Theorem 2.2"
-        assert multiplication_entry["leanCodePreviewKeys"] == [
-            "Informal.LeanCodePreview.Inline.multiplication_one_right"
-        ]
+        assert len(multiplication_entry["leanCodePreviewKeys"]) == 1
+        assert multiplication_entry["leanCodePreviewKeys"][0].startswith(
+            "Informal.LeanCodePreview.Inline."
+        )
         assert (
             multiplication_proof_entry["leanCodePreviewKeys"]
             == multiplication_entry["leanCodePreviewKeys"]

@@ -14,7 +14,7 @@ open Informal.Data
 open Informal.Graph
 
 private def mkInformal (deps : Array Name := #[]) : InformalData :=
-  { stx := .missing, deps := deps.map (fun label => { label }), elabStx := #[] }
+  { stx := .missing, useDeclarations := deps.map (fun label => { label }), elabStx := #[] }
 
 private def mkDefDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateDef :=
   {

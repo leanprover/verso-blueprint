@@ -18,16 +18,16 @@ Final semantic data captured in the generator's Lean environment. Document
 occurrences keep their own bodies, source locations, folding, and numbering.
 -/
 structure DocumentSnapshot where
-  nodes : Lean.NameMap BlockData := {}
+  nodes : Lean.NameMap NodeSnapshot := {}
   graph : Graph.GraphModel := {}
-  summary : Json := .null
+  summary : Commands.Summary := {}
 deriving Inhabited
 
 /-- Reconstruct a captured snapshot once, keeping node lookup logarithmic. -/
 def DocumentSnapshot.fromJsonString! (serialized : String) : DocumentSnapshot := Id.run do
   let .ok json := Json.parse serialized | panic! "invalid Blueprint document snapshot JSON"
   let .ok (nodes, graph, summary) :=
-      fromJson? (α := Array BlockData × Graph.GraphModel × Json) json
+      fromJson? (α := Array NodeSnapshot × Graph.GraphModel × Commands.Summary) json
     | panic! "invalid Blueprint document snapshot data"
   return { nodes := nodes.foldl (fun acc node => acc.insert node.label node) {}, graph, summary }
 
@@ -36,10 +36,10 @@ elab "blueprint_snapshot%" : term => do
   Environment.reportImportedConflicts
   let state := Environment.informalExt.getState (← getEnv)
   let nodes := state.data.toArray.map fun (label, node) =>
-    BlockData.ofNode label node (node.owner.bind state.authors.get?)
+    NodeSnapshot.ofNode label node (node.owner.bind state.authors.get?)
   let graph := Graph.buildModel state (state.data.toArray.map (·.1)) (groupTitles := state.groups.toArray)
   let summary ← Commands.buildSummary
-  let serialized := (toJson (nodes, graph, toJson summary)).compress
+  let serialized := (toJson (nodes, graph, summary)).compress
   Lean.Elab.Term.elabTerm (← `(DocumentSnapshot.fromJsonString! $(quote serialized))) none
 
 private def DocumentSnapshot.blockData (snapshot : DocumentSnapshot) (data : BlockData) : BlockData :=
@@ -53,7 +53,8 @@ private def DocumentSnapshot.inline (snapshot : DocumentSnapshot)
   let mut container := container
   if container.name == ``Inline.informal then
     if let .ok (data : InlineData) := fromJson? container.data then
-      let block := data.block.map (snapshot.blockData ·) <|> snapshot.nodes.get? data.label
+      let block := data.block.map (snapshot.blockData ·) <|>
+        (snapshot.nodes.get? data.label).map (·.toBlockData)
       container := { container with data := toJson { data with block } }
   return .other container (content.map recur)
 
@@ -77,10 +78,9 @@ private def DocumentSnapshot.otherBlock (snapshot : DocumentSnapshot)
         container := { container with data := toJson { data with graphModel := snapshot.graph } }
     else if container.name == ``Commands.Block.summary then
       -- Diagnostic visibility belongs to this summary occurrence, not to the generator.
-      let summary := match container.data.getObjVal? "showDebugDiagnostics" with
-        | .ok flag => snapshot.summary.setObjVal! "showDebugDiagnostics" flag
-        | .error _ => snapshot.summary
-      container := { container with data := summary }
+      if let .ok (occurrence : Commands.Summary) := fromJson? container.data then
+        let summary := { snapshot.summary with showDebugDiagnostics := occurrence.showDebugDiagnostics }
+        container := { container with data := toJson summary }
   return .other container (content.map recur)
 
 /-- Refresh a block tree before traversal, including blocks nested in lists and quotations. -/
@@ -94,5 +94,18 @@ partial def DocumentSnapshot.apply (snapshot : DocumentSnapshot) (part : Part Ma
     title := part.title.map (Doc.Inline.rewriteOther snapshot.inline)
     content := part.content.map snapshot.block
     subParts := part.subParts.map snapshot.apply }
+
+/-- A document paired with the semantic environment selected by its generator. -/
+structure BlueprintDocument where
+  text : Part Manual
+  snapshot : DocumentSnapshot
+
+/-- Capture once at the project boundary; collections and wrappers can pass this value unchanged. -/
+def BlueprintDocument.capture (text : Part Manual)
+    (snapshot : DocumentSnapshot := by exact blueprint_snapshot%) : BlueprintDocument :=
+  { text, snapshot }
+
+def BlueprintDocument.toPart (document : BlueprintDocument) : Part Manual :=
+  document.snapshot.apply document.text
 
 end Informal
