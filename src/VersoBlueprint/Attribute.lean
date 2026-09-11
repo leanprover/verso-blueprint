@@ -8,7 +8,7 @@ import Lean
 import Lean.DocString.Extension
 import VersoManual
 import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.Docstring
+import VersoBlueprint.Docstring.Manual
 import VersoBlueprint.Environment
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.LabelNameParsing
@@ -128,33 +128,36 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
     elabBlueprintOptions { label := defaultLabelForDecl decl } opts
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
 
-private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalBody) := do
+private def statementFromDocstring? (decl : Name) (ref : Syntax) :
+    CoreM (Option (Data.InformalBody × Array Data.UseRef)) := do
   let env ← getEnv
   let internalDoc? ← liftM <| findInternalDocString? env decl
-  let elabStx ←
+  let (elabStx, deps) ←
     match internalDoc? with
-    | none => pure #[]
-    | some (.inl doc) =>
-      let doc := doc.trimAscii.toString
-      if doc.isEmpty then
-        pure #[]
-      else
-        match MD4Lean.parse doc with
-        | some ast =>
-          ast.blocks.mapM (fun b =>
-            Verso.Genre.Manual.Markdown.blockFromMarkdown b
-              (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
-        | none =>
-          pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
+    | none => pure (#[], #[])
+    | some (.inl doc) => do
+      let elabStx ← do
+        let doc := doc.trimAscii.toString
+        if doc.isEmpty then
+          pure #[]
+        else
+          match MD4Lean.parse doc with
+          | some ast =>
+            ast.blocks.mapM (fun b =>
+              Verso.Genre.Manual.Markdown.blockFromMarkdown b
+                (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
+          | none =>
+            pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
+      pure (elabStx, #[])
     | some (.inr doc) =>
       Informal.Docstring.versoDocstringToManualBlocksStx doc
   if elabStx.isEmpty then
     pure none
   else
-    pure <| some {
+    pure <| some ({
       stx := ref
       elabStx := elabStx.map (·.raw)
-    }
+    }, deps)
 
 private structure ResolvedAutoDeps where
   statement : Array Data.UseRef := #[]
@@ -182,7 +185,8 @@ private def resolveManualTargets
     return labels.foldl Data.Label.pushUnique acc
 
 private def mergeAxisDeps
-    (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries) :
+    (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
+    (docstringDeps : Array Data.UseRef := #[]) :
     CoreM (Array Data.UseRef) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
@@ -191,20 +195,24 @@ private def mergeAxisDeps
   for label in DependencyAnalysis.sortLabels inferred do
     if !excluded.contains label then
       out := Data.UseRef.pushMergeByLabel out (DependencyAnalysis.automaticUseRef label)
+  for dependency in docstringDeps do
+    if !excluded.contains dependency.label then
+      out := Data.UseRef.pushMergeByLabel out dependency
   for label in explicit do
     if !excluded.contains label then
       out := Data.UseRef.pushMergeByLabel out (manualUseRef label)
   return out
 
 private def resolveAutoDeps
-    (decl : Name) (label : Data.Label) (info : ConstantInfo) (cfg : BlueprintAttrConfig) :
+    (decl : Name) (label : Data.Label) (info : ConstantInfo) (cfg : BlueprintAttrConfig)
+    (docstringDeps : Array Data.UseRef) :
     CoreM ResolvedAutoDeps := do
   let inferred ←
     if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
       DependencyAnalysis.infer decl info
     else
       pure {}
-  let statement ← mergeAxisDeps decl label inferred.statement cfg.uses
+  let statement ← mergeAxisDeps decl label inferred.statement cfg.uses docstringDeps
   let statementLabels := Data.UseRef.labels statement
   let proofInferred := inferred.proof.filter fun label => !statementLabels.contains label
   let proof ← mergeAxisDeps decl label proofInferred cfg.proofUses
@@ -219,20 +227,20 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   -- Only the declaration introducing a label owns its implicit statement.
   -- Attachments never compete with or fill an existing node's informal prose.
   let current? ← Environment.getNode? label
-  let statement? ← if current?.isNone then statementFromDocstring? decl ref else pure none
-  let deps ← resolveAutoDeps decl label info cfg
+  let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
+  let deps ← resolveAutoDeps decl label info cfg (docstring?.map Prod.snd |>.getD #[])
   let opts ← getOptions
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  discard <| Environment.contribute label {
-    statementBody := statement?
+  let accepted ← Environment.contribute label {
+    statementBody := docstring?.map Prod.fst
     statementUses := deps.statement
     proofUses := deps.proof
     leanCode := #[.external #[extRef]]
   }
-  Environment.registerBlueprintAttributeLabel label
-
+  if accepted.isSome then
+    Environment.registerBlueprintAttributeLabel label
 
 open Lean in
 initialize

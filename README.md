@@ -175,9 +175,11 @@ location in an existing Manual chapter, place that node with:
 ```
 
 The declaration docstring supplies the informal statement when present; without
-one, Blueprint still renders a code-only node in either workflow. Docstrings are
-prose, not Blueprint dependency syntax: put `uses` and `proofUses` on the
-attribute. Standard `doc.verso` structure, including math, is preserved in both
+one, Blueprint still renders a code-only node in either workflow. With
+`set_option doc.verso true`, docstrings can use `{uses "label"}[]` to declare
+statement dependencies and `{bpref "label"}[]` for links without edges. Put
+proof dependencies on the attribute's `proofUses` option. Standard `doc.verso`
+structure, including math, is preserved in both
 the statement and the attached “Lean code for…” declaration panel. For the
 precise dependency, prose, proof, metadata, and source-rendering boundaries, see
 the Manual's

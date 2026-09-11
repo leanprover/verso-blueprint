@@ -13,22 +13,6 @@ open Informal
 
 namespace Verso.VersoBlueprintTests.BlueprintAttribute
 
-/-
-`uses` is a Manual role, not a Lean `doc.verso` role. Keep the diagnostic
-explicit so documentation cannot drift back toward describing it as a flattened
-docstring extension.
--/
-/--
-error: `uses : Doc.Elab.RoleExpanderOf UsesConfig` is not registered as a role
--/
-#guard_msgs in
-set_option doc.verso true in
-/--
-A declaration docstring containing {uses "attr.exported.theorem"}[].
--/
-@[blueprint "attr.docstring.rejected_uses"]
-def rejectedDocstringUsesRole : Nat := 0
-
 private def importedState : CoreM Informal.Environment.State := do
   pure <| Informal.Environment.informalExt.getState (← getEnv)
 
