@@ -59,18 +59,21 @@ structure BprefConfig where
 section
 variable [Monad m] [MonadError m]
 
+def UsesConfig.ofArgs (labelArg : Verso.ArgParse.WithSyntax String)
+    (origin intent : Option String) : UsesConfig :=
+  let parsedLabel := LabelArg.parse labelArg
+  let metadata := UseConfig.parseMetadata origin intent
+  {
+    label := parsedLabel.label
+    labelSyntax := parsedLabel.labelSyntax
+    origin := metadata.origin
+    invalidOrigin := metadata.invalidOrigin
+    intent := metadata.intent
+    invalidIntent := metadata.invalidIntent
+  }
+
 def UsesConfig.parse : ArgParse m UsesConfig :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) origin intent =>
-    let parsedLabel := LabelArg.parse labelArg
-    let metadata := UseConfig.parseMetadata origin intent
-    {
-      label := parsedLabel.label
-      labelSyntax := parsedLabel.labelSyntax
-      origin := metadata.origin
-      invalidOrigin := metadata.invalidOrigin
-      intent := metadata.intent
-      invalidIntent := metadata.invalidIntent
-    }) <$> .positional `label (.withSyntax .string)
+  UsesConfig.ofArgs <$> .positional `label (.withSyntax .string)
         <*> .named `origin .string true <*> .named `intent .string true
 
 instance : FromArgs UsesConfig m where
@@ -88,6 +91,16 @@ instance : FromArgs BprefConfig m where
   fromArgs := BprefConfig.parse
 
 end
+
+def UsesConfig.useRef (cfg : UsesConfig) : Data.UseRef :=
+  { label := cfg.label, origin := cfg.origin, intent := cfg.intent }
+
+def UsesConfig.validate [Monad m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
+    (cfg : UsesConfig) : m Unit := do
+  if let some raw := cfg.invalidOrigin then
+    logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
+  if let some raw := cfg.invalidIntent then
+    logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
 
 structure InlineData where
   label : Data.Label
@@ -154,8 +167,7 @@ inline_extension Inline.informal (data : InlineData) where
       else
         inlines.mapM goI
 
-private def nodeRefTerm (label : Data.Label) (contents : Array (TSyntax `inline)) : DocElabM Term := do
-    let contents ← contents.mapM elabInline
+def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
     let data : InlineData := { label }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
 
@@ -163,24 +175,18 @@ private def nodeRefTerm (label : Data.Label) (contents : Array (TSyntax `inline)
 def uses : RoleExpanderOf UsesConfig
   | cfg, contents => do
     Profile.withDocElab "role" "uses" <| do
-      if let some raw := cfg.invalidOrigin then
-        logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
-      if let some raw := cfg.invalidIntent then
-        logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
-      let term ← nodeRefTerm cfg.label contents
+      cfg.validate
+      let term ← nodeReferenceTerm cfg.label (← contents.mapM elabInline)
       let useRef ← getRef
       if cfg.invalidOrigin.isNone && cfg.invalidIntent.isNone then
-        Environment.addUse useRef {
-          label := cfg.label
-          origin := cfg.origin
-          intent := cfg.intent
-        }
+        Environment.addUse useRef cfg.useRef
       pure term
 
 /-- Reference a Blueprint node without registering a dependency edge. -/
 @[role]
 def bpref : RoleExpanderOf BprefConfig
   | cfg, contents => do
-    Profile.withDocElab "role" "bpref" <| nodeRefTerm cfg.label contents
+    Profile.withDocElab "role" "bpref" <|
+      nodeReferenceTerm cfg.label (← contents.mapM elabInline)
 
 end Informal

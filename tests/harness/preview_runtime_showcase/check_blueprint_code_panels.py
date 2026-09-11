@@ -117,6 +117,10 @@ def main() -> int:
     )
     code_panels = load(out_root / "Code-Panels" / "index.html")
 
+    require_contains(code_panels, "<strong>rendered premise</strong>", "docstring reference content")
+    require_contains(code_panels, "<code>panel_docstring_target</code>", "empty docstring reference fallback")
+    require_contains(code_panels, 'data-bp-preview-key="panel_docstring_target--statement"', "docstring reference preview")
+
     if "bp_external_status_badge_summary bp_external_status_ok" not in code_panels:
         fail("missing external summary badge for complete external declarations")
     if "bp_external_status_badge_summary bp_external_status_sorry" not in code_panels:

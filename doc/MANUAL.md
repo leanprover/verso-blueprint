@@ -480,18 +480,47 @@ blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
 registered, but there is no imported informal statement body.
 
-Enabling `doc.verso` does not elaborate a declaration docstring as a Blueprint
-Manual fragment. Blueprint currently flattens every Lean docstring extension
-node that successfully elaborates to its child content, discarding the
-extension wrapper rather than looking up a Manual adapter. Custom Lean
-docstring-extension semantics are therefore not preserved.
+Importing `VersoBlueprint` registers Lean docstring handlers for the same
+`Informal.uses` and `Informal.bpref` names used in Manual prose. Enable
+`doc.verso` in the module containing the declaration and open `Informal` (or use
+the qualified role names):
 
-Blueprint Manual roles are a separate registry. In particular,
-`{uses ...}[]` is not a Lean `doc.verso` role and is rejected during docstring
-elaboration; it is neither flattened nor recorded as Blueprint dependency
-metadata. Record those edges with the attribute's `(uses := [...])` or
-`(proofUses := [...])` options. Blueprint deliberately does not create a
-synthetic `DocElabM` context to reinterpret an imported docstring.
+```lean
+import VersoBlueprint
+open Informal
+set_option doc.verso true
+
+/--
+An interpolation space based on {uses "normed-space" (intent := "technical")}[].
+See also {bpref "interpolation-example"}[the motivating example].
+-/
+@[blueprint "k-interpolation-space" (proofUses := ["completeness-lemma"])]
+def interpolationSpace : Nat := 0
+```
+
+Lean elaborates the docstring once into its own docstring tree. The Blueprint
+handlers preserve typed references in that tree. When `@[blueprint]` adopts
+the docstring as its statement, it converts those references into ordinary
+Manual links and records `{uses}` as statement dependencies. The `origin` and
+`intent` options have the same defaults and validation as the Manual role;
+`{bpref}` accepts neither option and never adds an edge. Labels can refer to
+nodes declared later or in the consuming Blueprint. Duplicate edges use the
+normal metadata merge rules, and the attribute's negative `uses` entries and
+self-edge suppression apply to docstring dependencies too. Proof dependencies
+remain on `(proofUses := [...])`.
+
+Links, automatic reference text, numbering, and hover previews are resolved
+when the nodes are placed and traversed. Editor hovers and attached “Lean code
+for…” panels use readable fallback text: authored content, or the label for an
+empty reference. They do not add dependencies or require a generated site.
+Untagged declarations can use these roles as documentation without creating
+Blueprint nodes. Importing the handlers only in a later consumer does not
+change docstrings already compiled in another module.
+
+Other successfully elaborated Lean docstring extensions retain their fallback
+children; their custom semantics are not converted to Manual. Arbitrary Manual
+roles and directives do not become Lean docstring extensions. The adapter does
+not reparse the docstring or run a synthetic `DocElabM` context.
 
 #### Including an attribute module as a chapter
 
@@ -719,9 +748,9 @@ the inferred dependency edges.
 | Place a tagged declaration on a specific Manual page | Supported with `{blueprint_node "label"}` after importing its module. The placement participates in numbering, links, relations, previews, the manifest, and the rendered-fragment cache. |
 | Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |
 | Reuse the same node in several places | Supported. The node keeps one semantic identity; later `{blueprint_node}` occurrences are presentation views and may use compact/header/display-label options. |
-| Use the declaration docstring as the statement | Supported for plain Markdown and standard structural `doc.verso` content that can be converted to Manual blocks. Structural `doc.verso` markup and math are also preserved in the attached external-declaration panel. Custom docstring extension semantics are flattened to child content rather than re-elaborated. An absent docstring produces a code-only placement. |
+| Use the declaration docstring as the statement | Supported for plain Markdown, standard structural `doc.verso` content, and Blueprint `{uses}` / `{bpref}` references. Structural markup and math also survive in the attached external-declaration panel, where references use readable fallback text. Other custom extensions use their fallback children. An absent docstring produces a code-only placement. |
 | Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Type references become statement dependencies and body references become proof dependencies. Inference is direct, not transitive through untagged helpers. |
-| Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. Blueprint's `{uses ...}[]` Manual role is not registered for Lean `doc.verso` docstrings and is rejected there rather than interpreted as dependency metadata. |
+| Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. With `doc.verso` enabled, `{uses ...}[]` inside the adopted docstring adds statement dependencies; `{bpref ...}[]` adds links only. |
 | Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
 | Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
 | Show the formal declaration | Supported as a highlighted external-declaration panel with its signature, kind-specific structure information, docstring, proof/completeness status, and source link when available. |

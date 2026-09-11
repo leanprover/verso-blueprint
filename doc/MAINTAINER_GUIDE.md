@@ -220,6 +220,7 @@ that crosses phases, cover the applicable rows of this matrix:
 | Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute.lean` with `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
 | Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttributeRendering.lean` |
 | Final Manual HTML | statement body, code-only fallback, structural docstrings/math, code-panel disclosure state | `BlueprintAttributeRendering.lean` |
+| Docstring references | persisted dependencies, forward links, link-only references, exclusions, first-body ownership, editor and panel fallbacks | `BlueprintDocstringReferences.lean` with `BlueprintAttribute/DocstringProvider.lean` |
 | Generated site | embedded assets and the reusable external-declaration renderer | `preview_runtime_showcase` and `check_blueprint_code_panels.py` |
 | Browser runtime | transformations or hydration that cannot be proved from static HTML | `test_preview_runtime_regressions.py` |
 

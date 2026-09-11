@@ -283,6 +283,18 @@ The same flow can be read as four contracts:
    producers independent of accumulated body presence. Shared placeholders
    acquire prose through explicit statement/proof directives.
 
+   Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of
+   the Manual genre. Blueprint registers docstring handlers for `uses` and
+   `bpref` that store a typed reference plus readable fallback children. The
+   attribute converts the adopted statement once into Manual terms and
+   canonical `Data.UseRef` edges; it does not need a directive stack or replay
+   the docstring elaborators. The first adopted body owns its docstring edges,
+   so later discarded bodies cannot introduce dependencies. Link destinations
+   and automatic reference titles remain traversal facts. The static
+   declaration-panel renderer uses fallback children and stays independent of
+   the semantic adapter, avoiding a dependency cycle through `Data` and the
+   external declaration renderer.
+
 2. **Environment to traversal.**
    `blueprintMain` and `blueprintMainWithPreviewData` capture a `RenderModel`
    after the generator's imports. Capture serializes the runtime rendering

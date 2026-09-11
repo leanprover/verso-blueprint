@@ -8,6 +8,17 @@ open Informal
 
 namespace PreviewRuntimeShowcase.CodePanelDecls
 
+@[blueprint "panel_docstring_target"]
+def docstringReferenceTarget : Nat := 1
+
+set_option doc.verso true in
+/--
+Docstring reference: {uses "panel_docstring_target"}[a *rendered premise* $`n + 1`].
+An automatic title follows: {bpref "panel_docstring_target"}[].
+-/
+@[blueprint "panel_docstring_source"]
+def docstringReferenceSource : Nat := 2
+
 def previewExternalDefinition : Nat := 0
 
 abbrev previewExternalAbbrev : Nat := previewExternalDefinition
@@ -117,6 +128,10 @@ end PreviewRuntimeShowcase.CodePanelDecls
 open PreviewRuntimeShowcase.CodePanelDecls
 
 #doc (Manual) "Code Panels" =>
+
+{blueprint_node "panel_docstring_source"}
+
+{blueprint_node "panel_docstring_target"}
 
 :::definition "panel_external_definition" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition")
 In-module external definition panel sample.

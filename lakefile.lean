@@ -60,6 +60,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintAttributeRendering,
     `VersoBlueprintTests.BlueprintBlockFolding,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,
+    `VersoBlueprintTests.BlueprintDocstringReferences,
     `VersoBlueprintTests.BlueprintImportedDuplicates.Direct,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB,
