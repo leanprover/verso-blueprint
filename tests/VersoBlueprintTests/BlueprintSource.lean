@@ -266,29 +266,49 @@ Invalid source metadata.
     let refErrors :=
       Informal.Source.Ref.validationErrors
         ({ document := "paper" } : Informal.Source.Ref)
-    let citationOnlySpanErrors :=
-      Informal.Source.Span.validationErrors
-        ({ citation := "Lemma 2.1(1)" } : Informal.Source.Span)
-    let anchorOnlySpanErrors :=
-      Informal.Source.Span.validationErrors
-        ({ anchor := "itm:addition-right-identity" } : Informal.Source.Span)
-    let anchoredTextSpanErrors :=
-      Informal.Source.Span.validationErrors
-        ({
-          anchor := "itm:addition-right-identity"
-          citation := "Lemma 2.1(1)"
-          text := some { path := "source.tex", startLine := 1, endLine := 3 }
-        } : Informal.Source.Span)
     let expectedDocumentErrors : Array Informal.Source.ValidationError := #[
       .emptyField "source document id",
       .pdfDocumentMissingPath
     ]
     let expectedRefErrors : Array Informal.Source.ValidationError := #[.refMissingSpan]
-    documentErrors == expectedDocumentErrors &&
-      refErrors == expectedRefErrors &&
-      citationOnlySpanErrors == #[.spanMissingLocation] &&
-      anchorOnlySpanErrors.isEmpty &&
-      anchoredTextSpanErrors.isEmpty
+    documentErrors == expectedDocumentErrors && refErrors == expectedRefErrors
+
+private def checkSpanValidation (name : String) (span : Informal.Source.Span)
+    (expected : Array Informal.Source.ValidationError) : IO Unit := do
+  let actual := span.validationErrors
+  unless actual == expected do
+    throw <| IO.userError s!"{name}: expected {repr expected}, got {repr actual}"
+
+#guard_msgs in
+#eval show IO Unit from do
+  let text : Informal.Source.TextRange := { path := "source.tex", startLine := 1, endLine := 3 }
+  let cases : Array (String × Informal.Source.Span × Array Informal.Source.ValidationError) := #[
+    ("empty span", {}, #[.spanMissingLocation]),
+    ("citation only", { citation := "Lemma 2.1(1)" }, #[.spanMissingLocation]),
+    ("page only", { page := "12" }, #[]),
+    ("anchor only", { anchor := "itm:addition-right-identity" }, #[]),
+    ("text only", { text := some text }, #[]),
+    ("PDF only", { pdf := some { path := "source.pdf" } }, #[]),
+    ("anchored text", {
+      anchor := "itm:addition-right-identity"
+      citation := "Lemma 2.1(1)"
+      text := some text
+    }, #[])
+  ]
+  for (name, span, expected) in cases do
+    checkSpanValidation name span expected
+  -- A blank optional field is invalid even when another field supplies a location.
+  for blank in #["", " \t\n "] do
+    let fields : Array (String × Informal.Source.Span) := #[
+      ("page", { page := some blank }),
+      ("anchor", { anchor := some blank }),
+      ("citation", { citation := some blank })
+    ]
+    for (field, span) in fields do
+      let emptyField := Informal.Source.ValidationError.emptyField s!"source span {field}"
+      checkSpanValidation s!"blank {field} ({repr blank})" span #[emptyField, .spanMissingLocation]
+      checkSpanValidation s!"blank {field} with text ({repr blank})"
+        { span with text := some text } #[emptyField]
 
 /-- info: true -/
 #guard_msgs in

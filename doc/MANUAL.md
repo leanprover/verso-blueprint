@@ -1153,6 +1153,12 @@ Blueprint node's label or generated heading number. A node may therefore remain
 changing graph keys, Blueprint references, or site-local numbering to imitate
 the source document.
 
+Each source span must supply at least one location: a page, source anchor, text
+range, or PDF location. Any one of these is sufficient; a `citation` alone is
+not a location. Supplied `page`, `anchor`, and `citation` strings must be
+nonblank (not empty or whitespace-only). Omit optional fields instead of using
+blank strings; supplied text ranges and PDF locations must also be valid.
+
 For a text source such as the TeX input itself, omit `page` and use a source
 anchor, a text line range, or both:
 
