@@ -90,7 +90,7 @@ def lateBlueprint : Informal.BlueprintDocument := .capture graphDoc.toPart
     | throw <| IO.userError "Missing shared rendering node"
   unless resolved.count == 47 && resolved.partPrefix == some "Appendix" &&
       resolved.foldProofBlock && resolved.sourceLocation == occurrence.sourceLocation &&
-      (match resolved.kind with | .proof => true | _ => false) && resolved.tags.contains "late" do
+      resolved.isProof && resolved.tags.contains "late" do
     throw <| IO.userError "Shared rendering data lost occurrence settings or late metadata"
   for entry in Informal.GraphApi.cachedEntries state do
     let .ok entry := entry | throw <| IO.userError "Invalid cached graph"

@@ -31,8 +31,8 @@ private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id :
   shouldWritePreviewDataByIds ((existing?.map (·.ids.toArray)).getD #[]) id
 
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
-  match blockData.kind, blockData.codeData with
-  | .statement _, some codeData => codeData.externalDecls
+  match blockData.isProof, blockData.codeData with
+  | false, some codeData => codeData.externalDecls
   | _, _ => #[]
 
 /-- Select a facet occurrence, preferring its filled body over earlier placeholders. -/
@@ -46,7 +46,7 @@ def registerBlockPreviewData
     (blockData : BlockData)
     (contents : Array (Verso.Doc.Block Verso.Genre.Manual)) :
     m Unit := do
-  let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
+  let previewFacet := if blockData.isProof then PreviewCache.Facet.proof else .statement
   let previewKey := PreviewCache.key blockData.label previewFacet
   let leanCodePreviewKeys :=
     (externalDeclsOfBlock blockData).map fun decl =>

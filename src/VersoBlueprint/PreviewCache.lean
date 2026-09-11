@@ -22,10 +22,6 @@ def Facet.suffix : Facet → String
   | .statement => "statement"
   | .proof => "proof"
 
-def Facet.ofInProgressKind : Informal.Data.InProgressKind → Facet
-  | .statement _ => .statement
-  | .proof => .proof
-
 /-- Select the first available facet, preferring the statement over the proof.
 The caller decides which payloads are available (for example, nonempty bodies). -/
 def Facet.select? {α : Type} (fetch : Facet → Option α) : Option (Facet × α) :=

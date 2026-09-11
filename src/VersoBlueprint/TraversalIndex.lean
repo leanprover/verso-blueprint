@@ -232,6 +232,12 @@ def hasRenderedOccurrence (state : TraverseState) (label : Name) : Bool :=
   (object? state label).any fun object =>
     !object.ids.isEmpty && (object.data.getObjVal? "occurrence").toOption.any (· != .null)
 
+/-- Read the occurrence without decoding semantic metadata or external code payloads. -/
+def occurrence? (state : TraverseState) (label : Name) : Option Informal.BlockOccurrence := do
+  let object ← object? state label
+  guard (!object.ids.isEmpty)
+  (object.data.getObjValAs? (Option Informal.BlockOccurrence) "occurrence").toOption.join
+
 /-- Resolve a node only after traversal has allocated its occurrence and target. -/
 def renderedData? (state : TraverseState) (label : Name) : Option Informal.BlockData := do
   guard (hasRenderedOccurrence state label)

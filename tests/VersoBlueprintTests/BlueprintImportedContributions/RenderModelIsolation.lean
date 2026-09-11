@@ -53,7 +53,7 @@ def isolatedBlueprint : BlueprintDocument := .capture isolatedDocument.toPart
 #eval show IO Unit from do
   let node := RenderNode.ofBlockData {
     label := `synthetic
-    kind := .statement .theorem
+    kind := .theorem
     count := 1
     tags := #["synthetic"]
   }

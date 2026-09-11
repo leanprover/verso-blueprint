@@ -29,8 +29,8 @@ private def mkThmDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateThm :=
   }
 
 private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : Array LiterateThm)
-    : CodeRef :=
-  .literate { stx := .missing, definedDefs, definedTheorems }
+    : Code :=
+  { stx := .missing, definedDefs, definedTheorems }
 
 /-- info: true -/
 #guard_msgs in
@@ -94,7 +94,7 @@ def definitionWithProofGap : Node :=
   {
     kind := .definition
     statement := some (mkInformal #[])
-    leanCode := #[mkLiterateCode #[mkDefDecl `def_with_proof_gap 0 1] #[]]
+    literateCodes := #[mkLiterateCode #[mkDefDecl `def_with_proof_gap 0 1] #[]]
   }
 
 /-- info: true -/
@@ -110,7 +110,7 @@ def theoremWithHelperDefProofGap : Node :=
   {
     kind := .theorem
     statement := some (mkInformal #[])
-    leanCode := #[mkLiterateCode
+    literateCodes := #[mkLiterateCode
       #[mkDefDecl `helper_def_with_proof_gap 0 1]
       #[mkThmDecl `main_theorem 0 0]]
   }
@@ -128,7 +128,7 @@ def theoremWithProofGapOnly : Node :=
   {
     kind := .theorem
     statement := some (mkInformal #[])
-    leanCode := #[mkLiterateCode #[] #[mkThmDecl `theorem_with_proof_gap 0 1]]
+    literateCodes := #[mkLiterateCode #[] #[mkThmDecl `theorem_with_proof_gap 0 1]]
   }
 
 /-- info: true -/

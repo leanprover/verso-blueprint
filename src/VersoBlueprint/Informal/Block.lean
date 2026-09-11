@@ -105,17 +105,16 @@ block_extension Block.informal (data : BlockOccurrence) where
             pure .empty
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
-        let relatedPanelContext := RelatedPanel.RelationContext.ofState s
         let markup :=
           (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
         let selectedMarkupAndContent? :=
-          match data.kind with
-          | .statement _ =>
+          match data.isProof with
+          | false =>
               if blocks.isEmpty then
                 Informal.ExternalMarkupRender.selectedContent? {} markup
               else
                 none
-          | .proof => none
+          | true => none
         let sourceBackedAttrs :=
           match selectedMarkupAndContent? with
           | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
@@ -125,10 +124,10 @@ block_extension Block.informal (data : BlockOccurrence) where
         let codeData? : InlineCodeBlocks ←
           pure <| Informal.TraversalIndex.InlineCode.blocks s data.label
         let codeHint? :=
-          match data.kind with
-          | .proof => none
-          | .statement _ => data.codeData
-        let codeSource := BlockCodeData.ofHintAndInline codeHint? codeData?
+          match data.isProof with
+          | true => none
+          | false => data.codeData
+        let codeSource := ({ (codeHint?.getD {}) with inlineBlocks := codeData? } : BlockCodeData).nonempty?
         let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
@@ -139,20 +138,20 @@ block_extension Block.informal (data : BlockOccurrence) where
           source := codeSource
         }
         let headingParts? : Option CodeSummary.RenderParts :=
-          match data.kind with
-          | .statement _ => some <| CodeSummary.renderParts data cdata getDeclHref
-          | .proof => none
+          match data.isProof with
+          | false => some <| CodeSummary.renderParts data cdata getDeclHref
+          | true => none
         let externalPanel : Output.Html ←
-          match data.kind with
-          | .statement _ =>
+          match data.isProof with
+          | false =>
             if externalDecls.isEmpty then
               pure .empty
             else
               let externalCdata : CodeSummary.ComputedData := {
-                source := some (.external externalDecls)
+                source := some { externalDecls := externalDecls }
               }
               let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
-              let panelHeader := codePanelHeader data (data.displayNumber s)
+              let panelHeader := codePanelHeader (data.display s)
               ExternalCode.renderPanelWithPageHovers
                 panelHeader
                 externalSummary.summaryTitle
@@ -161,28 +160,28 @@ block_extension Block.informal (data : BlockOccurrence) where
                 getDeclHref
                 getDeclAnchorAttrs
                 (folded := data.foldCodeBlock)
-          | .proof => pure .empty
+          | true => pure .empty
         let content ←
           match selectedMarkupAndContent? with
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra relatedPanelContext data
-        let usesEntry ← RelatedPanel.renderUsesExtra relatedPanelContext data
-        let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
+        let groupEntry ← RelatedPanel.renderGroupExtra s data
+        let usesEntry ← RelatedPanel.renderUsesExtra s data
+        let usedByEntry ← RelatedPanel.renderUsedByExtra s data
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
         let foldInformalBlock :=
-          match data.kind with
-          | .proof => data.foldProofBlock
-          | .statement _ => false
+          match data.isProof with
+          | true => data.foldProofBlock
+          | false => false
         let headerExtras : HeaderExtras :=
-          match data.kind with
-          | .proof =>
+          match data.isProof with
+          | true =>
             {
               uses? := some <| HeaderExtra.uses usesEntry
             }
-          | .statement _ =>
+          | false =>
             {
               group? := groupEntry.map HeaderExtra.group
               uses? := some <| HeaderExtra.uses usesEntry
@@ -193,7 +192,7 @@ block_extension Block.informal (data : BlockOccurrence) where
         return renderInformalBlockModel {
           data
           context := InformalBlockRenderContext.forBlock data
-            (data.displayNumber s)
+            ((data.display s).number?.getD data.label.toString)
             (proofCaption? := some (data.displayTitle s))
             (attrs := attrs)
             (headerExtras := headerExtras)
@@ -263,29 +262,29 @@ private opaque retainElaboratedBlocks
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
     let blockRef ← getRef
-    let resolved ← cfg.resolveForDirective kind isProof
-    let parsedContents ← parseDirectiveSourceMetadata cfg contents
-    let label := resolved.label
-    let accepted ← Environment.push
-      label resolved.envKind resolved.codeHint resolved.parent resolved.priority
-      resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.statementUses
-    let contents ← parsedContents.body.mapM elabBlock
-    if !accepted then
-      return ← ``(Block.concat #[$contents,*])
-    let (previewBlocks, retainedContents) ←
-      liftM <| retainElaboratedBlocks contents
-    Environment.setPreviewBlocks previewBlocks
-    let count ← Environment.pop blockRef
-    liftM <| DependencyAnalysis.attachInferredUseRefs label { proof := resolved.proofUses }
+    let label := cfg.label
+    let prepare := do
+      let resolved ← cfg.resolveForDirective kind isProof
+      pure ({
+        label, kind := resolved.envKind, codeHint := resolved.codeHint
+        parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
+        tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
+        deps := resolved.statementUses, proofUses := resolved.proofUses } : Environment.InProgress)
+    let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
+        let parsedContents ← parseDirectiveSourceMetadata cfg contents
+        let contents ← parsedContents.body.mapM elabBlock
+        let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
+        pure ((retainedContents, parsedContents.sourceRef?), previewBlocks)
+      | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=
-      match ← Data.SourceLocation.ofSyntax? resolved.labelSyntax with
+      match ← Data.SourceLocation.ofSyntax? cfg.labelSyntax with
       | some location => Data.SourceLocationResult.found location
       | none =>
         Data.SourceLocationResult.unavailable s!"label source location unavailable for {label}"
     let data : BlockOccurrence := {
       isProof
-      sourceRef := parsedContents.sourceRef?
+      sourceRef
       label
       sourceLocation
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts

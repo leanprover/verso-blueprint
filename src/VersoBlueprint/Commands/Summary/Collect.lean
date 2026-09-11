@@ -165,7 +165,7 @@ private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary 
     {}
   else
     let kind := toString node.kind
-    let externalDecls := node.externalRefs
+    let externalDecls := node.summaryExternalRefs
     let missingLeanDecls :=
       externalDecls.foldl (init := []) fun acc decl =>
         if !decl.present then
@@ -230,7 +230,7 @@ private def nodeMissingLeanDeclCount (external : Informal.Graph.ExternalCodeStat
 
 private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
   let externalCount :=
-    node.externalRefs.foldl (init := 0) fun acc decl =>
+    node.summaryExternalRefs.foldl (init := 0) fun acc decl =>
       if Informal.Graph.externalDeclMissing external decl then
         acc
       else

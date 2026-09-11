@@ -53,7 +53,7 @@ private def renderFailedExternalRef (name : Lean.Name) (kind : Data.NodeKind := 
 
 private def statementData (label : Name) (kind : Data.NodeKind) (source : Option BlockCodeData) : BlockData :=
   {
-    kind := .statement kind
+    kind := kind
     codeData := source
     label
     count := 1
@@ -76,9 +76,9 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let inlineProvedHtml := codeEntryHtml `inline.proved .definition (some (.inline (inlineCode .proved)))
-  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some (.inline (inlineCode (.containsSorry #[{ location := .proof, refs? := some 1 }]))))
-  let inlineAxiomHtml := codeEntryHtml `inline.axiom .definition (some (.inline (inlineCode .axiomLike)))
+  let inlineProvedHtml := codeEntryHtml `inline.proved .definition (some { inlineBlocks := inlineCode .proved })
+  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some { inlineBlocks := (inlineCode (.containsSorry #[{ location := .proof, refs? := some 1 }])) })
+  let inlineAxiomHtml := codeEntryHtml `inline.axiom .definition (some { inlineBlocks := inlineCode .axiomLike })
   hasSubstr inlineProvedHtml "bp_code_link_status_proved" &&
     hasSubstr inlineSorryHtml "bp_code_link_status_warning" &&
     hasSubstr inlineAxiomHtml "bp_code_link_status_axiom" &&
@@ -88,20 +88,20 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 #guard_msgs in
 #eval!
   hasSubstr
-      (codeEntryHtml `external.missing .definition (some (.external #[missingExternalRef `Ext.missing])))
+      (codeEntryHtml `external.missing .definition (some { externalDecls := #[missingExternalRef `Ext.missing] }))
       "bp_code_link_status_missing"
 
 /-- info: true -/
 #guard_msgs in
 #eval!
   hasSubstr
-      (codeEntryHtml `external.axiom .theorem (some (.external #[axiomExternalRef `Ext.axiom])))
+      (codeEntryHtml `external.axiom .theorem (some { externalDecls := #[axiomExternalRef `Ext.axiom] }))
       "bp_code_link_status_axiom"
 
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let externalRenderFailHtml := codeEntryHtml `external.render_fail .theorem (some (.external #[renderFailedExternalRef `Ext.renderFail]))
+  let externalRenderFailHtml := codeEntryHtml `external.render_fail .theorem (some { externalDecls := #[renderFailedExternalRef `Ext.renderFail] })
   hasSubstr externalRenderFailHtml "bp_code_link_status_proved" &&
     hasSubstr externalRenderFailHtml "bp_code_render_warning_badge" &&
     appearsBefore externalRenderFailHtml "bp_code_render_warning_badge" "bp_code_status_symbol"
@@ -109,11 +109,11 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let externalOkHtml := panelIndicatorHtml `external.ok (.external #[provedExternalRef `Ext.ok .definition])
-  let externalSorryHtml := panelIndicatorHtml `external.sorry (.external #[sorryExternalRef `Ext.sorry .theorem])
-  let externalMissingHtml := panelIndicatorHtml `external.missing (.external #[missingExternalRef `Ext.missing .definition])
-  let externalAxiomHtml := panelIndicatorHtml `external.axiom (.external #[axiomExternalRef `Ext.axiom .theorem])
-  let externalRenderFailHtml := panelIndicatorHtml `external.render_fail (.external #[renderFailedExternalRef `Ext.renderFail .theorem])
+  let externalOkHtml := panelIndicatorHtml `external.ok { externalDecls := #[provedExternalRef `Ext.ok .definition] }
+  let externalSorryHtml := panelIndicatorHtml `external.sorry { externalDecls := #[sorryExternalRef `Ext.sorry .theorem] }
+  let externalMissingHtml := panelIndicatorHtml `external.missing { externalDecls := #[missingExternalRef `Ext.missing .definition] }
+  let externalAxiomHtml := panelIndicatorHtml `external.axiom { externalDecls := #[axiomExternalRef `Ext.axiom .theorem] }
+  let externalRenderFailHtml := panelIndicatorHtml `external.render_fail { externalDecls := #[renderFailedExternalRef `Ext.renderFail .theorem] }
   hasSubstr externalOkHtml "bp_external_status_badge_summary bp_external_status_ok" &&
     hasSubstr externalSorryHtml "bp_external_status_badge_summary bp_external_status_sorry" &&
     hasSubstr externalMissingHtml "bp_external_status_badge_summary bp_external_status_missing" &&
@@ -121,5 +121,30 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
     !hasSubstr externalRenderFailHtml "bp_code_render_warning_badge" &&
     !hasSubstr externalRenderFailHtml "bp_render_warning_badge" &&
     hasSubstr externalRenderFailHtml "synthetic render failure"
+
+-- A heading summarizes the union, even when literate code has its own panel.
+#eval show IO Unit from do
+  let source : BlockCodeData := {
+    inlineBlocks := inlineCode .proved
+    externalDecls := #[sorryExternalRef `Ext.mixed .theorem] }
+  let html := codeEntryHtml `mixed .theorem (some source)
+  unless hasSubstr html "bp_code_link_status_warning" && hasSubstr html "Ext.mixed" &&
+      source.inlineBlocks.declarations.all (fun decl => hasSubstr html decl.name.toString) do
+    throw <| IO.userError "Mixed associations lost a declaration or hid its incomplete status"
+
+-- The same canonical declaration is counted once, using its literate definition.
+#eval show IO Unit from do
+  let blocks := inlineCode .proved
+  let declaration := blocks.declarations[0]!
+  let external := missingExternalRef declaration.name
+  let source : BlockCodeData := { inlineBlocks := blocks, externalDecls := #[external] }
+  let headingHealth := Graph.codeHealthOfBlockSource .definition {} (some source)
+  let node : Data.Node := {
+    externalRefs := #[external]
+    literateCodes := #[{ stx := .missing, definedDefs := #[{ name := declaration.name }] }] }
+  let nodeHealth := Graph.nodeCodeHealth {} node
+  unless headingHealth.totalDecls == 1 && nodeHealth.totalDecls == 1 &&
+      headingHealth.missingDecls == 0 && nodeHealth.missingDecls == 0 do
+    throw <| IO.userError "Associated declarations disagreed between heading and graph status"
 
 end Verso.VersoBlueprintTests.BlueprintCodeRenderMatrix

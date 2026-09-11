@@ -20,7 +20,7 @@ def stateStatus : Environment.State := mkState [
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[mkDefCode `def_formal_decl]
+      literateCodes := #[mkDefCode `def_formal_decl]
     }),
   (`def_ready,
     {
@@ -40,19 +40,19 @@ def stateStatus : Environment.State := mkState [
   (`lean_only,
     {
       kind := .definition
-      leanCode := #[mkDefCode `lean_only_decl]
+      literateCodes := #[mkDefCode `lean_only_decl]
     }),
   (`local_sorry,
     {
       kind := .theorem
       statement := some (mkInformal #[])
-      leanCode := #[mkTheoremCode `local_sorry_decl false true]
+      literateCodes := #[mkTheoremCode `local_sorry_decl false true]
     }),
   (`thm_type_sorry,
     {
       kind := .theorem
       statement := some (mkInformal #[])
-      leanCode := #[mkTheoremCode `thm_type_sorry_decl true false]
+      literateCodes := #[mkTheoremCode `thm_type_sorry_decl true false]
     })
 ]
 
@@ -137,19 +137,19 @@ def stateAncestorsOk : Environment.State := mkState [
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[mkDefCode `def_ok_decl]
+      literateCodes := #[mkDefCode `def_ok_decl]
     }),
   (`thm_dep_ok,
     {
       kind := .theorem
       statement := some (mkInformal #[`def_ok])
-      leanCode := #[mkTheoremCode `thm_dep_ok_decl]
+      literateCodes := #[mkTheoremCode `thm_dep_ok_decl]
     }),
   (`thm_top_ok,
     {
       kind := .theorem
       statement := some (mkInformal #[`thm_dep_ok])
-      leanCode := #[mkTheoremCode `thm_top_ok_decl]
+      literateCodes := #[mkTheoremCode `thm_top_ok_decl]
     })
 ]
 
@@ -172,13 +172,13 @@ def stateAncestorsBad : Environment.State := mkState [
     {
       kind := .theorem
       statement := some (mkInformal #[`def_unfinished])
-      leanCode := #[mkTheoremCode `thm_dep_bad_decl]
+      literateCodes := #[mkTheoremCode `thm_dep_bad_decl]
     }),
   (`thm_top_bad,
     {
       kind := .theorem
       statement := some (mkInformal #[`thm_dep_bad])
-      leanCode := #[mkTheoremCode `thm_top_bad_decl]
+      literateCodes := #[mkTheoremCode `thm_top_bad_decl]
     })
 ]
 
@@ -199,34 +199,34 @@ def stateExternalCode : Environment.State := mkState [
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.good) with
           present := true
           provedStatus := .proved
         }
-      ]]
+      ]
     }),
   (`def_ext_bad,
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.bad) with
           present := true
           provedStatus := .containsSorry #[{ location := .statement }, { location := .proof }]
         }
-      ]]
+      ]
     }),
   (`def_ext_missing,
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.missing) with
           present := false
           provedStatus := .proved
         }
-      ]]
+      ]
     })
 ]
 
@@ -272,23 +272,23 @@ def stateExternalOverride : Environment.State := mkState [
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.override_bad) with
           present := true
           provedStatus := .proved
         }
-      ]]
+      ]
     }),
   (`def_ext_override_missing,
     {
       kind := .definition
       statement := some (mkInformal #[])
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.override_missing) with
           present := true
           provedStatus := .proved
         }
-      ]]
+      ]
     })
 ]
 
@@ -313,12 +313,12 @@ def stateLeanOnlyExternalMissing : Environment.State := mkState [
   (`lean_only_ext_missing,
     {
       kind := .definition
-      leanCode := #[.external #[
+      externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.missing) with
           present := false
           provedStatus := .proved
         }
-      ]]
+      ]
     })
 ]
 

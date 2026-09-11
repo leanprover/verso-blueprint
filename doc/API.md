@@ -211,7 +211,13 @@ captured node, while `Nodes.entries` includes only traversed occurrences for
 numbering and relation indexes. A multi-project generator captures each project
 in its own module and collects the resulting `BlueprintDocument` values.
 `Nodes.capturedData?` resolves captured metadata even without an occurrence;
-`Nodes.renderedData?` requires a traversed occurrence and target.
+`Nodes.renderedData?` requires a traversed occurrence and target. `Nodes.display?`
+and `BlockData.display` produce a transient `NodeDisplay` with an optional document
+number. Use its `title`/`proofTitle` for text and its `number?` for structured
+headings; captured elaboration counts are not display numbers. `BlockData.kind`
+is always the mathematical `NodeKind`, while `isProof` records the occurrence
+facet. Citation summaries likewise keep a label and facet and resolve their
+kind and numbering through the registry.
 Synthetic renderers explicitly construct a model with a `nodes` array, using
 `RenderNode.ofBlockData` when convenient; an empty model no longer means “trust metadata embedded in the
 chapter.” Every fixture in the repository catalog passes its selected model.
@@ -241,11 +247,22 @@ across repeated occurrences. Manifest `sources` come from each selected facet.
 Literate code is represented by `InlineCodeBlocks`, an ordered collection of
 `InlineCodeData` records. Each record has its own `blockId`, derived from the source
 module and byte position. `TraversalIndex.InlineCode.blocks` selects all blocks for
-a label; `forDecl?` finds the block owning a declaration. `BlockCodeData.inline`
-carries the collection, and `leanCodePreviewKeys` contains a key for every block.
+a label; `forDecl?` finds the block owning a declaration. `BlockCodeData` is a
+record with `inlineBlocks` and `externalDecls`, so both association categories
+can participate in one heading or manifest entry. `leanCodePreviewKeys` contains
+a key for every block.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
-The manifest schema marker is now 5: regenerate old artifacts for the shared
-metadata fields, collection-valued inline code data, and source-based preview identities.
+The manifest schema marker is now 6: regenerate old artifacts for the separate
+node-kind/facet fields and the combined associated-code record.
+
+Custom registration calls to `Environment.contribute` return `Option Node`:
+`some` is the accepted node; `none` means diagnostics were logged and the
+registration was rejected. Combine dependent changes into one `NodeContribution`;
+discard the result only when no following operation depends on acceptance.
+Directive expanders use `Environment.withDirective` for scoped error recovery
+and atomic Blueprint-state updates. The unscoped push/pop API is removed.
+`Node.externalRefs` and `Node.literateCodes` store normalized associations;
+`NodeContribution.leanCode` still accepts external groups or literate blocks.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal

@@ -82,6 +82,7 @@ def facetBlueprint : BlueprintDocument := .capture
   let part := facetBlueprint.text
   for (order, expected) in #[
       (#[0], none),
+      (#[2], some PreviewCache.Facet.proof),
       (#[0, 2], some PreviewCache.Facet.proof),
       (#[2, 0], some PreviewCache.Facet.proof),
       (#[0, 1, 2], some PreviewCache.Facet.statement)] do
@@ -90,11 +91,26 @@ def facetBlueprint : BlueprintDocument := .capture
     let errors ← IO.mkRef (#[] : Array String)
     let (blocks, state) ← traverseManualDocBlocksAndState extension_impls% doc
       (fun error => errors.modify (·.push error)) (model := facetBlueprint.model)
+    -- Source declarations belong to the omitted placeholder chapter. Supply
+    -- those resources explicitly when exercising the proof chapter alone.
+    let state := if order == #[2] then
+      TraversalIndex.SourceDocuments.saveData state "facet-proof-paper" {
+        id := "facet-proof-paper", title := "Proof source", pdf := some "source/proof-paper.pdf" }
+      else state
     -- Root paragraphs contain the authored bpref roles, independently of chapter bodies.
     let references := blocks.filter fun block => match block with | .para _ => true | _ => false
     let html ← renderManualBlocksHtmlWithState references extension_impls% state
+    if order == #[2] then
+      unless hasSubstr html.asString "Proof for Theorem 1" &&
+          !hasSubstr html.asString ">Proof 1<" do
+        throw <| IO.userError "Proof-only references lost the theorem kind"
     let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
       (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
+    if order == #[2] then
+      let some proof := files.manifest.findEntry? "filled_facet--proof"
+        | throw <| IO.userError "Missing proof-only manifest entry"
+      unless proof.kind == some .theorem && proof.title == "Proof for Theorem 1" do
+        throw <| IO.userError "Proof-only manifest lost the mathematical kind"
     match expected with
     | none =>
         unless !hasSubstr html.asString "bp_inline_preview_ref" do

@@ -107,20 +107,17 @@ block_extension Block.informalCode (data : InlineCodeData) where
         | pure .empty
       let { label, foldCodeBlock, foldProofs, .. } := cdata
       let s ← HtmlT.state
-      let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match Informal.TraversalIndex.Nodes.capturedData? s label with
-        | some b =>
-          let b := b.withResolvedNumberingInContext s ctxt
-          codePanelHeader b (b.displayNumber s)
+        match Informal.TraversalIndex.Nodes.display? s label with
+        | some display => codePanelHeader display
         | none => fallbackCodePanelHeader
       let getDeclHref (decl : Name) : Option String :=
         Resolve.resolveInlineLeanDeclHref? s decl
       let panelSummary :=
         renderPanelIndicator label
           {
-            source := some (.inline #[cdata])
+            source := some { inlineBlocks := #[cdata] }
           }
           getDeclHref
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
@@ -328,12 +325,19 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
       pure <| CodeDeclData.ofLiterateThm decl sourceLocation
     let codeRef ← getRef
-    Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems
-    if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-      let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
-      let deps ← liftM <| DependencyAnalysis.inferDecls decls
-      let inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
-      liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label inferredUseRefs
+    let inferredUseRefs ←
+      if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+        let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
+        let deps ← liftM <| DependencyAnalysis.inferDecls decls
+        pure <| deps.toUseRefs (currentLabel? := some cfg.label)
+      else pure ({} : DependencyAnalysis.InferredUseRefs)
+    discard <| Environment.contribute cfg.label {
+      leanCode := #[.literate {
+        stx := codeRef
+        definedDefs := res.definedDefs
+        definedTheorems := res.definedTheorems }]
+      statementUses := inferredUseRefs.statement
+      proofUses := inferredUseRefs.proof }
     let some position := codeRef.getPos?
       | throwError "Blueprint code blocks require a source position"
     let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx

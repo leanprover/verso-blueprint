@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.Statement
 open Verso.Genre
 open Informal
 
-run_cmd Informal.Environment.contribute `key_theorem { tags := #["proof"], priority := some "high" }
+run_cmd discard <| Informal.Environment.contribute `key_theorem { tags := #["proof"], priority := some "high" }
 
 #doc (Manual) "Proof chapter" =>
 

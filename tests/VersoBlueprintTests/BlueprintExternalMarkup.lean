@@ -38,7 +38,7 @@ private def previewEntry?
 
 private def entryExternalDeclNames (entry : Informal.PreviewManifest.Entry) : Array Name :=
   match entry.codeData with
-  | some (.external refs) => refs.map (·.canonical)
+  | some code => code.externalDecls.map (·.canonical)
   | _ => #[]
 
 private def entryHasExternalMarkup
@@ -887,11 +887,11 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessWithCollidingLeanEntry
     let bodylessExternalRefs : Array Name :=
       match bodylessEntry.codeData with
-      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | some code => code.externalDecls.map (·.canonical)
       | _ => #[]
     let punctuationExternalRefs : Array Name :=
       match punctuationEntry.codeData with
-      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | some code => code.externalDecls.map (·.canonical)
       | _ => #[]
     let brokenBodylessManifest : Informal.PreviewManifest.File := {
       bodylessFiles.manifest with

@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.Doc
 @[blueprint "key_theorem" (proofUses := ["statement_dep"])]
 theorem lateAttachment : True := trivial
 
-run_cmd Informal.Environment.contribute `key_theorem {
+run_cmd discard <| Informal.Environment.contribute `key_theorem {
   effort := some "small"
   tags := #["late"]
 }

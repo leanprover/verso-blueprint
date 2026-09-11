@@ -31,7 +31,7 @@ private def cachedStatement
     (parent : Option Informal.Data.Parent := none) :
     Informal.BlockData :=
   {
-    kind := .statement .definition
+    kind := .definition
     label
     count
     statementUses

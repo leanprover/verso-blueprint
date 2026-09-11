@@ -253,6 +253,16 @@ The same flow can be read as four contracts:
 
    Custom registration code should call `Informal.Environment.contribute` with
    locally supplied fields instead of updating and re-exporting a whole node.
+   Its `Option Node` result makes acceptance explicit. `withDirective` scopes
+   the one optional active directive and restores Blueprint state on rejection,
+   logged body errors, or exceptions, preserving other Lean state and diagnostics.
+   The completed directive contributes its body, metadata, and inferred edges
+   together. There is no separately committed dependency tail.
+
+   Nodes store external declarations and literate blocks in separate arrays.
+   External declarations are normalized by canonical name during registration,
+   using an ephemeral index for each incoming group. Reads do not reconstruct
+   or deduplicate external groups.
    Body producers use `InformalBody`; the assembled `InformalData` additionally
    retains one dependency declaration per label and authority in `useDeclarations`.
    Its `deps` projection selects manual metadata for display without discarding
@@ -1282,6 +1292,11 @@ reasons:
 The node registry retains external declaration rendering data captured during
 elaboration. Literate code panels and preview bodies have their own stores;
 renderers assemble the temporary `BlockData.codeData` view from these sources.
+That view retains both external declarations and inline blocks. Heading status
+and tooltips summarize their union; panel-specific indicators describe the
+panel's own inputs. `BlockData` keeps mathematical kind and occurrence facet
+separate. A transient `NodeDisplay` resolves the optional document number,
+preventing captured-only metadata from acquiring a displayed elaboration number.
 Public `xref.json` exports only anchored nodes and projects their resolved
 metadata without code rendering payloads. Saved traversal state retains the
 complete registry so rendering can resume without a Lean environment.

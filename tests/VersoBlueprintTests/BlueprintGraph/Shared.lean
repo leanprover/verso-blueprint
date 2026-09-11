@@ -33,11 +33,11 @@ def mkThmDecl (name : Name) (typeSorry : Bool := false) (proofSorry : Bool := fa
     proofSorryRefs := if proofSorry then #[.missing] else #[]
   }
 
-def mkDefCode (decl : Name) (typeSorry : Bool := false) : CodeRef :=
-  .literate { stx := .missing, definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
+def mkDefCode (decl : Name) (typeSorry : Bool := false) : Code :=
+  { stx := .missing, definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
 
-def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : CodeRef :=
-  .literate { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
+def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : Code :=
+  { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
 
 def mkState (entries : List (Name × Node)) : Environment.State :=
   let data := entries.foldl (init := ({} : Lean.NameMap Environment.RegisteredNode)) fun acc (label, node) =>

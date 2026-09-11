@@ -7,4 +7,4 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 -- A sibling extension that supplies metadata without another proof body.
-run_cmd Informal.Environment.contribute `key_theorem { priority := some "low" }
+run_cmd discard <| Informal.Environment.contribute `key_theorem { priority := some "low" }

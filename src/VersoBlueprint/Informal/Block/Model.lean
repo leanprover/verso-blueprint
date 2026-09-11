@@ -138,39 +138,24 @@ def InlineCodeBlocks.definedTheorems (blocks : InlineCodeBlocks) : Array CodeDec
 def InlineCodeBlocks.declarations (blocks : InlineCodeBlocks) : Array CodeDeclData :=
   blocks.flatMap (·.declarations)
 
-/--
-Resolved block-level code semantics used by informal block rendering.
-
-This unifies directive hints and inline code payloads (`InlineCodeData`)
-for the HTML phase:
-- `inline` takes precedence whenever code-block data exists,
-- otherwise we fall back to optional external declaration hints.
--/
-inductive BlockCodeData where
-  /-- Distinct inline/literate code blocks associated with this label. -/
-  | inline (blocks : InlineCodeBlocks)
-  /-- External Lean declarations associated with this label. -/
-  | external (decls : Array Data.ExternalRef)
+/-- All Lean associations used by a heading or panel; neither category hides the other. -/
+structure BlockCodeData where
+  inlineBlocks : InlineCodeBlocks := #[]
+  externalDecls : Array Data.ExternalRef := #[]
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-def BlockCodeData.ofExternalRefs (decls : Array Data.ExternalRef) : Option BlockCodeData :=
-  if decls.isEmpty then
-    none
-  else
-    some (.external decls)
+def BlockCodeData.isEmpty (code : BlockCodeData) : Bool :=
+  code.inlineBlocks.isEmpty && code.externalDecls.isEmpty
 
-/-- Prefer rendered literate blocks over an optional external-code hint. -/
-def BlockCodeData.ofHintAndInline (hint? : Option BlockCodeData) (blocks : InlineCodeBlocks)
-    : Option BlockCodeData :=
-  if blocks.isEmpty then hint? else some (.inline blocks)
+/-- Omit empty presentation inputs without selecting between association categories. -/
+def BlockCodeData.nonempty? (code : BlockCodeData) : Option BlockCodeData :=
+  if code.isEmpty then none else some code
 
-def BlockCodeData.inlineData? : BlockCodeData → Option InlineCodeBlocks
-  | .inline code => some code
-  | _ => Option.none
-
-def BlockCodeData.externalDecls : BlockCodeData → Array Data.ExternalRef
-  | .external decls => decls
-  | _ => #[]
+/-- Prefer the rendered literate declaration when an external association names the same constant. -/
+def BlockCodeData.summaryExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
+  let names := code.inlineBlocks.declarations.foldl
+    (fun (names : NameSet) decl => names.insert decl.name.eraseMacroScopes) {}
+  code.externalDecls.filter fun decl => !names.contains decl.canonical.eraseMacroScopes
 
 /-- Shared semantic metadata; occurrence numbering, sources, and folding live separately. -/
 structure BlockMetadata where
@@ -247,7 +232,9 @@ deriving FromJson, ToJson, Quote
 
 /-- A resolved rendering view, assembled from a node and a document occurrence. -/
 structure BlockData extends BlockMetadata, BlockPresentation where
-  kind : Data.InProgressKind := .proof
+  /-- Mathematical kind, independent of the rendered facet. -/
+  kind : Data.NodeKind := .lemma
+  isProof : Bool := false
   codeData : Option BlockCodeData := none
 deriving FromJson, ToJson, Quote
 
@@ -272,14 +259,15 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
 
 def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {
   label := data.label
-  isProof := match data.kind with | .proof => true | .statement _ => false
+  isProof := data.isProof
   toBlockPresentation := data.toBlockPresentation
 }
 
 def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : BlockData := {
   toBlockMetadata := node.toBlockMetadata
-  kind := if occurrence.isProof then .proof else .statement node.kind
-  codeData := if occurrence.isProof then none else BlockCodeData.ofExternalRefs node.externalRefs
+  kind := node.kind
+  isProof := occurrence.isProof
+  codeData := ({ externalDecls := node.externalRefs } : BlockCodeData).nonempty?
   toBlockPresentation := occurrence.toBlockPresentation
 }
 
@@ -289,11 +277,23 @@ def RenderNode.toBlockData (node : RenderNode) : BlockData :=
 /-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
 def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   toBlockMetadata := data.toBlockMetadata
-  kind := match data.kind with | .statement kind => kind | .proof => .lemma
+  kind := data.kind
   externalRefs := data.codeData.map (·.externalDecls) |>.getD #[]
   initialCount := data.count
   occurrence := some data.toOccurrence
 }
+
+/-- Resolved node identity for UI, with a number only when the document has an occurrence. -/
+structure NodeDisplay where
+  label : Data.Label
+  kind : Data.NodeKind
+  number? : Option String := none
+
+def NodeDisplay.title (display : NodeDisplay) : String :=
+  display.number?.map (fun number => s!"{display.kind} {number}") |>.getD (display.label.toString (escape := false))
+
+def NodeDisplay.proofTitle (display : NodeDisplay) : String :=
+  s!"Proof for {display.title}"
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
   Data.UseRef.labels data.statementUses

@@ -39,9 +39,9 @@ def literateBlueprint : BlueprintDocument := .capture
       | throw <| IO.userError "Missing statement preview"
     unless statement.leanCodePreviewKeys.size == 2 do
       throw <| IO.userError "Statement preview lost a literate block"
-    let some (.inline code) := statement.codeData
+    let some code := statement.codeData
       | throw <| IO.userError "Missing literate declaration data"
-    unless code.declarations.size == 2 do
+    unless code.inlineBlocks.declarations.size == 2 do
       throw <| IO.userError "Declaration index lost a literate theorem"
     for decl in #[`inlineAttached, `inlineSecond] do
       let some block := TraversalIndex.InlineCode.forDecl? state `key_theorem decl
@@ -59,3 +59,16 @@ def literateBlueprint : BlueprintDocument := .capture
       if decl == `inlineSecond then
         unless block.foldCodeBlock && !block.foldProofs do
           throw <| IO.userError "Literate occurrence folding options were lost"
+
+
+-- Importing a statement does not number a document that renders only its code.
+#eval show IO Unit from do
+  let part := literateBlueprint.text
+  let text := { part with subParts := #[part.subParts[1]!, part.subParts[2]!] }
+  let doc : Doc.VersoDoc Genre.Manual := .mk (fun _ => text) "{}"
+  let (html, state) ← renderManualDocHtmlStringAndState extension_impls% doc
+    (model := literateBlueprint.model)
+  unless !TraversalIndex.Nodes.hasRenderedOccurrence state `key_theorem &&
+      countSubstr html "Lean code for key_theorem" >= 2 &&
+      !hasSubstr html "Lean code for Theorem" do
+    throw <| IO.userError "Code-only chapters used an elaboration number as a document number"

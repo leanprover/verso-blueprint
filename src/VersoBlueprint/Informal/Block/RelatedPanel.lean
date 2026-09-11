@@ -29,7 +29,7 @@ open Verso.Genre Manual
 open Verso.Output.Html
 
 private def resolveStoredGroupData?
-    (state : Verso.Genre.Manual.TraverseState) (label : Data.Label) : Option GroupBlockData :=
+    (state : TraverseState) (label : Data.Label) : Option GroupBlockData :=
   Informal.TraversalIndex.Groups.data? state label
 
 private structure GroupRenderInfo where
@@ -37,25 +37,10 @@ private structure GroupRenderInfo where
   title : String
   declared : Bool := false
 
-/-- Traversal-backed render context shared by group and dependency header panels. -/
-structure RelationContext where
-  state : Verso.Genre.Manual.TraverseState
-
-/-- Collect the traversal data needed to render related-block panels. -/
-def RelationContext.ofState (state : Verso.Genre.Manual.TraverseState) : RelationContext := {
-  state
-}
-
-private def blockSummaryTitle (ctx : RelationContext) (data : BlockData) : String :=
-  data.displayTitle ctx.state
-
-private def storedBlockByLabel? (ctx : RelationContext) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.capturedData? ctx.state label
-
 private def groupRenderInfo?
-    (ctx : RelationContext) (data : BlockData) : Option GroupRenderInfo := do
+    (state : TraverseState) (data : BlockData) : Option GroupRenderInfo := do
   let parent ← data.parent
-  match resolveStoredGroupData? ctx.state parent with
+  match resolveStoredGroupData? state parent with
   | some groupData => some { label := parent, title := groupData.header, declared := true }
   | none => some { label := parent, title := parent.toString, declared := false }
 
@@ -155,9 +140,9 @@ def proofUsesPanelConfig (sourceLabel : Data.Label) : PanelConfig :=
 
 /-- Standard forward-dependency panel presentation for a concrete informal block. -/
 def usesPanelConfigForBlock (data : BlockData) : PanelConfig :=
-  match data.kind with
-  | .proof => proofUsesPanelConfig data.label
-  | .statement _ => statementUsesPanelConfig data.label
+  match data.isProof with
+  | true => proofUsesPanelConfig data.label
+  | false => statementUsesPanelConfig data.label
 
 private def groupChipClass (declared : Bool) : String :=
   if declared then
@@ -226,9 +211,9 @@ private def UsedByEntry.toCacheEntry (entry : UsedByEntry) :
 }
 
 private def UsedByEntry.ofCacheEntry?
-    (ctx : RelationContext)
+    (state : TraverseState)
     (entry : Informal.TraversalIndex.RelatedPanelUsedByCache.Entry) : Option UsedByEntry := do
-  let source ← storedBlockByLabel? ctx entry.sourceLabel
+  let source ← Informal.TraversalIndex.Nodes.capturedData? state entry.sourceLabel
   return {
     source
     inStatement := entry.inStatement
@@ -289,9 +274,9 @@ private def buildUsedByCache (blocks : Array BlockData) :
     Data.LabelMap (Array UsedByEntry) :=
   let seeded := blocks.foldl
       (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache block =>
-    match block.kind with
-    | .statement _ => cache.insert block.label #[]
-    | .proof => cache
+    match block.isProof with
+    | false => cache.insert block.label #[]
+    | true => cache
   let unsorted := blocks.foldl
       (init := seeded) fun cache source =>
     let cache := source.statementUses.foldl (init := cache) fun cache useRef =>
@@ -306,8 +291,8 @@ private def buildGroupMembersCache (blocks : Array BlockData) :
     Data.LabelMap (Array Data.Label) :=
   blocks.foldl
       (init := (Std.TreeMap.empty : Data.LabelMap (Array Data.Label))) fun cache block =>
-    match block.kind, block.parent with
-    | .statement _, some parent =>
+    match block.isProof, block.parent with
+    | false, some parent =>
         let members := cache.find? parent |>.getD #[]
         cache.insert parent (members.push block.label)
     | _, _ => cache
@@ -331,11 +316,11 @@ def patchRelationCaches (state : TraverseState) : TraverseState :=
     Informal.TraversalIndex.RelatedPanelGroupMembersCache.saveData state label entries
 
 private def collectUsedByEntries
-    (ctx : RelationContext) (target : Data.Label) : Array UsedByEntry :=
-  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? ctx.state target with
-  | some entries => entries.filterMap (UsedByEntry.ofCacheEntry? ctx)
+    (state : TraverseState) (target : Data.Label) : Array UsedByEntry :=
+  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target with
+  | some entries => entries.filterMap (UsedByEntry.ofCacheEntry? state)
   | none =>
-      sortUsedByEntries <| collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
+      sortUsedByEntries <| collectStoredBlocks state |>.foldl (init := #[]) fun acc source =>
         if source.label == target then
           acc
         else
@@ -356,7 +341,7 @@ private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProo
   }
 
 private def addUsesEntry
-    (ctx : RelationContext) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    (state : TraverseState) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     Array UsesEntry :=
   if acc.any (·.label == useRef.label) then
     acc.map fun entry =>
@@ -367,7 +352,7 @@ private def addUsesEntry
   else
     acc.push <| mergeUsesEntry {
       label := useRef.label
-      target? := storedBlockByLabel? ctx useRef.label
+      target? := Informal.TraversalIndex.Nodes.capturedData? state useRef.label
     } useRef isProof
 
 private def usesEntryLess (a b : UsesEntry) : Bool :=
@@ -378,32 +363,29 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
   | none, none => a.label.toString < b.label.toString
 
 private def collectUsesEntries
-    (ctx : RelationContext) (data : BlockData) : Array UsesEntry :=
-  let source := (storedBlockByLabel? ctx data.label).getD data
-  let isProof :=
-    match data.kind with
-    | .proof => true
-    | .statement _ => false
+    (state : TraverseState) (data : BlockData) : Array UsesEntry :=
+  let source := (Informal.TraversalIndex.Nodes.capturedData? state data.label).getD data
+  let isProof := data.isProof
   let sourceUses :=
     if isProof then source.proofUses else source.statementUses
   sourceUses.foldl (init := #[]) (fun acc useRef =>
-    addUsesEntry ctx acc useRef isProof)
+    addUsesEntry state acc useRef isProof)
   |>.qsort usesEntryLess
 
 private def collectGroupEntries
-    (ctx : RelationContext) (target : BlockData) (group : GroupRenderInfo) :
+    (state : TraverseState) (target : BlockData) (group : GroupRenderInfo) :
     Array BlockData :=
-  match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? ctx.state group.label with
+  match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state group.label with
   | some labels => labels.filterMap fun label =>
-      if label == target.label then none else storedBlockByLabel? ctx label
+      if label == target.label then none else Informal.TraversalIndex.Nodes.capturedData? state label
   | none =>
-      collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
+      collectStoredBlocks state |>.foldl (init := #[]) fun acc source =>
         if source.label == target.label then
           acc
         else if source.parent == some group.label then
-          match source.kind with
-          | .statement _ => acc.push source
-          | .proof => acc
+          match source.isProof with
+          | false => acc.push source
+          | true => acc
         else
           acc
 
@@ -511,15 +493,15 @@ private def useMetadataBadgeCodes
 
 private def mkBlockEntry {m}
     [Monad m]
-    (ctx : RelationContext)
+    (state : TraverseState)
     (source : BlockData) (previewId : String)
     (badgeCodes : Array String := #[]) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
-  let previewTitle := blockSummaryTitle ctx source
-  let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
+  let previewTitle := source.displayTitle state
+  let href := Informal.TraversalIndex.Nodes.href? state source.label
   pure {
     previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state source.label
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state source.label
     previewTitle
     label := source.label
     href
@@ -528,17 +510,17 @@ private def mkBlockEntry {m}
 
 private def mkLabelEntry {m}
     [Monad m]
-    (ctx : RelationContext)
+    (state : TraverseState)
     (label : Data.Label) (previewId : String)
     (badgeCodes : Array String := #[]) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := s!"{label}"
   pure {
     previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state label
+    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state label
     previewTitle
     label
-    href := Informal.TraversalIndex.Nodes.href? ctx.state label
+    href := Informal.TraversalIndex.Nodes.href? state label
     badgeCodes
   }
 
@@ -671,16 +653,16 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}
     [Monad m]
-    (ctx : RelationContext)
+    (state : TraverseState)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  match data.kind with
-  | .proof => pure .empty
-  | .statement _ =>
-    let entries := collectUsedByEntries ctx data.label
+  match data.isProof with
+  | true => pure .empty
+  | false =>
+    let entries := collectUsedByEntries state data.label
     let panelEntries ← entries.mapM fun entry =>
       let badgeCodes := usedByAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
-      mkBlockEntry ctx entry.source
+      mkBlockEntry state entry.source
         (usedByPreviewId data.label entry.source.label)
         (badgeCodes := badgeCodes)
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
@@ -688,19 +670,19 @@ def renderUsedByExtra {m}
 /-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
-    (ctx : RelationContext)
+    (state : TraverseState)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  let entries := collectUsesEntries ctx data
+  let entries := collectUsesEntries state data
   let panelEntries ← entries.mapM fun entry => do
     let badgeCodes := useAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
     match entry.target? with
     | some target =>
-      mkBlockEntry ctx target
+      mkBlockEntry state target
         (usesPreviewId data.label entry.label)
         (badgeCodes := badgeCodes)
     | none =>
-      mkLabelEntry ctx entry.label
+      mkLabelEntry state entry.label
         (usesPreviewId data.label entry.label)
         (badgeCodes := badgeCodes)
   pure <| renderPanel (usesPanelConfigForBlock data) panelEntries
@@ -708,18 +690,18 @@ def renderUsesExtra {m}
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
     [Monad m]
-    (ctx : RelationContext)
+    (state : TraverseState)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
-  match data.kind, groupRenderInfo? ctx data with
-  | .proof, _ => pure none
-  | .statement _, none => pure none
-  | .statement _, some group =>
-    let siblings := collectGroupEntries ctx data group
+  match data.isProof, groupRenderInfo? state data with
+  | true, _ => pure none
+  | false, none => pure none
+  | false, some group =>
+    let siblings := collectGroupEntries state data group
     if group.declared && siblings.isEmpty then
       return none
     let panelEntries ← siblings.mapM fun source =>
-      mkBlockEntry ctx source
+      mkBlockEntry state source
         (groupPreviewId data.label source.label)
     let cfg := groupPanelConfig group.label group.title group.declared
     pure <| some (renderPanel cfg panelEntries)

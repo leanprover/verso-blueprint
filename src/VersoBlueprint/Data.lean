@@ -518,14 +518,6 @@ def Code.definedDeclNames (code : Code) : Array Name :=
   (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).foldl
     pushNameUnique #[]
 
-def CodeRef.externalRefs : CodeRef → Array ExternalRef
-  | .external refs => refs
-  | .literate _ => #[]
-
-def CodeRef.literateCodes : CodeRef → Array Code
-  | .external _ => #[]
-  | .literate code => #[code]
-
 def CodeRef.leanDecls : CodeRef → Array Name
   | .external refs =>
     refs.foldl (init := #[]) fun acc ref =>
@@ -566,8 +558,10 @@ structure Node where
   count : Nat := 0
   statement : Option InformalData := none -- Informal Object statement
   proof : Option InformalData := none -- Informal Object proof
-  /-- Lean code associations for this informal object. -/
-  leanCode : Array CodeRef := #[]
+  /-- External associations, unique by canonical declaration in registration order. -/
+  externalRefs : Array ExternalRef := #[]
+  /-- Every associated literate block, in registration order. -/
+  literateCodes : Array Code := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
   externalMarkup : ExternalMarkupSet := {} -- Raw external markup keyed by language and slot
   parent : Option Parent := none -- Optional parent group for summaries/graphs
@@ -601,66 +595,48 @@ structure NodeContribution where
   prUrl : Option String := none
 deriving Repr, Inhabited
 
-private def pushExternalRefUnique (refs : Array ExternalRef) (ref : ExternalRef) : Array ExternalRef :=
-  let canonical := ref.canonical.eraseMacroScopes
-  if refs.any (fun current => current.canonical.eraseMacroScopes == canonical) then
-    refs.map fun current =>
-      if current.canonical.eraseMacroScopes == canonical && !current.present && ref.present then
-        { ref with canonical }
-      else
-        current
-  else
-    refs.push { ref with canonical }
+/-- Stable canonical union; build an ephemeral index once for this incoming group. -/
+private def mergeExternalRefs (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
+  let mut positions : NameMap Nat := {}
+  for i in [:current.size] do
+    positions := positions.insert current[i]!.canonical i
+  let mut refs := current
+  for ref in incoming do
+    let ref := { ref with canonical := ref.canonical.eraseMacroScopes }
+    match positions.get? ref.canonical with
+    | some i =>
+      if !refs[i]!.present && ref.present then refs := refs.set! i ref
+    | none =>
+      positions := positions.insert ref.canonical refs.size
+      refs := refs.push ref
+  return refs
 
-def Node.externalRefs (node : Node) : Array ExternalRef :=
-  node.leanCode.foldl (init := #[]) fun acc codeRef =>
-    codeRef.externalRefs.foldl pushExternalRefUnique acc
-
-def Node.literateCodes (node : Node) : Array Code :=
-  node.leanCode.foldl (init := #[]) fun acc codeRef =>
-    acc ++ codeRef.literateCodes
+/-- External summary entries not already supplied by a compiled literate declaration. -/
+def Node.summaryExternalRefs (node : Node) : Array ExternalRef :=
+  let names := node.literateCodes.foldl (init := ({} : NameSet)) fun names code =>
+    code.definedDeclNames.foldl (fun names name => names.insert name) names
+  node.externalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
 
 def Node.leanDecls (node : Node) : Array Name :=
-  node.leanCode.foldl (init := #[]) fun acc codeRef =>
-    codeRef.leanDecls.foldl pushNameUnique acc
+  let external := node.externalRefs.foldl (init := #[]) fun acc ref =>
+    if ref.present then pushNameUnique acc ref.canonical else acc
+  node.literateCodes.foldl (init := external) fun acc code =>
+    code.definedDeclNames.foldl pushNameUnique acc
 
 def Node.hasAssociatedCode (node : Node) : Bool :=
-  !node.leanCode.isEmpty
+  !node.externalRefs.isEmpty || !node.literateCodes.isEmpty
 
 def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
 
 def Node.hasProofBody (node : Node) : Bool := node.proof.any (·.hasBody)
 
 /-- Infer the fallback uniformly from all Lean associations, including literate blocks. -/
-private def inferredNodeKind (code : Array CodeRef) : NodeKind := Id.run do
-  let mut kind := NodeKind.lemma
-  for ref in code do
-    match ref with
-    | .external decls =>
-      for decl in decls do
-        if decl.kind.isTheoremLike then return .theorem
-        kind := .definition
-    | .literate block =>
-      if !block.definedTheorems.isEmpty then return .theorem
-      if !block.definedDefs.isEmpty then kind := .definition
-  return kind
-
-private def mergeAssociatedCodeRefs (current : Array CodeRef) (incoming : CodeRef) : Array CodeRef :=
-  match incoming with
-  | .external incomingRefs =>
-    let currentExternalRefs :=
-      current.foldl (init := #[]) fun refs codeRef =>
-        codeRef.externalRefs.foldl pushExternalRefUnique refs
-    let externalRefs := incomingRefs.foldl pushExternalRefUnique currentExternalRefs
-    let nonExternal := current.filter fun
-      | .external _ => false
-      | .literate _ => true
-    if externalRefs.isEmpty then
-      nonExternal
-    else
-      nonExternal.push (.external externalRefs)
-  | .literate code =>
-    current.push (.literate code)
+private def inferredNodeKind (external : Array ExternalRef) (literate : Array Code) : NodeKind :=
+  if external.any (·.kind.isTheoremLike) || literate.any (! ·.definedTheorems.isEmpty) then
+    .theorem
+  else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then
+    .definition
+  else .lemma
 
 private abbrev MergeM := StateM (Array String)
 
@@ -726,19 +702,24 @@ private def mergeContribution (label : Label) (node : Node)
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
-  let leanCode := incoming.leanCode.foldl mergeAssociatedCodeRefs node.leanCode
+  let mut externalRefs := node.externalRefs
+  let mut literateCodes := node.literateCodes
+  for code in incoming.leanCode do
+    match code with
+    | .external refs => externalRefs := mergeExternalRefs externalRefs refs
+    | .literate code => literateCodes := literateCodes.push code
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
       if node.kindIsExplicit && node.kind != kind then
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
-    | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind leanCode
+    | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs literateCodes
   return {
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
     statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl
-    leanCode
+    externalRefs, literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
   }
 
