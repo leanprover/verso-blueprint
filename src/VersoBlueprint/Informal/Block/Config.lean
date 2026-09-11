@@ -219,8 +219,8 @@ private def resolvePrUrl? {m}
 Resolve a directive config for environment registration.
 
 This keeps argument normalization and proof-vs-statement validation out of the
-block expander while preserving the existing recovery behavior: invalid
-statement-only metadata logs an error and is omitted from the environment frame.
+block expander. Invalid metadata logs diagnostics; the surrounding directive
+transaction rejects the registration if resolution logged any errors.
 -/
 def Config.resolveForDirective {m}
     [Monad m] [MonadResolveName m] [MonadOptions m] [MonadLiftT CoreM m] [MonadEnv m]

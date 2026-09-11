@@ -15,12 +15,10 @@ open Lean
 open Informal.Data
 
 /--
-Elaboration-time builder for a node that is currently open on the directive
-stack.
+Elaboration-time builder for the single currently open directive.
 
-This intentionally stays separate from `Data.Node`: it carries directive-stack
-metadata and typed preview blocks before the final persisted semantic node can
-be assembled.
+This stays separate from `Data.Node`: it collects authored metadata and uses
+before the final checked contribution is assembled.
 -/
 structure InProgress where
   label : Label
@@ -33,7 +31,7 @@ structure InProgress where
   effort : Option String := none
   prUrl : Option String := none
   deps : Array UseRef := #[]
-  previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+  proofUses : Array UseRef := #[]
 deriving Inhabited, Repr
 
 inductive ImportedConflictKind where
@@ -78,7 +76,8 @@ structure State where
   leanNameLabels : NameMap (Array Label) := {}
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
-  stack : List InProgress := []
+  /-- At most one directive can be open; nested declarations are rejected. -/
+  activeDirective : Option InProgress := none
 deriving Inhabited, Repr
 
 private def ImportedConflictKind.rank : ImportedConflictKind → Nat
@@ -235,21 +234,23 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
-/-- Apply and persist only the locally supplied fields of a node registration. -/
-def contribute (label : Label) (contribution : NodeContribution) : m Unit := do
+/-- Apply one complete registration, returning its accepted node or diagnosed failure. -/
+def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
   reportImportedConflicts
   let mainModule ← getMainModule
-  modifyM fun state => do
-    let origin := (state.data.get? label).map (·.origin) |>.getD mainModule
-    match state.addNode label origin mainModule #[contribution] true with
-    | .ok state => return state
-    | .error reasons =>
-      for reason in reasons do logError reason
-      return state
+  let state := informalExt.getState (← getEnv)
+  let origin := (state.data.get? label).map (·.origin) |>.getD mainModule
+  match state.addNode label origin mainModule #[contribution] true with
+  | .ok state =>
+    modifyEnv (informalExt.setState · state)
+    return (state.data.get? label).map (·.toNode)
+  | .error reasons =>
+    for reason in reasons do logError reason
+    return none
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
-  let { data, stack, .. } := informalExt.getState (← getEnv)
-  match (kind, data.get? label, stack.isEmpty) with
+  let { data, activeDirective, .. } := informalExt.getState (← getEnv)
+  match (kind, data.get? label, activeDirective.isNone) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
     let statementCanBeFilled :=
@@ -281,106 +282,86 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     logError m!"Cannot declare nested definitions"
     return false
 
--- stack operators, to associate {uses} role to the currently opened label
-def push (label : Label) (kind : Data.InProgressKind)
-    (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
-    (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) (useRefs : Array UseRef := #[]) : m Bool := do
+private def InProgress.toContribution (current : InProgress) (count : Nat) (ref : Syntax)
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : NodeContribution := {
+  kind := match current.kind with | .statement kind => some kind | .proof => none
+  count := match current.kind with | .statement _ => count | .proof => 0
+  statementBody := match current.kind with
+    | .statement _ => some { stx := ref, previewBlocks := blocks }
+    | .proof => none
+  proofBody := match current.kind with
+    | .statement _ => none
+    | .proof => some { stx := ref, previewBlocks := blocks }
+  statementUses := match current.kind with | .statement _ => current.deps | .proof => #[]
+  proofUses := match current.kind with
+    | .statement _ => current.proofUses
+    | .proof => current.deps ++ current.proofUses
+  leanCode := current.codeHint.toArray
+  parent := current.parent
+  priority := current.priority
+  owner := current.owner
+  tags := current.tags
+  effort := current.effort
+  prUrl := current.prUrl
+}
+
+private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
+  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
+  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+
+/--
+Elaborate and register one directive as a scoped Blueprint-state transaction.
+Body registrations are visible during elaboration, but rejection, logged errors,
+or exceptions restore all Blueprint stores. Other Lean environment changes and
+messages are retained. Every exit restores the enclosing directive scope.
+-/
+def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (prepare : m InProgress) (ref : Syntax)
+    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
   reportImportedConflicts
-  let ok ← checkLabelAndNesting label kind
-  if !ok then
-    return false
-  modify fun data =>
-    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl, deps := useRefs }
-    { data with stack := pdata :: data.stack }
-  return true
-
-/-- When unwinding a nested declaration, discard only the nested frame and keep `data` unchanged. -/
-def State.popNested? (state : State) : Option State :=
-  match state.stack with
-  | _ :: stack =>
-    if stack.isEmpty then
-      none
+  let before := informalExt.getState (← getEnv)
+  let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
+  let result ← try
+    let frame ← prepare
+    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label frame.kind) then
+      pure none
     else
-      some { state with stack }
-  | [] => none
-
-def pop (ref : Syntax) : m Nat := do
-  let state := informalExt.getState (← getEnv)
-  let label? := state.stack.head?.map (·.label)
-  if let some nested := state.popNested? then
-    modify fun _ => nested
-  else
-    match state.stack with
-    | [] => logError m!"Internal Error: closing non-opened directive"
-    | cur :: stack =>
-      let payload : InformalBody := {
-        stx := ref
-        previewBlocks := cur.previewBlocks
-      }
-      let contribution : NodeContribution := {
-        kind := match cur.kind with | .statement kind => some kind | .proof => none
-        count := match cur.kind with
-          | .statement _ => state.nextCount
-          | .proof => 0
-        statementBody := match cur.kind with | .statement _ => some payload | .proof => none
-        proofBody := match cur.kind with | .statement _ => none | .proof => some payload
-        statementUses := match cur.kind with | .statement _ => cur.deps | .proof => #[]
-        proofUses := match cur.kind with | .statement _ => #[] | .proof => cur.deps
-        leanCode := cur.codeHint.toArray
-        parent := cur.parent
-        priority := cur.priority
-        owner := cur.owner
-        tags := cur.tags
-        effort := cur.effort
-        prUrl := cur.prUrl
-      }
-      contribute cur.label contribution
-      modify fun state => { state with stack }
-  let state := informalExt.getState (← getEnv)
-  match label? with
-  | some label =>
-    return (state.data.get? label).map (·.count) |>.getD state.data.size
-  | none => return state.data.size
-
-def peek : m (Option InProgress) := do
-  return (informalExt.getState (← getEnv)).stack.head?
-
-def stack : m (List InProgress) := do
-  return (informalExt.getState (← getEnv)).stack
+      modify fun state => { state with activeDirective := some frame }
+      let (value, blocks) ← body
+      if ← hasErrorsSince messageCount then
+        pure none
+      else
+        let state := informalExt.getState (← getEnv)
+        match state.activeDirective with
+        | none =>
+          logError "Internal error: Blueprint directive scope was closed during elaboration"
+          pure none
+        | some current =>
+          let node? ← contribute frame.label (current.toContribution state.nextCount ref blocks)
+          pure <| node?.map fun node => (value, node.count)
+  catch exception =>
+    modify fun _ => before
+    throw exception
+  match result with
+  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
+  | none => modify fun _ => before
+  return result
 
 def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] =>
-    logErrorAt stx m!"uses declaration outside an informal enviroment"
-    pure ()
-  | cur :: rest =>
-    let cur := {
-      cur with
-        deps := cur.deps.push useRef
-    }
-    let stack := cur :: rest
-    modify fun state => { state with stack }
+  match (informalExt.getState (← getEnv)).activeDirective with
+  | none => logErrorAt stx m!"uses declaration outside an informal environment"
+  | some current =>
+    modify fun state =>
+      { state with activeDirective := some { current with deps := current.deps.push useRef } }
 
-def addDep (stx : Syntax) (dep : Name) : m Unit := do
+def addDep (stx : Syntax) (dep : Name) : m Unit :=
   addUse stx { label := dep }
 
-def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] => pure ()
-  | cur :: rest =>
-    let cur := { cur with previewBlocks := blocks }
-    modify fun state => { state with stack := cur :: rest }
-
-def registerCode (label : Label) (code : Syntax)
-    (definedDefs : Array LiterateDef := #[]) (definedTheorems : Array LiterateThm := #[]) : m Unit :=
-  contribute label { leanCode := #[.literate { stx := code, definedDefs, definedTheorems }] }
-
 def registerRustCode (label : Label) (code : RustInlineCode) : m Unit :=
-  contribute label { rustCode := some code }
+  discard <| contribute label { rustCode := some code }
 
 def registerExternalMarkup (label : Label) (markup : ExternalMarkup) : m Unit :=
-  contribute label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
+  discard <| contribute label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
 
 def getNode? (label : Label) : m (Option Node) := do
   return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)

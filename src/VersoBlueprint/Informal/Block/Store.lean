@@ -122,13 +122,8 @@ private def BlockData.withReservedNumbering
 
 /-- Merge occurrence facts after resolving both occurrences through the shared node registry. -/
 def mergeBlockOccurrences (existing incoming : BlockData) : BlockData :=
-  let kind :=
-    match existing.kind, incoming.kind with
-    | .statement _, _ => existing.kind
-    | .proof, .statement _ => incoming.kind
-    | .proof, .proof => existing.kind
   { existing with
-      kind
+      isProof := existing.isProof && incoming.isProof
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount
   }
@@ -159,7 +154,7 @@ def collectStoredBlocks (state : TraverseState) : Array BlockData :=
 
 /-- Overlay stored numbering onto render-time block data. -/
 private def BlockData.withStoredNumbering
-    (data : BlockData) (stored : BlockData) (fallbackPrefix? : Option String := none) :
+    (data : BlockData) (stored : BlockPresentation) (fallbackPrefix? : Option String := none) :
     BlockData :=
   { data with
       count := stored.count
@@ -173,65 +168,53 @@ private def BlockData.withStoredNumbering
 /-- Resolve stored numbering for a block, with an optional caller-provided prefix fallback. -/
 def BlockData.withResolvedNumbering
     (data : BlockData) (st : TraverseState) (fallbackPrefix? : Option String := none) : BlockData :=
-  match Informal.TraversalIndex.Nodes.renderedData? st data.label with
+  match Informal.TraversalIndex.Nodes.occurrence? st data.label with
   | some stored =>
-    data.withStoredNumbering stored fallbackPrefix?
+    data.withStoredNumbering stored.toBlockPresentation fallbackPrefix?
   | none =>
     { data with partPrefix := data.partPrefix <|> fallbackPrefix? }
 
 /-- Resolve stored numbering for a block, computing the fallback prefix from traversal context. -/
 def BlockData.withResolvedNumberingInContext
     (data : BlockData) (st : TraverseState) (ctxt : TraverseContext) : BlockData :=
-  match Informal.TraversalIndex.Nodes.renderedData? st data.label with
+  match Informal.TraversalIndex.Nodes.occurrence? st data.label with
   | some stored =>
-    data.withStoredNumbering stored (numberedPartPrefix? stored.subNumberingPrefix ctxt)
+    data.withStoredNumbering stored.toBlockPresentation (numberedPartPrefix? stored.subNumberingPrefix ctxt)
   | none =>
     data.withTraversalNumberingContext ctxt
 
-/-- The user-facing number for a block, after applying stored numbering metadata. -/
-def BlockData.displayNumber (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  let data := data.withResolvedNumbering st fallbackPrefix?
+/-- Format numbering from an actual document occurrence. -/
+private def occurrenceNumber (data : BlockData) : String :=
   match data.numberingMode with
   | .local => s!"{data.count}"
   | .global => s!"{data.globalCount.getD data.count}"
   | .sub =>
       match data.partPrefix with
-      | some numPrefix => s!"{numPrefix}.{data.count}"
+      | some numberPrefix => s!"{numberPrefix}.{data.count}"
       | none => s!"{data.count}"
 
-/-- Add the block kind to a rendered number, for example `Definition 1.3.2`. -/
-def blockDisplayTitle (data : BlockData) (numberText : String) : String :=
-  match data.kind with
-  | .proof => s!"Proof {numberText}"
-  | .statement kind => s!"{kind} {numberText}"
+/-- One presentation boundary for captured identity and optional document numbering. -/
+def BlockData.display (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : NodeDisplay := {
+  label := data.label
+  kind := data.kind
+  number? := (Informal.TraversalIndex.Nodes.occurrence? st data.label).map fun stored =>
+    occurrenceNumber (data.withStoredNumbering stored.toBlockPresentation fallbackPrefix?)
+}
 
-def BlockData.statementKind? (data : BlockData) (st : TraverseState) : Option Data.NodeKind :=
-  match data.kind with
-  | .statement kind => some kind
-  | .proof =>
-      match Informal.TraversalIndex.Nodes.renderedData? st data.label with
-      | some stored =>
-          match stored.kind with
-          | .statement kind => some kind
-          | .proof => none
-      | none => none
+/-- Resolve node presentation without turning an elaboration count into a document number. -/
+def Informal.TraversalIndex.Nodes.display? (st : TraverseState) (label : Data.Label) : Option NodeDisplay := do
+  let node ← Informal.TraversalIndex.Nodes.node? st label
+  return node.toBlockData.display st
 
-def proofDisplayTitle (statementKind? : Option Data.NodeKind) (numberText : String) : String :=
-  match statementKind? with
-  | some kind => s!"Proof for {kind} {numberText}"
-  | none => s!"Proof {numberText}"
+def BlockData.displayTitle (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : String :=
+  let display := data.display st fallbackPrefix?
+  if data.isProof then display.proofTitle else display.title
 
-def BlockData.displayProofTitle (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  proofDisplayTitle (data.statementKind? st) (data.displayNumber st fallbackPrefix?)
-
-/-- The user-facing title for a block, including kind and resolved number. -/
-def BlockData.displayTitle (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  match data.kind with
-  | .proof => data.displayProofTitle st fallbackPrefix?
-  | .statement _ => blockDisplayTitle data (data.displayNumber st fallbackPrefix?)
+def BlockData.displayProofTitle (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : String :=
+  (data.display st fallbackPrefix?).proofTitle
 
 /--
 Save one traversed informal block in the semantic node index.

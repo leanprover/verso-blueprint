@@ -687,7 +687,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 5
+def manifestInternalSchemaVersion : Nat := 6
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -985,7 +985,8 @@ def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
 
 /-- Convert manifest entry metadata to the shared informal block model. -/
 def Entry.blockData (entry : Entry) : Informal.BlockData := {
-  kind := entry.blockKind
+  kind := entry.kind.getD .theorem
+  isProof := entry.facet == .proof
   codeData := entry.codeData
   sourceRef := entry.primarySource?
   label := entry.label
@@ -1633,13 +1634,10 @@ def Entry.matchesText (entry : Entry) (query : String) : Bool :=
 /-- Search whether the entry references Lean code whose key or declaration text contains `decl`. -/
 def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
   entry.leanCodePreviewKeys.any (fun key => key.contains decl) ||
-    match entry.codeData with
-    | some (.inline codeData) =>
-        codeData.declarations.any (fun candidate => candidate.name.toString.contains decl)
-    | some (.external decls) =>
-        decls.any fun externalRef =>
-          externalRef.canonical.toString.contains decl || externalRef.written.toString.contains decl
-    | none => false
+    entry.codeData.any fun code =>
+      code.inlineBlocks.declarations.any (fun candidate => candidate.name.toString.contains decl) ||
+      code.externalDecls.any fun externalRef =>
+        externalRef.canonical.toString.contains decl || externalRef.written.toString.contains decl
 
 def externalMarkupEntryKey (label : Name) : String :=
   Informal.PreviewSource.externalMarkupKey label
@@ -1930,19 +1928,12 @@ private structure BlockHeadingParts where
 private def blockHeadingParts? (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
     Option BlockHeadingParts := do
-  guard (Informal.TraversalIndex.Nodes.hasRenderedOccurrence state label)
   let blockData ← blockData? <|> blockInfo? state label
-  let numberText := blockData.displayNumber state
+  let display := blockData.display state
+  let number ← display.number?
   match facet with
-  | .statement =>
-      let kind ← blockData.statementKind? state
-      some { caption := toString kind, label := numberText }
-  | .proof =>
-      let label :=
-        match blockData.statementKind? state with
-        | some kind => s!"for {kind} {numberText}"
-        | none => numberText
-      some { caption := "Proof", label }
+  | .statement => some { caption := toString display.kind, label := number }
+  | .proof => some { caption := "Proof", label := s!"for {display.kind} {number}" }
 
 private def blockHref (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) : Option String :=
@@ -1950,12 +1941,7 @@ private def blockHref (state : TraverseState) (label : Name)
     Informal.TraversalIndex.Nodes.href? state label
 
 private def blockKind? (blockData? : Option Informal.BlockData) : Option Informal.Data.NodeKind :=
-  match blockData? with
-  | some blockData =>
-      match blockData.kind with
-      | Informal.Data.InProgressKind.statement kind => some kind
-      | Informal.Data.InProgressKind.proof => none
-  | none => none
+  blockData?.map (·.kind)
 
 private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
@@ -2004,12 +1990,10 @@ private def blockCodeData?
     (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
   let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks state label
   let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
-  let external? :=
-    if externalDecls.isEmpty then
-      blockData?.bind (·.codeData)
-    else
-      some (Informal.BlockCodeData.external externalDecls)
-  Informal.BlockCodeData.ofHintAndInline external? inlineBlocks
+  let externalDecls := if externalDecls.isEmpty then
+    (blockData?.bind (·.codeData)).map (·.externalDecls) |>.getD #[]
+    else externalDecls
+  ({ inlineBlocks, externalDecls } : Informal.BlockCodeData).nonempty?
 
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
@@ -2088,7 +2072,7 @@ private def groupRelationHeader
 
 private def statementGroupParent? (blockData : Informal.BlockData) : Option Name := do
   let parent ← blockData.parent
-  let .statement _ := blockData.kind
+  let false := blockData.isProof
     | none
   pure parent
 

@@ -95,6 +95,13 @@ The merge rules are:
 | Rust code | At most one attachment |
 | External markup | At most one attachment per language and slot |
 
+A rejected directive leaves Blueprint registrations, inferred dependencies, code
+attachments, numbering, and provenance unchanged, including registrations made
+while elaborating its body. Errors also close the directive scope, so a valid
+following directive can still elaborate. Nested statement/proof directives are
+not supported. Lean declarations elaborated inside a failed directive and the
+reported diagnostics remain available to Lean's normal error recovery.
+
 A bodyless placeholder can later acquire an explicit statement or proof body.
 When both the placeholder and filled chapter are included, previews and links
 select the filled body regardless of chapter order. The selected occurrence
@@ -103,7 +110,16 @@ Inline references follow the same preview selection: a nonempty statement,
 then a nonempty proof, then external markup when available. A placeholder can
 still be a link target without offering a hover preview. Imported nodes that
 have no document occurrence display their authored label rather than a number.
+This numbering rule also applies to dependency panels, code headings, and previews.
+The mathematical kind is independent of which chapters are rendered: including
+only a theorem's proof still gives it a caption such as `Proof for Theorem 1`.
 Custom reference text is preserved in both HTML and TeX.
+
+A statement's Lean status and declaration tooltip cover both external associations
+and literate code. An incomplete external declaration therefore remains visible
+in the status even when an associated literate block is complete. Each code
+panel also reports the declarations it contains. When both sources name the same
+canonical declaration, the heading summary uses its rendered literate entry once.
 
 An explicit statement kind belongs to the author: attaching a Lean theorem to an informal
 lemma keeps the informal node a lemma. For a Lean-only node without an authored

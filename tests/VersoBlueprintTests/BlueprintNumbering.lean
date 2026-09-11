@@ -32,31 +32,31 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
 #guard_msgs in
 #eval
   let base : BlockData := {
-    kind := .statement .definition
+    kind := .definition
     label := `bp.numbering.base
     count := 4
   }
   let localBlock := { base with numberingMode := .local }
   let subBlock := { base with numberingMode := .sub, partPrefix := some "3" }
   let globalBlock := { base with numberingMode := .global, globalCount := some 17 }
-  let propositionBlock := { base with kind := .statement .proposition }
-  localBlock.displayNumber emptyState == "4" &&
-  subBlock.displayNumber emptyState == "3.4" &&
-  globalBlock.displayNumber emptyState == "17" &&
-  subBlock.displayTitle emptyState == "Definition 3.4" &&
-  propositionBlock.displayTitle emptyState == "Proposition 4"
+  let propositionBlock := { base with kind := .proposition }
+  (localBlock.display (completedOccurrence localBlock)).number? == some "4" &&
+  (subBlock.display (completedOccurrence subBlock)).number? == some "3.4" &&
+  (globalBlock.display (completedOccurrence globalBlock)).number? == some "17" &&
+  subBlock.displayTitle (completedOccurrence subBlock) == "Definition 3.4" &&
+  propositionBlock.displayTitle (completedOccurrence propositionBlock) == "Proposition 4"
 
 /-- info: true -/
 #guard_msgs in
 #eval
   let base : BlockData := {
-    kind := .statement .theorem
+    kind := .theorem
     label := `bp.numbering.sectionSub
     count := 2
   }
   let subBlock := { base with numberingMode := .sub, partPrefix := some "1.3" }
-  subBlock.displayNumber emptyState == "1.3.2" &&
-  subBlock.displayTitle emptyState == "Theorem 1.3.2"
+  (subBlock.display (completedOccurrence subBlock)).number? == some "1.3.2" &&
+  subBlock.displayTitle (completedOccurrence subBlock) == "Theorem 1.3.2"
 
 /-- info: true -/
 #guard_msgs in
@@ -79,7 +79,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
 #guard_msgs in
 #eval
   let stored : BlockData := {
-    kind := .statement .lemma
+    kind := .lemma
     label := `bp.numbering.storedSub
     count := 9
     numberingMode := .sub
@@ -87,7 +87,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
   }
   let state := completedOccurrence stored
   let renderData := { stored with count := 120 }
-  renderData.displayNumber state == "1.3.9" &&
+  (renderData.display state).number? == some "1.3.9" &&
   renderData.displayTitle state == "Lemma 1.3.9"
 
 /-- info: true -/
@@ -104,7 +104,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
 #guard_msgs in
 #eval
   let data : BlockData := {
-    kind := .statement .theorem
+    kind := .theorem
     label := `bp.numbering.documentCounter
     count := 42
     numberingMode := .sub
@@ -119,7 +119,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
 #guard_msgs in
 #eval
   let stored : BlockData := {
-    kind := .statement .theorem
+    kind := .theorem
     label := `bp.numbering.stored
     count := 5
     numberingMode := .global
@@ -128,11 +128,20 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
   }
   let state := completedOccurrence stored
   let proofRef : BlockData := {
-    kind := .proof
+    kind := stored.kind
+    isProof := true
     label := stored.label
     count := stored.count
   }
-  proofRef.displayNumber state == "11" &&
+  (proofRef.display state).number? == some "11" &&
   proofRef.displayTitle state == "Proof for Theorem 11"
+
+-- Captured metadata may retain an elaboration count, but cannot display it.
+#eval show IO Unit from do
+  let data : BlockData := { label := `unrendered_number, kind := .theorem, count := 99 }
+  let state := Informal.TraversalIndex.Nodes.saveNode emptyState {
+    label := data.label, kind := data.kind, initialCount := data.count }
+  unless (data.display state).number?.isNone && data.displayTitle state == "unrendered_number" do
+    throw <| IO.userError "Captured metadata acquired a document number"
 
 end Verso.VersoBlueprintTests.BlueprintNumbering

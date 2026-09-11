@@ -296,7 +296,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  Environment.contribute label {
+  discard <| Environment.contribute label {
     statementBody := statement?
     statementUses := deps.statement
     proofUses := deps.proof

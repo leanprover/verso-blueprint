@@ -141,6 +141,10 @@ The external markup supplies the preview body.
 Source markup without an informal document occurrence.
 ```
 
+```rust "hover:unrendered"
+pub fn unrendered_attachment() {}
+```
+
 :::lemma_ "hover:references"
 {bpref "hover:unrendered"}[] {bpref "hover:unrendered"}[custom prose]
 {uses "hover:unrendered"}[] {uses "hover:unrendered"}[custom dependency]
@@ -164,6 +168,10 @@ Source markup without an informal document occurrence.
   let errors ← IO.mkRef (#[] : Array String)
   let (blocks, state) ← traverseManualDocBlocksAndState manualImpls hoverAvailabilityDoc
     (fun error => errors.modify (·.push error))
+  let fullHtml ← renderManualBlocksHtmlWithState blocks manualImpls state
+  unless !hasSubstr fullHtml.asString "Theorem 0" &&
+      hasSubstr fullHtml.asString "Rust code for hover:unrendered" do
+    throw <| IO.userError "Related or Rust panels invented a document number"
   let some (.concat #[.other _ references]) := blocks.back?
     | throw <| IO.userError "Missing authored reference paragraphs"
   let cases := #[

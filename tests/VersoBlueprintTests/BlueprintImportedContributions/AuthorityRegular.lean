@@ -5,6 +5,6 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
-run_cmd Informal.Environment.contribute `key_theorem {
+run_cmd discard <| Informal.Environment.contribute `key_theorem {
   proofUses := #[{ label := `proof_dep, origin := .automatic, intent := .regular }]
 }

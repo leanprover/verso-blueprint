@@ -167,11 +167,12 @@ def uses : RoleExpanderOf UsesConfig
         logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
       let term ← nodeRefTerm cfg.label contents
       let useRef ← getRef
-      Environment.addUse useRef {
-        label := cfg.label
-        origin := cfg.origin
-        intent := cfg.intent
-      }
+      if cfg.invalidOrigin.isNone && cfg.invalidIntent.isNone then
+        Environment.addUse useRef {
+          label := cfg.label
+          origin := cfg.origin
+          intent := cfg.intent
+        }
       pure term
 
 /-- Reference a Blueprint node without registering a dependency edge. -/

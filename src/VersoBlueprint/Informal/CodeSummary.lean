@@ -35,21 +35,9 @@ Public API:
 - `renderParts`: main entry point that derives status badge + Lean link node.
 -/
 
-/--
-Presentation inputs used to compute Lean summary UI for one informal block.
-
-`source` is the optional source selected for this particular heading or panel
-summary (`none` / `some inline` / `some external`). It is not the complete set of
-Lean associations owned by the label; semantic association data lives in
-`Data.Node.leanCode`.
-
-Callers that need a single heading source should pass `source` after applying
-the presentation selection rule, typically via `BlockCodeData.ofHintAndInline`.
--/
+/-- All associated Lean inputs for a heading, or the inputs owned by an individual panel. -/
 structure ComputedData where
-  /-- URL to the rendered Lean panel for this block, when available. -/
   codeHref : Option String := none
-  /-- Presentation source used for status and tooltip semantics. -/
   source : Option BlockCodeData := none
 
 /--
@@ -230,15 +218,11 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
 
 private def summaryPreviewItems (cdata : ComputedData)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
-  match cdata.source with
-  | some (.inline codeData) =>
-    codeData.flatMap fun block =>
-      inlineDeclSummaryItems block.definedDefs block.definedTheorems hrefOf
-        (some <| Informal.LeanCodePreviewKey.inlineLookupKey block.blockId)
-  | some (.external decls) =>
-    externalDeclSummaryItems decls hrefOf
-  | none =>
-    #[]
+  let source := cdata.source.getD {}
+  let inlineItems := source.inlineBlocks.flatMap fun block =>
+    inlineDeclSummaryItems block.definedDefs block.definedTheorems hrefOf
+      (some <| Informal.LeanCodePreviewKey.inlineLookupKey block.blockId)
+  inlineItems ++ externalDeclSummaryItems source.summaryExternalDecls hrefOf
 
 private def renderSummaryPreview (cdata : ComputedData)
     (hrefOf : Name → Option String) : Output.Html :=
@@ -250,10 +234,7 @@ private def renderSummaryPreview (cdata : ComputedData)
     items
     emptyText := "No associated Lean code or declarations."
   }]
-  let failures :=
-    match cdata.source with
-    | some (.external decls) => externalRenderFailures decls
-    | _ => #[]
+  let failures := externalRenderFailures (cdata.source.getD {}).externalDecls
   if failures.isEmpty then
     renderSummaryPreviewBody sections
   else
@@ -395,39 +376,9 @@ private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockSta
     else
       completionStatusMark health.statementAxisCount health.proofAxisCount
 
-private def inlineStatusMark (codeData : InlineCodeBlocks) : BlockStatusMark :=
-  let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.inline codeData))
-  if health.hasAxiomLike then
-    {
-      status := .axiomLike
-      title := "Lean declarations include at least one axiom-like constant (no body)"
-    }
-  else
-    statusMarkFromHealth health
-
-/--
-Compute heading status semantics from canonical block code source using explicit
-statement/proof axis wording.
-
-Case semantics:
-- `.inline`: evaluates statement (`type`) and proof (`body`) sorries independently.
-- `.external`: uses `externalHeadingAggregate` + `externalStatusMark`
-  (missing references dominate).
-- `none`: defaults to a completed statement/proof mark.
-
-This function computes mark semantics only. Visibility gating
-(for example requiring a `codeHref` in some inline/no-hint paths) is handled by
-`renderParts`.
--/
-private def statusMarkFromResolvedCodeSource : BlockCodeData → BlockStatusMark
-  | .external decls =>
-    statusMarkFromHealth (Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls)))
-  | .inline codeData =>
-    inlineStatusMark codeData
-
-private def statusMarkFromCodeSource
-    (source? : Option BlockCodeData) : BlockStatusMark :=
-  source?.map statusMarkFromResolvedCodeSource |>.getD (completionStatusMark 0 0)
+/-- Aggregate status across all associations; missing declarations dominate. -/
+private def statusMarkFromCodeSource (source? : Option BlockCodeData) : BlockStatusMark :=
+  statusMarkFromHealth (Informal.Graph.codeHealthOfBlockSource .definition {} source?)
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
   decls.qsort (fun a b =>
@@ -486,7 +437,7 @@ private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCo
     (hrefOf : Name → Option String) : PanelIndicatorParts :=
   open Verso.Output.Html in
   let orderedDecls := codeData.flatMap fun block => sortDeclsByCommand block.declarations
-  let previewBody := renderSummaryPreview { source := some (.inline codeData) } hrefOf
+  let previewBody := renderSummaryPreview { source := some { inlineBlocks := codeData } } hrefOf
   let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
   let indicator : Output.Html :=
     if orderedDecls.isEmpty then
@@ -595,9 +546,9 @@ private def externalIndicatorPresentation
 private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
     (label : Data.Label) (hrefOf : Name → Option String) : PanelIndicatorParts :=
   open Verso.Output.Html in
-  let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
+  let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some { externalDecls := decls })
   let renderHealth := externalRenderHealth decls
-  let previewBody := renderSummaryPreview { source := some (.external decls) } hrefOf
+  let previewBody := renderSummaryPreview { source := some { externalDecls := decls } } hrefOf
   let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
     s!"Lean code for {label}: " ++ appendRenderHealthSummary
@@ -626,66 +577,29 @@ for hover content.
 def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
     (hrefOf : Name → Option String) : PanelIndicatorParts :=
   match cdata.source with
-  | some (.inline codeData) =>
-    renderInlinePanelIndicator label codeData hrefOf
-  | some (.external decls) =>
-    renderExternalPanelIndicator decls label hrefOf
-  | none =>
-    { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
+  | none => { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
+  | some source =>
+    let inlinePanel := renderInlinePanelIndicator label source.inlineBlocks hrefOf
+    let externalPanel := renderExternalPanelIndicator source.externalDecls label hrefOf
+    if source.inlineBlocks.isEmpty then externalPanel else
+    if source.externalDecls.isEmpty then inlinePanel else
+      { summaryTitle := inlinePanel.summaryTitle ++ "\n" ++ externalPanel.summaryTitle
+        indicator := .seq #[inlinePanel.indicator, externalPanel.indicator] }
 
-/--
-Render Lean summary UI for an informal block heading.
-
-Inputs come from canonical block/code data:
-- `codeHref`: link to the generated Lean code block when available.
-- `source`: resolved optional code source (inline/external).
-
-Output policy:
-- `.proof` headings return an empty `RenderParts`.
-- statement headings with external refs always render a status mark and an external-summary tooltip.
-- inline/no-hint headings hide the status mark when `codeHref` is absent.
--/
+/-- Heading status and tooltip cover every association, independent of panel layout. -/
 def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String) : RenderParts :=
-  open Verso.Output.Html in
-  match data.kind with
-  | .proof => {}
-  | .statement statementKind =>
-    let externalDecls := cdata.source.map BlockCodeData.externalDecls |>.getD #[]
-    let codeEntryPreviewBody := renderSummaryPreview cdata hrefOf
-    let previewTitle := s!"{data.label}"
-    if !externalDecls.isEmpty then
-      let health := Informal.Graph.codeHealthOfBlockSource statementKind {} cdata.source
-      let renderHealth := externalRenderHealth externalDecls
-      let codeEntryTitle :=
-        appendRenderHealthSummary
-          (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
-          renderHealth
-      let statusMark := statusMarkFromCodeSource cdata.source
-      {
-        statusMark := some statusMark
-        codeEntry := renderCodeEntryWrap cdata.codeHref codeEntryTitle previewTitle codeEntryPreviewBody
-          (codeEntryVisual true statusMark)
-          renderHealth
-      }
-    else
-      let inlineData? := cdata.source.bind BlockCodeData.inlineData?
-      let hasInline := cdata.codeHref.isSome || inlineData?.isSome
-      let hasSource := hasInline
-      let codeEntryTitle : String :=
-        if hasInline then
-          "Lean declarations"
-        else
-          "No associated Lean declarations"
-      let statusMarkCandidate := statusMarkFromCodeSource cdata.source
-      let codeEntry : Output.Html :=
-        renderCodeEntryWrap cdata.codeHref codeEntryTitle previewTitle codeEntryPreviewBody
-          (codeEntryVisual hasSource statusMarkCandidate)
-      let statusMark : Option BlockStatusMark :=
-        if cdata.codeHref.isNone then
-          none
-        else
-          some statusMarkCandidate
-      { statusMark, codeEntry }
+  if data.isProof then {} else
+  let source := cdata.source.getD {}
+  let health := Informal.Graph.codeHealthOfBlockSource data.kind {} cdata.source
+  let renderHealth := externalRenderHealth source.externalDecls
+  let statusMark := statusMarkFromCodeSource cdata.source
+  let title := if source.isEmpty then "No associated Lean declarations" else
+    appendRenderHealthSummary
+      (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
+      renderHealth
+  { statusMark := if source.isEmpty then none else some statusMark
+    codeEntry := renderCodeEntryWrap cdata.codeHref title s!"{data.label}"
+      (renderSummaryPreview cdata hrefOf) (codeEntryVisual (!source.isEmpty) statusMark) renderHealth }
 
 end CodeSummary
 end Informal

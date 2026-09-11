@@ -43,8 +43,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 #guard_msgs in
 #eval!
   let data : BlockData := {
-    kind := .statement .theorem
-    codeData := some (.external #[proofGapExternalRef `Ext.thm.proof_only])
+    kind := .theorem
+    codeData := some { externalDecls := #[proofGapExternalRef `Ext.thm.proof_only] }
     label := `status.theorem.external
     count := 1
   }
@@ -71,8 +71,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       kind := .definition
   }
   let data : BlockData := {
-    kind := .statement .definition
-    codeData := some (.external #[ref])
+    kind := .definition
+    codeData := some { externalDecls := #[ref] }
     label := `status.definition.external
     count := 1
   }
@@ -101,15 +101,15 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     definedTheorems := #[{ name := `inlineThm, provedStatus := inlineProofGapStatus }]
   }
   let headingData : BlockData := {
-    kind := .statement .definition
-    codeData := some (.inline #[codeData])
+    kind := .definition
+    codeData := some { inlineBlocks := #[codeData] }
     label := `status.inline.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some (.inline #[codeData]) } (fun _ => none)).codeEntry.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some { inlineBlocks := #[codeData] } } (fun _ => none)).codeEntry.asString
   let parts := CodeSummary.renderPanelIndicator
     `status.inline.panel
-    { source := some (.inline #[codeData]) }
+    { source := some { inlineBlocks := #[codeData] } }
     (fun _ => none)
   let html := parts.indicator.asString
   hasSubstr parts.summaryTitle "status.inline.panel" &&
@@ -133,15 +133,15 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   ]
   let parts := CodeSummary.renderPanelIndicator
     `status.external.panel
-    { source := some (.external decls) }
+    { source := some { externalDecls := decls } }
     (fun _ => none)
   let headingData : BlockData := {
-    kind := .statement .theorem
-    codeData := some (.external decls)
+    kind := .theorem
+    codeData := some { externalDecls := decls }
     label := `status.external.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some (.external decls) } (fun _ => none)).codeEntry.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some { externalDecls := decls } } (fun _ => none)).codeEntry.asString
   let html := parts.indicator.asString
   hasSubstr parts.summaryTitle "Lean declarations (1/2 present)" &&
   hasSubstr headingHtml "L∃∀N" &&
@@ -158,8 +158,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 #eval!
   let decls := #[renderFailedExternalRef `Ext.external.render_fail]
   let headingData : BlockData := {
-    kind := .statement .theorem
-    codeData := some (.external decls)
+    kind := .theorem
+    codeData := some { externalDecls := decls }
     label := `status.external.render_fail
     count := 1
   }
