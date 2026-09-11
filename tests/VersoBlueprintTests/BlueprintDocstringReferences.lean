@@ -90,6 +90,22 @@ private def manualImpls : ExtensionImpls := extension_impls%
     hasSubstr html "<code>attr.doc.target</code>" &&
     hasSubstr html "<strong>the comparison</strong>" && hasSubstr html "bp_math inline"
 
+-- Generated preview data must retain the edges and rendered reference bodies,
+-- so downstream manifest consumers see the same semantics as the Manual page.
+/-- info: true -/
+#guard_msgs in
+#eval show IO Bool from do
+  let files ← buildManualPreviewDataFiles manualImpls includedDoc
+  let key := Informal.PreviewCache.statementKey (Name.mkSimple "attr.doc.source")
+  let some entry := files.manifest.previews.find? (·.key == key) | return false
+  let some html := files.htmlCache.findHtml? key | return false
+  pure <| entry.statementUses == #[
+      { label := Name.mkSimple "attr.doc.target", intent := .technical },
+      { label := Name.mkSimple "attr.doc.automatic", origin := .automatic, intent := .auxiliary }
+    ] && entry.proofUses == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
+    hasSubstr html "<strong>the comparison</strong>" &&
+    hasSubstr html "data-bp-preview-key="
+
 /--
 error: uses reference to bad has invalid '(intent := "mistyped")'; expected one of "regular", "auxiliary", "technical"
 -/
@@ -97,5 +113,11 @@ error: uses reference to bad has invalid '(intent := "mistyped")'; expected one 
 set_option doc.verso true in
 /-- {uses "bad" (intent := "mistyped")}[] -/
 def invalidDocstringIntent : Nat := 0
+
+/-- error: Unexpected named argument `intent` -/
+#guard_msgs in
+set_option doc.verso true in
+/-- {bpref "attr.doc.target" (intent := "technical")}[] -/
+def rejectedLinkMetadata : Nat := 0
 
 end Verso.VersoBlueprintTests.BlueprintDocstringReferences
