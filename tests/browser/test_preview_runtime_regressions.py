@@ -875,11 +875,19 @@ class TestPreviewRuntimeRegressions:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-key", re.compile(r"^graph:#<"))
-        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "58")
-        expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "15")
-        expect(graph_card).to_have_attribute("data-bp-graph-group-count", "4")
+        with urllib.request.urlopen(f"{server}/-verso-data/blueprint-manifest.json") as response:
+            graphs = json.load(response)["graphs"]
+        assert len(graphs) == 1
+        graph = graphs[0]
+        assert graph["nodes"] and graph["edges"] and graph["groups"]
+        # The generator captures all project imports, including chapters after
+        # this client was compiled. Match that model, not a chapter-local count.
+        for field in ("node", "edge", "group"):
+            expect(graph_card).to_have_attribute(
+                f"data-bp-graph-{field}-count", str(len(graph[f"{field}s"]))
+            )
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 58"
+            f"Nodes {len(graph['nodes'])}"
         )
         used_target_link = graph_card.locator('[data-bp-graph-node-label="used_target"]').first
         expect(used_target_link).to_have_text(re.compile(r"Definition"))

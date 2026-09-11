@@ -32,7 +32,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
     proof.deps == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
     late.statement.any (fun body => body.hasBody && body.dependencyLabels ==
       #[Name.mkSimple "attr.doc.target", Name.mkSimple "attr.doc.automatic"]) &&
-    !state.localData.contains (Name.mkSimple "attr.doc.source") && state.stack.isEmpty
+    !state.localContributions.contains (Name.mkSimple "attr.doc.source") && state.stack.isEmpty
 
 #docs (Genre.Manual) includedDoc "Docstring references" :=
 :::::::

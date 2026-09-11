@@ -8,6 +8,7 @@ import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -150,10 +151,10 @@ private def registerTraversedBlockAssets
   registerExternalDeclAnchors id externalDecls
 
 /--
-Register one decoded informal block through the shared traversal path.
+Resolve and register one decoded informal occurrence through the shared traversal path.
 
 This applies the current numbering context, stores preview and declaration
-assets, saves the semantic block entry, and records optional source provenance.
+assets with their facet-local provenance, and saves the canonical occurrence.
 -/
 def registerTraversedBlock
     {m}
@@ -163,18 +164,13 @@ def registerTraversedBlock
     [MonadLiftT IO m]
     [MonadBuildLog m]
     (id : Verso.Multi.InternalId)
-    (blockData : BlockData)
+    (occurrence : BlockOccurrence)
     (contents : Array (Verso.Doc.Block Verso.Genre.Manual)) :
     m Unit := do
+  let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
+    | return
   let blockData := blockData.withTraversalNumberingContext (← read)
   registerTraversedBlockAssets id blockData contents
   saveTraversedBlockData id blockData
-  if let some sourceRef := blockData.sourceRef then
-    match Informal.TraversalIndex.SourceRefs.data? (← get) blockData.label with
-    | some existing =>
-        unless existing == sourceRef do
-          Verso.reportError s!"Label {blockData.label} already has conflicting source provenance"
-    | none =>
-        modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
 
 end Informal
