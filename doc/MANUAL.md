@@ -99,6 +99,12 @@ A bodyless placeholder can later acquire an explicit statement or proof body.
 When both the placeholder and filled chapter are included, previews and links
 select the filled body regardless of chapter order. The selected occurrence
 also supplies that facet's source location and original-source provenance.
+Inline references follow the same preview selection: a nonempty statement,
+then a nonempty proof, then external markup when available. A placeholder can
+still be a link target without offering a hover preview. Imported nodes that
+have no document occurrence display their authored label rather than a number.
+Custom reference text is preserved in both HTML and TeX.
+
 An explicit statement kind belongs to the author: attaching a Lean theorem to an informal
 lemma keeps the informal node a lemma. For a Lean-only node without an authored
 kind, a theorem association takes precedence over a definition association, whether
@@ -389,6 +395,29 @@ an existing label attach code and dependencies only: their docstrings neither
 replace a statement nor fill a bodyless placeholder. Use an explicit statement
 directive to fill a shared placeholder. This rule also applies when attachments
 come from sibling modules.
+
+For example, after importing a chapter that declares `addition_right_identity`,
+this attribute attaches compiled code while preserving the chapter's prose:
+
+```lean
+@[blueprint "addition_right_identity"]
+theorem attached_add_zero (n : Nat) : n + 0 = n := Nat.add_zero n
+```
+
+If that chapter instead declares an empty `:::theorem "addition_right_identity"`,
+fill it explicitly in a later chapter that imports it:
+
+```lean
+#doc (Manual) "Addition details" =>
+
+:::theorem "addition_right_identity"
+For every natural number $`n`, adding zero on the right leaves it unchanged.
+:::
+```
+
+Include the later chapter to render the completed statement. Attaching the Lean
+code and supplying this body can happen in separate sibling modules importing
+the same placeholder.
 
 Plain docstrings are parsed through the
 manual Markdown path when possible, and richer internal docstring structures are

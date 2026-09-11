@@ -212,8 +212,8 @@ numbering and relation indexes. A multi-project generator captures each project
 in its own module and collects the resulting `BlueprintDocument` values.
 `Nodes.capturedData?` resolves captured metadata even without an occurrence;
 `Nodes.renderedData?` requires a traversed occurrence and target.
-Synthetic renderers explicitly construct a model, using `RenderNode.ofBlockData`
-when convenient; an empty model no longer means “trust metadata embedded in the
+Synthetic renderers explicitly construct a model with a `nodes` array, using
+`RenderNode.ofBlockData` when convenient; an empty model no longer means “trust metadata embedded in the
 chapter.” Every fixture in the repository catalog passes its selected model.
 
 `GraphBlockData.graphModel := none` selects the captured project graph;
@@ -224,6 +224,13 @@ Both overview resolvers return `Except String`: a missing or malformed captured
 model is an error. An explicitly supplied empty model remains valid.
 
 Rebuild downstream Lean modules and generated output when adopting this API.
+
+Use `PreviewSource.traversalPreviewCandidateKey?` for references that allow
+statement, proof, or external-markup fallback. `traversalLookupKey?` selects only
+statement/proof bodies without decoding their document blocks; `traversalEntry?`
+returns that selected entry when its content is needed. Read `PreviewCache.Entry.blocks`
+directly. Metadata-only consumers can still decode `Metadata` or `Occurrence`
+without loading the body.
 
 `TraversalPreviews` selects one occurrence per `(label, facet)`, preferring a
 nonempty body over a placeholder. Its entry owns the body, canonical target,
@@ -269,45 +276,6 @@ Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
 of zero or more refs pointing back to those documents. An abbreviated excerpt
 looks like this:
-
-Clients should read `entry.sources`; the manifest does not emit a singular
-`entry.source` field. Most block and external-markup entries have at most one
-source ref, while Lean-code preview entries can aggregate refs from multiple
-sourced Blueprint nodes that share the same rendered Lean preview.
-
-Generated browser APIs expose the same split. Data-only clients should use
-`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
-`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
-`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
-should use `api/preview.mjs`
-when they also need `resolvePreview`, `renderNode`, canonical node loading, or
-hydration. Both entrypoints reuse the cached manifest load; resolving source
-metadata does not fetch a second JSON file.
-
-Clients can call `resolveSourceMetadata(source)` from either entrypoint when
-they want the source refs attached to a preview joined with declared
-source-document metadata. The `source` argument can be a preview key, a manifest
-entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
-`renderNode`:
-
-```javascript
-const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
-const sourceMetadata = await api.resolveSourceMetadata(key);
-if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
-```
-
-`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
-`createPreviewData()` instance method and as a module-level named export. Use
-the instance method when a client supplies a custom `fetchJson`; the module-level
-export is convenient for ordinary generated-site scripts that use the default
-loader.
-
-Generated Blueprint node shells render a compact source chip and lightweight
-source preview from this same manifest data. The API itself returns structured
-metadata only: richer PDF page viewers and crop overlays remain Blueprint/Verso
-interface work rather than browser API policy. Returned file paths and
-PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
-those assets or decide how a richer source review interface should look.
 
 ```json
 {
@@ -355,6 +323,45 @@ those assets or decide how a richer source review interface should look.
   ]
 }
 ```
+
+Clients should read `entry.sources`; the manifest does not emit a singular
+`entry.source` field. Most block and external-markup entries have at most one
+source ref, while Lean-code preview entries can aggregate refs from multiple
+sourced Blueprint nodes that share the same rendered Lean preview.
+
+Generated browser APIs expose the same split. Data-only clients should use
+`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
+`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
+`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
+should use `api/preview.mjs`
+when they also need `resolvePreview`, `renderNode`, canonical node loading, or
+hydration. Both entrypoints reuse the cached manifest load; resolving source
+metadata does not fetch a second JSON file.
+
+Clients can call `resolveSourceMetadata(source)` from either entrypoint when
+they want the source refs attached to a preview joined with declared
+source-document metadata. The `source` argument can be a preview key, a manifest
+entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
+`renderNode`:
+
+```javascript
+const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
+const sourceMetadata = await api.resolveSourceMetadata(key);
+if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
+```
+
+`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
+`createPreviewData()` instance method and as a module-level named export. Use
+the instance method when a client supplies a custom `fetchJson`; the module-level
+export is convenient for ordinary generated-site scripts that use the default
+loader.
+
+Page blocks render source chips from their occurrence provenance; browser-rendered
+previews obtain the selected facet's provenance from the manifest. The API returns
+structured metadata only: richer PDF page viewers and crop overlays remain Blueprint/Verso
+interface work rather than browser API policy. Returned file paths and
+PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
+those assets or decide how a richer source review interface should look.
 
 When a sourced Blueprint node has associated Lean code previews, the
 corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every

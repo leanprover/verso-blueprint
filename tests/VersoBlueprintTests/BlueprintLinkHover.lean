@@ -114,6 +114,92 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
 /-- Captured in this fixture's environment before unrelated fixtures are imported. -/
 def hoverCiteOnlyDocBlueprint : Informal.BlueprintDocument := .capture hoverCiteOnlyDoc.toPart
 
+-- Exercise the role expanders with both automatic titles and authored link text.
+@[blueprint "hover:unrendered"] theorem hoverUnrendered : True := trivial
+@[blueprint "hover:source-only"] theorem hoverSourceOnly : True := trivial
+
+#docs (Genre.Manual) hoverAvailabilityDoc "Reference availability" :=
+:::::::
+:::theorem "hover:placeholder"
+:::
+
+:::theorem "hover:proof"
+:::
+
+:::proof "hover:proof"
+The proof supplies the only preview body.
+:::
+
+:::theorem "hover:markup"
+:::
+
+```md "hover:markup" (slot := statement)
+The external markup supplies the preview body.
+```
+
+```md "hover:source-only" (slot := statement)
+Source markup without an informal document occurrence.
+```
+
+:::lemma_ "hover:references"
+{bpref "hover:unrendered"}[] {bpref "hover:unrendered"}[custom prose]
+{uses "hover:unrendered"}[] {uses "hover:unrendered"}[custom dependency]
+
+{bpref "hover:placeholder"}[] {bpref "hover:placeholder"}[custom prose]
+{uses "hover:placeholder"}[] {uses "hover:placeholder"}[custom dependency]
+
+{bpref "hover:proof"}[] {bpref "hover:proof"}[custom prose]
+{uses "hover:proof"}[] {uses "hover:proof"}[custom dependency]
+
+{bpref "hover:markup"}[] {bpref "hover:markup"}[custom prose]
+{uses "hover:markup"}[] {uses "hover:markup"}[custom dependency]
+
+{bpref "hover:source-only"}[] {bpref "hover:source-only"}[custom prose]
+{uses "hover:source-only"}[] {uses "hover:source-only"}[custom dependency]
+:::
+
+:::::::
+
+#eval show IO Unit from do
+  let errors ← IO.mkRef (#[] : Array String)
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls hoverAvailabilityDoc
+    (fun error => errors.modify (·.push error))
+  let some (.concat #[.other _ references]) := blocks.back?
+    | throw <| IO.userError "Missing authored reference paragraphs"
+  let cases := #[
+    ("hover:unrendered", none, false),
+    ("hover:placeholder", none, true),
+    ("hover:proof", some (PreviewCache.proofKey (Name.mkSimple "hover:proof")), true),
+    ("hover:markup", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:markup")), true),
+    ("hover:source-only", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:source-only")), false)
+  ]
+  unless references.size == cases.size do
+    throw <| IO.userError "Reference fixture paragraphs changed"
+  let files ← PreviewManifest.buildPreviewDataFiles manualImpls
+    (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
+  for (reference, (label, key, linked)) in references.zip cases do
+    let html ← renderManualBlocksHtmlWithState #[reference] manualImpls state
+    let html := html.asString
+    let tex ← renderManualBlocksTeXWithState manualImpls #[reference] state
+    unless hasSubstr html "custom prose" && hasSubstr tex "custom prose" &&
+        hasSubstr html "custom dependency" && hasSubstr tex "custom dependency" &&
+        !hasSubstr html "Theorem 0" && !hasSubstr tex "Theorem 0" &&
+        countSubstr html "<a " == (if linked then 4 else 0) do
+      throw <| IO.userError s!"Reference text, numbering or links disagreed for {label}"
+    match key with
+    | some key =>
+        unless countSubstr html s!"data-bp-preview-key=\"{key}\"" == 4 &&
+            (files.manifest.findEntry? key).isSome && (files.htmlCache.findHtml? key).isSome do
+          throw <| IO.userError s!"Reference requested an unavailable preview for {label}"
+    | none =>
+        unless !hasSubstr html "bp_inline_preview_ref" do
+          throw <| IO.userError s!"Reference offered a bodyless hover for {label}"
+    if !linked then
+      unless countSubstr html s!">{label}</span>" == 2 && countSubstr tex label == 2 do
+        throw <| IO.userError "An unrendered reference lost its authored label"
+  unless (← errors.get).isEmpty do
+    throw <| IO.userError s!"Reference rendering errors: {← errors.get}"
+
 /--
 error: Unexpected argument (origin := "automatic")
 -/

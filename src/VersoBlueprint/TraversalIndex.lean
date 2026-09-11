@@ -110,17 +110,82 @@ private def modifyObjectData
     (f : Json → Json) : TraverseState :=
   state.modifyDomainObjectData domain canonicalName f
 
-/-- Select one canonical facet target without discarding other occurrence locations. -/
-private def preferredPreviewOccurrence? (state : TraverseState) (label : Name) :
-    Option PreviewCache.Occurrence := do
-  let candidates : Array Verso.Multi.Object := #[PreviewCache.Facet.statement, .proof].filterMap fun facet =>
-    state.getDomainObject? Resolve.informalPreviewDomainName (PreviewCache.key label facet)
-  -- Inspect the JSON array's size without decoding the document body for every
-  -- link or metadata lookup. Occurrence decoding ignores the body field.
-  let filled := candidates.find? fun (object : Verso.Multi.Object) =>
+namespace TraversalPreviews
+
+def spec : StoreSpec := {
+  name := Resolve.informalPreviewDomainName
+  kind := .runtimeCache
+  key := "(informal label, preview facet)"
+  value := "Selected facet body, source location, provenance, and canonical target"
+  summary := "One selected occurrence per statement/proof facet, preferring a nonempty body."
+}
+
+def domainName : Name := spec.name
+
+def key (label : Name) (facet : PreviewCache.Facet) : String :=
+  PreviewCache.key label facet
+
+def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName previewKey
+
+def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.Entry :=
+  objectData? state domainName previewKey
+
+private def select? (state : TraverseState) (label : Name)
+    (accept : Verso.Multi.Object → Bool) : Option (PreviewCache.Facet × Verso.Multi.Object) :=
+  PreviewCache.Facet.select? fun facet => (object? state (key label facet)).filter accept
+
+private def selectBody? (state : TraverseState) (label : Name) :
+    Option (PreviewCache.Facet × Verso.Multi.Object) :=
+  select? state label fun object =>
+    -- Inspect body presence without decoding the document AST for links and keys.
     (object.data.getObjVal? "blocks" >>= Json.getArr?).toOption.any (fun blocks => !blocks.isEmpty)
-  let selected ← filled <|> candidates[0]?
-  (fromJson? selected.data).toOption
+
+/-- The preferred nonempty facet, without decoding its document body. -/
+def selectedFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
+  (selectBody? state label).map (·.1)
+
+/-- Decode the selected nonempty body only when the caller needs its content. -/
+def selectedEntry? (state : TraverseState) (label : Name) : Option PreviewCache.Entry := do
+  let (_, object) ← selectBody? state label
+  (fromJson? object.data).toOption
+
+/-- Canonical links prefer a nonempty body but may target a bodyless occurrence. -/
+def canonicalOccurrence? (state : TraverseState) (label : Name) : Option PreviewCache.Occurrence := do
+  let (_, object) ← selectBody? state label <|> select? state label (fun _ => true)
+  (fromJson? object.data).toOption
+
+def href? (state : TraverseState) (previewKey : String) : Option String :=
+  (objectData? (α := PreviewCache.Occurrence) state domainName previewKey).bind (·.target) |>.bind fun id =>
+    (state.externalTags[id]?).map (·.relativeLink)
+
+def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
+    Option String :=
+  href? state (key label facet)
+
+def saveId
+    (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName previewKey id
+
+def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
+  saveObjectData state domainName previewKey data
+
+/-- Commit a selected facet's body, source metadata, and target together. -/
+def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
+    (entry : PreviewCache.Entry) : TraverseState :=
+  let previewKey := key entry.label entry.facet
+  saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
+
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+/-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
+  decodeStoreEntries state domainName
+
+end TraversalPreviews
 
 /-- Supply a rendering context through Verso's normal initialization hook. -/
 def withInitializer (impls : ExtensionImpls) (initializeState : TraverseState → TraverseState) : ExtensionImpls :=
@@ -152,7 +217,7 @@ def node? (state : TraverseState) (label : Name) : Option Informal.RenderNode :=
 /-- Resolve canonical source metadata from the selected facet while preserving node numbering. -/
 def resolveCanonical (state : TraverseState) (node : Informal.RenderNode) : Informal.BlockData :=
   let data := node.toBlockData
-  match preferredPreviewOccurrence? state node.label with
+  match TraversalPreviews.canonicalOccurrence? state node.label with
   | none => data
   | some occurrence => { data with
       sourceLocation := occurrence.sourceLocation
@@ -176,12 +241,12 @@ def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : O
   (node? state occurrence.label).map (·.resolve occurrence)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
-  ((preferredPreviewOccurrence? state label).bind (·.target)).bind (fun id => (state.externalTags[id]?).map (·.relativeLink)) <|>
+  ((TraversalPreviews.canonicalOccurrence? state label).bind (·.target)).bind (fun id => (state.externalTags[id]?).map (·.relativeLink)) <|>
     Resolve.resolveDomainHref? state domainName label.toString
 
 /-- The selected body target when available, otherwise the first traversal target. -/
 def target? (state : TraverseState) (label : Name) : Option Verso.Multi.InternalId :=
-  (preferredPreviewOccurrence? state label).bind (·.target) <|> (object? state label).bind (·.ids.toArray[0]?)
+  (TraversalPreviews.canonicalOccurrence? state label).bind (·.target) <|> (object? state label).bind (·.ids.toArray[0]?)
 
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
@@ -450,58 +515,7 @@ def entries (state : TraverseState) :
 
 end Graphs
 
-namespace TraversalPreviews
 
-def spec : StoreSpec := {
-  name := Resolve.informalPreviewDomainName
-  kind := .runtimeCache
-  key := "(informal label, preview facet)"
-  value := "Selected facet body, source location, provenance, and canonical target"
-  summary := "One selected occurrence per statement/proof facet, preferring a nonempty body."
-}
-
-def domainName : Name := spec.name
-
-def key (label : Name) (facet : PreviewCache.Facet) : String :=
-  PreviewCache.key label facet
-
-def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName previewKey
-
-def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.Entry :=
-  objectData? state domainName previewKey
-
-def href? (state : TraverseState) (previewKey : String) : Option String :=
-  (objectData? (α := PreviewCache.Occurrence) state domainName previewKey).bind (·.target) |>.bind fun id =>
-    (state.externalTags[id]?).map (·.relativeLink)
-
-def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
-    Option String :=
-  href? state (key label facet)
-
-def saveId
-    (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
-  saveObjectId state domainName previewKey id
-
-def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
-  saveObjectData state domainName previewKey data
-
-/-- Commit a selected facet's body, source metadata, and target together. -/
-def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
-    (entry : PreviewCache.Entry) : TraverseState :=
-  let previewKey := key entry.label entry.facet
-  saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
-
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
-
-/-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
-  decodeStoreEntries state domainName
-
-end TraversalPreviews
 
 namespace LeanCodePreviews
 

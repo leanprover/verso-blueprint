@@ -120,14 +120,6 @@ private def BlockData.withReservedNumbering
     | _ => (data.count, st)
   ({ data with count, globalCount := some globalCount }, st)
 
-/-- Look up the stored semantic payload for an informal block label. -/
-def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.renderedData? st label
-
-/-- Look up stored informal block data in render-facing `BlockData` form. -/
-def resolveBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.capturedData? st label
-
 /-- Merge occurrence facts after resolving both occurrences through the shared node registry. -/
 def mergeBlockOccurrences (existing incoming : BlockData) : BlockData :=
   let kind :=
@@ -181,7 +173,7 @@ private def BlockData.withStoredNumbering
 /-- Resolve stored numbering for a block, with an optional caller-provided prefix fallback. -/
 def BlockData.withResolvedNumbering
     (data : BlockData) (st : TraverseState) (fallbackPrefix? : Option String := none) : BlockData :=
-  match resolveStoredNodeData? st data.label with
+  match Informal.TraversalIndex.Nodes.renderedData? st data.label with
   | some stored =>
     data.withStoredNumbering stored fallbackPrefix?
   | none =>
@@ -190,7 +182,7 @@ def BlockData.withResolvedNumbering
 /-- Resolve stored numbering for a block, computing the fallback prefix from traversal context. -/
 def BlockData.withResolvedNumberingInContext
     (data : BlockData) (st : TraverseState) (ctxt : TraverseContext) : BlockData :=
-  match resolveStoredNodeData? st data.label with
+  match Informal.TraversalIndex.Nodes.renderedData? st data.label with
   | some stored =>
     data.withStoredNumbering stored (numberedPartPrefix? stored.subNumberingPrefix ctxt)
   | none =>
@@ -218,7 +210,7 @@ def BlockData.statementKind? (data : BlockData) (st : TraverseState) : Option Da
   match data.kind with
   | .statement kind => some kind
   | .proof =>
-      match resolveStoredNodeData? st data.label with
+      match Informal.TraversalIndex.Nodes.renderedData? st data.label with
       | some stored =>
           match stored.kind with
           | .statement kind => some kind
@@ -237,10 +229,9 @@ def BlockData.displayProofTitle (data : BlockData)
 /-- The user-facing title for a block, including kind and resolved number. -/
 def BlockData.displayTitle (data : BlockData)
     (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  let numberText := data.displayNumber st fallbackPrefix?
   match data.kind with
   | .proof => data.displayProofTitle st fallbackPrefix?
-  | .statement _ => blockDisplayTitle data numberText
+  | .statement _ => blockDisplayTitle data (data.displayNumber st fallbackPrefix?)
 
 /--
 Save one traversed informal block in the semantic node index.

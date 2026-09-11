@@ -57,7 +57,7 @@ def isolatedBlueprint : BlueprintDocument := .capture isolatedDocument.toPart
     count := 1
     tags := #["synthetic"]
   }
-  let model : RenderModel := { nodes := ({} : Lean.NameMap RenderNode).insert node.label node }
+  let model : RenderModel := { nodes := #[node] }
   let (blocks, state) ← Informal.traverseManualBlocks
     #[.other (Block.informal node.toBlockData.toOccurrence) #[.para #[.text "Synthetic theorem"]]]
     (model.withExtensions extension_impls%)

@@ -1,4 +1,5 @@
 import pytest
+from contextlib import ExitStack, contextmanager
 import random
 import shutil
 import subprocess
@@ -48,9 +49,8 @@ def build_test_blueprint_site(name: str) -> Path:
             sys.executable,
             "-m",
             "scripts.blueprint_test_blueprints",
-            "generate",
+            "generate-all",
             name,
-            str(output_dir),
         ],
         cwd=PACKAGE_ROOT,
         check=True,
@@ -114,23 +114,40 @@ def server(request):
         if not site_dir.is_absolute():
             site_dir = (Path(__file__).parent / site_dir).resolve()
     port = request.config.getoption("--port")
+    with serve_site(site_dir, int(port) if port is not None else None) as url:
+        yield url
 
-    if port is None:
-        port = find_free_port()
-    else:
-        port = int(port)
 
+@contextmanager
+def serve_site(site_dir: Path, port: int | None = None):
+    port = find_free_port() if port is None else port
     proc = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
         cwd=site_dir,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    server_url = f"http://127.0.0.1:{port}"
-    wait_for_server(server_url, proc)
-    yield server_url
-    proc.terminate()
-    proc.wait()
+    url = f"http://127.0.0.1:{port}"
+    try:
+        wait_for_server(url, proc)
+        yield url
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+@pytest.fixture(scope="session")
+def named_site():
+    """Build and serve each requested fixture once, sharing lifecycle cleanup."""
+    with ExitStack() as stack:
+        sites = {}
+
+        def get_site(name: str) -> str:
+            if name not in sites:
+                sites[name] = stack.enter_context(serve_site(build_test_blueprint_site(name)))
+            return sites[name]
+
+        yield get_site
 
 
 @pytest.fixture(scope="session")

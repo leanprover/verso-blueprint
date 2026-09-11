@@ -14,6 +14,7 @@ import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Profiling
 import VersoBlueprint.TeX
@@ -92,27 +93,28 @@ structure InlineData where
   label : Data.Label
 deriving FromJson, ToJson, Quote
 
-private def blockHoverTitle
-    (state : Verso.Genre.Manual.TraverseState) (block : BlockData) : String :=
-  block.displayTitle state
+/-- A reference uses document numbering only for rendered nodes, and previews only
+when a body is available. HTML and TeX share the same title resolution. -/
+private structure NodeReference where
+  title : String
+  href : Option String
+  previewKey : Option PreviewKey
 
-def usePreviewId (label : Data.Label) (block : BlockData) : String :=
-  let facet := PreviewCache.Facet.ofInProgressKind block.kind
-  s!"bp-uses-{Informal.HoverRender.previewKey (toString label)}-{facet.suffix}"
+private def resolveNodeReference (state : TraverseState) (label : Data.Label) : NodeReference := {
+  title := ((TraversalIndex.Nodes.renderedData? state label).map (·.displayTitle state)).getD
+    (label.toString (escape := false))
+  href := TraversalIndex.Nodes.href? state label
+  previewKey := PreviewSource.traversalPreviewCandidateKey? state label
+}
 
-def usePreviewLookupKey (label : Data.Label) (block : BlockData) : String :=
-  PreviewCache.key label (PreviewCache.Facet.ofInProgressKind block.kind)
-
-private def wrapUseLinkPreview (node : Verso.Output.Html)
-    (state : Verso.Genre.Manual.TraverseState)
-    (label : Data.Label) (block : BlockData) :
+private def NodeReference.withPreview (reference : NodeReference) (node : Verso.Output.Html) :
     Verso.Output.Html :=
-  let pid := usePreviewId label block
-  let pkey := usePreviewLookupKey label block
-  let ptitle := blockHoverTitle state block
-  let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
-    pid ptitle pkey
-  Informal.HoverRender.inlinePreviewTargetNode node previewTarget
+  match reference.previewKey with
+  | none => node
+  | some key =>
+      let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
+      let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
+      HoverRender.inlinePreviewTargetNode node target
 
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data
@@ -131,33 +133,13 @@ inline_extension Inline.informal (data : InlineData) where
       let some { label } ← ExtensionDecode.decode? (α := InlineData) data
           (fun _ => "Malformed data in Inline.informal traversal")
         | pure .empty
-      let st ← HtmlT.state
-      let resolvedBlock := resolveBlockData? st label
-      let href : Option String :=
-        Informal.TraversalIndex.Nodes.href? st label
-      let renderedInlines ← inlines.mapM goI
-      match resolvedBlock with
-      | none =>
-        if inlines.isEmpty then
-          return {{ <span> "[??]" </span> }}
-        else
-          return {{ <span> {{renderedInlines}} </span> }}
-      | some block =>
-        let block := block.withResolvedNumbering st
-        let labelText := s!"{label}"
-        let plainContent : Verso.Output.Html :=
-          if inlines.isEmpty then
-            let titleText := blockHoverTitle st block
-            if let some href := href then
-              {{<a href={{href}} title={{labelText}}>{{titleText}}</a>}}
-            else
-              {{<span title={{labelText}}>{{titleText}}</span>}}
-          else if let some href := href then
-            {{<a href={{href}} title={{labelText}}>{{renderedInlines}}</a>}}
-          else
-            renderedInlines
-        let hovered := wrapUseLinkPreview plainContent st label block
-        return {{<span>{{hovered}}</span>}}
+      let reference := resolveNodeReference (← HtmlT.state) label
+      let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
+      let labelText := label.toString (escape := false)
+      let node := match reference.href with
+        | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
+        | none => {{<span title={{labelText}}>{{content}}</span>}}
+      return {{<span>{{reference.withPreview node}}</span>}}
   toTeX :=
     open Verso.Output.TeX in
     some <| fun goI _id data inlines => do
@@ -165,14 +147,8 @@ inline_extension Inline.informal (data : InlineData) where
         | Verso.reportError s!"Malformed data in Inline.informal.toTeX: {data}"
           pure .empty
       if inlines.isEmpty then
-        let st ← Verso.Doc.TeX.state
-        let resolvedBlock := resolveBlockData? st inlineData.label
-        match resolvedBlock with
-        | some block =>
-          let block := block.withResolvedNumbering st
-          pure <| .text (block.displayTitle st)
-        | none =>
-          pure <| .text s!"{inlineData.label}"
+        let reference := resolveNodeReference (← Verso.Doc.TeX.state) inlineData.label
+        pure <| .text reference.title
       else
         inlines.mapM goI
 

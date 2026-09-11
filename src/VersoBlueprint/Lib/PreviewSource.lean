@@ -75,15 +75,6 @@ structure Selection where
   preview : Preview
 deriving Inhabited, Repr
 
-def Preview.isEmpty (preview : Preview) : Bool :=
-  preview.blocks.isEmpty && preview.stxs.isEmpty
-
-def Preview.nonEmpty (preview : Preview) : Bool :=
-  !preview.isEmpty
-
-def Preview.ofTraversalEntry (entry : PreviewCache.Entry) : Preview :=
-  { blocks := entry.renderedBody.blocks }
-
 def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
     Selection :=
   {
@@ -92,24 +83,6 @@ def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : P
     key := PreviewCache.key label facet
     preview
   }
-
-private def preferredFacet? {α}
-    (fetch : PreviewCache.Facet → Option α)
-    (nonEmpty : α → Bool) : Option (PreviewCache.Facet × α) :=
-  match fetch .statement with
-  | some value =>
-    if nonEmpty value then
-      some (.statement, value)
-    else
-      match fetch .proof with
-      | some proofValue =>
-        if nonEmpty proofValue then some (.proof, proofValue) else none
-      | none => none
-  | none =>
-    match fetch .proof with
-    | some value =>
-      if nonEmpty value then some (.proof, value) else none
-    | none => none
 
 def traversalEntryByKey?
     (s : Verso.Genre.Manual.TraverseState) (key : String) : Option PreviewCache.Entry :=
@@ -120,7 +93,7 @@ Decode every stored statement/proof traversal preview entry.
 
 This intentionally does not apply statement/proof selection: manifest
 construction needs every renderable facet, while one-label consumers should use
-`traversalSelection?`.
+`traversalEntry?` for content or `traversalLookupKey?` for its identity.
 -/
 def traversalStoredEntries
     (s : Verso.Genre.Manual.TraverseState) :
@@ -143,20 +116,13 @@ def traversalFacetEntry?
   traversalEntryByKey? s key
 
 def traversalEntry?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
-  let (_, entry) ←
-    preferredFacet? (traversalFacetEntry? s label) (fun entry => entry.hasRenderedBody)
-  pure entry
-
-def traversalSelection?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Selection := do
-  let entry ← traversalEntry? s label
-  pure <| Selection.ofPreview entry.label entry.facet (Preview.ofTraversalEntry entry)
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry :=
+  Informal.TraversalIndex.TraversalPreviews.selectedEntry? s label
 
 def traversalLookupKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String := do
-  let selection ← traversalSelection? s label
-  pure selection.key
+  let facet ← Informal.TraversalIndex.TraversalPreviews.selectedFacet? s label
+  pure (PreviewCache.key label facet)
 
 def externalMarkupKey (label : Name) : String :=
   s!"externalMarkup:{label}"
@@ -170,19 +136,6 @@ def traversalExternalMarkupLookupKey?
     some (externalMarkupKey label)
 
 /--
-Best preview candidate lookup key for a Blueprint label in finished traversal
-state.
-
-Prefer the selected statement/proof traversal preview when one exists. Fall back
-to a source-backed external-markup preview for bodyless Blueprint nodes. Final
-generated data still checks whether the candidate has both a manifest entry and
-rendered-fragment cache body before serializing it as a `previewKey`.
--/
-private def traversalPreviewCandidateLookupKey?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String :=
-  traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
-
-/--
 Best preview candidate key for a Blueprint label in finished traversal state.
 
 Prefer the selected statement/proof traversal preview when one exists. Fall back
@@ -192,18 +145,13 @@ rendered-fragment cache body before serializing it as a `previewKey`.
 -/
 def traversalPreviewCandidateKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← traversalPreviewCandidateLookupKey? s label
+  let key ← traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
   PreviewKey.ofString? key
 
 /-- Best preview candidate key for relation entries. -/
 def traversalRelationPreviewKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey :=
   traversalPreviewCandidateKey? s label
-
-def traversalPreview?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do
-  let selection ← traversalSelection? s label
-  pure selection.preview
 
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
@@ -220,22 +168,12 @@ private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : 
     | some stxs => some { stxs }
     | none => none
 
-def environmentFacetPreview? (env : Environment) (label : Name)
-    (facet : PreviewCache.Facet) : Option Preview := do
-  let state := informalExt.getState env
-  let node ← state.data.get? label
-  nodeFacetPreview? node facet
-
 def environmentSelection? (env : Environment) (label : Name) : Option Selection := do
   let state := informalExt.getState env
   let node ← state.data.get? label
   let (facet, preview) ←
-    preferredFacet? (nodeFacetPreview? node) Preview.nonEmpty
+    PreviewCache.Facet.select? (nodeFacetPreview? node)
   pure <| Selection.ofPreview label facet preview
-
-def fromEnvironment? (env : Environment) (label : Name) : Option Preview := do
-  let selection ← environmentSelection? env label
-  pure selection.preview
 
 def renderWidgetHtml (preview? : Option Preview) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
   match preview? with
