@@ -86,23 +86,30 @@ The merge rules are:
 | Two statement bodies or two proof bodies | Error, even when their text is identical |
 | Dependencies without a body | Add edges without replacing the body or its authored kind |
 | Duplicate dependency metadata | Deduplicate; manual metadata takes precedence over automatic metadata |
-| Different intents at the same authority | Error; neither import order nor spelling order selects the meaning |
+| Different intents at the same authority | Error, including automatic disagreements hidden by a manual override; neither import order nor spelling order selects the meaning |
 | Repeated scalar metadata (`parent`, `owner`, `priority`, `effort`, `pr_url`) | Accept equal values; reject unequal values |
 | Tags | Unique union |
 | External Lean associations | Union by canonical declaration, preferring resolved information |
-| Literate Lean code | Keep distinct code blocks |
+| Literate Lean code | Keep every distinct block, its declarations, and its code preview |
 | Rust code | At most one attachment |
 | External markup | At most one attachment per language and slot |
 
 A bodyless placeholder can later acquire a statement or proof body. An explicit
 statement kind belongs to the author: attaching a Lean theorem to an informal
 lemma keeps the informal node a lemma. For a Lean-only node without an authored
-kind, a theorem association takes precedence over a definition association.
+kind, a theorem association takes precedence over a definition association, whether
+the declarations come from attributes or literate Lean blocks. Dependencies alone
+do not count as an informal statement or proof in coverage summaries.
 
 For conflicting dependency intents, make the manual declarations agree or remove
 the redundant declaration. Attribute `uses` and `proofUses` entries are manual
 with `regular` intent. An inferred edge from `autoDeps` can coexist with an
 explicit prose edge, whose metadata takes precedence.
+
+Precedence chooses the metadata to display; it does not suppress conflicts within
+an authority. For example, automatic `regular` and automatic `technical` declarations
+for one dependency conflict even if a manual `auxiliary` declaration is also present.
+Reordering these declarations never repairs the conflict.
 
 For example, split the source into these three modules:
 
@@ -760,9 +767,9 @@ Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean code preview entries may contain multiple refs when
 several sourced Blueprint nodes share the same rendered Lean preview. External
 declaration previews are keyed by canonical declaration, while inline code
-previews are keyed by the inline Blueprint code label and use
+previews are keyed by the source code-block identity and use
 `targetKind: "inlineLeanCode"`. Declaration-specific inline identity is the
-owning inline code label plus the declaration's position in the owning block
+source code-block identity plus the declaration's position in the owning block
 entry's ordered inline code metadata (`definedDefs` followed by
 `definedTheorems`).
 Browser clients can resolve those document ids with `loadSourceDocument` or
@@ -777,7 +784,7 @@ Blueprint label/facet location or Lean declaration source. Browser clients that
 start from semantic names can call `resolveLabel`, or `resolveDeclaration` for
 declaration-keyed previews, from `api/data.mjs` or `api/preview.mjs` to get the
 generated link and source location together. Inline code previews are keyed by
-the inline Blueprint code label and should be loaded through the explicit key in
+the source code-block identity and should be loaded through the explicit key in
 `leanCodePreviewKeys`.
 Use the data API for metadata-only audit or dashboard clients; use the preview
 API when the same client also renders Blueprint nodes or cached previews.

@@ -59,6 +59,9 @@ Using {uses "lem:hover.link"}[], see {Informal.citet hover.cite (kind := lemma) 
 {blueprint_bibliography}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverLinkDocBlueprint : Informal.BlueprintDocument := .capture hoverLinkDoc.toPart
+
 #docs (Genre.Manual) hoverUsesDedupDoc "Hover Uses Dedup Doc" :=
 :::::::
 :::lemma_ "lem:hover.base"
@@ -69,6 +72,9 @@ Base lemma for repeated references.
 Using {uses "lem:hover.base"}[] and again {uses "lem:hover.base"}[].
 :::
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverUsesDedupDocBlueprint : Informal.BlueprintDocument := .capture hoverUsesDedupDoc.toPart
 
 #docs (Genre.Manual) hoverBprefDoc "Hover Bpref Doc" :=
 :::::::
@@ -104,6 +110,9 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
 
 {blueprint_bibliography}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverCiteOnlyDocBlueprint : Informal.BlueprintDocument := .capture hoverCiteOnlyDoc.toPart
 
 /--
 error: Unexpected argument (origin := "automatic")

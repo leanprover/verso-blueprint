@@ -129,17 +129,7 @@ def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option St
 def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
   (resolveStoredNodeData? st label).map (·.toBlockData)
 
-private def mergeStringArrays (xs ys : Array String) : Array String :=
-  ys.foldl (init := xs) fun acc value =>
-    if acc.contains value then acc else acc.push value
-
-/--
-Merge two stored entries for the same label.
-
-Numbering stays with the first stored entry, while semantic metadata is filled
-in from later entries. If either entry is a statement, the merged node is a
-statement so summaries do not treat it as proof-only.
--/
+/-- Merge occurrence facts after document projection has supplied the checked semantic metadata. -/
 def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData :=
   let kind :=
     match existing.kind, incoming.kind with
@@ -147,20 +137,9 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
     | .proof, .statement _ => incoming.kind
     | .proof, .proof => existing.kind
   { existing with
-      kind := kind
-      parent := existing.parent <|> incoming.parent
+      kind
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount
-      statementUses := Data.UseRef.mergeByLabel existing.statementUses incoming.statementUses
-      proofUses := Data.UseRef.mergeByLabel existing.proofUses incoming.proofUses
-      owner := existing.owner <|> incoming.owner
-      ownerDisplayName := existing.ownerDisplayName <|> incoming.ownerDisplayName
-      ownerUrl := existing.ownerUrl <|> incoming.ownerUrl
-      ownerImageUrl := existing.ownerImageUrl <|> incoming.ownerImageUrl
-      tags := mergeStringArrays existing.tags incoming.tags
-      effort := existing.effort <|> incoming.effort
-      priority := existing.priority <|> incoming.priority
-      prUrl := existing.prUrl <|> incoming.prUrl
   }
 
 /--
@@ -267,12 +246,13 @@ def BlockData.displayTitle (data : BlockData)
 /--
 Save one traversed informal block in the semantic node index.
 
-New labels get ids, external tags, and reserved numbering. Repeated labels merge
-their metadata without consuming another number.
+New labels get ids, external tags, and reserved numbering. Repeated labels reuse their checked
+semantic metadata and merge occurrence facts without consuming another number.
 -/
 def saveTraversedBlockData
     {m}
     [Monad m]
+    [MonadBuildLog m]
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
@@ -283,6 +263,8 @@ def saveTraversedBlockData
   let storedBlockData := blockData.toStoredData
   match Informal.TraversalIndex.Nodes.storedData? (← get) label with
   | some existing =>
+    unless existing.toBlockMetadata == storedBlockData.toBlockMetadata do
+      Verso.reportError s!"Inconsistent Blueprint metadata for '{label}'; capture and apply the document's final semantic snapshot before traversal"
     let mergedData := mergeStoredBlockData existing storedBlockData
     modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
   | none =>

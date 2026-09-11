@@ -22,6 +22,9 @@ Imported preview body.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def importedPreviewSourceDocBlueprint : Informal.BlueprintDocument := .capture importedPreviewSourceDoc.toPart
+
 #docs (Genre.Manual) proofFallbackPreviewSourceDoc "Proof Fallback Preview Source" :=
 :::::::
 :::theorem "preview.proof_fallback"

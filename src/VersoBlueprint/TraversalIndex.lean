@@ -155,27 +155,52 @@ namespace InlineCode
 def spec : StoreSpec := {
   name := Resolve.informalCodeDomainName
   kind := .internalIndex
-  key := "informal label"
+  key := "source code-block identity"
   value := "InlineCodeData plus code-panel anchor ids and folding settings"
-  summary := "Traversal-local index for Blueprint code-panel sources keyed by informal label."
+  summary := "Traversal-local code panels, each retaining its declarations and source identity."
+}
+
+def labelSpec : StoreSpec := {
+  name := `Informal.Block.inlineCodeLabels
+  kind := .internalIndex
+  key := "informal label"
+  value := "Ordered array of source code-block identities"
+  summary := "Index from each informal label to all of its rendered literate code blocks."
 }
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
+def object? (state : TraverseState) (blockId : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName blockId.toString
 
-def data? (state : TraverseState) (label : Name) : Option Informal.InlineCodeData :=
-  objectData? state domainName label.toString
+def data? (state : TraverseState) (blockId : Name) : Option Informal.InlineCodeData :=
+  objectData? state domainName blockId.toString
 
-def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
+def href? (state : TraverseState) (blockId : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName blockId.toString
 
-def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
-  saveObjectId state domainName label.toString id
+private def blockIds (state : TraverseState) (label : Name) : Array Name :=
+  (objectData? state labelSpec.name label.toString).getD #[]
 
-def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
-  saveObjectData state domainName label.toString data
+/-- Distinct blocks in document order; the block store remains the single owner of their data. -/
+def blocks (state : TraverseState) (label : Name) : Informal.InlineCodeBlocks :=
+  (blockIds state label).filterMap (data? state)
+
+def firstHref? (state : TraverseState) (label : Name) : Option String :=
+  (blockIds state label).findSome? (href? state)
+
+def forDecl? (state : TraverseState) (label decl : Name) : Option Informal.InlineCodeData :=
+  (blocks state label).find? fun block =>
+    block.declarations.any (fun candidate => candidate.name.eraseMacroScopes == decl.eraseMacroScopes)
+
+def saveId (state : TraverseState) (blockId : Name) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName blockId.toString id
+
+def saveData (state : TraverseState) (data : Informal.InlineCodeData) : TraverseState :=
+  let ids := blockIds state data.label
+  let ids := if ids.contains data.blockId then ids else ids.push data.blockId
+  saveObjectData (saveObjectData state domainName data.blockId.toString (toJson data))
+    labelSpec.name data.label.toString (toJson ids)
 
 end InlineCode
 
@@ -405,9 +430,9 @@ namespace LeanCodePreviews
 def spec : StoreSpec := {
   name := Informal.LeanCodePreviewKey.domainName
   kind := .runtimeCache
-  key := "external Lean declaration name or inline-code label"
+  key := "external Lean declaration name or source code-block identity"
   value := "LeanCodePreview.Entry plus code-preview anchor ids"
-  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or shared inline-code label."
+  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or source code-block identity."
 }
 
 def domainName : Name := spec.name
@@ -415,8 +440,8 @@ def domainName : Name := spec.name
 def lookupKey (decl : Name) : String :=
   Informal.LeanCodePreviewKey.lookupKey decl
 
-def lookupInlineKey (label : Name) : String :=
-  Informal.LeanCodePreviewKey.inlineLookupKey label
+def lookupInlineKey (blockId : Name) : String :=
+  Informal.LeanCodePreviewKey.inlineLookupKey blockId
 
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey
@@ -605,6 +630,7 @@ compare against one source location instead of rediscovering each domain name.
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
   InlineCode.spec,
+  InlineCode.labelSpec,
   RustInlineCode.spec,
   SourceDocuments.spec,
   SourceRefs.spec,

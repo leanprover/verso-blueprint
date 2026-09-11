@@ -119,9 +119,9 @@ block_extension Block.informal (data : BlockData) where
           | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
-        let codeHref := Informal.TraversalIndex.InlineCode.href? s data.label
-        let codeData? : Option InlineCodeData ←
-          pure <| Informal.TraversalIndex.InlineCode.data? s data.label
+        let codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
+        let codeData? : InlineCodeBlocks ←
+          pure <| Informal.TraversalIndex.InlineCode.blocks s data.label
         let codeHint? :=
           match data.kind with
           | .proof => none
@@ -309,7 +309,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       subNumberingCounter := subNumberingCounter opts
     }
     let data := match node? with
-      | some node => data.withSemanticData (BlockData.ofNode label node ownerInfo?)
+      | some node => data.withSemanticData (NodeSnapshot.ofNode label node ownerInfo?)
       | none => data
     ``(Block.other (Block.informal $(quote data)) $retainedContents)
 

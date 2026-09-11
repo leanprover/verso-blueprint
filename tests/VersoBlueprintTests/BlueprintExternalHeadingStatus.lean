@@ -95,20 +95,21 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 #guard_msgs in
 #eval!
   let codeData : InlineCodeData := {
+    blockId := `status.inline.panel.block
     label := `status.inline.panel
     definedDefs := #[{ name := `inlineDef, provedStatus := .proved }]
     definedTheorems := #[{ name := `inlineThm, provedStatus := inlineProofGapStatus }]
   }
   let headingData : BlockData := {
     kind := .statement .definition
-    codeData := some (.inline codeData)
+    codeData := some (.inline #[codeData])
     label := `status.inline.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some (.inline codeData) } (fun _ => none)).codeEntry.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some (.inline #[codeData]) } (fun _ => none)).codeEntry.asString
   let parts := CodeSummary.renderPanelIndicator
     `status.inline.panel
-    { source := some (.inline codeData) }
+    { source := some (.inline #[codeData]) }
     (fun _ => none)
   let html := parts.indicator.asString
   hasSubstr parts.summaryTitle "status.inline.panel" &&

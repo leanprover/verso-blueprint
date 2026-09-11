@@ -59,11 +59,12 @@ private def statementData (label : Name) (kind : Data.NodeKind) (source : Option
     count := 1
   }
 
-private def inlineCode (declStatus : Data.ProvedStatus) : InlineCodeData :=
-  {
+private def inlineCode (declStatus : Data.ProvedStatus) : InlineCodeBlocks :=
+  #[{
+    blockId := `matrix.inline
     label := `inline.status
     definedDefs := #[{ name := `Inline.status, provedStatus := declStatus }]
-  }
+  }]
 
 private def codeEntryHtml (label : Name) (kind : Data.NodeKind) (source : Option BlockCodeData) : String :=
   let data := statementData label kind source

@@ -114,6 +114,8 @@ def CodeDeclData.ofLiterateThm (d : Data.LiterateThm)
   }
 
 structure InlineCodeData where
+  /-- Source-module and source-position identity of this code block. -/
+  blockId : Name
   label : Data.Label
   definedDefs : Array CodeDeclData := #[]
   definedTheorems : Array CodeDeclData := #[]
@@ -126,6 +128,18 @@ deriving Repr, Inhabited, FromJson, ToJson, Quote
 def InlineCodeData.declarations (code : InlineCodeData) : Array CodeDeclData :=
   code.definedDefs ++ code.definedTheorems
 
+/-- The distinct literate blocks associated with one informal label, in document order. -/
+abbrev InlineCodeBlocks := Array InlineCodeData
+
+def InlineCodeBlocks.definedDefs (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.definedDefs)
+
+def InlineCodeBlocks.definedTheorems (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.definedTheorems)
+
+def InlineCodeBlocks.declarations (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.declarations)
+
 /--
 Resolved block-level code semantics used by informal block rendering.
 
@@ -135,8 +149,8 @@ for the HTML phase:
 - otherwise we fall back to optional external declaration hints.
 -/
 inductive BlockCodeData where
-  /-- Inline/literate code block associated with this label. -/
-  | inline (code : InlineCodeData)
+  /-- Distinct inline/literate code blocks associated with this label. -/
+  | inline (blocks : InlineCodeBlocks)
   /-- External Lean declarations associated with this label. -/
   | external (decls : Array Data.ExternalRef)
 deriving Repr, Inhabited, FromJson, ToJson, Quote
@@ -147,14 +161,12 @@ def BlockCodeData.ofExternalRefs (decls : Array Data.ExternalRef) : Option Block
   else
     some (.external decls)
 
-/-- Resolve inline precedence at render time by combining optional hint + inline payload. -/
-def BlockCodeData.ofHintAndInline (hint? : Option BlockCodeData) (inline? : Option InlineCodeData)
+/-- Prefer rendered literate blocks over an optional external-code hint. -/
+def BlockCodeData.ofHintAndInline (hint? : Option BlockCodeData) (blocks : InlineCodeBlocks)
     : Option BlockCodeData :=
-  match inline? with
-  | some code => some (.inline code)
-  | Option.none => hint?
+  if blocks.isEmpty then hint? else some (.inline blocks)
 
-def BlockCodeData.inlineData? : BlockCodeData → Option InlineCodeData
+def BlockCodeData.inlineData? : BlockCodeData → Option InlineCodeBlocks
   | .inline code => some code
   | _ => Option.none
 
@@ -162,19 +174,41 @@ def BlockCodeData.externalDecls : BlockCodeData → Array Data.ExternalRef
   | .external decls => decls
   | _ => #[]
 
-structure BlockData where
+/-- Shared semantic metadata; occurrence numbering, sources, and folding live separately. -/
+structure BlockMetadata where
+  label : Data.Label
+  parent : Option Data.Parent := none
+  statementUses : Array Data.UseRef := #[]
+  proofUses : Array Data.UseRef := #[]
+  owner : Option Data.AuthorId := none
+  ownerDisplayName : Option String := none
+  ownerUrl : Option String := none
+  ownerImageUrl : Option String := none
+  tags : Array String := #[]
+  effort : Option String := none
+  priority : Option String := none
+  prUrl : Option String := none
+deriving BEq, FromJson, ToJson, Quote
+
+/-- Runtime semantic node projection, without document occurrence settings. -/
+structure NodeSnapshot extends BlockMetadata where
+  kind : Data.NodeKind := .lemma
+  externalRefs : Array Data.ExternalRef := #[]
+  /-- Initial numbering fallback for references without a traversed occurrence. -/
+  initialCount : Nat := 0
+deriving FromJson, ToJson, Quote
+
+structure BlockData extends BlockMetadata where
   kind : Data.InProgressKind := .proof
   /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
   codeData : Option BlockCodeData := none
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
-  label : Data.Label
   /-- Source location result for the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
-  parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -192,27 +226,15 @@ structure BlockData where
   partPrefix : Option String := none
   /-- Document-order global index assigned during traversal. -/
   globalCount : Option Nat := none
-  /-- Structured statement-side use metadata for this labeled block. -/
-  statementUses : Array Data.UseRef := #[]
-  /-- Structured proof-side use metadata for this labeled block. -/
-  proofUses : Array Data.UseRef := #[]
-  owner : Option Data.AuthorId := none
-  ownerDisplayName : Option String := none
-  ownerUrl : Option String := none
-  ownerImageUrl : Option String := none
-  tags : Array String := #[]
-  effort : Option String := none
-  priority : Option String := none
-  prUrl : Option String := none
 deriving FromJson, ToJson, Quote
 
 /-- Project the assembled node's semantic fields into the renderer's block representation. -/
-def BlockData.ofNode (label : Data.Label) (node : Data.Node)
-    (author : Option Data.AuthorInfo := none) : BlockData := {
+def NodeSnapshot.ofNode (label : Data.Label) (node : Data.Node)
+    (author : Option Data.AuthorInfo := none) : NodeSnapshot := {
   label
-  kind := .statement node.kind
-  count := node.count
-  codeData := BlockCodeData.ofExternalRefs node.externalRefs
+  kind := node.kind
+  initialCount := node.count
+  externalRefs := node.externalRefs
   parent := node.parent
   statementUses := node.statement.map (·.deps) |>.getD #[]
   proofUses := node.proof.map (·.deps) |>.getD #[]
@@ -226,22 +248,25 @@ def BlockData.ofNode (label : Data.Label) (node : Data.Node)
   prUrl := node.prUrl
 }
 
-/-- Refresh semantic fields while retaining this occurrence's body facet, source, and numbering. -/
-def BlockData.withSemanticData (data semantic : BlockData) : BlockData := {
+def NodeSnapshot.toBlockData (node : NodeSnapshot) : BlockData := {
+  toBlockMetadata := node.toBlockMetadata
+  kind := .statement node.kind
+  codeData := BlockCodeData.ofExternalRefs node.externalRefs
+  count := node.initialCount
+}
+
+def BlockData.ofNode (label : Data.Label) (node : Data.Node)
+    (author : Option Data.AuthorInfo := none) : BlockData :=
+  (NodeSnapshot.ofNode label node author).toBlockData
+
+/-- Refresh semantics while retaining this occurrence's facet, source, and numbering. -/
+def BlockData.withSemanticData (data : BlockData) (semantic : NodeSnapshot) : BlockData := {
   data with
-  kind := match data.kind with | .proof => .proof | .statement _ => semantic.kind
-  codeData := match data.kind with | .proof => none | .statement _ => semantic.codeData
-  parent := semantic.parent
-  statementUses := semantic.statementUses
-  proofUses := semantic.proofUses
-  owner := semantic.owner
-  ownerDisplayName := semantic.ownerDisplayName
-  ownerUrl := semantic.ownerUrl
-  ownerImageUrl := semantic.ownerImageUrl
-  tags := semantic.tags
-  effort := semantic.effort
-  priority := semantic.priority
-  prUrl := semantic.prUrl
+  toBlockMetadata := semantic.toBlockMetadata
+  kind := match data.kind with | .proof => .proof | .statement _ => .statement semantic.kind
+  codeData := match data.kind with
+    | .proof => none
+    | .statement _ => BlockCodeData.ofExternalRefs semantic.externalRefs
 }
 
 /--
@@ -251,13 +276,11 @@ Unlike `BlockData`, this intentionally excludes `codeData`. Code-specific
 render/runtime payloads belong to dedicated traversal indexes rather than the
 main semantic node index.
 -/
-structure StoredBlockData where
+structure StoredBlockData extends BlockMetadata where
   kind : Data.InProgressKind := .proof
-  label : Data.Label
   /-- Source location result for the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
-  parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -266,64 +289,32 @@ structure StoredBlockData where
   subNumberingCounter : SubNumberingCounter := .prefix
   partPrefix : Option String := none
   globalCount : Option Nat := none
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
-  owner : Option Data.AuthorId := none
-  ownerDisplayName : Option String := none
-  ownerUrl : Option String := none
-  ownerImageUrl : Option String := none
-  tags : Array String := #[]
-  effort : Option String := none
-  priority : Option String := none
-  prUrl : Option String := none
 deriving FromJson, ToJson, Quote
 
 def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
+  toBlockMetadata := data.toBlockMetadata
   kind := data.kind
-  label := data.label
   sourceLocation := data.sourceLocation
-  parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
   subNumberingPrefix := data.subNumberingPrefix
   subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
-  statementUses := data.statementUses
-  proofUses := data.proofUses
-  owner := data.owner
-  ownerDisplayName := data.ownerDisplayName
-  ownerUrl := data.ownerUrl
-  ownerImageUrl := data.ownerImageUrl
-  tags := data.tags
-  effort := data.effort
-  priority := data.priority
-  prUrl := data.prUrl
 }
 
 def StoredBlockData.toBlockData (data : StoredBlockData)
     (codeData : Option BlockCodeData := none) : BlockData := {
+  toBlockMetadata := data.toBlockMetadata
   kind := data.kind
   codeData
-  label := data.label
   sourceLocation := data.sourceLocation
-  parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
   subNumberingPrefix := data.subNumberingPrefix
   subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
-  statementUses := data.statementUses
-  proofUses := data.proofUses
-  owner := data.owner
-  ownerDisplayName := data.ownerDisplayName
-  ownerUrl := data.ownerUrl
-  ownerImageUrl := data.ownerImageUrl
-  tags := data.tags
-  effort := data.effort
-  priority := data.priority
-  prUrl := data.prUrl
 }
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=

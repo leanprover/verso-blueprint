@@ -178,22 +178,41 @@ environment-generated graph and summary data, before traversal. Bodies, source
 locations, folding options, numbering settings, and custom overview models remain
 owned by their document occurrences.
 
-Custom wrappers must capture at their own call site and forward the value:
+For wrappers and collections of documents, capture once after all project imports
+and pass the document together with its selected semantic environment:
 
 ```lean
-def generateBlueprint (text : Verso.Doc.Part Verso.Genre.Manual) (args : List String)
-    (impls : Verso.Genre.Manual.ExtensionImpls)
-    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 :=
-  Informal.PreviewManifest.blueprintMainWithPreviewData text args impls
-    (snapshot := snapshot)
+def projectDocument : Informal.BlueprintDocument :=
+  .capture (%doc Project.Blueprint)
+
+def generateBlueprint (document : Informal.BlueprintDocument) (args : List String)
+    (impls : Verso.Genre.Manual.ExtensionImpls) : IO UInt32 :=
+  Informal.PreviewManifest.blueprintMainWithPreviewData document.text args impls
+    (snapshot := document.snapshot)
 ```
 
-Direct rendering code can call `snapshot.apply text` before its own Verso
-traversal. Capture once and reuse the result for multiple output modes. A renderer
+Direct rendering code can use `document.toPart` (or `snapshot.apply text`) before
+its own Verso traversal. Capture once and reuse the result for multiple output modes.
+The snapshot contains typed node and summary data; block numbering, source locations,
+and folding remain properties of occurrences. Traversal checks that repeated
+occurrences agree on their projected semantic metadata.
+
+Summaries cover the captured project environment; graphs select nodes with rendered
+targets or preview candidates. A multi-project generator should capture each project
+in its own module and collect the resulting `BlueprintDocument` values. A renderer
 for synthetic or deliberately invalid fixtures can pass `(snapshot := {})` to
 render exactly the supplied document data without reading the renderer module's
-unrelated imports. The repository's multi-document fixture catalog uses this
-explicit choice; a normal Blueprint project uses the automatic capture.
+unrelated imports. The repository's fixture catalog forwards each valid fixture's
+own snapshot; only deliberately invalid import fixtures opt out.
+
+Literate code is represented by `InlineCodeBlocks`, an ordered collection of
+`InlineCodeData` records. Each record has its own `blockId`, derived from the source
+module and byte position. `TraversalIndex.InlineCode.blocks` selects all blocks for
+a label; `forDecl?` finds the block owning a declaration. `BlockCodeData.inline`
+carries the collection, and `leanCodePreviewKeys` contains a key for every block.
+Treat these keys as opaque; regenerate artifacts after changing source locations.
+The manifest schema marker is now 4: old artifacts must be regenerated for the
+collection-valued inline code data and source-based preview identities.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
@@ -314,9 +333,9 @@ those assets or decide how a richer source review interface should look.
 When a sourced Blueprint node has associated Lean code previews, the
 corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every
 owning ref in `sources`. External declaration previews are keyed by canonical
-Lean declaration; inline-code previews are keyed by the inline Blueprint code
-label, so all declarations from one inline block share one rendered preview
-entry. Declaration-specific inline identity is the owning inline code label plus
+Lean declaration; inline-code previews are keyed by the source code-block
+identity, so all declarations from one inline block share one rendered preview
+entry. Declaration-specific inline identity is the source code-block identity plus
 the declaration's position in the owning block entry's ordered inline code
 metadata (`definedDefs` followed by `definedTheorems`). This lets audit clients
 follow the source-document, Blueprint-node, and Lean-code chain without
@@ -1093,7 +1112,7 @@ Use `resolveDeclaration` when the client starts from a Lean declaration name and
 needs a declaration-keyed preview entry. It resolves external/declaration-keyed
 manifest entries and returns both the generated Blueprint occurrence `href` and
 the manifest `sourceLocation` result. Inline-code previews are keyed by the
-inline Blueprint code label; clients that start from an inline block should read
+source code-block identity; clients that start from an inline block should read
 that block entry's `leanCodePreviewKeys` or call `resolvePreview` with the
 explicit preview key. The `href` points to the generated Blueprint preview
 occurrence; the `sourceLocation` points to the Lean source definition:
@@ -1246,7 +1265,7 @@ signature and type reference.
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
 | `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
-| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their inline Blueprint code label and should be loaded through the explicit key in `leanCodePreviewKeys`. |
+| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their source code-block identity and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |

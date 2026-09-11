@@ -46,6 +46,9 @@ Widget preview uses $`\widgetmacro`.
 :::
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def widgetPreviewDocBlueprint : Informal.BlueprintDocument := .capture widgetPreviewDoc.toPart
+
 /-- info: true -/
 #guard_msgs in
 #eval

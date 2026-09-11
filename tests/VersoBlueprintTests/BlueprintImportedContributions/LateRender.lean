@@ -20,6 +20,8 @@ private def graphFreeDoc : Doc.VersoDoc Genre.Manual :=
 
 private def manualImpls : ExtensionImpls := extension_impls%
 
+def lateBlueprint : Informal.BlueprintDocument := .capture graphDoc.toPart
+
 -- The generator sees the attachment after both documents and their overview
 -- commands have been compiled. Every rendered view must use the final semantics.
 #eval show IO Unit from do

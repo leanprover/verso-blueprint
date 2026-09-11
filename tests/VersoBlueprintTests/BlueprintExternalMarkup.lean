@@ -546,6 +546,9 @@ external markup.
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture externalMarkupShowcaseDoc.toPart
+
 /-- info: #[] -/
 #guard_msgs in
 #eval

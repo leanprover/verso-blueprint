@@ -19,6 +19,22 @@ deriving Lean.ToJson
 
 def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
   {
+    slug := "imported-late-attachments"
+    title := "Late imported attachments"
+    category := "Imports"
+    summary := "Compiled chapters refreshed with later dependencies, metadata, and Lean associations."
+    tags := #["imports", "snapshot", "preview"]
+    kind := "curated_doc"
+  },
+  {
+    slug := "imported-literate-attachments"
+    title := "Multiple imported literate blocks"
+    category := "Imports"
+    summary := "Distinct code panels and previews attached to a shared informal label."
+    tags := #["imports", "literate", "preview"]
+    kind := "curated_doc"
+  },
+  {
     slug := "hover-link"
     title := "Hover Link Doc"
     category := "Preview"

@@ -544,12 +544,17 @@ deriving Repr, Inhabited
 def InformalBody.hasBody (data : InformalBody) : Bool :=
   !data.previewBlocks.isEmpty || !data.elabStx.isEmpty
 
-/-- An assembled body (possibly still empty) and its dependency edges. -/
+/-- An assembled body and the declarations needed to validate its dependencies. -/
 structure InformalData extends InformalBody where
-  deps : Array UseRef := #[]
+  /-- One declaration per label and authority; manual precedence never erases validation evidence. -/
+  useDeclarations : Array UseRef := #[]
 deriving Repr, Inhabited
 
 def InformalData.hasBody (data : InformalData) : Bool := data.toInformalBody.hasBody
+
+/-- Effective dependency edges, with manual metadata taking precedence. -/
+def InformalData.deps (data : InformalData) : Array UseRef :=
+  UseRef.mergeByLabel #[] data.useDeclarations
 
 def InformalData.dependencyLabels (data : InformalData) : Array Label :=
   data.deps.map (·.label)
@@ -580,8 +585,6 @@ additions; adding code or dependencies cannot reclassify an authored statement.
 structure NodeContribution where
   /-- Explicit kind from a statement directive, including an empty placeholder. -/
   kind : Option NodeKind := none
-  /-- Definition or Theorem fallback classification for a Lean-only node. -/
-  inferredKind : Option NodeKind := none
   count : Nat := 0
   statementBody : Option InformalBody := none
   proofBody : Option InformalBody := none
@@ -631,6 +634,24 @@ def Node.leanDecls (node : Node) : Array Name :=
 def Node.hasAssociatedCode (node : Node) : Bool :=
   !node.leanCode.isEmpty
 
+def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
+
+def Node.hasProofBody (node : Node) : Bool := node.proof.any (·.hasBody)
+
+/-- Infer the fallback uniformly from all Lean associations, including literate blocks. -/
+private def inferredNodeKind (code : Array CodeRef) : NodeKind := Id.run do
+  let mut kind := NodeKind.lemma
+  for ref in code do
+    match ref with
+    | .external decls =>
+      for decl in decls do
+        if decl.kind.isTheoremLike then return .theorem
+        kind := .definition
+    | .literate block =>
+      if !block.definedTheorems.isEmpty then return .theorem
+      if !block.definedDefs.isEmpty then kind := .definition
+  return kind
+
 def Data.parentChildren (data : Data) : LabelMap (Array Label) :=
   data.foldl (init := (Std.TreeMap.empty : LabelMap (Array Label))) fun acc child node =>
     match node.parent with
@@ -676,29 +697,31 @@ private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String
       conflict s!"Label {label} declares conflicting {field}: existing '{existing}', new '{value}'"
     return current
 
-/-- Validate dependencies before materializing their union. -/
+/-- Retain one declaration per authority, checking even metadata hidden by manual precedence. -/
 private def mergeUses (label : Label) (side : String)
     (current incoming : Array UseRef) : MergeM (Array UseRef) := do
   let mut uses := current
   for ref in incoming do
-    if let some previous := uses.find? (·.label == ref.label) then
-      if previous.origin == ref.origin && previous.intent != ref.intent then
+    if let some previous := uses.find? (fun previous =>
+        previous.label == ref.label && previous.origin == ref.origin) then
+      if previous.intent != ref.intent then
         conflict s!"Label {label} declares conflicting {side} dependency intents for '{ref.label}' ({ref.origin}): existing '{previous.intent}', new '{ref.intent}'"
-    uses := UseRef.pushMergeByLabel uses ref
+    else
+      uses := uses.push ref
   return uses
 
 private def mergePayload (label : Label) (side : String)
     (current : Option InformalData) (body : Option InformalBody)
     (incomingUses : Array UseRef) : MergeM (Option InformalData) := do
-  let deps ← mergeUses label side (current.map (·.deps) |>.getD #[]) incomingUses
+  let useDeclarations ← mergeUses label side (current.map (·.useDeclarations) |>.getD #[]) incomingUses
   let currentBody := current.map (·.toInformalBody)
   if (currentBody.any (·.hasBody)) && (body.any (·.hasBody)) then
     conflict s!"Label {label} already has a {side}"
   let selected := if body.any (·.hasBody) then body else currentBody <|> body
   match selected with
-  | some body => return some { toInformalBody := body, deps }
+  | some body => return some { toInformalBody := body, useDeclarations }
   | none =>
-    return if deps.isEmpty then none else some { stx := .missing, deps }
+    return if useDeclarations.isEmpty then none else some { stx := .missing, useDeclarations }
 
 private def mergeContribution (label : Label) (node : Node)
     (incoming : NodeContribution) : MergeM Node := do
@@ -722,26 +745,19 @@ private def mergeContribution (label : Label) (node : Node)
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
+  let leanCode := incoming.leanCode.foldl mergeAssociatedCodeRefs node.leanCode
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
       if node.kindIsExplicit && node.kind != kind then
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
-    | none => do
-      if let some inferred := incoming.inferredKind then
-        unless inferred == .definition || inferred == .theorem do
-          conflict s!"Label {label} has invalid inferred kind '{inferred}'; expected Definition or Theorem"
-      pure <| if node.kindIsExplicit then node.kind else
-        match incoming.inferredKind with
-        | none => node.kind
-        -- Lean-only nodes are theorem-like if any association is a theorem.
-        | some kind => if node.kind == .theorem then node.kind else kind
+    | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind leanCode
   return {
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
     statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl
-    leanCode := incoming.leanCode.foldl mergeAssociatedCodeRefs node.leanCode
+    leanCode
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
   }
 

@@ -48,7 +48,7 @@ declaration-anchor-centric (one destination per declaration), while rendered ext
 reference-centric (one destination per `(informal label, canonical declaration)` pair). This
 allows summary/graph UI to jump to the specific rendered instance, even when the same declaration
 is referenced by many blueprint entries. Inline preview bodies themselves are keyed by the owning
-inline Blueprint code label.
+source code-block identity.
 -/
 def externalRenderedDeclDomainName : Name := Name.mkSimple "Informal.Block.externalRenderedDecl"
 def bibliographyDomainName : Name := Name.mkSimple "Informal.Block.bpCitations"

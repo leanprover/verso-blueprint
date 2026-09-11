@@ -61,22 +61,13 @@ block_extension Block.informalCode (data : InlineCodeData) where
     let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
         (fun _ => s!"Malformed data: {data}")
       | pure none
-    let label := cdata.label
-    if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
+    if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) cdata.blockId then
       pure none
     else
-      if !cdata.statementUses.isEmpty || !cdata.proofUses.isEmpty then
-        if let some existing := Informal.TraversalIndex.Nodes.storedData? (← get) label then
-          let updated := {
-            existing with
-              statementUses := Data.UseRef.mergeByLabel existing.statementUses cdata.statementUses
-              proofUses := Data.UseRef.mergeByLabel existing.proofUses cdata.proofUses
-          }
-          modify fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson updated)
       let previewBlocks := previewCodeBlocks id _contents
       let declarations := cdata.declarations
       if !declarations.isEmpty then
-        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label
+        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey cdata.blockId
         let sourceLocation :=
           match declarations[0]? with
           | some decl => decl.sourceLocation
@@ -84,7 +75,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
               Informal.Data.SourceLocationResult.unavailable
                 "inline Lean preview source location unavailable"
         let previewData := toJson
-          (LeanCodePreview.Entry.ofInlineBlocks label previewBlocks sourceLocation)
+          (LeanCodePreview.Entry.ofInlineBlocks cdata.blockId cdata.label previewBlocks sourceLocation)
         let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
         modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
         if existingPreview?.isNone then
@@ -92,9 +83,9 @@ block_extension Block.informalCode (data : InlineCodeData) where
           let _ ← Verso.Genre.Manual.externalTag id path s!"--lean-code-preview-{previewKey}"
           modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveId s previewKey id
       let path ← (·.path) <$> read
-      let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-code-{label}"
-      modify λ s => Informal.TraversalIndex.InlineCode.saveId s label id
-      modify λ s => Informal.TraversalIndex.InlineCode.saveData s label (toJson cdata)
+      let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-code-{cdata.blockId}"
+      modify λ s => Informal.TraversalIndex.InlineCode.saveId s cdata.blockId id
+      modify λ s => Informal.TraversalIndex.InlineCode.saveData s cdata
       pure none
   toTeX := some <| fun _goI goB _id data blocks => do
       let title ←
@@ -114,7 +105,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
           (fun _ => s!"Malformed data: {data}")
         | pure .empty
-      let { label, definedDefs, definedTheorems, statementUses := _, proofUses := _, foldCodeBlock, foldProofs } := cdata
+      let { label, foldCodeBlock, foldProofs, .. } := cdata
       let s ← HtmlT.state
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
@@ -129,7 +120,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let panelSummary :=
         renderPanelIndicator label
           {
-            source := some (.inline { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs })
+            source := some (.inline #[cdata])
           }
           getDeclHref
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
@@ -344,7 +335,11 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       let deps ← liftM <| DependencyAnalysis.inferDecls decls
       inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
       liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label inferredUseRefs
+    let some position := codeRef.getPos?
+      | throwError "Blueprint code blocks require a source position"
+    let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
     let data : InlineCodeData := {
+      blockId
       label := cfg.label
       definedDefs
       definedTheorems

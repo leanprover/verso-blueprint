@@ -15,7 +15,7 @@ import VersoBlueprint.Informal.Block.Common
 namespace Informal.Commands
 
 /-!
-Collects finished Blueprint traversal state into the serializable summary payload.
+Collects the assembled Blueprint environment into the serializable summary payload.
 -/
 
 open Lean
@@ -421,8 +421,8 @@ private def Summary.bumpAxiomStatus (summary : Summary) (flags : EntryStatusFlag
 
 private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
   ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
-    let hasStatement := node.statement.isSome
-    let hasProof := node.proof.isSome
+    let hasStatement := node.hasStatementBody
+    let hasProof := node.hasProofBody
     let hasCode := Informal.Graph.nodeHasAssociatedCode node
     let statusFlags := entryStatusFlags ctx.state ctx.external node
     let leanSummary := nodeLeanSummary label node

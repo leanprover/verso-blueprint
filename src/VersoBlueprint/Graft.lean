@@ -90,7 +90,7 @@ private def renderLeanCodePreviewBody?
       pure none
   | some (.ok stored) =>
       match stored.data.source with
-      | .inlineBlocks blocks _sourceLocation => some <$> renderManualBlocks goB blocks
+      | .inlineBlocks _label blocks _sourceLocation => some <$> renderManualBlocks goB blocks
       | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
 
 private def renderLeanCodeBodies
