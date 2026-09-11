@@ -8,12 +8,13 @@ import Lean
 import VersoBlueprint.Environment
 
 /-!
-LeanArchitect-style automatic dependency inference for Verso Blueprint.
+Direct automatic dependency inference for Verso Blueprint.
 
-LeanArchitect recursively expands untagged Lean constants until it reaches
-blueprint nodes. Verso Blueprint uses a document-first variant: it scans direct
-constants from compiled declarations and maps each associated Lean declaration
-to its Blueprint labels.
+Scans constants in compiled declaration types and bodies and maps them to the
+Blueprint associations available when inference runs. Untagged helpers are not
+expanded, so dependencies behind them are missed. An empty result does not
+establish mathematical independence. See the Manual's automatic dependency
+inference section for authoring examples and the full contract.
 -/
 
 namespace Informal
@@ -24,7 +25,7 @@ namespace DependencyAnalysis
 
 register_option verso.blueprint.autoDeps : Bool := {
   defValue := false
-  descr := "Enable automatic Blueprint dependency inference by default"
+  descr := "Infer direct Blueprint dependencies by default, without expanding untagged helpers"
 }
 
 /--
@@ -32,8 +33,8 @@ Dependency labels inferred from a compiled Lean declaration.
 
 The analysis is intentionally direct: it scans constants mentioned by the
 declaration's type and body, but it does not recursively expand untagged helper
-declarations. Untagged constants are implementation details unless authors tag
-them with `@[blueprint]` or add a manual dependency edge.
+declarations. Such helpers may hide mathematical dependencies that authors must
+currently record explicitly.
 -/
 structure InferredDeps where
   statement : Array Data.Label := #[]

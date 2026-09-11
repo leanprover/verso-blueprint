@@ -40,7 +40,8 @@ Those labels are the key to the whole system. They are used to:
   qualified declaration name, or `@[blueprint "label"]` for an explicit short
   label; either form can use `(autoDeps := true)` or
   `set_option verso.blueprint.autoDeps true` to infer edges to directly
-  referenced Lean declarations associated with Blueprint labels
+  referenced Lean declarations associated with Blueprint labels;
+  [inference does not expand untagged helpers](MANUAL.md#automatic-dependency-inference)
 - turn the distinct labels owned directly by one imported Lean module into a
   source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`;
   declarations that share a label become one node

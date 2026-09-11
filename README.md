@@ -194,7 +194,11 @@ or section, with local `(autoDeps := false)` available as an override. Inferred
 edges are recorded with origin `"automatic"`; explicit `uses` and `proofUses`
 entries remain manual unless written through the usual Blueprint dependency
 syntax. Manual `{uses ...}` links remain available for prose-first Blueprint
-nodes.
+nodes. Inference does not expand untagged helpers: if a proof reaches a tagged
+result only through such a helper, add the missing edge with `proofUses`.
+An empty inferred dependency list does not establish mathematical independence.
+See [automatic dependency inference](doc/MANUAL.md#automatic-dependency-inference)
+for the exact contract, registration timing, and a worked helper example.
 
 ```md
 :::theorem "addition_assoc" (lean := "Nat.add_assoc, Nat.add_comm")
