@@ -199,22 +199,10 @@ inline_extension Inline.informal (data : InlineData) where
       else
         inlines.mapM goI
 
-private def Data.Node.toBlockInfo (node : Data.Node) (label : Data.Label) : BlockData :=
-  {
-    kind := .statement node.kind
-    label
-    count := node.count
-    owner := node.owner
-    tags := node.tags
-    effort := node.effort
-    priority := node.priority
-    prUrl := node.prUrl
-  }
-
 private def nodeRefTerm (label : Data.Label) (contents : Array (TSyntax `inline)) : DocElabM Term := do
     let contents ← contents.mapM elabInline
     let node ← Environment.getNode? label
-    let data : InlineData := { label, block := node.map (fun n => n.toBlockInfo label) }
+    let data : InlineData := { label, block := node.map (BlockData.ofNode label ·) }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
 
 @[role]

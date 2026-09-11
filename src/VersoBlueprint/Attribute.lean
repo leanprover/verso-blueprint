@@ -196,7 +196,7 @@ private partial def partToManualBlocksStx
     out := out ++ (← partToManualBlocksStx child)
   pure out
 
-private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalData) := do
+private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalBody) := do
   let env ← getEnv
   let internalDoc? ← liftM <| findInternalDocString? env decl
   let elabStx ←
@@ -224,7 +224,6 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option
   else
     pure <| some {
       stx := ref
-      deps := #[]
       elabStx := elabStx.map (·.raw)
     }
 
@@ -295,17 +294,15 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
   let current? ← Environment.getNode? label
-  let needsStatement := (current?.bind (·.statement)).isNone
-  let payload (useRefs : Array Data.UseRef) (body : Option Data.InformalData) :=
-    match body with
-    | some body => some { body with deps := Data.UseRef.mergeByLabel body.deps useRefs }
-    | none => if useRefs.isEmpty then none else some { stx := ref, deps := useRefs }
+  let needsBody := !(current?.bind (·.statement)).any (·.hasBody)
   Environment.contribute label {
-    kind := if needsStatement then some declKind else none
-    statement := payload deps.statement (if needsStatement then statement? else none)
-    proof := payload deps.proof none
+    inferredKind := some declKind
+    statementBody := if needsBody then statement? else none
+    statementUses := deps.statement
+    proofUses := deps.proof
     leanCode := #[.external #[extRef]]
   }
+
 
 open Lean in
 initialize

@@ -20,6 +20,7 @@ import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewManifest.Cli
 import VersoBlueprint.PreviewManifest.ExternalMarkupRender
 import VersoBlueprint.PreviewRender
+import VersoBlueprint.DocumentSnapshot
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
@@ -32,7 +33,7 @@ import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewManifest
 
-open Lean Elab Command Term Meta
+open _root_.Lean Elab Command Term Meta
 open Verso Doc
 open Verso.Genre Manual
 
@@ -2753,7 +2754,7 @@ private def emitBlueprintHtml
       for step in extraSteps do
         step mode cfg.toConfig preparedState text
 
-def blueprintMain (text : Part Manual)
+private def blueprintMainCore (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
     (options : List String)
     (config : RenderConfig := {})
@@ -2786,12 +2787,24 @@ where
         Informal.TeX.Pdf.compile pdfOptions cfg.toConfig
     Verso.runWithLogger (action.run extensionImpls)
 
+/-- Generate a document using semantic data captured after all generator imports. -/
+def blueprintMain (text : Part Manual)
+    (extensionImpls : ExtensionImpls := by exact extension_impls%)
+    (options : List String)
+    (config : RenderConfig := {})
+    (extraSteps : List BlueprintExtraStep := [])
+    (pdfOptions : PdfOptions := {})
+    (snapshot : DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 :=
+  blueprintMainCore (snapshot.apply text) extensionImpls options config extraSteps pdfOptions
+
 def blueprintMainWithPreviewData
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (extraSteps : List BlueprintExtraStep := []) : IO UInt32 := do
+    (extraSteps : List BlueprintExtraStep := [])
+    (snapshot : DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 := do
+  let text := snapshot.apply text
   let config := withBlueprintAssets config
   let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
@@ -2802,7 +2815,7 @@ def blueprintMainWithPreviewData
     | .error err =>
         IO.eprintln err
         return 2
-  blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
+  blueprintMainCore text (extensionImpls := extensionImpls) (options := options) (config := config)
     (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
     (pdfOptions := pdfOptions)
 

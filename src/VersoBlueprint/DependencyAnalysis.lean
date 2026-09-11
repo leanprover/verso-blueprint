@@ -133,16 +133,12 @@ def inferDecls (decls : Array Name) : CoreM InferredDeps :=
 def inferExternalRefs (refs : Array Data.ExternalRef) : CoreM InferredDeps :=
   inferDecls (refs.filter (·.present) |>.map (·.canonical))
 
-def attachInferredUseRefs (label : Data.Label) (ref : Syntax) (useRefs : InferredUseRefs) :
+def attachInferredUseRefs (label : Data.Label) (useRefs : InferredUseRefs) :
     CoreM Unit := do
-  if useRefs.statement.isEmpty && useRefs.proof.isEmpty then
-    pure ()
-  else
-    let payload (deps : Array Data.UseRef) : Option Data.InformalData :=
-      if deps.isEmpty then none else some { stx := ref, deps }
+  unless useRefs.statement.isEmpty && useRefs.proof.isEmpty do
     Environment.contribute label {
-      statement := payload useRefs.statement
-      proof := payload useRefs.proof
+      statementUses := useRefs.statement
+      proofUses := useRefs.proof
     }
 
 end DependencyAnalysis

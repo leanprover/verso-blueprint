@@ -475,7 +475,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {graphModel.nodes.size} graph nodes"
   let graphData : GraphBlockData := { graphModel, options, previewMode, previewPlacement }
-  let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData
+  let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData (fromEnvironment := true)
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 

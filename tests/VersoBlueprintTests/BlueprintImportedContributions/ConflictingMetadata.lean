@@ -7,6 +7,10 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.Metadata
 import VersoBlueprintTests.BlueprintImportedContributions.Proof
 
-/-- error: Duplicate imported blueprint node label 'key_theorem' -/
+/--
+error: Conflicting imported blueprint contributions for label 'key_theorem'
+Label key_theorem declares conflicting priorities: existing 'low', new 'high'
+Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.Metadata, VersoBlueprintTests.BlueprintImportedContributions.Proof, VersoBlueprintTests.BlueprintImportedContributions.Statement
+-/
 #guard_msgs in
 #eval show Lean.CoreM Unit from Informal.Environment.reportImportedConflicts

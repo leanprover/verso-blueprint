@@ -30,6 +30,9 @@ def main (args : List String) : IO UInt32 := do
         doc.toPart
         rest
         manualImpls
+        -- This catalog renders isolated, already-elaborated fixtures, including
+        -- deliberately conflicting imports; it has no shared project environment.
+        (snapshot := {})
     | none =>
       IO.eprintln s!"unknown curated test blueprint `{slug}`"
       usage
