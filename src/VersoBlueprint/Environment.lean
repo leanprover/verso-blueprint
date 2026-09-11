@@ -45,6 +45,8 @@ deriving Inhabited, Repr, DecidableEq
 structure ImportedConflict where
   kind : ImportedConflictKind
   label : Name
+  reasons : Array String := #[]
+  modules : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq
 
 /--
@@ -59,6 +61,8 @@ structure State where
   data : Data := Data.empty
   /-- The module that first introduced each label, inherited by later extensions. -/
   nodeOrigins : NameMap Name := {}
+  /-- Modules supplying the accepted fields, retained for conflict diagnostics. -/
+  nodeModules : NameMap (Array Name) := {}
   /-- Only registrations made in this module, in registration order per label. -/
   localContributions : NameMap (Array NodeContribution) := {}
   groups : NameMap String := {}
@@ -77,15 +81,30 @@ private def ImportedConflictKind.rank : ImportedConflictKind → Nat
   | .author => 2
 
 def ImportedConflict.message (conflict : ImportedConflict) : String :=
-  match conflict.kind with
-  | .node => s!"Duplicate imported blueprint node label '{conflict.label}'"
-  | .group => s!"Duplicate imported blueprint group label '{conflict.label}'"
-  | .author => s!"Duplicate imported blueprint author id '{conflict.label}'"
+  let heading := match conflict.kind with
+    | .node => s!"Conflicting imported blueprint contributions for label '{conflict.label}'"
+    | .group => s!"Duplicate imported blueprint group label '{conflict.label}'"
+    | .author => s!"Duplicate imported blueprint author id '{conflict.label}'"
+  let reasons := conflict.reasons.foldl (fun message reason => message ++ "\n" ++ reason) heading
+  if conflict.modules.isEmpty then reasons else
+    reasons ++ "\nContributing modules: " ++ String.intercalate ", " (conflict.modules.toList.map toString)
+
+private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
 
 private def pushImportedConflict (conflicts : Array ImportedConflict)
-    (kind : ImportedConflictKind) (label : Name) : Array ImportedConflict :=
-  let conflict : ImportedConflict := { kind, label }
-  if conflicts.contains conflict then conflicts else conflicts.push conflict
+    (kind : ImportedConflictKind) (label : Name)
+    (reasons : Array String := #[]) (modules : Array Name := #[]) : Array ImportedConflict :=
+  let sortModules (modules : Array Name) := modules.qsort (fun a b => a.toString < b.toString)
+  if conflicts.any (fun conflict => conflict.kind == kind && conflict.label == label) then
+    conflicts.map fun conflict =>
+      if conflict.kind == kind && conflict.label == label then
+        { conflict with
+          reasons := reasons.foldl pushUnique conflict.reasons
+          modules := sortModules (modules.foldl pushUnique conflict.modules) }
+      else conflict
+  else
+    conflicts.push { kind, label, reasons, modules := sortModules modules }
 
 private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array ImportedConflict :=
   conflicts.qsort fun a b =>
@@ -94,16 +113,13 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
         a.label.toString < b.label.toString)
 
 inductive Entry where
-  | node (label origin : Name) (contributions : Array NodeContribution)
+  | node (label origin contributor : Name) (contributions : Array NodeContribution)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
 
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
-
-private def nodeLeanDecls (node : Node) : Array Name :=
-  node.leanDecls
 
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
@@ -114,32 +130,36 @@ private def addLeanDeclLabel
 private def addNodeLeanDeclLabels
     (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
     NameMap (Array Label) :=
-  (nodeLeanDecls node).foldl (init := leanNameLabels) fun acc decl =>
+  node.leanDecls.foldl (init := leanNameLabels) fun acc decl =>
     addLeanDeclLabel acc decl label
+
+/-- Commit all node stores together only after the shared reducer accepts the registration. -/
+private def State.addNode (state : State) (label origin contributor : Name)
+    (contributions : Array NodeContribution) (isLocal : Bool) : Except (Array String) State := do
+  if let some previousOrigin := state.nodeOrigins.get? label then
+    if previousOrigin != origin then
+      throw #[s!"Label {label} was independently introduced in '{previousOrigin}' and '{origin}'"]
+  let node ← (state.data.getD label {}).applyContributions label contributions
+  return { state with
+    data := state.data.insert label node
+    nodeOrigins := state.nodeOrigins.insert label origin
+    nodeModules := state.nodeModules.insert label
+      (pushUnique (state.nodeModules.getD label #[]) contributor)
+    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
+    localContributions := if isLocal then
+      state.localContributions.insert label
+        (state.localContributions.getD label #[] ++ contributions)
+      else state.localContributions }
 
 private def State.addEntry (state : State) (entry : Entry) (isLocal : Bool) : State :=
   match entry with
-  | .node label origin contributions => Id.run do
-    if let some previousOrigin := state.nodeOrigins.get? label then
-      if previousOrigin != origin then
-        return { state with
-          importedConflicts := pushImportedConflict state.importedConflicts .node label }
-    let report (severity : MessageSeverity) (_ : MessageData) : StateM Bool Unit :=
-      modifyThe Bool (· || severity == .error)
-    let (node, hasErrors) := (contributions.foldlM
-      (Node.applyContribution report label) (state.data.getD label {})).run false
-    if hasErrors then
-      return { state with
-        importedConflicts := pushImportedConflict state.importedConflicts .node label }
-    let data := state.data.insert label node
-    return { state with
-      data
-      nodeOrigins := state.nodeOrigins.insert label origin
-      leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
-      localContributions := if isLocal then
-        state.localContributions.insert label
-          (state.localContributions.getD label #[] ++ contributions)
-        else state.localContributions }
+  | .node label origin contributor contributions =>
+    match state.addNode label origin contributor contributions isLocal with
+    | .ok state => state
+    | .error reasons =>
+      { state with
+        importedConflicts := pushImportedConflict state.importedConflicts .node label
+          reasons (pushUnique (state.nodeModules.getD label #[]) contributor) }
   | .group label header =>
     if state.groups.contains label then
       { state with importedConflicts := pushImportedConflict state.importedConflicts .group label }
@@ -164,15 +184,17 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         entries.foldl (init := state) fun state entry => state.addEntry entry false
       pure { state with importedConflicts := sortImportedConflicts state.importedConflicts }
     -- Export only local contributions, retaining the original label's module.
-    exportEntriesFnEx _env := fun state =>
-      let compact (payload : InformalData) :=
+    exportEntriesFnEx env := fun state =>
+      let compact (payload : InformalBody) :=
         if payload.previewBlocks.isEmpty then payload else { payload with elabStx := #[] }
       let nodeEntries := state.localContributions.toArray.map fun (name, contributions) =>
         let contributions := contributions.map fun contribution =>
           { contribution with
-            statement := contribution.statement.map compact
-            proof := contribution.proof.map compact }
-        Entry.node name (state.nodeOrigins.getD name .anonymous) contributions
+            statementBody := contribution.statementBody.map compact
+            proofBody := contribution.proofBody.map compact }
+        match state.nodeOrigins.get? name with
+        | some origin => Entry.node name origin env.mainModule contributions
+        | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
@@ -208,20 +230,11 @@ def contribute (label : Label) (contribution : NodeContribution) : m Unit := do
   reportImportedConflicts
   let mainModule ← getMainModule
   modifyM fun state => do
-    let report (severity : MessageSeverity) (message : MessageData) : StateT Bool m Unit := do
-      modifyThe Bool (· || severity == .error)
-      Lean.log message severity
-    let (node, hasErrors) ←
-      (Node.applyContribution report label (state.data.getD label {}) contribution).run false
-    if hasErrors then
+    match state.addNode label (state.nodeOrigins.getD label mainModule) mainModule #[contribution] true with
+    | .ok state => return state
+    | .error reasons =>
+      for reason in reasons do logError reason
       return state
-    let data := state.data.insert label node
-    return { state with
-      data
-      nodeOrigins := state.nodeOrigins.insert label (state.nodeOrigins.getD label mainModule)
-      localContributions := state.localContributions.insert label
-        ((state.localContributions.getD label #[]).push contribution)
-      leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node }
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
   let { data, stack, .. } := informalExt.getState (← getEnv)
@@ -271,9 +284,6 @@ def push (label : Label) (kind : Data.InProgressKind)
     { data with stack := pdata :: data.stack }
   return true
 
-def getCount : m Nat := do
-  return (informalExt.getState (← getEnv)).data.size
-
 /-- When unwinding a nested declaration, discard only the nested frame and keep `data` unchanged. -/
 def State.popNested? (state : State) : Option State :=
   match state.stack with
@@ -293,16 +303,17 @@ def pop (ref : Syntax) : m Nat := do
     match state.stack with
     | [] => logError m!"Internal Error: closing non-opened directive"
     | cur :: stack =>
-      let payload : InformalData := {
+      let payload : InformalBody := {
         stx := ref
-        deps := cur.deps
         previewBlocks := cur.previewBlocks
       }
       let contribution : NodeContribution := {
         kind := match cur.kind with | .statement kind => some kind | .proof => none
         count := match cur.kind with | .statement _ => state.data.nextCount | .proof => 0
-        statement := match cur.kind with | .statement _ => some payload | .proof => none
-        proof := match cur.kind with | .statement _ => none | .proof => some payload
+        statementBody := match cur.kind with | .statement _ => some payload | .proof => none
+        proofBody := match cur.kind with | .statement _ => none | .proof => some payload
+        statementUses := match cur.kind with | .statement _ => cur.deps | .proof => #[]
+        proofUses := match cur.kind with | .statement _ => #[] | .proof => cur.deps
         leanCode := cur.codeHint.toArray
         parent := cur.parent
         priority := cur.priority

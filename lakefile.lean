@@ -51,6 +51,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingMetadata,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingMarkup,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingRust,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingIntents,
+    `VersoBlueprintTests.BlueprintImportedContributions.ConflictingIntentsReverse,
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,

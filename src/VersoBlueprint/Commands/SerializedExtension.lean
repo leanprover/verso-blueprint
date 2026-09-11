@@ -19,21 +19,22 @@ Keeping a large computed payload in a string literal avoids generating and then 
 equivalent constructor-sized Lean term. This is an internal document-construction helper, not a
 persisted VBP artifact format.
 -/
-def blockFromJsonString! (name : Name) (serialized : String) : Verso.Genre.Manual.Block :=
+def blockFromJsonString! (name : Name) (serialized : String) (fromEnvironment : Bool := false) : Verso.Genre.Manual.Block :=
   let data :=
     match Json.parse serialized with
     | .ok data => data
     | .error error => panic! s!"invalid serialized Blueprint extension data: {error}"
-  { name, data }
+  { name, data
+    properties := if fromEnvironment then ({} : Verso.NameMap String).insert `Informal.documentSnapshot "true" else {} }
 
 /--
 Serialize extension data into a compact string literal and reconstruct its Manual block when the
 generated document term is evaluated.
 -/
-def serializedBlockTerm [ToJson α] (name : Name) (data : α) :
+def serializedBlockTerm [ToJson α] (name : Name) (data : α) (fromEnvironment : Bool := false) :
     Verso.Doc.Elab.PartElabM (TSyntax `term) := do
   let serialized := (toJson data).compress
   ``(Verso.Doc.Block.other
-    (Informal.Commands.blockFromJsonString! $(quote name) $(quote serialized)) #[])
+    (Informal.Commands.blockFromJsonString! $(quote name) $(quote serialized) $(quote fromEnvironment)) #[])
 
 end Informal.Commands

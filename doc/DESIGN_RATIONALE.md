@@ -234,31 +234,52 @@ The same flow can be read as four contracts:
    object database.
 
    Node exports contain only each module's local `NodeContribution` records,
-   together with the module that originally introduced the label. Imported
-   statements, proofs, code associations, and metadata are assembled with the
-   same merge rules used during local registration. This permits a proof or
-   attachment to extend an imported statement without exporting that statement
-   again, and permits independent sibling extensions to accumulate. Different
-   label origins and competing bodies or single-valued attachments remain
-   conflicts. `State.data` holds the assembled view; `localContributions` holds
-   only the registrations to export. Invalid local contributions are diagnosed
-   and rejected before either store is updated.
+   together with the module that originally introduced the label and the module
+   supplying those contributions. `statementBody` and `proofBody` are separate
+   from `statementUses` and `proofUses`: dependency-only additions cannot be
+   mistaken for replacement bodies. Explicit statement kinds take precedence
+   over inferred Lean classifications. The field-by-field authoring contract is
+   documented in [the manual's labels section](MANUAL.md#labels-and-node-identity).
+
+   `Node.applyContributions` is a pure checked reducer shared by local
+   registration and import replay. It returns either the accepted node or its
+   conflict reasons. `State.data`, label provenance, local exports, and the
+   declaration-to-label index are committed together after acceptance. Import
+   diagnostics retain the reasons and contributing module names. Equal scalar
+   metadata is idempotent; competing bodies, attachment slots, and equally
+   authoritative dependency intents are errors.
 
    Custom registration code should call `Informal.Environment.contribute` with
    locally supplied fields instead of updating and re-exporting a whole node.
    This replaces `modifyDataForLabel` and the old `Data.register*` helpers.
-   Downstream Lean modules must be rebuilt when updating from the former
-   full-node extension format; Blueprint authoring syntax is unchanged.
+   Body producers use `InformalBody`; the assembled `InformalData` additionally
+   carries dependencies. Downstream Lean modules must be rebuilt when updating
+   from the former full-node extension format. Blueprint authoring syntax is
+   unchanged.
 
 2. **Environment to traversal.**
-   During Verso traversal, Blueprint reads the semantic environment and writes
-   render-time indexes into `TraverseState` through `TraversalIndex`. This is
-   where site-local facts are created: rendered anchors, numbering caches,
-   code-panel destinations, group and reverse-use panels, citation use sites,
-   statement/proof preview entries, Lean code preview entries,
-   public graph data records, and external declaration row anchors. These
-   facts are intentionally not pushed back into `Environment.State`, because
-   their values depend on the current rendered document and output mode.
+   `blueprintMain` and `blueprintMainWithPreviewData` capture a
+   `DocumentSnapshot` in the generator's Lean environment, after its imports.
+   The capture serializes a compact runtime projection; it does not import or
+   reconstruct a Lean environment at runtime. Before traversal, one pure pass
+   refreshes semantic fields on every included block and inline reference.
+   Environment-generated graph and summary blocks are refreshed as well;
+   custom overview models keep their supplied data.
+
+   This boundary matters for separately compiled chapters: their original
+   block metadata cannot see later proof or attribute contributions. Refreshing
+   from the final assembled view prevents graphs and previews from disagreeing
+   about dependencies, code associations, or triage metadata. The pass preserves
+   each occurrence's body, source location, folding options, and numbering
+   configuration, and traverses nested block/inline containers.
+
+   Verso traversal then writes render-time indexes into `TraverseState` through
+   `TraversalIndex`: rendered anchors, numbering caches, code-panel destinations,
+   group and reverse-use panels, citation use sites, statement/proof preview
+   entries, Lean code preview entries, public graph data, and external declaration
+   row anchors. These site-local facts remain outside `Environment.State`.
+   Custom generator wrappers must forward their captured snapshot explicitly;
+   [the API guide](API.md) describes that boundary and isolated fixture rendering.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.

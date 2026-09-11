@@ -169,8 +169,33 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
-Generator-side data flow is source-to-traversal-to-public JSON. During Manual
-traversal, Blueprint records preview identities, rendered bodies, Lean-code
+Generator-side data flow is final semantic data, document projection, traversal,
+then public JSON. `blueprintMain` and `blueprintMainWithPreviewData` automatically
+capture `Informal.DocumentSnapshot` in the calling Lean environment. Capture
+happens after the generator's imports, so attachments to already-compiled
+chapters are visible. The snapshot refreshes block and reference metadata, plus
+environment-generated graph and summary data, before traversal. Bodies, source
+locations, folding options, numbering settings, and custom overview models remain
+owned by their document occurrences.
+
+Custom wrappers must capture at their own call site and forward the value:
+
+```lean
+def generateBlueprint (text : Verso.Doc.Part Verso.Genre.Manual) (args : List String)
+    (impls : Verso.Genre.Manual.ExtensionImpls)
+    (snapshot : Informal.DocumentSnapshot := by exact blueprint_snapshot%) : IO UInt32 :=
+  Informal.PreviewManifest.blueprintMainWithPreviewData text args impls
+    (snapshot := snapshot)
+```
+
+Direct rendering code can call `snapshot.apply text` before its own Verso
+traversal. Capture once and reuse the result for multiple output modes. A renderer
+for synthetic or deliberately invalid fixtures can pass `(snapshot := {})` to
+render exactly the supplied document data without reading the renderer module's
+unrelated imports. The repository's multi-document fixture catalog uses this
+explicit choice; a normal Blueprint project uses the automatic capture.
+
+During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
 state and traversal domains. Before HTML emission, the standard pipeline crosses
 the explicit `PreparedRendererState` boundary. Renderer preparation applies the

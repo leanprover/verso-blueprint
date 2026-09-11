@@ -343,7 +343,7 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
       let deps ← liftM <| DependencyAnalysis.inferDecls decls
       inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
-      liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label codeRef inferredUseRefs
+      liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label inferredUseRefs
     let data : InlineCodeData := {
       label := cfg.label
       definedDefs

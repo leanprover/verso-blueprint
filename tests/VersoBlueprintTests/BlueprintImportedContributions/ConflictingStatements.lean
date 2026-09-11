@@ -7,6 +7,10 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.IndependentA
 import VersoBlueprintTests.BlueprintImportedContributions.IndependentB
 
-/-- error: Duplicate imported blueprint node label 'independent_label' -/
+/--
+error: Conflicting imported blueprint contributions for label 'independent_label'
+Label independent_label was independently introduced in 'VersoBlueprintTests.BlueprintImportedContributions.IndependentA' and 'VersoBlueprintTests.BlueprintImportedContributions.IndependentB'
+Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.IndependentA, VersoBlueprintTests.BlueprintImportedContributions.IndependentB
+-/
 #guard_msgs in
 #eval show Lean.CoreM Unit from Informal.Environment.reportImportedConflicts

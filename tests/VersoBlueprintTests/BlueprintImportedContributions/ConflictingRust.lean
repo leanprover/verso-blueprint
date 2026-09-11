@@ -7,6 +7,10 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.MarkupStatement
 import VersoBlueprintTests.BlueprintImportedContributions.OtherRust
 
-/-- error: Duplicate imported blueprint node label 'key_theorem' -/
+/--
+error: Conflicting imported blueprint contributions for label 'key_theorem'
+Label key_theorem already has associated Rust code
+Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.MarkupStatement, VersoBlueprintTests.BlueprintImportedContributions.OtherRust, VersoBlueprintTests.BlueprintImportedContributions.Statement
+-/
 #guard_msgs in
 #eval show Lean.CoreM Unit from Informal.Environment.reportImportedConflicts

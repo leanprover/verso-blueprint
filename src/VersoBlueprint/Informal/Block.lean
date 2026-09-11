@@ -274,7 +274,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       liftM <| retainElaboratedBlocks contents
     Environment.setPreviewBlocks previewBlocks
     let count ← Environment.pop blockRef
-    liftM <| DependencyAnalysis.attachInferredUseRefs label blockRef { proof := resolved.proofUses }
+    liftM <| DependencyAnalysis.attachInferredUseRefs label { proof := resolved.proofUses }
     let node? ← Environment.getNode? label
     let blockKind : Data.InProgressKind ←
       if isProof then
@@ -287,19 +287,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
               logErrorAt resolved.labelSyntax m!"Internal error: missing node '{label}' after environment registration"
               pure kind
         pure <| .statement nodeKind
-    let codeData :=
-      match blockKind with
-      | .proof => none
-      | .statement _ =>
-        let externalRefs := node?.map (·.externalRefs) |>.getD #[]
-        BlockCodeData.ofExternalRefs externalRefs
-    let statementPayload? := node?.bind (·.statement)
-    let proofPayload? := node?.bind (·.proof)
-    let statementUses := statementPayload?.map (·.deps) |>.getD #[]
-    let proofUses := proofPayload?.map (·.deps) |>.getD #[]
-    let owner := node?.bind (·.owner)
-    let ownerInfo? ←
-      match owner with
+    let ownerInfo? ← match node?.bind (·.owner) with
       | some owner => Environment.getAuthor? owner
       | none => pure none
     let opts ← getOptions
@@ -310,28 +298,19 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         Data.SourceLocationResult.unavailable s!"label source location unavailable for {label}"
     let data : BlockData := {
       kind := blockKind
-      codeData
       sourceRef := parsedContents.sourceRef?
       label
       sourceLocation
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
-      parent := node?.bind (·.parent)
       count
       numberingMode := numberingMode opts
       subNumberingPrefix := subNumberingPrefix opts
       subNumberingCounter := subNumberingCounter opts
-      statementUses
-      proofUses
-      owner
-      ownerDisplayName := ownerInfo?.map (·.displayName)
-      ownerUrl := ownerInfo?.bind (·.url)
-      ownerImageUrl := ownerInfo?.bind (·.imageUrl)
-      tags := node?.map (·.tags) |>.getD #[]
-      effort := node?.bind (·.effort)
-      priority := node?.bind (·.priority)
-      prUrl := node?.bind (·.prUrl)
     }
+    let data := match node? with
+      | some node => data.withSemanticData (BlockData.ofNode label node ownerInfo?)
+      | none => data
     ``(Block.other (Block.informal $(quote data)) $retainedContents)
 
 private def directiveName (kind : Data.NodeKind) (isProof : Bool): String :=

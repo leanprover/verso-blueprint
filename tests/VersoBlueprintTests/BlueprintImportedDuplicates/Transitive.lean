@@ -18,7 +18,9 @@ set_option doc.verso true
 namespace Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 
 /--
-error: Duplicate imported blueprint node label '«dup.imported.node»'
+error: Conflicting imported blueprint contributions for label '«dup.imported.node»'
+Label «dup.imported.node» was independently introduced in 'VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA' and 'VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB'
+Contributing modules: VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA, VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB
 ---
 error: Duplicate imported blueprint group label '«dup.imported.group»'
 ---
@@ -36,7 +38,7 @@ error: Duplicate imported blueprint author id '«dup.imported.author»'
   show CoreM Bool from do
     let conflicts ← Informal.Environment.importedConflicts
     pure <|
-      conflicts.contains { kind := .node, label := Name.mkSimple "dup.imported.node" } &&
+      conflicts.any (fun conflict => conflict.kind == .node && conflict.label == Name.mkSimple "dup.imported.node") &&
       conflicts.contains { kind := .group, label := Name.mkSimple "dup.imported.group" } &&
       conflicts.contains { kind := .author, label := Name.mkSimple "dup.imported.author" }
 

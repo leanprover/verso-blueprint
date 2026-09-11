@@ -77,6 +77,79 @@ Likewise, two sibling modules that each supply a proof body for the same importe
 statement conflict, even if their proof text is identical. Re-exporting a shared
 module does not create a duplicate.
 
+The merge rules are:
+
+| Contributions | Result |
+| --- | --- |
+| Statement, proof, and attachments with a shared label origin | Combine into one node |
+| Independent introductions of the same label | Error |
+| Two statement bodies or two proof bodies | Error, even when their text is identical |
+| Dependencies without a body | Add edges without replacing the body or its authored kind |
+| Duplicate dependency metadata | Deduplicate; manual metadata takes precedence over automatic metadata |
+| Different intents at the same authority | Error; neither import order nor spelling order selects the meaning |
+| Repeated scalar metadata (`parent`, `owner`, `priority`, `effort`, `pr_url`) | Accept equal values; reject unequal values |
+| Tags | Unique union |
+| External Lean associations | Union by canonical declaration, preferring resolved information |
+| Literate Lean code | Keep distinct code blocks |
+| Rust code | At most one attachment |
+| External markup | At most one attachment per language and slot |
+
+A bodyless placeholder can later acquire a statement or proof body. An explicit
+statement kind belongs to the author: attaching a Lean theorem to an informal
+lemma keeps the informal node a lemma. For a Lean-only node without an authored
+kind, a theorem association takes precedence over a definition association.
+
+For conflicting dependency intents, make the manual declarations agree or remove
+the redundant declaration. Attribute `uses` and `proofUses` entries are manual
+with `regular` intent. An inferred edge from `autoDeps` can coexist with an
+explicit prose edge, whose metadata takes precedence.
+
+For example, split the source into these three modules:
+
+```lean
+-- Project/Statements.lean
+import VersoBlueprint
+open Verso.Genre Informal
+
+#doc (Manual) "Statements" =>
+
+:::theorem "main_result"
+The statement of the main result.
+:::
+```
+
+```lean
+-- Project/Proofs.lean
+import Project.Statements
+open Verso.Genre Informal
+
+#doc (Manual) "Proofs" =>
+
+:::proof "main_result"
+The proof of the main result.
+:::
+```
+
+```lean
+-- Project/Blueprint.lean
+import Project.Statements
+import Project.Proofs
+open Verso.Genre
+
+#doc (Manual) "Blueprint" =>
+
+{include 0 Project.Statements}
+{include 0 Project.Proofs}
+
+{blueprint_summary}
+```
+
+Imports supply semantic visibility; `include` renders chapter content. Import
+later Lean attachment modules before defining the generator. The standard
+Blueprint generator captures the final semantic data and refreshes the included
+chapters before rendering, so later dependencies and metadata appear in headers,
+previews, and overview pages, including documents without a graph.
+
 Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.

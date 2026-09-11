@@ -206,6 +206,44 @@ structure BlockData where
   prUrl : Option String := none
 deriving FromJson, ToJson, Quote
 
+/-- Project the assembled node's semantic fields into the renderer's block representation. -/
+def BlockData.ofNode (label : Data.Label) (node : Data.Node)
+    (author : Option Data.AuthorInfo := none) : BlockData := {
+  label
+  kind := .statement node.kind
+  count := node.count
+  codeData := BlockCodeData.ofExternalRefs node.externalRefs
+  parent := node.parent
+  statementUses := node.statement.map (·.deps) |>.getD #[]
+  proofUses := node.proof.map (·.deps) |>.getD #[]
+  owner := node.owner
+  ownerDisplayName := author.map (·.displayName)
+  ownerUrl := author.bind (·.url)
+  ownerImageUrl := author.bind (·.imageUrl)
+  tags := node.tags
+  effort := node.effort
+  priority := node.priority
+  prUrl := node.prUrl
+}
+
+/-- Refresh semantic fields while retaining this occurrence's body facet, source, and numbering. -/
+def BlockData.withSemanticData (data semantic : BlockData) : BlockData := {
+  data with
+  kind := match data.kind with | .proof => .proof | .statement _ => semantic.kind
+  codeData := match data.kind with | .proof => none | .statement _ => semantic.codeData
+  parent := semantic.parent
+  statementUses := semantic.statementUses
+  proofUses := semantic.proofUses
+  owner := semantic.owner
+  ownerDisplayName := semantic.ownerDisplayName
+  ownerUrl := semantic.ownerUrl
+  ownerImageUrl := semantic.ownerImageUrl
+  tags := semantic.tags
+  effort := semantic.effort
+  priority := semantic.priority
+  prUrl := semantic.prUrl
+}
+
 /--
 Slim traversal-store payload for Blueprint node metadata.
 
