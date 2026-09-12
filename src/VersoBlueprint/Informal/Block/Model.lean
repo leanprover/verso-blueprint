@@ -227,9 +227,9 @@ structure BlockPresentation where
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   /--
-  Elaboration-assigned source-local count. Traversal replaces zero or a count
-  behind its source-local cursor with the next available count before applying
-  the configured numbering policy.
+  Elaboration-assigned source-local count. Zero requests generated allocation.
+  Traversal offsets authored counts only for preceding generated placements in
+  the same source, before applying the configured numbering policy.
   -/
   count : Nat
   numberingMode : NumberingMode := .sub
