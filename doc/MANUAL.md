@@ -1139,10 +1139,12 @@ shells also show a compact source chip when source provenance is present; open
 it to inspect the source document id, source-native anchor and citation, page
 summary, and recorded text/PDF span details.
 
-When an entry has exactly one source ref with one unique citation, the chip
-displays that citation as `source: ...`. A single ref without a unique citation
-uses `source 1`; entries that aggregate several refs use `sources N` so the
-compact label does not hide additional provenance.
+When an entry has exactly one source ref and every span has the same nonempty
+citation, the chip displays that citation as `source: ...`. Repeating a citation
+across several pages is supported. A single ref with uncited spans or differing
+citations uses `source 1`; entries that aggregate several refs use `sources N`
+so the compact label does not hide additional provenance. The expanded panel preserves
+every span in its recorded order, regardless of the compact label.
 
 `anchor` is a stable identifier in the original source, such as a TeX
 `\label`; `citation` is the corresponding human-readable source identity, such
@@ -1152,6 +1154,17 @@ Blueprint node's label or generated heading number. A node may therefore remain
 `source: Lemma 2.1(1)`. Keeping the identities separate avoids silently
 changing graph keys, Blueprint references, or site-local numbering to imitate
 the source document.
+
+Source-native identity is qualified by the source-document id: the same anchor
+in two documents denotes two different origins. Citations are display text,
+not join keys. Several regions may legitimately share one anchor or citation.
+
+Provenance is not a promise of a renderable original excerpt. An anchor-only
+reference remains useful without a published asset or an anchor-to-location
+mapping. Keep that metadata visible; an informal Markdown/TeX attachment is not
+an original-source excerpt merely because it can be rendered. `sourceLocation`
+locates authored Blueprint or Lean code, whereas `sources` records its
+original-source provenance.
 
 Each source span must supply at least one location: a page, source anchor, text
 range, or PDF location. Any one of these is sufficient; a `citation` alone is

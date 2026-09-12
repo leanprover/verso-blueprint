@@ -57,8 +57,11 @@ them. For example, a node generated as `Lemma 2.2` can point to `itm:ib-first`
 and display `source: Lemma 2.1(1)` without changing its graph key,
 cross-references, or intrinsic numbering.
 
-The source anchor is machine identity; the citation is presentation. Neither is
-reconstructed from visible prose, and neither is used as a substitute for the
+The source anchor, qualified by its document id, is machine identity within the
+site; the citation is presentation, never a join key. Repeated anchors across
+documents are distinct, while several regions within a document may share an
+anchor or citation. Neither field is reconstructed from visible prose, and
+neither is used as a substitute for the
 Blueprint node label. This is particularly important for Blueprints generated
 from TeX, where definitions or split list items may consume different
 Blueprint counters than the source theorem environment.

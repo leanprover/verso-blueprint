@@ -534,6 +534,12 @@ source := {
 :::
 
 :::Informal.lemma_ "custom_client_external_metadata_consumer" (uses := "custom_client_external_markdown_metadata")
+%%%
+source := { document := "custom-client-paper", spans := #[
+  { page := "42", citation := "Remark A" },
+  { page := "43" }
+] }
+%%%
 Consumer node that gives the Markdown fallback target a used-by relation.
 :::
 
