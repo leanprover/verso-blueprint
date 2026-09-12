@@ -169,8 +169,9 @@ Work:
 9. revisit external declaration footer/status semantics once out-of-workspace
    declarations are represented precisely enough to distinguish declaration
    completeness from dependency completeness
-10. design facet-aware materialization for persisted informal proof bodies and
-    decide whether `{includeBlueprintModule}` renders them by default
+10. evaluate an explicit proof-inclusion option for `{includeBlueprintModule}`;
+    individual proof grafts now materialize imported attribute-backed informal
+    bodies, while default grafts and module inclusion remain statement-only
 11. decide whether explicit Blueprint prose should override an imported
     docstring fallback
 12. design attribute-side `parent`/owner/tag/effort/priority metadata without
