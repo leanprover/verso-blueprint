@@ -70,19 +70,43 @@ the upstream cache repair is not part of this checkpoint.
   document from the end-of-file snapshot, waits for the checked environment,
   verifies the complete Manual document type, and evaluates it. The normal
   document is intentionally evaluated with `checkMeta := false`.
+- `Preview.Source` maps the cursor to Verso's retained `FinishedPart` source
+  syntax, using the same positional addresses as the renderer. No source parser,
+  wire format, source-map cache, or extra RPC is introduced.
+
+### Follow cursor
+
+**Follow cursor** highlights the enclosing source block or heading. It uses
+Lean's UTF-16-to-UTF-8 position conversion and Verso's original/synthetic source
+ranges, not text matching. A list or directive selects its enclosing top-level
+block; a concatenation passes focus to its rendered children without introducing
+DOM wrappers. Included documents use their local name anchor, not source ranges
+from another file. Positions between source ranges or outside the document clear focus.
+
+Disabling Follow cursor removes the indicator but continues accepting cursor
+updates; reenabling it displays the latest position without another RPC. Controls
+retain their state across cursor movement and document edits.
+
+**Automatic scrolling is not implemented.** The pinned VIR has DOM queries but
+neither a public `Element.scrollIntoView` binding nor custom runtime extensions.
+The remaining upstream primitive is a native DOM scrolling operation with explicit
+options. VBP can then invoke it from an ordinary React effect using a local ref,
+with nearest-block scrolling and no focus stealing. Do not add a parallel shell
+or global DOM polling to work around this gap.
 
 ### Timing display
 
 Enable **Debug details**, then expand **Last render**. One stacked bar shows
 server preparation for the accepted response: blue **Snapshot** wait, amber
-**Checked** environment wait, and green **Document** evaluation/reconstruction.
+**Checked** environment wait, and green **Document** evaluation/reconstruction
+and cursor lookup in the retained source syntax.
 Widths are proportional to unrounded nanoseconds within that response; the
 total and legend show milliseconds. The bar is normalized to its available
 width, not a fixed milliseconds-per-pixel scale. Zero-duration phases have no
 width, and absent timing is shown as unavailable, not zero.
 
 The preview RPC takes four monotonic timestamps, with no per-node probes,
-extra traversal, logs, timers or request. Measurements are collected for each
+extra rendering traversal, logs, timers or request. Measurements are collected for each
 successful document response independently of the Debug checkbox; changing a
 control reuses that response's server measurement. Snapshot/checked waits include
 scheduling and document work remaining when the RPC starts. The interval ends
@@ -96,7 +120,7 @@ missing/zero measurements, and fresh measurements from the real document RPC
 across edits. The known embedded-shell unmount warning remains a strict failure.
 
 Ordinary `import VersoBlueprint` does not import VIR. The server endpoint is not
-part of the client's runtime closure. No new build, traversal, document cache,
+part of the client's runtime closure. No new build, rendering traversal, document cache,
 scheduler, transport, or document format is added. The server still waits for
 the **whole document**; this slice does not make elaboration incremental.
 
@@ -105,9 +129,10 @@ the **whole document**; this slice does not make elaboration incremental.
 [EmbeddedPreviewServer.lean](../../tests/VersoBlueprintVirTests/EmbeddedPreviewServer.lean)
 contains an actual Blueprint with prose, an informal theorem/proof, math, and an
 external Markdown summary. After building the widget target above, open this
-worktree as the VS Code folder and put the cursor on either `trivial` before the
-document. Edit the prose to request the new document. Placement inside arbitrary
-Verso syntax is not covered by this fixture.
+worktree as the VS Code folder. After a rebuild, restart the file's Lean server.
+Put the cursor inside the statement, proof, or heading to see its focus indicator;
+either `trivial` before the document leaves the document unfocused. Edit the prose
+to request the new document. The preview does not yet scroll to the indicator.
 
 The browser test reuses VIR's real-LSP harness and official `RpcSessions`.
 It obtains panel props and registered JavaScript through Lean widget RPC, checks
@@ -115,7 +140,8 @@ the generated shell hash, and runs that exact shell. The shell packages the
 client from the live server snapshot and reads matched WASM through asset RPC.
 
 The campaign checks edited text, retained controls, unchanged-input suppression,
-cursor correlation, subscription cleanup, and the runtime asset hash. Separate
+cursor correlation, real source-to-DOM focus, disabled/reenabled Follow cursor,
+panel registration inside a statement, subscription cleanup, and the runtime asset hash. Separate
 scalar/String campaigns cover cancellation, stale replies, Strict Mode, decoding
 failures, and disposal. The harness forwards edit notifications **after
 diagnostics**: these are correctness checks, not latency measurements or live
@@ -140,6 +166,12 @@ including cancellation and edit notifications) pass without React warnings.
 The embedded campaign renders real statement/proof occurrences and edited prose,
 retains controls, and builds its client package once across three preview requests.
 Its strict exit remains nonzero solely for the upstream unmount warning above.
+
+The follow-cursor campaign in `cursor/widget.json` adds statement/proof/heading
+navigation and leaving the document: eight preview requests, one client package.
+`VersoBlueprintVirTests.Source` covers half-open ranges, missing syntax, included
+parts, and Unicode position conversion. Renderer acceptance also checks empty and
+nested concatenations, multiple focused children, and unfocused siblings.
 
 The default VBP build and explicit preview/module-boundary targets pass with
 warmed dependency caches; existing base warnings remain. Beam checks of the

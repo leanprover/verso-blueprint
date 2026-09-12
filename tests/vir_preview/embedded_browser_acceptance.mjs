@@ -12,7 +12,7 @@ const sha256 = async bytes => [...new Uint8Array(await crypto.subtle.digest("SHA
 
 // The shared entry owns official RpcSessions and the real LSP transport. This
 // campaign uses the exact generated shell embedded in Lean's Widget.Module.
-export async function runEmbeddedAcceptance({ config, a, b, editor, emit, requests,
+export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, emit, requests,
   warnings, subscriptions, listeners }) {
   const container = document.getElementById("app");
   const root = createRoot(container);
@@ -107,6 +107,58 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
       `${changed.textDocument.version}:${config.b.line}:${config.b.character}`);
     check(checkbox() === retained && retained.checked, "cursor movement remounted controls");
     check(packageCalls().length === 1, "cursor movement regenerated the client package");
+
+    // Move through real source blocks using the same official position-specific
+    // sessions as the infoview. No synthetic focus field or replacement RPC.
+    const source = await (await fetch("/blueprint-source")).text();
+    const positionOf = text => {
+      const offset = source.indexOf(text);
+      check(offset >= 0, `source anchor missing: ${text}`);
+      const before = source.slice(0, offset).split("\n");
+      return { line: before.length - 1, character: before.at(-1).length };
+    };
+    const focused = () => [...panel().querySelectorAll('[data-verso-focus="cursor"]')];
+    const moveTo = async position => {
+      await render(sessionAt(position), position);
+      await waitFor("source focus refresh", () => panel()?.dataset.versoCorrelationId ===
+        `${changed.textDocument.version}:${position.line}:${position.character}`);
+    };
+    check(focused().length === 0, "Lean code before #doc must not focus a document block");
+    const statement = positionOf("An informal statement with inline math");
+    const proof = positionOf("This proof body remains visible");
+    const atStatement = await sessionAt(statement).call("Lean.Widget.getWidgets", statement);
+    check(atStatement.widgets.some(w => w.id === "Lean.Vir.Infoview.widget"),
+      "panel registration is unavailable inside the real Blueprint statement");
+    await moveTo(statement);
+    check(focused().length === 1 && focused()[0].textContent.includes("An informal statement"),
+      `statement source position did not select the rendered statement: ${JSON.stringify({
+        panel: panel().dataset, focused: focused().map(node => ({
+          path: node.dataset.versoBlock, text: node.textContent.slice(0, 120),
+        })),
+      })}`);
+    const statementPath = focused()[0].dataset.versoBlock;
+    await moveTo(proof);
+    check(focused().length === 1 && focused()[0].textContent.includes("This proof body"),
+      "proof source position did not select the rendered proof");
+    check(focused()[0].dataset.versoBlock !== statementPath, "focus did not change blocks");
+    const follow = document.getElementById("vir-verso-follow-cursor");
+    React.act(() => follow.click());
+    check(!follow.checked && focused().length === 0, "disabled follow retained focus");
+    await moveTo(statement);
+    check(document.getElementById("vir-verso-follow-cursor") === follow &&
+      !follow.checked && focused().length === 0, "cursor movement reset disabled follow");
+    const beforeFollow = previewCalls().length;
+    React.act(() => follow.click());
+    check(follow.checked && focused().length === 1 &&
+      focused()[0].dataset.versoBlock === statementPath, "reenabling follow missed latest cursor");
+    check(previewCalls().length === beforeFollow, "follow toggle restarted RPC");
+    await moveTo(positionOf("# A live Blueprint document"));
+    check(focused().length === 1 && focused()[0].textContent.includes("A live Blueprint document"),
+      "heading source position did not select the rendered heading");
+    await moveTo(config.a);
+    check(focused().length === 0, "leaving the document retained stale focus");
+    check(checkbox() === retained && retained.checked && packageCalls().length === 1,
+      "source navigation remounted controls or regenerated the client package");
     await React.act(async () => root.render(null));
     await waitFor("embedded unmount cleanup", () => subscriptions() === 0 && listeners() === 0);
     check(!panel(), "embedded unmount retained the preview DOM");
@@ -115,6 +167,9 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
       workspaceAssetRpc: true, editorContextBridge: true, samePositionEdit: true,
       liveBlueprintDocument: true, editedSourceRendered: true, measuredServerTimingBar: true,
       retainedControls: true, cursorRefresh: true, unchangedInputNoRpc: true,
+      realSourceFocus: true, sourceHeadingFocus: true, outsideDocumentClearsFocus: true,
+      disabledFollowRetained: true, reenabledFollowUsesLatestCursor: true,
+      automaticScrolling: "pending a public VIR DOM scrolling binding",
       clientPackageBuilds: packageCalls().length, previewRequests: previewCalls().length,
       unmountUnsubscribes: true, noReactWarnings: warnings.length === 0, warnings,
       scope: "standard embedded shell and real Lean RPC; test editor forwards edits after diagnostics, not VS Code",

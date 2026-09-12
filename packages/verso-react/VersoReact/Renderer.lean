@@ -8,6 +8,8 @@ module
 
 public import Vir.React
 public import VersoManual.Basic
+public import VersoReact.RenderPath
+public meta import VersoReact.RenderPath
 
 public section
 
@@ -235,7 +237,7 @@ private def allocateSiblingIdentities
   let mut seen : Std.HashMap String Nat := {}
   let mut identities := #[]
   for index in [:hints.size] do
-    let debugPath := s!"{debugParent}-{segment}-{index}"
+    let debugPath := RenderPath.child debugParent segment index
     let base := hints[index]!.resolve kind debugPath
     let occurrence := seen.getD base.reactKey 0
     seen := seen.insert base.reactKey (occurrence + 1)
@@ -284,7 +286,7 @@ private def partIdentities
 
 private def rootIdentity : Identity := {
   reactKey := "structural:root"
-  debugPath := "part-root"
+  debugPath := RenderPath.root
   semanticKey := "root"
   friendlyId := "root"
   origin := .structural
@@ -292,7 +294,7 @@ private def rootIdentity : Identity := {
 
 private def headingIdentity (part : Identity) : Identity := {
   reactKey := "structural:heading"
-  debugPath := s!"{part.debugPath}-heading"
+  debugPath := RenderPath.heading part.debugPath
   semanticKey := s!"{part.semanticKey}/heading"
   friendlyId := s!"{part.friendlyId}/heading"
   origin := .structural
@@ -555,9 +557,12 @@ private partial def renderBlock (extensions : Extensions)
           (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
         (← renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content)
   | .concat content => do
+      -- Concatenations are React fragments, not DOM nodes. A source block may
+      -- expand to several children; mark those children without adding a wrapper.
       Node.fragment (← Props.fromEntries #[Props.key identity.reactKey])
         (← Js.Array.ofArray
-          (← renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content))
+          (← renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content
+            (focusChildren := focus == some identity.debugPath)))
   | .other extension content => do
       let changed := changedIds.contains identity.debugPath
       let focused := focus == some identity.debugPath
@@ -608,10 +613,14 @@ where
       (changedIds : Array String)
       (focus : Option String)
       (parentSemanticKey debugParent : String)
-      (content : Array (_root_.Verso.Doc.Block Genre.Manual)) :
+      (content : Array (_root_.Verso.Doc.Block Genre.Manual))
+      (focusChildren : Bool := false) :
       ReactM (Array (Lean.Vir.Js Node)) := do
     let identities := blockIdentities extensions parentSemanticKey debugParent content
-    content.mapIdxM fun index block => renderBlock extensions changedIds focus identities[index]! block
+    content.mapIdxM fun index block =>
+      let identity := identities[index]!
+      renderBlock extensions changedIds
+        (if focusChildren then some identity.debugPath else focus) identity block
 
 private partial def renderPart (extensions : Extensions)
     (changedIds : Array String)

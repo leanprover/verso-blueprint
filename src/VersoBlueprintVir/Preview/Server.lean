@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 module
 
 public meta import VersoBlueprintVir.Preview.Model
+public meta import VersoBlueprintVir.Preview.Source
 public meta import Verso.Doc.Name
 public meta import Lean.Server.Rpc.RequestHandling
 
@@ -37,7 +38,8 @@ private meta opaque evalManualPart (env : Environment) (options : Options)
 This retains the existing full-document evaluation boundary: it waits for the
 end snapshot and checked environment, not just the block under the cursor.
 Four monotonic clock reads measure contiguous server preparation phases. No
-separate build, traversal, per-node instrumentation, or document cache is added. -/
+separate build, rendering traversal, per-node instrumentation, or document cache is added.
+The document phase includes cursor lookup in Verso's retained source syntax. -/
 @[server_rpc_method]
 meta def previewDocument (pos : Lsp.Position) : RequestM (RequestTask String) := do
   let started ← IO.monoNanosNow
@@ -56,6 +58,10 @@ meta def previewDocument (pos : Lsp.Position) : RequestM (RequestTask String) :=
         let part ← match evalManualPart snap.env snap.cmdState.scopes.head!.opts name with
           | .ok part => pure part
           | .error message => throw ⟨.internalError, s!"Could not evaluate the Blueprint: {message}"⟩
+        let source := Verso.Doc.Concrete.docEnvironmentExt.getState snap.env
+        let finished := source.partState.partContext.toPartFrame.close
+          editorDocument.meta.text.source.rawEndPos
+        let focus := Source.focusAt finished (editorDocument.meta.text.lspPosToUtf8Pos pos)
         let evaluated ← IO.monoNanosNow
         RequestM.checkCancelled
         let cursorToken := s!"{pos.line}:{pos.character}"
@@ -63,6 +69,7 @@ meta def previewDocument (pos : Lsp.Position) : RequestM (RequestTask String) :=
           version := editorDocument.meta.version
           correlationId := s!"{editorDocument.meta.version}:{cursorToken}"
           cursorToken
+          focus
           serverTiming? := some {
             snapshotWaitNanos := snapshotReady - started
             checkedWaitNanos := checkedReady - snapshotReady

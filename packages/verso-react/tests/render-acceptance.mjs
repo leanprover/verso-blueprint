@@ -29,6 +29,13 @@ export function checkRenderer(render) {
   assert.ok(html.includes("&lt;script&gt;unsafe()&lt;/script&gt;"));
   assert.ok(!html.includes("<script>") && !html.includes("hidden child"));
   assert.ok(!html.includes("data-bp-") && !html.includes("bp_math"));
+  const grouped = paragraphs(render(4));
+  assert.equal(grouped.size, 4);
+  for (const [html] of grouped) {
+    assert.equal(html.includes('data-verso-focus="cursor"'), !html.endsWith(">unrelated</p>"),
+      "fragment focus must reach all visible children, not unrelated siblings");
+  }
   return { ordinaryMarkup: true, escapedCode: true, visibleFallbacks: true,
-    extensionCallbacks: true, hiddenContentOmitted: true, stableReactKeys: true };
+    extensionCallbacks: true, hiddenContentOmitted: true, stableReactKeys: true,
+    concatenationFocus: true };
 }

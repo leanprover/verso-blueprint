@@ -31,7 +31,8 @@ Renderer-owned input for one live Verso Manual document.
 
 Blueprint documents already use the Manual genre, so the preview keeps that
 document intact rather than maintaining a second projected representation.
-`focus` uses the renderer paths exposed as `data-verso-block` attributes.
+`focus` uses renderer paths. DOM blocks expose them as `data-verso-block`;
+concatenation fragments pass focus to their rendered children.
 -/
 structure Document where
   version : Nat

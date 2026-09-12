@@ -45,6 +45,7 @@ lean_lib VersoBlueprintVirTests where
     `VersoBlueprintVirTests.StringPreviewServer,
     `VersoBlueprintVirTests.EmbeddedPreview,
     `VersoBlueprintVirTests.EmbeddedPreviewServer,
+    `VersoBlueprintVirTests.Source,
     `VersoBlueprintVirTests.Renderer
   ]
 

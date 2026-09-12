@@ -69,6 +69,8 @@ const bundle = await build({
   },
 });
 const assets = new Map([["/probe.js", ["text/javascript", bundle.outputFiles[0].contents]]]);
+if (embeddedPreview) assets.set("/blueprint-source", ["text/plain", await readFile(
+  resolve(root, "tests/VersoBlueprintVirTests/EmbeddedPreviewServer.lean"), "utf8")]);
 let packageMembers;
 if (!embeddedPreview) {
   const descriptorPath = resolve(root,

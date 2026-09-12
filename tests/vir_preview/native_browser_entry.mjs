@@ -105,7 +105,7 @@ async function run() {
     check(a === sessionAt(config.a) && a !== b, "official position-session identity");
     if (VBP_EMBEDDED_PREVIEW) {
       const { runEmbeddedAcceptance } = await import("./embedded_browser_acceptance.mjs");
-      return await runEmbeddedAcceptance({ config, a, b, editor, emit, requests, warnings,
+      return await runEmbeddedAcceptance({ config, a, b, sessionAt, editor, emit, requests, warnings,
         subscriptions: () => subscriptions, listeners: () => notificationHandlers.size });
     }
     runtime = await createVirRuntime({
