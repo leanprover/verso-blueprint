@@ -2168,8 +2168,8 @@ private def blockSemanticManifestEntry
     parentTitle := blockParentTitle? state blockData?
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
-    foldProofBlock := blockData?.map (·.foldProofBlock) |>.getD false
-    foldCodeBlock := blockData?.map (·.foldCodeBlock) |>.getD false
+    foldProofBlock := preview.foldProofBlock
+    foldCodeBlock := preview.foldCodeBlock
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := preview.sourceRef.toArray
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
@@ -2191,6 +2191,7 @@ private def buildTraversalEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html)
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
@@ -2205,8 +2206,10 @@ private def buildTraversalEntries
     | .ok stored =>
       let entry := stored.entry
       let hasLeanCode := !entry.leanCodePreviewKeys.isEmpty
-      let hasExternalMarkup := !(externalMarkupArray state entry.label).isEmpty
-      if !entry.hasRenderedBody && (!hasLeanCode || hasExternalMarkup) then
+      let externalBody? := if entry.facet == .statement then
+        Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
+        else none
+      if !entry.hasRenderedBody && !hasLeanCode then
         continue
       let html ←
         if entry.hasRenderedBody then
@@ -2219,7 +2222,7 @@ private def buildTraversalEntries
             continue
           pure html
         else
-          pure codeOnlyBlockPreviewHtml
+          pure (externalBody?.map (·.asString) |>.getD codeOnlyBlockPreviewHtml)
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
@@ -2248,9 +2251,9 @@ private def buildExternalMarkupEntries
       let data := stored.data
       if data.markup.isEmpty then
         continue
-      if hasPreviewBackedBlockEntry previewBackedEntries data.label then
-        continue
       let statementPreview := traversalPreviewOrEmpty state data.label .statement
+      if hasPreviewBackedBlockEntry previewBackedEntries data.label && statementPreview.hasRenderedBody then
+        continue
       let manifestEntry := blockSemanticManifestEntry state statementPreview
         (key := externalMarkupEntryKey data.label)
         (targetKind := .externalMarkup)
@@ -2516,7 +2519,7 @@ def buildPreviewDataFiles
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ←
     withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state hoverState (verbose := verbose)
+      buildTraversalEntries impls logError state hoverState externalMarkupConfig (verbose := verbose)
   let (externalMarkupPreviews, externalMarkupHtml) ←
     withTimedBuildProgress verbose "building external markup manifest entries" <|
       buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig (verbose := verbose)

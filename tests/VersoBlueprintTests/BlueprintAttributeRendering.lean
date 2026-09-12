@@ -162,7 +162,7 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "Connecting prose between declarations." &&
       hasSubstr html "Concluding prose after the imported declarations." &&
       hasSubstr html "Exported theorem used to verify" &&
-      hasSubstr html "bp_attribute_node_anchor" &&
+      hasSubstr html "bp_external_decl_item" &&
       hasSubstr html "exportedTheorem" &&
       hasSubstr html "exportedUndocumentedDefinition" &&
       !hasSubstr html "Blueprint node not found" &&
@@ -185,7 +185,7 @@ private def substringsInOrder (text : String) : List String → Bool
       "attr.exported.inductive",
       "attr.exported.undocumented"
     ]
-    let hasAnchor := hasSubstr html "bp_attribute_node_anchor"
+    let hasAnchor := hasSubstr html "bp_external_decl_item"
     let ordered := substringsInOrder html [
         "exportedTheorem",
         "exportedDefinition",

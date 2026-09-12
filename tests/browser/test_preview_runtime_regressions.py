@@ -32,6 +32,32 @@ def assert_source_location_error(result: dict, needle: str):
 
 
 class TestPreviewRuntimeRegressions:
+    def test_attribute_summary_destinations_exist_once(self, server: str, page: Page):
+        page.goto(f"{server}/Blueprint-Summary/")
+        links = page.locator("a[href*='--informal-external-decl-']").evaluate_all(
+            """anchors => [...new Set(anchors
+                .filter(a => /docstringReference(Source|Target)/.test(a.textContent))
+                .map(a => a.href))]"""
+        )
+        assert len(links) == 2, "Both placed attribute declarations need code destinations"
+        for href in links:
+            page.goto(href)
+            result = page.evaluate(
+                """() => {
+                    const id = decodeURIComponent(location.hash.slice(1));
+                    const matches = [...document.querySelectorAll('[id]')]
+                        .filter(el => el.id === id);
+                    const row = matches[0];
+                    return {
+                        count: matches.length,
+                        isCodeRow: !!row?.matches('.bp_external_decl_item'),
+                        compact: row?.closest('[data-bp-blueprint-node]')
+                            ?.getAttribute('data-bp-compact'),
+                    };
+                }"""
+            )
+            assert result == {"count": 1, "isCodeRow": True, "compact": "false"}, href
+
     def test_public_xref_excludes_internal_blueprint_indexes(self, server: str):
         with urllib.request.urlopen(f"{server}/xref.json") as response:
             data = json.load(response)

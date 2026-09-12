@@ -129,6 +129,8 @@ open PreviewRuntimeShowcase.CodePanelDecls
 
 #doc (Manual) "Code Panels" =>
 
+{blueprint_node "panel_docstring_source" +compact}
+
 {blueprint_node "panel_docstring_source"}
 
 {blueprint_node "panel_docstring_target"}

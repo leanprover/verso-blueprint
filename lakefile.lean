@@ -57,6 +57,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintAttributeRendering,
+    `VersoBlueprintTests.BlueprintPlacementContracts,
     `VersoBlueprintTests.BlueprintAttributeLateRendering,
     `VersoBlueprintTests.BlueprintBlockFolding,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,

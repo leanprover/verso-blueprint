@@ -392,11 +392,12 @@ cache hover table. Generated HTML-cache entries should use
 -/
 def renderPreviewHtml
     (externalDecls : Array Data.ExternalRef)
-    (getDeclHref : Name → Option String := fun _ => none) : Output.Html :=
+    (getDeclHref : Name → Option String := fun _ => none)
+    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[]) : Output.Html :=
   if externalDecls.isEmpty then
     .empty
   else
-    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref (fun _ => #[]))
+    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     renderExternalDeclList <| renderExternalDeclRows linkedDecls
 
 /--

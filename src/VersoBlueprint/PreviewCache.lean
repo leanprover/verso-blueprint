@@ -68,6 +68,9 @@ structure Occurrence where
     Informal.Data.SourceLocationResult.unavailable "preview source location unavailable"
   /-- Original-source provenance owned by the selected occurrence of this facet. -/
   sourceRef : Option Informal.Source.Ref := none
+  /-- Presentation defaults belong to the selected facet, not the semantic node. -/
+  foldProofBlock : Bool := false
+  foldCodeBlock : Bool := false
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-- The selected facet's occurrence metadata and body form one persisted record. -/
