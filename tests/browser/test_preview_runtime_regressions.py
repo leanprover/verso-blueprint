@@ -43,15 +43,23 @@ class TestPreviewRuntimeRegressions:
         triggers = paragraph.locator(".bp_inline_preview_ref")
         expect(triggers).to_have_count(2)  # Authored uses and bpref, not header chips.
         key = "panel_docstring_target--statement"
+        declarations = ["docstringReferenceTarget", "additionalCodeOnlyWitness"]
+        for declaration in declarations:
+            # The full graft must not repeat declarations in its body and code panel.
+            expect(page.locator(
+                f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
+            )).to_have_count(1)
         for index in range(2):
             trigger = triggers.nth(index)
             expect(trigger).to_have_attribute("data-bp-preview-key", key)
             trigger.hover()
             panel = page.locator("#bp-inline-preview-panel")
             expect(panel).to_be_visible()
-            expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
-                "docstringReferenceTarget"
-            )
+            for declaration in declarations:
+                expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(declaration)
+                expect(panel.locator(
+                    f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
+                )).to_have_count(1)
             page.mouse.move(0, 0)
             expect(panel).to_be_hidden(timeout=1000)
         assert_no_runtime_errors(errors)
