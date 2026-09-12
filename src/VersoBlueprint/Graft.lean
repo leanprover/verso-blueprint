@@ -12,7 +12,8 @@ public import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.LeanCodePreview
-import VersoBlueprint.Attribute.Placement
+public import VersoBlueprint.Attribute.Placement
+public meta import VersoBlueprint.Attribute.Placement
 public import VersoBlueprint.Graft.Assets
 public import VersoBlueprint.Graft.Node
 public import VersoBlueprint.Graft.Render

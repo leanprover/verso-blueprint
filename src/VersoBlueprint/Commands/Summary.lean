@@ -17,13 +17,15 @@ public meta import VersoManual
 meta import VersoBlueprint.Commands.Common
 meta import VersoBlueprint.Commands.SerializedExtension
 meta import VersoBlueprint.Commands.Summary.Collect
+public meta import VersoBlueprint.Commands.Summary.Sections
+public meta import VersoBlueprint.Environment
 
 public section
 
 namespace Informal.Commands
 
 open Lean Elab Command
-open Informal
+open Informal Environment
 
 open Verso Doc Elab Syntax in
 private meta def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
