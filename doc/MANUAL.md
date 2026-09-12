@@ -1113,6 +1113,8 @@ source := {
   spans := #[
     {
       page := "12"
+      anchor := "lem:addition-right-identity"
+      citation := "Lemma 2.1(1)"
       text := some {
         path := "source/pages/page-12.md"
         startLine := 41
@@ -1134,8 +1136,72 @@ For every natural number $`n`, $`n + 0 = n`.
 The generated manifest exports declared documents in `sourceDocuments` and each
 manifest entry's original-source refs in `entry.sources`. Normal generated node
 shells also show a compact source chip when source provenance is present; open
-it to inspect the source document id, page summary, and recorded text/PDF span
-details.
+it to inspect the source document id, source-native anchor and citation, page
+summary, and recorded text/PDF span details.
+
+When an entry has exactly one source ref and every span has the same nonempty
+citation, the chip displays that citation as `source: ...`. Repeating a citation
+across several pages is supported. A single ref with uncited spans or differing
+citations uses `source 1`; entries that aggregate several refs use `sources N`
+so the compact label does not hide additional provenance. The expanded panel preserves
+every span in its recorded order, regardless of the compact label.
+
+`anchor` is a stable identifier in the original source, such as a TeX
+`\label`; `citation` is the corresponding human-readable source identity, such
+as `Lemma 2.1(1)` or `Equation (2.4)`. These fields do not replace the
+Blueprint node's label or generated heading number. A node may therefore remain
+`Lemma 2.2` in the Blueprint while its source chip explicitly reads
+`source: Lemma 2.1(1)`. Keeping the identities separate avoids silently
+changing graph keys, Blueprint references, or site-local numbering to imitate
+the source document.
+
+Source-native identity is qualified by the source-document id: the same anchor
+in two documents denotes two different origins. Citations are display text,
+not join keys. Several regions may legitimately share one anchor or citation.
+
+Provenance is not a promise of a renderable original excerpt. An anchor-only
+reference remains useful without a published asset or an anchor-to-location
+mapping. Keep that metadata visible; an informal Markdown/TeX attachment is not
+an original-source excerpt merely because it can be rendered. `sourceLocation`
+locates authored Blueprint or Lean code, whereas `sources` records its
+original-source provenance.
+
+Each source span must supply at least one location: a page, source anchor, text
+range, or PDF location. Any one of these is sufficient; a `citation` alone is
+not a location. Supplied `page`, `anchor`, and `citation` strings must be
+nonblank (not empty or whitespace-only). Omit optional fields instead of using
+blank strings; supplied text ranges and PDF locations must also be valid.
+
+For a text source such as the TeX input itself, omit `page` and use a source
+anchor, a text line range, or both:
+
+````md
+:::source_document "paper-tex"
+%%%
+title := "Representation Theory (TeX source)"
+kind := .text
+%%%
+:::
+
+:::lemma_ "addition_right_identity"
+%%%
+source := {
+  document := "paper-tex"
+  spans := #[{
+    anchor := "itm:addition-right-identity"
+    citation := "Lemma 2.1(1)"
+    text := some {
+      path := "paper.tex"
+      startLine := 439
+      endLine := 440
+    }
+  }]
+}
+%%%
+
+For every natural number $`n`, $`n + 0 = n`.
+:::
+````
 
 Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean code preview entries may contain multiple refs when
@@ -1151,8 +1217,8 @@ read the complete catalog with `loadSourceDocuments`.
 
 Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
 `api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
-render result. The API returns structured source-document metadata and recorded
-text/PDF spans.
+render result. The API returns structured source-document metadata, source
+identities, and text/PDF spans.
 Manifest entries also include `sourceLocation`, a lookup result for the authored
 Blueprint label/facet location or Lean declaration source. Browser clients that
 start from semantic names can call `resolveLabel`, or `resolveDeclaration` for

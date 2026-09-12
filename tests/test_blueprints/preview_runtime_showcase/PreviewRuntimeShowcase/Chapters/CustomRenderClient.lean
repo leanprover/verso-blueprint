@@ -498,6 +498,8 @@ source := {
   spans := #[
     {
       page := "42"
+      anchor := "thm:custom-client"
+      citation := "Theorem 4.2"
       text := some {
         path := "source/pages/page-42.md"
         startLine := 10
@@ -516,6 +518,15 @@ source := {
           yMax := 520
         }
       }
+    },
+    {
+      anchor := "itm:custom-client"
+      citation := "Theorem 4.2"
+      text := some {
+        path := "source/custom-client.tex"
+        startLine := 80
+        endLine := 82
+      }
     }
   ]
 }
@@ -523,6 +534,12 @@ source := {
 :::
 
 :::Informal.lemma_ "custom_client_external_metadata_consumer" (uses := "custom_client_external_markdown_metadata")
+%%%
+source := { document := "custom-client-paper", spans := #[
+  { page := "42", citation := "Remark A" },
+  { page := "43" }
+] }
+%%%
 Consumer node that gives the Markdown fallback target a used-by relation.
 :::
 

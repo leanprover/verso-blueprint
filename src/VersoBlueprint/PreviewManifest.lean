@@ -695,7 +695,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 7
+def manifestInternalSchemaVersion : Nat := 8
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1724,9 +1724,6 @@ private structure SchemaState where
 private def jsonSchemaRef (name : Name) : Json :=
   Json.mkObj [("$ref", Json.str s!"#/$defs/{name}")]
 
-private def fieldKey (name : Name) : String :=
-  name.getString!
-
 private def fieldType (fieldName : Name) : MetaM Expr := do
   let info ← getConstInfo fieldName
   Meta.forallTelescopeReducing info.type fun _ body => pure body
@@ -1759,6 +1756,10 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Informal.PreviewKey _ =>
       pure <| Json.mkObj [("type", Json.str "string"), ("minLength", Json.num 1)]
+  | .const ``Lean.Position _ =>
+      -- Lean's custom instance encodes source positions as [line, column].
+      schemaForType (mkApp2 (mkConst ``Prod [.zero, .zero])
+        (mkConst ``Nat) (mkConst ``Nat))
   | .const ``Bool _ =>
       pure <| Json.mkObj [("type", Json.str "boolean")]
   | .const ``Nat _ =>
@@ -1805,15 +1806,22 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
             | throwError "Missing owner for schema field {name}.{field}"
           let some projection := getProjFnForField? env owner field
             | throwError "Missing projection for schema field {name}.{field}"
-          let schema ← schemaForType (← fieldType projection)
+          -- Use Lean's JSON naming rule: a trailing '?' omits a `none` field
+          -- and is stripped from its key, unlike an ordinary nullable Option.
+          let (isOptional, keyTerm) ← Lean.Elab.Deriving.FromToJson.mkJsonField field
+          let some key := keyTerm.raw.isStrLit?
+            | throwError "Invalid JSON key for schema field {name}.{field}"
+          let ty ← Meta.whnf (← fieldType projection)
+          let ty := if isOptional && ty.isAppOf ``Option then ty.appArg! else ty
+          let schema ← schemaForType ty
           let docs? ← findDocString? env projection
           let schema :=
             match docs? with
             | some docs => schemaWithDescription schema docs
             | none => schema
-          let key := fieldKey field
           properties := properties.concat (key, schema)
-          required := required.push (Json.str key)
+          unless isOptional do
+            required := required.push (Json.str key)
         let schema := Json.mkObj [
           ("type", Json.str "object"),
           ("properties", Json.mkObj properties),
@@ -1826,20 +1834,25 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
         match env.find? name with
         | some (.inductInfo info) =>
             let mut enumVals : Array Json := #[]
+            let mut hasPayload := false
             for ctorName in info.ctors do
               let ctorInfo ← getConstInfoCtor ctorName
-              unless ctorInfo.numFields == 0 do
-                let schema := Json.mkObj [
-                  ("type", Json.str "object"),
-                  ("description", Json.str s!"Derived JSON representation for '{name}'.")
-                ]
-                modify fun st => { st with defs := st.defs.push (name.toString, schema) }
-                return jsonSchemaRef name
-              enumVals := enumVals.push (Json.str ctorName.getString!)
-            let schema := Json.mkObj [
+              if ctorInfo.numFields == 0 then
+                enumVals := enumVals.push (Json.str ctorName.getString!)
+              else
+                hasPayload := true
+            let enumSchema := Json.mkObj [
               ("type", Json.str "string"),
               ("enum", Json.arr enumVals)
             ]
+            let payloadSchema := Json.mkObj [
+              ("type", Json.str "object"),
+              ("description", Json.str s!"Derived JSON representation for '{name}'.")
+            ]
+            -- Mixed inductives (e.g. ProvedStatus) have string constructors too.
+            let schema := if !hasPayload then enumSchema
+              else if enumVals.isEmpty then payloadSchema
+              else Json.mkObj [("anyOf", Json.arr #[enumSchema, payloadSchema])]
             modify fun st => { st with defs := st.defs.push (name.toString, schema) }
             pure <| jsonSchemaRef name
         | _ =>
