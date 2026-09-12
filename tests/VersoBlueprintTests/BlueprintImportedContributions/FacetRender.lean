@@ -238,3 +238,28 @@ def facetBlueprint : BlueprintDocument := .capture
         throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
     unless (← errors.get).isEmpty do
       throw <| IO.userError s!"Partial chapter rendering errors: {← errors.get}"
+
+-- Checkpoint the real mixed-facet document in each layout. The selected bodies,
+-- provenance, external anchors, code panels and graph must survive restoration
+-- without reinstalling the generator's project model.
+#eval show IO Unit from do
+  let cfg : Verso.Genre.Manual.RenderConfig := { features := {} }
+  let impls := facetBlueprint.model.withExtensions extension_impls%
+  let errors ← IO.mkRef (#[] : Array String)
+  let logger : Verso.Logger IO := { (default : Verso.Logger IO) with
+    log := fun severity message _ =>
+      if severity == .error then errors.modify (·.push message) else pure () }
+  for mode in #[Verso.Genre.Manual.Mode.single, .multi] do
+    let some document ← (HtmlDocument.traverse mode cfg facetBlueprint.text).run impls |>.run logger
+      | throw <| IO.userError s!"Mixed-facet traversal rejected: {← errors.get}"
+    let files ← PreviewManifest.buildPreviewDataFiles impls (fun message => errors.modify (·.push message))
+      (PreviewManifest.PreparedRendererState.prepare document).previewState
+    IO.FS.withTempFile fun _ path => do
+      document.save path
+      let some restored ← (HtmlDocument.load mode cfg path).run extension_impls% |>.run logger
+        | throw <| IO.userError s!"Mixed-facet checkpoint rejected: {← errors.get}"
+      let restoredFiles ← PreviewManifest.buildPreviewDataFiles impls (fun message => errors.modify (·.push message))
+        (PreviewManifest.PreparedRendererState.prepare restored).previewState
+      unless toJson files.manifest == toJson restoredFiles.manifest &&
+          toJson files.htmlCache == toJson restoredFiles.htmlCache && (← errors.get).isEmpty do
+        throw <| IO.userError "Mixed-facet checkpoint changed preview data or emitted errors"
