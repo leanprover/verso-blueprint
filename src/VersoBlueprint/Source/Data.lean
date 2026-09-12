@@ -70,7 +70,8 @@ def ValidationError.message : ValidationError → String
   | .pdfBoxInvalidYRange => "source PDF box yMin must be less than yMax"
   | .pdfBoxXMaxBeyondPageWidth => "source PDF box xMax must be within pageWidth"
   | .pdfBoxYMaxBeyondPageHeight => "source PDF box yMax must be within pageHeight"
-  | .spanMissingLocation => "source spans require text or PDF location data"
+  | .spanMissingLocation =>
+      "source spans require a page, source anchor, text range, or PDF location"
   | .refMissingSpan => "source metadata must include at least one source span"
 
 instance : ToString ValidationError where
@@ -160,14 +161,26 @@ def PdfSpan.validationErrors (span : PdfSpan) : Array ValidationError :=
 
 /-- One source span attached to a Blueprint node. -/
 structure Span where
-  page : String
+  /-- Optional source-local page identifier. Text sources do not need one. -/
+  page : Option String := none
+  /-- Stable source-native identifier, such as a TeX `\label`. -/
+  anchor : Option String := none
+  /-- Human-readable source-native reference, such as `Lemma 2.1(1)`. -/
+  citation : Option String := none
   text : Option TextRange := none
   pdf : Option PdfSpan := none
 deriving Inhabited, Repr, BEq, DecidableEq, FromJson, ToJson, Quote
 
 def Span.validationErrors (span : Span) : Array ValidationError :=
-  let errors := nonEmptyField "source span page" span.page
-  let errors := addIf errors (span.text.isNone && span.pdf.isNone) .spanMissingLocation
+  let errors : Array ValidationError := #[]
+  let errors := addOptional errors span.page (nonEmptyField "source span page")
+  let errors := addOptional errors span.anchor (nonEmptyField "source span anchor")
+  let errors := addOptional errors span.citation (nonEmptyField "source span citation")
+  let hasPage := span.page.any fun page => !page.trimAscii.isEmpty
+  let hasAnchor := span.anchor.any fun anchor => !anchor.trimAscii.isEmpty
+  let errors := addIf errors
+    (!hasPage && !hasAnchor && span.text.isNone && span.pdf.isNone)
+    .spanMissingLocation
   let errors := addOptional errors span.text TextRange.validationErrors
   addOptional errors span.pdf PdfSpan.validationErrors
 

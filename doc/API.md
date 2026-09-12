@@ -263,9 +263,9 @@ Manifest-backed composite renderers pair the included `RenderedContent.codeBodie
 with their `codeData`, so panel status follows the included bodies while heading
 status follows the project entry.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
-The manifest schema marker is now 7: regenerate old artifacts for the separate
-node-kind/facet fields, project declaration facts, and occurrence-owned external
-row anchors.
+Regenerate old artifacts after changes to the generated-data contract. The
+reader's stale-artifact diagnostic supplies the required rebuild guidance;
+clients must not depend on the value of the internal schema marker.
 
 Custom registration calls to `Environment.contribute` return `Option Node`:
 `some` is the accepted node; `none` means diagnostics were logged and the
@@ -306,8 +306,11 @@ file cannot by itself establish their cross-artifact reference invariants;
 
 Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
-of zero or more refs pointing back to those documents. An abbreviated excerpt
-looks like this:
+of zero or more refs pointing back to those documents.
+
+The following excerpt omits unrelated manifest-entry fields but includes every
+field of the source-provenance objects. Optional values are emitted as `null`
+when absent, rather than omitted:
 
 ```json
 {
@@ -329,10 +332,14 @@ looks like this:
           "spans": [
             {
               "page": "12",
+              "anchor": "lem:representation",
+              "citation": "Lemma 4.2",
               "text": {
                 "path": "source/pages/page-12.md",
                 "startLine": 41,
-                "endLine": 45
+                "endLine": 45,
+                "startCharacter": null,
+                "endCharacter": null
               },
               "pdf": {
                 "path": "source/pages/page-12.pdf",
@@ -395,11 +402,26 @@ interface work rather than browser API policy. Returned file paths and
 PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
 those assets or decide how a richer source review interface should look.
 
+Here `ok: true` means the entry has provenance, not that an original excerpt is
+available. A source may have `document: null` when its document id cannot be
+joined, and an anchor-only span may have no displayable location. Clients should
+preserve the citation and anchor in those cases and distinguish metadata-only,
+unresolved-document, and unavailable-asset states in their own source UI. Do not
+substitute informal Markdown/TeX and present it as the original source.
+
+Source anchors are scoped by document id; use `(documentId, anchor)` for
+source-native identity within a site, never the human-readable citation. Neither
+an anchor nor a printed page label implies a physical PDF destination.
+
 When a sourced Blueprint node has associated Lean code previews, the
 corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every
-owning ref in `sources`. External declaration previews are keyed by canonical
-Lean declaration; inline-code previews are keyed by the source code-block
-identity, so all declarations from one inline block share one rendered preview
+owning ref in `sources`. This union means **sources of linked Blueprint nodes**,
+not that the Lean declaration was authored in every cited document. Authoring
+currently accepts one document ref per statement/proof occurrence; the plural
+export is not general multi-document authoring for a single facet. External
+declaration previews are keyed by canonical Lean declaration; inline-code
+previews are keyed by the source code-block identity, so all declarations from
+one inline block share one rendered preview
 entry. Declaration-specific inline identity is the source code-block identity plus
 the declaration's position in the owning block entry's ordered inline code
 metadata (`definedDefs` followed by `definedTheorems`). This lets audit clients
@@ -1366,7 +1388,14 @@ a `reason` and `diagnosticHtml` suitable for insertion into the page.
 `resolveSourceMetadata` is data-only: it returns source metadata and failure
 reasons, but no rendered HTML. It also does not load source PDFs, extracted
 text, or page images; callers use the returned paths and spans in the source UI
-they own.
+they own. Each span may carry a source-native `anchor` (for example a TeX
+`\label`) and a human-readable `citation` (for example `Lemma 2.1(1)`) in
+addition to its optional page, text range, and PDF location.
+
+Generated JSON includes every source-provenance field. Fields backed by Lean
+`Option` values are encoded as either their documented value or `null`, rather
+than being omitted. In particular, clients must handle page-less spans as
+`page: null` and use their anchor, text range, or PDF location instead.
 
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |

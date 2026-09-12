@@ -5,6 +5,58 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSchema
 open Lean
 open Informal.PreviewManifest
 
+private def stringSchema (schema : Json) : Bool :=
+  (schema.getObjValAs? String "type" |>.toOption) == some "string"
+
+private def stringSchemaHasMinLengthOne (schema : Json) : Bool :=
+  stringSchema schema && (schema.getObjValAs? Nat "minLength" |>.toOption) == some 1
+
+private def integerSchema (schema : Json) : Bool :=
+  (schema.getObjValAs? String "type" |>.toOption) == some "integer"
+
+private def refSchema (expected : String) (schema : Json) : Bool :=
+  (schema.getObjValAs? String "$ref" |>.toOption) == some expected
+
+private def schemaHasValueNull (valueSchema : Json → Bool) (schema : Json) : Bool :=
+  match schema.getObjValAs? (Array Json) "anyOf" with
+  | .error _ => false
+  | .ok schemas =>
+      schemas.any valueSchema &&
+        schemas.any (fun schema =>
+          (schema.getObjValAs? String "type" |>.toOption) == some "null")
+
+private def schemaHasStringNull : Json → Bool := schemaHasValueNull stringSchema
+
+private def schemaHasNonEmptyStringNull : Json → Bool :=
+  schemaHasValueNull stringSchemaHasMinLengthOne
+
+private def schemaHasIntegerNull : Json → Bool := schemaHasValueNull integerSchema
+
+private def schemaHasRefNull (expected : String) : Json → Bool :=
+  schemaHasValueNull (refSchema expected)
+
+/-- Check required properties with structure- and field-specific failure messages. -/
+private def checkObjectSchema (name : String) (fields : Array (String × (Json → Bool)))
+    (absent : Array String := #[]) : IO Unit := do
+  let .ok defs := schemaJson.getObjVal? "$defs"
+    | throw <| IO.userError "Schema is missing $defs"
+  let .ok schema := defs.getObjVal? name
+    | throw <| IO.userError s!"Missing schema: {name}"
+  let .ok propertiesJson := schema.getObjVal? "properties"
+    | throw <| IO.userError s!"{name}: missing properties"
+  let .ok properties := propertiesJson.getObj?
+    | throw <| IO.userError s!"{name}: properties is not an object"
+  let .ok required := schema.getObjValAs? (Array String) "required"
+    | throw <| IO.userError s!"{name}: missing or invalid required fields"
+  for (field, predicate) in fields do
+    unless required.contains field do
+      throw <| IO.userError s!"{name}.{field}: not required"
+    unless (properties.get? field).any predicate do
+      throw <| IO.userError s!"{name}.{field}: missing or unexpected property schema"
+  for field in absent do
+    if properties.contains field || required.contains field then
+      throw <| IO.userError s!"{name}.{field}: obsolete field still present"
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -32,9 +84,6 @@ open Informal.PreviewManifest
       let some relatedEntrySchema := defs.get? "Informal.PreviewManifest.RelatedEntry" | return false
       let some graphNodeSchema := defs.get? "Informal.Graph.NodeData" | return false
       let schemaText := schema.compress
-      let stringSchemaHasMinLengthOne (schema : Json) : Bool :=
-        (schema.getObjValAs? String "type" |>.toOption) == some "string" &&
-          (schema.getObjValAs? Nat "minLength" |>.toOption) == some 1
       let previewKeySchemaHasNonEmptyStringNull (schema : Json) : Bool :=
         match Json.getObjVal? schema "properties" with
         | Except.error _ => false
@@ -44,16 +93,7 @@ open Informal.PreviewManifest
             | Except.ok props =>
                 match props.get? "previewKey" with
                 | none => false
-                | some previewKeyJson =>
-                    match Json.getObjVal? previewKeyJson "anyOf" with
-                    | Except.error _ => false
-                    | Except.ok anyOfJson =>
-                        match anyOfJson.getArr? with
-                        | Except.error _ => false
-                        | Except.ok schemas =>
-                            schemas.any stringSchemaHasMinLengthOne &&
-                            schemas.any (fun (schema : Json) =>
-                              (schema.getObjValAs? String "type" |>.toOption) == some "null")
+                | some previewKeyJson => schemaHasNonEmptyStringNull previewKeyJson
       let internalSchemaDesc? := do
         let internalSchemaJson ← fileProps.get? "vbpInternalSchemaVersion"
         internalSchemaJson.getObjValAs? String "description" |>.toOption
@@ -171,12 +211,8 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.ExternalMarkup" &&
         defs.contains "Informal.Data.ExternalMarkupLanguage" &&
         defs.contains "Informal.Data.ExternalMarkupLocation" &&
-        defs.contains "Informal.Source.Document" &&
         defs.contains "Informal.Source.DocumentKind" &&
         defs.contains "Informal.Source.Ref" &&
-        defs.contains "Informal.Source.Span" &&
-        defs.contains "Informal.Source.TextRange" &&
-        defs.contains "Informal.Source.PdfSpan" &&
         defs.contains "Informal.Source.PdfBox" &&
         defs.contains "Informal.Data.SourceLocation" &&
         defs.contains "Informal.Data.SourceLocationResult" &&
@@ -184,5 +220,40 @@ open Informal.PreviewManifest
         defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.Document" #[
+  ("id", stringSchema),
+  ("title", stringSchema),
+  ("kind", refSchema "#/$defs/Informal.Source.DocumentKind"),
+  ("pdf", schemaHasStringNull),
+  ("pageRoot", schemaHasStringNull),
+  ("imageRoot", schemaHasStringNull)
+] #["toDocumentMetadata"]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.Span" #[
+  ("page", schemaHasStringNull),
+  ("anchor", schemaHasStringNull),
+  ("citation", schemaHasStringNull),
+  ("text", schemaHasRefNull "#/$defs/Informal.Source.TextRange"),
+  ("pdf", schemaHasRefNull "#/$defs/Informal.Source.PdfSpan")
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.TextRange" #[
+  ("path", stringSchema),
+  ("startLine", integerSchema),
+  ("endLine", integerSchema),
+  ("startCharacter", schemaHasIntegerNull),
+  ("endCharacter", schemaHasIntegerNull)
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Source.PdfSpan" #[
+  ("path", stringSchema),
+  ("image", schemaHasStringNull),
+  ("box", schemaHasRefNull "#/$defs/Informal.Source.PdfBox")
+]
 
 end Verso.VersoBlueprintTests.BlueprintPreviewSchema

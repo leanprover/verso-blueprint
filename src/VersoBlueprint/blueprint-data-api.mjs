@@ -336,6 +336,9 @@ export function resolveDeclaration(declName, options) {
  *
  * This joins `entry.sources` with declared source-document metadata. It returns
  * structured metadata only; callers own PDF/text loading and presentation.
+ * `ok: true` does not guarantee a renderable excerpt: a joined document can be
+ * `null`, and an anchor-only span may have no asset mapping. Keep provenance
+ * visible in those cases rather than substituting informal content as the original.
  *
  * @param {BlueprintSourceMetadataInput} source Preview key, manifest entry, or render result.
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
