@@ -8,13 +8,13 @@ import Lean
 import VersoBlueprint.Environment
 
 /-!
-Direct automatic dependency inference for Verso Blueprint.
+Automatic dependency inference for Verso Blueprint.
 
-Scans constants in compiled declaration types and bodies and maps them to the
-Blueprint associations available when inference runs. Untagged helpers are not
-expanded, so dependencies behind them are missed. An empty result does not
-establish mathematical independence. See the Manual's automatic dependency
-inference section for authoring examples and the full contract.
+Walks compiled declaration types and bodies through unassociated helpers,
+stopping at the first Blueprint-associated declarations on each path. Helper
+expansion is enabled by default and can be disabled for direct-only inference. Associations are
+those available when inference runs. An empty result does not establish
+mathematical independence. See the Manual for the full contract.
 -/
 
 namespace Informal
@@ -25,16 +25,20 @@ namespace DependencyAnalysis
 
 register_option verso.blueprint.autoDeps : Bool := {
   defValue := false
-  descr := "Infer direct Blueprint dependencies by default, without expanding untagged helpers"
+  descr := "Infer Blueprint dependencies by default, using the configured helper expansion policy"
+}
+
+register_option verso.blueprint.autoDeps.expandUntagged : Bool := {
+  defValue := true
+  descr := "Infer dependencies through Lean declarations without Blueprint associations, stopping at associated declarations; false inspects direct references only. Requires autoDeps to be enabled."
 }
 
 /--
 Dependency labels inferred from a compiled Lean declaration.
 
-The analysis is intentionally direct: it scans constants mentioned by the
-declaration's type and body, but it does not recursively expand untagged helper
-declarations. Such helpers may hide mathematical dependencies that authors must
-currently record explicitly.
+Each axis reaches the first Blueprint-associated declarations, expanding helper
+types and bodies when enabled. Label-level axis suppression and manual precedence are applied
+separately by `toUseRefs` and contribution validation.
 -/
 structure InferredDeps where
   statement : Array Data.Label := #[]
@@ -86,37 +90,68 @@ def InferredDeps.toUseRefs (deps : InferredDeps)
     proof := automaticUseRefs proofLabels
   }
 
-private def directLabelsForExpr (root : Name) (expr : Expr) : CoreM (Array Data.Label) := do
-  let root := root.eraseMacroScopes
-  expr.getUsedConstants.foldlM (init := #[]) fun labels decl => do
-    let decl := decl.eraseMacroScopes
-    if decl == root then
-      return labels
-    else
-      let declLabels ← Environment.labelsForLeanDecl decl
-      return declLabels.foldl Data.Label.pushUnique labels
-
-private def directBodyLabels (root : Name) (info : ConstantInfo) : CoreM (Array Data.Label) := do
+private def bodyConstants (info : ConstantInfo) : Array Name :=
   match info with
-  | .axiomInfo _ => return #[]
-  | .defnInfo info => directLabelsForExpr root info.value
-  | .thmInfo info => directLabelsForExpr root info.value
-  | .opaqueInfo info => directLabelsForExpr root info.value
-  | .quotInfo _ => return #[]
-  | .ctorInfo info => directLabelsForExpr root info.type
-  | .recInfo info => directLabelsForExpr root info.type
-  | .inductInfo info =>
-    info.ctors.foldlM (init := #[]) fun labels ctor => do
-      match (← getEnv).find? ctor with
-      | some (.ctorInfo ctorInfo) =>
-        let ctorLabels ← directLabelsForExpr root ctorInfo.type
-        return ctorLabels.foldl Data.Label.pushUnique labels
-      | _ => return labels
+  | .defnInfo info => info.value.getUsedConstants
+  | .thmInfo info => info.value.getUsedConstants
+  | .opaqueInfo info => info.value.getUsedConstants
+  | .ctorInfo info => info.type.getUsedConstants
+  | .recInfo info => info.type.getUsedConstants
+  | .inductInfo info => info.ctors.toArray
+  | .axiomInfo _ | .quotInfo _ => #[]
+
+/-- Constructor types are the root inductive's own body, not helper expansion.
+Keep direct-only inference for inductive roots while respecting any explicit
+constructor associations supplied through the contribution API. -/
+private def rootBodyConstants (info : ConstantInfo) : CoreM (Array Name) := do
+  let .inductInfo info := info | return bodyConstants info
+  let mut constants := #[]
+  for ctor in info.ctors do
+    if !(← Environment.labelsForLeanDecl ctor).isEmpty then
+      constants := constants.push ctor
+    else if let some ctorInfo := (← getEnv).find? ctor then
+      constants := constants ++ ctorInfo.type.getUsedConstants
+  return constants
+
+/--
+The Blueprint frontier of a declaration graph, following LeanArchitect's
+`CollectUsed` boundary: associated declarations and unassociated axioms are
+leaves. Unlike its collector, this returns labels only, not axiom/status evidence.
+An explicit worklist avoids recursion-depth limits on long helper chains.
+Visited names are local to this walk: later associations must never reuse stale
+cached frontiers. The root is reserved to prevent self references crossing axes.
+-/
+private def frontierLabels (root : Name) (seeds : Array Name)
+    (expandHelpers : Bool) : CoreM (Array Data.Label) := do
+  let env ← getEnv
+  let mut pending := seeds
+  let mut visited : NameSet := ({} : NameSet).insert root.eraseMacroScopes
+  let mut labels : NameSet := {}
+  while !pending.isEmpty do
+    Core.checkSystem "Blueprint dependency inference"
+    let decl := pending.back!.eraseMacroScopes
+    pending := pending.pop
+    if visited.contains decl then
+      continue
+    visited := visited.insert decl
+    let associated ← Environment.labelsForLeanDecl decl
+    if !associated.isEmpty then
+      for label in associated do
+        labels := labels.insert label
+      continue
+    if !expandHelpers then
+      continue
+    match env.find? decl with
+    | none | some (.axiomInfo _) | some (.quotInfo _) => pure ()
+    | some info =>
+      pending := pending ++ info.type.getUsedConstants ++ bodyConstants info
+  return sortLabels labels.toArray
 
 def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
   let decl := decl.eraseMacroScopes
-  let statement ← directLabelsForExpr decl info.type
-  let proof ← directBodyLabels decl info
+  let expandHelpers := verso.blueprint.autoDeps.expandUntagged.get (← getOptions)
+  let statement ← frontierLabels decl info.type.getUsedConstants expandHelpers
+  let proof ← frontierLabels decl (← rootBodyConstants info) expandHelpers
   return { statement, proof }
 
 def inferDecl? (decl : Name) : CoreM InferredDeps := do

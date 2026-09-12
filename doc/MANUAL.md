@@ -679,10 +679,12 @@ placement. Later `{blueprint_node}` commands may reuse it elsewhere.
 
 #### Automatic dependency inference
 
-`autoDeps` infers direct dependencies between Lean declarations that already
-have Blueprint associations. It does not discover every mathematical dependency:
-in particular, dependencies hidden behind untagged Lean helpers are missed. An
-empty inferred dependency list does not establish that a result is independent.
+`autoDeps` infers dependencies on Lean declarations with Blueprint associations.
+By default it follows unassociated helpers until it reaches associated
+declarations. Those first associated declarations form the dependency frontier:
+the walk stops there rather than flattening their own Blueprint dependencies
+into the current node. An empty
+inferred dependency list does not establish mathematical independence.
 
 Inference is opt-in and disabled by default. Enable it locally with
 `(autoDeps := true)`, or set the file/section default with:
@@ -693,6 +695,28 @@ set_option verso.blueprint.autoDeps true
 
 The local argument wins over the option, so `(autoDeps := false)` disables
 inference for one node even when the file default is enabled.
+
+Traversal through untagged Lean declarations is controlled independently by a
+Boolean Lean option. Here, "untagged" means a declaration without any Blueprint
+association, including associations made by external or inline Lean attachments:
+
+```lean
+set_option verso.blueprint.autoDeps.expandUntagged true   -- default: follow helpers
+set_option verso.blueprint.autoDeps.expandUntagged false  -- direct references only
+```
+
+The option has normal Lean scoping: it affects subsequent commands in the
+current file/section/namespace, and `set_option verso.blueprint.autoDeps.expandUntagged false in`
+limits it to the following command, including a `#docs` command. Nested settings
+override the outer value and restore it when the scope ends. Settings are not
+exported to importing modules. This option does not enable `autoDeps`; both
+controls apply equally to attributes, external-Lean statements, and inline Lean.
+
+For `result → helper₁ → helper₂ → tagged`, the default finds the tagged
+dependency through both helpers. With expansion disabled, neither helper is
+expanded, but a direct reference to `tagged` still produces an edge. Use
+`autoDeps := false` to disable inference altogether, or explicit additions and
+exclusions to curate the resulting edges. There is no selective helper list.
 
 For example, the following records an automatic proof dependency from
 `"prop9.6.direct"` to `"prop9.5"`. The small propositions illustrate dependency
@@ -721,18 +745,27 @@ theorem prop96Inline : True := prop95
 ```
 ````
 
-When inference is enabled, Blueprint scans the direct Lean constants mentioned
-by the declaration's type and compiled body. Declarations associated with
-Blueprint labels and used directly by the type become statement dependencies;
-declarations associated with Blueprint labels and used directly by the body
-become proof dependencies. A Lean declaration is associated with a Blueprint
-label by `@[blueprint]` or `@[blueprint "..."]`, by a labeled inline Lean code
+When inference is enabled, Blueprint starts separate walks from the constants in
+the declaration's type and compiled body. The type walk produces statement
+dependencies; the body walk produces proof dependencies. At an unassociated
+definition, theorem, or opaque declaration, when helper expansion is enabled,
+each walk follows both its type and body, keeping the axis of the walk that
+reached it. For example, a helper's type can introduce a proof dependency when
+that helper is used only in the root proof. A Lean declaration is associated with
+a Blueprint label by `@[blueprint]` or `@[blueprint "..."]`, by a labeled inline Lean code
 block, or by an informal statement block with `(lean := "...")`.
 
 The scan uses elaborated Lean expressions, not names appearing in source text or
 tactic scripts. Implicit arguments and instance arguments can therefore
-contribute references too. For structures and inductives, constructor types
-supply the body-side scan.
+contribute references too. Structures and inductives are followed through their
+constructors and constructor types. Constructor and recursor types are inspected
+when expansion is enabled and no association stops the walk. The constructor
+types of a root inductive are its own body and are inspected even with expansion
+disabled. Unassociated axioms, quotient primitives, and missing declarations are
+terminal: they do not create synthetic Blueprint nodes.
+Visited names prevent cycles and repeated helper expansion within each walk.
+There is no fixed hop limit; Lean's normal heartbeat/cancellation checks still
+apply. This is expression inspection, not reduction or execution of helper code.
 
 Inference runs when the attribute is applied or the corresponding document
 block is elaborated, using the associations available at that point. Register
@@ -755,7 +788,7 @@ statement edge wins and the automatic proof edge is suppressed; an explicit `pro
 entry can still put the label on the proof axis when that is what the Blueprint
 should say.
 
-##### Dependencies hidden behind helpers
+##### Dependencies through helpers
 
 Continuing the example above:
 
@@ -766,13 +799,19 @@ theorem helper : True := prop95
 theorem prop96Helper : True := helper
 ```
 
-Here the proof refers directly to `helper`, which has no Blueprint association.
-The scan does not expand its proof, so it does not reach `prop95` and records no
-dependency on `"prop9.5"`. The same limitation applies to an untagged definition
-used as a type alias: inference does not unfold it to find labeled declarations
-in its definition. There is currently no recursive-helper setting for `autoDeps`.
+Here the proof refers to `helper`, which has no Blueprint association. The walk
+inspects its type and proof by default, reaches `prop95`, and records an
+automatic proof dependency on `"prop9.5"`. Chains of helpers work the same way,
+including across imported modules, when helper expansion is enabled. An
+unassociated type alias in the root's type likewise exposes its associated
+dependencies on the statement axis.
 
-To record the missing dependency with the current behavior, add it explicitly:
+If `helper` is itself associated with a Blueprint label before inference runs,
+the dependency is on that helper's label instead. The walk does not continue to
+`prop95` through that boundary. An attribute exclusion removes the resulting
+edge; it does not reopen the excluded declaration and walk through it.
+
+You can still explicitly curate the same edge:
 
 ```lean
 @[blueprint "prop9.6.curated" (autoDeps := true)
@@ -780,16 +819,27 @@ To record the missing dependency with the current behavior, add it explicitly:
 theorem prop96Curated : True := helper
 ```
 
-This records a manual proof dependency even though the automatic scan finds
-none. Use `proofUses` for a result needed to prove a proposition; attribute
+This records a manual proof dependency regardless of the expansion policy.
+Use `proofUses` for a result needed to prove a proposition; attribute
 `uses` and `{uses ...}[]` in the declaration docstring add statement dependencies.
 No prose mention is required for an explicit attribute dependency.
 
 When several Lean declarations genuinely formalize the same informal result,
 they can share a Blueprint label. However, helpers need not become separate
-Blueprint nodes merely to record the missing dependency, and sharing a label
-does not itself enable recursive inference. Review inferred edges against the
-mathematical argument, especially after a refactor introduces helpers.
+Blueprint nodes merely to expose their dependencies. Review inferred edges
+against the mathematical argument: elaborated terms can expose implicit
+dependencies and still omit mathematical motivation absent from the Lean terms.
+
+This traversal boundary follows LeanArchitect's helper expansion. Unlike
+LeanArchitect's output-time inference, Blueprint records edges during authoring
+elaboration and keeps status checking separate. An association added later does
+not retroactively change persisted edges. Definitions retain body dependencies
+on the proof axis even when they have no informal proof body.
+
+Migration from direct-only inference: existing `autoDeps := true` sites may gain
+helper-mediated edges. Review those edges and use attribute exclusions to curate
+them. Set `verso.blueprint.autoDeps.expandUntagged` to `false` to retain direct-only
+inference, or use `autoDeps := false` for fully manual dependencies.
 
 ##### Manual additions and exclusions
 
@@ -828,7 +878,7 @@ the inferred dependency edges.
 | Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |
 | Reuse the same node in several places | Supported. The node keeps one semantic identity; later `{blueprint_node}` occurrences are presentation views and may use compact/header/display-label options. |
 | Use the declaration docstring as the statement | Supported for plain Markdown, standard structural `doc.verso` content, and Blueprint `{uses}` / `{bpref}` references. Structural markup and math also survive in the attached external-declaration panel, where references use readable fallback text. Other custom extensions use their fallback children. An absent docstring produces a code-only placement. |
-| Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Type references become statement dependencies and body references become proof dependencies. Inference is direct, not transitive through untagged helpers. |
+| Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Follows unassociated helpers by default; `set_option verso.blueprint.autoDeps.expandUntagged false` selects direct-only inference. Type/body walks produce statement/proof dependencies respectively. |
 | Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. With `doc.verso` enabled, `{uses ...}[]` inside the adopted docstring adds statement dependencies; `{bpref ...}[]` adds links only. |
 | Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
 | Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
