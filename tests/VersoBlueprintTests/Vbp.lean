@@ -107,13 +107,11 @@ private def sampleInlineCodeManifest : ManifestFile := {
     kind := some .definition
     title := "Inline code label"
     leanCodePreviewKeys := #["Informal.LeanCodePreview.Inline.inline_code_block"]
-    codeData := some { inlineBlocks := #[{
-      blockId := `inline_code_block
-      label := label "inline_code_label"
+    codeData := some { literateDeclarations := {
       definedDefs := #[{
         name := Name.str (Name.str .anonymous "Inline") "localDef"
       }]
-    }] }
+    } }
   }
 }
 

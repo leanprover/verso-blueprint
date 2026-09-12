@@ -932,12 +932,12 @@ code block:
 
 1. `Informal/Code.lean` elaborates the Lean block and records
    `InlineCodeData`.
-2. `Informal/Block.lean` keeps semantic Lean associations accumulated across
-   inline and external sources. Heading summaries prefer inline code when they
-   need one compact status badge, while external declaration panels still render
-   from the statement block's external references.
+2. `RenderNode` captures external associations and lightweight literate declaration
+   facts. `Informal/Block.lean` resolves these project facts for the heading,
+   independently of the traversed code panels. Omitting a code chapter changes
+   content and link availability, while retaining declaration status.
 3. `Informal/CodeSummary.lean` computes the heading badge, summary hover body,
-   and code-panel indicator from that resolved source.
+   and code-panel indicator from their respective project or panel declaration facts.
 4. `Informal/Block/Common.lean` provides the shared panel/header helpers used
    by both inline and external code panels.
 
@@ -1256,7 +1256,7 @@ the operational detail that is easier to read in prose.
 
 | Index | Role | Functional map | Value description |
 | --- | --- | --- | --- |
-| `Nodes` | semantic domain | informal label -> `RenderNode` plus node anchor ids | Captured node semantics and external declarations, enriched by traversal with numbering and occurrence presentation settings; canonical links follow the selected facet body. |
+| `Nodes` | semantic domain | informal label -> `RenderNode` plus node anchor ids | Captured node semantics, external declarations, and literate declaration facts, enriched by traversal with numbering and occurrence presentation settings; canonical links follow the selected facet body. |
 | `RenderOverviews` | internal index | overview name -> captured graph or summary | Project overview data selected by the generator; custom blocks may supply their own models. |
 | `InlineCode` | internal index | source code-block identity -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof/code folding settings, and the code panel destination. |
 | `RustInlineCode` | internal index | informal label -> `Rust.InlineCodeData` plus code-panel anchor ids | Inline Rust code data for a node: raw source text and code-panel folding settings. |
@@ -1264,7 +1264,7 @@ the operational detail that is easier to read in prose.
 | `Groups` | semantic domain | group label -> `GroupBlockData` | Declared group metadata for a parent/group label, currently its display header. Group membership itself is stored on `Nodes` through each node's `parent`. |
 | `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> selected `PreviewCache.Entry` and occurrence anchors | The selected body, canonical target, Lean source location and original-source provenance for each statement/proof facet. Entries may also carry HTML-cache keys for associated Lean-code previews; the code preview payloads themselves remain in `LeanCodePreviews`. |
 | `LeanCodePreviews` | runtime cache | external Lean declaration name or source code-block identity -> `LeanCodePreview.Entry` plus code-preview anchor ids | Preview payloads for external Lean declaration links and inline code blocks. Inline declarations inherit row-level identity from `(code-block identity, declaration index)` inside the owning block metadata. |
-| `ExternalDeclAnchors` | internal index | `(informal label, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
+| `ExternalDeclAnchors` | internal index | `(statement occurrence, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
 | `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into preview data. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
 | `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
@@ -1283,7 +1283,7 @@ reasons:
 | `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, `Informal.ExternalMarkupView`, preview-manifest construction, `PreviewManifest/ExternalMarkupRender.lean`, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies selected by `Informal.ExternalMarkupRender.Config`. |
 | `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalLookupKey?`, `PreviewSource.traversalEntry?`, `PreviewSource.traversalEntryByKey?`, `PreviewSource.traversalStoredEntries`, and preview-data construction | Store preview metadata and rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys even when the rendered body is empty; empty body blocks are not a signal that the semantic preview metadata is empty. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
 | `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | `TraversalIndex.LeanCodePreviews.entry?`, `TraversalIndex.LeanCodePreviews.decodedEntry?`, `TraversalIndex.LeanCodePreviews.entries`, preview-data construction, same-document grafts, and Lean declaration links via the shared lookup key | Store external declaration previews by canonical Lean declaration target and inline code previews by source code-block identity. This keeps external declaration previews shared across references while avoiding duplicate inline preview bodies for multiple declarations from the same code block; declaration-specific inline identity lives in the owning block's ordered inline code metadata. |
-| `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
+| `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(statement occurrence, canonical declaration)`. Each rendered row has its own destination, including repeated occurrences of one label. Canonical links select the statement facet first and then its declaration row. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
 | `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |

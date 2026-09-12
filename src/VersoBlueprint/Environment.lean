@@ -357,12 +357,6 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
 def addDep (stx : Syntax) (dep : Name) : m Unit :=
   addUse stx { label := dep }
 
-def registerRustCode (label : Label) (code : RustInlineCode) : m Unit :=
-  discard <| contribute label { rustCode := some code }
-
-def registerExternalMarkup (label : Label) (markup : ExternalMarkup) : m Unit :=
-  discard <| contribute label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
-
 def getNode? (label : Label) : m (Option Node) := do
   return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)
 

@@ -374,4 +374,54 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       hasExtraCss st ".bp_inline_preview_panel"
     )
 
+-- References are validated against the completed capture, independently of blocks or graphs.
+run_cmd discard <| Environment.contribute `reference_known_omitted {}
+
+#docs (Genre.Manual) referenceOnlyDoc "References before their target" :=
+:::::::
+{bpref "reference_forward"}[] and {bpref "reference_known_omitted"}[].
+:::::::
+
+#docs (Genre.Manual) forwardTargetDoc "Later target" :=
+:::::::
+:::theorem "reference_forward"
+The target is elaborated after the reference.
+:::
+:::::::
+
+#docs (Genre.Manual) misspelledReferenceDoc "Misspelled reference" :=
+:::::::
+{bpref "reference_forwad"}[].
+:::::::
+
+#eval show IO Unit from do
+  let model : RenderModel := blueprint_render_model%
+  let errors ← IO.mkRef (#[] : Array String)
+  let logError := fun message => errors.modify (·.push message)
+  let part := { referenceOnlyDoc.toPart with
+    content := referenceOnlyDoc.toPart.content ++ forwardTargetDoc.toPart.content }
+  let forward : Doc.VersoDoc Genre.Manual := .mk (fun _ => part) "{}"
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls forward logError (model := model)
+  let html ← renderManualBlocksHtmlWithState blocks manualImpls state
+  unless (← errors.get).isEmpty && hasSubstr html.asString "Theorem 1" &&
+      hasSubstr html.asString "reference_known_omitted" &&
+      (TraversalIndex.Nodes.href? state `reference_known_omitted).isNone do
+    throw <| IO.userError "Forward references or known omitted nodes were rejected"
+  let _ ← traverseManualDocBlocksAndState manualImpls referenceOnlyDoc logError (model := model)
+  unless (← errors.get).isEmpty do
+    throw <| IO.userError "A reference-only document rejected captured but unrendered labels"
+  let _ ← traverseManualDocBlocksAndState manualImpls misspelledReferenceDoc logError (model := model)
+  unless (← errors.get).any (hasSubstr · "Unknown Blueprint label 'reference_forwad'") do
+    throw <| IO.userError "A misspelled reference survived without a diagnostic"
+  errors.set #[]
+  let _ ← Informal.traverseManualBlocks referenceOnlyDoc.toPart.content manualImpls logError
+  unless (← errors.get).any (hasSubstr · "initialize traversal with the document's RenderModel") do
+    throw <| IO.userError "A reference-only document failed to diagnose its missing model"
+  let corrupt := state.saveDomainObjectData TraversalIndex.Nodes.domainName "reference_forward" (.str "corrupt")
+  match TraversalIndex.Nodes.required corrupt `reference_forward with
+  | .ok _ => throw <| IO.userError "Accepted a malformed rendering node"
+  | .error message =>
+    unless hasSubstr message "Malformed rendering node 'reference_forward':" do
+      throw <| IO.userError "A malformed node was confused with a missing node"
+
 end Verso.VersoBlueprintTests.BlueprintLinkHover

@@ -7,6 +7,8 @@ import VersoBlueprint
 
 open Verso.Genre Informal
 
+theorem facetExternal : True := trivial
+
 #doc (Manual) "Placeholder chapter" =>
 
 :::source_document "facet-paper"
@@ -23,5 +25,5 @@ pdf := some "source/proof-paper.pdf"
 %%%
 :::
 
-:::theorem "filled_facet"
+:::theorem "filled_facet" (lean := "facetExternal")
 :::

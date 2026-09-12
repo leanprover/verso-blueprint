@@ -103,7 +103,7 @@ def test_filled_facets_reach_generated_previews(named_site, page: Page):
         assert [span["page"] for source in entry["sources"] for span in source["spans"]] == [source_page]
         assert [source["document"] for source in entry["sources"]] == [source_document]
         assert source_module in entry["sourceLocation"]["location"]["path"]
-        assert len(entry["leanCodePreviewKeys"]) == 1
+        assert len(entry["leanCodePreviewKeys"]) == 2
         code = entries[entry["leanCodePreviewKeys"][0]]
         assert {source["document"] for source in code["sources"]} == {"facet-paper", "facet-proof-paper"}
         page.goto(urljoin(f"{server}/", entry["href"]))
@@ -122,3 +122,33 @@ def test_filled_facets_reach_generated_previews(named_site, page: Page):
 
     assert_rendered_previews(page, keys, expected_text)
     assert_no_runtime_errors(errors)
+
+
+def test_repeated_external_panels_have_distinct_targets(named_site, page: Page):
+    server = named_site("imported-filled-facets")
+    _, entries = manifest_entries(server)
+    statement = entries["filled_facet--statement"]
+    page.goto(urljoin(f"{server}/", statement["href"]))
+    duplicate_ids = page.evaluate("""() => {
+      const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
+      return ids.filter((id, index) => ids.indexOf(id) !== index);
+    }""")
+    assert duplicate_ids == []
+    expect(page.locator(".bp_external_decl_list > li[id]")).to_have_count(2)
+    selected = page.locator(":target")
+    selected_id = selected.get_attribute("id")
+    expect(selected).to_contain_text("A completed statement from page one.")
+    page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+    selected.locator(".bp_extra_slot_code .bp_code_summary_preview_wrap_active").hover()
+    summary_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
+    expect(summary_panel).to_be_visible()
+    link = summary_panel.locator("a").filter(has_text="facetExternal").first
+    href = link.get_attribute("href")
+    assert href
+    page.goto(urljoin(f"{server}/", href))
+    expect(page.locator(":target")).to_contain_text("facetExternal")
+    # The declaration row belongs to the completed statement's companion panel.
+    owner_id = page.locator(":target").evaluate(
+        'row => row.closest(".bp_code_panel_wrapper").previousElementSibling.id'
+    )
+    assert owner_id == selected_id

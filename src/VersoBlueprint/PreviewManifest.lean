@@ -687,7 +687,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 6
+def manifestInternalSchemaVersion : Nat := 7
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -985,20 +985,13 @@ def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
 
 /-- Convert manifest entry metadata to the shared informal block model. -/
 def Entry.blockData (entry : Entry) : Informal.BlockData := {
+  toBlockMetadata := entry.toBlockMetadata
   kind := entry.kind.getD .theorem
   isProof := entry.facet == .proof
   codeData := entry.codeData
   sourceRef := entry.primarySource?
-  label := entry.label
   sourceLocation := entry.sourceLocation
-  parent := entry.parent
   count := 0
-  statementUses := entry.statementUses
-  proofUses := entry.proofUses
-  ownerDisplayName := entry.ownerDisplayName
-  tags := entry.tags
-  effort := entry.effort
-  priority := entry.priority
 }
 
 /--
@@ -1149,19 +1142,21 @@ def File.hoverState (file : File) : Verso.Code.Hover.State Output.Html :=
   { dedup := file.hoverDedup
     idSupply := {} }
 
-private def pushDistinctHtml (values : Array String) (html : String) : Array String :=
-  if values.contains html then values else values.push html
-
 /--
-Rendered Lean-code preview bodies for an informal entry, deduplicated by the
-actual rendered fragment.
+Rendered Lean-code preview keys and bodies, deduplicated by the actual fragment.
+Keep the key with the body so a composite renderer can join its declaration facts.
 -/
-def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
-    Array String :=
+def Index.codeHtmlEntries (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
+    Array (String × String) :=
   entry.leanCodePreviewKeys.foldl (init := #[]) fun bodies key =>
     match index.findHtml? key with
-    | some html => pushDistinctHtml bodies html
+    | some html =>
+      if html.trimAscii.isEmpty || bodies.any (·.2 == html) then bodies else bodies.push (key, html)
     | none => bodies
+
+def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
+    Array String :=
+  (index.codeHtmlEntries entry).map (·.2)
 
 def File.codeHtmlBodies (file : File) (entry : _root_.Informal.PreviewManifest.Entry) :
     Array String :=
@@ -1635,7 +1630,7 @@ def Entry.matchesText (entry : Entry) (query : String) : Bool :=
 def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
   entry.leanCodePreviewKeys.any (fun key => key.contains decl) ||
     entry.codeData.any fun code =>
-      code.inlineBlocks.declarations.any (fun candidate => candidate.name.toString.contains decl) ||
+      code.literateDeclarations.declarations.any (fun candidate => candidate.name.toString.contains decl) ||
       code.externalDecls.any fun externalRef =>
         externalRef.canonical.toString.contains decl || externalRef.written.toString.contains decl
 
@@ -1971,7 +1966,10 @@ private def blockLeanCodePreviewKeys
     (state : TraverseState)
     (label : Name)
     (entry : PreviewCache.Entry) : Array String :=
-  (inlineCodePreviewKeys state label).foldl
+  let externalKeys := ((Informal.TraversalIndex.Nodes.node? state label).map (·.externalRefs) |>.getD #[]).filterMap fun decl =>
+    let key := Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
+    if (Informal.TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else none
+  (externalKeys ++ inlineCodePreviewKeys state label).foldl
     (init := entry.leanCodePreviewKeys)
     (fun keys key => pushUnique keys key)
 
@@ -1985,15 +1983,14 @@ private def externalDeclsFromLeanPreviewKeys
 
 private def blockCodeData?
     (state : TraverseState)
-    (label : Name)
     (entry : PreviewCache.Entry)
     (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
-  let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks state label
+  let code := (blockData?.bind (·.codeData)).getD {}
   let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
   let externalDecls := if externalDecls.isEmpty then
-    (blockData?.bind (·.codeData)).map (·.externalDecls) |>.getD #[]
+    code.externalDecls
     else externalDecls
-  ({ inlineBlocks, externalDecls } : Informal.BlockCodeData).nonempty?
+  { code with externalDecls }.nonempty?
 
 private def leanCodePreviewSourceRefs (state : TraverseState) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
@@ -2131,7 +2128,7 @@ private def blockSemanticManifestEntry
     (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
   let blockData? := blockInfo? state preview.label
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
-  let codeData := blockCodeData? state preview.label preview blockData?
+  let codeData := blockCodeData? state preview blockData?
   {
     key
     targetKind
@@ -2267,6 +2264,15 @@ private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entr
   | .externalDecl decl => externalDeclSourceLocation decl
   | .inlineBlocks _ _ sourceLocation => sourceLocation
 
+/-- Facts belonging to one available code preview, independently of its node's other associations. -/
+def leanCodePreviewData (state : TraverseState) (entry : Informal.LeanCodePreview.Entry) :
+    Informal.BlockCodeData :=
+  match entry.source with
+  | .externalDecl decl => { externalDecls := #[decl] }
+  | .inlineBlocks .. =>
+    Informal.BlockCodeData.ofInlineBlocks
+      ((Informal.TraversalIndex.InlineCode.data? state entry.target).toArray)
+
 private def leanCodePreviewManifestEntry
     (state : TraverseState)
     (sourceRefs : Std.HashMap String (Array Informal.Source.Ref))
@@ -2286,6 +2292,7 @@ private def leanCodePreviewManifestEntry
   sources := (sourceRefs.get? key).getD #[]
   href := Informal.TraversalIndex.LeanCodePreviews.href? state key
   sourceLocation := leanCodePreviewSourceLocation entry
+  codeData := (leanCodePreviewData state entry).nonempty?
 }
 
 private def buildLeanCodeEntries

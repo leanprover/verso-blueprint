@@ -119,7 +119,10 @@ A statement's Lean status and declaration tooltip cover both external associatio
 and literate code. An incomplete external declaration therefore remains visible
 in the status even when an associated literate block is complete. Each code
 panel also reports the declarations it contains. When both sources name the same
-canonical declaration, the heading summary uses its rendered literate entry once.
+canonical declaration, the heading summary uses its literate declaration facts once.
+Omitting a formalization chapter keeps its declarations and status in statement
+headings and summaries, including any `sorry`. It removes that chapter's code
+panels, local links, and code previews from the generated document.
 
 An explicit statement kind belongs to the author: attaching a Lean theorem to an informal
 lemma keeps the informal node a lemma. For a Lean-only node without an authored
@@ -186,6 +189,10 @@ previews, and overview pages, including documents without a graph.
 Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.
+References are checked during traversal against the captured project, so forward
+references work. A known node omitted from the document falls back to its authored
+label; an unknown label is an error. Reference-only documents also require the
+project's rendering model.
 
 For dependencies that do not have a natural sentence-level reference, use the
 block option `(uses := "label1, label2")`. Inline uses can carry

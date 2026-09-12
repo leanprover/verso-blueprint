@@ -22,10 +22,7 @@ run_cmd discard <| Environment.contribute `key_theorem { priority := some "high"
     leanCode := #[.external #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]]
   }
   let after := Environment.informalExt.getState (← getEnv)
-  unless reprStr before.data == reprStr after.data &&
-      before.nextCount == after.nextCount &&
-      reprStr before.localContributions == reprStr after.localContributions &&
-      before.leanNameLabels.toArray == after.leanNameLabels.toArray do
+  unless reprStr before == reprStr after do
     throwError "Rejected new label changed one of the node stores"
 
 -- A rejected contribution must not leak its otherwise valid proof, tags, code,
@@ -42,10 +39,7 @@ run_cmd discard <| Environment.contribute `key_theorem { priority := some "high"
     leanCode := #[.external #[{ canonical := `rejectedDecl, written := `rejectedDecl, present := true }]]
   }
   let after := Environment.informalExt.getState (← getEnv)
-  unless reprStr before.data == reprStr after.data &&
-      before.nextCount == after.nextCount &&
-      reprStr before.localContributions == reprStr after.localContributions &&
-      before.leanNameLabels.toArray == after.leanNameLabels.toArray do
+  unless reprStr before == reprStr after do
     throwError "Rejected contribution changed one of the node stores"
 
 -- Repeating equal single-valued metadata is idempotent and does not warn.
@@ -155,3 +149,70 @@ run_cmd do
   unless state.activeDirective.isNone &&
       (state.data.get? `atomic_recovered).any (·.hasStatementBody) do
     throwError "Directive scope did not recover after failure"
+
+-- Standalone producers must agree with the accepted registry, even during recovery.
+run_cmd do
+  discard <| Environment.contribute `atomic_standalone {
+    proofUses := #[{ label := `atomic_dependency, origin := .automatic, intent := .technical }] }
+  discard <| Environment.contribute `atomic_standalone_markup {
+    externalMarkup := ({} : Data.ExternalMarkupSet).insert {
+      language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" } }
+  discard <| Environment.contribute `atomic_standalone_rust {
+    rustCode := some { raw := "pub fn accepted() {}" } }
+
+/-- error: Label atomic_standalone declares conflicting proof dependency intents for 'atomic_dependency' (automatic): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) rejectedStandaloneCode "Rejected standalone code" :=
+:::::::
+```lean "atomic_standalone" (autoDeps := true)
+theorem rejectedStandaloneWitness : True := atomicDependency
+```
+:::::::
+
+/-- error: Label atomic_standalone_markup already has associated markdown external markup in slot 'default' -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) rejectedStandaloneMarkup "Rejected standalone markup" :=
+:::::::
+```md "atomic_standalone_markup"
+Rejected markup.
+```
+:::::::
+
+/-- error: Label atomic_standalone_rust already has associated Rust code -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) rejectedStandaloneRust "Rejected standalone Rust" :=
+:::::::
+```rust "atomic_standalone_rust"
+pub fn rejected() {}
+```
+:::::::
+
+private partial def hasSemanticCode (block : Verso.Doc.Block Manual) : Bool :=
+  match block with
+  | .other container contents =>
+      #[``Informal.Block.informalCode, ``Informal.Block.externalMarkup,
+        ``Informal.Block.informalRustCode].contains container.name || contents.any hasSemanticCode
+  | .concat contents => contents.any hasSemanticCode
+  | _ => false
+
+#eval show IO Unit from do
+  for doc in #[rejectedStandaloneCode, rejectedStandaloneMarkup, rejectedStandaloneRust] do
+    if doc.toPart.content.any hasSemanticCode then
+      throw <| IO.userError "Rejected registration emitted a semantic code occurrence"
+
+@[code_block]
+def positionlessCode : Verso.Doc.Elab.CodeBlockExpanderOf Informal.CodeConfig :=
+  fun cfg contents => MonadRef.withRef Syntax.missing (Informal.lean cfg contents)
+
+/-- error: Blueprint code blocks require a source position -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) rejectedPositionlessCode "Missing source identity" :=
+:::::::
+```positionlessCode "atomic_positionless"
+theorem positionlessWitness : True := trivial
+```
+:::::::

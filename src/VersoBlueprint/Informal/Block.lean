@@ -69,9 +69,8 @@ block_extension Block.informal (data : BlockOccurrence) where
     | none =>
       pure none
     | some occurrence =>
-      let some blockData := TraversalIndex.Nodes.resolve? (← get) occurrence
-        | Verso.reportError s!"Missing rendering node '{occurrence.label}'; initialize traversal with the document's RenderModel"
-          pure none
+      let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
+        | pure none
       let blockData := blockData.withTraversalNumberingContext (← read)
       registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
@@ -81,9 +80,8 @@ block_extension Block.informal (data : BlockOccurrence) where
         | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
           pure .empty
       let st ← Verso.Doc.TeX.state
-      let some data := TraversalIndex.Nodes.resolve? st occurrence
-        | Verso.reportError s!"Missing rendering node '{occurrence.label}'"
-          pure .empty
+      let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve st occurrence)
+        | pure .empty
       let data := data.withResolvedNumbering st
       let title := data.displayTitle st
       let body ← blocks.mapM goB
@@ -100,9 +98,8 @@ block_extension Block.informal (data : BlockOccurrence) where
         pure .empty
       | some occurrence =>
         let s ← HtmlT.state
-        let some data := TraversalIndex.Nodes.resolve? s occurrence
-          | Verso.reportError s!"Missing rendering node '{occurrence.label}'"
-            pure .empty
+        let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve s occurrence)
+          | pure .empty
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
         let markup :=
@@ -121,21 +118,20 @@ block_extension Block.informal (data : BlockOccurrence) where
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
         let codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
-        let codeData? : InlineCodeBlocks ←
-          pure <| Informal.TraversalIndex.InlineCode.blocks s data.label
+        let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
         let codeHint? :=
           match data.isProof with
           | true => none
           | false => data.codeData
-        let codeSource := ({ (codeHint?.getD {}) with inlineBlocks := codeData? } : BlockCodeData).nonempty?
         let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
-          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s data.label decl.canonical
+          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s id decl.canonical
         let cdata := {
           codeHref
-          source := codeSource
+          source := codeHint?
+          inlineBlocks
         }
         let headingParts? : Option CodeSummary.RenderParts :=
           match data.isProof with

@@ -103,15 +103,15 @@ private def registerExternalDeclAnchor
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
-    (label : Data.Label)
+    (occurrence : Verso.Multi.InternalId)
     (decl : Data.ExternalRef) :
     m Unit := do
-  let key := Resolve.externalRenderedDeclTargetKey label decl.canonical
+  let key := Resolve.externalRenderedDeclTargetKey occurrence decl.canonical
   if (Informal.TraversalIndex.ExternalDeclAnchors.object? (← get) key).isNone then
     let declId ← Verso.Genre.Manual.freshId
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag declId path
-      s!"--informal-external-decl-{label}-{decl.canonical}"
+      s!"--informal-external-decl-{(toJson occurrence).compress}-{decl.canonical}"
     modify λ s => Informal.TraversalIndex.ExternalDeclAnchors.saveId s key declId
 
 private def registerExternalDeclAnchors
@@ -120,11 +120,11 @@ private def registerExternalDeclAnchors
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
-    (label : Data.Label)
+    (occurrence : Verso.Multi.InternalId)
     (decls : Array Data.ExternalRef) :
     m Unit := do
   for decl in decls do
-    registerExternalDeclAnchor label decl
+    registerExternalDeclAnchor occurrence decl
 
 /--
 Register all traversal-time preview and anchor data owned by an informal block.
@@ -146,6 +146,6 @@ def registerTraversedBlockAssets
   let externalDecls := externalDeclsOfBlock blockData
   registerBlockPreviewData id blockData contents
   registerExternalCodePreviews id externalDecls
-  registerExternalDeclAnchors blockData.label externalDecls
+  registerExternalDeclAnchors id externalDecls
 
 end Informal
