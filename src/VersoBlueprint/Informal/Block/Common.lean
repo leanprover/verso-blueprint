@@ -99,22 +99,17 @@ structure CodePanelHeader where
   number? : Option String := none
 deriving Repr, Inhabited
 
-def codePanelHeaderFor (languageName : String) (data : BlockData) (numberText : String) :
-    CodePanelHeader :=
-  match data.kind with
-  | .proof => { caption := s!"{languageName} code for proof" }
-  | .statement nodeKind =>
-    {
-      caption := s!"{languageName} code for {nodeKind}"
-      number? := some numberText
-    }
+def codePanelHeaderFor (languageName : String) (display : NodeDisplay) : CodePanelHeader :=
+  match display.number? with
+  | some number => { caption := s!"{languageName} code for {display.kind}", number? := some number }
+  | none => { caption := s!"{languageName} code for {display.title}" }
 
 def fallbackCodePanelHeaderFor (languageName : String) : CodePanelHeader := {
   caption := s!"{languageName} code"
 }
 
-def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
-  codePanelHeaderFor "Lean" data numberText
+def codePanelHeader (display : NodeDisplay) : CodePanelHeader :=
+  codePanelHeaderFor "Lean" display
 
 def fallbackCodePanelHeader : CodePanelHeader :=
   fallbackCodePanelHeaderFor "Lean"

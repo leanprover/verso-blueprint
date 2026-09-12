@@ -24,10 +24,13 @@ def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedP
   let titleInlines ← `(inline | "Blueprint Summary")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
-  let summary ← buildSummary
+  reportImportedConflicts
+  let options ← Lean.getOptions
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    logInfo m!"Blueprint summary for {summary.totalEntries} entries"
-  let block ← serializedBlockTerm `Informal.Commands.Block.summary summary
+    let count := (informalExt.getState (← getEnv)).data.size
+    logInfo m!"Blueprint summary for {count} entries"
+  let block ← serializedBlockTerm `Informal.Commands.Block.summary
+    ({ showDebugDiagnostics := verso.blueprint.summary.debugDiagnostics.get options } : SummaryBlockData)
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 

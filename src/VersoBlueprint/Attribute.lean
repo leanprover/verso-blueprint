@@ -48,9 +48,9 @@ private structure BlueprintAttrConfig where
   proofUses : AutoDepEntries := {}
 deriving Inhabited, Repr
 
-private def classifyDeclKind (decl : Name) (info : ConstantInfo) : CoreM Data.NodeKind :=
+private def validateDeclKind (decl : Name) (info : ConstantInfo) : CoreM Unit :=
   match Informal.Data.ConstantInfo.blueprintNodeKind? info with
-  | some kind => pure kind
+  | some _ => pure ()
   | none =>
     throwError "invalid '[blueprint]' target '{decl}': expected a definition-like declaration or theorem, got {Informal.Data.ConstantInfo.blueprintKindText info}"
 
@@ -196,7 +196,7 @@ private partial def partToManualBlocksStx
     out := out ++ (← partToManualBlocksStx child)
   pure out
 
-private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalData) := do
+private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option Data.InformalBody) := do
   let env ← getEnv
   let internalDoc? ← liftM <| findInternalDocString? env decl
   let elabStx ←
@@ -224,7 +224,6 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) : CoreM (Option
   else
     pure <| some {
       stx := ref
-      deps := #[]
       elabStx := elabStx.map (·.raw)
     }
 
@@ -282,50 +281,28 @@ private def resolveAutoDeps
   let proof ← mergeAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
-private def payloadWithDeps
-    (ref : Syntax) (deps : Array Data.UseRef) (incoming? existing? : Option Data.InformalData) :
-    Option Data.InformalData :=
-  let mergeDeps (payload : Data.InformalData) : Data.InformalData :=
-    { payload with deps := deps.foldl Data.UseRef.pushMergeByLabel payload.deps }
-  match existing? with
-  | some payload => some (mergeDeps payload)
-  | none =>
-    match incoming? with
-    | some payload => some (mergeDeps payload)
-    | none =>
-      if deps.isEmpty then
-        none
-      else
-        some { stx := ref, deps }
-
 private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
     | throwError "unknown declaration '{decl}'"
-  let declKind ← classifyDeclKind decl info
-  let statement? ← statementFromDocstring? decl ref
+  validateDeclKind decl info
+  -- Only the declaration introducing a label owns its implicit statement.
+  -- Attachments never compete with or fill an existing node's informal prose.
+  let current? ← Environment.getNode? label
+  let statement? ← if current?.isNone then statementFromDocstring? decl ref else pure none
   let deps ← resolveAutoDeps decl label info cfg
   let opts ← getOptions
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  Environment.modifyDataForLabel label fun data => do
-    let data ← data.registerCodeRef label (.external #[extRef])
-    let data :=
-      match data.get? label with
-      | some node =>
-        let node :=
-          if node.statement.isNone then
-            { node with kind := declKind }
-          else
-            node
-        let statement := payloadWithDeps ref deps.statement statement? node.statement
-        let proof := payloadWithDeps ref deps.proof none node.proof
-        let node := { node with statement, proof }
-        data.insert label node
-      | none => data
-    return data
+  discard <| Environment.contribute label {
+    statementBody := statement?
+    statementUses := deps.statement
+    proofUses := deps.proof
+    leanCode := #[.external #[extRef]]
+  }
+
 
 open Lean in
 initialize

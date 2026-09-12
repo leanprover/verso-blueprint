@@ -14,7 +14,7 @@ Public graph-data helpers.
 
 `Informal.Graph` owns semantic `GraphModel`, immutable finished `GraphData`, and
 the environment builder. This module adds the traversal-state bridge: graph
-blocks cache only `GraphModel` plus render options, then page and manifest
+blocks cache model selection and render options, then page and manifest
 consumers call the same `finishData` operation after traversal completes.
 -/
 
@@ -29,7 +29,7 @@ def cacheKey (id : Verso.Multi.InternalId) : String :=
   s!"graph:{id}"
 
 private def nodeTitle? (state : TraverseState) (label : Name) : Option String :=
-  (Informal.TraversalIndex.Nodes.data? state label).map fun data =>
+  (Informal.TraversalIndex.Nodes.renderedData? state label).map fun data =>
     data.displayTitle state
 
 private def nodeHref? (state : TraverseState) (label : Name) : Option String :=
@@ -54,7 +54,14 @@ private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupMet
   | none => group
 
 private def hasTraversalNode (state : TraverseState) (label : Name) : Bool :=
-  (Informal.TraversalIndex.Nodes.data? state label).isSome
+  Informal.TraversalIndex.Nodes.hasRenderedOccurrence state label
+
+/-- Resolve a graph selection, diagnosing an uninitialized or malformed project model. -/
+def resolveModel (state : TraverseState) (model : Option Informal.Graph.GraphModel) :
+    Except String Informal.Graph.GraphModel :=
+  match model with
+  | some model => .ok model
+  | none => Informal.TraversalIndex.RenderOverviews.required state `graph
 
 private def hasPreviewCandidate (node : Informal.Graph.NodeData) : Bool :=
   node.previewKey.isSome
@@ -99,17 +106,17 @@ def finishDataForBlock
 /--
 Store graph block data during traversal.
 
-The traversal entry stores only semantic data and render options under the
-stable block key; call `cachedEntries` after traversal finishes to read the
-public, finalized form.
+The traversal entry stores model selection and render options under the stable
+block key. Only custom graphs carry topology; project graphs resolve the shared
+model when `cachedEntries` finalizes them after traversal.
 -/
 def saveData
     (state : TraverseState)
     (id : Verso.Multi.InternalId)
-    (model : Informal.Graph.GraphModel)
+    (model : Option Informal.Graph.GraphModel)
     (options : Informal.Graph.GraphOptions) : TraverseState :=
   let key := cacheKey id
-  let cached : Informal.Graph.CachedGraphData := { model := model.canonicalize, options }
+  let cached : Informal.Graph.CachedGraphData := { model := model.map (·.canonicalize), options }
   state
     |> (fun state => Informal.TraversalIndex.Graphs.saveId state key id)
     |> (fun state => Informal.TraversalIndex.Graphs.saveData state key cached)
@@ -128,9 +135,11 @@ def cachedEntries (state : TraverseState) :
   Informal.TraversalIndex.Graphs.entries state |>.map fun
     | .error err => .error err
     | .ok stored =>
-        .ok {
-          canonicalName := stored.canonicalName
-          data := finishData state stored.canonicalName stored.data.model stored.data.options
-        }
+        match resolveModel state stored.data.model with
+        | .error message => .error { canonicalName := stored.canonicalName, message }
+        | .ok model => .ok {
+            canonicalName := stored.canonicalName
+            data := finishData state stored.canonicalName model stored.data.options
+          }
 
 end Informal.GraphApi

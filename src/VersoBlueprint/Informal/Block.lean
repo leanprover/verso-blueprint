@@ -57,34 +57,31 @@ Elaboration, traversal, and rendering are standard, using {ref VersoManual} help
 -/
 
 /- Informal custom blocks -/
-block_extension Block.informal (data : BlockData) where
+block_extension Block.informal (data : BlockOccurrence) where
   -- for TOC
   -- localContentItem _ _ _ := none
   data := toJson data
   usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     -- XXX: (maybe) lift the Except into the main monad error thread
-    match ← ExtensionDecode.decode? (α := BlockData) data
+    match ← ExtensionDecode.decode? (α := BlockOccurrence) data
         (fun err => s!"Malformed data ({err}): {data}") with
     | none =>
       pure none
-    | some blockData =>
+    | some occurrence =>
+      let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
+        | pure none
       let blockData := blockData.withTraversalNumberingContext (← read)
       registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
-      if let some sourceRef := blockData.sourceRef then
-        match Informal.TraversalIndex.SourceRefs.data? (← get) blockData.label with
-        | some existing =>
-            unless existing == sourceRef do
-              Verso.reportError s!"Label {blockData.label} already has conflicting source provenance"
-        | none =>
-            modify fun st => Informal.TraversalIndex.SourceRefs.saveData st blockData.label sourceRef
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
-      let .ok data := fromJson? (α := BlockData) data
+      let .ok occurrence := fromJson? (α := BlockOccurrence) data
         | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
           pure .empty
       let st ← Verso.Doc.TeX.state
+      let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve st occurrence)
+        | pure .empty
       let data := data.withResolvedNumbering st
       let title := data.displayTitle st
       let body ← blocks.mapM goB
@@ -95,62 +92,62 @@ block_extension Block.informal (data : BlockData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      match ← ExtensionDecode.decode? (α := BlockData) data
+      match ← ExtensionDecode.decode? (α := BlockOccurrence) data
           (fun err => s!"Malformed data ({err}): {data}") with
       | none =>
         pure .empty
-      | some data =>
+      | some occurrence =>
         let s ← HtmlT.state
+        let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve s occurrence)
+          | pure .empty
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
-        let relatedPanelContext := RelatedPanel.RelationContext.ofState s
         let markup :=
           (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
         let selectedMarkupAndContent? :=
-          match data.kind with
-          | .statement _ =>
+          match data.isProof with
+          | false =>
               if blocks.isEmpty then
                 Informal.ExternalMarkupRender.selectedContent? {} markup
               else
                 none
-          | .proof => none
+          | true => none
         let sourceBackedAttrs :=
           match selectedMarkupAndContent? with
           | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
-        let codeHref := Informal.TraversalIndex.InlineCode.href? s data.label
-        let codeData? : Option InlineCodeData ←
-          pure <| Informal.TraversalIndex.InlineCode.data? s data.label
+        let codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
+        let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
         let codeHint? :=
-          match data.kind with
-          | .proof => none
-          | .statement _ => data.codeData
-        let codeSource := BlockCodeData.ofHintAndInline codeHint? codeData?
+          match data.isProof with
+          | true => none
+          | false => data.codeData
         let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
-          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s data.label decl.canonical
+          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s id decl.canonical
         let cdata := {
           codeHref
-          source := codeSource
+          source := codeHint?
+          inlineBlocks
         }
         let headingParts? : Option CodeSummary.RenderParts :=
-          match data.kind with
-          | .statement _ => some <| CodeSummary.renderParts data cdata getDeclHref
-          | .proof => none
+          match data.isProof with
+          | false => some <| CodeSummary.renderParts data cdata getDeclHref
+          | true => none
         let externalPanel : Output.Html ←
-          match data.kind with
-          | .statement _ =>
+          match data.isProof with
+          | false =>
             if externalDecls.isEmpty then
               pure .empty
             else
               let externalCdata : CodeSummary.ComputedData := {
-                source := some (.external externalDecls)
+                source := some { externalDecls := externalDecls }
               }
               let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
-              let panelHeader := codePanelHeader data (data.displayNumber s)
+              let panelHeader := codePanelHeader (data.display s)
               ExternalCode.renderPanelWithPageHovers
                 panelHeader
                 externalSummary.summaryTitle
@@ -159,28 +156,28 @@ block_extension Block.informal (data : BlockData) where
                 getDeclHref
                 getDeclAnchorAttrs
                 (folded := data.foldCodeBlock)
-          | .proof => pure .empty
+          | true => pure .empty
         let content ←
           match selectedMarkupAndContent? with
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra relatedPanelContext data
-        let usesEntry ← RelatedPanel.renderUsesExtra relatedPanelContext data
-        let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
+        let groupEntry ← RelatedPanel.renderGroupExtra s data
+        let usesEntry ← RelatedPanel.renderUsesExtra s data
+        let usedByEntry ← RelatedPanel.renderUsedByExtra s data
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
         let foldInformalBlock :=
-          match data.kind with
-          | .proof => data.foldProofBlock
-          | .statement _ => false
+          match data.isProof with
+          | true => data.foldProofBlock
+          | false => false
         let headerExtras : HeaderExtras :=
-          match data.kind with
-          | .proof =>
+          match data.isProof with
+          | true =>
             {
               uses? := some <| HeaderExtra.uses usesEntry
             }
-          | .statement _ =>
+          | false =>
             {
               group? := groupEntry.map HeaderExtra.group
               uses? := some <| HeaderExtra.uses usesEntry
@@ -191,7 +188,7 @@ block_extension Block.informal (data : BlockData) where
         return renderInformalBlockModel {
           data
           context := InformalBlockRenderContext.forBlock data
-            (data.displayNumber s)
+            ((data.display s).number?.getD data.label.toString)
             (proofCaption? := some (data.displayTitle s))
             (attrs := attrs)
             (headerExtras := headerExtras)
@@ -261,76 +258,37 @@ private opaque retainElaboratedBlocks
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
     let blockRef ← getRef
-    let resolved ← cfg.resolveForDirective kind isProof
-    let parsedContents ← parseDirectiveSourceMetadata cfg contents
-    let label := resolved.label
-    let accepted ← Environment.push
-      label resolved.envKind resolved.codeHint resolved.parent resolved.priority
-      resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.statementUses
-    let contents ← parsedContents.body.mapM elabBlock
-    if !accepted then
-      return ← ``(Block.concat #[$contents,*])
-    let (previewBlocks, retainedContents) ←
-      liftM <| retainElaboratedBlocks contents
-    Environment.setPreviewBlocks previewBlocks
-    let count ← Environment.pop blockRef
-    liftM <| DependencyAnalysis.attachInferredUseRefs label blockRef { proof := resolved.proofUses }
-    let node? ← Environment.getNode? label
-    let blockKind : Data.InProgressKind ←
-      if isProof then
-        pure .proof
-      else
-        let nodeKind ←
-          match node? with
-            | some node => pure node.kind
-            | none =>
-              logErrorAt resolved.labelSyntax m!"Internal error: missing node '{label}' after environment registration"
-              pure kind
-        pure <| .statement nodeKind
-    let codeData :=
-      match blockKind with
-      | .proof => none
-      | .statement _ =>
-        let externalRefs := node?.map (·.externalRefs) |>.getD #[]
-        BlockCodeData.ofExternalRefs externalRefs
-    let statementPayload? := node?.bind (·.statement)
-    let proofPayload? := node?.bind (·.proof)
-    let statementUses := statementPayload?.map (·.deps) |>.getD #[]
-    let proofUses := proofPayload?.map (·.deps) |>.getD #[]
-    let owner := node?.bind (·.owner)
-    let ownerInfo? ←
-      match owner with
-      | some owner => Environment.getAuthor? owner
-      | none => pure none
+    let label := cfg.label
+    let prepare := do
+      let resolved ← cfg.resolveForDirective kind isProof
+      pure ({
+        label, kind := resolved.envKind, codeHint := resolved.codeHint
+        parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
+        tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
+        deps := resolved.statementUses, proofUses := resolved.proofUses } : Environment.InProgress)
+    let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
+        let parsedContents ← parseDirectiveSourceMetadata cfg contents
+        let contents ← parsedContents.body.mapM elabBlock
+        let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
+        pure ((retainedContents, parsedContents.sourceRef?), previewBlocks)
+      | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=
-      match ← Data.SourceLocation.ofSyntax? resolved.labelSyntax with
+      match ← Data.SourceLocation.ofSyntax? cfg.labelSyntax with
       | some location => Data.SourceLocationResult.found location
       | none =>
         Data.SourceLocationResult.unavailable s!"label source location unavailable for {label}"
-    let data : BlockData := {
-      kind := blockKind
-      codeData
-      sourceRef := parsedContents.sourceRef?
+    let data : BlockOccurrence := {
+      isProof
+      sourceRef
       label
       sourceLocation
       foldProofBlock := verso.blueprint.foldProofBlocks.get opts
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
-      parent := node?.bind (·.parent)
       count
       numberingMode := numberingMode opts
       subNumberingPrefix := subNumberingPrefix opts
       subNumberingCounter := subNumberingCounter opts
-      statementUses
-      proofUses
-      owner
-      ownerDisplayName := ownerInfo?.map (·.displayName)
-      ownerUrl := ownerInfo?.bind (·.url)
-      ownerImageUrl := ownerInfo?.bind (·.imageUrl)
-      tags := node?.map (·.tags) |>.getD #[]
-      effort := node?.bind (·.effort)
-      priority := node?.bind (·.priority)
-      prUrl := node?.bind (·.prUrl)
     }
     ``(Block.other (Block.informal $(quote data)) $retainedContents)
 

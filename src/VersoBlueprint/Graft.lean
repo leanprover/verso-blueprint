@@ -60,13 +60,6 @@ private def manualManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
     nodeAttrs := manualNodeAttrs
   }
 
-private def pushDistinctHtml (bodies : Array Html) (body : Html) : Array Html :=
-  let html := body.asString
-  if bodies.any (fun existing => existing.asString == html) then
-    bodies
-  else
-    bodies.push body
-
 private def renderManualBlocks
     [Monad m]
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
@@ -80,7 +73,7 @@ private def renderLeanCodePreviewBody?
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (state : TraverseState)
     (key : String) :
-    Doc.Html.HtmlT Verso.Genre.Manual m (Option Html) := do
+    Doc.Html.HtmlT Verso.Genre.Manual m (Option (Html × Informal.BlockCodeData)) := do
   match Informal.TraversalIndex.LeanCodePreviews.decodedEntry? state key with
   | none =>
       Verso.reportError s!"Blueprint graft: missing Lean-code preview {key}"
@@ -89,9 +82,10 @@ private def renderLeanCodePreviewBody?
       Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err.message}"
       pure none
   | some (.ok stored) =>
-      match stored.data.source with
-      | .inlineBlocks blocks _sourceLocation => some <$> renderManualBlocks goB blocks
-      | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
+      let body ← match stored.data.source with
+        | .inlineBlocks _label blocks _sourceLocation => renderManualBlocks goB blocks
+        | .externalDecl decl => pure <| Informal.ExternalCode.renderPreviewHtml #[decl]
+      pure <| some (body, Informal.PreviewManifest.leanCodePreviewData state stored.data)
 
 private def renderLeanCodeBodies
     [Monad m]
@@ -99,17 +93,19 @@ private def renderLeanCodeBodies
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (state : TraverseState)
     (entry : Informal.PreviewManifest.Entry) :
-    Doc.Html.HtmlT Verso.Genre.Manual m (Array Html) := do
+    Doc.Html.HtmlT Verso.Genre.Manual m (Array Html × Informal.BlockCodeData) := do
   let mut bodies := #[]
+  let mut facts := {}
   for key in entry.leanCodePreviewKeys do
     match ← renderLeanCodePreviewBody? goB state key with
     | none => pure ()
-    | some body =>
-        if body.asString.trimAscii.isEmpty then
+    | some (body, codeData) =>
+        if body.asString.trimAscii.isEmpty || bodies.any (fun existing => existing.asString == body.asString) then
           pure ()
         else
-          bodies := pushDistinctHtml bodies body
-  pure bodies
+          bodies := bodies.push body
+          facts := facts.append codeData
+  pure (bodies, facts)
 
 private def renderManualGraftNode
     [Monad m]
@@ -130,15 +126,16 @@ private def renderManualGraftNode
           renderNotice "bp_graft_node_notice" "error"
             "Blueprint node has no cached content" node.key
       else
-        let body ← renderManualBlocks goB preview.renderedBody.blocks
-        let codeBodies ←
+        let body ← renderManualBlocks goB preview.blocks
+        let (codeBodies, codeData) ←
           if node.compact then
-            pure #[]
+            pure (#[], {})
           else
             renderLeanCodeBodies goB state entry
         let content : Informal.PreviewManifest.BlockRender.RenderedContent := {
           body
           codeBodies
+          codeData
         }
         pure <| Informal.Graft.renderNodeWithContent
           manualManifestRenderConfig

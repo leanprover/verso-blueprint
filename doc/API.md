@@ -169,14 +169,122 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
-Generator-side data flow is source-to-traversal-to-public JSON. During Manual
-traversal, Blueprint records preview identities, rendered bodies, Lean-code
+Generator-side data flow is capture, traversal, then rendering and public JSON.
+`blueprintMain` and `blueprintMainWithPreviewData` automatically capture an
+`Informal.RenderModel` after the generator's imports. Compiled chapter blocks
+contain `BlockOccurrence` values: a label, statement/proof facet, source location,
+and presentation settings. Inline references contain only their label. They do
+not embed semantic node metadata or need a later document-rewriting pass.
+
+The model initializes `TraversalIndex.Nodes` with `RenderNode` records before
+Verso traversal starts. Traversal completes those same records with canonical
+occurrences and anchors. Page rendering and manifest construction resolve their
+metadata from this registry. `BlockData` is a temporary resolved view, not a
+second serialized node store. `BlockMetadata` supplies the common fields used by
+both rendering nodes and manifest entries, including ownership and PR links.
+
+For wrappers and collections, capture once after all project imports and pass the
+document together with its rendering context:
+
+```lean
+def projectDocument : Informal.BlueprintDocument :=
+  .capture (%doc Project.Blueprint)
+
+def generateBlueprint (document : Informal.BlueprintDocument) (args : List String)
+    (impls : Verso.Genre.Manual.ExtensionImpls) : IO UInt32 :=
+  Informal.PreviewManifest.blueprintMainWithPreviewData document.text args impls
+    (model := document.model)
+```
+
+Direct Verso callers use `document.model.withExtensions impls` for traversal,
+then retain its returned state for HTML, TeX, preview generation, and saved-state
+workflows. `RenderModel.install`
+provides the equivalent operation for callers that own traversal initialization.
+The model contains runtime data and does not require a Lean environment at render
+time. Missing node references produce a traversal diagnostic.
+
+Summaries cover the captured project environment; graphs select nodes with
+rendered targets or preview candidates. Preview titles use document numbers
+only for traversed nodes; source-only entries retain their labels.
+`Nodes.allEntries` includes every
+captured node, while `Nodes.entries` includes only traversed occurrences for
+numbering and relation indexes. A multi-project generator captures each project
+in its own module and collects the resulting `BlueprintDocument` values.
+`Nodes.capturedData?` resolves captured metadata even without an occurrence;
+`Nodes.renderedData?` requires a traversed occurrence and target. `Nodes.display?`
+and `BlockData.display` produce a transient `NodeDisplay` with an optional document
+number. Use its `title`/`proofTitle` for text and its `number?` for structured
+headings; captured elaboration counts are not display numbers. `BlockData.kind`
+is always the mathematical `NodeKind`, while `isProof` records the occurrence
+facet. Citation summaries likewise keep a label and facet and resolve their
+kind and numbering through the registry.
+Synthetic renderers explicitly construct a model with a `nodes` array, using
+`RenderNode.ofBlockData` when convenient; an empty model no longer means “trust metadata embedded in the
+chapter.” Every fixture in the repository catalog passes its selected model.
+
+`GraphBlockData.graphModel := none` selects the captured project graph;
+`some graph` selects a custom graph, including an explicitly empty one.
+`SummaryBlockData` similarly selects a project or supplied summary while keeping
+`showDebugDiagnostics` local to the summary occurrence.
+Both overview resolvers return `Except String`: a missing or malformed captured
+model is an error. An explicitly supplied empty model remains valid.
+
+Rebuild downstream Lean modules and generated output when adopting this API.
+
+Use `PreviewSource.traversalPreviewCandidateKey?` for references that allow
+statement, proof, or external-markup fallback. `traversalLookupKey?` selects only
+statement/proof bodies without decoding their document blocks; `traversalEntry?`
+returns that selected entry when its content is needed. Read `PreviewCache.Entry.blocks`
+directly. Metadata-only consumers can still decode `Metadata` or `Occurrence`
+without loading the body.
+
+`TraversalPreviews` selects one occurrence per `(label, facet)`, preferring a
+nonempty body over a placeholder. Its entry owns the body, canonical target,
+Lean source location and original-source reference. Node links and public
+cross-references use the selected body target; document numbering remains stable
+across repeated occurrences. Manifest `sources` come from each selected facet.
+External declaration rows are keyed by `(statement occurrence, canonical declaration)`;
+canonical declaration links resolve through the selected statement's row. Repeated
+statements therefore have distinct DOM IDs even on the same page.
+
+Literate code is represented by `InlineCodeBlocks`, an ordered collection of
+`InlineCodeData` records. Each record has its own `blockId`, derived from the source
+module and byte position. `TraversalIndex.InlineCode.blocks` selects all blocks for
+a label; `forDecl?` finds the block owning a declaration. These are document-local
+panels. `BlockCodeData` holds project facts in `literateDeclarations` and
+`externalDecls`; `RenderNode` captures both, independently of which chapters are
+included. `LiterateDeclarations` shares the declaration record used by inline
+panels, without carrying a block identity or folding options. Code-summary
+renderers receive traversed `inlineBlocks` separately for preview lookup keys.
+`leanCodePreviewKeys` lists available code previews only, shared by both facets.
+Each code-preview entry supplies its own declaration facts in `codeData`.
+Manifest-backed composite renderers pair the included `RenderedContent.codeBodies`
+with their `codeData`, so panel status follows the included bodies while heading
+status follows the project entry.
+Treat these keys as opaque; regenerate artifacts after changing source locations.
+The manifest schema marker is now 7: regenerate old artifacts for the separate
+node-kind/facet fields, project declaration facts, and occurrence-owned external
+row anchors.
+
+Custom registration calls to `Environment.contribute` return `Option Node`:
+`some` is the accepted node; `none` means diagnostics were logged and the
+registration was rejected. Combine dependent changes into one `NodeContribution`;
+discard the result only when no following operation depends on acceptance.
+Directive expanders use `Environment.withDirective` for scoped error recovery
+and atomic Blueprint-state updates. The unscoped push/pop API and attachment helpers that discarded rejection are
+removed. Standalone code and markup expanders must emit no semantic occurrence
+when registration fails. Required source identities must be checked before
+committing a contribution.
+`Node.externalRefs` and `Node.literateCodes` store normalized associations;
+`NodeContribution.leanCode` still accepts external groups or literate blocks.
+
+During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
 state and traversal domains. Before HTML emission, the standard pipeline crosses
 the explicit `PreparedRendererState` boundary. Renderer preparation applies the
 Blueprint HTML asset patches and owns the `PreparedPreviewState` that installs
 the relation indexes consumed by manifest construction. Verso's HTML emitters
-receive the projected traversal state, while Blueprint post-render
+receive the completed traversal state, while Blueprint post-render
 `BlueprintExtraStep`s receive the prepared wrapper and therefore cannot assume
 that a raw state was patched by an earlier caller. Direct preview-data callers
 cross the narrower boundary with `PreparedPreviewState.prepare`. Custom steps
@@ -199,45 +307,6 @@ Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
 of zero or more refs pointing back to those documents. An abbreviated excerpt
 looks like this:
-
-Clients should read `entry.sources`; the manifest does not emit a singular
-`entry.source` field. Most block and external-markup entries have at most one
-source ref, while Lean-code preview entries can aggregate refs from multiple
-sourced Blueprint nodes that share the same rendered Lean preview.
-
-Generated browser APIs expose the same split. Data-only clients should use
-`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
-`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
-`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
-should use `api/preview.mjs`
-when they also need `resolvePreview`, `renderNode`, canonical node loading, or
-hydration. Both entrypoints reuse the cached manifest load; resolving source
-metadata does not fetch a second JSON file.
-
-Clients can call `resolveSourceMetadata(source)` from either entrypoint when
-they want the source refs attached to a preview joined with declared
-source-document metadata. The `source` argument can be a preview key, a manifest
-entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
-`renderNode`:
-
-```javascript
-const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
-const sourceMetadata = await api.resolveSourceMetadata(key);
-if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
-```
-
-`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
-`createPreviewData()` instance method and as a module-level named export. Use
-the instance method when a client supplies a custom `fetchJson`; the module-level
-export is convenient for ordinary generated-site scripts that use the default
-loader.
-
-Generated Blueprint node shells render a compact source chip and lightweight
-source preview from this same manifest data. The API itself returns structured
-metadata only: richer PDF page viewers and crop overlays remain Blueprint/Verso
-interface work rather than browser API policy. Returned file paths and
-PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
-those assets or decide how a richer source review interface should look.
 
 ```json
 {
@@ -286,12 +355,51 @@ those assets or decide how a richer source review interface should look.
 }
 ```
 
+Clients should read `entry.sources`; the manifest does not emit a singular
+`entry.source` field. Most block and external-markup entries have at most one
+source ref, while Lean-code preview entries can aggregate refs from multiple
+sourced Blueprint nodes that share the same rendered Lean preview.
+
+Generated browser APIs expose the same split. Data-only clients should use
+`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
+`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
+`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
+should use `api/preview.mjs`
+when they also need `resolvePreview`, `renderNode`, canonical node loading, or
+hydration. Both entrypoints reuse the cached manifest load; resolving source
+metadata does not fetch a second JSON file.
+
+Clients can call `resolveSourceMetadata(source)` from either entrypoint when
+they want the source refs attached to a preview joined with declared
+source-document metadata. The `source` argument can be a preview key, a manifest
+entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
+`renderNode`:
+
+```javascript
+const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
+const sourceMetadata = await api.resolveSourceMetadata(key);
+if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
+```
+
+`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
+`createPreviewData()` instance method and as a module-level named export. Use
+the instance method when a client supplies a custom `fetchJson`; the module-level
+export is convenient for ordinary generated-site scripts that use the default
+loader.
+
+Page blocks render source chips from their occurrence provenance; browser-rendered
+previews obtain the selected facet's provenance from the manifest. The API returns
+structured metadata only: richer PDF page viewers and crop overlays remain Blueprint/Verso
+interface work rather than browser API policy. Returned file paths and
+PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
+those assets or decide how a richer source review interface should look.
+
 When a sourced Blueprint node has associated Lean code previews, the
 corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every
 owning ref in `sources`. External declaration previews are keyed by canonical
-Lean declaration; inline-code previews are keyed by the inline Blueprint code
-label, so all declarations from one inline block share one rendered preview
-entry. Declaration-specific inline identity is the owning inline code label plus
+Lean declaration; inline-code previews are keyed by the source code-block
+identity, so all declarations from one inline block share one rendered preview
+entry. Declaration-specific inline identity is the source code-block identity plus
 the declaration's position in the owning block entry's ordered inline code
 metadata (`definedDefs` followed by `definedTheorems`). This lets audit clients
 follow the source-document, Blueprint-node, and Lean-code chain without
@@ -481,9 +589,11 @@ def allRenderedGraphEntries
   Informal.GraphApi.cachedEntries state
 ```
 
-Graph traversal caches store only canonical `GraphModel` plus `GraphOptions`.
-They do not cache edges, group children, or render variants, so topology changes
-cannot reuse a stale rendered projection and the cache stays smaller.
+Graph traversal caches store model selection and `GraphOptions`.
+`CachedGraphData.model := none` selects the shared captured project graph;
+`some model` supplies canonical topology for a custom graph. Project graph
+occurrences do not copy topology. No occurrence caches derived edges, group
+children, or render variants.
 `cachedEntries` preserves malformed traversal-cache records as `DecodeError`
 values and successful records as canonical-name/data pairs, so callers can
 report corruption instead of silently omitting graphs. The generated-manifest
@@ -1068,7 +1178,7 @@ Use `resolveDeclaration` when the client starts from a Lean declaration name and
 needs a declaration-keyed preview entry. It resolves external/declaration-keyed
 manifest entries and returns both the generated Blueprint occurrence `href` and
 the manifest `sourceLocation` result. Inline-code previews are keyed by the
-inline Blueprint code label; clients that start from an inline block should read
+source code-block identity; clients that start from an inline block should read
 that block entry's `leanCodePreviewKeys` or call `resolvePreview` with the
 explicit preview key. The `href` points to the generated Blueprint preview
 occurrence; the `sourceLocation` points to the Lean source definition:
@@ -1221,7 +1331,7 @@ signature and type reference.
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
 | `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
-| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their inline Blueprint code label and should be loaded through the explicit key in `leanCodePreviewKeys`. |
+| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their source code-block identity and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |

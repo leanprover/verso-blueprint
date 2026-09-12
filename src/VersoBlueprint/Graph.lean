@@ -347,9 +347,10 @@ structure GraphData where
   variants : Array GraphRenderVariant := #[]
 deriving Repr, ToJson
 
-/-- Traversal-time graph cache payload, before href/title finalization. -/
+/-- Graph occurrence selection and options; project topology is stored once in RenderOverviews. -/
 structure CachedGraphData where
-  model : GraphModel
+  /-- `none` selects the captured project graph; `some` supplies a custom graph. -/
+  model : Option GraphModel := none
   options : GraphOptions
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
@@ -638,32 +639,23 @@ def codeHealthOfExternalDecls (kind : Data.NodeKind) (external : ExternalCodeSta
       let health := health.bump kind status
       { health with presentDecls := health.presentDecls + 1 }
 
-private def codeHealthOfOneCodeRef (kind : Data.NodeKind) (external : ExternalCodeStatus)
-    (codeRef : Data.CodeRef) : CodeHealth :=
-  match codeRef with
-  | .external decls => codeHealthOfExternalDecls kind external decls
-  | .literate code =>
-    let statuses :=
-      (code.definedDefs.map (·.provedStatus)) ++ (code.definedTheorems.map (·.provedStatus))
-    codeHealthOfInlineDecls kind statuses
-
-def codeHealthOfLeanCode (kind : Data.NodeKind) (external : ExternalCodeStatus)
-    (leanCode : Array Data.CodeRef) : CodeHealth :=
-  leanCode.foldl (init := {}) fun health codeRef =>
-    health.merge (codeHealthOfOneCodeRef kind external codeRef)
-
 def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatus)
     (source? : Option Informal.BlockCodeData) : CodeHealth :=
-  match source? with
-  | none => {}
-  | some (.external decls) => codeHealthOfExternalDecls kind external decls
-  | some (.inline codeData) =>
-    let statuses :=
-      (codeData.definedDefs.map (·.provedStatus)) ++ (codeData.definedTheorems.map (·.provedStatus))
-    codeHealthOfInlineDecls kind statuses
+  let source := source?.getD {}
+  let externalDecls := source.summaryExternalDecls
+  let externalHealth := if externalDecls.isEmpty then {} else
+    codeHealthOfExternalDecls kind external externalDecls
+  if source.literateDeclarations.isEmpty then externalHealth else
+    externalHealth.merge (codeHealthOfInlineDecls kind
+      (source.literateDeclarations.declarations.map (·.provedStatus)))
 
 def nodeCodeHealth (external : ExternalCodeStatus) (node : Data.Node) : CodeHealth :=
-  codeHealthOfLeanCode node.kind external node.leanCode
+  let refs := node.summaryExternalRefs
+  let externalHealth := if refs.isEmpty then {} else
+    codeHealthOfExternalDecls node.kind external refs
+  node.literateCodes.foldl (init := externalHealth) fun health code =>
+    let statuses := code.definedDefs.map (·.provedStatus) ++ code.definedTheorems.map (·.provedStatus)
+    health.merge (codeHealthOfInlineDecls node.kind statuses)
 
 def CodeHealth.hasMissingExternalDecls (health : CodeHealth) : Bool :=
   health.missingDecls > 0
@@ -695,7 +687,7 @@ def CodeHealth.localFormalized (health : CodeHealth) (kind : Data.NodeKind) : Bo
     false
 
 def nodeExternalDecls (node : Data.Node) : Array Data.ExternalRef :=
-  node.externalRefs
+  node.summaryExternalRefs
 
 def nodeHasAssociatedCode (node : Data.Node) : Bool :=
   node.hasAssociatedCode

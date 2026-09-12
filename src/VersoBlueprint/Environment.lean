@@ -15,12 +15,10 @@ open Lean
 open Informal.Data
 
 /--
-Elaboration-time builder for a node that is currently open on the directive
-stack.
+Elaboration-time builder for the single currently open directive.
 
-This intentionally stays separate from `Data.Node`: it carries directive-stack
-metadata and typed preview blocks before the final persisted semantic node can
-be assembled.
+This stays separate from `Data.Node`: it collects authored metadata and uses
+before the final checked contribution is assembled.
 -/
 structure InProgress where
   label : Label
@@ -33,7 +31,7 @@ structure InProgress where
   effort : Option String := none
   prUrl : Option String := none
   deps : Array UseRef := #[]
-  previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+  proofUses : Array UseRef := #[]
 deriving Inhabited, Repr
 
 inductive ImportedConflictKind where
@@ -45,7 +43,17 @@ deriving Inhabited, Repr, DecidableEq
 structure ImportedConflict where
   kind : ImportedConflictKind
   label : Name
+  reasons : Array String := #[]
+  modules : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq
+
+/-- A checked node and the module provenance of its accepted contributions. -/
+structure RegisteredNode extends Node where
+  origin : Name
+  modules : Array Name := #[]
+deriving Inhabited, Repr
+
+instance : Coe RegisteredNode Node := ⟨RegisteredNode.toNode⟩
 
 /--
 Persisted semantic state collected during elaboration.
@@ -56,8 +64,11 @@ facts out of this environment extension unless they become stable semantic
 data.
 -/
 structure State where
-  data : Data := Data.empty
-  localData : NameMap Node := {}
+  data : NameMap RegisteredNode := {}
+  /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
+  nextCount : Nat := 1
+  /-- Only registrations made in this module, in registration order per label. -/
+  localContributions : NameMap (Array NodeContribution) := {}
   groups : NameMap String := {}
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
@@ -65,7 +76,8 @@ structure State where
   leanNameLabels : NameMap (Array Label) := {}
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
-  stack : List InProgress := []
+  /-- At most one directive can be open; nested declarations are rejected. -/
+  activeDirective : Option InProgress := none
 deriving Inhabited, Repr
 
 private def ImportedConflictKind.rank : ImportedConflictKind → Nat
@@ -74,15 +86,30 @@ private def ImportedConflictKind.rank : ImportedConflictKind → Nat
   | .author => 2
 
 def ImportedConflict.message (conflict : ImportedConflict) : String :=
-  match conflict.kind with
-  | .node => s!"Duplicate imported blueprint node label '{conflict.label}'"
-  | .group => s!"Duplicate imported blueprint group label '{conflict.label}'"
-  | .author => s!"Duplicate imported blueprint author id '{conflict.label}'"
+  let heading := match conflict.kind with
+    | .node => s!"Conflicting imported blueprint contributions for label '{conflict.label}'"
+    | .group => s!"Duplicate imported blueprint group label '{conflict.label}'"
+    | .author => s!"Duplicate imported blueprint author id '{conflict.label}'"
+  let reasons := conflict.reasons.foldl (fun message reason => message ++ "\n" ++ reason) heading
+  if conflict.modules.isEmpty then reasons else
+    reasons ++ "\nContributing modules: " ++ String.intercalate ", " (conflict.modules.toList.map toString)
+
+private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
 
 private def pushImportedConflict (conflicts : Array ImportedConflict)
-    (kind : ImportedConflictKind) (label : Name) : Array ImportedConflict :=
-  let conflict : ImportedConflict := { kind, label }
-  if conflicts.contains conflict then conflicts else conflicts.push conflict
+    (kind : ImportedConflictKind) (label : Name)
+    (reasons : Array String := #[]) (modules : Array Name := #[]) : Array ImportedConflict :=
+  let sortModules (modules : Array Name) := modules.qsort (fun a b => a.toString < b.toString)
+  if conflicts.any (fun conflict => conflict.kind == kind && conflict.label == label) then
+    conflicts.map fun conflict =>
+      if conflict.kind == kind && conflict.label == label then
+        { conflict with
+          reasons := reasons.foldl pushUnique conflict.reasons
+          modules := sortModules (modules.foldl pushUnique conflict.modules) }
+      else conflict
+  else
+    conflicts.push { kind, label, reasons, modules := sortModules modules }
 
 private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array ImportedConflict :=
   conflicts.qsort fun a b =>
@@ -91,7 +118,7 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
         a.label.toString < b.label.toString)
 
 inductive Entry where
-  | node (label : Name) (node : Node)
+  | node (label origin contributor : Name) (contributions : Array NodeContribution)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
@@ -99,106 +126,84 @@ deriving Inhabited, Repr
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
 
-private def nodeLeanDecls (node : Node) : Array Name :=
-  node.leanDecls
-
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
   let decl := decl.eraseMacroScopes
   let labels := leanNameLabels.getD decl #[]
   leanNameLabels.insert decl (pushLabelUnique labels label)
 
-private def addNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
+private def addContributionLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (contributions : Array NodeContribution) :
     NameMap (Array Label) :=
-  (nodeLeanDecls node).foldl (init := leanNameLabels) fun acc decl =>
-    addLeanDeclLabel acc decl label
+  contributions.foldl (init := leanNameLabels) fun acc contribution =>
+    contribution.leanCode.foldl (init := acc) fun acc code =>
+      code.leanDecls.foldl (init := acc) fun acc decl => addLeanDeclLabel acc decl label
 
-private def addRegisteredNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (data : Data) (label : Name) :
-    NameMap (Array Label) :=
-  match data.get? label with
-  | some node => addNodeLeanDeclLabels leanNameLabels label node
-  | none => leanNameLabels
+/-- Commit all node stores together only after the shared reducer accepts the registration. -/
+private def State.addNode (state : State) (label origin contributor : Name)
+    (contributions : Array NodeContribution) (isLocal : Bool) : Except (Array String) State := do
+  let previous := state.data.get? label
+  if let some previous := previous then
+    if previous.origin != origin then
+      throw #[s!"Label {label} was independently introduced in '{previous.origin}' and '{origin}'"]
+  let node ← (previous.map RegisteredNode.toNode |>.getD {}).applyContributions label contributions
+  let registered : RegisteredNode := {
+    toNode := node
+    origin
+    modules := pushUnique (previous.map (·.modules) |>.getD #[]) contributor }
+  return { state with
+    data := state.data.insert label registered
+    nextCount := max state.nextCount (node.count + 1)
+    leanNameLabels := addContributionLeanDeclLabels state.leanNameLabels label contributions
+    localContributions := if isLocal then
+      state.localContributions.insert label
+        (state.localContributions.getD label #[] ++ contributions)
+      else state.localContributions }
 
-private def removeLeanDeclLabel
-    (leanNameLabels : NameMap (Array Label)) (label : Name) : NameMap (Array Label) :=
-  leanNameLabels.foldl (init := ({} : NameMap (Array Label))) fun acc decl labels =>
-    let labels := labels.filter (· != label)
-    if labels.isEmpty then
-      acc
+private def State.addEntry (state : State) (entry : Entry) (isLocal : Bool) : State :=
+  match entry with
+  | .node label origin contributor contributions =>
+    match state.addNode label origin contributor contributions isLocal with
+    | .ok state => state
+    | .error reasons =>
+      { state with
+        importedConflicts := pushImportedConflict state.importedConflicts .node label
+          reasons (pushUnique ((state.data.get? label).map (·.modules) |>.getD #[]) contributor) }
+  | .group label header =>
+    if state.groups.contains label then
+      { state with importedConflicts := pushImportedConflict state.importedConflicts .group label }
     else
-      acc.insert decl labels
-
-private def reindexRegisteredNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (data : Data) (label : Name) :
-    NameMap (Array Label) :=
-  addRegisteredNodeLeanDeclLabels (removeLeanDeclLabel leanNameLabels label) data label
-
-private def State.commitDataForLabel (state : State) (label : Name) (data : Data) : State :=
-  let localData :=
-    match data.get? label with
-    | some node => state.localData.insert label node
-    | none => state.localData
-  let leanNameLabels := reindexRegisteredNodeLeanDeclLabels state.leanNameLabels data label
-  { state with data, localData, leanNameLabels }
+      { state with
+        groups := state.groups.insert label header
+        localGroups := if isLocal then state.localGroups.insert label header else state.localGroups }
+  | .author label info =>
+    if state.authors.contains label then
+      { state with importedConflicts := pushImportedConflict state.importedConflicts .author label }
+    else
+      { state with
+        authors := state.authors.insert label info
+        localAuthors := if isLocal then state.localAuthors.insert label info else state.localAuthors }
 
 initialize informalExt : PersistentEnvExtension Entry Entry State ←
   registerPersistentEnvExtension {
     mkInitial := pure {}
-    addEntryFn state := fun
-      | .node label node =>
-        { state with
-          data := state.data.insert label node
-          localData := state.localData.insert label node
-          leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
-        }
-      | .group label header =>
-        { state with
-          groups := state.groups.insert label header
-          localGroups := state.localGroups.insert label header
-        }
-      | .author label info =>
-        { state with
-          authors := state.authors.insert label info
-          localAuthors := state.localAuthors.insert label info
-        }
+    addEntryFn state entry := state.addEntry entry true
     addImportedFn entries := do
-      let (data, groups, authors, leanNameLabels, importedConflicts) := entries.foldl
-          (init := (
-            ({} : NameMap Node),
-            ({} : NameMap String),
-            ({} : NameMap AuthorInfo),
-            ({} : NameMap (Array Label)),
-            (#[] : Array ImportedConflict)
-          )) fun acc entry =>
-        entry.foldl (init := acc) fun (dataAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
-          match item with
-          | .node label node =>
-            if dataAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .node label)
-            else
-              let leanNameAcc := addNodeLeanDeclLabels leanNameAcc label node
-              (dataAcc.insert label node, groupAcc, authorAcc, leanNameAcc, conflictsAcc)
-          | .group label header =>
-            if groupAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .group label)
-            else
-              (dataAcc, groupAcc.insert label header, authorAcc, leanNameAcc, conflictsAcc)
-          | .author label info =>
-            if authorAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .author label)
-            else
-              (dataAcc, groupAcc, authorAcc.insert label info, leanNameAcc, conflictsAcc)
-      pure { data, groups, authors, leanNameLabels, importedConflicts := sortImportedConflicts importedConflicts }
-    -- Prefer typed preview blocks and strip redundant term syntax before export.
+      let state := entries.foldl (init := ({} : State)) fun state entries =>
+        entries.foldl (init := state) fun state entry => state.addEntry entry false
+      pure { state with importedConflicts := sortImportedConflicts state.importedConflicts }
+    -- Export only local contributions, retaining the original label's module.
     exportEntriesFnEx env := fun state =>
-      let nodeEntries := state.localData.toArray.map fun (name, node) =>
-        let statement := node.statement.map fun s =>
-          if s.previewBlocks.isEmpty then s else { s with elabStx := #[] }
-        let proof := node.proof.map fun p =>
-          if p.previewBlocks.isEmpty then p else { p with elabStx := #[] }
-        Entry.node name { node with statement, proof }
+      let compact (payload : InformalBody) :=
+        if payload.previewBlocks.isEmpty then payload else { payload with elabStx := #[] }
+      let nodeEntries := state.localContributions.toArray.map fun (name, contributions) =>
+        let contributions := contributions.map fun contribution =>
+          { contribution with
+            statementBody := contribution.statementBody.map compact
+            proofBody := contribution.proofBody.map compact }
+        match state.data.get? name with
+        | some node => Entry.node name node.origin env.mainModule contributions
+        | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
@@ -218,11 +223,6 @@ def modifyM (f : State -> m State) : m Unit := do
   let st ← f st
   modifyEnv (informalExt.setState · st)
 
-def modifyDataForLabel (label : Label) (f : Data -> m Data) : m Unit := do
-  modifyM fun state => do
-    let data ← f state.data
-    return state.commitDataForLabel label data
-
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
 
@@ -234,9 +234,23 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
+/-- Apply one complete registration, returning its accepted node or diagnosed failure. -/
+def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
+  reportImportedConflicts
+  let mainModule ← getMainModule
+  let state := informalExt.getState (← getEnv)
+  let origin := (state.data.get? label).map (·.origin) |>.getD mainModule
+  match state.addNode label origin mainModule #[contribution] true with
+  | .ok state =>
+    modifyEnv (informalExt.setState · state)
+    return (state.data.get? label).map (·.toNode)
+  | .error reasons =>
+    for reason in reasons do logError reason
+    return none
+
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
-  let { data, stack, .. } := informalExt.getState (← getEnv)
-  match (kind, data.get? label, stack.isEmpty) with
+  let { data, activeDirective, .. } := informalExt.getState (← getEnv)
+  match (kind, data.get? label, activeDirective.isNone) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
     let statementCanBeFilled :=
@@ -268,103 +282,83 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     logError m!"Cannot declare nested definitions"
     return false
 
--- stack operators, to associate {uses} role to the currently opened label
-def push (label : Label) (kind : Data.InProgressKind)
-    (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
-    (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) (useRefs : Array UseRef := #[]) : m Bool := do
+private def InProgress.toContribution (current : InProgress) (count : Nat) (ref : Syntax)
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : NodeContribution := {
+  kind := match current.kind with | .statement kind => some kind | .proof => none
+  count := match current.kind with | .statement _ => count | .proof => 0
+  statementBody := match current.kind with
+    | .statement _ => some { stx := ref, previewBlocks := blocks }
+    | .proof => none
+  proofBody := match current.kind with
+    | .statement _ => none
+    | .proof => some { stx := ref, previewBlocks := blocks }
+  statementUses := match current.kind with | .statement _ => current.deps | .proof => #[]
+  proofUses := match current.kind with
+    | .statement _ => current.proofUses
+    | .proof => current.deps ++ current.proofUses
+  leanCode := current.codeHint.toArray
+  parent := current.parent
+  priority := current.priority
+  owner := current.owner
+  tags := current.tags
+  effort := current.effort
+  prUrl := current.prUrl
+}
+
+private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
+  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
+  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+
+/--
+Elaborate and register one directive as a scoped Blueprint-state transaction.
+Body registrations are visible during elaboration, but rejection, logged errors,
+or exceptions restore all Blueprint stores. Other Lean environment changes and
+messages are retained. Every exit restores the enclosing directive scope.
+-/
+def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (prepare : m InProgress) (ref : Syntax)
+    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
   reportImportedConflicts
-  let ok ← checkLabelAndNesting label kind
-  if !ok then
-    return false
-  modify fun data =>
-    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl, deps := useRefs }
-    { data with stack := pdata :: data.stack }
-  return true
-
-def getCount : m Nat := do
-  return (informalExt.getState (← getEnv)).data.size
-
-/-- When unwinding a nested declaration, discard only the nested frame and keep `data` unchanged. -/
-def State.popNested? (state : State) : Option State :=
-  match state.stack with
-  | _ :: stack =>
-    if stack.isEmpty then
-      none
+  let before := informalExt.getState (← getEnv)
+  let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
+  let result ← try
+    let frame ← prepare
+    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label frame.kind) then
+      pure none
     else
-      some { state with stack }
-  | [] => none
-
-def pop (ref : Syntax) : m Nat := do
-  let label? := (informalExt.getState (← getEnv)).stack.head?.map (·.label)
-  modifyM fun state => do
-    if let some state := state.popNested? then
-      return state
-    else
-      match state.stack with
-      | [] =>
-        logError m!"Internal Error: closing non-opened directive"
-        return state
-      | cur :: stack =>
-        let payload : InformalData := {
-          stx := ref
-          deps := cur.deps
-          previewBlocks := cur.previewBlocks
-        }
-        let data ← state.data.register
-          cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
-        return { state.commitDataForLabel cur.label data with stack }
-  let state := informalExt.getState (← getEnv)
-  match label? with
-  | some label =>
-    return (state.data.get? label).map (·.count) |>.getD state.data.size
-  | none =>
-    return state.data.size
-
-def peek : m (Option InProgress) := do
-  return (informalExt.getState (← getEnv)).stack.head?
-
-def stack : m (List InProgress) := do
-  return (informalExt.getState (← getEnv)).stack
+      modify fun state => { state with activeDirective := some frame }
+      let (value, blocks) ← body
+      if ← hasErrorsSince messageCount then
+        pure none
+      else
+        let state := informalExt.getState (← getEnv)
+        match state.activeDirective with
+        | none =>
+          logError "Internal error: Blueprint directive scope was closed during elaboration"
+          pure none
+        | some current =>
+          let node? ← contribute frame.label (current.toContribution state.nextCount ref blocks)
+          pure <| node?.map fun node => (value, node.count)
+  catch exception =>
+    modify fun _ => before
+    throw exception
+  match result with
+  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
+  | none => modify fun _ => before
+  return result
 
 def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] =>
-    logErrorAt stx m!"uses declaration outside an informal enviroment"
-    pure ()
-  | cur :: rest =>
-    let cur := {
-      cur with
-        deps := cur.deps.push useRef
-    }
-    let stack := cur :: rest
-    modify fun state => { state with stack }
+  match (informalExt.getState (← getEnv)).activeDirective with
+  | none => logErrorAt stx m!"uses declaration outside an informal environment"
+  | some current =>
+    modify fun state =>
+      { state with activeDirective := some { current with deps := current.deps.push useRef } }
 
-def addDep (stx : Syntax) (dep : Name) : m Unit := do
+def addDep (stx : Syntax) (dep : Name) : m Unit :=
   addUse stx { label := dep }
 
-def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m Unit := do
-  match (informalExt.getState (← getEnv)).stack with
-  | [] => pure ()
-  | cur :: rest =>
-    let cur := { cur with previewBlocks := blocks }
-    modify fun state => { state with stack := cur :: rest }
-
-def registerCode (label : Label) (code : Syntax)
-    (definedDefs : Array LiterateDef := #[]) (definedTheorems : Array LiterateThm := #[]) : m Unit := do
-  modifyDataForLabel label fun data =>
-    data.registerCode label code definedDefs definedTheorems
-
-def registerRustCode (label : Label) (code : RustInlineCode) : m Unit := do
-  modifyDataForLabel label fun data =>
-    data.registerRustCode label code
-
-def registerExternalMarkup (label : Label) (markup : ExternalMarkup) : m Unit := do
-  modifyDataForLabel label fun data =>
-    data.registerExternalMarkup label markup
-
 def getNode? (label : Label) : m (Option Node) := do
-  return (informalExt.getState (← getEnv)).data.get? label
+  return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)
 
 def labelsForLeanDecl (decl : Name) : m (Array Label) := do
   return (informalExt.getState (← getEnv)).leanNameLabels.getD decl.eraseMacroScopes #[]

@@ -38,7 +38,7 @@ private def previewEntry?
 
 private def entryExternalDeclNames (entry : Informal.PreviewManifest.Entry) : Array Name :=
   match entry.codeData with
-  | some (.external refs) => refs.map (·.canonical)
+  | some code => code.externalDecls.map (·.canonical)
   | _ => #[]
 
 private def entryHasExternalMarkup
@@ -546,6 +546,9 @@ external markup.
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture externalMarkupShowcaseDoc.toPart
+
 /-- info: #[] -/
 #guard_msgs in
 #eval
@@ -835,6 +838,11 @@ external markup.
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
       | return false
+    -- Captured source-only nodes retain their semantics without inventing a
+    -- document number or structured numbered heading.
+    unless witnessEntry.title == "external.witness" && witnessEntry.displayCaption.isNone &&
+        witnessEntry.displayLabel.isNone && witnessEntry.kind.isSome do
+      throw <| IO.userError s!"Source-only preview invented a numbered heading: {toJson witnessEntry}"
     let some witnessHtml := witnessFiles.htmlCache.findHtml? witnessKey
       | return false
     let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
@@ -879,11 +887,11 @@ external markup.
       Informal.PreviewManifest.previewMetadataLosses bodylessState bodylessWithCollidingLeanEntry
     let bodylessExternalRefs : Array Name :=
       match bodylessEntry.codeData with
-      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | some code => code.externalDecls.map (·.canonical)
       | _ => #[]
     let punctuationExternalRefs : Array Name :=
       match punctuationEntry.codeData with
-      | some (.external refs) => refs.map (fun ref => ref.canonical)
+      | some code => code.externalDecls.map (·.canonical)
       | _ => #[]
     let brokenBodylessManifest : Informal.PreviewManifest.File := {
       bodylessFiles.manifest with

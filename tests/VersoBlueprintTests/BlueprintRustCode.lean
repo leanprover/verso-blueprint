@@ -57,6 +57,9 @@ pub const RETRIES: u32 = 3;
 ```
 ::::::: 
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def rustCatalogDocBlueprint : Informal.BlueprintDocument := .capture rustCatalogDoc.toPart
+
 #docs (Genre.Manual) rustInvalidDoc "Rust Invalid Doc" :=
 :::::::
 :::definition "rust_invalid"

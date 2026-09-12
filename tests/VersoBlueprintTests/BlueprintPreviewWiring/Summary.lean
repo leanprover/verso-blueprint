@@ -81,8 +81,10 @@ private def sourceLocationOkWithPath
 #eval
   show IO Bool from do
     let files ← buildManualPreviewDataFiles manualImpls usedByPreviewDoc
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
-      (Lean.Name.mkSimple "def:used.target")
+    let some owner := files.manifest.findEntry?
+        (Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target"))
+      | return false
+    let some codeKey := owner.leanCodePreviewKeys[0]? | return false
     let some codeEntry := files.manifest.findEntry? codeKey
       | return false
     pure <| sourceLocationOkWithPath codeEntry.sourceLocation "Shared.lean"

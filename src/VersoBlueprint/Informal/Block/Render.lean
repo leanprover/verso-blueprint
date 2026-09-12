@@ -92,7 +92,7 @@ def ofInProgressKind : Data.InProgressKind → BlockKindRenderStyle
 end BlockKindRenderStyle
 
 private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
-  BlockKindRenderStyle.ofInProgressKind data.kind
+  BlockKindRenderStyle.ofInProgressKind (if data.isProof then .proof else .statement data.kind)
 
 /-- Render the caption/label row shared by informal block shells. -/
 def renderBlockTitleRow (style : BlockKindRenderStyle)
@@ -635,9 +635,9 @@ def InformalBlockRenderContext.forBlock
     (folded : Bool := false) :
     InformalBlockRenderContext :=
   let captionText? :=
-    match data.kind with
-    | .proof => proofCaption?
-    | .statement _ => statementCaption?
+    match data.isProof with
+    | true => proofCaption?
+    | false => statementCaption?
   let sourceRefs :=
     if sourceRefs.isEmpty then
       match data.sourceRef with
@@ -749,9 +749,9 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   let style := blockKindRenderStyle data
   let labelText := s!"{data.label}"
   let metadataPanel : Verso.Output.Html :=
-    match data.kind with
-    | .proof => .empty
-    | .statement _ => renderStatementMetadataPanel data
+    match data.isProof with
+    | true => .empty
+    | false => renderStatementMetadataPanel data
   let headerExtras := ctx.headerExtras.withSourceRefs ctx.sourceRefs
   renderInformalBlockShell
     {
