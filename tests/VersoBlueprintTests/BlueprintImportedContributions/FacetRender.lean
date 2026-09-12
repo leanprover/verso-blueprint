@@ -181,9 +181,10 @@ def facetBlueprint : BlueprintDocument := .capture
       throw <| IO.userError "Known relation targets disagree with checked node references"
     let relationState := TraversalIndex.Nodes.saveNode state {
       label := `facet_consumer, statementUses := #[{ label := `filled_facet }, { label := `panel_other }] }
-    let .ok consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
+    let .ok resolved := RenderingResolution.facet relationState (PreviewCache.statementKey `facet_consumer)
       (PreviewCache.Entry.ofBlocks `facet_consumer .statement #[])
       | throw <| IO.userError "Could not resolve manifest facet"
+    let consumer := PreviewManifest.blockEntryOfFacet relationState resolved
     let some relation := consumer.uses[0]?
       | throw <| IO.userError "Missing manifest relation to selected facet"
     unless relation.title == reference.title && relation.href == reference.href &&

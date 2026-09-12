@@ -55,28 +55,52 @@ def codePreviewKeys (state : TraverseState) (resolved : Facet) : Array String :=
   let externalKeys := (resolved.data.codeData.toArray.flatMap (·.externalDecls)).filterMap fun decl =>
     let key := TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
     if (TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else none
-  let inlineKeys := (TraversalIndex.InlineCode.blocks state resolved.preview.label).filterMap fun block =>
-    if block.declarations.isEmpty then none else
-      some (TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
+  let inlineKeys := (TraversalIndex.InlineCode.blockIds state resolved.preview.label).filterMap fun blockId =>
+    let key := TraversalIndex.LeanCodePreviews.lookupInlineKey blockId
+    -- Keep broken required panels discoverable for checked resolution. Only a
+    -- known declaration-free block without a preview has no panel to resolve.
+    if (TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else
+      match TraversalIndex.InlineCode.data? state blockId with
+      | some block => if block.declarations.isEmpty then none else some key
+      | none => some key
   let mut keys := resolved.preview.leanCodePreviewKeys
   for key in externalKeys ++ inlineKeys do
     if !keys.contains key then keys := keys.push key
   return keys
 
-/-- Required content for one included code preview. Availability does not imply that
-rendering succeeded or that a final exported artifact exists. -/
-def codePreview (state : TraverseState) (key : String) : Except String LeanCodePreview.Entry :=
-  match TraversalIndex.LeanCodePreviews.decodedEntry? state key with
-  | none => .error s!"Missing Blueprint Lean-code preview '{key}'"
-  | some (.error error) => .error s!"Malformed Blueprint Lean-code preview '{key}': {error.message}"
-  | some (.ok entry) => .ok entry.data
+/-- One included code panel with its checked declaration facts. Like `Facet`, this
+is a transient view tied to the rendering state used to resolve it. -/
+structure CodePanel where
+  preview : LeanCodePreview.Entry
+  facts : BlockCodeData
 
-/-- Declaration facts for this code panel, independent of the node's other associations. -/
-def codeFacts (state : TraverseState) (entry : LeanCodePreview.Entry) : BlockCodeData :=
-  match entry.source with
-  | .externalDecl decl => { externalDecls := #[decl] }
-  | .inlineBlocks .. =>
-    BlockCodeData.ofInlineBlocks ((TraversalIndex.InlineCode.data? state entry.target).toArray)
+/-- Resolve an already decoded code preview. Its storage key, payload identity and
+required inline metadata must agree before either content or facts are consumed. -/
+def codePanel (state : TraverseState) (key : String) (preview : LeanCodePreview.Entry) :
+    Except String CodePanel := do
+  let facts ← match preview.source with
+    | .externalDecl decl =>
+      unless preview.target == decl.canonical &&
+          key == TraversalIndex.LeanCodePreviews.lookupKey preview.target do
+        throw s!"Mismatched Blueprint Lean-code preview identity for '{key}'"
+      pure { externalDecls := #[decl] }
+    | .inlineBlocks label .. =>
+      unless key == TraversalIndex.LeanCodePreviews.lookupInlineKey preview.target do
+        throw s!"Mismatched Blueprint Lean-code preview identity for '{key}'"
+      let block ← TraversalIndex.InlineCode.required state preview.target
+      unless block.label == label do
+        throw s!"Mismatched Blueprint inline-code owner for '{key}'"
+      pure (BlockCodeData.ofInlineBlocks #[block])
+  return { preview, facts }
+
+/-- Required included code content and facts. Missing or malformed records remain
+errors; availability does not establish successful rendering or a final artifact. -/
+def codePanelByKey (state : TraverseState) (key : String) : Except String CodePanel := do
+  let preview ← match TraversalIndex.LeanCodePreviews.decodedEntry? state key with
+    | none => .error s!"Missing Blueprint Lean-code preview '{key}'"
+    | some (.error error) => .error s!"Malformed Blueprint Lean-code preview '{key}': {error.message}"
+    | some (.ok entry) => .ok entry.data
+  codePanel state key preview
 
 /-- Presentation of a node reference. A preview key is a candidate until artifact
 finalization establishes that its manifest entry and rendered body both exist. -/

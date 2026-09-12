@@ -78,15 +78,15 @@ private def renderLeanCodePreviewBody?
     (label : Name)
     (key : String) :
     Doc.Html.HtmlT Verso.Genre.Manual m (Option (Html × Informal.BlockCodeData)) := do
-  let some entry ← ExtensionDecode.report? (RenderingResolution.codePreview state key)
+  let some panel ← ExtensionDecode.report? (RenderingResolution.codePanelByKey state key)
     | pure none
-  let body ← match entry.source with
+  let body ← match panel.preview.source with
     | .inlineBlocks _label blocks _sourceLocation => renderManualBlocks goB blocks
     | .externalDecl decl =>
       pure (Informal.ExternalCode.renderPreviewHtml #[decl]
         (Informal.Resolve.resolveInformalDeclHref? state label)
         (fun decl => Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs state id decl.canonical))
-  pure <| some (body, RenderingResolution.codeFacts state entry)
+  pure <| some (body, panel.facts)
 
 private def renderLeanCodeBodies
     [Monad m]
@@ -179,8 +179,8 @@ block_extension Block.blueprintGraftNode (placement : Informal.Graft.Placement) 
       if let .ok (some resolved) :=
           RenderingResolution.facetByKey? (← get) placement.config.toNode.key then
         for key in RenderingResolution.codePreviewKeys (← get) resolved do
-          if let .ok code := RenderingResolution.codePreview (← get) key then
-            if let .externalDecl decl := code.source then
+          if let .ok code := RenderingResolution.codePanelByKey (← get) key then
+            if let .externalDecl decl := code.preview.source then
               Informal.registerExternalDeclAnchors id resolved.preview.label #[decl]
     pure none
   toTeX :=
