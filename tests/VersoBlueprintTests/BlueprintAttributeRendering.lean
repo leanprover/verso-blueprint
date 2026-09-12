@@ -206,19 +206,19 @@ private def substringsInOrder (text : String) : List String → Bool
       renderManualDocHtmlStringAndState manualImpls globallyNumberedAttributeModuleDoc
     let theoremLabel := Name.mkSimple "attr.exported.theorem"
     let definitionLabel := Name.mkSimple "attr.exported.definition"
-    let some theoremData := Informal.TraversalIndex.Nodes.data? state theoremLabel
+    let some theoremData := Informal.TraversalIndex.Nodes.renderedData? state theoremLabel
       | return false
-    let some definitionData := Informal.TraversalIndex.Nodes.data? state definitionLabel
+    let some definitionData := Informal.TraversalIndex.Nodes.renderedData? state definitionLabel
       | return false
     pure <|
       theoremData.numberingMode == .global &&
       theoremData.globalCount == some 1 &&
       theoremData.count == 1 &&
-      theoremData.displayNumber state == "1" &&
+      (theoremData.display state).number? == some "1" &&
       definitionData.numberingMode == .global &&
       definitionData.globalCount == some 2 &&
       definitionData.count == 2 &&
-      definitionData.displayNumber state == "2"
+      (definitionData.display state).number? == some "2"
 
 /- Repeated placements keep the first number and canonical traversal anchors. -/
 /-- info: true -/
@@ -229,7 +229,7 @@ private def substringsInOrder (text : String) : List String → Bool
       renderManualDocHtmlStringAndState manualImpls repeatedAttributePlacementDoc
     let label := Name.mkSimple "attr.exported.theorem"
     let previewKey := Informal.PreviewCache.statementKey label
-    let some data := Informal.TraversalIndex.Nodes.data? state label
+    let some data := Informal.TraversalIndex.Nodes.renderedData? state label
       | return false
     let some nodeObject := Informal.TraversalIndex.Nodes.object? state label
       | return false
@@ -253,13 +253,13 @@ private def substringsInOrder (text : String) : List String → Bool
     let (_html, state) ←
       renderManualDocHtmlStringAndState manualImpls interleavedLocalAttributePlacementDoc
     let some beforeData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.placement")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.consumer.before.placement")
       | return false
     let some attributeData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.exported.theorem")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.exported.theorem")
       | return false
     let some afterData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.after.placement")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.consumer.after.placement")
       | return false
     pure <|
       beforeData.numberingMode == .local &&
@@ -279,16 +279,16 @@ private def substringsInOrder (text : String) : List String → Bool
     let (_html, state) ←
       renderManualDocHtmlStringAndState manualImpls locallyNumberedHybridAttributeModuleDoc
     let some consumerData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.consumer.before.module")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.consumer.before.module")
       | return false
     let some bodyData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.hybrid.body")
       | return false
     let some versoDocstringData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.verso_docstring")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.hybrid.verso_docstring")
       | return false
     let some sharedData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.shared")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.hybrid.shared")
       | return false
     pure <|
       consumerData.numberingMode == .local &&
@@ -319,7 +319,7 @@ private def substringsInOrder (text : String) : List String → Bool
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
       (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
     let some bodyData :=
-        Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.hybrid.body")
+        Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.hybrid.body")
       | return false
     let firstBodyMarkerCount :=
       countSubstr html "First repeated-label statement body marker."
@@ -339,7 +339,7 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "hybridSharedFirst" &&
       hasSubstr html "hybridSharedSecond" &&
       hasSubstr html
-        "A later declaration docstring fills a dependency-only statement payload" &&
+        "A later declaration docstring stays in its Lean panel" &&
       hasSubstr html "hybridLateDocstringFirst" &&
       hasSubstr html "hybridLateDocstringSecond" &&
       firstBodyMarkerCount == laterBodyMarkerCount + 1 &&
