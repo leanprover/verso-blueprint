@@ -1172,16 +1172,17 @@ def File.hoverState (file : File) : Verso.Code.Hover.State Output.Html :=
     idSupply := {} }
 
 /--
-Rendered Lean-code preview keys and bodies, deduplicated by the actual fragment.
+Rendered Lean-code preview keys and bodies, deduplicated by preview identity.
 Keep the key with the body so a composite renderer can join its declaration facts.
 -/
 def Index.codeHtmlEntries (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
     Array (String × String) :=
   entry.leanCodePreviewKeys.foldl (init := #[]) fun bodies key =>
-    match index.findHtml? key with
-    | some html =>
-      if html.trimAscii.isEmpty || bodies.any (·.2 == html) then bodies else bodies.push (key, html)
-    | none => bodies
+    if bodies.any (·.1 == key) then bodies else
+      match index.findHtml? key with
+      | some html =>
+        if html.trimAscii.isEmpty then bodies else bodies.push (key, html)
+      | none => bodies
 
 def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
     Array String :=
@@ -1992,19 +1993,35 @@ private def blockCodeData?
     else externalDecls
   { code with externalDecls }.nonempty?
 
-private def leanCodePreviewSourceRefs (state : TraverseState) :
+/-- Per-export inputs, ordered by storage key. Rejected entries remain present as
+`none` so markup fallback cannot mistake corrupt content for an absent facet. -/
+private abbrev FacetInputs := Std.TreeMap String (Option RenderingResolution.Facet) compare
+
+private def prepareFacetInputs (state : TraverseState) (logError : String → IO Unit) :
+    IO FacetInputs := do
+  let mut inputs := {}
+  for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
+    match decoded with
+    | .error error =>
+      logError s!"Blueprint manifest: malformed preview entry {error.canonicalName}: {error.message}"
+      inputs := inputs.insert error.canonicalName none
+    | .ok stored =>
+      match RenderingResolution.facet state stored.canonicalName stored.data with
+      | .error error =>
+        logError s!"Blueprint manifest: {error}"
+        inputs := inputs.insert stored.canonicalName none
+      | .ok resolved => inputs := inputs.insert stored.canonicalName (some resolved)
+  return inputs
+
+private def leanCodePreviewSourceRefs (state : TraverseState) (inputs : FacetInputs) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
   let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
-  for decoded in Informal.PreviewSource.traversalStoredEntries state do
-    match decoded with
-    | .ok stored =>
-        if let some sourceRef := stored.entry.sourceRef then
-          let .ok resolved := RenderingResolution.facet state stored.canonicalName stored.entry | continue
-          for key in RenderingResolution.codePreviewKeys state resolved do
-            let current := (sources.get? key).getD #[]
-            sources := sources.insert key (pushUnique current sourceRef)
-    | .error _ =>
-        pure ()
+  for (_, resolved?) in inputs do
+    if let some resolved := resolved? then
+      if let some sourceRef := resolved.preview.sourceRef then
+        for key in RenderingResolution.codePreviewKeys state resolved do
+          let current := (sources.get? key).getD #[]
+          sources := sources.insert key (pushUnique current sourceRef)
   sources
 
 private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
@@ -2157,6 +2174,7 @@ private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
+    (inputs : FacetInputs)
     (hoverState : Verso.Code.Hover.State Output.Html)
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) :
@@ -2164,19 +2182,10 @@ private def buildTraversalEntries
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  let decodedEntries := Informal.PreviewSource.traversalStoredEntries state
-  logBuildProgressItemCount verbose "traversal preview entries" decodedEntries.size
-  for decoded in decodedEntries do
-    match decoded with
-    | .error err =>
-      logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
-    | .ok stored =>
-      let entry := stored.entry
-      let resolved ← match RenderingResolution.facet state stored.canonicalName entry with
-        | .ok resolved => pure resolved
-        | .error error =>
-          logError s!"Blueprint manifest: {error}"
-          continue
+  logBuildProgressItemCount verbose "traversal preview entries" inputs.size
+  for (key, resolved?) in inputs do
+    if let some resolved := resolved? then
+      let entry := resolved.preview
       let externalBody? := if entry.facet == .statement then
         Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
         else none
@@ -2197,7 +2206,7 @@ private def buildTraversalEntries
       let manifestEntry := { blockEntryOfFacet state resolved with
         codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
       entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key := stored.key, html }
+      htmlEntries := htmlEntries.push { key, html }
   pure (entries, htmlEntries, hoverState)
 
 private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
@@ -2207,6 +2216,7 @@ private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : 
 private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
+    (inputs : FacetInputs)
     (previewBackedEntries : Array Entry)
     (renderConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) :
@@ -2224,15 +2234,15 @@ private def buildExternalMarkupEntries
       if data.markup.isEmpty then
         continue
       let statementKey := PreviewCache.key data.label .statement
-      let resolution := do
-        match ← RenderingResolution.facetByKey? state statementKey with
-        | some resolved => pure resolved
-        | none => RenderingResolution.facet state statementKey (emptyTraversalPreview data.label .statement)
-      let resolved ← match resolution with
-        | .ok resolved => pure resolved
-        | .error error =>
-          logError s!"Blueprint manifest: {error}"
-          continue
+      let resolved ← match inputs.get? statementKey with
+        | some (some resolved) => pure resolved
+        | some none => continue -- Already diagnosed during input preparation.
+        | none =>
+          match RenderingResolution.facet state statementKey (emptyTraversalPreview data.label .statement) with
+          | .ok resolved => pure resolved
+          | .error error =>
+            logError s!"Blueprint manifest: {error}"
+            continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label && resolved.preview.hasRenderedBody then
         continue
       let manifestEntry := blockSemanticManifestEntry state resolved
@@ -2311,6 +2321,7 @@ private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
+    (inputs : FacetInputs)
     (hoverState : Verso.Code.Hover.State Output.Html)
     (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
@@ -2321,13 +2332,13 @@ private def buildLeanCodeEntries
   let sourceRefs ←
     if verbose then
       let sourceRefsStart ← IO.monoMsNow
-      let sourceRefs := leanCodePreviewSourceRefs state
+      let sourceRefs := leanCodePreviewSourceRefs state inputs
       let sourceRefsFinish ← IO.monoMsNow
       logBuildProgress true
         s!"Lean code preview source refs built in {elapsedMsText (sourceRefsFinish - sourceRefsStart)}"
       pure sourceRefs
     else
-      pure <| leanCodePreviewSourceRefs state
+      pure <| leanCodePreviewSourceRefs state inputs
   let decodedEntries ←
     if verbose then
       let decodeStart ← IO.monoMsNow
@@ -2351,36 +2362,24 @@ private def buildLeanCodeEntries
         | .error error =>
           logError s!"Blueprint manifest: {error}"
           continue
-      if verbose then
-        let start ← IO.monoMsNow
-        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
-          (logError := logError) (hoverState := hoverState)
-        let renderFinish ← IO.monoMsNow
-        hoverState := rendered.hoverState
-        let html := rendered.html.asString
-        let stringifyFinish ← IO.monoMsNow
-        let htmlIsEmpty := htmlStringIsBlank html
-        let blankCheckFinish ← IO.monoMsNow
-        let htmlBytes := html.utf8ByteSize
-        let bytesFinish ← IO.monoMsNow
-        if htmlIsEmpty then
-          timings := timings.push {
-            key
-            kind := leanCodePreviewTimingKind entry
-            totalMs := bytesFinish - start
-            renderMs := renderFinish - start
-            stringifyMs := stringifyFinish - renderFinish
-            blankCheckMs := blankCheckFinish - stringifyFinish
-            bytesMs := bytesFinish - blankCheckFinish
-            metadataMs := 0
-            storeMs := 0
-            htmlBytes
-          }
-          continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key panel
-        let metadataFinish ← IO.monoMsNow
+      let start ← if verbose then IO.monoMsNow else pure 0
+      let rendered ← Informal.LeanCodePreview.renderWithState panel.preview impls state
+        (logError := logError) (hoverState := hoverState)
+      let renderFinish ← if verbose then IO.monoMsNow else pure 0
+      hoverState := rendered.hoverState
+      let html := rendered.html.asString
+      let stringifyFinish ← if verbose then IO.monoMsNow else pure 0
+      let htmlIsEmpty := htmlStringIsBlank html
+      let blankCheckFinish ← if verbose then IO.monoMsNow else pure 0
+      let htmlBytes := if verbose then html.utf8ByteSize else 0
+      let bytesFinish ← if verbose then IO.monoMsNow else pure 0
+      let manifestEntry? := if htmlIsEmpty then none else
+        some (leanCodePreviewManifestEntry state sourceRefs key panel)
+      let metadataFinish ← if verbose then IO.monoMsNow else pure 0
+      if let some manifestEntry := manifestEntry? then
         entries := entries.push manifestEntry
         htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+      if verbose then
         let storeFinish ← IO.monoMsNow
         timings := timings.push {
           key
@@ -2390,20 +2389,10 @@ private def buildLeanCodeEntries
           stringifyMs := stringifyFinish - renderFinish
           blankCheckMs := blankCheckFinish - stringifyFinish
           bytesMs := bytesFinish - blankCheckFinish
-          metadataMs := metadataFinish - bytesFinish
-          storeMs := storeFinish - metadataFinish
+          metadataMs := if htmlIsEmpty then 0 else metadataFinish - bytesFinish
+          storeMs := if htmlIsEmpty then 0 else storeFinish - metadataFinish
           htmlBytes
         }
-      else
-        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
-          (logError := logError) (hoverState := hoverState)
-        hoverState := rendered.hoverState
-        let html := rendered.html.asString
-        if htmlStringIsBlank html then
-          continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key panel
-        entries := entries.push manifestEntry
-        htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   if verbose then
     logBuildProgress true <|
       s!"Lean code preview emitted {entries.size} manifest entries"
@@ -2469,15 +2458,12 @@ private def buildSourceDocuments
 private def validateSourceRefs
     (logError : String → IO Unit)
     (documents : Array Informal.Source.Document)
-    (state : TraverseState) : IO Unit := do
-  for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
-    match decoded with
-    | .error err =>
-      logError s!"Blueprint manifest: malformed source-ref entry {err.canonicalName}: {err.message}"
-    | .ok stored =>
-      if let some sourceRef := stored.data.sourceRef then
+    (inputs : FacetInputs) : IO Unit := do
+  for (key, resolved?) in inputs do
+    if let some resolved := resolved? then
+      if let some sourceRef := resolved.preview.sourceRef then
         unless documents.any (fun doc => doc.id == sourceRef.document) do
-          logError s!"Blueprint manifest: source ref for facet {stored.canonicalName} references unknown source document '{sourceRef.document}'"
+          logError s!"Blueprint manifest: source ref for facet {key} references unknown source document '{sourceRef.document}'"
 
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a
@@ -2495,16 +2481,18 @@ def buildPreviewDataFiles
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) : IO Files := do
   let state := preparedState.state
+  let inputs ← withTimedBuildProgress verbose "preparing facet export inputs" <|
+    prepareFacetInputs state logError
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ←
     withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state hoverState externalMarkupConfig (verbose := verbose)
+      buildTraversalEntries impls logError state inputs hoverState externalMarkupConfig (verbose := verbose)
   let (externalMarkupPreviews, externalMarkupHtml) ←
     withTimedBuildProgress verbose "building external markup manifest entries" <|
-      buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig (verbose := verbose)
+      buildExternalMarkupEntries logError state inputs traversalPreviews externalMarkupConfig (verbose := verbose)
   let (leanCodePreviews, leanCodeHtml, hoverState) ←
     withTimedBuildProgress verbose "building Lean code preview entries" <|
-      buildLeanCodeEntries impls logError state hoverState (verbose := verbose)
+      buildLeanCodeEntries impls logError state inputs hoverState (verbose := verbose)
   let (citationPreviews, citationHtml, hoverState) ←
     withTimedBuildProgress verbose "building citation preview entries" <|
       buildCitationEntries impls logError state hoverState
@@ -2512,7 +2500,7 @@ def buildPreviewDataFiles
     withTimedBuildProgress verbose "building source document catalog" <|
       buildSourceDocuments logError state
   withTimedBuildProgress verbose "validating source references" <|
-    validateSourceRefs logError sourceDocuments state
+    validateSourceRefs logError sourceDocuments inputs
   let (previews, groups, htmlEntries, graphs) ←
     withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
       let previews :=
