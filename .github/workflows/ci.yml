@@ -72,6 +72,8 @@ jobs:
           key: ${{ runner.os }}-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: |
             ${{ runner.os }}-lake-deps-
+      - name: Install integration test dependencies
+        run: python3 -m pip install -r tests/integration/requirements.txt
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
       - name: Run consumer math lint smoke

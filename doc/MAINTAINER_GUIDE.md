@@ -193,6 +193,16 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
+The full `./scripts/run-lean-tests.sh` suite also runs Python integration checks,
+including validation of Lean-serialized provenance fixtures against the generated
+JSON Schema. Install `tests/integration/requirements.txt` in your Python
+environment before running that suite (CI installs it automatically). To run the
+schema check alone:
+
+```bash
+uv run --with-requirements tests/integration/requirements.txt python tests/integration/check_source_schema.py
+```
+
 PDF changes can add the optional real-engine smoke check:
 
 ```bash

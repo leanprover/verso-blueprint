@@ -424,8 +424,13 @@ private def sourceSpanSummary (span : Source.Span) : String :=
     | Option.none => parts
   String.intercalate "; " parts.toList
 
-private def sourceSpanCitations (spans : Array Source.Span) : Array String :=
-  collectTrimmedUniqueBy spans (·.citation)
+private def commonSourceSpanCitation? (spans : Array Source.Span) : Option String := do
+  let first ← spans[0]?
+  let citation ← trimmedOptionalString first.citation
+  if spans.all (fun span => trimmedOptionalString span.citation == some citation) then
+    some citation
+  else
+    none
 
 private def sourceRefSummary (sourceRef : Source.Ref) : String :=
   let pages := sourceSpanPages sourceRef.spans
@@ -446,9 +451,9 @@ private def sourceRefTitle (sourceRef : Source.Ref) : String :=
 private def sourceRefsChipText (sourceRefs : Array Source.Ref) : String :=
   match sourceRefs.toList with
   | [sourceRef] =>
-      match sourceSpanCitations sourceRef.spans |>.toList with
-      | [citation] => s!"source: {citation}"
-      | _ => "source 1"
+      match commonSourceSpanCitation? sourceRef.spans with
+      | some citation => s!"source: {citation}"
+      | none => "source 1"
   | _ => s!"sources {sourceRefs.size}"
 
 private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=

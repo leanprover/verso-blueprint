@@ -263,9 +263,9 @@ Manifest-backed composite renderers pair the included `RenderedContent.codeBodie
 with their `codeData`, so panel status follows the included bodies while heading
 status follows the project entry.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
-The manifest schema marker is now 7: regenerate old artifacts for the separate
-node-kind/facet fields, project declaration facts, and occurrence-owned external
-row anchors.
+Regenerate old artifacts after changes to the generated-data contract. The
+reader's stale-artifact diagnostic supplies the required rebuild guidance;
+clients must not depend on the value of the internal schema marker.
 
 Custom registration calls to `Environment.contribute` return `Option Node`:
 `some` is the accepted node; `none` means diagnostics were logged and the
@@ -402,11 +402,26 @@ interface work rather than browser API policy. Returned file paths and
 PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
 those assets or decide how a richer source review interface should look.
 
+Here `ok: true` means the entry has provenance, not that an original excerpt is
+available. A source may have `document: null` when its document id cannot be
+joined, and an anchor-only span may have no displayable location. Clients should
+preserve the citation and anchor in those cases and distinguish metadata-only,
+unresolved-document, and unavailable-asset states in their own source UI. Do not
+substitute informal Markdown/TeX and present it as the original source.
+
+Source anchors are scoped by document id; use `(documentId, anchor)` for
+source-native identity within a site, never the human-readable citation. Neither
+an anchor nor a printed page label implies a physical PDF destination.
+
 When a sourced Blueprint node has associated Lean code previews, the
 corresponding `leanDecl` or `inlineLeanCode` manifest entries also expose every
-owning ref in `sources`. External declaration previews are keyed by canonical
-Lean declaration; inline-code previews are keyed by the source code-block
-identity, so all declarations from one inline block share one rendered preview
+owning ref in `sources`. This union means **sources of linked Blueprint nodes**,
+not that the Lean declaration was authored in every cited document. Authoring
+currently accepts one document ref per statement/proof occurrence; the plural
+export is not general multi-document authoring for a single facet. External
+declaration previews are keyed by canonical Lean declaration; inline-code
+previews are keyed by the source code-block identity, so all declarations from
+one inline block share one rendered preview
 entry. Declaration-specific inline identity is the source code-block identity plus
 the declaration's position in the owning block entry's ordered inline code
 metadata (`definedDefs` followed by `definedTheorems`). This lets audit clients

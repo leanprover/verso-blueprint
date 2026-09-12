@@ -1773,6 +1773,7 @@ class TestPreviewRuntimeRegressions:
         }
         assert entry["targetKind"] == "externalMarkup"
         assert entry["label"] == "custom_client_external_markdown_metadata"
+        assert entry["title"] == "Theorem 3.1"
         assert source_ref["document"] == "custom-client-paper"
         assert span["page"] == "42"
         assert span["anchor"] == "thm:custom-client"
@@ -2503,6 +2504,8 @@ class TestPreviewRuntimeRegressions:
         source_slot = statement.locator(".bp_extra_slot_source").first
         chip = source_slot.locator(".bp_source_ref_chip").first
         expect(chip).to_have_text("source: Theorem 4.2")
+        expect(statement.locator(".bp_caption").first).to_have_text("Theorem")
+        expect(statement.locator(".bp_label").first).to_have_text("3.1")
 
         uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
         source_box = require_box(chip)
@@ -2530,7 +2533,31 @@ class TestPreviewRuntimeRegressions:
         expect(body).to_contain_text("source/pages/page-42.pdf")
         expect(body).to_contain_text("anchor itm:custom-client")
         expect(body).to_contain_text("source/custom-client.tex:80-82")
+        expect(statement.locator(".bp_label").first).to_have_text("3.1")
 
+        assert_no_runtime_errors(errors)
+
+    def test_partially_cited_source_chip_keeps_all_regions(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper[title="custom_client_external_metadata_consumer"]'
+        ).first
+        source_slot = statement.locator(".bp_extra_slot_source").first
+        chip = source_slot.locator(".bp_source_ref_chip").first
+        expect(chip).to_have_text("source 1")
+        chip.hover()
+
+        panel = source_slot.locator(".bp_source_ref_panel").first
+        expect(panel).to_be_visible()
+        body = panel.locator(".bp_source_ref_preview_body").first
+        expect(body).to_contain_text("citation Remark A")
+        expect(body).to_contain_text("page 42")
+        expect(body).to_contain_text("page 43")
+        text = body.inner_text()
+        assert text.index("page 42") < text.index("page 43")
         assert_no_runtime_errors(errors)
 
     def test_uses_single_dependency_loads_manifest_backed_inline_preview(

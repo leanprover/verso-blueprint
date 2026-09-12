@@ -350,6 +350,25 @@ private def checkSpanValidation (name : String) (span : Informal.Source.Span)
       ambiguousHtml?.any (hasSubstr · "source 1") &&
       !ambiguousHtml?.any (hasSubstr · "source:")
 
+#eval show IO Unit from do
+  let cited : Informal.Source.Span := { page := "12", citation := "Lemma 2.1(1)" }
+  let uncited : Informal.Source.Span := { page := "13" }
+  let cases : Array (String × Array Informal.Source.Span × String) := #[
+    ("partially cited", #[cited, uncited], "source 1"),
+    ("uncited first", #[uncited, cited], "source 1"),
+    ("blank citation", #[cited, { uncited with citation := some "  " }], "source 1"),
+    ("same citation across pages", #[cited, { uncited with citation := cited.citation }],
+      "source: Lemma 2.1(1)"),
+    ("trimmed citation", #[cited, { uncited with citation := some " Lemma 2.1(1) " }],
+      "source: Lemma 2.1(1)")
+  ]
+  for (name, spans, expected) in cases do
+    let some extra := Informal.renderSourceHeaderExtra? #[{ document := "paper", spans }]
+      | throw <| IO.userError s!"{name}: source chip missing"
+    let html := extra.html.asString
+    unless hasSubstr html s!">{expected}<" && hasSubstr html "page 12" && hasSubstr html "page 13" do
+      throw <| IO.userError s!"{name}: wrong summary or a recorded region was lost"
+
 /-- info: true -/
 #guard_msgs in
 #eval
