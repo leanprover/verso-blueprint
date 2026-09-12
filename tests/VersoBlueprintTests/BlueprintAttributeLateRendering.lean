@@ -48,6 +48,14 @@ private def manualImpls : ExtensionImpls := extension_impls%
     unless entry.statementUses == expectedStatement && entry.proofUses == expectedProof &&
         entry.tags.contains "late-attribute" && entry.leanCodePreviewKeys.size == 2 do
       throw <| IO.userError "Attribute preview lost late dependencies, metadata, or code"
+    let .ok reference := RenderingResolution.reference state label
+      | throw <| IO.userError "Could not resolve reference"
+    let .ok resolved := RenderingResolution.canonical state label
+      | throw <| IO.userError "Could not resolve attribute metadata"
+    unless entry.title == reference.title && entry.href == reference.href &&
+        toJson entry.toBlockMetadata == toJson resolved.toBlockMetadata &&
+        entry.foldCodeBlock == resolved.foldCodeBlock do
+      throw <| IO.userError "Module placement, reference, and manifest resolution disagree"
     let some graphNode := files.manifest.graphs.findSome? fun graph =>
         graph.nodes.find? (·.label == label)
       | throw <| IO.userError "Missing attribute graph node"

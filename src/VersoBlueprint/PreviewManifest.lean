@@ -21,6 +21,7 @@ import VersoBlueprint.PreviewManifest.Cli
 import VersoBlueprint.PreviewManifest.ExternalMarkupRender
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.RenderModel
+import VersoBlueprint.RenderingResolution
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
@@ -1942,39 +1943,17 @@ def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Ge
     | some html => IO.FS.writeFile findIndex html
     | none => logError s!"Blueprint xref filter: could not find embedded xref payload in {findIndex}"
 
-private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  match Informal.TraversalIndex.Nodes.capturedData? state label with
-  | some blockData => some (blockData.withResolvedNumbering state)
-  | none => none
-
-private def blockTitle (state : TraverseState) (label : Name)
-    (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) : String :=
-  if !Informal.TraversalIndex.Nodes.hasRenderedOccurrence state label then labelString label else
-  match blockData? <|> blockInfo? state label with
-  | some blockData =>
-      match facet with
-      | .proof => blockData.displayProofTitle state
-      | .statement => blockData.displayTitle state
-  | none => labelString label
-
 private structure BlockHeadingParts where
   caption : String
   label : String
 
-private def blockHeadingParts? (state : TraverseState) (label : Name)
-    (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
-    Option BlockHeadingParts := do
-  let blockData ← blockData? <|> blockInfo? state label
+private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData)
+    (facet : PreviewCache.Facet) : Option BlockHeadingParts := do
   let display := blockData.display state
   let number ← display.number?
   match facet with
   | .statement => some { caption := toString display.kind, label := number }
   | .proof => some { caption := "Proof", label := s!"for {display.kind} {number}" }
-
-private def blockHref (state : TraverseState) (label : Name)
-    (facet : PreviewCache.Facet := .statement) : Option String :=
-  Informal.TraversalIndex.TraversalPreviews.hrefFor? state label facet <|>
-    Informal.TraversalIndex.Nodes.href? state label
 
 private def blockKind? (blockData? : Option Informal.BlockData) : Option Informal.Data.NodeKind :=
   blockData?.map (·.kind)
@@ -2056,12 +2035,12 @@ private def relatedEntryForLabel
     (state : TraverseState)
     (label : Name)
     (axes : Array RelationAxis := #[]) : RelatedEntry :=
-  let blockData? := blockInfo? state label
+  let reference := RenderingResolution.referenceOrLabel state label
   {
     label
-    title := blockTitle state label .statement blockData?
-    href := blockHref state label
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state label
+    title := reference.title
+    href := reference.href
+    previewKey := reference.previewKey
     axes
   }
 
@@ -2069,11 +2048,12 @@ private def relatedEntryForBlock
     (state : TraverseState)
     (blockData : Informal.BlockData)
     (axes : Array RelationAxis := #[]) : RelatedEntry :=
+  let reference := RenderingResolution.referenceOfData state blockData
   {
     label := blockData.label
-    title := blockTitle state blockData.label .statement (some blockData)
-    href := blockHref state blockData.label
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state blockData.label
+    title := reference.title
+    href := reference.href
+    previewKey := reference.previewKey
     axes
   }
 
@@ -2093,7 +2073,7 @@ private def buildUsedByRelations
   let cachedEntries :=
     Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label |>.getD #[]
   cachedEntries.filterMap fun cached => do
-    let source ← blockInfo? state cached.sourceLabel
+    let source ← (RenderingResolution.canonical state cached.sourceLabel).toOption
     let axes : Array RelationAxis :=
       if cached.inStatement then #[.statement] else #[]
     let axes := if cached.inProof then axes.push .proof else axes
@@ -2143,7 +2123,7 @@ def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option Grou
     if label == entry.label then
       none
     else
-      (blockInfo? state label).map (relatedEntryForBlock state)
+      (RenderingResolution.canonical state label).toOption.map (relatedEntryForBlock state)
   let (title, declared) := groupRelationHeader state parent
   pure { label := parent, title, declared, entries }
 
@@ -2167,8 +2147,11 @@ private def blockSemanticManifestEntry
     (key : String := PreviewCache.key preview.label preview.facet)
     (targetKind : EntryKind := .block)
     (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
-  let blockData? := blockInfo? state preview.label
-  let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
+  let blockData? := (RenderingResolution.canonical state preview.label).toOption
+  let reference := match blockData? with
+    | some data => RenderingResolution.referenceOfData state data (some preview.facet)
+    | none => RenderingResolution.Reference.labelOnly preview.label
+  let headingParts? := blockData?.bind (blockHeadingParts? state · preview.facet)
   let codeData := blockCodeData? state preview blockData?
   {
     key
@@ -2176,10 +2159,10 @@ private def blockSemanticManifestEntry
     toBlockMetadata := blockData?.map (·.toBlockMetadata) |>.getD { label := preview.label }
     facet := preview.facet
     kind := blockKind? blockData?
-    title := blockTitle state preview.label preview.facet blockData?
+    title := reference.title
     displayCaption := headingParts?.map (·.caption)
     displayLabel := headingParts?.map (·.label)
-    href := blockHref state preview.label preview.facet
+    href := reference.href
     sourceLocation := preview.sourceLocation
     parentTitle := blockParentTitle? state blockData?
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview

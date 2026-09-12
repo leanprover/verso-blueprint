@@ -348,6 +348,24 @@ The same flow can be read as four contracts:
    selection and options, resolving the shared project topology at finalization.
    Overview commands do not build and discard a second project model.
 
+   `RenderingResolution` supplies pure queries over these stores. `occurrence`
+   resolves a requested placement for HTML or TeX, preserving its source and
+   folding settings while reusing document numbering. `canonical` resolves the
+   node with the selected source provenance and reports missing or malformed
+   captures explicitly. `reference` and `referenceOfData` share title and target
+   policy between inline references and manifest entries; the latter reuses semantic
+   metadata from either occurrence or canonical resolution in the same state.
+   It obtains reference numbering and the ordinary-reference facet from stored node
+   presentation, so an arbitrary page occurrence cannot change a canonical link's title. An explicit facet selects only its own title,
+   target, and preview; it never borrows another facet's content. An ordinary
+   node reference follows the canonical target and preview. Preview keys remain
+   candidates until artifact finalization. `referenceOrLabel` explicitly retains
+   label fallback for optional relation targets; authored references use checked
+   lookup during traversal and HTML/TeX rendering.
+   These queries do not mutate stores, select new bodies, or finalize resources.
+   Preview consumers retain the complete selected `PreviewCache.Entry`, keeping
+   body, target, and provenance together.
+
    Each selected statement/proof occurrence owns its body, target, Lean source
    location and original-source provenance in `TraversalPreviews`. A nonempty
    body replaces a placeholder as the selected occurrence; later traversal
@@ -1247,21 +1265,19 @@ That contract is intentionally narrow and phase-specific:
 - renderers that only need one label at a time should prefer it over direct
   `PreviewCache.Entry` decoding
 
-`PreviewSource` exposes a small `Selection` result for callers that need the
-best available preview for one label. The selection keeps the chosen facet, the
-manifest/cache lookup key, and the phase-local preview payload together, so
-environment-time and traversal-time callers share the same statement-then-proof
-fallback rule without learning each other's storage details.
+`PreviewSource.Selection` belongs to the environment-time widget path. It keeps
+the chosen facet, lookup key, and elaboration payload together. Finished traversal
+uses different queries: `traversalEntry?` returns the complete selected prose entry,
+including its target and provenance; `traversalPreviewCandidateKey?` selects a
+candidate key and can also find code-only or external-markup previews.
 
-Callers should distinguish selected preview candidates from fixed facet keys.
-Browser surfaces such as graph node hovers, summary previews, and relation-panel
-entries should use `PreviewSource.Selection` when traversal state is available,
-because they want the best candidate preview for a label in that phase. Public
-generated JSON must still finalize those candidates against the manifest/cache
-coverage before exposing them as `previewKey` values. Code that is explicitly
-naming a facet, such as grafting `statement` or `proof` from a manifest/cache
-pair, should use `PreviewCache.statementKey` or `PreviewCache.proofKey` so the
-fixed identity is visible at the call site.
+For reference presentation, `RenderingResolution.reference` combines the title,
+target, and preview candidate. Live relation panels and manifest relations use
+`referenceOfData` for resolved metadata or `referenceOrLabel` for optional targets.
+Public generated JSON still finalizes candidates against manifest/cache coverage
+before exposing them as `previewKey` values. Explicit facet requests use the query's
+facet argument; fixed `PreviewCache.statementKey` and `PreviewCache.proofKey` values
+identify a facet without establishing its presence or artifact availability.
 
 Manifest construction is still a whole-domain consumer rather than a
 one-label selection caller. It asks `PreviewSource` to enumerate decoded
