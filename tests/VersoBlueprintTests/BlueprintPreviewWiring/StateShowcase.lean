@@ -94,8 +94,8 @@ Missing external declaration sample.
 Statement depending on {uses "def:showcase.lean_only"}[].
 :::
 
-:::lemma_ "lem:showcase.unknown_ref"
-Statement depending on {uses "def:showcase.ghost"}[].
+:::lemma_ "lem:showcase.unknown_ref" (uses := "def:showcase.ghost")
+Statement with an intentionally unresolved graph dependency, `def:showcase.ghost`.
 :::
 
 {blueprint_graph}

@@ -37,13 +37,14 @@ private partial def collectBlocks (part : Doc.Part Genre.Manual) : Array (Doc.Bl
 def traverseManualDocBlocksAndState
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual)
-    (logError : String → IO Unit := fun _ => pure ())
+    (logError : String → IO Unit := fun message => throw <| IO.userError message)
     (model : Informal.RenderModel := by exact blueprint_render_model%) :
     IO (Array (Doc.Block Genre.Manual) × TraverseState) :=
   Informal.traverseManualBlocks (collectBlocks doc.toPart) (model.withExtensions impls) logError
 
-private def discardLogger : Logger IO where
-  log _severity _text _loc := pure ()
+private def testLogger : Logger IO where
+  log severity text _loc :=
+    if severity == .error then throw <| IO.userError text else pure ()
   errors := pure #[]
   warnings := pure #[]
 
@@ -51,7 +52,7 @@ def renderManualBlocksTeXWithState (impls : ExtensionImpls)
     (blocks : Array (Doc.Block Genre.Manual)) (state : TraverseState) : IO String := do
   let (tex, _) ← ((Doc.Block.concat blocks).toTeX
     (m := ReaderT ExtensionImpls (BuildLogT IO))
-    ({ headerLevel := none }, {}, state, {}) {}).run impls |>.run discardLogger
+      ({ headerLevel := none }, {}, state, {}) {}).run impls |>.run testLogger
   pure tex.asString
 
 /-- Keep extension impls explicit so each test renders with its own imported extension set. -/
@@ -77,7 +78,7 @@ def renderManualDocHtmlAndState
   let (html, _hover) ←
     ((htmlState.run {}).run remotes)
       |>.run impls
-      |>.run discardLogger
+      |>.run testLogger
   pure (html, st)
 
 def renderManualDocHtml (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre.Manual)
