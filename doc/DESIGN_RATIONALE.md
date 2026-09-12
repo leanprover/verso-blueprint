@@ -348,6 +348,22 @@ The same flow can be read as four contracts:
    selection and options, resolving the shared project topology at finalization.
    Overview commands do not build and discard a second project model.
 
+   `RenderingResolution` supplies pure queries over these stores. `occurrence`
+   resolves a requested placement for HTML or TeX, preserving its source and
+   folding settings while reusing document numbering. `canonical` resolves the
+   node with the selected source provenance and reports missing or malformed
+   captures explicitly. `reference` and `referenceOfData` share title and target
+   policy between inline references and manifest entries; the latter reuses an
+   already resolved record. An explicit facet selects only its own title,
+   target, and preview; it never borrows another facet's content. An ordinary
+   node reference follows the canonical target and preview. Preview keys remain
+   candidates until artifact finalization. `referenceOrLabel` explicitly retains
+   label fallback for optional relation targets; authored references use checked
+   lookup during traversal and HTML/TeX rendering.
+   These queries do not mutate stores, select new bodies, or finalize resources.
+   Preview consumers retain the complete selected `PreviewCache.Entry`, keeping
+   body, target, and provenance together.
+
    Each selected statement/proof occurrence owns its body, target, Lean source
    location and original-source provenance in `TraversalPreviews`. A nonempty
    body replaces a placeholder as the selected occurrence; later traversal

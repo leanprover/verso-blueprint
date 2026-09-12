@@ -28,6 +28,7 @@ import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Informal.ExternalMarkupRender
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Resolve
+import VersoBlueprint.RenderingResolution
 import VersoBlueprint.Source.Metadata
 import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
@@ -76,9 +77,8 @@ block_extension Block.informal (data : BlockOccurrence) where
         | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
           pure .empty
       let st ← Verso.Doc.TeX.state
-      let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve st occurrence)
+      let some data ← ExtensionDecode.report? (RenderingResolution.occurrence st occurrence)
         | pure .empty
-      let data := data.withResolvedNumbering st
       let title := data.displayTitle st
       let body ← blocks.mapM goB
       pure <| Informal.TeX.quotedBlock title body
@@ -94,10 +94,9 @@ block_extension Block.informal (data : BlockOccurrence) where
         pure .empty
       | some occurrence =>
         let s ← HtmlT.state
-        let some data ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve s occurrence)
-          | pure .empty
         let ctxt ← HtmlT.context
-        let data := data.withResolvedNumberingInContext s ctxt
+        let some data ← ExtensionDecode.report? (RenderingResolution.occurrence s occurrence (some ctxt))
+          | pure .empty
         let markup :=
           (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
         let selectedMarkupAndContent? :=

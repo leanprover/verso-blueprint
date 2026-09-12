@@ -204,6 +204,28 @@ provides the equivalent operation for callers that own traversal initialization.
 The model contains runtime data and does not require a Lean environment at render
 time. Missing node references produce a traversal diagnostic.
 
+Rendering consumers can use `Informal.RenderingResolution` over that completed state:
+
+| Query | Result |
+| --- | --- |
+| `occurrence state requested context?` | Checked `BlockData` for this placement, preserving its source and folding while resolving shared document numbering. HTML callers can supply their traversal context; TeX uses stored numbering. |
+| `canonical state label` | Checked `BlockData` with canonical source provenance; missing models, unknown labels, and corrupt records return distinct errors. |
+| `reference state label facet?` | Checked title, href, and preview candidate; known unrendered nodes retain label text. Missing or malformed nodes return errors. An explicit facet selects only its own title, target, and preview. |
+| `referenceOfData state data facet?` | The same reference policy using an already resolved record, without decoding its semantic data again. |
+| `referenceOrLabel state label` | Best-effort presentation for optional relation targets, with a label-only fallback. Do not use this to validate authored references. |
+
+These queries do not select a new preview body or prove artifact availability.
+Keep a selected `PreviewCache.Entry` intact when rendering its body and sources.
+An ordinary node reference follows the canonical target and preview. An explicit
+statement or proof request never borrows another facet's target or preview:
+a placeholder with neither prose nor code can have a link without a preview, and
+an absent facet has neither. Included code can supply a preview without inventing
+a prose body.
+External markup can supply a statement preview, but never a proof preview.
+Authored references use checked lookup in traversal and HTML/TeX rendering;
+only optional relation targets use `referenceOrLabel`. Human-facing fallback
+titles consistently use unquoted label text, including qualified names with punctuation.
+
 Summaries cover the captured project environment; graphs select nodes with
 rendered targets or preview candidates. Preview titles use document numbers
 only for traversed nodes; source-only entries retain their labels.

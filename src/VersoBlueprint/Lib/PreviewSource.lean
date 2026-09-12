@@ -142,12 +142,23 @@ Prefer statement/proof prose, then a code-backed facet, then a source-backed
 external-markup preview. Prose-only lookup helpers retain their body semantics. Final
 generated data still checks whether the candidate has both a manifest entry and
 rendered-fragment cache body before serializing it as a `previewKey`.
+
+An explicit facet never borrows another facet's prose or code. Only statements
+may fall back to source-backed external markup.
+
 -/
 def traversalPreviewCandidateKey?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← (PreviewCache.key label <$>
-    Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
-    traversalExternalMarkupLookupKey? s label
+    (s : Verso.Genre.Manual.TraverseState) (label : Name)
+    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey := do
+  let key ← match facet? with
+    | none => (PreviewCache.key label <$>
+        Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
+        traversalExternalMarkupLookupKey? s label
+    | some facet =>
+      if Informal.TraversalIndex.TraversalPreviews.hasRenderablePreview s label facet then
+        some (PreviewCache.key label facet)
+      else if facet == .statement then traversalExternalMarkupLookupKey? s label
+      else none
   PreviewKey.ofString? key
 
 /-- Best preview candidate key for relation entries. -/

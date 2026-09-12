@@ -43,6 +43,21 @@ def facetBlueprint : BlueprintDocument := .capture
         | throw <| IO.userError "Missing canonical external declaration link"
       unless href.endsWith ("#" ++ rowId) && countSubstr page.asString s!"id=\"{rowId}\"" == 1 do
         throw <| IO.userError "Canonical external declaration did not target the selected occurrence's unique row"
+      let .ok canonical := RenderingResolution.canonical state `filled_facet
+        | throw <| IO.userError "Could not resolve canonical facet metadata"
+      -- A page occurrence keeps its own presentation and source, even when a
+      -- different occurrence supplies the canonical preview. Numbering is shared.
+      let requested := { canonical.toOccurrence with
+        isProof := true, count := 999, sourceRef := none, sourceLocation := { ok := false },
+        foldProofBlock := true, foldCodeBlock := !canonical.foldCodeBlock }
+      let .ok occurrence := RenderingResolution.occurrence state requested
+        | throw <| IO.userError "Could not resolve a page occurrence"
+      unless toJson occurrence.toBlockMetadata == toJson canonical.toBlockMetadata &&
+          toJson occurrence.codeData == toJson canonical.codeData &&
+          occurrence.sourceRef.isNone && !occurrence.sourceLocation.ok &&
+          occurrence.foldProofBlock && occurrence.foldCodeBlock == requested.foldCodeBlock &&
+          occurrence.isProof && (occurrence.display state).number? == (canonical.display state).number? do
+        throw <| IO.userError "Occurrence resolution lost semantics or borrowed canonical presentation"
       let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
         (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
       for (facet, body, sourcePage) in #[
@@ -62,6 +77,15 @@ def facetBlueprint : BlueprintDocument := .capture
             entry.sourceLocation == selected.sourceLocation && entry.sourceLocation.ok &&
             entry.sources.flatMap (·.spans.map (·.page)) == #[some sourcePage] do
           throw <| IO.userError s!"Body, target, location or provenance disagreed for {key}"
+        let .ok reference := RenderingResolution.reference state `filled_facet (some facet)
+          | throw <| IO.userError "Could not resolve reference"
+        let fromData := RenderingResolution.referenceOfData state canonical (some facet)
+        unless reference.title == entry.title && reference.href == entry.href &&
+            reference.previewKey == PreviewKey.ofString? key &&
+            reference.title == fromData.title && reference.href == fromData.href &&
+            reference.previewKey == fromData.previewKey &&
+            toJson entry.toBlockMetadata == toJson canonical.toBlockMetadata do
+          throw <| IO.userError "Reference, resolved metadata, and manifest views disagree"
         let sourceDocument := if facet == .statement then "facet-paper" else "facet-proof-paper"
         unless entry.sources.map (·.document) == #[sourceDocument] &&
             entry.leanCodePreviewKeys.size == 2 do
@@ -95,11 +119,12 @@ def facetBlueprint : BlueprintDocument := .capture
 #eval show IO Unit from do
   let part := facetBlueprint.text
   for (order, expected) in #[
-      (#[0], PreviewCache.Facet.statement),
-      (#[2], PreviewCache.Facet.proof),
-      (#[0, 2], PreviewCache.Facet.proof),
-      (#[2, 0], PreviewCache.Facet.proof),
-      (#[0, 1, 2], PreviewCache.Facet.statement)] do
+      (#[], none),
+      (#[0], some PreviewCache.Facet.statement),
+      (#[2], some PreviewCache.Facet.proof),
+      (#[0, 2], some PreviewCache.Facet.proof),
+      (#[2, 0], some PreviewCache.Facet.proof),
+      (#[0, 1, 2], some PreviewCache.Facet.statement)] do
     let text := { part with subParts := order.map (part.subParts[·]!) }
     let doc : Doc.VersoDoc Manual := .mk (fun _ => text) "{}"
     let errors ← IO.mkRef (#[] : Array String)
@@ -114,6 +139,36 @@ def facetBlueprint : BlueprintDocument := .capture
     -- Root paragraphs contain the authored bpref roles, independently of chapter bodies.
     let references := blocks.filter fun block => match block with | .para _ => true | _ => false
     let html ← renderManualBlocksHtmlWithState references extension_impls% state
+    let .ok reference := RenderingResolution.reference state `filled_facet
+      | throw <| IO.userError "Could not resolve reference"
+    unless hasSubstr html.asString reference.title do
+      throw <| IO.userError "Inline rendering did not use the shared reference title"
+    let optionalReference := RenderingResolution.referenceOrLabel state `filled_facet
+    unless reference.href == optionalReference.href && reference.previewKey == optionalReference.previewKey do
+      throw <| IO.userError "Known relation targets disagree with checked node references"
+    let relationState := TraversalIndex.Nodes.saveNode state {
+      label := `facet_consumer, statementUses := #[{ label := `filled_facet }] }
+    let consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
+      (PreviewCache.Entry.ofBlocks `facet_consumer .statement #[])
+    let some relation := consumer.uses[0]?
+      | throw <| IO.userError "Missing manifest relation to selected facet"
+    unless relation.title == reference.title && relation.href == reference.href &&
+        relation.previewKey == reference.previewKey do
+      throw <| IO.userError "Manifest relation target and preview disagree with node references"
+    for facet in #[PreviewCache.Facet.statement, .proof] do
+      let .ok requested := RenderingResolution.reference state `filled_facet (some facet)
+        | throw <| IO.userError "Could not resolve explicit facet reference"
+      let hasBody := order.contains (if facet == .statement then 1 else 2)
+      let hasOccurrence := hasBody || (facet == .statement && order.contains 0)
+      -- The statement placeholder carries external code; it has a preview even
+      -- without prose. The proof facet has no code-only occurrence in this fixture.
+      let expectedKey := if hasOccurrence then PreviewKey.ofString? (PreviewCache.key `filled_facet facet) else none
+      unless requested.previewKey == expectedKey && requested.href.isSome == hasOccurrence do
+        throw <| IO.userError s!"Explicit {repr facet} reference borrowed another facet's target or body"
+      if !order.isEmpty then
+        let title := if facet == .statement then "Theorem 1" else "Proof for Theorem 1"
+        unless requested.title == title do
+          throw <| IO.userError "Explicit facet reference borrowed another facet's title"
     if order == #[2] then
       unless hasSubstr html.asString "Proof for Theorem 1" &&
           !hasSubstr html.asString ">Proof 1<" do
@@ -128,9 +183,14 @@ def facetBlueprint : BlueprintDocument := .capture
     if order == #[0] then
       unless (PreviewSource.traversalEntry? state `filled_facet).isNone do
         throw <| IO.userError "A code-backed placeholder acquired an omitted prose body"
-    let key := PreviewCache.key `filled_facet expected
-    unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
-        (files.htmlCache.findHtml? key).isSome do
-      throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
+    match expected with
+    | none =>
+      unless !hasSubstr html.asString "bp_inline_preview_ref" do
+        throw <| IO.userError "Omitted facets offered a nonexistent preview"
+    | some facet =>
+      let key := PreviewCache.key `filled_facet facet
+      unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
+          (files.htmlCache.findHtml? key).isSome do
+        throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
     unless (← errors.get).isEmpty do
       throw <| IO.userError s!"Partial chapter rendering errors: {← errors.get}"
