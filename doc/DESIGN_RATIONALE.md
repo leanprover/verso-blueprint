@@ -366,6 +366,19 @@ The same flow can be read as four contracts:
    Preview consumers retain the complete selected `PreviewCache.Entry`, keeping
    body, target, and provenance together.
 
+   `RenderingResolution.Facet` pairs that complete selected entry with checked
+   node metadata. `facetByKey?` distinguishes absence from malformed content or
+   mismatched identity; `facet` also serves bulk consumers that already decoded
+   an entry. Grafts and manifest generation share these queries, along with
+   included code-panel lookup and panel-local declaration facts. A manifest
+   shell is projected from the resolved pair; missing required semantics no
+   longer become default metadata. This view is transient and adds no persisted
+   schema, store, or finalization pass.
+   `CodePanel` similarly pairs included code-preview content with checked facts.
+   Both live grafts and exports validate storage/payload identity; inline panels
+   also require the matching block metadata and owner. Missing or malformed
+   required panel facts are diagnostics, never an empty successful projection.
+
    Each selected statement/proof occurrence owns its body, target, Lean source
    location and original-source provenance in `TraversalPreviews`. A nonempty
    body replaces a placeholder as the selected occurrence; later traversal
@@ -555,7 +568,7 @@ flowchart TD
   moduleInclude["Attribute module part command<br/>includeBlueprintModule"]
   attributePlacement["Attribute placement plan<br/>Attribute.Placement"]
   manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
-  traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
+  traversalPreview["Checked selected facet and node metadata<br/>RenderingResolution.facetByKey?"]
   manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
 
   slideMain["Slide deck generator<br/>Slides.slidesMainWithBlueprintPreviews"]
@@ -601,7 +614,7 @@ The current paths are:
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
 | Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
-| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
+| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | checked selected facet and node metadata from `RenderingResolution`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
@@ -930,6 +943,11 @@ post-render steps receive the prepared wrapper; there is no raw-state escape
 hatch that lets preview-data emission merely assert that another caller already
 installed the required indexes. Direct preview-data callers explicitly create
 the narrower `PreparedPreviewState`.
+
+These are preparation guarantees only. Neither constructor verifies completion
+of traversal or establishes document/model/layout pairing. `RenderingResolution`
+views likewise remain ordinary transient records tied by caller discipline to
+their originating state. A checked document boundary is a later increment.
 
 For `a` HTML assets, `b` stored blocks, and `e` dependency uses, renderer-state
 preparation is `O(a + b + e)`: the asset patch is linear in the asset set and
@@ -1388,7 +1406,7 @@ reasons:
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store every distinct inline Lean code block under its source identity. The label index retains block identities in document order, and statement headers, summaries, and manifests resolve the complete collection. Inline code takes precedence over external declaration hints for the heading source when both are available. |
 | `RustInlineCode` | `Block.informalRustCode.traverse` | `TraversalIndex.RustInlineCode.object?`, `TraversalIndex.RustInlineCode.data?`, and Rust code-panel rendering | Store Rust code-panel payloads outside `Nodes` so the semantic node index stays language-neutral while renderers still get a typed code-panel source. |
 | `ExternalMarkup` | `Block.externalMarkup.traverse` | `TraversalIndex.ExternalMarkup.entries`, `Informal.ExternalMarkupView`, preview-manifest construction, `PreviewManifest/ExternalMarkupRender.lean`, and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries and, by default, source-backed HTML-cache bodies selected by `Informal.ExternalMarkupRender.Config`. |
-| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalLookupKey?`, `PreviewSource.traversalEntry?`, `PreviewSource.traversalEntryByKey?`, `PreviewSource.traversalStoredEntries`, and preview-data construction | Store preview metadata and rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys even when the rendered body is empty; empty body blocks are not a signal that the semantic preview metadata is empty. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
+| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `RenderingResolution.facetByKey?`, prose/candidate selection in `PreviewSource`, and checked whole-domain preview-data construction | Store preview metadata and rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys even when the rendered body is empty; empty body blocks are not a signal that the semantic preview metadata is empty. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
 | `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | `TraversalIndex.LeanCodePreviews.entry?`, `TraversalIndex.LeanCodePreviews.decodedEntry?`, `TraversalIndex.LeanCodePreviews.entries`, preview-data construction, same-document grafts, and Lean declaration links via the shared lookup key | Store external declaration previews by canonical Lean declaration target and inline code previews by source code-block identity. This keeps external declaration previews shared across references while avoiding duplicate inline preview bodies for multiple declarations from the same code block; declaration-specific inline identity lives in the owning block's ordered inline code metadata. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(statement occurrence, canonical declaration)`. Each rendered row has its own destination, including repeated occurrences of one label. Canonical links select the statement facet first and then its declaration row. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
