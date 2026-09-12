@@ -1000,4 +1000,18 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       hasSubstr sourceOut "External Markdown markup (default)" &&
       hasSubstr sourceOut "&lt;raw &amp; source&gt;"
 
+-- A rejected stored facet must not become an absent-facet markup fallback.
+#eval show IO Unit from do
+  let (_, state) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
+  let label := Name.mkSimple "external.witness"
+  let key := PreviewCache.statementKey label
+  let errors ← IO.mkRef (#[] : Array String)
+  let invalid := TraversalIndex.TraversalPreviews.saveData state key (Json.str "broken")
+  let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
+    (fun message => errors.modify (·.push message)) (preparePreviewState invalid)
+  unless (← errors.get).size == 1 &&
+      (files.manifest.findEntry? key).isNone &&
+      (files.manifest.findEntry? (PreviewManifest.externalMarkupEntryKey label)).isNone do
+    throw <| IO.userError "Rejected facet was diagnosed twice or recreated through markup fallback"
+
 end Verso.VersoBlueprintTests.BlueprintExternalMarkup

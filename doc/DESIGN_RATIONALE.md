@@ -378,6 +378,16 @@ The same flow can be read as four contracts:
    Both live grafts and exports validate storage/payload identity; inline panels
    also require the matching block metadata and owner. Missing or malformed
    required panel facts are diagnostics, never an empty successful projection.
+   Panel discovery deduplicates keys before rendering. Equal HTML does not make
+   different panel identities interchangeable, and blank output is handled
+   separately from identity and semantic resolution.
+
+   Export prepares a private ordered map of resolved facets once per invocation.
+   Failed entries retain a rejection marker so markup fallback cannot reinterpret
+   them as absent content. Preview emission, code-source attribution and source
+   validation share the admitted entries, avoiding repeated whole-domain body
+   decoding and duplicate malformed-entry diagnostics. This collection belongs to
+   one export call; it is neither persisted nor a checked-document certificate.
 
    Each selected statement/proof occurrence owns its body, target, Lean source
    location and original-source provenance in `TraversalPreviews`. A nonempty

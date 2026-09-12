@@ -251,6 +251,21 @@ external panels require agreement between the declaration, target, and storage k
 Required invalid facets report errors and are omitted from exported preview data;
 a failed lookup cannot silently produce default node metadata.
 
+Code-panel keys form an ordered unique union, including keys already present in
+the selected facet. Live and manifest-backed grafts render each key once. Distinct
+panels retain their own facts even when they produce identical HTML; an empty
+rendered body contributes neither visible content nor panel-local facts.
+
+Each `buildPreviewDataFiles` call decodes and resolves stored facets once into a
+private, invocation-local collection. Block previews, markup fallback, code-source
+attribution and source-reference validation reuse those inputs. Rejected facets
+are diagnosed once and remain distinguishable from absent facets; their invalid
+payloads are excluded from subsequent projections. The collection is discarded
+after export and does not change saved-state or manifest schemas. Verbose mode
+instruments the same code-preview emission path and preserves output and errors.
+Whole-domain callers use `TraversalIndex.TraversalPreviews.entries`; the obsolete
+`PreviewSource.traversalStoredEntries` wrapper and `StoredTraversalEntry` are removed.
+
 These queries do not select a new preview body or prove artifact availability.
 Keep a selected `PreviewCache.Entry` intact when rendering its body and sources.
 An ordinary node reference follows the canonical target and preview. An explicit
