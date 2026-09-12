@@ -370,10 +370,21 @@ def object? (state : TraverseState) (blockId : Name) : Option Verso.Multi.Object
 def data? (state : TraverseState) (blockId : Name) : Option Informal.InlineCodeData :=
   objectData? state domainName blockId.toString
 
+/-- Required panel metadata, preserving decoding and source-identity failures. -/
+def required (state : TraverseState) (blockId : Name) : Except String Informal.InlineCodeData := do
+  let some object := object? state blockId
+    | throw s!"Missing Blueprint inline-code metadata for '{blockId}'"
+  let block ← (fromJson? (α := Informal.InlineCodeData) object.data).mapError
+    (fun error => s!"Malformed Blueprint inline-code metadata for '{blockId}': {error}")
+  unless block.blockId == blockId do
+    throw s!"Mismatched Blueprint inline-code identity for '{blockId}'"
+  return block
+
 def href? (state : TraverseState) (blockId : Name) : Option String :=
   Resolve.resolveDomainHref? state domainName blockId.toString
 
-private def blockIds (state : TraverseState) (label : Name) : Array Name :=
+/-- Included block identities in document order, without decoding their payloads. -/
+def blockIds (state : TraverseState) (label : Name) : Array Name :=
   (objectData? state labelSpec.name label.toString).getD #[]
 
 /-- Distinct blocks in document order; the block store remains the single owner of their data. -/

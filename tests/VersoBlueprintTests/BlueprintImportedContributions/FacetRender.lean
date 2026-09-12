@@ -85,6 +85,16 @@ def facetBlueprint : BlueprintDocument := .capture
           | throw <| IO.userError s!"Missing filled HTML {key}"
         let some selected := TraversalIndex.TraversalPreviews.entry? state key
           | throw <| IO.userError s!"Missing selected facet {key}"
+        let .ok (some resolved) := RenderingResolution.facetByKey? state key
+          | throw <| IO.userError "Could not resolve selected facet"
+        let projected := PreviewManifest.blockEntryOfFacet state resolved
+        unless toJson resolved.preview == toJson selected &&
+            projected.sourceLocation == entry.sourceLocation && projected.sources == entry.sources &&
+            projected.href == entry.href && projected.foldCodeBlock == entry.foldCodeBlock &&
+            projected.foldProofBlock == entry.foldProofBlock &&
+            toJson projected.toBlockMetadata == toJson entry.toBlockMetadata &&
+            RenderingResolution.codePreviewKeys state resolved == entry.leanCodePreviewKeys do
+          throw <| IO.userError "Facet resolution changed selected content, presentation, or semantic metadata"
         let some id := selected.target | throw <| IO.userError "Missing selected target"
         let some target := state.externalTags[id]? | throw <| IO.userError "Missing selected page anchor"
         unless hasSubstr page.asString body && hasSubstr html body &&
@@ -171,8 +181,10 @@ def facetBlueprint : BlueprintDocument := .capture
       throw <| IO.userError "Known relation targets disagree with checked node references"
     let relationState := TraversalIndex.Nodes.saveNode state {
       label := `facet_consumer, statementUses := #[{ label := `filled_facet }, { label := `panel_other }] }
-    let consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
+    let .ok resolved := RenderingResolution.facet relationState (PreviewCache.statementKey `facet_consumer)
       (PreviewCache.Entry.ofBlocks `facet_consumer .statement #[])
+      | throw <| IO.userError "Could not resolve manifest facet"
+    let consumer := PreviewManifest.blockEntryOfFacet relationState resolved
     let some relation := consumer.uses[0]?
       | throw <| IO.userError "Missing manifest relation to selected facet"
     unless relation.title == reference.title && relation.href == reference.href &&

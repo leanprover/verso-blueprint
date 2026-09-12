@@ -21,26 +21,14 @@ open Lean
 open Informal Data Environment
 
 /-!
-`PreviewSource` is the shared read-side namespace for preview consumers.
+`PreviewSource` owns phase-specific preview selection: environment previews for
+widgets, traversal prose selection, and candidate keys for code/markup previews.
+These low-level optional queries do not validate required rendering inputs.
 
-Its job is to keep preview lookup details localized so callers do not decode
-traversal caches or environment-side preview payloads directly.
-
-The current split is intentionally phase-specific:
-
-- traversal-time callers use the traversal helpers in this module when they
-  need cached preview blocks or manifest lookup keys
-- environment-time callers use the environment helpers when they need semantic
-  preview content from `Informal.Environment.State`
-- callers that need preview data for one label should use the selection helpers
-  here so statement/proof fallback semantics stay consistent
-- manifest construction uses the traversal enumeration helpers here when it
-  needs every stored statement/proof preview entry
-
-Known exception:
-
-- manifest construction still enumerates the whole stored preview domain because
-  it emits every renderable entry, not one selected label at a time
+`RenderingResolution` interprets traversal stores for rendering consumers. Use its
+checked facet and code-panel queries when content and semantic metadata are both
+required. It builds on this module's selection policy. Manifest enumeration reads
+all stored facets, retaining their storage keys for checked resolution.
 -/
 
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
@@ -85,10 +73,6 @@ def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : P
     preview
   }
 
-def traversalEntryByKey?
-    (s : Verso.Genre.Manual.TraverseState) (key : String) : Option PreviewCache.Entry :=
-  Informal.TraversalIndex.TraversalPreviews.entry? s key
-
 /--
 Decode every stored statement/proof traversal preview entry.
 
@@ -108,13 +92,6 @@ def traversalStoredEntries
           canonicalName := stored.canonicalName
           entry
         }
-
-def traversalFacetEntry?
-    (s : Verso.Genre.Manual.TraverseState)
-    (label : Name)
-    (facet : PreviewCache.Facet) : Option PreviewCache.Entry :=
-  let key := Informal.TraversalIndex.TraversalPreviews.key label facet
-  traversalEntryByKey? s key
 
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry :=

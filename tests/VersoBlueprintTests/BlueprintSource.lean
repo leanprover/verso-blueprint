@@ -375,8 +375,12 @@ private def checkSpanValidation (name : String) (span : Informal.Source.Span)
   show IO Bool from do
     let (html, st) ← renderManualDocHtmlStringAndState extension_impls% sourceProvenanceDoc
     let sourceDocument? := Informal.TraversalIndex.SourceDocuments.data? st "paper"
-    let sourceRef? := (Informal.PreviewSource.traversalFacetEntry? st sourcedLabel .statement).bind (·.sourceRef)
-    let secondSourceRef? := (Informal.PreviewSource.traversalFacetEntry? st secondSourcedLabel .statement).bind (·.sourceRef)
+    let .ok (some sourcedLabelFacet) := RenderingResolution.facetByKey? st (PreviewCache.statementKey sourcedLabel)
+      | return false
+    let sourceRef? := sourcedLabelFacet.preview.sourceRef
+    let .ok (some secondSourcedLabelFacet) := RenderingResolution.facetByKey? st (PreviewCache.statementKey secondSourcedLabel)
+      | return false
+    let secondSourceRef? := secondSourcedLabelFacet.preview.sourceRef
     let storageOk :=
       match sourceDocument?, sourceRef?, secondSourceRef? with
       | some sourceDocument, some sourceRef, some secondSourceRef =>

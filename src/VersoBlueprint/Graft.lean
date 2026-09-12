@@ -78,21 +78,15 @@ private def renderLeanCodePreviewBody?
     (label : Name)
     (key : String) :
     Doc.Html.HtmlT Verso.Genre.Manual m (Option (Html × Informal.BlockCodeData)) := do
-  match Informal.TraversalIndex.LeanCodePreviews.decodedEntry? state key with
-  | none =>
-      Verso.reportError s!"Blueprint graft: missing Lean-code preview {key}"
-      pure none
-  | some (.error err) =>
-      Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err.message}"
-      pure none
-  | some (.ok stored) =>
-      let body ← match stored.data.source with
-        | .inlineBlocks _label blocks _sourceLocation => renderManualBlocks goB blocks
-        | .externalDecl decl =>
-          pure (Informal.ExternalCode.renderPreviewHtml #[decl]
-            (Informal.Resolve.resolveInformalDeclHref? state label)
-            (fun decl => Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs state id decl.canonical))
-      pure <| some (body, Informal.PreviewManifest.leanCodePreviewData state stored.data)
+  let some panel ← ExtensionDecode.report? (RenderingResolution.codePanelByKey state key)
+    | pure none
+  let body ← match panel.preview.source with
+    | .inlineBlocks _label blocks _sourceLocation => renderManualBlocks goB blocks
+    | .externalDecl decl =>
+      pure (Informal.ExternalCode.renderPreviewHtml #[decl]
+        (Informal.Resolve.resolveInformalDeclHref? state label)
+        (fun decl => Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs state id decl.canonical))
+  pure <| some (body, panel.facts)
 
 private def renderLeanCodeBodies
     [Monad m]
@@ -100,12 +94,12 @@ private def renderLeanCodeBodies
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (state : TraverseState)
     (id : Verso.Multi.InternalId)
-    (entry : Informal.PreviewManifest.Entry) :
+    (resolved : RenderingResolution.Facet) :
     Doc.Html.HtmlT Verso.Genre.Manual m (Array Html × Informal.BlockCodeData) := do
   let mut bodies := #[]
   let mut facts := {}
-  for key in entry.leanCodePreviewKeys do
-    match ← renderLeanCodePreviewBody? goB state id entry.label key with
+  for key in RenderingResolution.codePreviewKeys state resolved do
+    match ← renderLeanCodePreviewBody? goB state id resolved.preview.label key with
     | none => pure ()
     | some (body, codeData) =>
         if body.asString.trimAscii.isEmpty || bodies.any (fun existing => existing.asString == body.asString) then
@@ -124,12 +118,18 @@ private def renderManualGraftNode
     Doc.Html.HtmlT Verso.Genre.Manual m Html := do
   let node := placement.config.toNode
   let state ← Doc.Html.HtmlT.state
-  match Informal.PreviewManifest.findTraversalBlockEntry? state node.key with
-  | none =>
+  match RenderingResolution.facetByKey? state node.key with
+  | .error error =>
+      Verso.reportError error
+      pure <| Html.tag "div" (manualNodeAttrs node) <|
+        renderNotice "bp_graft_node_notice" "error" "Invalid Blueprint node" error
+  | .ok none =>
       pure <| Html.tag "div" (manualNodeAttrs node) <|
         renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
           node.selectionDescription
-  | some (preview, entry) =>
+  | .ok (some resolved) =>
+      let preview := resolved.preview
+      let entry := Informal.PreviewManifest.blockEntryOfFacet state resolved
       let entry := { entry with
         foldProofBlock := placement.foldProofBlock.getD entry.foldProofBlock
         foldCodeBlock := placement.foldCodeBlock.getD entry.foldCodeBlock }
@@ -146,7 +146,7 @@ private def renderManualGraftNode
           if !placement.showsCode then
             pure (#[], {})
           else
-            renderLeanCodeBodies goB state id entry
+            renderLeanCodeBodies goB state id resolved
         let content : Informal.PreviewManifest.BlockRender.RenderedContent := {
           body
           codeBodies
@@ -174,12 +174,14 @@ block_extension Block.blueprintGraftNode (placement : Informal.Graft.Placement) 
       Informal.registerTraversedBlock id occurrence contents
         (showsCode := placement.showsCode)
     if placement.showsCode then
-      if let some (preview, entry) :=
-          Informal.PreviewManifest.findTraversalBlockEntry? (← get) placement.config.toNode.key then
-        for key in entry.leanCodePreviewKeys do
-          if let some (.ok stored) := Informal.TraversalIndex.LeanCodePreviews.decodedEntry? (← get) key then
-            if let .externalDecl decl := stored.data.source then
-              Informal.registerExternalDeclAnchors id preview.label #[decl]
+      -- Forward placements can precede the selected facet during traversal.
+      -- Required content is checked by the renderer after traversal completes.
+      if let .ok (some resolved) :=
+          RenderingResolution.facetByKey? (← get) placement.config.toNode.key then
+        for key in RenderingResolution.codePreviewKeys (← get) resolved do
+          if let .ok code := RenderingResolution.codePanelByKey (← get) key then
+            if let .externalDecl decl := code.preview.source then
+              Informal.registerExternalDeclAnchors id resolved.preview.label #[decl]
     pure none
   toTeX :=
     open Verso.Output.TeX in
