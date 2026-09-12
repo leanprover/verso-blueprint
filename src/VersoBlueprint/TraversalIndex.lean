@@ -268,9 +268,6 @@ def renderedData? (state : TraverseState) (label : Name) : Option Informal.Block
   guard (hasRenderedOccurrence state label)
   capturedData? state label
 
-def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Option Informal.BlockData :=
-  (node? state occurrence.label).map (·.resolve occurrence)
-
 def resolve (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Except String Informal.BlockData :=
   (required state occurrence.label).map (·.resolve occurrence)
 

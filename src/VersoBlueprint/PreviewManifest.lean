@@ -1947,10 +1947,8 @@ private structure BlockHeadingParts where
   caption : String
   label : String
 
-private def blockHeadingParts? (state : TraverseState) (label : Name)
-    (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
-    Option BlockHeadingParts := do
-  let blockData ← blockData? <|> (RenderingResolution.canonical state label).toOption
+private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData)
+    (facet : PreviewCache.Facet) : Option BlockHeadingParts := do
   let display := blockData.display state
   let number ← display.number?
   match facet with
@@ -2153,7 +2151,7 @@ private def blockSemanticManifestEntry
   let reference := match blockData? with
     | some data => RenderingResolution.referenceOfData state data (some preview.facet)
     | none => RenderingResolution.Reference.labelOnly preview.label
-  let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
+  let headingParts? := blockData?.bind (blockHeadingParts? state · preview.facet)
   let codeData := blockCodeData? state preview blockData?
   {
     key

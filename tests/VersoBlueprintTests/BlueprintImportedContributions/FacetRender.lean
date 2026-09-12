@@ -147,7 +147,7 @@ def facetBlueprint : BlueprintDocument := .capture
     unless reference.href == optionalReference.href && reference.previewKey == optionalReference.previewKey do
       throw <| IO.userError "Known relation targets disagree with checked node references"
     let relationState := TraversalIndex.Nodes.saveNode state {
-      label := `facet_consumer, statementUses := #[{ label := `filled_facet }] }
+      label := `facet_consumer, statementUses := #[{ label := `filled_facet }, { label := `panel_other }] }
     let consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
       (PreviewCache.Entry.ofBlocks `facet_consumer .statement #[])
     let some relation := consumer.uses[0]?
@@ -155,6 +155,15 @@ def facetBlueprint : BlueprintDocument := .capture
     unless relation.title == reference.title && relation.href == reference.href &&
         relation.previewKey == reference.previewKey do
       throw <| IO.userError "Manifest relation target and preview disagree with node references"
+    let .ok consumerData := RenderingResolution.canonical relationState `facet_consumer
+      | throw <| IO.userError "Missing relation consumer"
+    let panel ← renderManualHtmlWithState (RelatedPanel.renderUsesExtra relationState consumerData)
+      extension_impls% relationState
+    -- Compare the actual live panel's serialized row with the exported relation.
+    let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
+      toJson relation.label.toString, toJson relation.href]).compress.dropEnd 1 |>.toString
+    unless hasSubstr panel.asString rowPrefix do
+      throw <| IO.userError "Live relation panel disagreed with the manifest's canonical reference"
     for facet in #[PreviewCache.Facet.statement, .proof] do
       let .ok requested := RenderingResolution.reference state `filled_facet (some facet)
         | throw <| IO.userError "Could not resolve explicit facet reference"
