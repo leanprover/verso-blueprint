@@ -63,8 +63,8 @@ def codePreviewKeys (state : TraverseState) (resolved : Facet) : Array String :=
       match TraversalIndex.InlineCode.data? state blockId with
       | some block => if block.declarations.isEmpty then none else some key
       | none => some key
-  let mut keys := resolved.preview.leanCodePreviewKeys
-  for key in externalKeys ++ inlineKeys do
+  let mut keys := #[]
+  for key in resolved.preview.leanCodePreviewKeys ++ externalKeys ++ inlineKeys do
     if !keys.contains key then keys := keys.push key
   return keys
 
