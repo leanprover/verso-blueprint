@@ -188,8 +188,10 @@ section.
 
 Add `(autoDeps := true)` when a tagged declaration, labeled inline Lean block,
 or `(lean := "...")` statement should infer statement/proof dependency edges to
-Lean declarations that are already associated with Blueprint labels, walking
-through unassociated helpers until reaching those declarations. You can also set
+Lean declarations that are already associated with Blueprint labels.
+Inference is direct-only by default; `set_blueprint_helper_expansion .all` or
+`.some #[helper₁, helper₂]` enables traversal through permitted helpers.
+You can also set
 `set_option verso.blueprint.autoDeps true` for a file
 or section, with local `(autoDeps := false)` available as an override. Inferred
 edges are recorded with origin `"automatic"`; explicit `uses` and `proofUses`
