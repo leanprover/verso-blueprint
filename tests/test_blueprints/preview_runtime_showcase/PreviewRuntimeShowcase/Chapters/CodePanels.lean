@@ -11,6 +11,10 @@ namespace PreviewRuntimeShowcase.CodePanelDecls
 @[blueprint "panel_docstring_target"]
 def docstringReferenceTarget : Nat := 1
 
+-- Two declarations contribute to one code-only semantic node.
+@[blueprint "panel_docstring_target"]
+def additionalCodeOnlyWitness : Nat := 3
+
 set_option doc.verso true in
 /--
 Docstring reference: {uses "panel_docstring_target"}[a *rendered premise* $`n + 1`].

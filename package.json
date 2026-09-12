@@ -29,7 +29,7 @@
     "build:types": "tsc -p tsconfig.types.json",
     "docs": "node scripts/generate-jsdoc-type-names.mjs && rm -rf _out/jsdoc-api && jsdoc -c jsdoc.json",
     "check:docs": "node scripts/generate-jsdoc-type-names.mjs --check && node scripts/check-js-api-docs.mjs",
-    "check:types": "node scripts/check-js-api-types.mjs"
+    "check:types": "node scripts/check-js-api-types.mjs && tsc -p tests/types/tsconfig.json"
   },
   "devDependencies": {
     "docdash": "^2.0.2",
