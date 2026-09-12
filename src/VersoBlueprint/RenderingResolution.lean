@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
 
 namespace Informal.RenderingResolution
@@ -26,6 +27,56 @@ Missing captures, unknown labels, and malformed records remain distinct errors. 
 def canonical (state : TraverseState) (label : Data.Label) : Except String BlockData := do
   let node ← TraversalIndex.Nodes.required state label
   return (TraversalIndex.Nodes.resolveCanonical state node).withResolvedNumbering state
+
+/-- A selected facet retains its complete content/occurrence record alongside the
+node semantics from the same rendering state. This is a transient view, not a store. -/
+structure Facet where
+  preview : PreviewCache.Entry
+  data : BlockData
+
+/-- Resolve node semantics for an already decoded facet. Keep `preview` intact:
+its source, target and folding defaults belong to the selected occurrence. -/
+def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
+  unless PreviewCache.key preview.label preview.facet == key do
+    throw s!"Mismatched Blueprint preview identity for '{key}'"
+  return { preview, data := ← canonical state preview.label }
+
+/-- Resolve an explicit stored facet. Absence is optional; malformed content,
+mismatched identity, and missing node semantics are errors. No other facet is borrowed. -/
+def facetByKey? (state : TraverseState) (key : String) : Except String (Option Facet) := do
+  let some object := TraversalIndex.TraversalPreviews.object? state key | return none
+  let preview ← (fromJson? (α := PreviewCache.Entry) object.data).mapError
+    (fun error => s!"Malformed Blueprint preview '{key}': {error}")
+  return some (← facet state key preview)
+
+/-- Included code panels for this facet, retaining the selected entry's keys first.
+Captured declaration facts do not make omitted inline panels available. -/
+def codePreviewKeys (state : TraverseState) (resolved : Facet) : Array String := Id.run do
+  let externalKeys := (resolved.data.codeData.toArray.flatMap (·.externalDecls)).filterMap fun decl =>
+    let key := TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
+    if (TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else none
+  let inlineKeys := (TraversalIndex.InlineCode.blocks state resolved.preview.label).filterMap fun block =>
+    if block.declarations.isEmpty then none else
+      some (TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
+  let mut keys := resolved.preview.leanCodePreviewKeys
+  for key in externalKeys ++ inlineKeys do
+    if !keys.contains key then keys := keys.push key
+  return keys
+
+/-- Required content for one included code preview. Availability does not imply that
+rendering succeeded or that a final exported artifact exists. -/
+def codePreview (state : TraverseState) (key : String) : Except String LeanCodePreview.Entry :=
+  match TraversalIndex.LeanCodePreviews.decodedEntry? state key with
+  | none => .error s!"Missing Blueprint Lean-code preview '{key}'"
+  | some (.error error) => .error s!"Malformed Blueprint Lean-code preview '{key}': {error.message}"
+  | some (.ok entry) => .ok entry.data
+
+/-- Declaration facts for this code panel, independent of the node's other associations. -/
+def codeFacts (state : TraverseState) (entry : LeanCodePreview.Entry) : BlockCodeData :=
+  match entry.source with
+  | .externalDecl decl => { externalDecls := #[decl] }
+  | .inlineBlocks .. =>
+    BlockCodeData.ofInlineBlocks ((TraversalIndex.InlineCode.data? state entry.target).toArray)
 
 /-- Presentation of a node reference. A preview key is a candidate until artifact
 finalization establishes that its manifest entry and rendered body both exist. -/

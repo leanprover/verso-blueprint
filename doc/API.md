@@ -217,12 +217,32 @@ The shared queries are:
 | `reference state label facet?` | Checked title, href, and preview candidate; known unrendered nodes retain label text. Missing or malformed nodes return errors. An explicit facet selects only its own title, target, and preview. |
 | `referenceOfData state data facet?` | The same reference policy using semantic metadata from either `occurrence` or `canonical` in this state, without decoding it again. Stored node presentation supplies reference numbering and the ordinary-reference facet. |
 | `referenceOrLabel state label` | Best-effort presentation for optional relation targets, with a label-only fallback. Do not use this to validate authored references. |
+| `facetByKey? state key` | `Except String (Option Facet)`: an absent facet is `none`; malformed content, mismatched key identity, or missing node semantics is an error. |
+| `facet state key preview` | Resolve an already decoded entry into a `Facet`, checking its identity and node semantics without decoding its body again. |
+| `codePreviewKeys state resolved` | Included code-panel keys, preserving the selected entry's keys first. Omitted inline panels stay unavailable. |
+| `codePreview state key` | Required code-preview content with distinct missing and malformed diagnostics. |
+| `codeFacts state entry` | Declaration facts for that included panel, independently of its node's other associations. |
 
 `referenceOfData` accepts either occurrence-resolved or canonical data from the
 same rendering state. The supplied record's `isProof`, numbering, source, and
 folding settings do not affect reference presentation. Thus a proof occurrence
 can supply metadata for an ordinary reference to the canonical statement; pass
 `some .proof` explicitly to request the proof reference.
+
+`Facet` is a transient pair of the complete selected `PreviewCache.Entry` and
+its resolved `BlockData`. Render selected content from `preview`, including its
+source, target, and folding defaults; `data` supplies node semantics and numbering.
+Keep the view paired with the rendering state that produced it. Placement folding
+overrides and declaration-row DOM IDs remain local to each visible graft.
+
+Live grafts and manifest construction use the same facet query and code-panel
+queries. `PreviewManifest.blockEntryOfFacet` adapts a resolved view to the shared
+manifest-backed HTML shell without another semantic lookup or a JSON round trip.
+`blockEntryOfTraversalPreview` now returns `Except String Entry`; callers must
+handle errors. The old `findTraversalBlockEntry?` lookup is removed in favor of
+`RenderingResolution.facetByKey?`, and `leanCodePreviewData` moves to `codeFacts`.
+Required invalid facets report errors and are omitted from exported preview data;
+a failed lookup cannot silently produce default node metadata.
 
 These queries do not select a new preview body or prove artifact availability.
 Keep a selected `PreviewCache.Entry` intact when rendering its body and sources.
