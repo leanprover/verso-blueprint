@@ -1,7 +1,8 @@
 import Lake
 open Lake DSL
 
-require verso from git "https://github.com/leanprover/verso"@"v4.33.0"
+-- Include the split-page section anchor fix.
+require verso from git "https://github.com/leanprover/verso"@"36664a0ebe032ef3f9e72a8ed0d7be9b14af17d2"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.33.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 

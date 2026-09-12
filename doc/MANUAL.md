@@ -196,6 +196,12 @@ project's rendering model.
 Dependency metadata can still describe unresolved graph edges, which appear in
 graph diagnostics; it does not create a prose link.
 
+Chapter and section tags are document targets, not Blueprint node labels. Declare
+`tag := "chapter-tag"` in the destination's `%%%` metadata and link with
+`{ref "chapter-tag"}[Chapter title]`. Ordinary Verso `ref` requires visible link
+text; an empty `[]` does not generate a title. Other document targets use their
+own reference domain, rather than adding nodes to the Blueprint graph.
+
 For dependencies that do not have a natural sentence-level reference, use the
 block option `(uses := "label1, label2")`. Inline uses can carry
 `(intent := "auxiliary")` or `(intent := "technical")`; metadata-only uses use
