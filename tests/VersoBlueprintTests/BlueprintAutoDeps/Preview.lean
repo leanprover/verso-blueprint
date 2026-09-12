@@ -8,6 +8,8 @@ import VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview
 
+set_blueprint_helper_expansion .all
+
 open Verso
 open Verso.Genre.Manual
 open Lean
@@ -68,7 +70,8 @@ edge and one manual edge, `auto.demo.proof_target` for the same split on a
 proof panel, and `auto.demo.excluded_target` for an automatic edge removed by
 an attribute exclusion. This file also enables
 `set_option verso.blueprint.autoDeps true` for the examples that use
-`(lean := "...")` and inline Lean code.
+`(lean := "...")` and inline Lean code. It explicitly selects
+`set_blueprint_helper_expansion .all` to follow unassociated helpers.
 
 :::definition "auto.demo.type_source"
 Tagged source declaration used by another declaration's type. Edges to this

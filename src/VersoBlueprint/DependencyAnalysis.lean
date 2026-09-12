@@ -5,13 +5,15 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import VersoBlueprint.DependencyAnalysis.Config
 import VersoBlueprint.Environment
 
 /-!
 Automatic dependency inference for Verso Blueprint.
 
-Walks compiled declaration types and bodies through unassociated helpers, stopping
-at the first Blueprint-associated declarations on each path. Associations are
+Walks compiled declaration types and bodies through permitted unassociated helpers,
+stopping at the first Blueprint-associated declarations on each path. Direct-only
+inference is the default; the scoped expansion policy permits more. Associations are
 those available when inference runs. An empty result does not establish
 mathematical independence. See the Manual for the full contract.
 -/
@@ -24,13 +26,13 @@ namespace DependencyAnalysis
 
 register_option verso.blueprint.autoDeps : Bool := {
   defValue := false
-  descr := "Infer Blueprint dependencies by default, expanding unassociated Lean helpers"
+  descr := "Infer Blueprint dependencies by default, using the configured helper expansion policy"
 }
 
 /--
 Dependency labels inferred from a compiled Lean declaration.
 
-Each axis reaches the first Blueprint-associated declarations through helper
+Each axis reaches the first Blueprint-associated declarations through permitted helper
 types and bodies. Label-level axis suppression and manual precedence are applied
 separately by `toUseRefs` and contribution validation.
 -/
@@ -94,6 +96,19 @@ private def bodyConstants (info : ConstantInfo) : Array Name :=
   | .inductInfo info => info.ctors.toArray
   | .axiomInfo _ | .quotInfo _ => #[]
 
+/-- Constructor types are the root inductive's own body, not helper expansion.
+Keep direct-only inference for inductive roots while respecting any explicit
+constructor associations supplied through the contribution API. -/
+private def rootBodyConstants (info : ConstantInfo) : CoreM (Array Name) := do
+  let .inductInfo info := info | return bodyConstants info
+  let mut constants := #[]
+  for ctor in info.ctors do
+    if !(← Environment.labelsForLeanDecl ctor).isEmpty then
+      constants := constants.push ctor
+    else if let some ctorInfo := (← getEnv).find? ctor then
+      constants := constants ++ ctorInfo.type.getUsedConstants
+  return constants
+
 /--
 The Blueprint frontier of a declaration graph, following LeanArchitect's
 `CollectUsed` boundary: associated declarations and unassociated axioms are
@@ -102,7 +117,8 @@ An explicit worklist avoids recursion-depth limits on long helper chains.
 Visited names are local to this walk: later associations must never reuse stale
 cached frontiers. The root is reserved to prevent self references crossing axes.
 -/
-private def frontierLabels (root : Name) (seeds : Array Name) : CoreM (Array Data.Label) := do
+private def frontierLabels (root : Name) (seeds : Array Name)
+    (mayExpand : Name → Bool) : CoreM (Array Data.Label) := do
   let env ← getEnv
   let mut pending := seeds
   let mut visited : NameSet := ({} : NameSet).insert root.eraseMacroScopes
@@ -119,6 +135,8 @@ private def frontierLabels (root : Name) (seeds : Array Name) : CoreM (Array Dat
       for label in associated do
         labels := labels.insert label
       continue
+    if !mayExpand decl then
+      continue
     match env.find? decl with
     | none | some (.axiomInfo _) | some (.quotInfo _) => pure ()
     | some info =>
@@ -127,8 +145,9 @@ private def frontierLabels (root : Name) (seeds : Array Name) : CoreM (Array Dat
 
 def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
   let decl := decl.eraseMacroScopes
-  let statement ← frontierLabels decl info.type.getUsedConstants
-  let proof ← frontierLabels decl (bodyConstants info)
+  let mayExpand := (← getHelperExpansion).permits
+  let statement ← frontierLabels decl info.type.getUsedConstants mayExpand
+  let proof ← frontierLabels decl (← rootBodyConstants info) mayExpand
   return { statement, proof }
 
 def inferDecl? (decl : Name) : CoreM InferredDeps := do

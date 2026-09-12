@@ -8,6 +8,8 @@ import VersoBlueprint
 
 namespace Verso.VersoBlueprintTests.BlueprintAutoDeps.Provider
 
+set_blueprint_helper_expansion .all
+
 /-- Source declaration used from another theorem's type. -/
 @[blueprint "auto.type.source"]
 def typeSource : Prop := True

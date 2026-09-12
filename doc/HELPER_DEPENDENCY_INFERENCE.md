@@ -33,7 +33,8 @@ a filter on the result, not an instruction to expand that tagged declaration.
 
 | Concern | Verso Blueprint decision |
 | --- | --- |
-| Activation | Existing `autoDeps := true` follows helpers; still disabled by default. No second inference mode. |
+| Activation | `autoDeps := true` enables inference, still disabled by default. Independent helper policy defaults to `.none`. |
+| Expansion | `set_blueprint_helper_expansion .all`, `.none`, or `.some #[decl₁, decl₂]`; exact-name permission at every hop. |
 | Boundary | Stop at any Lean-to-Blueprint association, whether created by an attribute, external-Lean statement, or inline code. |
 | Identity | Map each frontier declaration to every associated label; deduplicate and sort labels. |
 | Timing | Infer at authoring elaboration using current associations; persist edges across imports. |
@@ -53,6 +54,15 @@ uses the available compiled expressions, including theorem and opaque bodies.
 Unassociated axioms are terminal even if their types mention other declarations.
 The root's own type is always analyzed, including for an axiom root.
 
+The typed `HelperExpansion` policy is stored structurally in Lean's existing
+`Options`, whose command scope and document propagation already provide the
+required behavior. A small command resolves names before changing scope.
+No additional persistent environment extension or custom `in` implementation
+is needed. Standard `set_option` accepts scalar literals, so the structured
+policy uses a dedicated command rather than a stringly typed public option.
+The internal representation is validated when read; invalid data is an error.
+Selective membership is indexed once per inferred root.
+
 ## Regression surface
 
 `BlueprintAutoDeps.HelperProvider` provides helper chains and persisted
@@ -69,6 +79,10 @@ added between two inference calls. A collector-level test registers a constructo
 association through the contribution API; this does not extend the standard
 authoring syntax to constructor attachments. Existing direct
 dependency, strict-validation, and option-precedence tests remain in force.
+`BlueprintAutoDeps.ExpansionPolicy` additionally checks the default, nested
+sections, command-local and document-local scopes, import isolation, name
+resolution under shadowing, strict multi-hop selection, empty/duplicate lists,
+rejected-name atomicity, and manifest projections in all three modes.
 
 The end-user contract and migration guidance live in the
 [Manual](MANUAL.md#automatic-dependency-inference).

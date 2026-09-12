@@ -14,6 +14,8 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintAutoDeps.HelperFrontier
 
+set_blueprint_helper_expansion .all
+
 open HelperProvider
 
 @[blueprint "auto.frontier.attribute" (autoDeps := true)]
