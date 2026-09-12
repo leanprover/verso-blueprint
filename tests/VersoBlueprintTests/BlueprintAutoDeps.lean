@@ -7,3 +7,4 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintAutoDeps.Consumer
 import VersoBlueprintTests.BlueprintAutoDeps.Controls
 import VersoBlueprintTests.BlueprintAutoDeps.Preview
+import VersoBlueprintTests.BlueprintAutoDeps.HelperFrontier
