@@ -8,7 +8,7 @@ import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.RenderingResolution
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -491,38 +491,26 @@ private def useMetadataBadgeCodes
     (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Array String :=
   origins.filterMap useOriginBadgeCode? ++ intents.filterMap useIntentBadgeCode?
 
-private def mkBlockEntry {m}
-    [Monad m]
-    (state : TraverseState)
-    (source : BlockData) (previewId : String)
-    (badgeCodes : Array String := #[]) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
-  let previewTitle := source.displayTitle state
-  let href := Informal.TraversalIndex.Nodes.href? state source.label
-  pure {
-    previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state source.label
-    previewTitle
-    label := source.label
-    href
-    badgeCodes
-  }
+private def mkEntry
+    (label : Data.Label) (reference : RenderingResolution.Reference)
+    (previewId : String) (badgeCodes : Array String) : PanelEntry := {
+  previewId
+  previewKey := reference.previewKey
+  previewTitle := reference.title
+  label
+  href := reference.href
+  badgeCodes
+}
 
-private def mkLabelEntry {m}
-    [Monad m]
-    (state : TraverseState)
-    (label : Data.Label) (previewId : String)
-    (badgeCodes : Array String := #[]) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
-  let previewTitle := s!"{label}"
-  pure {
-    previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state label
-    previewTitle
-    label
-    href := Informal.TraversalIndex.Nodes.href? state label
-    badgeCodes
-  }
+private def mkBlockEntry
+    (state : TraverseState) (source : BlockData) (previewId : String)
+    (badgeCodes : Array String := #[]) : PanelEntry :=
+  mkEntry source.label (RenderingResolution.referenceOfData state source) previewId badgeCodes
+
+private def mkLabelEntry
+    (state : TraverseState) (label : Data.Label) (previewId : String)
+    (badgeCodes : Array String := #[]) : PanelEntry :=
+  mkEntry label (RenderingResolution.referenceOrLabel state label) previewId badgeCodes
 
 private def loadingBody (detail : String) : Output.Html :=
   open Verso.Output.Html in
@@ -660,7 +648,7 @@ def renderUsedByExtra {m}
   | true => pure .empty
   | false =>
     let entries := collectUsedByEntries state data.label
-    let panelEntries ← entries.mapM fun entry =>
+    let panelEntries := entries.map fun entry =>
       let badgeCodes := usedByAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
       mkBlockEntry state entry.source
         (usedByPreviewId data.label entry.source.label)
@@ -674,7 +662,7 @@ def renderUsesExtra {m}
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries state data
-  let panelEntries ← entries.mapM fun entry => do
+  let panelEntries := entries.map fun entry =>
     let badgeCodes := useAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
     match entry.target? with
     | some target =>
@@ -700,7 +688,7 @@ def renderGroupExtra {m}
     let siblings := collectGroupEntries state data group
     if group.declared && siblings.isEmpty then
       return none
-    let panelEntries ← siblings.mapM fun source =>
+    let panelEntries := siblings.map fun source =>
       mkBlockEntry state source
         (groupPreviewId data.label source.label)
     let cfg := groupPanelConfig group.label group.title group.declared

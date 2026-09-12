@@ -423,6 +423,26 @@ The target is elaborated after the reference.
     (PreviewCache.Entry.ofBlocks qualified .statement #[])
   unless reference.title == "odd namespace.odd label" && entry.title == reference.title do
     throw <| IO.userError "Reference and manifest fallbacks disagree on qualified labels"
+  -- Optional unknown targets and captured-but-omitted targets have the same
+  -- readable fallback in live panels and exports, including restored state.
+  for targetState in #[state, qualifiedState] do
+    let .ok restored := fromJson? (α := TraverseState) (toJson targetState)
+      | throw <| IO.userError "Could not restore relation test state"
+    for targetState in #[targetState, restored] do
+      let relationState := TraversalIndex.Nodes.saveNode targetState {
+        label := `qualified_consumer, statementUses := #[{ label := qualified }, { label := `panel_other }] }
+      let consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
+        (PreviewCache.Entry.ofBlocks `qualified_consumer .statement #[])
+      let some relation := consumer.uses.find? (·.label == qualified)
+        | throw <| IO.userError "Missing qualified relation"
+      let .ok data := RenderingResolution.canonical relationState `qualified_consumer
+        | throw <| IO.userError "Missing qualified relation consumer"
+      let panel ← renderManualHtmlWithState (RelatedPanel.renderUsesExtra relationState data)
+        manualImpls relationState
+      let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
+        toJson relation.label.toString, toJson relation.href]).compress.dropEnd 1 |>.toString
+      unless relation.title == "odd namespace.odd label" && hasSubstr panel.asString rowPrefix do
+        throw <| IO.userError "Live relation and manifest label fallbacks disagree"
   let markup : Data.ExternalMarkupData := {
     label := qualified
     markup := ({} : Data.ExternalMarkupSet).insert {

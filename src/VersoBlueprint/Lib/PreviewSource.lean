@@ -53,8 +53,9 @@ deriving Inhabited, Repr
 /--
 A decoded traversal-preview object as stored after Manual traversal.
 
-This is for whole-domain consumers such as manifest construction. Callers that
-need one best preview for a label should use `Selection` instead.
+This is for whole-domain consumers such as manifest construction. One-label
+consumers use `traversalEntry?` for selected prose and its provenance, or
+`traversalPreviewCandidateKey?` for a preview candidate including code and markup.
 -/
 structure StoredTraversalEntry where
   /-- Manifest/cache key for this statement or proof preview facet. -/
@@ -64,7 +65,7 @@ structure StoredTraversalEntry where
   entry : PreviewCache.Entry
 deriving Inhabited, Repr
 
-/-- A selected preview for one Blueprint label.
+/-- An environment-time preview for one Blueprint label.
 
 The `facet` and `key` fields identify the preview that should be used by
 callers, while `preview` contains the phase-local renderable payload. -/
@@ -160,11 +161,6 @@ def traversalPreviewCandidateKey?
       else if facet == .statement then traversalExternalMarkupLookupKey? s label
       else none
   PreviewKey.ofString? key
-
-/-- Best preview candidate key for relation entries. -/
-def traversalRelationPreviewKey?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey :=
-  traversalPreviewCandidateKey? s label
 
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs

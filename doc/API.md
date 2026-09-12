@@ -204,7 +204,11 @@ provides the equivalent operation for callers that own traversal initialization.
 The model contains runtime data and does not require a Lean environment at render
 time. Missing node references produce a traversal diagnostic.
 
-Rendering consumers can use `Informal.RenderingResolution` over that completed state:
+Rendering consumers can use `Informal.RenderingResolution` over that completed state.
+The unchecked `Nodes.resolve?` API has been removed; use `Nodes.resolve` for raw
+occurrence resolution or `RenderingResolution.occurrence` for resolved numbering.
+
+The shared queries are:
 
 | Query | Result |
 | --- | --- |
@@ -223,7 +227,7 @@ an absent facet has neither. Included code can supply a preview without inventin
 a prose body.
 External markup can supply a statement preview, but never a proof preview.
 Authored references use checked lookup in traversal and HTML/TeX rendering;
-only optional relation targets use `referenceOrLabel`. Human-facing fallback
+only optional relation targets use `referenceOrLabel`. Live relation panels and manifest relations share the same queries. Human-facing fallback
 titles consistently use unquoted label text, including qualified names with punctuation.
 
 Summaries cover the captured project environment; graphs select nodes with
@@ -689,7 +693,10 @@ explicitly requesting that facet.
 
 | Need | Use |
 | --- | --- |
-| Best preview candidate for one label from finished traversal state | `PreviewSource.Selection` |
+| Reference title, target, and preview candidate from finished traversal | `RenderingResolution.reference` |
+| Only a preview candidate key from finished traversal | `PreviewSource.traversalPreviewCandidateKey?` |
+| Selected prose with its target and provenance | `PreviewSource.traversalEntry?` (complete `PreviewCache.Entry`) |
+| Environment-time widget preview | `PreviewSource.environmentSelection?` (`Selection`) |
 | Manifest/cache-backed preview key in generated data | Finalized relation or graph node `previewKey` |
 | Explicit statement facet identity | `PreviewCache.statementKey label` |
 | Explicit proof facet identity | `PreviewCache.proofKey label` |

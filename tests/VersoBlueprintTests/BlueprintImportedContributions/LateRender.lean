@@ -86,7 +86,7 @@ def lateBlueprint : Informal.BlueprintDocument := .capture graphDoc.toPart
     | throw <| IO.userError "Traversal changed nested document structure"
   unless container.data == toJson occurrence && (container.data.getObjVal? "tags").toOption.isNone do
     throw <| IO.userError "Compiled occurrences acquired copied semantic metadata"
-  let some resolved := Informal.TraversalIndex.Nodes.resolve? state occurrence
+  let .ok resolved := Informal.TraversalIndex.Nodes.resolve state occurrence
     | throw <| IO.userError "Missing shared rendering node"
   unless resolved.count == 47 && resolved.partPrefix == some "Appendix" &&
       resolved.foldProofBlock && resolved.sourceLocation == occurrence.sourceLocation &&
