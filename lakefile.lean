@@ -1,9 +1,9 @@
 import Lake
 open Lake DSL
 
--- Verso #971 landed after RC2; pin its merge and matching SubVerso API until
--- the next 4.34 release tag contains both.
-require verso from git "https://github.com/leanprover/verso"@"99e9df791e46ec647f81d98b109965f166b9b6b4"
+-- Pin the matching post-RC2 Verso/SubVerso API and the split-page section
+-- anchor fix until a release tag includes both.
+require verso from git "https://github.com/leanprover/verso"@"52c8c9557bcb5cc8c0edc0ee37e74311a3d53ee9"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.34.0-rc2"
 require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
