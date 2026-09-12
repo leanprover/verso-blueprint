@@ -77,9 +77,12 @@ private def renderSession (contentComponent : Js (Component Session.ContentProps
   let label ← Node.pTextWith #[Props.id "vir-verso-label", ComponentStyle.label]
     "Verso React preview"
   let config ← Session.renderConfigPanel options optionsState
+  -- Server durations already belong to the accepted response. Display them
+  -- directly, without enabling diagnostic effects or taking another measurement.
+  let timing ← Session.renderServerTiming (document?.bind (·.serverTiming?))
   let debugPanel ←
     if options.debug then
-      some <$> Session.renderDebugPanel options optionsState
+      some <$> Session.renderDebugPanel
         (← LeanRef.fromJSL debugSampleState.value)
     else
       pure none
@@ -117,7 +120,7 @@ private def renderSession (contentComponent : Js (Component Session.ContentProps
     Props.role "region",
     Props.ariaLabel "Incremental Verso document preview",
     ComponentStyle.shell
-  ] (#[label, config] ++ debugPanel.toArray ++ #[content])
+  ] (#[label, config, timing] ++ debugPanel.toArray ++ #[content])
 
 /--
 Create once per runtime and reuse this native React component type. Prop updates

@@ -22,7 +22,6 @@ structure Options where
   followCursor : Bool := true
   debug : Bool := false
   highlightChanges : Bool := false
-  debugExpanded : Bool := false
 
 namespace Options
 
@@ -36,7 +35,6 @@ structure DebugSample where
   status : String := "waiting"
   version : Nat := 0
   correlationId : String := ""
-  serverTiming? : Option ServerTiming := none
   blockCount : Nat := 0
   changedCount : Nat := 0
   highlightChanges : Bool := Options.initial.highlightChanges
@@ -73,7 +71,17 @@ private def renderToggle (id label : String) (checked : Bool)
     Props.checked checked, Props.onChangeUnit onChange] #[]
   Node.elementWith "label" #[Props.htmlFor id] #[input, ← Node.text (← JsValue.ofString (" " ++ label))]
 
-private def renderServerTiming (timing : ServerTiming) : ReactM (Js Node) := do
+/-- A fixed scale shared by every response: 100 ms occupies 40 CSS pixels. -/
+private def timingTickMs : Nat := 100
+private def timingTickPixels : Nat := 40
+
+private def timingPixels (nanos : Nat) : Float :=
+  nanos.toFloat / (timingTickMs * 1000000).toFloat * timingTickPixels.toFloat
+
+def renderServerTiming (timing? : Option ServerTiming) : ReactM (Js Node) := do
+  let some timing := timing? |
+    Node.pTextWith #[Props.id "vir-verso-server-timings", ComponentStyle.debugNote]
+      "Server timing unavailable"
   let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
   let phases := #[
     ("snapshot-wait", "Snapshot", "#4c9be8", timing.snapshotWaitNanos),
@@ -81,13 +89,13 @@ private def renderServerTiming (timing : ServerTiming) : ReactM (Js Node) := do
     ("evaluation", "Document", "#42b89a", timing.evaluationNanos)
   ]
   let total := timing.preparationNanos
-  let summary := "Server preparation · " ++ milliseconds total
+  let summary := "Server " ++ milliseconds total
   let segments ← phases.mapM fun (key, label, color, nanos) =>
     Node.spanWith #[Props.key key, Props.string "data-verso-phase" key,
       Props.string "data-verso-nanos" (toString nanos),
       Props.string "title" (label ++ ": " ++ milliseconds nanos),
       Props.stylePairs #[
-        ("flexGrow", toString nanos), ("flexShrink", "0"), ("flexBasis", "0px"),
+        ("width", s!"{timingPixels nanos}px"), ("flexShrink", "0"),
         ("minWidth", "0"), ("backgroundColor", color)
       ]] #[]
   let legend ← phases.mapM fun (key, label, color, nanos) => do
@@ -95,24 +103,32 @@ private def renderServerTiming (timing : ServerTiming) : ReactM (Js Node) := do
       ("display", "inline-block"), ("width", "8px"), ("height", "8px"),
       ("borderRadius", "2px"), ("backgroundColor", color)
     ]] #[]
-    Node.spanWith #[Props.key key, Props.stylePairs #[
+    Node.spanWith #[Props.key key, Props.title (label ++ ": " ++ milliseconds nanos), Props.stylePairs #[
       ("display", "inline-flex"), ("alignItems", "center"), ("gap", "4px")
-    ]] #[swatch, ← Node.text (← JsValue.ofString (label ++ " " ++ milliseconds nanos))]
-  let label ← Node.pTextWith #[ComponentStyle.debugNote] summary
+    ]] #[swatch, ← Node.text (← JsValue.ofString label)]
+  let label ← Node.pTextWith #[ComponentStyle.debugNote,
+    Props.title "Server preparation: snapshot wait, checked-environment wait, and document evaluation/cursor lookup. Includes scheduling; excludes encoding, transport and browser rendering."]
+    (summary ++ s!" · {timingTickMs} ms / tick")
   let bar ← Node.divWith #[Props.id "vir-verso-server-bar", Props.role "img",
     Props.string "aria-label" (summary ++ "; " ++ String.intercalate ", "
       (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)),
     Props.string "data-verso-total-nanos" (toString total),
     Props.stylePairs #[
-      ("display", "flex"), ("width", "100%"), ("height", "12px"),
-      ("overflow", "hidden"), ("borderRadius", "3px"),
-      ("backgroundColor", "var(--vscode-editorWidget-background, #88888822)")
+      ("display", "flex"), ("width", s!"{timingPixels total}px"), ("height", "12px")
     ]] segments
+  let track ← Node.divWith #[Props.stylePairs #[
+    ("width", "max-content"), ("minWidth", "100%"), ("paddingBottom", "5px"),
+    ("backgroundImage", s!"repeating-linear-gradient(to right, var(--vscode-descriptionForeground,#888) 0px, var(--vscode-descriptionForeground,#888) 1px, transparent 1px, transparent {timingTickPixels}px)")
+  ]] #[bar]
+  let track ← Node.divWith #[Props.id "vir-verso-server-scale", Props.stylePairs #[
+    ("overflowX", "auto"), ("minWidth", "0")
+  ]] #[track]
   let legend ← Node.divWith #[Props.stylePairs #[
     ("display", "flex"), ("flexWrap", "wrap"), ("gap", "4px 12px"),
     ("marginTop", "5px"), ("fontSize", "0.85em")
   ]] legend
-  Node.divWith #[Props.id "vir-verso-server-timings"] #[label, bar, legend]
+  Node.divWith #[Props.id "vir-verso-server-timings", Props.stylePairs #[("minWidth", "0")]]
+    #[label, track, legend]
 
 def renderConfigPanel
     (options : Options)
@@ -134,41 +150,12 @@ def renderConfigPanel
     ComponentStyle.configPanel
   ] #[legend, follow, debug, changes]
 
-private def renderDebugBody (sample : DebugSample) : ReactM (Js Node) := do
-  let server ← match sample.serverTiming? with
-    | none =>
-      Node.pTextWith #[Props.id "vir-verso-server-timings", ComponentStyle.debugNote]
-        "Server timing was not supplied with this response."
-    | some timing => renderServerTiming timing
-  let note ← Node.pTextWith #[ComponentStyle.debugNote]
-    "Server only: waits include scheduling; encoding and transport are excluded. Browser timing awaits VIR."
+def renderDebugPanel (sample : DebugSample) : ReactM (Js Node) := do
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"
   let details ← Node.pTextWith #[ComponentStyle.debugDetails]
-    s!"{sample.status} · editor v{sample.version} · {analysis} · sample {sample.sequence}"
-  Node.divWith #[ComponentStyle.debugBody] #[server, note, details]
-
-def renderDebugPanel
-    (options : Options)
-    (state : State (JSL Options))
-    (sample : DebugSample) : ReactM (Js Node) := do
-  let summary :=
-    if sample.sequence == 0 then
-      "waiting for first commit"
-    else
-      s!"{sample.status} · editor v{sample.version} · sample {sample.sequence}"
-  let disclosure ← Node.elementWith "button" #[
-    Props.id "vir-verso-debug-disclosure", Props.type "button",
-    Props.ariaExpanded options.debugExpanded,
-    Props.string "aria-controls" "vir-verso-debug-details",
-    Props.onClick (updateOptions state fun current => {
-      current with debugExpanded := !current.debugExpanded })
-  ] #[← Node.text (← JsValue.ofString ("Last render · " ++ summary))]
-  let body ← if options.debugExpanded then do pure #[← renderDebugBody sample] else pure #[]
-  let details ← Node.divWith #[Props.id "vir-verso-debug-details",
-    Props.bool "hidden" (!options.debugExpanded)]
-    body
+    s!"{sample.status} · editor v{sample.version} · {analysis}"
   Node.asideWith #[
     Props.id "vir-verso-debug-panel",
     Props.string "data-verso-debug" "true",
@@ -179,11 +166,9 @@ def renderDebugPanel
     Props.string "data-verso-debug-snapshot-effects" (toString sample.sequence),
     Props.string "data-verso-debug-version" (toString sample.version),
     Props.string "data-verso-debug-correlation-id" sample.correlationId,
-    Props.string "data-verso-debug-server-preparation-nanos"
-      (sample.serverTiming?.map (toString ∘ ServerTiming.preparationNanos) |>.getD "unavailable"),
     Props.string "data-verso-debug-block-count" (if sample.highlightChanges then toString sample.blockCount else "skipped"),
     Props.string "data-verso-debug-changed-block-count" (toString sample.changedCount),
     ComponentStyle.debugPanel
-  ] #[disclosure, details]
+  ] #[details]
 
 end VersoBlueprint.Experimental.VirPreview.Session

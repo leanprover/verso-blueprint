@@ -48,6 +48,9 @@ async function run() {
       "Blueprint adapter did not render the informal block");
     check(byId("follow-cursor").checked && !byId("highlight-changes").checked && !panel(),
       "incorrect default options");
+    check(byId("server-bar")?.getBoundingClientRect().width > 0 &&
+      byId("server-timings").textContent.includes("100 ms / tick"),
+      "scaled timing bar must be visible without enabling diagnostics");
     render(0);
     check(!panel() && byId("preview").dataset.versoChangedBlockCount === "0",
       "unchanged normal input enabled diagnostics or highlighting");
@@ -62,13 +65,12 @@ async function run() {
     const paragraph = [...document.querySelectorAll("p")].find(p => p.textContent === "After edit");
     click("debug");
     check(panel() && paragraph.isConnected, "debug insertion remounted document content");
-    click("debug-disclosure");
-    check(byId("debug-disclosure").getAttribute("aria-expanded") === "true",
-      "controlled disclosure did not expand");
+    check(!byId("debug-disclosure") && document.querySelectorAll("#vir-verso-server-bar").length === 1,
+      "debug controls must not hide or duplicate the timing bar");
     check(panel().dataset.versoDebugBrowserTiming === "pending-upstream" &&
       !panel().hasAttribute("data-verso-debug-browser-ms") && !byId("processing"),
     "pending browser timing was presented as a measurement");
-    check(byId("server-timings").textContent.includes("Server preparation · 6.0 ms") &&
+    check(byId("server-timings").textContent.includes("Server 6.0 ms") &&
       panel().dataset.versoDebugNewInput === "false", "option toggle misreported server sample");
     const bar = byId("server-bar");
     const segments = [...bar.querySelectorAll("[data-verso-phase]")];
@@ -79,8 +81,9 @@ async function run() {
     check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
       "timing phases lack distinct colors");
     const width = bar.getBoundingClientRect().width;
+    check(Math.abs(width - 2.4) < 0.05, "6 ms must occupy 2.4 CSS pixels, not the container width");
     segments.forEach((segment, index) => check(
-      Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 1,
+      Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 0.05,
       "timing segment width is not proportional to duration"));
     const unchangedSequence = sequence();
     render(1);
@@ -93,24 +96,34 @@ async function run() {
       check(checkbox === byId("follow-cursor") && !checkbox.checked &&
         byId("highlight-changes").checked && byId("debug").checked,
       `${expected} transition reset options`);
-      check(byId("debug-disclosure").getAttribute("aria-expanded") === "true",
-        `${expected} transition reset disclosure`);
       check(panel().dataset.versoDebugStatus === expected &&
         panel().dataset.versoDebugNewInput === "true", `${expected} diagnostic observation is stale`);
     }
     check(byId("preview").textContent.includes("Recovered preview"), "recovery lost document");
     render(6);
-    check(!byId("server-bar") && byId("server-timings").textContent.includes("not supplied"),
+    check(!byId("server-bar") && byId("server-timings").textContent.includes("unavailable"),
       "missing timing was displayed as zero or retained from an old response");
     render(7);
     check(byId("server-bar").dataset.versoTotalNanos === "0" &&
       [...byId("server-bar").children].every(s => s.getBoundingClientRect().width === 0),
       "zero timing should have an empty, finite bar");
     click("debug");
-    check(!panel(), "debug did not switch off");
+    check(!panel() && byId("server-bar"), "debug switch must not hide the timing bar");
+    render(8);
+    const firstWidth = byId("server-bar").getBoundingClientRect().width;
+    check(Math.abs(firstWidth - 240) < 0.05, "600 ms must occupy 240 CSS pixels");
+    const app = document.getElementById("app");
+    app.style.width = "220px";
+    render(9);
+    check(Math.abs(byId("server-bar").getBoundingClientRect().width - 2 * firstWidth) < 0.05,
+      "doubling the time must double the width, including in a narrow panel");
+    const scale = byId("server-scale");
+    check(scale.scrollWidth > scale.clientWidth && scale.clientWidth <= 220,
+      "long timings must overflow the ruler, not widen the panel or rescale");
+    scale.scrollLeft = 100;
+    check(scale.scrollLeft > 0, "long timings must be horizontally scrollable");
+    app.style.width = "";
     click("debug");
-    check(byId("debug-disclosure").getAttribute("aria-expanded") === "true",
-      "debug off/on reset disclosure preference");
     click("highlight-changes");
     check(panel().dataset.versoDebugBlockCount === "skipped" &&
       !document.querySelector(".vir-verso-block-changed"), "highlighting did not switch off");
@@ -127,9 +140,10 @@ async function run() {
     runtime = null;
     check(warnings.length === 0, `React/browser warnings: ${warnings.join("\n")}`);
     return { strictMode: true, fullManualInput: true, blueprintAdapter: true,
-      retainedOptions: true, retainedDisclosure: true, debugInsertionKeepsDocument: true,
+      retainedOptions: true, debugInsertionKeepsDocument: true,
       unchangedInputNoEffect: true, statusTransitions: 4, intentionalRemountResets: true,
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
+      alwaysVisibleTiming: true, fixedTimeScale: true, scrollableLongTiming: true,
       missingAndZeroTiming: true, browserTimingExplicitlyPending: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],

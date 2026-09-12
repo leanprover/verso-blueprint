@@ -181,7 +181,6 @@ async function run() {
         "revision refresh lost control state");
       const beforeDebug = requests.length;
       React.act(() => document.getElementById("vir-verso-debug").click());
-      React.act(() => document.getElementById("vir-verso-debug-disclosure").click());
       check(requests.length === beforeDebug, "debug controls triggered another RPC");
 
       check(subscriptions === 1 && notificationHandlers.size === 1,
@@ -218,8 +217,8 @@ async function run() {
         version() === changedAgain.textDocument.version,
         "cancelled edit response overwrote its successor");
       check(checkbox() === retainedCheckbox && checkbox().checked &&
-        document.getElementById("vir-verso-debug-disclosure").getAttribute("aria-expanded") === "true",
-        "editor refresh lost controls or disclosure state");
+        document.getElementById("vir-verso-debug").checked,
+        "editor refresh lost control state");
 
       render(a, "wait for cancellation", false, "0", true);
       await until("cancellable request started", () => post("/started", { message: "wait for cancellation" }));
@@ -257,8 +256,7 @@ async function run() {
           .textContent.includes("Invalid preview response"), "missing visible decode error");
         check(checkbox() === retainedCheckbox && checkbox().checked,
           "decode error remounted controls");
-        check(document.getElementById("vir-verso-debug-disclosure")
-          .getAttribute("aria-expanded") === "true", "decode error reset disclosure");
+        check(document.getElementById("vir-verso-debug").checked, "decode error reset debug option");
       }
     }
 

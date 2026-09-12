@@ -67,10 +67,12 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(asset?.dataBase64, "shell did not read WASM through the asset RPC");
     const wasmHash = await sha256(Uint8Array.from(atob(asset.dataBase64), c => c.charCodeAt(0)));
     check(wasmHash === VBP_WASM_SHA256, "server-loaded WASM differs from the pinned SDK");
+    check(document.getElementById("vir-verso-server-bar") &&
+      !document.getElementById("vir-verso-debug").checked,
+      "live server timing must be visible before opening debug controls");
     const retained = checkbox();
     React.act(() => retained.click());
     React.act(() => document.getElementById("vir-verso-debug").click());
-    React.act(() => document.getElementById("vir-verso-debug-disclosure").click());
     const measuredBar = () => {
       const bar = document.getElementById("vir-verso-server-bar");
       check(bar, "live server response has no timing bar");
@@ -97,8 +99,8 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       "edited source text did not reach the preview document");
     check(checkbox() === retained && retained.checked,
       "embedded edit lost checkbox identity or state");
-    check(document.getElementById("vir-verso-debug-disclosure").getAttribute("aria-expanded") === "true",
-      "embedded edit lost disclosure state");
+    check(document.getElementById("vir-verso-debug").checked,
+      "embedded edit lost debug option");
     measuredBar();
     check(packageCalls().length === 1, "document edit regenerated the client package");
 
@@ -166,6 +168,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       registeredWidgetModule: true, shellSha256: hash, wasmSha256: wasmHash, liveSnapshotPackage: true,
       workspaceAssetRpc: true, editorContextBridge: true, samePositionEdit: true,
       liveBlueprintDocument: true, editedSourceRendered: true, measuredServerTimingBar: true,
+      alwaysVisibleTiming: true,
       retainedControls: true, cursorRefresh: true, unchangedInputNoRpc: true,
       realSourceFocus: true, sourceHeadingFocus: true, outsideDocumentClearsFocus: true,
       disabledFollowRetained: true, reenabledFollowUsesLatestCursor: true,

@@ -42,6 +42,10 @@ private def preview (scenario : Nat) : Preview := match scenario with
   | 6 => .ready { document 4 "Without timing" with serverTiming? := none }
   | 7 => .ready { document 5 "Zero timing" with serverTiming? := some {
       snapshotWaitNanos := 0, checkedWaitNanos := 0, evaluationNanos := 0 } }
+  | 8 => .ready { document 6 "600 ms" with serverTiming? := some {
+      snapshotWaitNanos := 100000000, checkedWaitNanos := 200000000, evaluationNanos := 300000000 } }
+  | 9 => .ready { document 7 "1200 ms" with serverTiming? := some {
+      snapshotWaitNanos := 200000000, checkedWaitNanos := 400000000, evaluationNanos := 600000000 } }
   | _ => .ready (document 3 "Recovered preview")
 
 @[vir_export]

@@ -78,11 +78,6 @@ def debugPanel : Props.Entry := style #[
   ("overflowWrap", "anywhere")
 ]
 
-def debugBody : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "6px")
-]
-
 def debugNote : Props.Entry := style #[
   ("margin", "0"),
   ("color", muted),

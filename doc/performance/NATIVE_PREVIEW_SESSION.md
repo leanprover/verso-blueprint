@@ -96,28 +96,36 @@ or global DOM polling to work around this gap.
 
 ### Timing display
 
-Enable **Debug details**, then expand **Last render**. One stacked bar shows
+The timing bar is always visible when the response supplies timings; no debug
+checkbox or expander is needed. One stacked bar shows
 server preparation for the accepted response: blue **Snapshot** wait, amber
 **Checked** environment wait, and green **Document** evaluation/reconstruction
 and cursor lookup in the retained source syntax.
-Widths are proportional to unrounded nanoseconds within that response; the
-total and legend show milliseconds. The bar is normalized to its available
-width, not a fixed milliseconds-per-pixel scale. Zero-duration phases have no
-width, and absent timing is shown as unavailable, not zero.
+The fixed scale is **100 ms per 40 CSS pixels**, with ruler ticks every 100 ms.
+Doubling a duration doubles its width, even across responses or panel sizes.
+Long bars scroll horizontally instead of rescaling or clipping the measurement.
+Zero-duration phases have no width; absent timing is shown as unavailable, not zero.
+A single total sits above the bar. Hover a segment or legend label for its phase
+duration; the total's tooltip explains measurement scope. **Debug details** adds
+only the editor version/status and change-analysis counts, with no nested expander.
 
 The preview RPC takes four monotonic timestamps, with no per-node probes,
 extra rendering traversal, logs, timers or request. Measurements are collected for each
 successful document response independently of the Debug checkbox; changing a
-control reuses that response's server measurement. Snapshot/checked waits include
+control reuses that response's server measurement. The bar reads the accepted
+response directly, without enabling diagnostic effects or duplicating timings
+in post-commit state. Snapshot/checked waits include
 scheduling and document work remaining when the RPC starts. The interval ends
 before response encoding. It excludes work before RPC entry, transport, and
 browser rendering, so it is **not edit-to-preview latency**. Browser timing remains
 pending the pinned VIR API; no VBP-local browser binding has been added.
 
-The timing acceptance reports in `_out/native-preview-modules/timing/` check
-actual browser geometry against a 1:2:3 sample, distinct colors, accessible labels,
-missing/zero measurements, and fresh measurements from the real document RPC
-across edits. The known embedded-shell unmount warning remains a strict failure.
+The timing acceptance reports in `_out/native-preview-modules/timing-scale/` check
+default visibility, actual browser geometry against a 1:2:3 sample, fixed-width
+6/600/1200 ms measurements, horizontal scrolling in a narrow panel, distinct
+colors, accessible labels, missing/zero measurements, and fresh measurements
+from the real document RPC across edits. The known embedded-shell unmount
+warning remains a strict failure.
 
 Ordinary `import VersoBlueprint` does not import VIR. The server endpoint is not
 part of the client's runtime closure. No new build, rendering traversal, document cache,

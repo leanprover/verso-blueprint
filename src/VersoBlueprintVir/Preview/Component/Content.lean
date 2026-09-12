@@ -100,7 +100,6 @@ def createContentComponent : RuntimeM (Js (Component ContentProps)) :=
             status := outcome.status
             version := outcome.version
             correlationId := outcome.correlationId
-            serverTiming? := props.preview.document?.bind (·.serverTiming?)
             blockCount := outcome.blockCount
             changedCount := props.changedIds.size
             highlightChanges := props.highlightChanges
