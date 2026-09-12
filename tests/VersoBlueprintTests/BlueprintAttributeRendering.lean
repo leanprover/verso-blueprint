@@ -167,8 +167,8 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "exportedUndocumentedDefinition" &&
       !hasSubstr html "Blueprint node not found" &&
       !hasSubstr html "Blueprint node has no cached content" &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? state theoremKey).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? state undocumentedKey).isSome
+      ((Informal.RenderingResolution.facetByKey? state theoremKey).toOption.join).isSome &&
+      ((Informal.RenderingResolution.facetByKey? state undocumentedKey).toOption.join).isSome
 
 /- A regular imported Lean module can become a source-ordered Verso part. -/
 /-- info: true -/
@@ -194,7 +194,7 @@ private def substringsInOrder (text : String) : List String → Bool
       ]
     let hasEntries := labels.all fun label =>
         let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
-        (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
+        ((Informal.RenderingResolution.facetByKey? state key).toOption.join).isSome
     pure <| hasIncludedTitle && hasAnchor && ordered && hasEntries
 
 /- Generated module nodes honor non-default Blueprint numbering options. -/
@@ -317,7 +317,7 @@ private def substringsInOrder (text : String) : List String → Bool
     ]
     let hasEntries := labels.all fun label =>
       let key := Informal.PreviewCache.statementKey (Name.mkSimple label)
-      (Informal.PreviewManifest.findTraversalBlockEntry? state key).isSome
+      ((Informal.RenderingResolution.facetByKey? state key).toOption.join).isSome
     let some bodyData :=
         Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.hybrid.body")
       | return false
@@ -397,12 +397,12 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "qualifiedDefaultLabel" &&
       !hasSubstr html "open=\"open\""
     pure <|
-      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).isSome &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? placedState key).map
-          (·.2.foldCodeBlock) == some true &&
-      (Informal.PreviewManifest.findTraversalBlockEntry? moduleState key).map
-          (·.2.foldCodeBlock) == some true &&
+      ((Informal.RenderingResolution.facetByKey? placedState key).toOption.join).isSome &&
+      ((Informal.RenderingResolution.facetByKey? moduleState key).toOption.join).isSome &&
+      ((Informal.RenderingResolution.facetByKey? placedState key).toOption.join).map
+          (·.preview.foldCodeBlock) == some true &&
+      ((Informal.RenderingResolution.facetByKey? moduleState key).toOption.join).map
+          (·.preview.foldCodeBlock) == some true &&
       renderedAsExpected placedHtml &&
       renderedAsExpected moduleHtml &&
       hasSubstr moduleHtml "qualifiedDefaultDefinition"

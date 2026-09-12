@@ -366,6 +366,15 @@ The same flow can be read as four contracts:
    Preview consumers retain the complete selected `PreviewCache.Entry`, keeping
    body, target, and provenance together.
 
+   `RenderingResolution.Facet` pairs that complete selected entry with checked
+   node metadata. `facetByKey?` distinguishes absence from malformed content or
+   mismatched identity; `facet` also serves bulk consumers that already decoded
+   an entry. Grafts and manifest generation share these queries, along with
+   included code-panel lookup and panel-local declaration facts. A manifest
+   shell is projected from the resolved pair; missing required semantics no
+   longer become default metadata. This view is transient and adds no persisted
+   schema, store, or finalization pass.
+
    Each selected statement/proof occurrence owns its body, target, Lean source
    location and original-source provenance in `TraversalPreviews`. A nonempty
    body replaces a placeholder as the selected occurrence; later traversal
@@ -555,7 +564,7 @@ flowchart TD
   moduleInclude["Attribute module part command<br/>includeBlueprintModule"]
   attributePlacement["Attribute placement plan<br/>Attribute.Placement"]
   manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
-  traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
+  traversalPreview["Checked selected facet and node metadata<br/>RenderingResolution.facetByKey?"]
   manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
 
   slideMain["Slide deck generator<br/>Slides.slidesMainWithBlueprintPreviews"]
@@ -601,7 +610,7 @@ The current paths are:
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
 | Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
-| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
+| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | checked selected facet and node metadata from `RenderingResolution`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |

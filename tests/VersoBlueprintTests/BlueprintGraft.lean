@@ -359,4 +359,54 @@ private def renderAuditNode
         logs.any (fun msg => hasSubstr msg "Blueprint HTML cache: missing rendered body") &&
         logs.any (fun msg => hasSubstr msg node.key)
 
+-- A required selected facet cannot degrade into a plausible metadata shell when
+-- either its cached content or captured semantics are malformed.
+#eval show IO Unit from do
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let label := LabelNameParsing.parse "def:graft.manual.left"
+  let key := PreviewCache.statementKey label
+  let .ok (some selected) := RenderingResolution.facetByKey? state key
+    | throw <| IO.userError "Missing graft test facet"
+  let .ok none := RenderingResolution.facetByKey? state "omitted--proof"
+    | throw <| IO.userError "An absent facet borrowed another facet"
+  let corruptPreview := TraversalIndex.TraversalPreviews.saveData state key (Lean.Json.str "broken")
+  let wrongPreview := { selected.preview with facet := .proof }
+  let wrongIdentity := TraversalIndex.TraversalPreviews.saveData state key (Lean.toJson wrongPreview)
+  let corruptNode := state.saveDomainObjectData TraversalIndex.Nodes.domainName label.toString
+    (Lean.Json.str "broken")
+  for (invalid, expected) in #[(corruptPreview, "Malformed Blueprint preview"),
+      (wrongIdentity, "Mismatched Blueprint preview identity"),
+      (corruptNode, "Malformed rendering node")] do
+    let .error error := RenderingResolution.facetByKey? invalid key
+      | throw <| IO.userError "Invalid selected facet was accepted"
+    unless hasSubstr error expected do
+      throw <| IO.userError s!"Selected-facet diagnostic lost its cause: {error}"
+    let errors ← IO.mkRef (#[] : Array String)
+    let logError := fun message => errors.modify (·.push message)
+    let html ← renderManualBlocksHtmlWithState blocks manualImpls invalid (logError := logError)
+    unless hasSubstr html.asString "Invalid Blueprint node" &&
+        (← errors.get).any (hasSubstr · expected) do
+      throw <| IO.userError "Live graft concealed a required facet lookup failure"
+    errors.set #[]
+    let files ← PreviewManifest.buildPreviewDataFiles manualImpls logError
+      (PreviewManifest.PreparedPreviewState.prepare invalid)
+    unless (files.manifest.findEntry? key).isNone && !(← errors.get).isEmpty do
+      throw <| IO.userError "Export fabricated metadata for an invalid selected facet"
+  let missingModel := TraversalIndex.TraversalPreviews.saveData (.initialize {}) key
+    (Lean.toJson selected.preview)
+  let .error error := RenderingResolution.facetByKey? missingModel key
+    | throw <| IO.userError "A selected facet accepted a missing model"
+  unless hasSubstr error "initialize traversal" do
+    throw <| IO.userError "Missing model was confused with missing content"
+  let some codeKey := (RenderingResolution.codePreviewKeys state selected)[0]?
+    | throw <| IO.userError "Missing associated code preview"
+  let corruptCode := TraversalIndex.LeanCodePreviews.saveData state codeKey (Lean.Json.str "broken")
+  let .error malformed := RenderingResolution.codePreview corruptCode codeKey
+    | throw <| IO.userError "Malformed code preview was accepted"
+  let .error absent := RenderingResolution.codePreview state "absent-code-preview"
+    | throw <| IO.userError "Missing required code preview was accepted"
+  unless hasSubstr malformed "Malformed Blueprint Lean-code preview" &&
+      hasSubstr absent "Missing Blueprint Lean-code preview" do
+    throw <| IO.userError "Code-preview diagnostics lost the missing/malformed distinction"
+
 end Verso.VersoBlueprintTests.BlueprintGraft

@@ -419,8 +419,9 @@ The target is elaborated after the reference.
   let qualifiedState := TraversalIndex.Nodes.saveNode state { label := qualified }
   let .ok reference := RenderingResolution.reference qualifiedState qualified
     | throw <| IO.userError "Could not resolve reference"
-  let entry := PreviewManifest.blockEntryOfTraversalPreview qualifiedState
+  let .ok entry := PreviewManifest.blockEntryOfTraversalPreview qualifiedState
     (PreviewCache.Entry.ofBlocks qualified .statement #[])
+    | throw <| IO.userError "Could not resolve manifest facet"
   unless reference.title == "odd namespace.odd label" && entry.title == reference.title do
     throw <| IO.userError "Reference and manifest fallbacks disagree on qualified labels"
   -- Optional unknown targets and captured-but-omitted targets have the same
@@ -431,8 +432,9 @@ The target is elaborated after the reference.
     for targetState in #[targetState, restored] do
       let relationState := TraversalIndex.Nodes.saveNode targetState {
         label := `qualified_consumer, statementUses := #[{ label := qualified }, { label := `panel_other }] }
-      let consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
+      let .ok consumer := PreviewManifest.blockEntryOfTraversalPreview relationState
         (PreviewCache.Entry.ofBlocks `qualified_consumer .statement #[])
+        | throw <| IO.userError "Could not resolve manifest facet"
       let some relation := consumer.uses.find? (·.label == qualified)
         | throw <| IO.userError "Missing qualified relation"
       let .ok data := RenderingResolution.canonical relationState `qualified_consumer

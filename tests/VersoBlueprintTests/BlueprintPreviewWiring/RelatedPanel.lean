@@ -92,28 +92,29 @@ private def cachedStatement
     let cacheOnlyState :=
       Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData sourceWithoutRelations)
     let targetPreview := Informal.PreviewCache.Entry.ofBlocks target .statement #[]
-    let targetManifestEntry :=
-      Informal.PreviewManifest.blockEntryOfTraversalPreview cacheOnlyState targetPreview
-    let groupedTargetEntry := { targetManifestEntry with parent := some group }
-    let cachedGroup? :=
-      Informal.PreviewManifest.groupRelationForEntry? cacheOnlyState groupedTargetEntry
-    match targetEntries with
-    | some #[entry] =>
-        let rawEntry := Lean.toJson entry |>.compress
-        match entry.origins, entry.intents with
-        | #[.automatic], #[.auxiliary] =>
-            entry.sourceLabel == source &&
-              entry.inStatement && !entry.inProof &&
-              !hasSubstr rawEntry "\"count\"" &&
-              !hasSubstr rawEntry "\"statementUses\"" &&
-              sourceEntries.map Array.isEmpty == some true &&
-              emptyEntries.map Array.isEmpty == some true &&
-              groupMembers == some #[source] &&
-              targetManifestEntry.usedBy.map (·.label) == #[source] &&
-              targetManifestEntry.usedBy.map (·.axes) == #[#[.statement]] &&
-              cachedGroup?.map (fun relation => relation.entries.map (·.label)) == some #[source]
-        | _, _ => false
-    | _ => false
+    match Informal.PreviewManifest.blockEntryOfTraversalPreview cacheOnlyState targetPreview with
+    | .error _ => false
+    | .ok targetManifestEntry =>
+      let groupedTargetEntry := { targetManifestEntry with parent := some group }
+      let cachedGroup? :=
+        Informal.PreviewManifest.groupRelationForEntry? cacheOnlyState groupedTargetEntry
+      match targetEntries with
+      | some #[entry] =>
+          let rawEntry := Lean.toJson entry |>.compress
+          match entry.origins, entry.intents with
+          | #[.automatic], #[.auxiliary] =>
+              entry.sourceLabel == source &&
+                entry.inStatement && !entry.inProof &&
+                !hasSubstr rawEntry "\"count\"" &&
+                !hasSubstr rawEntry "\"statementUses\"" &&
+                sourceEntries.map Array.isEmpty == some true &&
+                emptyEntries.map Array.isEmpty == some true &&
+                groupMembers == some #[source] &&
+                targetManifestEntry.usedBy.map (·.label) == #[source] &&
+                targetManifestEntry.usedBy.map (·.axes) == #[#[.statement]] &&
+                cachedGroup?.map (fun relation => relation.entries.map (·.label)) == some #[source]
+          | _, _ => false
+      | _ => false
 
 /-- info: true -/
 #guard_msgs in

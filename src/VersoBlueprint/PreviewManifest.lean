@@ -1955,9 +1955,6 @@ private def blockHeadingParts? (state : TraverseState) (blockData : Informal.Blo
   | .statement => some { caption := toString display.kind, label := number }
   | .proof => some { caption := "Proof", label := s!"for {display.kind} {number}" }
 
-private def blockKind? (blockData? : Option Informal.BlockData) : Option Informal.Data.NodeKind :=
-  blockData?.map (·.kind)
-
 private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
   (Informal.TraversalIndex.ExternalMarkup.data? state label).map (·.markup.toArray) |>.getD #[]
@@ -1969,29 +1966,12 @@ private def groupTitle? (state : TraverseState) (parent : Name) : Option String 
       if header.isEmpty then none else some header
   | none => none
 
-private def blockParentTitle? (state : TraverseState) (blockData? : Option Informal.BlockData) : Option String :=
-  blockData?.bind fun blockData =>
-    blockData.parent.map fun parent =>
-      (groupTitle? state parent).getD parent.toString
+private def blockParentTitle? (state : TraverseState) (blockData : Informal.BlockData) : Option String :=
+  blockData.parent.map fun parent =>
+    (groupTitle? state parent).getD parent.toString
 
 private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
-
-private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array String :=
-  (Informal.TraversalIndex.InlineCode.blocks state label).filterMap fun block =>
-    if block.declarations.isEmpty then none else
-      some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
-
-private def blockLeanCodePreviewKeys
-    (state : TraverseState)
-    (label : Name)
-    (entry : PreviewCache.Entry) : Array String :=
-  let externalKeys := ((Informal.TraversalIndex.Nodes.node? state label).map (·.externalRefs) |>.getD #[]).filterMap fun decl =>
-    let key := Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
-    if (Informal.TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else none
-  (externalKeys ++ inlineCodePreviewKeys state label).foldl
-    (init := entry.leanCodePreviewKeys)
-    (fun keys key => pushUnique keys key)
 
 private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)
@@ -2004,8 +1984,8 @@ private def externalDeclsFromLeanPreviewKeys
 private def blockCodeData?
     (state : TraverseState)
     (entry : PreviewCache.Entry)
-    (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
-  let code := (blockData?.bind (·.codeData)).getD {}
+    (blockData : Informal.BlockData) : Option Informal.BlockCodeData :=
+  let code := blockData.codeData.getD {}
   let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
   let externalDecls := if externalDecls.isEmpty then
     code.externalDecls
@@ -2019,7 +1999,8 @@ private def leanCodePreviewSourceRefs (state : TraverseState) :
     match decoded with
     | .ok stored =>
         if let some sourceRef := stored.entry.sourceRef then
-          for key in blockLeanCodePreviewKeys state stored.entry.label stored.entry do
+          let .ok resolved := RenderingResolution.facet state stored.canonicalName stored.entry | continue
+          for key in RenderingResolution.codePreviewKeys state resolved do
             let current := (sources.get? key).getD #[]
             sources := sources.insert key (pushUnique current sourceRef)
     | .error _ =>
@@ -2135,55 +2116,46 @@ private def emptyTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
     PreviewCache.Entry :=
   PreviewCache.Entry.ofBlocks label facet #[]
 
-private def traversalPreviewOrEmpty
-    (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
-    PreviewCache.Entry :=
-  (Informal.TraversalIndex.TraversalPreviews.entry? state (PreviewCache.key label facet)).getD
-    (emptyTraversalPreview label facet)
-
 private def blockSemanticManifestEntry
     (state : TraverseState)
-    (preview : PreviewCache.Entry)
-    (key : String := PreviewCache.key preview.label preview.facet)
+    (resolved : RenderingResolution.Facet)
+    (key : String := PreviewCache.key resolved.preview.label resolved.preview.facet)
     (targetKind : EntryKind := .block)
     (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
-  let blockData? := (RenderingResolution.canonical state preview.label).toOption
-  let reference := match blockData? with
-    | some data => RenderingResolution.referenceOfData state data (some preview.facet)
-    | none => RenderingResolution.Reference.labelOnly preview.label
-  let headingParts? := blockData?.bind (blockHeadingParts? state · preview.facet)
-  let codeData := blockCodeData? state preview blockData?
+  let preview := resolved.preview
+  let blockData := resolved.data
+  let reference := RenderingResolution.referenceOfData state resolved.data (some preview.facet)
+  let headingParts? := blockHeadingParts? state blockData preview.facet
+  let codeData := blockCodeData? state preview blockData
   {
     key
     targetKind
-    toBlockMetadata := blockData?.map (·.toBlockMetadata) |>.getD { label := preview.label }
+    toBlockMetadata := blockData.toBlockMetadata
     facet := preview.facet
-    kind := blockKind? blockData?
+    kind := some blockData.kind
     title := reference.title
     displayCaption := headingParts?.map (·.caption)
     displayLabel := headingParts?.map (·.label)
     href := reference.href
     sourceLocation := preview.sourceLocation
-    parentTitle := blockParentTitle? state blockData?
-    leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
+    parentTitle := blockParentTitle? state blockData
+    leanCodePreviewKeys := RenderingResolution.codePreviewKeys state resolved
     codeData
     foldProofBlock := preview.foldProofBlock
     foldCodeBlock := preview.foldCodeBlock
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := preview.sourceRef.toArray
-    uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-    usedBy := blockData?.map (buildUsedByRelations state ·) |>.getD #[]
+    uses := buildUsesRelations state blockData
+    usedBy := buildUsedByRelations state blockData
   }
 
-def blockEntryOfTraversalPreview
-    (state : TraverseState)
-    (preview : PreviewCache.Entry) : Entry :=
-  blockSemanticManifestEntry state preview
+/-- Project a resolved facet into the manifest shell without repeating semantic lookup. -/
+def blockEntryOfFacet (state : TraverseState) (resolved : RenderingResolution.Facet) : Entry :=
+  blockSemanticManifestEntry state resolved
 
-def findTraversalBlockEntry? (state : TraverseState) (key : String) :
-    Option (PreviewCache.Entry × Entry) := do
-  let preview ← Informal.PreviewSource.traversalEntryByKey? state key
-  some (preview, blockEntryOfTraversalPreview state preview)
+def blockEntryOfTraversalPreview
+    (state : TraverseState) (preview : PreviewCache.Entry) : Except String Entry :=
+  (RenderingResolution.facet state (PreviewCache.key preview.label preview.facet) preview).map (blockEntryOfFacet state)
 
 private def buildTraversalEntries
     (impls : ExtensionImpls)
@@ -2204,6 +2176,11 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
+      let resolved ← match RenderingResolution.facet state stored.canonicalName entry with
+        | .ok resolved => pure resolved
+        | .error error =>
+          logError s!"Blueprint manifest: {error}"
+          continue
       let externalBody? := if entry.facet == .statement then
         Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
         else none
@@ -2221,7 +2198,7 @@ private def buildTraversalEntries
           pure html
         else
           pure (externalBody?.map (·.asString) |>.getD codeOnlyBlockPreviewHtml)
-      let manifestEntry := { blockEntryOfTraversalPreview state entry with
+      let manifestEntry := { blockEntryOfFacet state resolved with
         codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
@@ -2250,10 +2227,19 @@ private def buildExternalMarkupEntries
       let data := stored.data
       if data.markup.isEmpty then
         continue
-      let statementPreview := traversalPreviewOrEmpty state data.label .statement
-      if hasPreviewBackedBlockEntry previewBackedEntries data.label && statementPreview.hasRenderedBody then
+      let statementKey := PreviewCache.key data.label .statement
+      let resolution := do
+        match ← RenderingResolution.facetByKey? state statementKey with
+        | some resolved => pure resolved
+        | none => RenderingResolution.facet state statementKey (emptyTraversalPreview data.label .statement)
+      let resolved ← match resolution with
+        | .ok resolved => pure resolved
+        | .error error =>
+          logError s!"Blueprint manifest: {error}"
+          continue
+      if hasPreviewBackedBlockEntry previewBackedEntries data.label && resolved.preview.hasRenderedBody then
         continue
-      let manifestEntry := blockSemanticManifestEntry state statementPreview
+      let manifestEntry := blockSemanticManifestEntry state resolved
         (key := externalMarkupEntryKey data.label)
         (targetKind := .externalMarkup)
         (externalMarkup? := some data.markup.toArray)
@@ -2301,15 +2287,6 @@ private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entr
   | .externalDecl decl => externalDeclSourceLocation decl
   | .inlineBlocks _ _ sourceLocation => sourceLocation
 
-/-- Facts belonging to one available code preview, independently of its node's other associations. -/
-def leanCodePreviewData (state : TraverseState) (entry : Informal.LeanCodePreview.Entry) :
-    Informal.BlockCodeData :=
-  match entry.source with
-  | .externalDecl decl => { externalDecls := #[decl] }
-  | .inlineBlocks .. =>
-    Informal.BlockCodeData.ofInlineBlocks
-      ((Informal.TraversalIndex.InlineCode.data? state entry.target).toArray)
-
 private def leanCodePreviewManifestEntry
     (state : TraverseState)
     (sourceRefs : Std.HashMap String (Array Informal.Source.Ref))
@@ -2329,7 +2306,7 @@ private def leanCodePreviewManifestEntry
   sources := (sourceRefs.get? key).getD #[]
   href := Informal.TraversalIndex.LeanCodePreviews.href? state key
   sourceLocation := leanCodePreviewSourceLocation entry
-  codeData := (leanCodePreviewData state entry).nonempty?
+  codeData := (RenderingResolution.codeFacts state entry).nonempty?
 }
 
 private def buildLeanCodeEntries
