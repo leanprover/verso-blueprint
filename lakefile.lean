@@ -8,6 +8,9 @@ require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"3
 require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
 
+-- The independent renderer owns the optional, experimental VIR dependency.
+require «verso-react» from "packages/verso-react"
+
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
 
@@ -23,6 +26,27 @@ input_file blueprintMathJs where
 input_file mathLintWorkerJs where
   path := "static-web/katex-lint.mjs"
   text := true
+
+lean_lib VersoBlueprintVir where
+  srcDir := "src"
+  roots := #[`VersoBlueprintVir]
+  precompileModules := false
+  requiresModuleSystem := true
+
+lean_lib VersoBlueprintVirTests where
+  srcDir := "tests"
+  requiresModuleSystem := true
+  roots := #[
+    `VersoBlueprintVirTests.Preview.Document,
+    `VersoBlueprintVirTests.VirPreview,
+    `VersoBlueprintVirTests.NativePreview,
+    `VersoBlueprintVirTests.NativeSession,
+    `VersoBlueprintVirTests.StringPreview,
+    `VersoBlueprintVirTests.StringPreviewServer,
+    `VersoBlueprintVirTests.EmbeddedPreview,
+    `VersoBlueprintVirTests.EmbeddedPreviewServer,
+    `VersoBlueprintVirTests.Renderer
+  ]
 
 -- Blueprint core library.
 @[default_target]

@@ -11,4 +11,5 @@ _site/
 tests/browser/.venv/
 tests/browser/uv.lock
 node_modules/
+.npm-cache/
 dist/
