@@ -930,6 +930,13 @@ links, inserts the copy, and hydrates it. That JavaScript is justified because
 it delegates shell structure back to the Lean-generated page instead of
 duplicating shell semantics in browser code.
 
+Code-backed facets without prose or a rendered external witness keep their
+standard statement/proof key. Their `codeOnlyPreview` manifest flag tells preview
+readers to compose the fragments named by `leanCodePreviewKeys`. The node-body
+fragment itself stays inert: grafts already render associated code panels.
+This keeps standalone hovers useful without duplicating code inside full nodes
+or asking JavaScript to infer semantic availability by inspecting cached HTML.
+
 Adding a richer cache would be justified only if a repeated real use case needs
 canonical node wrappers without page fetches and the cost is visible. In that
 case the new artifact should be an explicit generated-node cache, not an

@@ -571,8 +571,10 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Definition2.3")
     let proposition24Key :=
       Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Proposition2.4")
-    let theorem21PreviewKey := Informal.PreviewKey.ofString? theorem21Key
-    let proposition24PreviewKey := Informal.PreviewKey.ofString? proposition24Key
+    let theorem21PreviewKey := Informal.PreviewKey.ofString? <|
+      Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Theorem2.1")
+    let proposition24PreviewKey := Informal.PreviewKey.ofString? <|
+      Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Proposition2.4")
     let rewriteKey := Informal.PreviewCache.statementKey (Name.mkSimple "showcase.native.rewrite")
     let some nativeEntry := previewEntry? manifest nativeKey
       | return #["missing native entry"]
@@ -649,7 +651,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       ("theorem 2.1 source page", entryHasSourcePage theorem21Entry "imported-paper" "12"),
       ("theorem 2.1 markdown badge", hasSubstr theorem21Html "bp_external_markup_badge_markdown"),
       ("theorem 2.1 source preview", htmlHasSourcePreview theorem21Html "imported-paper" "p. 12"),
-      ("theorem 2.1 used-by external preview key",
+      ("theorem 2.1 used-by code-backed preview key",
         theorem21Entry.usedBy.any (fun entry =>
           entry.label == Name.mkSimple "ImportedPaper:Proposition2.4" &&
             entry.previewKey == proposition24PreviewKey)),
@@ -739,6 +741,8 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let theorem21Key := Informal.PreviewManifest.externalMarkupEntryKey theorem21Label
     let proposition24Key := Informal.PreviewManifest.externalMarkupEntryKey proposition24Label
     let rewriteKey := Informal.PreviewCache.statementKey rewriteLabel
+    let theorem21PreviewKey := Informal.PreviewCache.statementKey theorem21Label
+    let proposition24PreviewKey := Informal.PreviewCache.statementKey proposition24Label
     let some theorem21Entry := previewEntry? showcaseFiles.manifest theorem21Key
       | return #["missing theorem 2.1 no-render entry"]
     let some proposition24Entry := previewEntry? showcaseFiles.manifest proposition24Key
@@ -751,18 +755,21 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       ("theorem 2.1 keeps Lean keys",
         theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
           theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul")),
-      ("proposition 2.4 use preview cleared",
+      ("code-backed statements retain cached previews",
+        (showcaseFiles.htmlCache.findHtml? theorem21PreviewKey).isSome &&
+          (showcaseFiles.htmlCache.findHtml? proposition24PreviewKey).isSome),
+      ("proposition 2.4 use preview retained",
         proposition24Entry.uses.any (fun entry =>
           entry.label == theorem21Label &&
-            entry.previewKey.isNone)),
-      ("theorem 2.1 used-by preview cleared",
+            entry.previewKey == Informal.PreviewKey.ofString? theorem21PreviewKey)),
+      ("theorem 2.1 used-by preview retained",
         theorem21Entry.usedBy.any (fun entry =>
           entry.label == proposition24Label &&
-            entry.previewKey.isNone)),
-      ("native rewrite external use preview cleared",
+            entry.previewKey == Informal.PreviewKey.ofString? proposition24PreviewKey)),
+      ("native rewrite external use preview retained",
         rewriteEntry.uses.any (fun entry =>
           entry.label == theorem21Label &&
-            entry.previewKey.isNone))
+            entry.previewKey == Informal.PreviewKey.ofString? theorem21PreviewKey))
     ]
     pure <| failedCheckLabels checks
 

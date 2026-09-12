@@ -17,7 +17,7 @@ The premise is {uses "attr.doc.target" (intent := "technical")}[].
 See {bpref "attr.doc.link"}[*the comparison* $`x + 1`] and
 {bpref "attr.doc.link"}[].
 
-* A repeated {uses "attr.doc.target"}[premise].
+* A repeated {uses "attr.doc.target" (intent := "technical")}[premise].
 * An excluded {uses "attr.doc.excluded"}[dependency].
 * A self-reference {uses "attr.doc.source"}[here].
 
@@ -26,7 +26,7 @@ See {bpref "attr.doc.link"}[*the comparison* $`x + 1`] and
 {uses "attr.doc.automatic" (origin := "automatic") (intent := "auxiliary")}[Support].
 -/
 @[blueprint "attr.doc.source" (autoDeps := true)
-  (uses := ["attr.doc.target", -"attr.doc.excluded"])
+  (uses := [-"attr.doc.excluded"])
   (proofUses := ["attr.doc.proof"])]
 def source : Nat := 0
 

@@ -94,7 +94,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     ]);
     const manifestEntry = results[0] || null;
     const htmlCacheEntry = results[1] || null;
-    const html = readHtml(htmlCacheEntry);
+    let html = readHtml(htmlCacheEntry);
     if (!manifestEntry) {
       return {
         ok: false,
@@ -105,6 +105,17 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         html: "",
         diagnosticHtml: manifestDiagnosticHtml(key, options)
       };
+    }
+    // Grafts render the node body and its code panels separately. Code-only
+    // bodies therefore have an inert cache fragment; standalone hovers must
+    // compose the associated Lean fragments using explicit manifest metadata.
+    if (html && manifestEntry.codeOnlyPreview === true) {
+      const keys = Array.isArray(manifestEntry.leanCodePreviewKeys)
+        ? manifestEntry.leanCodePreviewKeys : [];
+      const fragments = await Promise.all(keys.map(key => loadHtmlCacheEntry(key, options)));
+      const bodies = fragments.map(readHtml);
+      html = bodies.length > 0 && bodies.every(body => body.length > 0)
+        ? bodies.join("\n") : "";
     }
     if (!html) {
       if (semanticOnlyPreviewBodyMissing(manifestEntry, options)) {

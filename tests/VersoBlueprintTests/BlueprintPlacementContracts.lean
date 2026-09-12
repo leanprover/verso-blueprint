@@ -155,6 +155,54 @@ Proof with its own folded presentation.
   unless (TraversalIndex.Nodes.renderedData? state (Name.mkSimple "local.A.first")).map (·.count) == some 1 do
     throw <| IO.userError "Reordered authored blocks were renumbered"
 
+#docs (Genre.Manual) codeOnlyReferences "Code-only references" :=
+:::::::
+See {bpref "attr.exported.undocumented"}[code-only reference].
+
+:::lemma_ "code.only.reference.consumer"
+By {uses "attr.exported.undocumented"}[code-only dependency].
+:::
+:::::::
+
+-- Reordering and generated insertion must also compose within ONE source.
+-- Exercise every permutation through real traversal, with and without insertion.
+#eval show IO Unit from do
+  let source := BlueprintAttributeRendering.interleavedLocalAttributePlacementDoc
+  let content := source.toPart.content
+  unless content.size == 3 do throw <| IO.userError "Unexpected interleaved fixture shape"
+  let labels := #["attr.consumer.before.placement", "attr.exported.theorem",
+    "attr.consumer.after.placement"].map Name.mkSimple
+  let (_, baseline) ← renderManualDocHtmlStringAndState impls source
+  let sourcePaths := labels.map fun label =>
+    (TraversalIndex.Nodes.renderedData? baseline label).bind (·.sourceLocation.location) |>.map (·.path)
+  unless sourcePaths[0]!.isSome && sourcePaths.all (· == sourcePaths[0]!) do
+    throw <| IO.userError "Numbering regression must use one source path"
+  for order in #[#[0, 1, 2], #[0, 2, 1], #[1, 0, 2], #[1, 2, 0], #[2, 0, 1], #[2, 1, 0],
+      #[0, 2], #[2, 0]] do
+    let doc := Doc.VersoDoc.mk
+      (fun _ => { source.toPart with content := order.map (content[·]!) }) "{}"
+    let (_, state) ← renderManualDocHtmlStringAndState impls doc
+    let mut counts : Array Nat := #[]
+    for i in order do
+      let some data := TraversalIndex.Nodes.renderedData? state labels[i]!
+        | throw <| IO.userError "Missing reordered occurrence"
+      unless data.numberingMode == .local && data.count > 0 && !counts.contains data.count do
+        throw <| IO.userError s!"Local numbering collision in {order}: {counts}, {data.count}"
+      counts := counts.push data.count
+      if !order.contains 1 then
+        let some authored := TraversalIndex.Nodes.renderedData? baseline labels[i]!
+          | throw <| IO.userError "Missing baseline occurrence"
+        -- In the baseline the second authored block follows one generated block.
+        let expected := authored.count - if i == 2 then 1 else 0
+        unless data.count == expected do
+          throw <| IO.userError "Reordering alone changed an authored local number"
+
+-- Inspect traversed prose, excluding generated headers and code/graft renderers.
+private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Block Genre.Manual)
+  | .para content => #[.para content]
+  | .concat content | .other _ content => content.flatMap proseParagraphs
+  | _ => #[]
+
 -- External witnesses change body selection, never the public statement key.
 -- Start from both real placement paths and exercise the persisted-data consumer.
 #eval show IO Unit from do
@@ -162,7 +210,7 @@ Proof with its own folded presentation.
   let node := ({ label := label.toString } : Graft.BlueprintNodeConfig).toNode
   for doc in #[BlueprintAttributeRendering.placedAttributeDoc,
       BlueprintAttributeRendering.includedAttributeModuleDoc] do
-    let (blocks, baseline) ← traverseManualDocBlocksAndState impls doc
+    let (blocks, baseline) ← traverseManualDocBlocksAndState impls (combine #[doc, codeOnlyReferences])
     for witness in #[none,
         some ({ language := .markdown, slot := "statement", raw := "**Witness marker**" } : Data.ExternalMarkup),
         some { language := .tex, slot := "statement", raw := "Witness marker" },
@@ -172,6 +220,15 @@ Proof with its own folded presentation.
         | some markup => TraversalIndex.ExternalMarkup.saveData baseline label
             (toJson ({ label, markup := ({} : Data.ExternalMarkupSet).insert markup } : Data.ExternalMarkupData))
       let direct ← renderManualBlocksHtmlWithState blocks impls state
+      unless PreviewSource.traversalPreviewCandidateKey? state label == PreviewKey.ofString? node.key &&
+          (PreviewSource.traversalEntry? state label).isNone do
+        throw <| IO.userError "Code-only preview discovery changed prose-only selection"
+      -- Isolate the two reference blocks from placements: graft rendering must
+      -- not accidentally satisfy the hover-trigger assertion.
+      let references ← renderManualBlocksHtmlWithState
+        (blocks.flatMap proseParagraphs) impls state
+      unless countSubstr references.asString s!"data-bp-preview-key=\"{node.key}\"" == 2 do
+        throw <| IO.userError "Ordinary references did not request the code-only statement preview"
       for mode in #[ExternalMarkupRender.Mode.markdown, .none] do
         let files ← PreviewManifest.buildPreviewDataFiles impls (fun e => throw <| IO.userError e)
           (PreviewManifest.PreparedPreviewState.prepare state) { mode }
@@ -179,6 +236,10 @@ Proof with its own folded presentation.
           | throw <| IO.userError "External witness removed the standard statement key"
         let some _ := files.htmlCache.findHtml? node.key
           | throw <| IO.userError "External witness removed the standard statement body"
+        let hasWitnessBody := (ExternalMarkupRender.previewBody? { mode }
+          (witness.toArray)).isSome
+        unless entry.codeOnlyPreview == !hasWitnessBody do
+          throw <| IO.userError "Code-only hover fallback disagrees with exported body selection"
         let cached ← Graft.renderNodeFromManifestCache {}
           (Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)) node
         unless hasSubstr cached.asString "exportedUndocumentedDefinition" &&

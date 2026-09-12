@@ -106,8 +106,10 @@ A bodyless placeholder can later acquire an explicit statement or proof body.
 When both the placeholder and filled chapter are included, previews and links
 select the filled body regardless of chapter order. The selected occurrence
 also supplies that facet's source location and original-source provenance.
-Inline references follow the same preview selection: a nonempty statement,
-then a nonempty proof, then external markup when available. A placeholder can
+Inline references prefer a nonempty statement, then a nonempty proof, then a
+code-backed facet, then external markup when available. Code-only declarations
+use their standard statement preview key even when an external witness is blank
+or external-markup rendering is disabled. A placeholder can
 still be a link target without offering a hover preview. Imported nodes that
 have no document occurrence display their authored label rather than a number.
 This numbering rule also applies to dependency panels, code headings, and previews.
@@ -139,6 +141,9 @@ Precedence chooses the metadata to display; it does not suppress conflicts withi
 an authority. For example, automatic `regular` and automatic `technical` declarations
 for one dependency conflict even if a manual `auxiliary` declaration is also present.
 Reordering these declarations never repairs the conflict.
+This also applies within a single Verso docstring and between its `{uses}`
+roles and the attribute's `uses` entries. Repeating a dependency with a
+different intent is an error, not a first-declaration-wins override.
 
 For example, split the source into these three modules:
 
@@ -560,6 +565,10 @@ module.
 Local numbering preserves ordinary elaboration-assigned counts in independently
 authored sources. A generated placement adds an offset only to later authored
 counts in the same consuming source; it does not renumber sibling chapters.
+If reordered authored content makes a shifted count collide with an already
+assigned number, that occurrence receives the next number above all assignments
+in its source. Reordering authored content without generated placements keeps
+its original local numbers.
 Use `set_option verso.blueprint.numbering "global"`
 when numbers should instead follow the order of the whole assembled document.
 
@@ -1151,6 +1160,9 @@ declaration-keyed previews, from `api/data.mjs` or `api/preview.mjs` to get the
 generated link and source location together. Inline code previews are keyed by
 the source code-block identity and should be loaded through the explicit key in
 `leanCodePreviewKeys`.
+For a `codeOnlyPreview` entry, the preview API composes those Lean fragments
+into the hover body. Its own block-body cache fragment is inert so full-node
+renderers can render associated code panels separately without duplicating them.
 Use the data API for metadata-only audit or dashboard clients; use the preview
 API when the same client also renders Blueprint nodes or cached previews.
 The built-in source preview is intentionally lightweight; richer PDF page

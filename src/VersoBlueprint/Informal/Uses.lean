@@ -110,7 +110,7 @@ structure InlineData where
 deriving FromJson, ToJson, Quote
 
 /-- A reference uses document numbering only for rendered nodes, and previews only
-when a body is available. HTML and TeX share the same title resolution. -/
+when prose or a code-backed preview is available. HTML and TeX share the same title resolution. -/
 private structure NodeReference where
   title : String
   href : Option String
