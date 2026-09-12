@@ -342,25 +342,28 @@ The same flow can be read as four contracts:
    for stale chapter metadata. See [the API guide](API.md) for direct traversal
    and synthetic-renderer usage.
 
-   An imported attribute-owned node has no source block of its own, so a Manual
-   `{blueprint_node}` placement expands to an invisible materialization block
-   followed by the ordinary graft. Like authored blocks, it stores only a
-   `BlockOccurrence` and resolves semantics from the captured `RenderModel`
-   during traversal. The materializer writes the same occurrence,
-   statement-preview, Lean-code, anchor, numbering, and relation indexes as an
-   informal statement block; its only HTML is the empty destination anchor
-   immediately before the visible graft. This keeps placement phase-safe
-   without introducing a second renderer for attribute nodes. Persisted
+   An imported attribute-backed node has no source block of its own.
+   `Attribute.Placement` constructs an explicit plan containing the graft
+   selection, optional statement occurrence, and presentation overrides.
+   One visible graft owns the plan's emitted destinations and resolves semantics
+   from the captured `RenderModel`. It uses the shared traversal registration
+   and renderer, but registers code destinations only when it displays code.
+   Declaration navigation prefers the selected statement's row when available,
+   otherwise a visible code placement; compact placements cannot claim code
+   destinations. Selected facet previews retain their own folding defaults,
+   separately from node numbering and placement overrides. Persisted
    provider-module proof bodies are not yet projected into proof-facet traversal
    entries.
    `{includeBlueprintModule}` builds a real Verso part by applying that same
-   materializer-plus-graft expansion to every entry in one imported module's
-   catalog. Catalog lookup is exact-module, so transitive imports appear only
-   when explicitly included as their own parts.
+   placement operation to every entry in one imported module's ordered catalog.
+   Catalog lookup selects exact-module attribute applications, not exclusive
+   prose ownership. A selected label renders its complete merged node, including
+   sibling contributions available in the captured model.
    Statement payloads that already contain elaborated Manual blocks are
    reconstructed through Manual's typed JSON instances. This is a localized
    value-quotation bridge, not a second persisted body schema and not a
-   synthetic document elaboration pass.
+   synthetic document elaboration pass. Reconstruction is validated at consuming
+   elaboration: malformed JSON reports a diagnostic instead of becoming prose.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.
@@ -504,7 +507,7 @@ flowchart TD
 
   attributeEnv["Persistent attribute node/catalog<br/>Environment.State"]
   moduleInclude["Attribute module part command<br/>includeBlueprintModule"]
-  attributeMaterializer["Attribute traversal materializer<br/>blueprintAttributeNodeSource"]
+  attributePlacement["Attribute placement plan<br/>Attribute.Placement"]
   manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
   traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
   manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
@@ -525,9 +528,9 @@ flowchart TD
   previewExtra --> previewFiles
 
   attributeEnv --> moduleInclude
-  attributeEnv --> attributeMaterializer
-  moduleInclude --> attributeMaterializer
-  attributeMaterializer --> traversalPreview
+  attributeEnv --> attributePlacement
+  moduleInclude --> attributePlacement
+  attributePlacement --> manualGraft
   manualGraft --> traversalPreview
   traversalPreview --> manualPreviewHtml
   manualPreviewHtml --> graftContent
@@ -551,7 +554,7 @@ The current paths are:
 | --- | --- | --- | --- | --- |
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
-| Manual attribute materialization | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | persistent node/catalog data from `Environment.State` plus persisted statement blocks | `Block.blueprintAttributeNodeSource` registers through the ordinary block traversal path | current-document traversal entries followed by grafted Manual HTML |
+| Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
 | Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |

@@ -42,7 +42,7 @@ Those labels are the key to the whole system. They are used to:
   `set_option verso.blueprint.autoDeps true` to infer edges to directly
   referenced Lean declarations associated with Blueprint labels;
   [inference does not expand untagged helpers](MANUAL.md#automatic-dependency-inference)
-- turn the distinct labels owned directly by one imported Lean module into a
+- turn the distinct labels contributed by attributes in one imported Lean module into a
   source-ordered Manual chapter with `{includeBlueprintModule 0 Some.Module}`;
   declarations that share a label become one node
 - place an imported attribute-owned declaration at a specific chapter location
