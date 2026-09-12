@@ -353,8 +353,10 @@ The same flow can be read as four contracts:
    folding settings while reusing document numbering. `canonical` resolves the
    node with the selected source provenance and reports missing or malformed
    captures explicitly. `reference` and `referenceOfData` share title and target
-   policy between inline references and manifest entries; the latter reuses an
-   already resolved record. An explicit facet selects only its own title,
+   policy between inline references and manifest entries; the latter reuses semantic
+   metadata from either occurrence or canonical resolution in the same state.
+   It obtains reference numbering and the ordinary-reference facet from stored node
+   presentation, so an arbitrary page occurrence cannot change a canonical link's title. An explicit facet selects only its own title,
    target, and preview; it never borrows another facet's content. An ordinary
    node reference follows the canonical target and preview. Preview keys remain
    candidates until artifact finalization. `referenceOrLabel` explicitly retains

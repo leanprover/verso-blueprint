@@ -215,8 +215,14 @@ The shared queries are:
 | `occurrence state requested context?` | Checked `BlockData` for this placement, preserving its source and folding while resolving shared document numbering. HTML callers can supply their traversal context; TeX uses stored numbering. |
 | `canonical state label` | Checked `BlockData` with canonical source provenance; missing models, unknown labels, and corrupt records return distinct errors. |
 | `reference state label facet?` | Checked title, href, and preview candidate; known unrendered nodes retain label text. Missing or malformed nodes return errors. An explicit facet selects only its own title, target, and preview. |
-| `referenceOfData state data facet?` | The same reference policy using an already resolved record, without decoding its semantic data again. |
+| `referenceOfData state data facet?` | The same reference policy using semantic metadata from either `occurrence` or `canonical` in this state, without decoding it again. Stored node presentation supplies reference numbering and the ordinary-reference facet. |
 | `referenceOrLabel state label` | Best-effort presentation for optional relation targets, with a label-only fallback. Do not use this to validate authored references. |
+
+`referenceOfData` accepts either occurrence-resolved or canonical data from the
+same rendering state. The supplied record's `isProof`, numbering, source, and
+folding settings do not affect reference presentation. Thus a proof occurrence
+can supply metadata for an ordinary reference to the canonical statement; pass
+`some .proof` explicitly to request the proof reference.
 
 These queries do not select a new preview body or prove artifact availability.
 Keep a selected `PreviewCache.Entry` intact when rendering its body and sources.

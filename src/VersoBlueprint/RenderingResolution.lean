@@ -48,18 +48,20 @@ private def referenceWithTitle (state : TraverseState) (label : Data.Label)
   previewKey := PreviewSource.traversalPreviewCandidateKey? state label facet?
 }
 
-/-- Present already resolved metadata without looking up the semantic record again.
-An explicit facet selects only that facet's title, target and preview; missing facets
-do not borrow another facet's content. Ordinary references follow the canonical node
-target, and proof-only nodes retain their proof title. -/
+/-- Present semantic metadata resolved from the same rendering state, without decoding
+that semantic record again. Data from either `occurrence` or `canonical` is accepted:
+reference numbering and the ordinary-reference facet come from the stored node occurrence,
+never the supplied record's presentation. Source and folding settings are irrelevant here.
+An explicit facet selects only its own title, target and preview; missing facets do not
+borrow another facet's content. Proof-only nodes retain their ordinary proof title. -/
 def referenceOfData (state : TraverseState) (data : BlockData)
     (facet? : Option PreviewCache.Facet := none) : Reference :=
-  let title := if !TraversalIndex.Nodes.hasRenderedOccurrence state data.label then
-      data.label.toString (escape := false)
-    else match facet? with
-      | some .proof => data.displayProofTitle state
-      | some .statement => (data.display state).title
-      | none => data.displayTitle state
+  let title := match TraversalIndex.Nodes.occurrence? state data.label with
+    | none => data.label.toString (escape := false)
+    | some stored =>
+      let display := ({ data with toBlockPresentation := stored.toBlockPresentation }).display state
+      let isProof := (facet?.map (· == .proof)).getD stored.isProof
+      if isProof then display.proofTitle else display.title
   referenceWithTitle state data.label facet? title
 
 /-- Checked reference presentation, including for captured but unrendered nodes.

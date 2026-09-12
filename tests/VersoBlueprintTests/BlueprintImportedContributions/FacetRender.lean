@@ -58,6 +58,21 @@ def facetBlueprint : BlueprintDocument := .capture
           occurrence.foldProofBlock && occurrence.foldCodeBlock == requested.foldCodeBlock &&
           occurrence.isProof && (occurrence.display state).number? == (canonical.display state).number? do
         throw <| IO.userError "Occurrence resolution lost semantics or borrowed canonical presentation"
+      -- Reference presentation must not inherit the page occurrence's proof
+      -- facet: ordinary references still name and target the selected statement.
+      let .ok ordinary := RenderingResolution.reference state `filled_facet
+        | throw <| IO.userError "Could not resolve ordinary reference"
+      let fromOccurrence := RenderingResolution.referenceOfData state occurrence
+      unless ordinary.title == "Theorem 1" && fromOccurrence.title == ordinary.title &&
+          fromOccurrence.href == ordinary.href && fromOccurrence.previewKey == ordinary.previewKey do
+        throw <| IO.userError "A proof occurrence supplied the title for a canonical statement reference"
+      for facet in #[PreviewCache.Facet.statement, .proof] do
+        let .ok explicit := RenderingResolution.reference state `filled_facet (some facet)
+          | throw <| IO.userError "Could not resolve explicit facet"
+        let fromOccurrence := RenderingResolution.referenceOfData state occurrence (some facet)
+        unless fromOccurrence.title == explicit.title && fromOccurrence.href == explicit.href &&
+            fromOccurrence.previewKey == explicit.previewKey do
+          throw <| IO.userError "Explicit reference presentation depends on the supplied occurrence"
       let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
         (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
       for (facet, body, sourcePage) in #[
@@ -143,6 +158,14 @@ def facetBlueprint : BlueprintDocument := .capture
       | throw <| IO.userError "Could not resolve reference"
     unless hasSubstr html.asString reference.title do
       throw <| IO.userError "Inline rendering did not use the shared reference title"
+    let .ok canonical := RenderingResolution.canonical state `filled_facet
+      | throw <| IO.userError "Could not resolve canonical reference data"
+    let foreignPresentation := { canonical with
+      isProof := !canonical.isProof, count := 999, numberingMode := .sub, partPrefix := some "other chapter" }
+    let fromData := RenderingResolution.referenceOfData state foreignPresentation
+    unless fromData.title == reference.title && fromData.href == reference.href &&
+        fromData.previewKey == reference.previewKey do
+      throw <| IO.userError "Ordinary reference inherited caller-owned facet or numbering"
     let optionalReference := RenderingResolution.referenceOrLabel state `filled_facet
     unless reference.href == optionalReference.href && reference.previewKey == optionalReference.previewKey do
       throw <| IO.userError "Known relation targets disagree with checked node references"
