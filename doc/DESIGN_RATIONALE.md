@@ -265,6 +265,12 @@ The same flow can be read as four contracts:
    The completed directive contributes its body, metadata, and inferred edges
    together. There is no separately committed dependency tail.
 
+   Automatic dependencies share one helper-aware declaration walker across
+   attributes, external-Lean statements, and inline Lean code. It follows
+   unassociated helpers to the first associated declarations on each path;
+   authoring adapters retain responsibility for axis and metadata precedence.
+   See the [LeanArchitect comparison and adaptation decisions](HELPER_DEPENDENCY_INFERENCE.md).
+
    Nodes store external declarations and literate blocks in separate arrays.
    External declarations are normalized by canonical name during registration,
    using an ephemeral index for each incoming group. Reads do not reconstruct

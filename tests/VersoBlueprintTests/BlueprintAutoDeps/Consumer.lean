@@ -47,15 +47,17 @@ private def expectedUsesMatrix : Array ExpectedUses :=
       labelText := "auto.imported.manual_decl",
       statement := #[useRef "auto.manual.extra"]
     },
-    -- Untagged declarations do not create edges or expose transitive tagged dependencies.
+    -- Helpers have no nodes themselves, but expose the first associated declarations.
     {
       labelText := "auto.untagged.target"
     },
     {
-      labelText := "auto.untagged.type_target"
+      labelText := "auto.untagged.type_target",
+      statement := #[useRef "auto.type.source" .automatic]
     },
     {
-      labelText := "auto.untagged.proof_target"
+      labelText := "auto.untagged.proof_target",
+      proof := #[useRef "auto.proof.source" .automatic]
     },
     {
       labelText := "auto.duplicate_axis.target",

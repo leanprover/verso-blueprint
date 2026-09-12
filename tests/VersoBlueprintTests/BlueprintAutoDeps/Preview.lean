@@ -32,17 +32,20 @@ theorem autoDemoProofSource : True := by
 theorem autoDemoManualExtra : True := by
   trivial
 
+def autoDemoTypeAlias : Prop := autoDemoTypeSource
+theorem autoDemoProofHelper : True := autoDemoProofSource
+
 @[blueprint "auto.demo.statement_target"
   (autoDeps := true)
   (uses := ["auto.demo.manual_extra"])]
-theorem autoDemoStatementTarget : autoDemoTypeSource := by
+theorem autoDemoStatementTarget : autoDemoTypeAlias := by
   trivial
 
 @[blueprint "auto.demo.proof_target"
   (autoDeps := true)
   (proofUses := [autoDemoManualExtra])]
 theorem autoDemoProofTarget : True := by
-  exact autoDemoProofSource
+  exact autoDemoProofHelper
 
 @[blueprint "auto.demo.excluded_target"
   (autoDeps := true)
@@ -50,8 +53,8 @@ theorem autoDemoProofTarget : True := by
 theorem autoDemoExcludedTarget : autoDemoTypeSource := by
   trivial
 
-theorem autoDemoExternalTargetDecl : autoDemoTypeSource := by
-  exact autoDemoProofSource
+theorem autoDemoExternalTargetDecl : autoDemoTypeAlias := by
+  exact autoDemoProofHelper
 
 theorem autoDemoExternalOptOutDecl : autoDemoTypeSource := by
   exact autoDemoProofSource
@@ -69,7 +72,7 @@ an attribute exclusion. This file also enables
 
 :::definition "auto.demo.type_source"
 Tagged source declaration used by another declaration's type. Edges to this
-node are inferred only when a target's statement mentions the Lean declaration.
+node can pass through unassociated type aliases without giving those aliases nodes.
 :::
 
 :::theorem "auto.demo.proof_source"
@@ -83,19 +86,19 @@ it should stay manual while inferred edges are marked automatic.
 :::
 
 :::theorem "auto.demo.statement_target"
-The Lean statement has type `autoDemoTypeSource`, so automatic dependency
-inference adds `auto.demo.type_source`. The attribute also adds
+The Lean statement uses `autoDemoTypeAlias`, which leads to `autoDemoTypeSource`,
+so automatic dependency inference adds `auto.demo.type_source`. The attribute also adds
 `auto.demo.manual_extra` manually, making the statement dependency panel show
 both origins side by side.
 :::
 
 :::theorem "auto.demo.proof_target"
 The Lean statement is just `True`, so there is no inferred statement dependency.
-The proof below uses `autoDemoProofSource`.
+The proof below reaches `autoDemoProofSource` through `autoDemoProofHelper`.
 :::
 
 :::proof "auto.demo.proof_target"
-The Lean proof body references `autoDemoProofSource`, so automatic dependency
+The Lean proof body reaches `autoDemoProofSource` through a helper, so automatic dependency
 inference adds `auto.demo.proof_source` to the proof dependencies. The attribute
 also adds `auto.demo.manual_extra` manually for comparison.
 :::
@@ -109,7 +112,7 @@ dependency remains.
 :::theorem "auto.demo.external_target" (lean := "autoDemoExternalTargetDecl")
 This node points at an existing compiled Lean declaration with `(lean := ...)`.
 The file option enables automatic dependencies, so the declaration's type and
-proof body provide statement and proof edges.
+proof body provide statement and proof edges through the same helpers.
 :::
 
 :::definition "auto.demo.inline_target"
@@ -118,8 +121,8 @@ dependencies for the declarations defined in the block.
 :::
 
 ```lean "auto.demo.inline_target"
-theorem autoDemoInlineTargetDecl : autoDemoTypeSource := by
-  exact autoDemoProofSource
+theorem autoDemoInlineTargetDecl : autoDemoTypeAlias := by
+  exact autoDemoProofHelper
 ```
 
 :::theorem "auto.demo.external_opt_out" (lean := "autoDemoExternalOptOutDecl") (autoDeps := false)
