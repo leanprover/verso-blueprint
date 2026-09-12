@@ -218,12 +218,24 @@ that crosses phases, cover the applicable rows of this matrix:
 | Boundary | What to assert | Current attribute-first fixtures |
 | --- | --- | --- |
 | Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute.lean` with `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
-| Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttributeRendering.lean` |
+| Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttributeRendering.lean`, `BlueprintPlacementContracts.lean` |
 | Final rendering model | late dependencies, metadata and code through both placement forms; occurrence options and captured-document isolation | `BlueprintAttributeLateRendering.lean` with `BlueprintAttribute/LatePlacement.lean` |
 | Final Manual HTML | statement body, code-only fallback, structural docstrings/math, code-panel disclosure state | `BlueprintAttributeRendering.lean` |
 | Docstring references | persisted dependencies, forward links, link-only references, exclusions, first-body ownership, editor and panel fallbacks | `BlueprintDocstringReferences.lean` with `BlueprintAttribute/DocstringProvider.lean` |
 | Generated site | embedded assets and the reusable external-declaration renderer | `preview_runtime_showcase` and `check_blueprint_code_panels.py` |
-| Browser runtime | transformations or hydration that cannot be proved from static HTML | `test_preview_runtime_regressions.py` |
+| Browser runtime | summary navigation to unique visible code rows; transformations and hydration | `test_preview_runtime_regressions.py` |
+
+`BlueprintPlacementContracts.lean` checks crossed scenarios in both occurrence
+orders: compact before full placement, opposite folding settings, statement and
+proof defaults, independent local-numbered chapter modules, contributor-module
+selection, and code-only previews with Markdown/TeX/blank witnesses or markup
+rendering disabled. It also checks persisted-body round trips and diagnostics.
+The docstring reference suite inspects recovered dependencies, not just emitted
+error messages.
+
+Require declaration hrefs to resolve to exactly one emitted element, and require
+direct Manual and manifest/cache rendering to agree on supported content and
+facet defaults. Substring presence alone cannot establish those properties.
 
 When a new option or source form applies to more than one placement path, add
 one compact cross-feature regression that exercises those paths together. A

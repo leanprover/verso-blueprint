@@ -65,8 +65,8 @@ private meta def mkBlueprintModulePart
 
 open PartElabM in
 /--
-Include the declarations marked with {lit}`@[blueprint]` and owned directly by
-an imported Lean module as a source-ordered Manual part. The optional leading
+Include the merged nodes associated with {lit}`@[blueprint]` applications in
+the named imported Lean module as a source-ordered Manual part. The optional leading
 level controls where the part is inserted; omitting it creates a child part.
 Use {lit}`(title := "...")` to replace the default final module-name component.
 -/
@@ -75,7 +75,7 @@ public meta def includeBlueprintModuleCmd : PartCommand
   | stx@`(block|command{includeBlueprintModule $args*}) => do
     let ref ← getRef
     Hover.addCustomHover ref
-      r#"Includes the `@[blueprint]` declarations owned directly by an imported Lean module as one Manual part.
+      r#"Includes merged Blueprint nodes whose labels have attribute applications in the named imported Lean module, as one Manual part.
 
   * `{includeBlueprintModule MODULE}`: Includes the declarations as a child part.
   * `{includeBlueprintModule N MODULE}`: Includes the declarations at header level `N`.

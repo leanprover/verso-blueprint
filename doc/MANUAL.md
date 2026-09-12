@@ -541,18 +541,36 @@ open Informal
 ```
 
 The generated Manual part contains one materialized Blueprint node for each
-distinct `@[blueprint]` label owned directly by the named module, in first
-attribute-application order. If several declarations in that module use the
-same label, the part contains one node with all of their Lean panels.
+distinct label with an `@[blueprint]` application in the named module, in first
+attribute-application order. This selects contributions, not exclusive ownership:
+if sibling modules contribute declarations to one shared label, including either
+contributor renders the complete merged node available through the document's
+imports. If several declarations in the named module use the same label, the
+part contains that node only once, with all of its Lean panels.
 Dependencies and declarations accumulate in source order. Only the declaration
 that introduces a label supplies its implicit docstring body; later attributes
 do not replace it or fill a bodyless placeholder. Re-exported or
 otherwise transitive modules are not folded into the part: include each desired
 module explicitly. Every node follows the same docstring/code-only, numbering,
 relation, preview, manifest, and cache path as an individual placement. Its
-local display number is assigned in the consuming document's traversal order;
+local display number is allocated in the consuming source's traversal order;
 the generated placement does not retain a display number from the provider
 module.
+
+Local numbering preserves ordinary elaboration-assigned counts in independently
+authored sources. A generated placement adds an offset only to later authored
+counts in the same consuming source; it does not renumber sibling chapters.
+Use `set_option verso.blueprint.numbering "global"`
+when numbers should instead follow the order of the whole assembled document.
+
+Repeated placements share node identity and numbering, but honor their own
+explicit code/proof folding options. Without an explicit override, reuse takes
+the selected statement or proof occurrence's presentation defaults. A compact
+placement does not advertise a declaration-code destination; declaration links
+prefer the selected statement's visible code, or another placement that actually
+renders it. Adding Markdown or TeX witnesses does not change a placed node's
+statement preview key. Disabling external-markup rendering still allows its Lean
+code to be reused.
 
 This is Blueprint's current Verso-native counterpart to
 [LeanArchitect's `\inputleanmodule`](https://github.com/hanwenzhu/LeanArchitect#extracting-entire-lean-file-to-latex):

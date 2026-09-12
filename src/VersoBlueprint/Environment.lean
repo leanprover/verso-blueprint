@@ -55,6 +55,17 @@ deriving Inhabited, Repr
 
 instance : Coe RegisteredNode Node := ⟨RegisteredNode.toNode⟩
 
+/-- Unique module catalog in attribute-application order, with indexed membership. -/
+structure AttributeLabelCatalog where
+  labels : Array Label := #[]
+  members : NameSet := {}
+deriving Inhabited, Repr
+
+def AttributeLabelCatalog.insert (catalog : AttributeLabelCatalog) (label : Label) :
+    AttributeLabelCatalog :=
+  if catalog.members.contains label then catalog
+  else { labels := catalog.labels.push label, members := catalog.members.insert label }
+
 /--
 Persisted semantic state collected during elaboration.
 
@@ -69,10 +80,10 @@ structure State where
   nextCount : Nat := 1
   /-- Only registrations made in this module, in registration order per label. -/
   localContributions : NameMap (Array NodeContribution) := {}
-  /-- Attribute-owned labels grouped by their defining module, in application order. -/
-  blueprintAttributeLabelsByModule : NameMap (Array Label) := {}
+  /-- Labels with attribute applications in each module, in application order. -/
+  blueprintAttributeLabelsByModule : NameMap AttributeLabelCatalog := {}
   /-- Current-module subset exported through the persistent extension. -/
-  localBlueprintAttributeLabelsByModule : NameMap (Array Label) := {}
+  localBlueprintAttributeLabelsByModule : NameMap AttributeLabelCatalog := {}
   groups : NameMap String := {}
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
@@ -129,10 +140,10 @@ inductive Entry where
 deriving Inhabited, Repr
 
 private def addBlueprintAttributeLabel
-    (modules : NameMap (Array Label)) (moduleName : Name) (label : Label) :
-    NameMap (Array Label) :=
+    (modules : NameMap AttributeLabelCatalog) (moduleName : Name) (label : Label) :
+    NameMap AttributeLabelCatalog :=
   modules.insert moduleName <|
-    Label.pushUnique (modules.getD moduleName #[]) label
+    (modules.getD moduleName {}).insert label
 
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
@@ -221,7 +232,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let attributeLabelEntries :=
         state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
-          labels.map (Entry.blueprintAttributeLabel moduleName)
+          labels.labels.map (Entry.blueprintAttributeLabel moduleName)
       let groupEntries := state.localGroups.toArray.map fun (label, header) =>
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
@@ -249,9 +260,9 @@ def registerBlueprintAttributeLabel (label : Label) : m Unit := do
     informalExt.addEntry env <|
       .blueprintAttributeLabel moduleName label.eraseMacroScopes
 
-/-- Attribute-owned nodes declared directly by the module, in source order. -/
+/-- Labels contributed by attributes applied in this exact module, in application order. -/
 def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
-  return (informalExt.getState (← getEnv)).blueprintAttributeLabelsByModule.getD moduleName #[]
+  return ((informalExt.getState (← getEnv)).blueprintAttributeLabelsByModule.getD moduleName {}).labels
 
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
