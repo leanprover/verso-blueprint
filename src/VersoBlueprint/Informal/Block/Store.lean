@@ -40,29 +40,32 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   (next, st.set numberingCounterState (next + 1))
 
 /--
-Traversal-state key for the next source-local number available during traversal.
+Traversal-state namespace for source-local allocation. Each source keeps a next
+number and an offset counting generated placements encountered in that source.
 -/
 private def sourceNumberingCounterState : Name :=
   Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
 
-private def nextSourceBlockNumber (st : TraverseState) : Nat :=
-  match st.get? sourceNumberingCounterState with
-  | some (.ok (n : Nat)) => n
-  | _ => 1
-
 /--
-Resolve a source-local block number monotonically in traversal order.
-
-Zero is the unassigned sentinel. A nonzero elaboration-time count is also
-reassigned when an earlier generated placement has already advanced beyond it.
+Preserve authored counts, offset only by preceding generated placements from
+the same source. Ordinary chapters never renumber one another. Reordering
+authored occurrences alone does not change their local numbers.
 -/
-private def resolveSourceBlockNumber (st : TraverseState) (count : Nat) :
+private def resolveSourceBlockNumber (st : TraverseState) (data : BlockData) :
     Nat × TraverseState :=
-  let next := nextSourceBlockNumber st
-  if count == 0 || count < next then
-    (next, st.set sourceNumberingCounterState (next + 1))
+  let source := data.sourceLocation.location.map (·.path) |>.getD data.label.toString
+  let counters := match st.get? sourceNumberingCounterState with
+    | some (.ok (counters : Array (String × Nat × Nat))) => counters
+    | _ => #[]
+  let (next, offset) := (counters.find? (·.1 == source)).map (·.2) |>.getD (1, 0)
+  let save (next offset : Nat) :=
+    st.set sourceNumberingCounterState
+      ((counters.filter (·.1 != source)).push (source, next, offset))
+  if data.count == 0 then
+    (next, save (next + 1) (offset + 1))
   else
-    (count, st.set sourceNumberingCounterState (count + 1))
+    let count := data.count + offset
+    (count, save (max next (count + 1)) offset)
 
 /-- Prefix-local counters, stored as a small association list in traversal state. -/
 private def prefixBlockCounters (st : TraverseState) : Array (String × Nat) :=
@@ -140,7 +143,7 @@ private def BlockData.withReservedNumbering
     match data.globalCount with
     | some globalCount => (globalCount, st)
     | none => reserveGlobalBlockNumber st
-  let (sourceCount, st) := resolveSourceBlockNumber st data.count
+  let (sourceCount, st) := resolveSourceBlockNumber st data
   let (count, st) :=
     match data.numberingMode with
     | .sub => reserveSubBlockNumber st { data with count := sourceCount }
