@@ -6,6 +6,14 @@ Author: Emilio J. Gallego Arias
 
 module
 
+-- Schema descriptions reflect docstrings, which Lean stores in private module data.
+import all VersoBlueprint.Data -- shake: keep
+import all VersoBlueprint.ExternalDeclRender.Data -- shake: keep
+import all VersoBlueprint.Graph -- shake: keep
+import all VersoBlueprint.Informal.Block.Model -- shake: keep
+import all VersoBlueprint.PreviewCache -- shake: keep
+import all VersoBlueprint.Source.Data -- shake: keep
+
 public import Lean
 public import Lean.Elab.Command
 public import Std.Data.HashMap

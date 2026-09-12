@@ -13,6 +13,9 @@ namespace VersoBlueprintBoundaryTests.GeneratorRoot
 
 open Lean
 
+-- Capture the imported project model through the generator root alone.
+example : Informal.RenderModel := blueprint_render_model%
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -26,7 +29,7 @@ open Lean
   let file : Informal.PreviewManifest.File := { previews := #[entry] }
   let index := file.index
   index.findEntry? "module-preview" |>.map (·.title) == some "Module preview" &&
-    Informal.PreviewManifest.manifestInternalSchemaVersion == 3 &&
+    file.vbpInternalSchemaVersion == Informal.PreviewManifest.manifestInternalSchemaVersion &&
     Informal.PreviewManifest.schemaString != ""
 
 end VersoBlueprintBoundaryTests.GeneratorRoot

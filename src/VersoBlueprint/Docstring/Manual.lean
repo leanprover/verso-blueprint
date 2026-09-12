@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Docstring.References
-import VersoBlueprint.Math
+module
+
+public meta import VersoBlueprint.Docstring.References
+public meta import VersoBlueprint.Math
+
+public meta section
 
 namespace Informal.Docstring
 
