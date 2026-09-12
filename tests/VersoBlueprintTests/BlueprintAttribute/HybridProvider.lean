@@ -52,8 +52,8 @@ def hybridSharedSecond : Nat := 19
 def hybridLateDocstringFirst : Nat := 23
 
 /--
-A later declaration docstring fills a dependency-only statement payload without
-discarding the dependencies registered by the first declaration.
+A later declaration docstring stays in its Lean panel without filling the
+dependency-only statement payload registered by the first declaration.
 -/
 @[blueprint "attr.hybrid.late_docstring"]
 def hybridLateDocstringSecond : Nat := 29

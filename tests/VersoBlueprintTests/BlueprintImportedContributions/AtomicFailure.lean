@@ -160,6 +160,14 @@ run_cmd do
   discard <| Environment.contribute `atomic_standalone_rust {
     rustCode := some { raw := "pub fn accepted() {}" } }
 
+-- Attribute registration must not publish a module-catalog entry when its
+-- contribution is rejected. The shared checker also covers declaration indexes.
+/-- error: Label atomic_standalone declares conflicting proof dependency intents for 'atomic_dependency' (automatic): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+@[blueprint "atomic_standalone" (autoDeps := true)]
+theorem rejectedAttributeWitness : True := atomicDependency
+
 /-- error: Label atomic_standalone declares conflicting proof dependency intents for 'atomic_dependency' (automatic): existing 'technical', new 'regular' -/
 #guard_msgs in
 #check_blueprint_atomic

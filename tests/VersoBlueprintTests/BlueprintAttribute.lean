@@ -126,10 +126,10 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       match bodyNode.statement with
       | some statement => !statement.previewBlocks.isEmpty && statement.elabStx.isEmpty
       | none => false
-    let lateDocstringFilled :=
+    let lateDocstringDidNotFill :=
       match lateDocstringNode.statement with
       | some statement =>
-        statement.hasBody &&
+        !statement.hasBody &&
           statement.dependencyLabels ==
             #[Name.mkSimple "attr.hybrid.verso_docstring"]
       | none => false
@@ -140,7 +140,7 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedFirst,
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedSecond
       ] &&
-      lateDocstringFilled &&
+      lateDocstringDidNotFill &&
       lateDocstringNode.leanDecls == #[
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringFirst,
         `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridLateDocstringSecond

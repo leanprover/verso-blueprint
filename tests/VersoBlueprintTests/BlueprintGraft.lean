@@ -133,9 +133,10 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
 
 /- Manifest-backed graft presentation projects dependency and auxiliary UI by facet. -/
 #guard
-  let content :=
-    Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings
-      "Facet body" #["Facet code body"]
+  let content : Informal.PreviewManifest.BlockRender.RenderedContent := {
+    body := Html.ofString "Facet body"
+    codeBodies := #[Html.ofString "Facet code body"]
+  }
   let render facet :=
     Informal.PreviewManifest.BlockRender.renderWithRenderedContent
       {}
@@ -158,7 +159,7 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
     !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
     !hasSubstr proof "bp_code_panel_wrapper"
 
-/- Manifest construction keeps statement code associations off the proof facet. -/
+/- Both facets retain shared code metadata; only the statement renders its panel. -/
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -186,8 +187,8 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
     pure <|
       !statementEntry.leanCodePreviewKeys.isEmpty &&
       statementEntry.codeData.isSome &&
-      proofEntry.leanCodePreviewKeys.isEmpty &&
-      proofEntry.codeData.isNone &&
+      proofEntry.leanCodePreviewKeys == statementEntry.leanCodePreviewKeys &&
+      Lean.toJson proofEntry.codeData == Lean.toJson statementEntry.codeData &&
       hasSubstr statementHtml.asString "graftFacetCodeWitness" &&
       hasSubstr statementHtml.asString "bp_code_panel_wrapper" &&
       !hasSubstr proofHtml.asString "graftFacetCodeWitness" &&

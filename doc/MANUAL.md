@@ -544,9 +544,9 @@ The generated Manual part contains one materialized Blueprint node for each
 distinct `@[blueprint]` label owned directly by the named module, in first
 attribute-application order. If several declarations in that module use the
 same label, the part contains one node with all of their Lean panels.
-Dependencies and declarations accumulate in source order. The first docstring
-that supplies a statement body remains authoritative; a later docstring fills
-the statement only while the earlier registrations are bodyless. Re-exported or
+Dependencies and declarations accumulate in source order. Only the declaration
+that introduces a label supplies its implicit docstring body; later attributes
+do not replace it or fill a bodyless placeholder. Re-exported or
 otherwise transitive modules are not folded into the part: include each desired
 module explicitly. Every node follows the same docstring/code-only, numbering,
 relation, preview, manifest, and cache path as an individual placement. Its

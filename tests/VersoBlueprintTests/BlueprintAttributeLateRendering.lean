@@ -19,7 +19,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAttributeLateRendering
   (proofUses := ["attr.exported.undocumented"])]
 theorem lateAttributeAttachment : True := trivial
 
-run_cmd Informal.Environment.contribute (Name.mkSimple "attr.exported.theorem") {
+run_cmd discard <| Informal.Environment.contribute (Name.mkSimple "attr.exported.theorem") {
   tags := #["late-attribute"]
   effort := some "small"
 }
@@ -32,7 +32,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
   let expectedProof : Array Data.UseRef := #[{ label := Name.mkSimple "attr.exported.undocumented" }]
   for doc in #[placedDoc, includedDoc] do
     let (html, state) ← renderManualDocHtmlStringAndState manualImpls doc
-    let some data := TraversalIndex.Nodes.data? state label
+    let some data := TraversalIndex.Nodes.renderedData? state label
       | throw <| IO.userError "Missing attribute occurrence"
     unless data.statementUses == expectedStatement && data.proofUses == expectedProof &&
         data.tags.contains "late-attribute" && data.effort == some "small" do
@@ -56,7 +56,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
 
   let (html, state) ← renderManualDocHtmlStringAndState manualImpls includedDoc
     (model := frozen.model)
-  let some original := TraversalIndex.Nodes.data? state label
+  let some original := TraversalIndex.Nodes.renderedData? state label
     | throw <| IO.userError "Missing frozen attribute occurrence"
   unless original.statementUses.isEmpty && original.proofUses.isEmpty &&
       original.tags.isEmpty && !hasSubstr html "lateAttributeAttachment" do

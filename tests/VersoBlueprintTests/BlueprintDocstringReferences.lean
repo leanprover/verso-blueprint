@@ -30,9 +30,9 @@ private def manualImpls : ExtensionImpls := extension_impls%
       { label := Name.mkSimple "attr.doc.automatic", origin := .automatic, intent := .auxiliary }
     ] &&
     proof.deps == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
-    late.statement.any (fun body => body.hasBody && body.dependencyLabels ==
-      #[Name.mkSimple "attr.doc.target", Name.mkSimple "attr.doc.automatic"]) &&
-    !state.localContributions.contains (Name.mkSimple "attr.doc.source") && state.stack.isEmpty
+    late.statement.any (fun body => !body.hasBody && body.dependencyLabels ==
+      #[Name.mkSimple "attr.doc.target"]) &&
+    !state.localContributions.contains (Name.mkSimple "attr.doc.source") && state.activeDirective.isNone
 
 #docs (Genre.Manual) includedDoc "Docstring references" :=
 :::::::
@@ -60,9 +60,9 @@ private def manualImpls : ExtensionImpls := extension_impls%
 #eval show IO Bool from do
   for doc in #[includedDoc, placedDoc] do
     let (html, state) ← renderManualDocHtmlStringAndState manualImpls doc
-    let some source := Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.doc.source")
+    let some source := Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.doc.source")
       | return false
-    let some target := Informal.TraversalIndex.Nodes.data? state (Name.mkSimple "attr.doc.target")
+    let some target := Informal.TraversalIndex.Nodes.renderedData? state (Name.mkSimple "attr.doc.target")
       | return false
     let some href := Informal.TraversalIndex.Nodes.href? state (Name.mkSimple "attr.doc.target")
       | return false
