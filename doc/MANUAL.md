@@ -696,15 +696,17 @@ set_option verso.blueprint.autoDeps true
 The local argument wins over the option, so `(autoDeps := false)` disables
 inference for one node even when the file default is enabled.
 
-Helper expansion is controlled independently by a Boolean Lean option:
+Traversal through untagged Lean declarations is controlled independently by a
+Boolean Lean option. Here, "untagged" means a declaration without any Blueprint
+association, including associations made by external or inline Lean attachments:
 
 ```lean
-set_option verso.blueprint.expandHelpers true   -- default: follow helpers
-set_option verso.blueprint.expandHelpers false  -- direct references only
+set_option verso.blueprint.autoDeps.expandUntagged true   -- default: follow helpers
+set_option verso.blueprint.autoDeps.expandUntagged false  -- direct references only
 ```
 
 The option has normal Lean scoping: it affects subsequent commands in the
-current file/section/namespace, and `set_option verso.blueprint.expandHelpers false in`
+current file/section/namespace, and `set_option verso.blueprint.autoDeps.expandUntagged false in`
 limits it to the following command, including a `#docs` command. Nested settings
 override the outer value and restore it when the scope ends. Settings are not
 exported to importing modules. This option does not enable `autoDeps`; both
@@ -836,7 +838,7 @@ on the proof axis even when they have no informal proof body.
 
 Migration from direct-only inference: existing `autoDeps := true` sites may gain
 helper-mediated edges. Review those edges and use attribute exclusions to curate
-them. Set `verso.blueprint.expandHelpers` to `false` to retain direct-only
+them. Set `verso.blueprint.autoDeps.expandUntagged` to `false` to retain direct-only
 inference, or use `autoDeps := false` for fully manual dependencies.
 
 ##### Manual additions and exclusions
@@ -876,7 +878,7 @@ the inferred dependency edges.
 | Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |
 | Reuse the same node in several places | Supported. The node keeps one semantic identity; later `{blueprint_node}` occurrences are presentation views and may use compact/header/display-label options. |
 | Use the declaration docstring as the statement | Supported for plain Markdown, standard structural `doc.verso` content, and Blueprint `{uses}` / `{bpref}` references. Structural markup and math also survive in the attached external-declaration panel, where references use readable fallback text. Other custom extensions use their fallback children. An absent docstring produces a code-only placement. |
-| Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Follows unassociated helpers by default; `set_option verso.blueprint.expandHelpers false` selects direct-only inference. Type/body walks produce statement/proof dependencies respectively. |
+| Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Follows unassociated helpers by default; `set_option verso.blueprint.autoDeps.expandUntagged false` selects direct-only inference. Type/body walks produce statement/proof dependencies respectively. |
 | Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. With `doc.verso` enabled, `{uses ...}[]` inside the adopted docstring adds statement dependencies; `{bpref ...}[]` adds links only. |
 | Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
 | Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |

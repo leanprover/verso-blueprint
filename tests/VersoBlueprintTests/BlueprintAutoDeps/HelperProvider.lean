@@ -42,4 +42,4 @@ theorem persisted : typeAlias := proofHop
 end Verso.VersoBlueprintTests.BlueprintAutoDeps.HelperProvider
 
 -- Deliberately remains active at EOF: this setting must not leak through imports.
-set_option verso.blueprint.expandHelpers false
+set_option verso.blueprint.autoDeps.expandUntagged false
