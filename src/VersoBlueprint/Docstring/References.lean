@@ -40,8 +40,8 @@ def uses (label : StrLit) (origin : String := "manual") (intent : String := "reg
     Lean.Doc.DocM (Lean.Doc.Inline Lean.ElabInline) := do
   let cfg := UsesConfig.ofArgs { val := label.getString, «syntax» := label.raw }
     (some origin) (some intent)
-  cfg.validate
-  referenceInline (.inr cfg.useRef) contents
+  let dependency? ← cfg.validate
+  referenceInline (dependency?.map Sum.inr |>.getD (.inl cfg.label)) contents
 
 /-- Preserve a Blueprint prose link without creating a dependency edge. -/
 @[doc_role Informal.bpref]
