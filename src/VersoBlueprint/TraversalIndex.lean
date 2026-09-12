@@ -579,9 +579,9 @@ namespace ExternalDeclAnchors
 def spec : StoreSpec := {
   name := Resolve.externalRenderedDeclDomainName
   kind := .internalIndex
-  key := "(statement occurrence, canonical external declaration)"
+  key := "(occurrence, canonical declaration), plus (label, declaration) fallback"
   value := "rendered declaration row anchor ids"
-  summary := "Traversal-local anchor index for rendered external declaration rows."
+  summary := "Visible declaration rows and the first visible fallback when the selected prose occurrence has no code."
 }
 
 def domainName : Name := spec.name
