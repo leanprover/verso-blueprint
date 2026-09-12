@@ -38,21 +38,6 @@ structure Preview where
   stxs : Array Syntax := #[]
 deriving Inhabited, Repr
 
-/--
-A decoded traversal-preview object as stored after Manual traversal.
-
-This is for whole-domain consumers such as manifest construction. One-label
-consumers use `traversalEntry?` for selected prose and its provenance, or
-`traversalPreviewCandidateKey?` for a preview candidate including code and markup.
--/
-structure StoredTraversalEntry where
-  /-- Manifest/cache key for this statement or proof preview facet. -/
-  key : String
-  /-- Canonical name of the underlying traversal object, for diagnostics. -/
-  canonicalName : String
-  entry : PreviewCache.Entry
-deriving Inhabited, Repr
-
 /-- An environment-time preview for one Blueprint label.
 
 The `facet` and `key` fields identify the preview that should be used by
@@ -72,26 +57,6 @@ def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : P
     key := PreviewCache.key label facet
     preview
   }
-
-/--
-Decode every stored statement/proof traversal preview entry.
-
-This intentionally does not apply statement/proof selection: manifest
-construction needs every renderable facet, while one-label consumers should use
-`traversalEntry?` for content or `traversalLookupKey?` for its identity.
--/
-def traversalStoredEntries
-    (s : Verso.Genre.Manual.TraverseState) :
-    Array (Except Informal.TraversalIndex.DecodeError StoredTraversalEntry) :=
-  Informal.TraversalIndex.TraversalPreviews.entries s |>.map fun
-    | .error err => .error err
-    | .ok stored =>
-        let entry := stored.data
-        .ok {
-          key := PreviewCache.key entry.label entry.facet
-          canonicalName := stored.canonicalName
-          entry
-        }
 
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry :=

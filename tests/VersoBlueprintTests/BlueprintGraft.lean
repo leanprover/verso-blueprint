@@ -468,4 +468,90 @@ private def renderAuditNode
     { external.preview with target := `wrongTarget }
     | throw <| IO.userError "External preview accepted inconsistent declaration identity"
 
+private def exportInBothModes (state : TraverseState) :
+    IO (PreviewManifest.Files × Array String) := do
+  let prepared := PreviewManifest.PreparedPreviewState.prepare state
+  let quietErrors ← IO.mkRef (#[] : Array String)
+  let verboseErrors ← IO.mkRef (#[] : Array String)
+  let quiet ← PreviewManifest.buildPreviewDataFiles manualImpls
+    (fun message => quietErrors.modify (·.push message)) prepared
+  let (progress, verbose) ← IO.FS.withIsolatedStreams <|
+    PreviewManifest.buildPreviewDataFiles manualImpls
+      (fun message => verboseErrors.modify (·.push message)) prepared (verbose := true)
+  unless !progress.isEmpty && Lean.toJson quiet.manifest == Lean.toJson verbose.manifest &&
+      Lean.toJson quiet.htmlCache == Lean.toJson verbose.htmlCache &&
+      (← quietErrors.get) == (← verboseErrors.get) do
+    throw <| IO.userError "Verbose instrumentation changed export data or diagnostics"
+  return (quiet, ← quietErrors.get)
+
+-- Panel identity, rather than rendered text, determines uniqueness. Distinct
+-- panels retain their own facts even when they render identical HTML.
+#eval show IO Unit from do
+  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let label := Lean.Name.mkSimple "def:graft.manual.left"
+  let facetKey := PreviewCache.statementKey label
+  let .ok (some facet) := RenderingResolution.facetByKey? initial facetKey
+    | throw <| IO.userError "Missing panel-identity fixture facet"
+  let mut state := initial
+  let mut keys := #[]
+  for (blockId, decl, body) in #[(`firstPanel, `firstPanelDecl, true),
+      (`secondPanel, `secondPanelDecl, true), (`emptyPanel, `emptyPanelDecl, false)] do
+    let metadata : InlineCodeData := { blockId, label, definedDefs := #[{ name := decl }] }
+    state := TraversalIndex.InlineCode.saveData state metadata
+    let key := TraversalIndex.LeanCodePreviews.lookupInlineKey blockId
+    keys := keys.push key
+    let previewBlocks : Array (Doc.Block Genre.Manual) :=
+      if body then #[.para #[.text "identical-code-panel"]] else #[]
+    let preview := LeanCodePreview.Entry.ofInlineBlocks blockId label previewBlocks
+      (.unavailable "synthetic panel identity test")
+    state := TraversalIndex.LeanCodePreviews.saveData state key (Lean.toJson preview)
+  let preview := { facet.preview with leanCodePreviewKeys := keys ++ keys }
+  state := TraversalIndex.TraversalPreviews.saveData state facetKey (Lean.toJson preview)
+  let .ok (some resolved) := RenderingResolution.facetByKey? state facetKey
+    | throw <| IO.userError "Could not resolve repeated panel keys"
+  unless RenderingResolution.codePreviewKeys state resolved ==
+      keys.push (TraversalIndex.LeanCodePreviews.lookupKey ``graftManualLeftValue) do
+    throw <| IO.userError "Panel keys were not deduplicated in first-occurrence order"
+  let html ← renderManualBlocksHtmlWithState blocks manualImpls state
+  let rendered := html.asString
+  unless (rendered.splitOn "identical-code-panel").length == 3 &&
+      hasSubstr rendered "firstPanelDecl: complete" &&
+      hasSubstr rendered "secondPanelDecl: complete" &&
+      !hasSubstr rendered "emptyPanelDecl: complete" do
+    throw <| IO.userError "Panel rendering conflated identity, equal HTML or empty output"
+  let (files, errors) ← exportInBothModes state
+  unless errors.isEmpty && (files.manifest.findEntry? keys[0]!).isSome &&
+      (files.manifest.findEntry? keys[1]!).isSome &&
+      (files.manifest.findEntry? keys[2]!).isNone do
+    throw <| IO.userError "Code export dropped a distinct identity or retained blank output"
+  let some entry := files.manifest.findEntry? facetKey
+    | throw <| IO.userError "Missing exported panel-identity facet"
+  let duplicateEntry := { entry with leanCodePreviewKeys := keys ++ keys }
+  let context := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+  let node := graftNode "def:graft.manual.left"
+  let some cached ← context.renderedContent? node duplicateEntry
+    | throw <| IO.userError "Missing manifest-backed panel content"
+  unless cached.codeBodies.size == 2 &&
+      cached.codeData.literateDeclarations.declarations.map (·.name) == #[`firstPanelDecl, `secondPanelDecl] do
+    throw <| IO.userError "Manifest-backed panels conflated equal HTML or repeated a preview key"
+
+-- All export adapters share the same checked inputs. A malformed facet gets one
+-- diagnostic, and verbose instrumentation cannot affect exported data or errors.
+#eval show IO Unit from do
+  let (_, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let label := Lean.Name.mkSimple "def:graft.manual.left"
+  let key := PreviewCache.statementKey label
+  let .ok (some facet) := RenderingResolution.facetByKey? initial key
+    | throw <| IO.userError "Missing export-input fixture facet"
+  let preview := { facet.preview with sourceRef := some { document := "missing-document" } }
+  let state := TraversalIndex.TraversalPreviews.saveData initial key (Lean.toJson preview)
+  let state := TraversalIndex.TraversalPreviews.saveData state "broken--statement" (Lean.Json.str "broken")
+  let (quiet, errors) ← exportInBothModes state
+  unless errors.size == 2 &&
+      (errors.filter (hasSubstr · "malformed preview entry broken--statement")).size == 1 &&
+      (errors.filter (hasSubstr · "unknown source document 'missing-document'")).size == 1 do
+    throw <| IO.userError s!"Facet export diagnostics were lost or repeated: {errors}"
+  unless (quiet.manifest.findEntry? "broken--statement").isNone do
+    throw <| IO.userError "Rejected facet became an exported entry"
+
 end Verso.VersoBlueprintTests.BlueprintGraft

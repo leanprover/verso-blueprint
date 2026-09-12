@@ -65,7 +65,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
     let label := Name.mkSimple "preview.proof_fallback"
     let proofKey := PreviewCache.proofKey label
-    let decoded := Informal.PreviewSource.traversalStoredEntries st
+    let decoded := Informal.TraversalIndex.TraversalPreviews.entries st
     let entries := decoded.filterMap fun
       | .ok entry => some entry
       | .error _ => none
@@ -74,10 +74,10 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
         | .ok _ => true
         | .error _ => false) &&
       entries.any (fun stored =>
-        stored.key == proofKey &&
-        stored.entry.label == label &&
-        stored.entry.facet == .proof &&
-        !stored.entry.blocks.isEmpty)
+        stored.canonicalName == proofKey &&
+        stored.data.label == label &&
+        stored.data.facet == .proof &&
+        !stored.data.blocks.isEmpty)
 
 /-- info: true -/
 #guard_msgs in

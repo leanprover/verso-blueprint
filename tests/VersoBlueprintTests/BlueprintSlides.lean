@@ -222,7 +222,10 @@ private def writeSlidesPreviewDataFiles
   let index := file.index
   index.codeEntryCount blockEntry == 3 &&
     (index.codeEntries blockEntry).map (·.key) == #["a", "b", "c"] &&
-    cache.codeHtmlBodies blockEntry == #["<pre>same</pre>", "<pre>different</pre>"]
+    cache.codeHtmlBodies blockEntry ==
+      #["<pre>same</pre>", "<pre>same</pre>", "<pre>different</pre>"] &&
+    cache.codeHtmlBodies { blockEntry with leanCodePreviewKeys := #["a", "b", "a", "c"] } ==
+      cache.codeHtmlBodies blockEntry
 
 /-- info: true -/
 #guard_msgs in
