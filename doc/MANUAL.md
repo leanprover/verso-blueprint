@@ -193,6 +193,8 @@ References are checked during traversal against the captured project, so forward
 references work. A known node omitted from the document falls back to its authored
 label; an unknown label is an error. Reference-only documents also require the
 project's rendering model.
+Dependency metadata can still describe unresolved graph edges, which appear in
+graph diagnostics; it does not create a prose link.
 
 For dependencies that do not have a natural sentence-level reference, use the
 block option `(uses := "label1, label2")`. Inline uses can carry
