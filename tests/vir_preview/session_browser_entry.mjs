@@ -68,8 +68,20 @@ async function run() {
     check(panel().dataset.versoDebugBrowserTiming === "pending-upstream" &&
       !panel().hasAttribute("data-verso-debug-browser-ms") && !byId("processing"),
     "pending browser timing was presented as a measurement");
-    check(byId("server-timings").textContent.includes("server preparation: 6.0 ms") &&
+    check(byId("server-timings").textContent.includes("Server preparation · 6.0 ms") &&
       panel().dataset.versoDebugNewInput === "false", "option toggle misreported server sample");
+    const bar = byId("server-bar");
+    const segments = [...bar.querySelectorAll("[data-verso-phase]")];
+    check(bar.getAttribute("role") === "img" &&
+      bar.getAttribute("aria-label").includes("Snapshot 1.0 ms"), "timing bar lacks a text alternative");
+    check(segments.length === 3 && segments.map(s => Number(s.dataset.versoNanos)).join() ===
+      "1000000,2000000,3000000", "timing phases differ from the server sample");
+    check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
+      "timing phases lack distinct colors");
+    const width = bar.getBoundingClientRect().width;
+    segments.forEach((segment, index) => check(
+      Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 1,
+      "timing segment width is not proportional to duration"));
     const unchangedSequence = sequence();
     render(1);
     check(sequence() === unchangedSequence, "unchanged input repeated the diagnostic effect");
@@ -87,6 +99,13 @@ async function run() {
         panel().dataset.versoDebugNewInput === "true", `${expected} diagnostic observation is stale`);
     }
     check(byId("preview").textContent.includes("Recovered preview"), "recovery lost document");
+    render(6);
+    check(!byId("server-bar") && byId("server-timings").textContent.includes("not supplied"),
+      "missing timing was displayed as zero or retained from an old response");
+    render(7);
+    check(byId("server-bar").dataset.versoTotalNanos === "0" &&
+      [...byId("server-bar").children].every(s => s.getBoundingClientRect().width === 0),
+      "zero timing should have an empty, finite bar");
     click("debug");
     check(!panel(), "debug did not switch off");
     click("debug");
@@ -110,7 +129,8 @@ async function run() {
     return { strictMode: true, fullManualInput: true, blueprintAdapter: true,
       retainedOptions: true, retainedDisclosure: true, debugInsertionKeepsDocument: true,
       unchangedInputNoEffect: true, statusTransitions: 4, intentionalRemountResets: true,
-      postDisposalRejected: true, serverTimingDisplay: true, browserTimingExplicitlyPending: true,
+      postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
+      missingAndZeroTiming: true, browserTimingExplicitlyPending: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);

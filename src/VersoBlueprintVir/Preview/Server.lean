@@ -36,15 +36,19 @@ private meta opaque evalManualPart (env : Environment) (options : Options)
 /-- Preview the open module's complete Manual document from its server snapshot.
 This retains the existing full-document evaluation boundary: it waits for the
 end snapshot and checked environment, not just the block under the cursor.
-No separate build, traversal, timing instrumentation, or document cache is added. -/
+Four monotonic clock reads measure contiguous server preparation phases. No
+separate build, traversal, per-node instrumentation, or document cache is added. -/
 @[server_rpc_method]
 meta def previewDocument (pos : Lsp.Position) : RequestM (RequestTask String) := do
+  let started ← IO.monoNanosNow
   let editorDocument ← RequestM.readDoc
   RequestM.bindWaitFindSnap editorDocument (·.isAtEnd)
     (notFoundX := throw ⟨.invalidParams, "The Blueprint document is still elaborating"⟩)
     (x := fun snap => do
+      let snapshotReady ← IO.monoNanosNow
       let checked : ServerTask Kernel.Environment := snap.env.checked
       RequestM.mapTaskCostly checked fun _ => do
+        let checkedReady ← IO.monoNanosNow
         RequestM.checkCancelled
         let name := Verso.Doc.docName editorDocument.meta.mod
         if !(snap.env.contains name) then
@@ -52,12 +56,18 @@ meta def previewDocument (pos : Lsp.Position) : RequestM (RequestTask String) :=
         let part ← match evalManualPart snap.env snap.cmdState.scopes.head!.opts name with
           | .ok part => pure part
           | .error message => throw ⟨.internalError, s!"Could not evaluate the Blueprint: {message}"⟩
+        let evaluated ← IO.monoNanosNow
         RequestM.checkCancelled
         let cursorToken := s!"{pos.line}:{pos.character}"
         return (Preview.ready {
           version := editorDocument.meta.version
           correlationId := s!"{editorDocument.meta.version}:{cursorToken}"
           cursorToken
+          serverTiming? := some {
+            snapshotWaitNanos := snapshotReady - started
+            checkedWaitNanos := checkedReady - snapshotReady
+            evaluationNanos := evaluated - checkedReady
+          }
           document := part
         }).encode)
 

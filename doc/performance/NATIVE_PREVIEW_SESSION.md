@@ -71,6 +71,30 @@ the upstream cache repair is not part of this checkpoint.
   verifies the complete Manual document type, and evaluates it. The normal
   document is intentionally evaluated with `checkMeta := false`.
 
+### Timing display
+
+Enable **Debug details**, then expand **Last render**. One stacked bar shows
+server preparation for the accepted response: blue **Snapshot** wait, amber
+**Checked** environment wait, and green **Document** evaluation/reconstruction.
+Widths are proportional to unrounded nanoseconds within that response; the
+total and legend show milliseconds. The bar is normalized to its available
+width, not a fixed milliseconds-per-pixel scale. Zero-duration phases have no
+width, and absent timing is shown as unavailable, not zero.
+
+The preview RPC takes four monotonic timestamps, with no per-node probes,
+extra traversal, logs, timers or request. Measurements are collected for each
+successful document response independently of the Debug checkbox; changing a
+control reuses that response's server measurement. Snapshot/checked waits include
+scheduling and document work remaining when the RPC starts. The interval ends
+before response encoding. It excludes work before RPC entry, transport, and
+browser rendering, so it is **not edit-to-preview latency**. Browser timing remains
+pending the pinned VIR API; no VBP-local browser binding has been added.
+
+The timing acceptance reports in `_out/native-preview-modules/timing/` check
+actual browser geometry against a 1:2:3 sample, distinct colors, accessible labels,
+missing/zero measurements, and fresh measurements from the real document RPC
+across edits. The known embedded-shell unmount warning remains a strict failure.
+
 Ordinary `import VersoBlueprint` does not import VIR. The server endpoint is not
 part of the client's runtime closure. No new build, traversal, document cache,
 scheduler, transport, or document format is added. The server still waits for

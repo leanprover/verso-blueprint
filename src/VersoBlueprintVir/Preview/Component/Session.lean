@@ -73,12 +73,46 @@ private def renderToggle (id label : String) (checked : Bool)
     Props.checked checked, Props.onChangeUnit onChange] #[]
   Node.elementWith "label" #[Props.htmlFor id] #[input, ← Node.text (← JsValue.ofString (" " ++ label))]
 
-private def renderMetrics (id : String) (metrics : Array (String × String × String)) :
-    ReactM (Js Node) := do
-  let entries ← metrics.mapM fun (key, label, value) => do
-    Node.spanWith #[Props.key key] #[← Node.text (← JsValue.ofString (label ++ ": " ++ value))]
-  Node.divWith #[Props.id id, Props.stylePairs #[
-    ("display", "flex"), ("flexWrap", "wrap"), ("gap", "4px 12px")]] entries
+private def renderServerTiming (timing : ServerTiming) : ReactM (Js Node) := do
+  let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
+  let phases := #[
+    ("snapshot-wait", "Snapshot", "#4c9be8", timing.snapshotWaitNanos),
+    ("checked-wait", "Checked", "#d99a32", timing.checkedWaitNanos),
+    ("evaluation", "Document", "#42b89a", timing.evaluationNanos)
+  ]
+  let total := timing.preparationNanos
+  let summary := "Server preparation · " ++ milliseconds total
+  let segments ← phases.mapM fun (key, label, color, nanos) =>
+    Node.spanWith #[Props.key key, Props.string "data-verso-phase" key,
+      Props.string "data-verso-nanos" (toString nanos),
+      Props.string "title" (label ++ ": " ++ milliseconds nanos),
+      Props.stylePairs #[
+        ("flexGrow", toString nanos), ("flexShrink", "0"), ("flexBasis", "0px"),
+        ("minWidth", "0"), ("backgroundColor", color)
+      ]] #[]
+  let legend ← phases.mapM fun (key, label, color, nanos) => do
+    let swatch ← Node.spanWith #[Props.ariaHidden true, Props.stylePairs #[
+      ("display", "inline-block"), ("width", "8px"), ("height", "8px"),
+      ("borderRadius", "2px"), ("backgroundColor", color)
+    ]] #[]
+    Node.spanWith #[Props.key key, Props.stylePairs #[
+      ("display", "inline-flex"), ("alignItems", "center"), ("gap", "4px")
+    ]] #[swatch, ← Node.text (← JsValue.ofString (label ++ " " ++ milliseconds nanos))]
+  let label ← Node.pTextWith #[ComponentStyle.debugNote] summary
+  let bar ← Node.divWith #[Props.id "vir-verso-server-bar", Props.role "img",
+    Props.string "aria-label" (summary ++ "; " ++ String.intercalate ", "
+      (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)),
+    Props.string "data-verso-total-nanos" (toString total),
+    Props.stylePairs #[
+      ("display", "flex"), ("width", "100%"), ("height", "12px"),
+      ("overflow", "hidden"), ("borderRadius", "3px"),
+      ("backgroundColor", "var(--vscode-editorWidget-background, #88888822)")
+    ]] segments
+  let legend ← Node.divWith #[Props.stylePairs #[
+    ("display", "flex"), ("flexWrap", "wrap"), ("gap", "4px 12px"),
+    ("marginTop", "5px"), ("fontSize", "0.85em")
+  ]] legend
+  Node.divWith #[Props.id "vir-verso-server-timings"] #[label, bar, legend]
 
 def renderConfigPanel
     (options : Options)
@@ -104,20 +138,10 @@ private def renderDebugBody (sample : DebugSample) : ReactM (Js Node) := do
   let server ← match sample.serverTiming? with
     | none =>
       Node.pTextWith #[Props.id "vir-verso-server-timings", ComponentStyle.debugNote]
-        "Server timing not recorded for this response. Enable it in the demo's RPC registration."
-    | some timing => do
-        let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
-        let timingBar ← renderMetrics "vir-verso-server-timings" #[
-          ("preparation", "server preparation", milliseconds timing.preparationNanos),
-          ("snapshot-wait", "terminal snapshot wait", milliseconds timing.snapshotWaitNanos),
-          ("checked-wait", "checked environment wait", milliseconds timing.checkedWaitNanos),
-          ("evaluation", "document evaluation", milliseconds timing.evaluationNanos)
-        ]
-        let note ← Node.pTextWith #[ComponentStyle.debugNote]
-          "Server preparation ends before response encoding and transport. Waits include scheduling and remaining document work, not just finalization. Server tracing is configured by the demo, independently of this Debug checkbox."
-        Node.divWith #[] #[timingBar, note]
+        "Server timing was not supplied with this response."
+    | some timing => renderServerTiming timing
   let note ← Node.pTextWith #[ComponentStyle.debugNote]
-    "Browser timings and heap samples are pending VIR's native Performance API. Server timings above belong to the response, not to option toggles; they are not end-to-end latency."
+    "Server only: waits include scheduling; encoding and transport are excluded. Browser timing awaits VIR."
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"

@@ -71,6 +71,17 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     React.act(() => retained.click());
     React.act(() => document.getElementById("vir-verso-debug").click());
     React.act(() => document.getElementById("vir-verso-debug-disclosure").click());
+    const measuredBar = () => {
+      const bar = document.getElementById("vir-verso-server-bar");
+      check(bar, "live server response has no timing bar");
+      const phases = [...bar.querySelectorAll("[data-verso-phase]")];
+      const total = Number(bar.dataset.versoTotalNanos);
+      check(phases.length === 3 && total > 0 && phases.reduce((sum, phase) =>
+        sum + Number(phase.dataset.versoNanos), 0) === total,
+      "live server phases do not partition preparation time");
+      return total;
+    };
+    measuredBar();
     const beforeUnchanged = previewCalls().length;
     await render(a, config.a);
     await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
@@ -88,6 +99,7 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
       "embedded edit lost checkbox identity or state");
     check(document.getElementById("vir-verso-debug-disclosure").getAttribute("aria-expanded") === "true",
       "embedded edit lost disclosure state");
+    measuredBar();
     check(packageCalls().length === 1, "document edit regenerated the client package");
 
     await render(b, config.b);
@@ -101,7 +113,7 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     return {
       registeredWidgetModule: true, shellSha256: hash, wasmSha256: wasmHash, liveSnapshotPackage: true,
       workspaceAssetRpc: true, editorContextBridge: true, samePositionEdit: true,
-      liveBlueprintDocument: true, editedSourceRendered: true,
+      liveBlueprintDocument: true, editedSourceRendered: true, measuredServerTimingBar: true,
       retainedControls: true, cursorRefresh: true, unchangedInputNoRpc: true,
       clientPackageBuilds: packageCalls().length, previewRequests: previewCalls().length,
       unmountUnsubscribes: true, noReactWarnings: warnings.length === 0, warnings,

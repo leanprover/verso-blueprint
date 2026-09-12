@@ -39,6 +39,9 @@ private def preview (scenario : Nat) : Preview := match scenario with
   | 2 => .loading "Document is being checked"
   | 3 => .unavailable "No document at cursor"
   | 4 => .error "Document RPC failed"
+  | 6 => .ready { document 4 "Without timing" with serverTiming? := none }
+  | 7 => .ready { document 5 "Zero timing" with serverTiming? := some {
+      snapshotWaitNanos := 0, checkedWaitNanos := 0, evaluationNanos := 0 } }
   | _ => .ready (document 3 "Recovered preview")
 
 @[vir_export]
