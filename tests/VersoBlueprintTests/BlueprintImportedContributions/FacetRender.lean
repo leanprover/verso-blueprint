@@ -95,11 +95,11 @@ def facetBlueprint : BlueprintDocument := .capture
 #eval show IO Unit from do
   let part := facetBlueprint.text
   for (order, expected) in #[
-      (#[0], none),
-      (#[2], some PreviewCache.Facet.proof),
-      (#[0, 2], some PreviewCache.Facet.proof),
-      (#[2, 0], some PreviewCache.Facet.proof),
-      (#[0, 1, 2], some PreviewCache.Facet.statement)] do
+      (#[0], PreviewCache.Facet.statement),
+      (#[2], PreviewCache.Facet.proof),
+      (#[0, 2], PreviewCache.Facet.proof),
+      (#[2, 0], PreviewCache.Facet.proof),
+      (#[0, 1, 2], PreviewCache.Facet.statement)] do
     let text := { part with subParts := order.map (part.subParts[·]!) }
     let doc : Doc.VersoDoc Manual := .mk (fun _ => text) "{}"
     let errors ← IO.mkRef (#[] : Array String)
@@ -125,14 +125,12 @@ def facetBlueprint : BlueprintDocument := .capture
         | throw <| IO.userError "Missing proof-only manifest entry"
       unless proof.kind == some .theorem && proof.title == "Proof for Theorem 1" do
         throw <| IO.userError "Proof-only manifest lost the mathematical kind"
-    match expected with
-    | none =>
-        unless !hasSubstr html.asString "bp_inline_preview_ref" do
-          throw <| IO.userError "A placeholder reference offered a nonexistent preview"
-    | some facet =>
-        let key := PreviewCache.key `filled_facet facet
-        unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
-            (files.htmlCache.findHtml? key).isSome do
-          throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
+    if order == #[0] then
+      unless (PreviewSource.traversalEntry? state `filled_facet).isNone do
+        throw <| IO.userError "A code-backed placeholder acquired an omitted prose body"
+    let key := PreviewCache.key `filled_facet expected
+    unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
+        (files.htmlCache.findHtml? key).isSome do
+      throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
     unless (← errors.get).isEmpty do
       throw <| IO.userError s!"Partial chapter rendering errors: {← errors.get}"

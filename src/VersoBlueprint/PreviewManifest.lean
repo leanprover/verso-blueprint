@@ -309,6 +309,14 @@ private def logLeanCodePreviewTimings
 private def htmlStringIsBlank (html : String) : Bool :=
   html.all Char.isWhitespace
 
+/--
+Non-visual cache body for a semantic block whose only visible payload is an
+associated Lean-code panel. Browser cache readers reject empty HTML strings, so
+code-only nodes use an explicit inert fragment as their block body.
+-/
+private def codeOnlyBlockPreviewHtml : String :=
+  "<span class=\"bp_code_only_preview_body\" aria-hidden=\"true\"></span>"
+
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
     let msg := Verso.LogMessage.format { severity, text, loc }
@@ -953,8 +961,15 @@ structure Entry extends Informal.BlockMetadata where
   parentTitle : Option String := none
   /-- Manifest/cache-backed preview keys for Lean code previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
+  /-- This facet has no prose/witness body; hover readers compose its associated
+  Lean cache fragments instead of displaying the inert block-body fragment. -/
+  codeOnlyPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
+  /-- Whether the canonical proof shell is collapsed when this is a proof entry. -/
+  foldProofBlock : Bool := false
+  /-- Whether the associated Lean code panel is collapsed for this canonical traversal entry. -/
+  foldCodeBlock : Bool := false
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
   /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
@@ -964,6 +979,17 @@ structure Entry extends Informal.BlockMetadata where
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
   usedBy : Array RelatedEntry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
+
+/-- Whether a related dependency participates in the selected statement or proof facet. -/
+def RelatedEntry.matchesFacet
+    (related : RelatedEntry) (facet : PreviewCache.Facet) : Bool :=
+  match facet with
+  | .statement => related.axes.contains .statement
+  | .proof => related.axes.contains .proof
+
+/-- Related dependencies that belong to this manifest entry's selected facet. -/
+def Entry.usesForFacet (entry : Entry) : Array RelatedEntry :=
+  entry.uses.filter (·.matchesFacet entry.facet)
 
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
 structure EntryHeading where
@@ -991,6 +1017,8 @@ def Entry.blockData (entry : Entry) : Informal.BlockData := {
   codeData := entry.codeData
   sourceRef := entry.primarySource?
   sourceLocation := entry.sourceLocation
+  foldProofBlock := entry.foldProofBlock
+  foldCodeBlock := entry.foldCodeBlock
   count := 0
 }
 
@@ -2143,6 +2171,8 @@ private def blockSemanticManifestEntry
     parentTitle := blockParentTitle? state blockData?
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
+    foldProofBlock := preview.foldProofBlock
+    foldCodeBlock := preview.foldCodeBlock
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
     sources := preview.sourceRef.toArray
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
@@ -2164,6 +2194,7 @@ private def buildTraversalEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html)
+    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
@@ -2177,15 +2208,25 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if !entry.hasRenderedBody then
+      let externalBody? := if entry.facet == .statement then
+        Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
+        else none
+      if !entry.hasRenderablePreview then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
-        (logError := logError) (hoverState := hoverState)
-      hoverState := rendered.hoverState
-      let html := rendered.html.asString
-      if htmlStringIsBlank html then
-        continue
-      let manifestEntry := blockEntryOfTraversalPreview state entry
+      let html ←
+        if entry.hasRenderedBody then
+          let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers
+            entry.blocks impls state
+            (logError := logError) (hoverState := hoverState)
+          hoverState := rendered.hoverState
+          let html := rendered.html.asString
+          if htmlStringIsBlank html then
+            continue
+          pure html
+        else
+          pure (externalBody?.map (·.asString) |>.getD codeOnlyBlockPreviewHtml)
+      let manifestEntry := { blockEntryOfTraversalPreview state entry with
+        codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
   pure (entries, htmlEntries, hoverState)
@@ -2213,9 +2254,9 @@ private def buildExternalMarkupEntries
       let data := stored.data
       if data.markup.isEmpty then
         continue
-      if hasPreviewBackedBlockEntry previewBackedEntries data.label then
-        continue
       let statementPreview := traversalPreviewOrEmpty state data.label .statement
+      if hasPreviewBackedBlockEntry previewBackedEntries data.label && statementPreview.hasRenderedBody then
+        continue
       let manifestEntry := blockSemanticManifestEntry state statementPreview
         (key := externalMarkupEntryKey data.label)
         (targetKind := .externalMarkup)
@@ -2481,7 +2522,7 @@ def buildPreviewDataFiles
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ←
     withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state hoverState (verbose := verbose)
+      buildTraversalEntries impls logError state hoverState externalMarkupConfig (verbose := verbose)
   let (externalMarkupPreviews, externalMarkupHtml) ←
     withTimedBuildProgress verbose "building external markup manifest entries" <|
       buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig (verbose := verbose)

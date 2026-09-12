@@ -221,11 +221,17 @@ deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 structure BlockPresentation where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
-  /-- Source location result for the user-written label token. -/
+  /-- Source location for this rendered occurrence, ordinarily the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
+  /--
+  Elaboration-assigned source-local count. Zero requests generated allocation.
+  Traversal offsets authored counts only for preceding generated placements in
+  the same source, reserving a fresh number if reordering causes a collision,
+  before applying the configured numbering policy.
+  -/
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -310,6 +316,10 @@ def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : Bloc
 
 def RenderNode.toBlockData (node : RenderNode) : BlockData :=
   node.resolve (node.occurrence.getD { label := node.label, count := node.initialCount })
+
+/-- Whether this block's informal statement/proof shell should be collapsed. -/
+def BlockData.foldInformalShell (data : BlockData) : Bool :=
+  data.isProof && data.foldProofBlock
 
 /-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
 def RenderNode.ofBlockData (data : BlockData) : RenderNode := {

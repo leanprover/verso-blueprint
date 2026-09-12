@@ -177,4 +177,10 @@ def selectedContent?
   let content ← content? cfg selected
   some (selected, content)
 
+/-- Shared body fallback for direct placements and exported statement previews. -/
+def previewBody? (cfg : Config) (markup : Array Informal.Data.ExternalMarkup) :
+    Option Verso.Output.Html := do
+  let (selected, content) ← selectedContent? cfg markup
+  return .tag "div" (sourceBackedAttrs selected) (.seq content)
+
 end Informal.ExternalMarkupRender
