@@ -44,6 +44,10 @@ set_option doc.verso true
 def Label := Name
 deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
+/-- Append a Blueprint label only when it is not already present. -/
+def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
+  if labels.contains label then labels else labels.push label
+
 def LabelMap A := NameMap A
 
 instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
@@ -494,7 +498,8 @@ inductive CodeRef where
   /-
   Blueprint code references can currently come from two sources:
   1. An inline Lean block processed by Verso/Lean integration (`.literate`).
-  2. A regular Lean declaration tagged with `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
+  2. A regular Lean declaration tagged with `@[blueprint]` or
+     `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
      A `(lean := "...")` directive reference to Lean code we do not directly control
      also lands in `.external` (origin `.directiveLean`).
 
@@ -530,7 +535,12 @@ def CodeRef.leanDecls : CodeRef → Array Name
 structure InformalBody where
   stx : Syntax
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
+  /--
+  Manual block term syntax retained when the producing phase cannot evaluate it
+  into typed preview blocks, as with a docstring on an imported Blueprint
+  attribute.
+  -/
+  elabStx : Array Syntax := #[]
 deriving Repr, Inhabited
 
 def InformalBody.hasBody (data : InformalBody) : Bool :=

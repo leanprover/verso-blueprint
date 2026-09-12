@@ -117,6 +117,10 @@ def main() -> int:
     )
     code_panels = load(out_root / "Code-Panels" / "index.html")
 
+    require_contains(code_panels, "<strong>rendered premise</strong>", "docstring reference content")
+    require_contains(code_panels, "<code>panel_docstring_target</code>", "empty docstring reference fallback")
+    require_contains(code_panels, 'data-bp-preview-key="panel_docstring_target--statement"', "docstring reference preview")
+
     if "bp_external_status_badge_summary bp_external_status_ok" not in code_panels:
         fail("missing external summary badge for complete external declarations")
     if "bp_external_status_badge_summary bp_external_status_sorry" not in code_panels:
@@ -285,6 +289,10 @@ def main() -> int:
         fail("missing in-module documented external definition showcase declaration")
     if "PreviewRuntimeShowcase.CodePanelDecls.previewDocstringedFunction" not in code_panels:
         fail("missing in-module documented external function showcase declaration")
+    if "PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition" not in code_panels:
+        fail("missing in-module Verso-docstring external definition showcase declaration")
+    if "PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure" not in code_panels:
+        fail("missing in-module Verso-docstring external structure showcase declaration")
     if "PreviewRuntimeShowcase.CodePanelDecls.previewExternalTheorem" not in code_panels:
         fail("missing in-module external theorem showcase declaration")
     if "PreviewRuntimeShowcase.CodePanelDecls.previewDocstringedTheorem" not in code_panels:
@@ -367,6 +375,46 @@ def main() -> int:
         fail("documented multi-definition panel missing second definition docstring")
     if docstringed_defs_panel.count('data-kind="def"') < 2:
         fail("documented multi-definition panel missing def kind markers")
+
+    verso_docstring_panel = next(
+        (
+            p
+            for p in external_panels
+            if 'data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition"'
+            in p
+        ),
+        None,
+    )
+    if verso_docstring_panel is None:
+        fail("missing Verso-docstring external code panel")
+    if "<strong>structural external-panel docstring</strong>" not in verso_docstring_panel:
+        fail("Verso-docstring panel missing structural emphasis")
+    if '<code class="bp_math inline">6 + 1 = 7</code>' not in verso_docstring_panel:
+        fail("Verso-docstring panel missing structural inline mathematics")
+    if '<code class="bp_math display">6 + 2 = 8</code>' not in verso_docstring_panel:
+        fail("Verso-docstring panel missing structural display mathematics")
+    if verso_docstring_panel.count("structural panel item") < 2:
+        fail("Verso-docstring panel missing structural list items")
+    if '<pre class="docstring">' in verso_docstring_panel:
+        fail("Verso-docstring panel was flattened to a plain docstring")
+
+    verso_structure_panel = next(
+        (
+            p
+            for p in external_panels
+            if 'data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure"'
+            in p
+        ),
+        None,
+    )
+    if verso_structure_panel is None:
+        fail("missing Verso-docstring external structure panel")
+    if "<strong>structural container docstring</strong>" not in verso_structure_panel:
+        fail("Verso structure panel missing structural declaration emphasis")
+    if "<strong>structural field docstring</strong>" not in verso_structure_panel:
+        fail("Verso structure panel missing structural field emphasis")
+    if '<code class="bp_math inline">8 + 1 = 9</code>' not in verso_structure_panel:
+        fail("Verso structure panel missing structural field mathematics")
 
     theorem_docstring_panel = next(
         (

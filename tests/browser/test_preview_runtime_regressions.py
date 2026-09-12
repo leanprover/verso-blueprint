@@ -32,6 +32,64 @@ def assert_source_location_error(result: dict, needle: str):
 
 
 class TestPreviewRuntimeRegressions:
+    def test_code_only_attribute_references_discover_preview(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Code-Panels/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        paragraph = page.locator("p").filter(has_text="An automatic title follows:").filter(
+            has=page.locator(".bp_inline_preview_ref")
+        ).first
+        triggers = paragraph.locator(".bp_inline_preview_ref")
+        expect(triggers).to_have_count(2)  # Authored uses and bpref, not header chips.
+        key = "panel_docstring_target--statement"
+        declarations = ["docstringReferenceTarget", "additionalCodeOnlyWitness"]
+        for declaration in declarations:
+            # The full graft must not repeat declarations in its body and code panel.
+            expect(page.locator(
+                f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
+            )).to_have_count(1)
+        for index in range(2):
+            trigger = triggers.nth(index)
+            expect(trigger).to_have_attribute("data-bp-preview-key", key)
+            trigger.hover()
+            panel = page.locator("#bp-inline-preview-panel")
+            expect(panel).to_be_visible()
+            for declaration in declarations:
+                expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(declaration)
+                expect(panel.locator(
+                    f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
+                )).to_have_count(1)
+            page.mouse.move(0, 0)
+            expect(panel).to_be_hidden(timeout=1000)
+        assert_no_runtime_errors(errors)
+
+    def test_attribute_summary_destinations_exist_once(self, server: str, page: Page):
+        page.goto(f"{server}/Blueprint-Summary/")
+        links = page.locator("a[href*='--informal-external-decl-']").evaluate_all(
+            """anchors => [...new Set(anchors
+                .filter(a => /docstringReference(Source|Target)/.test(a.textContent))
+                .map(a => a.href))]"""
+        )
+        assert len(links) == 2, "Both placed attribute declarations need code destinations"
+        for href in links:
+            page.goto(href)
+            result = page.evaluate(
+                """() => {
+                    const id = decodeURIComponent(location.hash.slice(1));
+                    const matches = [...document.querySelectorAll('[id]')]
+                        .filter(el => el.id === id);
+                    const row = matches[0];
+                    return {
+                        count: matches.length,
+                        isCodeRow: !!row?.matches('.bp_external_decl_item'),
+                        compact: row?.closest('[data-bp-blueprint-node]')
+                            ?.getAttribute('data-bp-compact'),
+                    };
+                }"""
+            )
+            assert result == {"count": 1, "isCodeRow": True, "compact": "false"}, href
+
     def test_public_xref_excludes_internal_blueprint_indexes(self, server: str):
         with urllib.request.urlopen(f"{server}/xref.json") as response:
             data = json.load(response)
@@ -100,6 +158,36 @@ class TestPreviewRuntimeRegressions:
         fun_doc = doc_fun.locator(".bp_external_decl_body > div.docstring").first
         expect(fun_doc).to_contain_text("Adds a small preview offset")
         expect(fun_doc.locator("code").first).to_contain_text("n")
+
+        verso_def = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition"]'
+        ).first
+        expect(verso_def).to_have_count(1)
+        verso_doc = verso_def.locator(".bp_external_decl_body > div.docstring").first
+        expect(verso_doc.locator("strong")).to_contain_text("structural external-panel docstring")
+        expect(verso_doc.locator("li")).to_have_count(2)
+        verso_math = verso_doc.locator("code.bp_math.inline").first
+        expect(verso_math).to_contain_text("6 + 1 = 7")
+        expect(verso_math).to_have_attribute("data-bp-math-rendered", "1")
+        expect(verso_math.locator(".katex")).to_have_count(1)
+        verso_display_math = verso_doc.locator("code.bp_math.display").first
+        expect(verso_display_math).to_contain_text("6 + 2 = 8")
+        expect(verso_display_math).to_have_attribute("data-bp-math-rendered", "1")
+        expect(verso_display_math.locator(".katex-display")).to_have_count(1)
+        expect(verso_def.locator(".bp_external_decl_body > pre.docstring")).to_have_count(0)
+
+        verso_structure = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure"]'
+        ).first
+        expect(verso_structure).to_have_count(1)
+        expect(verso_structure.locator(".bp_external_decl_body > div.docstring strong")).to_contain_text(
+            "structural container docstring"
+        )
+        field_doc = verso_structure.locator(".subdocs div.docstring").first
+        expect(field_doc.locator("strong")).to_contain_text("structural field docstring")
+        field_math = field_doc.locator("code.bp_math.inline").first
+        expect(field_math).to_contain_text("8 + 1 = 9")
+        expect(field_math).to_have_attribute("data-bp-math-rendered", "1")
 
         decl = page.locator(
             '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewFreyPackage.ofCounterexample"]'
@@ -845,11 +933,19 @@ class TestPreviewRuntimeRegressions:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-key", re.compile(r"^graph:#<"))
-        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "58")
-        expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "15")
-        expect(graph_card).to_have_attribute("data-bp-graph-group-count", "4")
+        with urllib.request.urlopen(f"{server}/-verso-data/blueprint-manifest.json") as response:
+            graphs = json.load(response)["graphs"]
+        assert len(graphs) == 1
+        graph = graphs[0]
+        assert graph["nodes"] and graph["edges"] and graph["groups"]
+        # The generator captures all project imports, including chapters after
+        # this client was compiled. Match that model, not a chapter-local count.
+        for field in ("node", "edge", "group"):
+            expect(graph_card).to_have_attribute(
+                f"data-bp-graph-{field}-count", str(len(graph[f"{field}s"]))
+            )
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 58"
+            f"Nodes {len(graph['nodes'])}"
         )
         used_target_link = graph_card.locator('[data-bp-graph-node-label="used_target"]').first
         expect(used_target_link).to_have_text(re.compile(r"Definition"))

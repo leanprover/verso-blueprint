@@ -44,8 +44,9 @@ Domain that stores anchors for rendered external declaration rows.
 
 We intentionally keep this separate from `inlineLeanDeclDomainName`: inline Lean links are
 declaration-anchor-centric (one destination per declaration), while rendered external rows are
-occurrence-centric (one destination per statement occurrence and canonical declaration). This
-allows summary/graph UI to jump to the specific rendered instance, even when the same declaration
+occurrence-centric (one destination per visible code occurrence and canonical declaration).
+A label-level fallback names the first visible code row when the selected statement
+does not display code. This allows summary/graph UI to jump to a rendered instance, even when the same declaration
 is referenced by many blueprint entries. Inline preview bodies themselves are keyed by the owning
 source code-block identity.
 -/
@@ -69,6 +70,10 @@ The `decl` input should be canonicalized by callers (for example using `External
 -/
 def externalRenderedDeclTargetKey (occurrence : Verso.Multi.InternalId) (decl : Name) : String :=
   s!"{(toJson occurrence).compress}|{decl}"
+
+/-- First visible code row, independent of the selected prose occurrence. -/
+def externalRenderedDeclFallbackKey (label decl : Name) : String :=
+  s!"label:{label}|{decl}"
 
 def resolveDomainHref? (s : Verso.Genre.Manual.TraverseState) (domain : Name) (label : String) :
     Option String :=
@@ -104,10 +109,12 @@ def resolveInlineLeanDeclHref? (s : Verso.Genre.Manual.TraverseState) (decl : Na
         none
 
 def resolveRenderedExternalDeclHref? (s : Verso.Genre.Manual.TraverseState)
-    (label decl : Name) : Option String := do
-  let selected ← s.getDomainObject? informalPreviewDomainName (PreviewCache.key label .statement)
-  let occurrence ← (selected.data.getObjValAs? (Option Verso.Multi.InternalId) "target").toOption.join
-  resolveDomainHref? s externalRenderedDeclDomainName (externalRenderedDeclTargetKey occurrence decl)
+    (label decl : Name) : Option String :=
+  (do
+    let selected ← s.getDomainObject? informalPreviewDomainName (PreviewCache.key label .statement)
+    let occurrence ← (selected.data.getObjValAs? (Option Verso.Multi.InternalId) "target").toOption.join
+    resolveDomainHref? s externalRenderedDeclDomainName (externalRenderedDeclTargetKey occurrence decl)) <|>
+  resolveDomainHref? s externalRenderedDeclDomainName (externalRenderedDeclFallbackKey label decl)
 
 /--
 Resolve a Lean declaration link as seen from one informal block.

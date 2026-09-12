@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoManual
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Macros
 import VersoBlueprint.StyleSwitcher
 
 namespace Informal.Block.Assets
@@ -1838,7 +1839,7 @@ def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.previewPanelInlinePreviewAssetBundle
     (cssExtras := [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle])
-    (jsAfter := [Informal.StyleSwitcher.jsInteractive])
+    (jsAfter := [Informal.Macros.blueprintMathJs, Informal.StyleSwitcher.jsInteractive])
 
 def codeCssAssets : List String :=
   codeAssetBundle.css

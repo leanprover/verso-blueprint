@@ -138,14 +138,16 @@ def traversalExternalMarkupLookupKey?
 /--
 Best preview candidate key for a Blueprint label in finished traversal state.
 
-Prefer the selected statement/proof traversal preview when one exists. Fall back
-to a source-backed external-markup preview for bodyless Blueprint nodes. Final
+Prefer statement/proof prose, then a code-backed facet, then a source-backed
+external-markup preview. Prose-only lookup helpers retain their body semantics. Final
 generated data still checks whether the candidate has both a manifest entry and
 rendered-fragment cache body before serializing it as a `previewKey`.
 -/
 def traversalPreviewCandidateKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← traversalLookupKey? s label <|> traversalExternalMarkupLookupKey? s label
+  let key ← (PreviewCache.key label <$>
+    Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
+    traversalExternalMarkupLookupKey? s label
   PreviewKey.ofString? key
 
 /-- Best preview candidate key for relation entries. -/

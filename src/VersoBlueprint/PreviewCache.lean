@@ -56,6 +56,11 @@ structure Metadata where
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- Preview availability is broader than prose presence: code-backed facets
+also have a standard manifest/cache entry. -/
+def Metadata.hasRenderablePreview (metadata : Metadata) (hasBody : Bool) : Bool :=
+  hasBody || !metadata.leanCodePreviewKeys.isEmpty
+
 /--
 The selected facet's target and provenance. This projection can be decoded
 without decoding its document body when resolving links or source metadata.
@@ -68,6 +73,9 @@ structure Occurrence where
     Informal.Data.SourceLocationResult.unavailable "preview source location unavailable"
   /-- Original-source provenance owned by the selected occurrence of this facet. -/
   sourceRef : Option Informal.Source.Ref := none
+  /-- Presentation defaults belong to the selected facet, not the semantic node. -/
+  foldProofBlock : Bool := false
+  foldCodeBlock : Bool := false
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-- The selected facet's occurrence metadata and body form one persisted record. -/
@@ -87,6 +95,9 @@ def Entry.metadata (entry : Entry) : Metadata := {
 
 def Entry.hasRenderedBody (entry : Entry) : Bool :=
   !entry.blocks.isEmpty
+
+def Entry.hasRenderablePreview (entry : Entry) : Bool :=
+  entry.metadata.hasRenderablePreview entry.hasRenderedBody
 
 def Entry.ofBlocks (label : Name) (facet : Facet)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))

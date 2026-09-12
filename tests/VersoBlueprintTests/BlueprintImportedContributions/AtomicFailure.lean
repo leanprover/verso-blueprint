@@ -160,6 +160,14 @@ run_cmd do
   discard <| Environment.contribute `atomic_standalone_rust {
     rustCode := some { raw := "pub fn accepted() {}" } }
 
+-- Attribute registration must not publish a module-catalog entry when its
+-- contribution is rejected. The shared checker also covers declaration indexes.
+/-- error: Label atomic_standalone declares conflicting proof dependency intents for 'atomic_dependency' (automatic): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+@[blueprint "atomic_standalone" (autoDeps := true)]
+theorem rejectedAttributeWitness : True := atomicDependency
+
 /-- error: Label atomic_standalone declares conflicting proof dependency intents for 'atomic_dependency' (automatic): existing 'technical', new 'regular' -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -216,3 +224,94 @@ def positionlessCode : Verso.Doc.Elab.CodeBlockExpanderOf Informal.CodeConfig :=
 theorem positionlessWitness : True := trivial
 ```
 :::::::
+
+-- Attribute/docstring producers must preserve every declaration until the
+-- shared reducer validates it, including conflicts within a single docstring.
+set_option doc.verso true
+
+/-- error: Label attr_manual_forward declares conflicting statement dependency intents for 'dep' (manual): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+/-- {uses "dep" (intent := "technical")}[] and {uses "dep"}[]. -/
+@[blueprint "attr_manual_forward"]
+def attrManualForward : Nat := 0
+
+/-- error: Label attr_manual_reverse declares conflicting statement dependency intents for 'dep' (manual): existing 'regular', new 'technical' -/
+#guard_msgs in
+#check_blueprint_atomic
+/-- {uses "dep"}[] and {uses "dep" (intent := "technical")}[]. -/
+@[blueprint "attr_manual_reverse"]
+def attrManualReverse : Nat := 0
+
+-- Attribute list entries are manual/regular, not metadata-free duplicates.
+/-- error: Label attr_config_conflict declares conflicting statement dependency intents for 'dep' (manual): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+/-- {uses "dep" (intent := "technical")}[]. -/
+@[blueprint "attr_config_conflict" (uses := ["dep"])]
+def attrConfigConflict : Nat := 0
+
+/-- error: Label attr_auto_forward declares conflicting statement dependency intents for 'dep' (automatic): existing 'regular', new 'technical' -/
+#guard_msgs in
+#check_blueprint_atomic
+/--
+{uses "dep" (origin := "automatic")}[],
+{uses "dep" (intent := "auxiliary")}[],
+{uses "dep" (origin := "automatic") (intent := "technical")}[].
+-/
+@[blueprint "attr_auto_forward"]
+def attrAutoForward : Nat := 0
+
+/-- error: Label attr_auto_reverse declares conflicting statement dependency intents for 'dep' (automatic): existing 'technical', new 'regular' -/
+#guard_msgs in
+#check_blueprint_atomic
+/--
+{uses "dep" (origin := "automatic") (intent := "technical")}[],
+{uses "dep" (intent := "auxiliary")}[],
+{uses "dep" (origin := "automatic")}[].
+-/
+@[blueprint "attr_auto_reverse"]
+def attrAutoReverse : Nat := 0
+
+@[blueprint "atomic_type"] def AtomicType := Nat
+
+/-- error: Label attr_inference_conflict declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
+#guard_msgs in
+#check_blueprint_atomic
+/-- {uses "atomic_type" (origin := "automatic") (intent := "technical")}[]. -/
+@[blueprint "attr_inference_conflict" (autoDeps := true) (uses := ["atomic_type"])]
+def attrInferenceConflict : AtomicType := (0 : Nat)
+
+-- Equal declarations deduplicate, but manual precedence only projects the
+-- effective edge; it must retain the automatic declaration for later validation.
+/-- {uses "atomic_type"}[] and again {uses "atomic_type"}[]. -/
+@[blueprint "attr_authorities" (autoDeps := true) (uses := ["atomic_type"])]
+def attrAuthorities : AtomicType := (0 : Nat)
+
+#docs (Manual) manualAuthorities "Manual authorities" :=
+:::::::
+:::definition "manual_authorities" (lean := "attrAuthorities") (autoDeps := true) (uses := "atomic_type")
+Manual external-code authoring retains the same authority evidence.
+:::
+:::::::
+
+run_cmd do
+  for label in #[`attr_authorities, `manual_authorities] do
+    let some node ← Environment.getNode? label | throwError "Missing node"
+    let some statement := node.statement | throwError "Missing statement"
+    unless statement.useDeclarations == #[
+        { label := `atomic_type, origin := .automatic }, { label := `atomic_type }] &&
+        statement.deps == #[{ label := `atomic_type }] do
+      throwError "Normalization erased authority evidence or retained equal duplicates"
+
+/-- error: Label attr_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
+#guard_msgs in
+#check_blueprint_atomic
+run_cmd discard <| Environment.contribute `attr_authorities {
+  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+
+/-- error: Label manual_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
+#guard_msgs in
+#check_blueprint_atomic
+run_cmd discard <| Environment.contribute `manual_authorities {
+  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }

@@ -8,6 +8,21 @@ open Informal
 
 namespace PreviewRuntimeShowcase.CodePanelDecls
 
+@[blueprint "panel_docstring_target"]
+def docstringReferenceTarget : Nat := 1
+
+-- Two declarations contribute to one code-only semantic node.
+@[blueprint "panel_docstring_target"]
+def additionalCodeOnlyWitness : Nat := 3
+
+set_option doc.verso true in
+/--
+Docstring reference: {uses "panel_docstring_target"}[a *rendered premise* $`n + 1`].
+An automatic title follows: {bpref "panel_docstring_target"}[].
+-/
+@[blueprint "panel_docstring_source"]
+def docstringReferenceSource : Nat := 2
+
 def previewExternalDefinition : Nat := 0
 
 abbrev previewExternalAbbrev : Nat := previewExternalDefinition
@@ -27,6 +42,29 @@ The second paragraph keeps paragraph spacing visible when several documented
 definitions appear in the same code panel.
 -/
 def previewDocstringedFunction (n : Nat) : Nat := n + 1
+
+set_option doc.verso true in
+/--
+A *structural external-panel docstring* with inline mathematics
+$`6 + 1 = 7`.
+
+A display equation follows:
+$$`6 + 2 = 8`
+
+* First structural panel item.
+* Second structural panel item.
+-/
+def previewVersoDocstringedDefinition : Nat := 7
+
+set_option doc.verso true in
+/--
+A *structural container docstring* for a field-docstring regression.
+-/
+structure PreviewVersoDocstringedStructure where
+  /--
+  A *structural field docstring* with inline mathematics $`8 + 1 = 9`.
+  -/
+  value : Nat
 
 theorem previewExternalTheorem : True := by
   trivial
@@ -94,6 +132,12 @@ end PreviewRuntimeShowcase.CodePanelDecls
 open PreviewRuntimeShowcase.CodePanelDecls
 
 #doc (Manual) "Code Panels" =>
+
+{blueprint_node "panel_docstring_source" +compact}
+
+{blueprint_node "panel_docstring_source"}
+
+{blueprint_node "panel_docstring_target"}
 
 :::definition "panel_external_definition" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition")
 In-module external definition panel sample.
@@ -302,4 +346,12 @@ class PanelInlineMixedFold (α : Type) where
 
 :::definition "panel_no_code"
 Statement without associated Lean code.
+:::
+
+:::definition "panel_external_verso_docstring" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewVersoDocstringedDefinition")
+External definition panel sample with a structural Verso docstring.
+:::
+
+:::definition "panel_external_verso_structure_docstring" (lean := "PreviewRuntimeShowcase.CodePanelDecls.PreviewVersoDocstringedStructure")
+External structure panel sample with structural declaration and field docstrings.
 :::

@@ -69,11 +69,7 @@ block_extension Block.informal (data : BlockOccurrence) where
     | none =>
       pure none
     | some occurrence =>
-      let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
-        | pure none
-      let blockData := blockData.withTraversalNumberingContext (← read)
-      registerTraversedBlockAssets id blockData _contents
-      saveTraversedBlockData id blockData
+      registerTraversedBlock id occurrence _contents
       return none
   toTeX := some <| fun _goI goB _id data blocks => do
       let .ok occurrence := fromJson? (α := BlockOccurrence) data
@@ -167,10 +163,6 @@ block_extension Block.informal (data : BlockOccurrence) where
         let usedByEntry ← RelatedPanel.renderUsedByExtra s data
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
-        let foldInformalBlock :=
-          match data.isProof with
-          | true => data.foldProofBlock
-          | false => false
         let headerExtras : HeaderExtras :=
           match data.isProof with
           | true =>
@@ -192,7 +184,7 @@ block_extension Block.informal (data : BlockOccurrence) where
             (proofCaption? := some (data.displayTitle s))
             (attrs := attrs)
             (headerExtras := headerExtras)
-            (folded := foldInformalBlock)
+            (folded := data.foldInformalShell)
           content
           companionPanels := #[externalPanel]
         }
