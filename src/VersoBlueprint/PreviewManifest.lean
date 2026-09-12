@@ -2153,10 +2153,6 @@ private def blockSemanticManifestEntry
 def blockEntryOfFacet (state : TraverseState) (resolved : RenderingResolution.Facet) : Entry :=
   blockSemanticManifestEntry state resolved
 
-def blockEntryOfTraversalPreview
-    (state : TraverseState) (preview : PreviewCache.Entry) : Except String Entry :=
-  (RenderingResolution.facet state (PreviewCache.key preview.label preview.facet) preview).map (blockEntryOfFacet state)
-
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
@@ -2291,23 +2287,25 @@ private def leanCodePreviewManifestEntry
     (state : TraverseState)
     (sourceRefs : Std.HashMap String (Array Informal.Source.Ref))
     (key : String)
-    (entry : Informal.LeanCodePreview.Entry) : Entry := {
-  key
-  targetKind :=
-    match entry.source with
-    | .inlineBlocks .. => .inlineLeanCode
-    | .externalDecl _ => .leanDecl
-  label := entry.target
-  facet := .statement
-  title :=
-    match entry.source with
-    | .inlineBlocks label .. => s!"Lean code for {label}"
-    | .externalDecl _ => Informal.LeanCodePreview.title entry.target
-  sources := (sourceRefs.get? key).getD #[]
-  href := Informal.TraversalIndex.LeanCodePreviews.href? state key
-  sourceLocation := leanCodePreviewSourceLocation entry
-  codeData := (RenderingResolution.codeFacts state entry).nonempty?
-}
+    (panel : RenderingResolution.CodePanel) : Entry :=
+  let entry := panel.preview
+  {
+    key
+    targetKind :=
+      match entry.source with
+      | .inlineBlocks .. => .inlineLeanCode
+      | .externalDecl _ => .leanDecl
+    label := entry.target
+    facet := .statement
+    title :=
+      match entry.source with
+      | .inlineBlocks label .. => s!"Lean code for {label}"
+      | .externalDecl _ => Informal.LeanCodePreview.title entry.target
+    sources := (sourceRefs.get? key).getD #[]
+    href := Informal.TraversalIndex.LeanCodePreviews.href? state key
+    sourceLocation := leanCodePreviewSourceLocation entry
+    codeData := panel.facts.nonempty?
+  }
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
@@ -2348,6 +2346,11 @@ private def buildLeanCodeEntries
     | .ok stored =>
       let entry := stored.data
       let key := stored.canonicalName
+      let panel ← match RenderingResolution.codePanel state key entry with
+        | .ok panel => pure panel
+        | .error error =>
+          logError s!"Blueprint manifest: {error}"
+          continue
       if verbose then
         let start ← IO.monoMsNow
         let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
@@ -2374,7 +2377,7 @@ private def buildLeanCodeEntries
             htmlBytes
           }
           continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
+        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key panel
         let metadataFinish ← IO.monoMsNow
         entries := entries.push manifestEntry
         htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
@@ -2398,7 +2401,7 @@ private def buildLeanCodeEntries
         let html := rendered.html.asString
         if htmlStringIsBlank html then
           continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
+        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key panel
         entries := entries.push manifestEntry
         htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   if verbose then

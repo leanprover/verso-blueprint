@@ -45,6 +45,8 @@ Proof facet without its own Lean code.
 theorem graftFacetCodeWitness : True := by
   trivial
 ```
+
+{blueprint_node "thm:graft.facet.code"}
 :::::::
 
 #docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
@@ -401,12 +403,69 @@ private def renderAuditNode
   let some codeKey := (RenderingResolution.codePreviewKeys state selected)[0]?
     | throw <| IO.userError "Missing associated code preview"
   let corruptCode := TraversalIndex.LeanCodePreviews.saveData state codeKey (Lean.Json.str "broken")
-  let .error malformed := RenderingResolution.codePreview corruptCode codeKey
+  let .error malformed := RenderingResolution.codePanelByKey corruptCode codeKey
     | throw <| IO.userError "Malformed code preview was accepted"
-  let .error absent := RenderingResolution.codePreview state "absent-code-preview"
+  let .error absent := RenderingResolution.codePanelByKey state "absent-code-preview"
     | throw <| IO.userError "Missing required code preview was accepted"
   unless hasSubstr malformed "Malformed Blueprint Lean-code preview" &&
       hasSubstr absent "Missing Blueprint Lean-code preview" do
     throw <| IO.userError "Code-preview diagnostics lost the missing/malformed distinction"
+
+-- Included inline content requires the matching metadata, even when its preview
+-- payload is otherwise valid. Exercise both live rendering and export.
+#eval show IO Unit from do
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls facetCodeProjectionDoc
+  let label := Lean.Name.mkSimple "thm:graft.facet.code"
+  let some block := (TraversalIndex.InlineCode.blocks state label)[0]?
+    | throw <| IO.userError "Missing inline code fixture"
+  let key := TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId
+  let .ok valid := RenderingResolution.codePanelByKey state key
+    | throw <| IO.userError "Valid inline panel was rejected"
+  unless valid.facts.literateDeclarations.declarations.any (·.name == ``graftFacetCodeWitness) do
+    throw <| IO.userError "Resolved panel lost its declaration facts"
+  let .ok domains := (Lean.toJson state.domains).getObj?
+    | throw <| IO.userError "Could not serialize fixture domains"
+  let .ok missing := Lean.fromJson? (α := TraverseState)
+    ((Lean.toJson state).setObjVal! "domains"
+      (.obj (domains.erase TraversalIndex.InlineCode.domainName.toString)))
+    | throw <| IO.userError "Could not restore state with missing inline metadata"
+  let corrupt := state.saveDomainObjectData TraversalIndex.InlineCode.domainName block.blockId.toString
+    (Lean.Json.str "broken")
+  let wrongBlock := state.saveDomainObjectData TraversalIndex.InlineCode.domainName block.blockId.toString
+    (Lean.toJson { block with blockId := `wrongBlock })
+  let wrongOwner := state.saveDomainObjectData TraversalIndex.InlineCode.domainName block.blockId.toString
+    (Lean.toJson { block with label := `wrongOwner })
+  let wrongPreview := TraversalIndex.LeanCodePreviews.saveData state key
+    (Lean.toJson { valid.preview with target := `wrongTarget })
+  for (invalid, expected) in #[(missing, "Missing Blueprint inline-code metadata"),
+      (corrupt, "Malformed Blueprint inline-code metadata"),
+      (wrongBlock, "Mismatched Blueprint inline-code identity"),
+      (wrongOwner, "Mismatched Blueprint inline-code owner"),
+      (wrongPreview, "Mismatched Blueprint Lean-code preview identity")] do
+    let .error error := RenderingResolution.codePanelByKey invalid key
+      | throw <| IO.userError "Invalid code panel was accepted"
+    unless hasSubstr error expected do
+      throw <| IO.userError s!"Code-panel diagnostic lost its cause: {error}"
+    let errors ← IO.mkRef (#[] : Array String)
+    let logError := fun message => errors.modify (·.push message)
+    let _ ← renderManualBlocksHtmlWithState blocks manualImpls invalid (logError := logError)
+    unless (← errors.get).any (hasSubstr · expected) do
+      throw <| IO.userError "Live graft concealed invalid code-panel metadata"
+    errors.set #[]
+    let files ← PreviewManifest.buildPreviewDataFiles manualImpls logError
+      (PreviewManifest.PreparedPreviewState.prepare invalid)
+    unless (files.manifest.findEntry? key).isNone &&
+        (files.htmlCache.entries.all (·.key != key)) &&
+        (← errors.get).any (hasSubstr · expected) do
+      throw <| IO.userError "Export emitted an invalid code panel"
+  let (_, externalState) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let externalKey := TraversalIndex.LeanCodePreviews.lookupKey ``graftManualLeftValue
+  let .ok external := RenderingResolution.codePanelByKey externalState externalKey
+    | throw <| IO.userError "Valid external panel was rejected"
+  let .error _ := RenderingResolution.codePanel externalState "wrong-key" external.preview
+    | throw <| IO.userError "External preview accepted the wrong storage key"
+  let .error _ := RenderingResolution.codePanel externalState externalKey
+    { external.preview with target := `wrongTarget }
+    | throw <| IO.userError "External preview accepted inconsistent declaration identity"
 
 end Verso.VersoBlueprintTests.BlueprintGraft

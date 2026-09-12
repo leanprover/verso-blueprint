@@ -92,9 +92,11 @@ private def cachedStatement
     let cacheOnlyState :=
       Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData sourceWithoutRelations)
     let targetPreview := Informal.PreviewCache.Entry.ofBlocks target .statement #[]
-    match Informal.PreviewManifest.blockEntryOfTraversalPreview cacheOnlyState targetPreview with
+    match Informal.RenderingResolution.facet cacheOnlyState
+        (Informal.PreviewCache.statementKey target) targetPreview with
     | .error _ => false
-    | .ok targetManifestEntry =>
+    | .ok resolved =>
+      let targetManifestEntry := Informal.PreviewManifest.blockEntryOfFacet cacheOnlyState resolved
       let groupedTargetEntry := { targetManifestEntry with parent := some group }
       let cachedGroup? :=
         Informal.PreviewManifest.groupRelationForEntry? cacheOnlyState groupedTargetEntry
