@@ -82,13 +82,8 @@ path and then pass the result through this same assembly path.
 structure RenderedContent where
   body : Html
   codeBodies : Array Html := #[]
-
-def RenderedContent.ofHtmlStrings (bodyHtml : String) (codeHtml : Array String := #[]) :
-    RenderedContent :=
-  {
-    body := htmlFragment bodyHtml
-    codeBodies := codeHtml.map htmlFragment
-  }
+  /-- Facts about the included code bodies; heading facts come from the project entry. -/
+  codeData : Informal.BlockCodeData := {}
 
 private def renderRelatedPanel
     (cfg : RelationPanelsConfig)
@@ -204,16 +199,16 @@ private def renderCodePanel
     (cfg : RenderConfig)
     (title : EntryHeading)
     (entry : Entry)
-    (codeBodies : Array Html) :
+    (content : RenderedContent) :
     Html :=
-  if codeBodies.isEmpty then
+  if content.codeBodies.isEmpty then
     .empty
   else
     let panelSummary := Informal.CodeSummary.renderPanelIndicator
       entry.label
-      { source := entry.codeData }
+      { source := content.codeData.nonempty? }
       (fun _ => none)
-    let codeHtml := .seq codeBodies
+    let codeHtml := .seq content.codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
     Informal.mkCodePanel
       { caption := s!"Lean code for {title.caption}", number? := some title.label }
@@ -235,7 +230,7 @@ def renderWithRenderedContent
       if opts.compact then
         .empty
       else
-        renderCodePanel cfg title entry content.codeBodies
+        renderCodePanel cfg title entry content
     Informal.renderInformalBlockModel {
       data := blockData
       context := Informal.InformalBlockRenderContext.forBlock blockData

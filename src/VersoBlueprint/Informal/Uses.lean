@@ -120,9 +120,11 @@ inline_extension Inline.informal (data : InlineData) where
   data := toJson data
   usePackages := Informal.TeX.standardMathUsePackages
   traverse _id data _contents := do
-    let some _ ← ExtensionDecode.decode? (α := InlineData) data
+    let some reference ← ExtensionDecode.decode? (α := InlineData) data
         (fun _ => s!"Malformed data in Inline.informal traversal: {data}")
       | pure none
+    if let .error message := TraversalIndex.Nodes.required (← get) reference.label then
+      Verso.reportError message
     pure none
   extraCss := usesAssetBundle.css
   extraJs := usesAssetBundle.js

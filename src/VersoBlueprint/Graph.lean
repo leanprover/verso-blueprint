@@ -645,9 +645,9 @@ def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatu
   let externalDecls := source.summaryExternalDecls
   let externalHealth := if externalDecls.isEmpty then {} else
     codeHealthOfExternalDecls kind external externalDecls
-  source.inlineBlocks.foldl (init := externalHealth) fun health code =>
-    let statuses := code.definedDefs.map (·.provedStatus) ++ code.definedTheorems.map (·.provedStatus)
-    health.merge (codeHealthOfInlineDecls kind statuses)
+  if source.literateDeclarations.isEmpty then externalHealth else
+    externalHealth.merge (codeHealthOfInlineDecls kind
+      (source.literateDeclarations.declarations.map (·.provedStatus)))
 
 def nodeCodeHealth (external : ExternalCodeStatus) (node : Data.Node) : CodeHealth :=
   let refs := node.summaryExternalRefs

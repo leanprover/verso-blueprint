@@ -102,14 +102,14 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   }
   let headingData : BlockData := {
     kind := .definition
-    codeData := some { inlineBlocks := #[codeData] }
+    codeData := some (BlockCodeData.ofInlineBlocks #[codeData])
     label := `status.inline.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some { inlineBlocks := #[codeData] } } (fun _ => none)).codeEntry.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some (BlockCodeData.ofInlineBlocks #[codeData]) } (fun _ => none)).codeEntry.asString
   let parts := CodeSummary.renderPanelIndicator
     `status.inline.panel
-    { source := some { inlineBlocks := #[codeData] } }
+    { source := some (BlockCodeData.ofInlineBlocks #[codeData]) }
     (fun _ => none)
   let html := parts.indicator.asString
   hasSubstr parts.summaryTitle "status.inline.panel" &&

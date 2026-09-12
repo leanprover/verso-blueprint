@@ -29,6 +29,20 @@ def facetBlueprint : BlueprintDocument := .capture
       | throw <| IO.userError "Could not restore selected facet state"
     for state in #[state, restored] do
       let page ← renderManualBlocksHtmlWithState blocks extension_impls% state
+      let ids := (page.asString.splitOn " id=\"").drop 1 |>.map fun rest =>
+        (rest.splitOn "\"").head!
+      unless ids.length == ids.eraseDups.length do
+        throw <| IO.userError s!"Repeated occurrences emitted duplicate HTML IDs in order {order}"
+      let some selected := TraversalIndex.TraversalPreviews.entry? state "filled_facet--statement"
+        | throw <| IO.userError "Missing selected statement"
+      let some selectedId := selected.target | throw <| IO.userError "Missing statement target"
+      let rowIds := TraversalIndex.ExternalDeclAnchors.htmlIdAttrs state selectedId `facetExternal
+      let some (_, rowId) := rowIds.find? (·.1 == "id")
+        | throw <| IO.userError "Missing selected external row ID"
+      let some href := Resolve.resolveInformalDeclHref? state `filled_facet `facetExternal
+        | throw <| IO.userError "Missing canonical external declaration link"
+      unless href.endsWith ("#" ++ rowId) && countSubstr page.asString s!"id=\"{rowId}\"" == 1 do
+        throw <| IO.userError "Canonical external declaration did not target the selected occurrence's unique row"
       let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
         (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
       for (facet, body, sourcePage) in #[
@@ -50,7 +64,7 @@ def facetBlueprint : BlueprintDocument := .capture
           throw <| IO.userError s!"Body, target, location or provenance disagreed for {key}"
         let sourceDocument := if facet == .statement then "facet-paper" else "facet-proof-paper"
         unless entry.sources.map (·.document) == #[sourceDocument] &&
-            entry.leanCodePreviewKeys.size == 1 do
+            entry.leanCodePreviewKeys.size == 2 do
           throw <| IO.userError "A facet lost its source document or shared code preview"
         for codeKey in entry.leanCodePreviewKeys do
           let some code := files.manifest.findEntry? codeKey

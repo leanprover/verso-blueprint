@@ -39,6 +39,11 @@ Public API:
 structure ComputedData where
   codeHref : Option String := none
   source : Option BlockCodeData := none
+  /-- Traversed panels supply preview keys, independently of project declaration facts. -/
+  inlineBlocks : InlineCodeBlocks := #[]
+
+def ComputedData.ofInlineBlocks (blocks : InlineCodeBlocks) : ComputedData :=
+  { source := (BlockCodeData.ofInlineBlocks blocks).nonempty?, inlineBlocks := blocks }
 
 /--
 Rendered fragments produced by `CodeSummary.renderParts` for an informal block heading.
@@ -219,9 +224,12 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
 private def summaryPreviewItems (cdata : ComputedData)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   let source := cdata.source.getD {}
-  let inlineItems := source.inlineBlocks.flatMap fun block =>
-    inlineDeclSummaryItems block.definedDefs block.definedTheorems hrefOf
-      (some <| Informal.LeanCodePreviewKey.inlineLookupKey block.blockId)
+  let declarations := source.literateDeclarations
+  let previewKeys := cdata.inlineBlocks.foldl (init := ({} : Lean.NameMap String)) fun keys block =>
+    let key := Informal.LeanCodePreviewKey.inlineLookupKey block.blockId
+    block.declarations.foldl (fun keys decl => keys.insert decl.name key) keys
+  let inlineItems := (inlineDeclSummaryItems declarations.definedDefs declarations.definedTheorems hrefOf).map fun item =>
+    { item with previewLookupKey? := previewKeys.get? item.previewName }
   inlineItems ++ externalDeclSummaryItems source.summaryExternalDecls hrefOf
 
 private def renderSummaryPreview (cdata : ComputedData)
@@ -433,11 +441,13 @@ private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
     </span>
   }}
 
-private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCodeBlocks)
+private def renderInlinePanelIndicator (label : Data.Label) (cdata : ComputedData)
     (hrefOf : Name → Option String) : PanelIndicatorParts :=
   open Verso.Output.Html in
-  let orderedDecls := codeData.flatMap fun block => sortDeclsByCommand block.declarations
-  let previewBody := renderSummaryPreview { source := some { inlineBlocks := codeData } } hrefOf
+  let codeData := (cdata.source.getD {}).literateDeclarations
+  let orderedDecls := if cdata.inlineBlocks.isEmpty then codeData.declarations else
+    cdata.inlineBlocks.flatMap fun block => sortDeclsByCommand block.declarations
+  let previewBody := renderSummaryPreview cdata hrefOf
   let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
   let indicator : Output.Html :=
     if orderedDecls.isEmpty then
@@ -579,9 +589,9 @@ def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
   match cdata.source with
   | none => { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
   | some source =>
-    let inlinePanel := renderInlinePanelIndicator label source.inlineBlocks hrefOf
+    let inlinePanel := renderInlinePanelIndicator label cdata hrefOf
     let externalPanel := renderExternalPanelIndicator source.externalDecls label hrefOf
-    if source.inlineBlocks.isEmpty then externalPanel else
+    if source.literateDeclarations.isEmpty then externalPanel else
     if source.externalDecls.isEmpty then inlinePanel else
       { summaryTitle := inlinePanel.summaryTitle ++ "\n" ++ externalPanel.summaryTitle
         indicator := .seq #[inlinePanel.indicator, externalPanel.indicator] }

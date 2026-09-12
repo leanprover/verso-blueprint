@@ -214,6 +214,15 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def node? (state : TraverseState) (label : Name) : Option Informal.RenderNode :=
   objectData? state domainName label.toString
 
+/-- Required semantic lookups distinguish absent captures, unknown labels, and corrupt entries. -/
+def required (state : TraverseState) (label : Name) : Except String Informal.RenderNode := do
+  let some object := object? state label
+    | if (state.getDomainObject? `Informal.renderOverviews "graph").isNone then
+        throw s!"Missing rendering node '{label}'; initialize traversal with the document's RenderModel"
+      else
+        throw s!"Unknown Blueprint label '{label}' in the document's RenderModel"
+  fromJson? object.data |>.mapError (fun error => s!"Malformed rendering node '{label}': {error}")
+
 /-- Resolve canonical source metadata from the selected facet while preserving node numbering. -/
 def resolveCanonical (state : TraverseState) (node : Informal.RenderNode) : Informal.BlockData :=
   let data := node.toBlockData
@@ -245,6 +254,9 @@ def renderedData? (state : TraverseState) (label : Name) : Option Informal.Block
 
 def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Option Informal.BlockData :=
   (node? state occurrence.label).map (·.resolve occurrence)
+
+def resolve (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Except String Informal.BlockData :=
+  (required state occurrence.label).map (·.resolve occurrence)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
   ((TraversalPreviews.canonicalOccurrence? state label).bind (·.target)).bind (fun id => (state.externalTags[id]?).map (·.relativeLink)) <|>
@@ -567,15 +579,15 @@ namespace ExternalDeclAnchors
 def spec : StoreSpec := {
   name := Resolve.externalRenderedDeclDomainName
   kind := .internalIndex
-  key := "(informal label, canonical external declaration)"
+  key := "(statement occurrence, canonical external declaration)"
   value := "rendered declaration row anchor ids"
   summary := "Traversal-local anchor index for rendered external declaration rows."
 }
 
 def domainName : Name := spec.name
 
-def key (label decl : Name) : String :=
-  Resolve.externalRenderedDeclTargetKey label decl
+def key (occurrence : Verso.Multi.InternalId) (decl : Name) : String :=
+  Resolve.externalRenderedDeclTargetKey occurrence decl
 
 def object? (state : TraverseState) (targetKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName targetKey
@@ -584,8 +596,8 @@ def href? (state : TraverseState) (label decl : Name) : Option String :=
   Resolve.resolveRenderedExternalDeclHref? state label decl
 
 /-- HTML `id` attributes for a registered rendered external-declaration row. -/
-def htmlIdAttrs (state : TraverseState) (label decl : Name) : Array (String × String) :=
-  match object? state (key label decl) with
+def htmlIdAttrs (state : TraverseState) (occurrence : Verso.Multi.InternalId) (decl : Name) : Array (String × String) :=
+  match object? state (key occurrence decl) with
   | none => #[]
   | some obj =>
     match obj.ids.toArray[0]? with

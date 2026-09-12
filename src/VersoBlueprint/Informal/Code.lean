@@ -116,9 +116,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
         Resolve.resolveInlineLeanDeclHref? s decl
       let panelSummary :=
         renderPanelIndicator label
-          {
-            source := some { inlineBlocks := #[cdata] }
-          }
+          (CodeSummary.ComputedData.ofInlineBlocks #[cdata])
           getDeclHref
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
       let panelBody := .seq (← blocks.mapM goB)
@@ -315,6 +313,10 @@ private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
   | cfg, contents => do
+    let codeRef ← getRef
+    let some position := codeRef.getPos?
+      | throwError "Blueprint code blocks require a source position"
+    let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
     let res ← Lean.elabCommands leanCfg contents
     let codeBlock := res.block
@@ -324,23 +326,20 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
     let definedTheorems ← res.definedTheorems.mapM fun decl => do
       let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
       pure <| CodeDeclData.ofLiterateThm decl sourceLocation
-    let codeRef ← getRef
     let inferredUseRefs ←
       if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
         let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
         let deps ← liftM <| DependencyAnalysis.inferDecls decls
         pure <| deps.toUseRefs (currentLabel? := some cfg.label)
       else pure ({} : DependencyAnalysis.InferredUseRefs)
-    discard <| Environment.contribute cfg.label {
+    let some _ ← Environment.contribute cfg.label {
       leanCode := #[.literate {
         stx := codeRef
         definedDefs := res.definedDefs
         definedTheorems := res.definedTheorems }]
       statementUses := inferredUseRefs.statement
       proofUses := inferredUseRefs.proof }
-    let some position := codeRef.getPos?
-      | throwError "Blueprint code blocks require a source position"
-    let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
+      | ``(Block.concat #[])
     let data : InlineCodeData := {
       blockId
       label := cfg.label
@@ -411,7 +410,9 @@ private def externalMarkupImpl
     }
     match cfg.label? with
     | some label =>
-      Environment.registerExternalMarkup label markup
+      let some _ ← Environment.contribute label {
+        externalMarkup := ({} : Data.ExternalMarkupSet).insert markup }
+        | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)
       let data : ExternalMarkupBlockData := {
         label

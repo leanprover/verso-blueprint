@@ -10,6 +10,9 @@ open Verso.Genre Informal
 #doc (Manual) "Filled statement chapter" =>
 
 :::theorem "filled_facet"
+:::
+
+:::theorem "filled_facet"
 %%%
 source := {
   document := "facet-paper"

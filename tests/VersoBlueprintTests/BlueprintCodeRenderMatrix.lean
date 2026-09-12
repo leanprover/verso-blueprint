@@ -76,9 +76,9 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let inlineProvedHtml := codeEntryHtml `inline.proved .definition (some { inlineBlocks := inlineCode .proved })
-  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some { inlineBlocks := (inlineCode (.containsSorry #[{ location := .proof, refs? := some 1 }])) })
-  let inlineAxiomHtml := codeEntryHtml `inline.axiom .definition (some { inlineBlocks := inlineCode .axiomLike })
+  let inlineProvedHtml := codeEntryHtml `inline.proved .definition (some { literateDeclarations := (inlineCode .proved).literateDeclarations })
+  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some { literateDeclarations := (inlineCode (.containsSorry #[{ location := .proof, refs? := some 1 }])).literateDeclarations })
+  let inlineAxiomHtml := codeEntryHtml `inline.axiom .definition (some { literateDeclarations := (inlineCode .axiomLike).literateDeclarations })
   hasSubstr inlineProvedHtml "bp_code_link_status_proved" &&
     hasSubstr inlineSorryHtml "bp_code_link_status_warning" &&
     hasSubstr inlineAxiomHtml "bp_code_link_status_axiom" &&
@@ -125,11 +125,11 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 -- A heading summarizes the union, even when literate code has its own panel.
 #eval show IO Unit from do
   let source : BlockCodeData := {
-    inlineBlocks := inlineCode .proved
+    literateDeclarations := (inlineCode .proved).literateDeclarations
     externalDecls := #[sorryExternalRef `Ext.mixed .theorem] }
   let html := codeEntryHtml `mixed .theorem (some source)
   unless hasSubstr html "bp_code_link_status_warning" && hasSubstr html "Ext.mixed" &&
-      source.inlineBlocks.declarations.all (fun decl => hasSubstr html decl.name.toString) do
+      source.literateDeclarations.declarations.all (fun decl => hasSubstr html decl.name.toString) do
     throw <| IO.userError "Mixed associations lost a declaration or hid its incomplete status"
 
 -- The same canonical declaration is counted once, using its literate definition.
@@ -137,7 +137,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let blocks := inlineCode .proved
   let declaration := blocks.declarations[0]!
   let external := missingExternalRef declaration.name
-  let source : BlockCodeData := { inlineBlocks := blocks, externalDecls := #[external] }
+  let source : BlockCodeData := { literateDeclarations := blocks.literateDeclarations, externalDecls := #[external] }
   let headingHealth := Graph.codeHealthOfBlockSource .definition {} (some source)
   let node : Data.Node := {
     externalRefs := #[external]

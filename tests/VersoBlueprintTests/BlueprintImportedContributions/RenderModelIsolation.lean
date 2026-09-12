@@ -46,7 +46,7 @@ def isolatedBlueprint : BlueprintDocument := .capture isolatedDocument.toPart
   let _ ← Informal.traverseManualBlocks
     #[.other (Block.informal missing) #[]]
     (current.withExtensions extension_impls%) (fun message => errors.modify (·.push message))
-  unless (← errors.get).any (·.contains "Missing rendering node") do
+  unless (← errors.get).any (·.contains "Unknown Blueprint label") do
     throw <| IO.userError "Traversal silently accepted a reference outside its rendering context"
 
 -- Explicit models can be built outside elaboration and still acquire traversal anchors.

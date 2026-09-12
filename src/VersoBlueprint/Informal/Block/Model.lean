@@ -113,18 +113,33 @@ def CodeDeclData.ofLiterateThm (d : Data.LiterateThm)
     sourceLocation
   }
 
-structure InlineCodeData where
+/-- Declaration facts independent of whether the document includes their code panels. -/
+structure LiterateDeclarations where
+  definedDefs : Array CodeDeclData := #[]
+  definedTheorems : Array CodeDeclData := #[]
+deriving Repr, Inhabited, FromJson, ToJson, Quote
+
+def LiterateDeclarations.declarations (code : LiterateDeclarations) : Array CodeDeclData :=
+  code.definedDefs ++ code.definedTheorems
+
+def LiterateDeclarations.isEmpty (code : LiterateDeclarations) : Bool :=
+  code.definedDefs.isEmpty && code.definedTheorems.isEmpty
+
+def LiterateDeclarations.ofCodes (codes : Array Data.Code) : LiterateDeclarations := {
+  definedDefs := codes.flatMap fun code => code.definedDefs.map CodeDeclData.ofLiterateDef
+  definedTheorems := codes.flatMap fun code => code.definedTheorems.map CodeDeclData.ofLiterateThm
+}
+
+structure InlineCodeData extends LiterateDeclarations where
   /-- Source-module and source-position identity of this code block. -/
   blockId : Name
   label : Data.Label
-  definedDefs : Array CodeDeclData := #[]
-  definedTheorems : Array CodeDeclData := #[]
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
 def InlineCodeData.declarations (code : InlineCodeData) : Array CodeDeclData :=
-  code.definedDefs ++ code.definedTheorems
+  code.toLiterateDeclarations.declarations
 
 /-- The distinct literate blocks associated with one informal label, in document order. -/
 abbrev InlineCodeBlocks := Array InlineCodeData
@@ -138,22 +153,39 @@ def InlineCodeBlocks.definedTheorems (blocks : InlineCodeBlocks) : Array CodeDec
 def InlineCodeBlocks.declarations (blocks : InlineCodeBlocks) : Array CodeDeclData :=
   blocks.flatMap (·.declarations)
 
-/-- All Lean associations used by a heading or panel; neither category hides the other. -/
+def InlineCodeBlocks.literateDeclarations (blocks : InlineCodeBlocks) : LiterateDeclarations := {
+  definedDefs := blocks.definedDefs
+  definedTheorems := blocks.definedTheorems
+}
+
+/-- Semantic Lean associations. Visible panels and their preview identities live in traversal. -/
 structure BlockCodeData where
-  inlineBlocks : InlineCodeBlocks := #[]
+  literateDeclarations : LiterateDeclarations := {}
   externalDecls : Array Data.ExternalRef := #[]
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
 def BlockCodeData.isEmpty (code : BlockCodeData) : Bool :=
-  code.inlineBlocks.isEmpty && code.externalDecls.isEmpty
+  code.literateDeclarations.isEmpty && code.externalDecls.isEmpty
+
+/-- A panel's own declaration facts, for panel-local status and tooltips. -/
+def BlockCodeData.ofInlineBlocks (blocks : InlineCodeBlocks) : BlockCodeData :=
+  { literateDeclarations := blocks.literateDeclarations }
+
+/-- Collect facts for the code previews included in a composite panel. -/
+def BlockCodeData.append (left right : BlockCodeData) : BlockCodeData := {
+  literateDeclarations := {
+    definedDefs := left.literateDeclarations.definedDefs ++ right.literateDeclarations.definedDefs
+    definedTheorems := left.literateDeclarations.definedTheorems ++ right.literateDeclarations.definedTheorems }
+  externalDecls := left.externalDecls ++ right.externalDecls
+}
 
 /-- Omit empty presentation inputs without selecting between association categories. -/
 def BlockCodeData.nonempty? (code : BlockCodeData) : Option BlockCodeData :=
   if code.isEmpty then none else some code
 
-/-- Prefer the rendered literate declaration when an external association names the same constant. -/
+/-- Prefer literate declaration facts when an external association names the same constant. -/
 def BlockCodeData.summaryExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
-  let names := code.inlineBlocks.declarations.foldl
+  let names := code.literateDeclarations.declarations.foldl
     (fun (names : NameSet) decl => names.insert decl.name.eraseMacroScopes) {}
   code.externalDecls.filter fun decl => !names.contains decl.canonical.eraseMacroScopes
 
@@ -226,6 +258,7 @@ Traversal supplies the canonical occurrence; semantic metadata is captured once.
 structure RenderNode extends BlockMetadata where
   kind : Data.NodeKind := .lemma
   externalRefs : Array Data.ExternalRef := #[]
+  literateDeclarations : LiterateDeclarations := {}
   initialCount : Nat := 0
   occurrence : Option BlockOccurrence := none
 deriving FromJson, ToJson, Quote
@@ -244,6 +277,7 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
   kind := node.kind
   initialCount := node.count
   externalRefs := node.externalRefs
+  literateDeclarations := .ofCodes node.literateCodes
   parent := node.parent
   statementUses := node.statement.map (·.deps) |>.getD #[]
   proofUses := node.proof.map (·.deps) |>.getD #[]
@@ -267,7 +301,10 @@ def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : Bloc
   toBlockMetadata := node.toBlockMetadata
   kind := node.kind
   isProof := occurrence.isProof
-  codeData := ({ externalDecls := node.externalRefs } : BlockCodeData).nonempty?
+  codeData := ({
+    externalDecls := node.externalRefs
+    literateDeclarations := node.literateDeclarations
+  } : BlockCodeData).nonempty?
   toBlockPresentation := occurrence.toBlockPresentation
 }
 
@@ -279,6 +316,7 @@ def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   toBlockMetadata := data.toBlockMetadata
   kind := data.kind
   externalRefs := data.codeData.map (·.externalDecls) |>.getD #[]
+  literateDeclarations := data.codeData.map (·.literateDeclarations) |>.getD {}
   initialCount := data.count
   occurrence := some data.toOccurrence
 }

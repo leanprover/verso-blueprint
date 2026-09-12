@@ -24,11 +24,9 @@ structure RenderModel where
 deriving Inhabited
 
 def RenderModel.fromJsonString! (serialized : String) : RenderModel := Id.run do
-  let .ok json := Json.parse serialized | panic! "invalid Blueprint render model JSON"
-  let .ok (nodes, graph, summary) :=
-      fromJson? (α := Array RenderNode × Graph.GraphModel × Commands.Summary) json
-    | panic! "invalid Blueprint render model data"
-  return { nodes, graph, summary }
+  match Json.parse serialized >>= fromJson? (α := Array RenderNode × Graph.GraphModel × Commands.Summary) with
+  | .error error => panic! s!"Invalid Blueprint render model: {error}"
+  | .ok (nodes, graph, summary) => return { nodes, graph, summary }
 
 /-- Capture runtime data without carrying a Lean environment into the generator. -/
 elab "blueprint_render_model%" : term => do

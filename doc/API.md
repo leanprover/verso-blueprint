@@ -243,24 +243,38 @@ nonempty body over a placeholder. Its entry owns the body, canonical target,
 Lean source location and original-source reference. Node links and public
 cross-references use the selected body target; document numbering remains stable
 across repeated occurrences. Manifest `sources` come from each selected facet.
+External declaration rows are keyed by `(statement occurrence, canonical declaration)`;
+canonical declaration links resolve through the selected statement's row. Repeated
+statements therefore have distinct DOM IDs even on the same page.
 
 Literate code is represented by `InlineCodeBlocks`, an ordered collection of
 `InlineCodeData` records. Each record has its own `blockId`, derived from the source
 module and byte position. `TraversalIndex.InlineCode.blocks` selects all blocks for
-a label; `forDecl?` finds the block owning a declaration. `BlockCodeData` is a
-record with `inlineBlocks` and `externalDecls`, so both association categories
-can participate in one heading or manifest entry. `leanCodePreviewKeys` contains
-a key for every block.
+a label; `forDecl?` finds the block owning a declaration. These are document-local
+panels. `BlockCodeData` holds project facts in `literateDeclarations` and
+`externalDecls`; `RenderNode` captures both, independently of which chapters are
+included. `LiterateDeclarations` shares the declaration record used by inline
+panels, without carrying a block identity or folding options. Code-summary
+renderers receive traversed `inlineBlocks` separately for preview lookup keys.
+`leanCodePreviewKeys` lists available code previews only, shared by both facets.
+Each code-preview entry supplies its own declaration facts in `codeData`.
+Manifest-backed composite renderers pair the included `RenderedContent.codeBodies`
+with their `codeData`, so panel status follows the included bodies while heading
+status follows the project entry.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
-The manifest schema marker is now 6: regenerate old artifacts for the separate
-node-kind/facet fields and the combined associated-code record.
+The manifest schema marker is now 7: regenerate old artifacts for the separate
+node-kind/facet fields, project declaration facts, and occurrence-owned external
+row anchors.
 
 Custom registration calls to `Environment.contribute` return `Option Node`:
 `some` is the accepted node; `none` means diagnostics were logged and the
 registration was rejected. Combine dependent changes into one `NodeContribution`;
 discard the result only when no following operation depends on acceptance.
 Directive expanders use `Environment.withDirective` for scoped error recovery
-and atomic Blueprint-state updates. The unscoped push/pop API is removed.
+and atomic Blueprint-state updates. The unscoped push/pop API and attachment helpers that discarded rejection are
+removed. Standalone code and markup expanders must emit no semantic occurrence
+when registration fails. Required source identities must be checked before
+committing a contribution.
 `Node.externalRefs` and `Node.literateCodes` store normalized associations;
 `NodeContribution.leanCode` still accepts external groups or literate blocks.
 

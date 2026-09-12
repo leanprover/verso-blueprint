@@ -9,6 +9,7 @@ import VersoBlueprintTests.Blueprint.Support
 namespace Verso.VersoBlueprintTests.BlueprintMetadataPanel
 
 open Verso
+open Lean
 open Verso.Genre.Manual
 open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
@@ -59,5 +60,35 @@ def metadataPanelDocBlueprint : Informal.BlueprintDocument := .capture metadataP
       entry.ownerImageUrl == some "https://example.com/alice.png" &&
       entry.prUrl == some "https://github.com/example/repo/pull/7" do
     throw <| IO.userError "The manifest lost metadata available to page rendering"
+
+-- Every inherited field survives the reconstruction, including metadata-only shells.
+#eval show IO Unit from do
+  let metadata : BlockMetadata := {
+    label := `projection, parent := some `parent
+    statementUses := #[{ label := `statementDep }]
+    proofUses := #[{ label := `proofDep, intent := .technical }]
+    owner := some (Name.mkSimple "owner-id"), ownerDisplayName := some "Owner Name"
+    ownerUrl := some "https://example.com/owner"
+    ownerImageUrl := some "https://example.com/avatar.png"
+    prUrl := some "https://example.com/pull/1"
+    tags := #["first", "second"], effort := some "small", priority := some "high" }
+  let entry : PreviewManifest.Entry := {
+    toBlockMetadata := metadata
+    key := "projection--statement", targetKind := .block, facet := .statement, title := "Projection" }
+  unless entry.blockData.toBlockMetadata == metadata do
+    throw <| IO.userError "Manifest-to-block conversion dropped inherited metadata"
+  let render (entry : PreviewManifest.Entry) :=
+    (PreviewManifest.BlockRender.renderWithRenderedContent {} entry { body := .empty }).asString
+  let html := render entry
+  for expected in #["Owner Name", "https://example.com/owner", "https://example.com/avatar.png",
+      "https://example.com/pull/1"] do
+    unless hasSubstr html expected do
+      throw <| IO.userError s!"Manifest-backed shell lost {expected}"
+  unless hasSubstr (render { entry with ownerDisplayName := none }) "owner-id" do
+    throw <| IO.userError "Manifest-backed shell lost the owner-ID fallback"
+  let prOnly := { entry with toBlockMetadata := {
+    label := entry.label, prUrl := some "https://example.com/pull/only" } }
+  unless hasSubstr (render prOnly) "https://example.com/pull/only" do
+    throw <| IO.userError "A PR-only manifest entry lost its metadata panel"
 
 end Verso.VersoBlueprintTests.BlueprintMetadataPanel
