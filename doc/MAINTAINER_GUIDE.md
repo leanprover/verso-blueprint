@@ -228,6 +228,7 @@ that crosses phases, cover the applicable rows of this matrix:
 | --- | --- | --- |
 | Declaration and import | persisted label, declaration association, dependencies, module ownership/order | `BlueprintAttribute.lean` with `BlueprintAttribute/Provider.lean`, `HybridProvider.lean`, and `DefaultLabelProvider.lean` |
 | Consumer traversal | numbering, folding/options, relation data, preview keys | `BlueprintAttributeRendering.lean`, `BlueprintPlacementContracts.lean` |
+| Imported informal proofs | explicit facet reconstruction without provider-document inclusion, dependency axes, unique destinations, repeated folding and cache parity | `BlueprintImportedProofGrafts.lean` with `BlueprintAttribute/ProofProvider.lean` |
 | Final rendering model | late dependencies, metadata and code through both placement forms; occurrence options and captured-document isolation | `BlueprintAttributeLateRendering.lean` with `BlueprintAttribute/LatePlacement.lean` |
 | Final Manual HTML | statement body, code-only fallback, structural docstrings/math, code-panel disclosure state | `BlueprintAttributeRendering.lean` |
 | Docstring references | persisted dependencies, forward links, link-only references, exclusions, first-body ownership, editor and panel fallbacks | `BlueprintDocstringReferences.lean` with `BlueprintAttribute/DocstringProvider.lean` |

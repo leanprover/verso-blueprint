@@ -390,22 +390,24 @@ The same flow can be read as four contracts:
 
    An imported attribute-backed node has no source block of its own.
    `Attribute.Placement` constructs an explicit plan containing the graft
-   selection, optional statement occurrence, and presentation overrides.
+   selection, optional facet occurrence, and presentation overrides.
    One visible graft owns the plan's emitted destinations and resolves semantics
    from the captured `RenderModel`. It uses the shared traversal registration
    and renderer, but registers code destinations only when it displays code.
    Declaration navigation prefers the selected statement's row when available,
    otherwise a visible code placement; compact placements cannot claim code
    destinations. Selected facet previews retain their own folding defaults,
-   separately from node numbering and placement overrides. Persisted
-   provider-module proof bodies are not yet projected into proof-facet traversal
-   entries.
+   separately from node numbering and placement overrides. Explicit proof
+   selections reconstruct persisted provider-module informal bodies through the
+   same path, without traversing the original document. Dependency-only proof
+   metadata does not create a proof occurrence. Default grafts and module
+   inclusion materialize only statements.
    `{includeBlueprintModule}` builds a real Verso part by applying that same
    placement operation to every entry in one imported module's ordered catalog.
    Catalog lookup selects exact-module attribute applications, not exclusive
    prose ownership. A selected label renders its complete merged node, including
    sibling contributions available in the captured model.
-   Statement payloads that already contain elaborated Manual blocks are
+   Facet payloads that already contain elaborated Manual blocks are
    reconstructed through Manual's typed JSON instances. This is a localized
    value-quotation bridge, not a second persisted body schema and not a
    synthetic document elaboration pass. Reconstruction is validated at consuming

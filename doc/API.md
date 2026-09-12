@@ -862,9 +862,12 @@ code-only preview entry is produced. Only the declaration introducing a label
 supplies an implicit docstring body. Ordinary informal nodes must already be
 in the traversal, and Slides always use the manifest/cache supplied by their
 generator. The module command is deliberately Manual-only. Module selection and
-statement-facet materialization are document-elaboration concerns; persisted
-informal proof bodies are not yet materialized from imported modules. The
-config, manifest entry, and rendering APIs below remain shared.
+facet materialization are document-elaboration concerns. An explicit
+`{blueprint_node "label" (facet := "proof")}` also reconstructs an imported
+attribute-backed node's authored informal proof without requiring the provider
+document to be traversed. A proof needs an authored body; dependency-only proof
+metadata does not qualify. Default and module placements remain statement-only.
+The config, manifest entry, and rendering APIs below remain shared.
 
 `VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
 interfaces. A consumer such as an audit view can provide its own wrapper
