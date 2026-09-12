@@ -46,7 +46,7 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
 /--
 Traversal-state namespace for source-local allocation.
 -/
-private def sourceNumberingCounterState : Name :=
+private abbrev sourceNumberingCounterState : Name :=
   Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
 
 private structure SourceNumbering where

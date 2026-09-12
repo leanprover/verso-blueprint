@@ -4,8 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Commands.Graph
-import VersoBlueprint.Commands.Summary
+module
+
+public import VersoBlueprint.Commands.Graph
+public import VersoBlueprint.Commands.Summary
+meta import VersoBlueprint.Commands.Graph
+meta import VersoBlueprint.Commands.Summary
+
+public section
 
 open Lean Verso Doc
 open Verso.Genre (Manual)

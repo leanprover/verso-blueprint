@@ -20,6 +20,10 @@ open Informal
 -- `Lean.Doc.Block` and `Verso.Doc.Block`.
 example : Doc.Block Manual := .concat #[]
 
+-- Attribute-owned module inclusion is available through the authoring root.
+meta example : Verso.Doc.Elab.PartCommand :=
+  Informal.ModuleInclude.includeBlueprintModuleCmd
+
 /-- Declaration used to exercise the public Blueprint attribute. -/
 @[blueprint "module.root.attribute"]
 def attributedDeclaration : Nat := 1
