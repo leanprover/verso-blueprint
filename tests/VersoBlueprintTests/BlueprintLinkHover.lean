@@ -407,6 +407,36 @@ The target is elaborated after the reference.
       hasSubstr html.asString "reference_known_omitted" &&
       (TraversalIndex.Nodes.href? state `reference_known_omitted).isNone do
     throw <| IO.userError "Forward references or known omitted nodes were rejected"
+  let .ok omitted := RenderingResolution.canonical state `reference_known_omitted
+    | throw <| IO.userError "Captured but omitted nodes must remain resolvable"
+  let omittedReference := RenderingResolution.referenceOfData state omitted
+  unless omittedReference.title == "reference_known_omitted" &&
+      omittedReference.href.isNone && omittedReference.previewKey.isNone do
+    throw <| IO.userError "An omitted node acquired a synthetic number, target, or preview"
+  -- Qualified labels containing punctuation should have the same readable
+  -- fallback in page references and exported previews, without Lean name quoting.
+  let qualified := Name.str (Name.mkSimple "odd namespace") "odd label"
+  let qualifiedState := TraversalIndex.Nodes.saveNode state { label := qualified }
+  let .ok reference := RenderingResolution.reference qualifiedState qualified
+    | throw <| IO.userError "Could not resolve reference"
+  let entry := PreviewManifest.blockEntryOfTraversalPreview qualifiedState
+    (PreviewCache.Entry.ofBlocks qualified .statement #[])
+  unless reference.title == "odd namespace.odd label" && entry.title == reference.title do
+    throw <| IO.userError "Reference and manifest fallbacks disagree on qualified labels"
+  let markup : Data.ExternalMarkupData := {
+    label := qualified
+    markup := ({} : Data.ExternalMarkupSet).insert {
+      language := .markdown, slot := "default", raw := "A source-backed statement." }
+  }
+  let markupState := TraversalIndex.ExternalMarkup.saveData qualifiedState qualified (toJson markup)
+  let .ok statement := RenderingResolution.reference markupState qualified (some .statement)
+    | throw <| IO.userError "Could not resolve source-backed statement"
+  let .ok proof := RenderingResolution.reference markupState qualified (some .proof)
+    | throw <| IO.userError "Could not resolve source-backed node's missing proof"
+  let optional := RenderingResolution.referenceOrLabel markupState qualified
+  unless statement.previewKey == PreviewKey.ofString? (PreviewSource.externalMarkupKey qualified) &&
+      optional.previewKey == statement.previewKey && proof.previewKey.isNone && proof.href.isNone do
+    throw <| IO.userError "External markup was lost from a relation or borrowed as a proof preview"
   let _ ← traverseManualDocBlocksAndState manualImpls referenceOnlyDoc logError (model := model)
   unless (← errors.get).isEmpty do
     throw <| IO.userError "A reference-only document rejected captured but unrendered labels"
@@ -423,5 +453,35 @@ The target is elaborated after the reference.
   | .error message =>
     unless hasSubstr message "Malformed rendering node 'reference_forward':" do
       throw <| IO.userError "A malformed node was confused with a missing node"
+
+  for (state, expected) in #[(state, "Unknown Blueprint label"),
+      (Verso.Genre.Manual.TraverseState.initialize {}, "initialize traversal"),
+      (corrupt, "Malformed rendering node")] do
+    let label := if expected == "Unknown Blueprint label" then `reference_forwad else `reference_forward
+    for result in #[(RenderingResolution.canonical state label).map (fun _ => ()),
+        (RenderingResolution.occurrence state { label, count := 0 }).map (fun _ => ()),
+        (RenderingResolution.reference state label).map (fun _ => ())] do
+      match result with
+      | .ok _ => throw <| IO.userError "Resolution accepted an invalid registry entry"
+      | .error message =>
+        unless hasSubstr message expected do
+          throw <| IO.userError "Resolution erased the registry lookup diagnostic"
+    -- Even a saved state passed directly to a renderer must not silently turn
+    -- an invalid authored reference into plain text, with or without link text.
+    for contents in #[#[], #[Doc.Inline.text "invalid authored reference"]] do
+      let references : Array (Doc.Block Genre.Manual) := #[.para #[
+        .other (Inline.informal { label }) contents]]
+      let (references, _) ← Informal.traverseManualBlocks references manualImpls (fun _ => pure ())
+      errors.set #[]
+      let html ← renderManualBlocksHtmlWithState references manualImpls state (logError := logError)
+      unless (← errors.get).any (hasSubstr · expected) &&
+          !hasSubstr html.asString "invalid authored reference" do
+        throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
+      let texError? ← try
+        let _ ← renderManualBlocksTeXWithState manualImpls references state
+        pure none
+      catch error => pure (some error.toString)
+      unless texError?.any (hasSubstr · expected) do
+        throw <| IO.userError "TeX rendering concealed a required reference lookup failure"
 
 end Verso.VersoBlueprintTests.BlueprintLinkHover
