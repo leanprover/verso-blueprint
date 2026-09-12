@@ -5,15 +5,14 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprint.DependencyAnalysis.Config
 import VersoBlueprint.Environment
 
 /-!
 Automatic dependency inference for Verso Blueprint.
 
-Walks compiled declaration types and bodies through permitted unassociated helpers,
-stopping at the first Blueprint-associated declarations on each path. Direct-only
-inference is the default; the scoped expansion policy permits more. Associations are
+Walks compiled declaration types and bodies through unassociated helpers,
+stopping at the first Blueprint-associated declarations on each path. Helper
+expansion is enabled by default and can be disabled for direct-only inference. Associations are
 those available when inference runs. An empty result does not establish
 mathematical independence. See the Manual for the full contract.
 -/
@@ -29,11 +28,16 @@ register_option verso.blueprint.autoDeps : Bool := {
   descr := "Infer Blueprint dependencies by default, using the configured helper expansion policy"
 }
 
+register_option verso.blueprint.expandHelpers : Bool := {
+  defValue := true
+  descr := "Expand unassociated Lean helpers during automatic Blueprint dependency inference; false inspects direct references only"
+}
+
 /--
 Dependency labels inferred from a compiled Lean declaration.
 
-Each axis reaches the first Blueprint-associated declarations through permitted helper
-types and bodies. Label-level axis suppression and manual precedence are applied
+Each axis reaches the first Blueprint-associated declarations, expanding helper
+types and bodies when enabled. Label-level axis suppression and manual precedence are applied
 separately by `toUseRefs` and contribution validation.
 -/
 structure InferredDeps where
@@ -118,7 +122,7 @@ Visited names are local to this walk: later associations must never reuse stale
 cached frontiers. The root is reserved to prevent self references crossing axes.
 -/
 private def frontierLabels (root : Name) (seeds : Array Name)
-    (mayExpand : Name → Bool) : CoreM (Array Data.Label) := do
+    (expandHelpers : Bool) : CoreM (Array Data.Label) := do
   let env ← getEnv
   let mut pending := seeds
   let mut visited : NameSet := ({} : NameSet).insert root.eraseMacroScopes
@@ -135,7 +139,7 @@ private def frontierLabels (root : Name) (seeds : Array Name)
       for label in associated do
         labels := labels.insert label
       continue
-    if !mayExpand decl then
+    if !expandHelpers then
       continue
     match env.find? decl with
     | none | some (.axiomInfo _) | some (.quotInfo _) => pure ()
@@ -145,9 +149,9 @@ private def frontierLabels (root : Name) (seeds : Array Name)
 
 def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
   let decl := decl.eraseMacroScopes
-  let mayExpand := (← getHelperExpansion).permits
-  let statement ← frontierLabels decl info.type.getUsedConstants mayExpand
-  let proof ← frontierLabels decl (← rootBodyConstants info) mayExpand
+  let expandHelpers := verso.blueprint.expandHelpers.get (← getOptions)
+  let statement ← frontierLabels decl info.type.getUsedConstants expandHelpers
+  let proof ← frontierLabels decl (← rootBodyConstants info) expandHelpers
   return { statement, proof }
 
 def inferDecl? (decl : Name) : CoreM InferredDeps := do

@@ -33,8 +33,8 @@ a filter on the result, not an instruction to expand that tagged declaration.
 
 | Concern | Verso Blueprint decision |
 | --- | --- |
-| Activation | `autoDeps := true` enables inference, still disabled by default. Independent helper policy defaults to `.none`. |
-| Expansion | `set_blueprint_helper_expansion .all`, `.none`, or `.some #[decl₁, decl₂]`; exact-name permission at every hop. |
+| Activation | `autoDeps := true` enables inference, still disabled by default. Helper expansion is independently enabled by default. |
+| Expansion | `set_option verso.blueprint.expandHelpers false` selects direct-only inference; `true` follows all unassociated helpers. |
 | Boundary | Stop at any Lean-to-Blueprint association, whether created by an attribute, external-Lean statement, or inline code. |
 | Identity | Map each frontier declaration to every associated label; deduplicate and sort labels. |
 | Timing | Infer at authoring elaboration using current associations; persist edges across imports. |
@@ -54,14 +54,12 @@ uses the available compiled expressions, including theorem and opaque bodies.
 Unassociated axioms are terminal even if their types mention other declarations.
 The root's own type is always analyzed, including for an axiom root.
 
-The typed `HelperExpansion` policy is stored structurally in Lean's existing
-`Options`, whose command scope and document propagation already provide the
-required behavior. A small command resolves names before changing scope.
-No additional persistent environment extension or custom `in` implementation
-is needed. Standard `set_option` accepts scalar literals, so the structured
-policy uses a dedicated command rather than a stringly typed public option.
-The internal representation is validated when read; invalid data is an error.
-Selective membership is indexed once per inferred root.
+Helper expansion uses the ordinary Boolean Lean option
+`verso.blueprint.expandHelpers`, read once per inferred root. Lean supplies its
+validation, command/section/namespace scoping, and document propagation. No
+custom syntax, configuration encoding, or persistent environment extension is
+needed. Unlike LeanArchitect's unconditional expansion, users may request
+direct-only inference; selective helper lists are not supported.
 
 ## Regression surface
 
@@ -79,10 +77,11 @@ added between two inference calls. A collector-level test registers a constructo
 association through the contribution API; this does not extend the standard
 authoring syntax to constructor attachments. Existing direct
 dependency, strict-validation, and option-precedence tests remain in force.
-`BlueprintAutoDeps.ExpansionPolicy` additionally checks the default, nested
-sections, command-local and document-local scopes, import isolation, name
-resolution under shadowing, strict multi-hop selection, empty/duplicate lists,
-rejected-name atomicity, and manifest projections in all three modes.
+`BlueprintAutoDeps.ExpansionPolicy` additionally checks the expanding default,
+nested section/namespace scopes, command-local and document-local overrides,
+import isolation, independent inference activation, direct-only inductive roots,
+and manifest projections for default, disabled, and explicitly enabled expansion
+across the three authoring setups.
 
 The end-user contract and migration guidance live in the
 [Manual](MANUAL.md#automatic-dependency-inference).
