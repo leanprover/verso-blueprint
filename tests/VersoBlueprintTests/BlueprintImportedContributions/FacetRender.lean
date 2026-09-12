@@ -60,7 +60,7 @@ def facetBlueprint : BlueprintDocument := .capture
         unless hasSubstr page.asString body && hasSubstr html body &&
             entry.href == some target.relativeLink &&
             entry.sourceLocation == selected.sourceLocation && entry.sourceLocation.ok &&
-            entry.sources.flatMap (·.spans.map (·.page)) == #[sourcePage] do
+            entry.sources.flatMap (·.spans.map (·.page)) == #[some sourcePage] do
           throw <| IO.userError s!"Body, target, location or provenance disagreed for {key}"
         let sourceDocument := if facet == .statement then "facet-paper" else "facet-proof-paper"
         unless entry.sources.map (·.document) == #[sourceDocument] &&
