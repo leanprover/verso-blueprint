@@ -64,9 +64,143 @@ These identifiers are used by:
 
 Choose labels early and treat them as stable project identifiers.
 
+A statement and its proof may live in different modules. The proof module must
+import the statement module and use the same label in `:::proof`. A later module
+can also import the statement and attach Lean code, Rust code, or external markup
+to its label. When those modules are imported together, Blueprint combines their
+contributions into one node, preserving statement and proof dependencies
+separately. Include the relevant chapter modules in the top-level document to
+render their content.
+
+Two modules that independently introduce the same label are still duplicates.
+Likewise, two sibling modules that each supply a proof body for the same imported
+statement conflict, even if their proof text is identical. Re-exporting a shared
+module does not create a duplicate.
+
+The merge rules are:
+
+| Contributions | Result |
+| --- | --- |
+| Statement, proof, and attachments with a shared label origin | Combine into one node |
+| Independent introductions of the same label | Error |
+| Two statement bodies or two proof bodies | Error, even when their text is identical |
+| Dependencies without a body | Add edges without replacing the body or its authored kind |
+| Duplicate dependency metadata | Deduplicate; manual metadata takes precedence over automatic metadata |
+| Different intents at the same authority | Error, including automatic disagreements hidden by a manual override; neither import order nor spelling order selects the meaning |
+| Repeated scalar metadata (`parent`, `owner`, `priority`, `effort`, `pr_url`) | Accept equal values; reject unequal values |
+| Tags | Unique union |
+| External Lean associations | Union by canonical declaration, preferring resolved information |
+| Literate Lean code | Keep every distinct block, its declarations, and its code preview |
+| Attribute docstrings | The declaration introducing a label may supply its initial statement; later attributes attach code and dependencies only |
+| Rust code | At most one attachment |
+| External markup | At most one attachment per language and slot |
+
+A rejected directive leaves Blueprint registrations, inferred dependencies, code
+attachments, numbering, and provenance unchanged, including registrations made
+while elaborating its body. Errors also close the directive scope, so a valid
+following directive can still elaborate. Nested statement/proof directives are
+not supported. Lean declarations elaborated inside a failed directive and the
+reported diagnostics remain available to Lean's normal error recovery.
+
+A bodyless placeholder can later acquire an explicit statement or proof body.
+When both the placeholder and filled chapter are included, previews and links
+select the filled body regardless of chapter order. The selected occurrence
+also supplies that facet's source location and original-source provenance.
+Inline references follow the same preview selection: a nonempty statement,
+then a nonempty proof, then external markup when available. A placeholder can
+still be a link target without offering a hover preview. Imported nodes that
+have no document occurrence display their authored label rather than a number.
+This numbering rule also applies to dependency panels, code headings, and previews.
+The mathematical kind is independent of which chapters are rendered: including
+only a theorem's proof still gives it a caption such as `Proof for Theorem 1`.
+Custom reference text is preserved in both HTML and TeX.
+
+A statement's Lean status and declaration tooltip cover both external associations
+and literate code. An incomplete external declaration therefore remains visible
+in the status even when an associated literate block is complete. Each code
+panel also reports the declarations it contains. When both sources name the same
+canonical declaration, the heading summary uses its literate declaration facts once.
+Omitting a formalization chapter keeps its declarations and status in statement
+headings and summaries, including any `sorry`. It removes that chapter's code
+panels, local links, and code previews from the generated document.
+
+An explicit statement kind belongs to the author: attaching a Lean theorem to an informal
+lemma keeps the informal node a lemma. For a Lean-only node without an authored
+kind, a theorem association takes precedence over a definition association, whether
+the declarations come from attributes or literate Lean blocks. Dependencies alone
+do not count as an informal statement or proof in coverage summaries.
+
+For conflicting dependency intents, make the manual declarations agree or remove
+the redundant declaration. Attribute `uses` and `proofUses` entries are manual
+with `regular` intent. An inferred edge from `autoDeps` can coexist with an
+explicit prose edge, whose metadata takes precedence.
+
+Precedence chooses the metadata to display; it does not suppress conflicts within
+an authority. For example, automatic `regular` and automatic `technical` declarations
+for one dependency conflict even if a manual `auxiliary` declaration is also present.
+Reordering these declarations never repairs the conflict.
+
+For example, split the source into these three modules:
+
+```lean
+-- Project/Statements.lean
+import VersoBlueprint
+open Verso.Genre Informal
+
+#doc (Manual) "Statements" =>
+
+:::theorem "main_result"
+The statement of the main result.
+:::
+```
+
+```lean
+-- Project/Proofs.lean
+import Project.Statements
+open Verso.Genre Informal
+
+#doc (Manual) "Proofs" =>
+
+:::proof "main_result"
+The proof of the main result.
+:::
+```
+
+```lean
+-- Project/Blueprint.lean
+import Project.Statements
+import Project.Proofs
+open Verso.Genre
+
+#doc (Manual) "Blueprint" =>
+
+{include 0 Project.Statements}
+{include 0 Project.Proofs}
+
+{blueprint_summary}
+```
+
+Imports supply semantic visibility; `include` renders chapter content. Import
+later Lean attachment modules before defining the generator. The standard
+Blueprint generator captures the final semantic data and resolves chapter labels
+against it during rendering, so later dependencies and metadata appear in headers,
+previews, and overview pages, including documents without a graph.
+
 Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.
+References are checked during traversal against the captured project, so forward
+references work. A known node omitted from the document falls back to its authored
+label; an unknown label is an error. Reference-only documents also require the
+project's rendering model.
+Dependency metadata can still describe unresolved graph edges, which appear in
+graph diagnostics; it does not create a prose link.
+
+Chapter and section tags are document targets, not Blueprint node labels. Declare
+`tag := "chapter-tag"` in the destination's `%%%` metadata and link with
+`{ref "chapter-tag"}[Chapter title]`. Ordinary Verso `ref` requires visible link
+text; an empty `[]` does not generate a title. Other document targets use their
+own reference domain, rather than adding nodes to the Blueprint graph.
 
 For dependencies that do not have a natural sentence-level reference, use the
 block option `(uses := "label1, label2")`. Inline uses can carry
@@ -286,8 +420,37 @@ theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
 This mode is useful when the formal declaration already exists as ordinary Lean
 code and you want to register it as a Blueprint node.
 
-If the declaration has a docstring, Blueprint tries to reuse it as the informal
-statement body for that Lean-owned node. Plain docstrings are parsed through the
+When an attribute introduces a new label, Blueprint tries to reuse that
+declaration's docstring as the initial informal statement. Attributes targeting
+an existing label attach code and dependencies only: their docstrings neither
+replace a statement nor fill a bodyless placeholder. Use an explicit statement
+directive to fill a shared placeholder. This rule also applies when attachments
+come from sibling modules.
+
+For example, after importing a chapter that declares `addition_right_identity`,
+this attribute attaches compiled code while preserving the chapter's prose:
+
+```lean
+@[blueprint "addition_right_identity"]
+theorem attached_add_zero (n : Nat) : n + 0 = n := Nat.add_zero n
+```
+
+If that chapter instead declares an empty `:::theorem "addition_right_identity"`,
+fill it explicitly in a later chapter that imports it:
+
+```lean
+#doc (Manual) "Addition details" =>
+
+:::theorem "addition_right_identity"
+For every natural number $`n`, adding zero on the right leaves it unchanged.
+:::
+```
+
+Include the later chapter to render the completed statement. Attaching the Lean
+code and supplying this body can happen in separate sibling modules importing
+the same placeholder.
+
+Plain docstrings are parsed through the
 manual Markdown path when possible, and richer internal docstring structures are
 converted into Manual blocks directly. If no docstring is available, the node is
 still registered, but there is no imported informal statement body.
@@ -611,7 +774,8 @@ Current behavior:
 
 Blueprint can record a three-level source provenance chain for audit tooling:
 original source document, Verso Blueprint node, and associated Lean material.
-This phase stores the source-document catalog and node-local source spans.
+This phase stores the source-document catalog and source spans for each
+statement/proof facet.
 Generated Blueprint node shells show a compact source chip when a node has
 source provenance. The chip opens a lightweight source preview with the
 document id and recorded span details. Fuller source review interfaces such as
@@ -637,6 +801,11 @@ Attach source provenance to a Blueprint node with a leading metadata block
 inside the node directive. The metadata block must be the first block in the
 directive body; a later metadata block is rejected so that provenance is easy to
 find and strip before rendering the visible statement.
+
+A statement and its proof can cite different pages or different source
+documents. Each facet's generated preview retains its own provenance. When
+several facets share a Lean-code preview, that preview lists their combined
+source references.
 
 ````md
 :::lemma_ "addition_right_identity"
@@ -674,9 +843,9 @@ Manifest clients should read `entry.sources`; there is no singular
 `entry.source` field. Lean code preview entries may contain multiple refs when
 several sourced Blueprint nodes share the same rendered Lean preview. External
 declaration previews are keyed by canonical declaration, while inline code
-previews are keyed by the inline Blueprint code label and use
+previews are keyed by the source code-block identity and use
 `targetKind: "inlineLeanCode"`. Declaration-specific inline identity is the
-owning inline code label plus the declaration's position in the owning block
+source code-block identity plus the declaration's position in the owning block
 entry's ordered inline code metadata (`definedDefs` followed by
 `definedTheorems`).
 Browser clients can resolve those document ids with `loadSourceDocument` or
@@ -691,7 +860,7 @@ Blueprint label/facet location or Lean declaration source. Browser clients that
 start from semantic names can call `resolveLabel`, or `resolveDeclaration` for
 declaration-keyed previews, from `api/data.mjs` or `api/preview.mjs` to get the
 generated link and source location together. Inline code previews are keyed by
-the inline Blueprint code label and should be loaded through the explicit key in
+the source code-block identity and should be loaded through the explicit key in
 `leanCodePreviewKeys`.
 Use the data API for metadata-only audit or dashboard clients; use the preview
 API when the same client also renders Blueprint nodes or cached previews.

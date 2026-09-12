@@ -31,11 +31,11 @@ private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id :
   shouldWritePreviewDataByIds ((existing?.map (·.ids.toArray)).getD #[]) id
 
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
-  match blockData.kind, blockData.codeData with
-  | .statement _, some codeData => codeData.externalDecls
+  match blockData.isProof, blockData.codeData with
+  | false, some codeData => codeData.externalDecls
   | _, _ => #[]
 
-/-- Store the rendered block body used by hover previews and Blueprint preview data. -/
+/-- Select a facet occurrence, preferring its filled body over earlier placeholders. -/
 def registerBlockPreviewData
     {m}
     [Monad m]
@@ -46,22 +46,25 @@ def registerBlockPreviewData
     (blockData : BlockData)
     (contents : Array (Verso.Doc.Block Verso.Genre.Manual)) :
     m Unit := do
-  let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
+  let previewFacet := if blockData.isProof then PreviewCache.Facet.proof else .statement
   let previewKey := PreviewCache.key blockData.label previewFacet
   let leanCodePreviewKeys :=
     (externalDeclsOfBlock blockData).map fun decl =>
       Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
-  let previewData := toJson <|
+  let previewData :=
     PreviewCache.Entry.ofBlocks blockData.label previewFacet contents
       (sourceLocation := blockData.sourceLocation)
       (leanCodePreviewKeys := leanCodePreviewKeys)
-  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
-  if shouldWritePreviewData existingPreview? id then
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
-  if existingPreview?.isNone then
+      (sourceRef := blockData.sourceRef)
+  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.entry? (← get) previewKey
+  let fillsPlaceholder :=
+    previewData.hasRenderedBody &&
+      !existingPreview?.any (·.hasRenderedBody)
+  let sameWriter := existingPreview?.any (·.target == some id)
+  if existingPreview?.isNone || sameWriter || fillsPlaceholder then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-preview-{previewKey}"
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveId s previewKey id
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveSelected s id previewData
 
 private def registerExternalCodePreview
     {m}
@@ -100,15 +103,15 @@ private def registerExternalDeclAnchor
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
-    (label : Data.Label)
+    (occurrence : Verso.Multi.InternalId)
     (decl : Data.ExternalRef) :
     m Unit := do
-  let key := Resolve.externalRenderedDeclTargetKey label decl.canonical
+  let key := Resolve.externalRenderedDeclTargetKey occurrence decl.canonical
   if (Informal.TraversalIndex.ExternalDeclAnchors.object? (← get) key).isNone then
     let declId ← Verso.Genre.Manual.freshId
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag declId path
-      s!"--informal-external-decl-{label}-{decl.canonical}"
+      s!"--informal-external-decl-{(toJson occurrence).compress}-{decl.canonical}"
     modify λ s => Informal.TraversalIndex.ExternalDeclAnchors.saveId s key declId
 
 private def registerExternalDeclAnchors
@@ -117,11 +120,11 @@ private def registerExternalDeclAnchors
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
-    (label : Data.Label)
+    (occurrence : Verso.Multi.InternalId)
     (decls : Array Data.ExternalRef) :
     m Unit := do
   for decl in decls do
-    registerExternalDeclAnchor label decl
+    registerExternalDeclAnchor occurrence decl
 
 /--
 Register all traversal-time preview and anchor data owned by an informal block.
@@ -143,6 +146,6 @@ def registerTraversedBlockAssets
   let externalDecls := externalDeclsOfBlock blockData
   registerBlockPreviewData id blockData contents
   registerExternalCodePreviews id externalDecls
-  registerExternalDeclAnchors blockData.label externalDecls
+  registerExternalDeclAnchors id externalDecls
 
 end Informal

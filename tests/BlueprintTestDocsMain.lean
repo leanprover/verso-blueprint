@@ -27,9 +27,10 @@ def main (args : List String) : IO UInt32 := do
     match findCuratedTestBlueprintDoc? slug with
     | some doc =>
       Informal.PreviewManifest.blueprintMainWithPreviewData
-        doc.toPart
+        doc.text
         rest
         manualImpls
+        (model := doc.model)
     | none =>
       IO.eprintln s!"unknown curated test blueprint `{slug}`"
       usage

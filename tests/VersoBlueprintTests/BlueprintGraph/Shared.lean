@@ -16,7 +16,7 @@ open Informal.Environment
 open Informal.Graph
 
 def mkInformal (deps : Array Name := #[]) : InformalData :=
-  { stx := .missing, deps := deps.map (fun label => { label }), elabStx := #[] }
+  { stx := .missing, useDeclarations := deps.map (fun label => { label }), elabStx := #[] }
 
 def mkDefDecl (name : Name) (typeSorry : Bool := false) : LiterateDef :=
   {
@@ -33,14 +33,15 @@ def mkThmDecl (name : Name) (typeSorry : Bool := false) (proofSorry : Bool := fa
     proofSorryRefs := if proofSorry then #[.missing] else #[]
   }
 
-def mkDefCode (decl : Name) (typeSorry : Bool := false) : CodeRef :=
-  .literate { stx := .missing, definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
+def mkDefCode (decl : Name) (typeSorry : Bool := false) : Code :=
+  { stx := .missing, definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
 
-def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : CodeRef :=
-  .literate { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
+def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : Code :=
+  { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
 
 def mkState (entries : List (Name × Node)) : Environment.State :=
-  let data : Data := entries.foldl (init := Data.empty) fun acc (label, node) => acc.insert label node
+  let data := entries.foldl (init := ({} : Lean.NameMap Environment.RegisteredNode)) fun acc (label, node) =>
+    acc.insert label { toNode := node, origin := `BlueprintGraph.Shared }
   { data }
 
 def hasNodeWith {Ref : Type} (g : Graph Ref) (label : Name) (p : GraphNode Ref → Bool) : Bool :=

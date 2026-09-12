@@ -11,8 +11,8 @@ namespace Informal.Rust
 
 open Verso.Output.Html
 
-def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
-  Informal.codePanelHeaderFor "Rust" data numberText
+def codePanelHeader (display : NodeDisplay) : CodePanelHeader :=
+  Informal.codePanelHeaderFor "Rust" display
 
 def fallbackCodePanelHeader : CodePanelHeader :=
   Informal.fallbackCodePanelHeaderFor "Rust"

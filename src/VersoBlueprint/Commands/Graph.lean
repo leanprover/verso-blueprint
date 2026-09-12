@@ -48,11 +48,16 @@ register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
 }
 
 structure GraphBlockData where
-  graphModel : Informal.Graph.GraphModel
+  graphModel : Option Informal.Graph.GraphModel := none
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
 deriving Inhabited, FromJson, ToJson
+
+/-- Custom graphs supply a model; project graphs use the initialized rendering registry. -/
+def GraphBlockData.resolveModel (data : GraphBlockData) (state : Verso.Genre.Manual.TraverseState) :
+    Except String Informal.Graph.GraphModel :=
+  Informal.GraphApi.resolveModel state data.graphModel
 
 def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
   match s.trimAscii.toString.toLower with
@@ -87,6 +92,8 @@ block_extension Block.graph (graphData : GraphBlockData) where
       match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
           (fun _ => "Malformed data in Block.graph.traverse") with
       | some graphData =>
+        -- Resolution and missing-model diagnostics belong to finalization. Do
+        -- not decode or duplicate the project topology on each traversal pass.
         modify fun state =>
           Informal.GraphApi.saveData state id graphData.graphModel graphData.options
       | Option.none =>
@@ -100,15 +107,17 @@ block_extension Block.graph (graphData : GraphBlockData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI _goB id data _blocks => do
-      let graphData : GraphBlockData ←
-        match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
-            (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
-        | some graphData => pure graphData
-        | Option.none => pure { graphModel := {}, options := {} }
+      let some graphData ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+          (fun err => s!"Malformed data in Block.graph.toHtml ({err})")
+        | pure .empty
       let s ← HtmlT.state
+      let model? ← match graphData.resolveModel s with
+        | .ok model => pure (some model)
+        | .error message => Verso.reportError message; pure none
+      let some model := model? | pure .empty
       let publicGraphData :=
         Informal.GraphApi.finishDataForBlock
-          s id graphData.graphModel graphData.options
+          s id model graphData.options
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
@@ -333,15 +342,6 @@ block_extension Block.graph (graphData : GraphBlockData) where
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
 
-def buildAll : CoreM Informal.Graph.GraphModel := do
-  reportImportedConflicts
-  let env ← getEnv
-  let state := informalExt.getState env
-  let roots : Array Name := state.data.toArray.map (·.1)
-  let groupTitles := state.groups.toArray
-  let graphModel := Informal.Graph.buildModel state roots (groupTitles := groupTitles)
-  return graphModel
-
 open Verso.ArgParse
 
 instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
@@ -471,10 +471,11 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let titleInlines ← `(inline | "Dependency Graph")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
-  let graphModel ← buildAll
+  reportImportedConflicts
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    logInfo m!"Adding {graphModel.nodes.size} graph nodes"
-  let graphData : GraphBlockData := { graphModel, options, previewMode, previewPlacement }
+    let count := (informalExt.getState (← getEnv)).data.size
+    logInfo m!"Adding a project graph for {count} registered nodes"
+  let graphData : GraphBlockData := { options, previewMode, previewPlacement }
   let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

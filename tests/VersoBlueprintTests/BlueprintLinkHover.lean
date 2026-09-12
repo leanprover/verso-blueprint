@@ -59,6 +59,9 @@ Using {uses "lem:hover.link"}[], see {Informal.citet hover.cite (kind := lemma) 
 {blueprint_bibliography}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverLinkDocBlueprint : Informal.BlueprintDocument := .capture hoverLinkDoc.toPart
+
 #docs (Genre.Manual) hoverUsesDedupDoc "Hover Uses Dedup Doc" :=
 :::::::
 :::lemma_ "lem:hover.base"
@@ -69,6 +72,9 @@ Base lemma for repeated references.
 Using {uses "lem:hover.base"}[] and again {uses "lem:hover.base"}[].
 :::
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverUsesDedupDocBlueprint : Informal.BlueprintDocument := .capture hoverUsesDedupDoc.toPart
 
 #docs (Genre.Manual) hoverBprefDoc "Hover Bpref Doc" :=
 :::::::
@@ -104,6 +110,103 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
 
 {blueprint_bibliography}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def hoverCiteOnlyDocBlueprint : Informal.BlueprintDocument := .capture hoverCiteOnlyDoc.toPart
+
+-- Exercise the role expanders with both automatic titles and authored link text.
+@[blueprint "hover:unrendered"] theorem hoverUnrendered : True := trivial
+@[blueprint "hover:source-only"] theorem hoverSourceOnly : True := trivial
+
+#docs (Genre.Manual) hoverAvailabilityDoc "Reference availability" :=
+:::::::
+:::theorem "hover:placeholder"
+:::
+
+:::theorem "hover:proof"
+:::
+
+:::proof "hover:proof"
+The proof supplies the only preview body.
+:::
+
+:::theorem "hover:markup"
+:::
+
+```md "hover:markup" (slot := statement)
+The external markup supplies the preview body.
+```
+
+```md "hover:source-only" (slot := statement)
+Source markup without an informal document occurrence.
+```
+
+```rust "hover:unrendered"
+pub fn unrendered_attachment() {}
+```
+
+:::lemma_ "hover:references"
+{bpref "hover:unrendered"}[] {bpref "hover:unrendered"}[custom prose]
+{uses "hover:unrendered"}[] {uses "hover:unrendered"}[custom dependency]
+
+{bpref "hover:placeholder"}[] {bpref "hover:placeholder"}[custom prose]
+{uses "hover:placeholder"}[] {uses "hover:placeholder"}[custom dependency]
+
+{bpref "hover:proof"}[] {bpref "hover:proof"}[custom prose]
+{uses "hover:proof"}[] {uses "hover:proof"}[custom dependency]
+
+{bpref "hover:markup"}[] {bpref "hover:markup"}[custom prose]
+{uses "hover:markup"}[] {uses "hover:markup"}[custom dependency]
+
+{bpref "hover:source-only"}[] {bpref "hover:source-only"}[custom prose]
+{uses "hover:source-only"}[] {uses "hover:source-only"}[custom dependency]
+:::
+
+:::::::
+
+#eval show IO Unit from do
+  let errors ← IO.mkRef (#[] : Array String)
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls hoverAvailabilityDoc
+    (fun error => errors.modify (·.push error))
+  let fullHtml ← renderManualBlocksHtmlWithState blocks manualImpls state
+  unless !hasSubstr fullHtml.asString "Theorem 0" &&
+      hasSubstr fullHtml.asString "Rust code for hover:unrendered" do
+    throw <| IO.userError "Related or Rust panels invented a document number"
+  let some (.concat #[.other _ references]) := blocks.back?
+    | throw <| IO.userError "Missing authored reference paragraphs"
+  let cases := #[
+    ("hover:unrendered", none, false),
+    ("hover:placeholder", none, true),
+    ("hover:proof", some (PreviewCache.proofKey (Name.mkSimple "hover:proof")), true),
+    ("hover:markup", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:markup")), true),
+    ("hover:source-only", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:source-only")), false)
+  ]
+  unless references.size == cases.size do
+    throw <| IO.userError "Reference fixture paragraphs changed"
+  let files ← PreviewManifest.buildPreviewDataFiles manualImpls
+    (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
+  for (reference, (label, key, linked)) in references.zip cases do
+    let html ← renderManualBlocksHtmlWithState #[reference] manualImpls state
+    let html := html.asString
+    let tex ← renderManualBlocksTeXWithState manualImpls #[reference] state
+    unless hasSubstr html "custom prose" && hasSubstr tex "custom prose" &&
+        hasSubstr html "custom dependency" && hasSubstr tex "custom dependency" &&
+        !hasSubstr html "Theorem 0" && !hasSubstr tex "Theorem 0" &&
+        countSubstr html "<a " == (if linked then 4 else 0) do
+      throw <| IO.userError s!"Reference text, numbering or links disagreed for {label}"
+    match key with
+    | some key =>
+        unless countSubstr html s!"data-bp-preview-key=\"{key}\"" == 4 &&
+            (files.manifest.findEntry? key).isSome && (files.htmlCache.findHtml? key).isSome do
+          throw <| IO.userError s!"Reference requested an unavailable preview for {label}"
+    | none =>
+        unless !hasSubstr html "bp_inline_preview_ref" do
+          throw <| IO.userError s!"Reference offered a bodyless hover for {label}"
+    if !linked then
+      unless countSubstr html s!">{label}</span>" == 2 && countSubstr tex label == 2 do
+        throw <| IO.userError "An unrendered reference lost its authored label"
+  unless (← errors.get).isEmpty do
+    throw <| IO.userError s!"Reference rendering errors: {← errors.get}"
 
 /--
 error: Unexpected argument (origin := "automatic")
@@ -219,7 +322,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls hoverUseIntentDoc
     let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
     let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
-    match Informal.TraversalIndex.Nodes.data? st (Name.mkSimple "lem:hover.intent.node") with
+    match Informal.TraversalIndex.Nodes.capturedData? st (Name.mkSimple "lem:hover.intent.node") with
     | some block =>
       let hidden? := block.statementUses.find? (·.label == hiddenLabel)
       let inline? := block.statementUses.find? (·.label == inlineLabel)
@@ -270,5 +373,55 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       !hasExtraJs st "bindInlinePreview" &&
       hasExtraCss st ".bp_inline_preview_panel"
     )
+
+-- References are validated against the completed capture, independently of blocks or graphs.
+run_cmd discard <| Environment.contribute `reference_known_omitted {}
+
+#docs (Genre.Manual) referenceOnlyDoc "References before their target" :=
+:::::::
+{bpref "reference_forward"}[] and {bpref "reference_known_omitted"}[].
+:::::::
+
+#docs (Genre.Manual) forwardTargetDoc "Later target" :=
+:::::::
+:::theorem "reference_forward"
+The target is elaborated after the reference.
+:::
+:::::::
+
+#docs (Genre.Manual) misspelledReferenceDoc "Misspelled reference" :=
+:::::::
+{bpref "reference_forwad"}[].
+:::::::
+
+#eval show IO Unit from do
+  let model : RenderModel := blueprint_render_model%
+  let errors ← IO.mkRef (#[] : Array String)
+  let logError := fun message => errors.modify (·.push message)
+  let part := { referenceOnlyDoc.toPart with
+    content := referenceOnlyDoc.toPart.content ++ forwardTargetDoc.toPart.content }
+  let forward : Doc.VersoDoc Genre.Manual := .mk (fun _ => part) "{}"
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls forward logError (model := model)
+  let html ← renderManualBlocksHtmlWithState blocks manualImpls state
+  unless (← errors.get).isEmpty && hasSubstr html.asString "Theorem 1" &&
+      hasSubstr html.asString "reference_known_omitted" &&
+      (TraversalIndex.Nodes.href? state `reference_known_omitted).isNone do
+    throw <| IO.userError "Forward references or known omitted nodes were rejected"
+  let _ ← traverseManualDocBlocksAndState manualImpls referenceOnlyDoc logError (model := model)
+  unless (← errors.get).isEmpty do
+    throw <| IO.userError "A reference-only document rejected captured but unrendered labels"
+  let _ ← traverseManualDocBlocksAndState manualImpls misspelledReferenceDoc logError (model := model)
+  unless (← errors.get).any (hasSubstr · "Unknown Blueprint label 'reference_forwad'") do
+    throw <| IO.userError "A misspelled reference survived without a diagnostic"
+  errors.set #[]
+  let _ ← Informal.traverseManualBlocks referenceOnlyDoc.toPart.content manualImpls logError
+  unless (← errors.get).any (hasSubstr · "initialize traversal with the document's RenderModel") do
+    throw <| IO.userError "A reference-only document failed to diagnose its missing model"
+  let corrupt := state.saveDomainObjectData TraversalIndex.Nodes.domainName "reference_forward" (.str "corrupt")
+  match TraversalIndex.Nodes.required corrupt `reference_forward with
+  | .ok _ => throw <| IO.userError "Accepted a malformed rendering node"
+  | .error message =>
+    unless hasSubstr message "Malformed rendering node 'reference_forward':" do
+      throw <| IO.userError "A malformed node was confused with a missing node"
 
 end Verso.VersoBlueprintTests.BlueprintLinkHover

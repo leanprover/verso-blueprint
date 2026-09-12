@@ -139,6 +139,9 @@ dependencies: {uses "auto.demo.statement_target"}[],
 {blueprint_summary}
 :::::::
 
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDepsPreviewDoc.toPart
+
 /-- info: true -/
 #guard_msgs in
 #eval

@@ -113,68 +113,119 @@ def CodeDeclData.ofLiterateThm (d : Data.LiterateThm)
     sourceLocation
   }
 
-structure InlineCodeData where
-  label : Data.Label
+/-- Declaration facts independent of whether the document includes their code panels. -/
+structure LiterateDeclarations where
   definedDefs : Array CodeDeclData := #[]
   definedTheorems : Array CodeDeclData := #[]
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
+deriving Repr, Inhabited, FromJson, ToJson, Quote
+
+def LiterateDeclarations.declarations (code : LiterateDeclarations) : Array CodeDeclData :=
+  code.definedDefs ++ code.definedTheorems
+
+def LiterateDeclarations.isEmpty (code : LiterateDeclarations) : Bool :=
+  code.definedDefs.isEmpty && code.definedTheorems.isEmpty
+
+def LiterateDeclarations.ofCodes (codes : Array Data.Code) : LiterateDeclarations := {
+  definedDefs := codes.flatMap fun code => code.definedDefs.map CodeDeclData.ofLiterateDef
+  definedTheorems := codes.flatMap fun code => code.definedTheorems.map CodeDeclData.ofLiterateThm
+}
+
+structure InlineCodeData extends LiterateDeclarations where
+  /-- Source-module and source-position identity of this code block. -/
+  blockId : Name
+  label : Data.Label
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
 def InlineCodeData.declarations (code : InlineCodeData) : Array CodeDeclData :=
-  code.definedDefs ++ code.definedTheorems
+  code.toLiterateDeclarations.declarations
 
-/--
-Resolved block-level code semantics used by informal block rendering.
+/-- The distinct literate blocks associated with one informal label, in document order. -/
+abbrev InlineCodeBlocks := Array InlineCodeData
 
-This unifies directive hints and inline code payloads (`InlineCodeData`)
-for the HTML phase:
-- `inline` takes precedence whenever code-block data exists,
-- otherwise we fall back to optional external declaration hints.
--/
-inductive BlockCodeData where
-  /-- Inline/literate code block associated with this label. -/
-  | inline (code : InlineCodeData)
-  /-- External Lean declarations associated with this label. -/
-  | external (decls : Array Data.ExternalRef)
+def InlineCodeBlocks.definedDefs (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.definedDefs)
+
+def InlineCodeBlocks.definedTheorems (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.definedTheorems)
+
+def InlineCodeBlocks.declarations (blocks : InlineCodeBlocks) : Array CodeDeclData :=
+  blocks.flatMap (·.declarations)
+
+def InlineCodeBlocks.literateDeclarations (blocks : InlineCodeBlocks) : LiterateDeclarations := {
+  definedDefs := blocks.definedDefs
+  definedTheorems := blocks.definedTheorems
+}
+
+/-- Semantic Lean associations. Visible panels and their preview identities live in traversal. -/
+structure BlockCodeData where
+  literateDeclarations : LiterateDeclarations := {}
+  externalDecls : Array Data.ExternalRef := #[]
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-def BlockCodeData.ofExternalRefs (decls : Array Data.ExternalRef) : Option BlockCodeData :=
-  if decls.isEmpty then
-    none
-  else
-    some (.external decls)
+def BlockCodeData.isEmpty (code : BlockCodeData) : Bool :=
+  code.literateDeclarations.isEmpty && code.externalDecls.isEmpty
 
-/-- Resolve inline precedence at render time by combining optional hint + inline payload. -/
-def BlockCodeData.ofHintAndInline (hint? : Option BlockCodeData) (inline? : Option InlineCodeData)
-    : Option BlockCodeData :=
-  match inline? with
-  | some code => some (.inline code)
-  | Option.none => hint?
+/-- A panel's own declaration facts, for panel-local status and tooltips. -/
+def BlockCodeData.ofInlineBlocks (blocks : InlineCodeBlocks) : BlockCodeData :=
+  { literateDeclarations := blocks.literateDeclarations }
 
-def BlockCodeData.inlineData? : BlockCodeData → Option InlineCodeData
-  | .inline code => some code
-  | _ => Option.none
+/-- Collect facts for the code previews included in a composite panel. -/
+def BlockCodeData.append (left right : BlockCodeData) : BlockCodeData := {
+  literateDeclarations := {
+    definedDefs := left.literateDeclarations.definedDefs ++ right.literateDeclarations.definedDefs
+    definedTheorems := left.literateDeclarations.definedTheorems ++ right.literateDeclarations.definedTheorems }
+  externalDecls := left.externalDecls ++ right.externalDecls
+}
 
-def BlockCodeData.externalDecls : BlockCodeData → Array Data.ExternalRef
-  | .external decls => decls
-  | _ => #[]
+/-- Omit empty presentation inputs without selecting between association categories. -/
+def BlockCodeData.nonempty? (code : BlockCodeData) : Option BlockCodeData :=
+  if code.isEmpty then none else some code
 
-structure BlockData where
-  kind : Data.InProgressKind := .proof
-  /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
-  codeData : Option BlockCodeData := none
+/-- Prefer literate declaration facts when an external association names the same constant. -/
+def BlockCodeData.summaryExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
+  let names := code.literateDeclarations.declarations.foldl
+    (fun (names : NameSet) decl => names.insert decl.name.eraseMacroScopes) {}
+  code.externalDecls.filter fun decl => !names.contains decl.canonical.eraseMacroScopes
+
+/-- Shared semantic metadata; occurrence numbering, sources, and folding live separately. -/
+structure BlockMetadata where
+  /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
+  label : Data.Label
+  /-- Parent/group label for this informal node, if any. -/
+  parent : Option Data.Parent := none
+  /-- Structured statement use metadata, preserving origin and intent tags. -/
+  statementUses : Array Data.UseRef := #[]
+  /-- Structured proof use metadata, preserving origin and intent tags. -/
+  proofUses : Array Data.UseRef := #[]
+  /-- Assigned owner identifier, if any. -/
+  owner : Option Data.AuthorId := none
+  /-- Resolved display name of the assigned owner, if available. -/
+  ownerDisplayName : Option String := none
+  /-- Link to the assigned owner, if available. -/
+  ownerUrl : Option String := none
+  /-- Image URL for the assigned owner, if available. -/
+  ownerImageUrl : Option String := none
+  /-- Normalized tags attached to this informal node. -/
+  tags : Array String := #[]
+  /-- Declared effort estimate for this informal node, if any. -/
+  effort : Option String := none
+  /-- Declared triage priority for this informal node, if any. -/
+  priority : Option String := none
+  /-- Pull request associated with this informal node, if any. -/
+  prUrl : Option String := none
+deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
+
+/-- Source and presentation settings belonging to one document occurrence. -/
+structure BlockPresentation where
   /-- Optional original-source provenance attached with directive-local metadata. -/
   sourceRef : Option Source.Ref := none
-  label : Data.Label
   /-- Source location result for the user-written label token. -/
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
-  parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
   /-- Prefix policy for `numberingMode = .sub`. -/
@@ -192,112 +243,100 @@ structure BlockData where
   partPrefix : Option String := none
   /-- Document-order global index assigned during traversal. -/
   globalCount : Option Nat := none
-  /-- Structured statement-side use metadata for this labeled block. -/
-  statementUses : Array Data.UseRef := #[]
-  /-- Structured proof-side use metadata for this labeled block. -/
-  proofUses : Array Data.UseRef := #[]
-  owner : Option Data.AuthorId := none
-  ownerDisplayName : Option String := none
-  ownerUrl : Option String := none
-  ownerImageUrl : Option String := none
-  tags : Array String := #[]
-  effort : Option String := none
-  priority : Option String := none
-  prUrl : Option String := none
+deriving FromJson, ToJson, Quote
+
+/-- A compiled document occurrence: identity and presentation, without copied node semantics. -/
+structure BlockOccurrence extends BlockPresentation where
+  label : Data.Label
+  isProof : Bool := false
 deriving FromJson, ToJson, Quote
 
 /--
-Slim traversal-store payload for Blueprint node metadata.
-
-Unlike `BlockData`, this intentionally excludes `codeData`. Code-specific
-render/runtime payloads belong to dedicated traversal indexes rather than the
-main semantic node index.
+The shared node record used by capture, traversal, and manifest construction.
+Traversal supplies the canonical occurrence; semantic metadata is captured once.
 -/
-structure StoredBlockData where
-  kind : Data.InProgressKind := .proof
-  label : Data.Label
-  /-- Source location result for the user-written label token. -/
-  sourceLocation : Data.SourceLocationResult :=
-    Data.SourceLocationResult.unavailable "label source location unavailable"
-  parent : Option Data.Parent := none
-  count : Nat
-  numberingMode : NumberingMode := .sub
-  /-- Prefix policy for `numberingMode = .sub`. -/
-  subNumberingPrefix : SubNumberingPrefix := .full
-  /-- Counter policy for `numberingMode = .sub`. -/
-  subNumberingCounter : SubNumberingCounter := .prefix
-  partPrefix : Option String := none
-  globalCount : Option Nat := none
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
-  owner : Option Data.AuthorId := none
-  ownerDisplayName : Option String := none
-  ownerUrl : Option String := none
-  ownerImageUrl : Option String := none
-  tags : Array String := #[]
-  effort : Option String := none
-  priority : Option String := none
-  prUrl : Option String := none
+structure RenderNode extends BlockMetadata where
+  kind : Data.NodeKind := .lemma
+  externalRefs : Array Data.ExternalRef := #[]
+  literateDeclarations : LiterateDeclarations := {}
+  initialCount : Nat := 0
+  occurrence : Option BlockOccurrence := none
 deriving FromJson, ToJson, Quote
 
-def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
-  kind := data.kind
-  label := data.label
-  sourceLocation := data.sourceLocation
-  parent := data.parent
-  count := data.count
-  numberingMode := data.numberingMode
-  subNumberingPrefix := data.subNumberingPrefix
-  subNumberingCounter := data.subNumberingCounter
-  partPrefix := data.partPrefix
-  globalCount := data.globalCount
-  statementUses := data.statementUses
-  proofUses := data.proofUses
-  owner := data.owner
-  ownerDisplayName := data.ownerDisplayName
-  ownerUrl := data.ownerUrl
-  ownerImageUrl := data.ownerImageUrl
-  tags := data.tags
-  effort := data.effort
-  priority := data.priority
-  prUrl := data.prUrl
+/-- A resolved rendering view, assembled from a node and a document occurrence. -/
+structure BlockData extends BlockMetadata, BlockPresentation where
+  /-- Mathematical kind, independent of the rendered facet. -/
+  kind : Data.NodeKind := .lemma
+  isProof : Bool := false
+  codeData : Option BlockCodeData := none
+deriving FromJson, ToJson, Quote
+
+def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
+    (author : Option Data.AuthorInfo := none) : RenderNode := {
+  label
+  kind := node.kind
+  initialCount := node.count
+  externalRefs := node.externalRefs
+  literateDeclarations := .ofCodes node.literateCodes
+  parent := node.parent
+  statementUses := node.statement.map (·.deps) |>.getD #[]
+  proofUses := node.proof.map (·.deps) |>.getD #[]
+  owner := node.owner
+  ownerDisplayName := author.map (·.displayName)
+  ownerUrl := author.bind (·.url)
+  ownerImageUrl := author.bind (·.imageUrl)
+  tags := node.tags
+  effort := node.effort
+  priority := node.priority
+  prUrl := node.prUrl
 }
 
-def StoredBlockData.toBlockData (data : StoredBlockData)
-    (codeData : Option BlockCodeData := none) : BlockData := {
-  kind := data.kind
-  codeData
+def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {
   label := data.label
-  sourceLocation := data.sourceLocation
-  parent := data.parent
-  count := data.count
-  numberingMode := data.numberingMode
-  subNumberingPrefix := data.subNumberingPrefix
-  subNumberingCounter := data.subNumberingCounter
-  partPrefix := data.partPrefix
-  globalCount := data.globalCount
-  statementUses := data.statementUses
-  proofUses := data.proofUses
-  owner := data.owner
-  ownerDisplayName := data.ownerDisplayName
-  ownerUrl := data.ownerUrl
-  ownerImageUrl := data.ownerImageUrl
-  tags := data.tags
-  effort := data.effort
-  priority := data.priority
-  prUrl := data.prUrl
+  isProof := data.isProof
+  toBlockPresentation := data.toBlockPresentation
 }
+
+def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : BlockData := {
+  toBlockMetadata := node.toBlockMetadata
+  kind := node.kind
+  isProof := occurrence.isProof
+  codeData := ({
+    externalDecls := node.externalRefs
+    literateDeclarations := node.literateDeclarations
+  } : BlockCodeData).nonempty?
+  toBlockPresentation := occurrence.toBlockPresentation
+}
+
+def RenderNode.toBlockData (node : RenderNode) : BlockData :=
+  node.resolve (node.occurrence.getD { label := node.label, count := node.initialCount })
+
+/-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
+def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
+  toBlockMetadata := data.toBlockMetadata
+  kind := data.kind
+  externalRefs := data.codeData.map (·.externalDecls) |>.getD #[]
+  literateDeclarations := data.codeData.map (·.literateDeclarations) |>.getD {}
+  initialCount := data.count
+  occurrence := some data.toOccurrence
+}
+
+/-- Resolved node identity for UI, with a number only when the document has an occurrence. -/
+structure NodeDisplay where
+  label : Data.Label
+  kind : Data.NodeKind
+  number? : Option String := none
+
+def NodeDisplay.title (display : NodeDisplay) : String :=
+  display.number?.map (fun number => s!"{display.kind} {number}") |>.getD (display.label.toString (escape := false))
+
+def NodeDisplay.proofTitle (display : NodeDisplay) : String :=
+  s!"Proof for {display.title}"
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
   Data.UseRef.labels data.statementUses
 
 def BlockData.proofDeps (data : BlockData) : Array Data.Label :=
-  Data.UseRef.labels data.proofUses
-
-def StoredBlockData.statementDeps (data : StoredBlockData) : Array Data.Label :=
-  Data.UseRef.labels data.statementUses
-
-def StoredBlockData.proofDeps (data : StoredBlockData) : Array Data.Label :=
   Data.UseRef.labels data.proofUses
 
 end Informal

@@ -10,10 +10,9 @@ import VersoBlueprint.TraversalIndex
 /-!
 Traversal-time storage and numbering logic for informal blocks.
 
-The renderer receives local block data from the directive syntax, but final HTML
-needs document-order numbers, optional section prefixes, and metadata gathered
-from all occurrences of a label. This module owns that stored view and exposes
-small helpers for rendering code to ask for display numbers and titles.
+The renderer resolves checked node semantics through the captured registry.
+This module supplies document-order numbers and section prefixes, reusing one
+number for repeated occurrences of a label.
 -/
 
 namespace Informal
@@ -93,7 +92,7 @@ Resolve the appended number for a sub-numbered block.
 Only `SubNumberingCounter.prefix` reserves a new prefix-local number. In
 document-order mode, the block keeps the elaboration-time `count`.
 -/
-def reserveSubBlockNumber (st : TraverseState) (data : StoredBlockData) : Nat × TraverseState :=
+def reserveSubBlockNumber (st : TraverseState) (data : BlockData) : Nat × TraverseState :=
   match data.subNumberingCounter, data.partPrefix with
   | .prefix, some partPrefix => reservePrefixBlockNumber st partPrefix
   | _, _ => (data.count, st)
@@ -109,8 +108,8 @@ Reserve the traversal numbers for a newly seen block.
 Every stored block gets a document-order `globalCount`. Sub-numbered blocks may
 also replace `count` with a prefix-local count, depending on their policy.
 -/
-private def StoredBlockData.withReservedNumbering
-    (data : StoredBlockData) (st : TraverseState) : StoredBlockData × TraverseState :=
+private def BlockData.withReservedNumbering
+    (data : BlockData) (st : TraverseState) : BlockData × TraverseState :=
   let (globalCount, st) :=
     match data.globalCount with
     | some globalCount => (globalCount, st)
@@ -121,46 +120,12 @@ private def StoredBlockData.withReservedNumbering
     | _ => (data.count, st)
   ({ data with count, globalCount := some globalCount }, st)
 
-/-- Look up the stored semantic payload for an informal block label. -/
-def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option StoredBlockData :=
-  Informal.TraversalIndex.Nodes.storedData? st label
-
-/-- Look up stored informal block data in render-facing `BlockData` form. -/
-def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  (resolveStoredNodeData? st label).map (·.toBlockData)
-
-private def mergeStringArrays (xs ys : Array String) : Array String :=
-  ys.foldl (init := xs) fun acc value =>
-    if acc.contains value then acc else acc.push value
-
-/--
-Merge two stored entries for the same label.
-
-Numbering stays with the first stored entry, while semantic metadata is filled
-in from later entries. If either entry is a statement, the merged node is a
-statement so summaries do not treat it as proof-only.
--/
-def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData :=
-  let kind :=
-    match existing.kind, incoming.kind with
-    | .statement _, _ => existing.kind
-    | .proof, .statement _ => incoming.kind
-    | .proof, .proof => existing.kind
+/-- Merge occurrence facts after resolving both occurrences through the shared node registry. -/
+def mergeBlockOccurrences (existing incoming : BlockData) : BlockData :=
   { existing with
-      kind := kind
-      parent := existing.parent <|> incoming.parent
+      isProof := existing.isProof && incoming.isProof
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount
-      statementUses := Data.UseRef.mergeByLabel existing.statementUses incoming.statementUses
-      proofUses := Data.UseRef.mergeByLabel existing.proofUses incoming.proofUses
-      owner := existing.owner <|> incoming.owner
-      ownerDisplayName := existing.ownerDisplayName <|> incoming.ownerDisplayName
-      ownerUrl := existing.ownerUrl <|> incoming.ownerUrl
-      ownerImageUrl := existing.ownerImageUrl <|> incoming.ownerImageUrl
-      tags := mergeStringArrays existing.tags incoming.tags
-      effort := existing.effort <|> incoming.effort
-      priority := existing.priority <|> incoming.priority
-      prUrl := existing.prUrl <|> incoming.prUrl
   }
 
 /--
@@ -184,12 +149,12 @@ private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=
   sortStoredBlocks <|
     Informal.TraversalIndex.Nodes.entries state |>.filterMap fun
-      | .ok stored => some stored.data.toBlockData
+      | .ok stored => some stored.data
       | .error _ => none
 
 /-- Overlay stored numbering onto render-time block data. -/
 private def BlockData.withStoredNumbering
-    (data : BlockData) (stored : StoredBlockData) (fallbackPrefix? : Option String := none) :
+    (data : BlockData) (stored : BlockPresentation) (fallbackPrefix? : Option String := none) :
     BlockData :=
   { data with
       count := stored.count
@@ -203,76 +168,64 @@ private def BlockData.withStoredNumbering
 /-- Resolve stored numbering for a block, with an optional caller-provided prefix fallback. -/
 def BlockData.withResolvedNumbering
     (data : BlockData) (st : TraverseState) (fallbackPrefix? : Option String := none) : BlockData :=
-  match resolveStoredNodeData? st data.label with
+  match Informal.TraversalIndex.Nodes.occurrence? st data.label with
   | some stored =>
-    data.withStoredNumbering stored fallbackPrefix?
+    data.withStoredNumbering stored.toBlockPresentation fallbackPrefix?
   | none =>
     { data with partPrefix := data.partPrefix <|> fallbackPrefix? }
 
 /-- Resolve stored numbering for a block, computing the fallback prefix from traversal context. -/
 def BlockData.withResolvedNumberingInContext
     (data : BlockData) (st : TraverseState) (ctxt : TraverseContext) : BlockData :=
-  match resolveStoredNodeData? st data.label with
+  match Informal.TraversalIndex.Nodes.occurrence? st data.label with
   | some stored =>
-    data.withStoredNumbering stored (numberedPartPrefix? stored.subNumberingPrefix ctxt)
+    data.withStoredNumbering stored.toBlockPresentation (numberedPartPrefix? stored.subNumberingPrefix ctxt)
   | none =>
     data.withTraversalNumberingContext ctxt
 
-/-- The user-facing number for a block, after applying stored numbering metadata. -/
-def BlockData.displayNumber (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  let data := data.withResolvedNumbering st fallbackPrefix?
+/-- Format numbering from an actual document occurrence. -/
+private def occurrenceNumber (data : BlockData) : String :=
   match data.numberingMode with
   | .local => s!"{data.count}"
   | .global => s!"{data.globalCount.getD data.count}"
   | .sub =>
       match data.partPrefix with
-      | some numPrefix => s!"{numPrefix}.{data.count}"
+      | some numberPrefix => s!"{numberPrefix}.{data.count}"
       | none => s!"{data.count}"
 
-/-- Add the block kind to a rendered number, for example `Definition 1.3.2`. -/
-def blockDisplayTitle (data : BlockData) (numberText : String) : String :=
-  match data.kind with
-  | .proof => s!"Proof {numberText}"
-  | .statement kind => s!"{kind} {numberText}"
+/-- One presentation boundary for captured identity and optional document numbering. -/
+def BlockData.display (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : NodeDisplay := {
+  label := data.label
+  kind := data.kind
+  number? := (Informal.TraversalIndex.Nodes.occurrence? st data.label).map fun stored =>
+    occurrenceNumber (data.withStoredNumbering stored.toBlockPresentation fallbackPrefix?)
+}
 
-def BlockData.statementKind? (data : BlockData) (st : TraverseState) : Option Data.NodeKind :=
-  match data.kind with
-  | .statement kind => some kind
-  | .proof =>
-      match resolveStoredNodeData? st data.label with
-      | some stored =>
-          match stored.kind with
-          | .statement kind => some kind
-          | .proof => none
-      | none => none
+/-- Resolve node presentation without turning an elaboration count into a document number. -/
+def Informal.TraversalIndex.Nodes.display? (st : TraverseState) (label : Data.Label) : Option NodeDisplay := do
+  let node ← Informal.TraversalIndex.Nodes.node? st label
+  return node.toBlockData.display st
 
-def proofDisplayTitle (statementKind? : Option Data.NodeKind) (numberText : String) : String :=
-  match statementKind? with
-  | some kind => s!"Proof for {kind} {numberText}"
-  | none => s!"Proof {numberText}"
+def BlockData.displayTitle (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : String :=
+  let display := data.display st fallbackPrefix?
+  if data.isProof then display.proofTitle else display.title
 
-def BlockData.displayProofTitle (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  proofDisplayTitle (data.statementKind? st) (data.displayNumber st fallbackPrefix?)
-
-/-- The user-facing title for a block, including kind and resolved number. -/
-def BlockData.displayTitle (data : BlockData)
-    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  let numberText := data.displayNumber st fallbackPrefix?
-  match data.kind with
-  | .proof => data.displayProofTitle st fallbackPrefix?
-  | .statement _ => blockDisplayTitle data numberText
+def BlockData.displayProofTitle (data : BlockData) (st : TraverseState)
+    (fallbackPrefix? : Option String := none) : String :=
+  (data.display st fallbackPrefix?).proofTitle
 
 /--
 Save one traversed informal block in the semantic node index.
 
-New labels get ids, external tags, and reserved numbering. Repeated labels merge
-their metadata without consuming another number.
+New labels get ids, external tags, and reserved numbering. Repeated labels reuse their checked
+semantic metadata and merge occurrence facts without consuming another number.
 -/
 def saveTraversedBlockData
     {m}
     [Monad m]
+    [MonadBuildLog m]
     [MonadReaderOf TraverseContext m]
     [MonadStateOf TraverseState m]
     [MonadLiftT IO m]
@@ -280,18 +233,19 @@ def saveTraversedBlockData
     (blockData : BlockData) :
     m Unit := do
   let label := blockData.label
-  let storedBlockData := blockData.toStoredData
-  match Informal.TraversalIndex.Nodes.storedData? (← get) label with
+  let state ← get
+  let existing := Informal.TraversalIndex.Nodes.renderedData? state label
+  match existing with
   | some existing =>
-    let mergedData := mergeStoredBlockData existing storedBlockData
-    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
+    let mergedData := mergeBlockOccurrences existing blockData
+    modify λ s => Informal.TraversalIndex.Nodes.saveOccurrence s mergedData.toOccurrence
   | none =>
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
     modify fun st =>
-      let (storedBlockData, st) := storedBlockData.withReservedNumbering st
+      let (storedBlockData, st) := blockData.withReservedNumbering st
       st
         |> (fun st => Informal.TraversalIndex.Nodes.saveId st label id)
-        |> (fun st => Informal.TraversalIndex.Nodes.saveData st label (toJson storedBlockData))
+        |> (fun st => Informal.TraversalIndex.Nodes.saveOccurrence st storedBlockData.toOccurrence)
 
 end Informal

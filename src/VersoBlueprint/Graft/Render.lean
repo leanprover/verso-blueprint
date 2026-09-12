@@ -42,15 +42,18 @@ public def renderedContent?
       ctx.logError s!"Blueprint HTML cache: missing rendered body for {entry.key}"
       pure none
   | some bodyHtml =>
-      let codeBodies :=
+      let codeEntries :=
         if node.compact then
           #[]
         else
-          (ctx.htmlCacheIndex.codeHtmlBodies entry).map
-            Informal.PreviewManifest.BlockRender.htmlFragment
+          ctx.htmlCacheIndex.codeHtmlEntries entry
+      let codeData := codeEntries.foldl (init := ({} : Informal.BlockCodeData)) fun facts (key, _) =>
+        let data := ctx.manifestIndex?.bind (·.findEntry? key) |>.bind (·.codeData)
+        facts.append (data.getD {})
       pure <| some {
         body := Informal.PreviewManifest.BlockRender.htmlFragment bodyHtml
-        codeBodies
+        codeBodies := codeEntries.map fun (_, html) => Informal.PreviewManifest.BlockRender.htmlFragment html
+        codeData
       }
 
 end RenderContext

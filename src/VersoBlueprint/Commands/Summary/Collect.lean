@@ -15,7 +15,7 @@ import VersoBlueprint.Informal.Block.Common
 namespace Informal.Commands
 
 /-!
-Collects finished Blueprint traversal state into the serializable summary payload.
+Collects the assembled Blueprint environment into the serializable summary payload.
 -/
 
 open Lean
@@ -165,7 +165,7 @@ private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary 
     {}
   else
     let kind := toString node.kind
-    let externalDecls := node.externalRefs
+    let externalDecls := node.summaryExternalRefs
     let missingLeanDecls :=
       externalDecls.foldl (init := []) fun acc decl =>
         if !decl.present then
@@ -230,7 +230,7 @@ private def nodeMissingLeanDeclCount (external : Informal.Graph.ExternalCodeStat
 
 private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
   let externalCount :=
-    node.externalRefs.foldl (init := 0) fun acc decl =>
+    node.summaryExternalRefs.foldl (init := 0) fun acc decl =>
       if Informal.Graph.externalDeclMissing external decl then
         acc
       else
@@ -308,8 +308,11 @@ private structure SummaryBuildContext where
   reverseMap : NameMap (Array Name)
 
 private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildContext :=
-  let entries := state.data.toArray
-  let parentChildren := state.data.parentChildren
+  let entries := state.data.toArray.map fun (label, node) => (label, node.toNode)
+  let parentChildren := state.data.foldl (init := ({} : NameMap (Array Name))) fun acc child node =>
+    match node.parent with
+    | none => acc
+    | some parent => acc.insert parent ((acc.getD parent #[]).push child)
   let external : Informal.Graph.ExternalCodeStatus := {}
   let (usageMap, reverseMap) := buildUsageMaps entries
   {
@@ -421,8 +424,8 @@ private def Summary.bumpAxiomStatus (summary : Summary) (flags : EntryStatusFlag
 
 private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
   ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
-    let hasStatement := node.statement.isSome
-    let hasProof := node.proof.isSome
+    let hasStatement := node.hasStatementBody
+    let hasProof := node.hasProofBody
     let hasCode := Informal.Graph.nodeHasAssociatedCode node
     let statusFlags := entryStatusFlags ctx.state ctx.external node
     let leanSummary := nodeLeanSummary label node

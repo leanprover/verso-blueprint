@@ -17,8 +17,8 @@ private def importedState : CoreM Informal.Environment.State := do
 private def importedNode? (label : String) : CoreM (Option Informal.Data.Node) := do
   pure <| (← importedState).data.get? (Name.mkSimple label)
 
-private def importedNodeInLocalData (label : String) : CoreM Bool := do
-  pure <| (← importedState).localData.contains (Name.mkSimple label)
+private def importedNodeHasLocalContributions (label : String) : CoreM Bool := do
+  pure <| (← importedState).localContributions.contains (Name.mkSimple label)
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
     (node : Informal.Data.Node) : Bool :=
@@ -62,10 +62,10 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
 #eval
   show CoreM Bool from do
     pure <|
-      !(← importedNodeInLocalData "attr.exported.theorem") &&
-      !(← importedNodeInLocalData "attr.exported.definition") &&
-      !(← importedNodeInLocalData "attr.exported.inductive") &&
-      !(← importedNodeInLocalData "attr.exported.undocumented")
+      !(← importedNodeHasLocalContributions "attr.exported.theorem") &&
+      !(← importedNodeHasLocalContributions "attr.exported.definition") &&
+      !(← importedNodeHasLocalContributions "attr.exported.inductive") &&
+      !(← importedNodeHasLocalContributions "attr.exported.undocumented")
 
 /-- info: true -/
 #guard_msgs in

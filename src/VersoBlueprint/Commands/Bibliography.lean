@@ -111,7 +111,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
                 match use.summary.theoremCtx with
                 | some theoremCtx =>
                   let previewKey :=
-                    PreviewCache.key theoremCtx.label (PreviewCache.Facet.ofInProgressKind theoremCtx.kind)
+                    PreviewCache.key theoremCtx.label (if theoremCtx.isProof then .proof else .statement)
                   let previewId :=
                     s!"bp-bib-use-{Informal.HoverRender.previewKey use.href}"
                   let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey

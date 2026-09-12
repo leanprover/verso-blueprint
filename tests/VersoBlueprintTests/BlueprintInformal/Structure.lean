@@ -102,25 +102,6 @@ Proposition body.
     pure (node.kind == .proposition && node.statement.isSome)
 
 /--
-error: Cannot declare nested definitions
----
-info: true
--/
-#guard_msgs in
-#eval
-  show CoreM Bool from do
-    let originalState ← currentState
-    let acceptedOuter ← Informal.Environment.push (Name.mkSimple "outer.valid") (.statement .definition)
-    let acceptedInner ← Informal.Environment.push (Name.mkSimple "inner.invalid") (.statement .lemma)
-    let state ← currentState
-    Informal.Environment.modify fun _ => originalState
-    pure <|
-      acceptedOuter &&
-      !acceptedInner &&
-      state.stack.length == 1 &&
-      state.stack.head?.map (·.label) == some (Name.mkSimple "outer.valid")
-
-/--
 error: Cannot find proof for label «ghost.proof»
 -/
 #guard_msgs in

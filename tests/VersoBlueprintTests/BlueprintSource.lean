@@ -264,7 +264,7 @@ Invalid source metadata.
   show IO Bool from do
     let (html, st) ← renderManualDocHtmlStringAndState extension_impls% sourceProvenanceDoc
     let sourceDocument? := Informal.TraversalIndex.SourceDocuments.data? st "paper"
-    let sourceRef? := Informal.TraversalIndex.SourceRefs.data? st sourcedLabel
+    let sourceRef? := (Informal.PreviewSource.traversalFacetEntry? st sourcedLabel .statement).bind (·.sourceRef)
     let storageOk :=
       match sourceDocument?, sourceRef? with
       | some sourceDocument, some sourceRef =>
@@ -338,6 +338,6 @@ Invalid source metadata.
     let messages ← logged.get
     pure <|
       messages.any fun message =>
-        hasSubstr message "source ref for label «source.missing» references unknown source document 'missing-paper'"
+        hasSubstr message "source ref for facet «source.missing»--statement references unknown source document 'missing-paper'"
 
 end Verso.VersoBlueprintTests.BlueprintSource

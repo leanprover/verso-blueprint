@@ -133,36 +133,6 @@ def inferDecls (decls : Array Name) : CoreM InferredDeps :=
 def inferExternalRefs (refs : Array Data.ExternalRef) : CoreM InferredDeps :=
   inferDecls (refs.filter (·.present) |>.map (·.canonical))
 
-private def payloadWithUseRefs
-    (ref : Syntax) (useRefs : Array Data.UseRef) (current? : Option Data.InformalData) :
-    Option Data.InformalData :=
-  if useRefs.isEmpty then
-    current?
-  else
-    match current? with
-    | some payload =>
-      some { payload with deps := Data.UseRef.mergeByLabel payload.deps useRefs }
-    | none =>
-      some { stx := ref, deps := useRefs }
-
-def attachInferredUseRefs (label : Data.Label) (ref : Syntax) (useRefs : InferredUseRefs) :
-    CoreM Unit := do
-  if useRefs.statement.isEmpty && useRefs.proof.isEmpty then
-    pure ()
-  else
-    Environment.modifyDataForLabel label fun data => do
-      let data :=
-        match data.get? label with
-        | some node =>
-          let statement := payloadWithUseRefs ref useRefs.statement node.statement
-          let proof := payloadWithUseRefs ref useRefs.proof node.proof
-          data.insert label { node with statement, proof }
-        | none =>
-          let statement := payloadWithUseRefs ref useRefs.statement none
-          let proof := payloadWithUseRefs ref useRefs.proof none
-          data.insert label { statement, proof }
-      return data
-
 end DependencyAnalysis
 
 end Informal

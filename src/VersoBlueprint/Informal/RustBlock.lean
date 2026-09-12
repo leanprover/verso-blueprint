@@ -56,13 +56,10 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
           (fun _ => s!"Malformed Rust code data: {data}")
         | pure .empty
       let s ← HtmlT.state
-      let ctxt ← HtmlT.context
       let attrs := s.htmlId id
       let panelHeader :=
-        match Informal.TraversalIndex.Nodes.data? s cdata.label with
-        | some b =>
-          let b := b.withResolvedNumberingInContext s ctxt
-          Informal.Rust.codePanelHeader b (b.displayNumber s)
+        match Informal.TraversalIndex.Nodes.display? s cdata.label with
+        | some display => Informal.Rust.codePanelHeader display
         | none => Informal.Rust.fallbackCodePanelHeader
       pure <| Informal.Rust.renderRawCodePanel panelHeader s!"Rust code for {cdata.label}" cdata.raw
         attrs (folded := cdata.foldCodeBlock)
@@ -74,7 +71,8 @@ private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
       raw := contents.getString
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
     }
-    Environment.registerRustCode cfg.label { raw := contents.getString }
+    let some _ ← Environment.contribute cfg.label { rustCode := some { raw := contents.getString } }
+      | ``(Block.concat #[])
     ``(Block.other (Block.informalRustCode $(quote data)) #[])
 
 @[code_block]

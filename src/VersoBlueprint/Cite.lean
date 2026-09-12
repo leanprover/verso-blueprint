@@ -263,14 +263,12 @@ deriving Inhabited, FromJson, ToJson
 /--
 Reference to the informal block surrounding a bibliography citation use site.
 
-We store the labeled block identity plus its local counter so later HTML rendering
-can re-resolve the final displayed theorem/definition/proof number using the
-current numbering policy and the traversal state's per-label metadata.
+The label and facet identify the use site; its kind and number come from the
+shared rendering registry when the citation summary is displayed.
 -/
 structure TheoremContext where
   label : Informal.Data.Label
-  kind : Informal.Data.InProgressKind
-  localCount : Nat
+  isProof : Bool := false
 deriving Inhabited, FromJson, ToJson
 
 /--
@@ -360,8 +358,8 @@ private def theoremContext? (ctxt : TraverseContext) : Option TheoremContext :=
     | [] => none
     | .other b :: rest =>
       if b.name.toString == "Informal.Block.informal" then
-        match fromJson? (α := Informal.BlockData) b.data with
-        | .ok d => some { label := d.label, kind := d.kind, localCount := d.count }
+        match fromJson? (α := Informal.BlockOccurrence) b.data with
+        | .ok d => some { label := d.label, isProof := d.isProof }
         | .error _ => go rest
       else
         go rest
@@ -376,12 +374,10 @@ def CitationSummary.text (summary : CitationSummary) (state : TraverseState) : S
   if let some sectionLoc := summary.sectionLoc then
     parts := parts.push (sectionText sectionLoc)
   if let some theoremCtx := summary.theoremCtx then
-    let block : Informal.BlockData := {
-      label := theoremCtx.label
-      kind := theoremCtx.kind
-      count := theoremCtx.localCount
-    }
-    parts := parts.push (block.displayTitle state)
+    let title := match Informal.TraversalIndex.Nodes.display? state theoremCtx.label with
+      | some display => if theoremCtx.isProof then display.proofTitle else display.title
+      | none => theoremCtx.label.toString
+    parts := parts.push title
   if parts.isEmpty then
     summary.documentName.getD "Document root"
   else

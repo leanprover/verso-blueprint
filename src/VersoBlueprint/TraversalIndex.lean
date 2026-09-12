@@ -110,14 +110,100 @@ private def modifyObjectData
     (f : Json → Json) : TraverseState :=
   state.modifyDomainObjectData domain canonicalName f
 
+namespace TraversalPreviews
+
+def spec : StoreSpec := {
+  name := Resolve.informalPreviewDomainName
+  kind := .runtimeCache
+  key := "(informal label, preview facet)"
+  value := "Selected facet body, source location, provenance, and canonical target"
+  summary := "One selected occurrence per statement/proof facet, preferring a nonempty body."
+}
+
+def domainName : Name := spec.name
+
+def key (label : Name) (facet : PreviewCache.Facet) : String :=
+  PreviewCache.key label facet
+
+def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName previewKey
+
+def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.Entry :=
+  objectData? state domainName previewKey
+
+private def select? (state : TraverseState) (label : Name)
+    (accept : Verso.Multi.Object → Bool) : Option (PreviewCache.Facet × Verso.Multi.Object) :=
+  PreviewCache.Facet.select? fun facet => (object? state (key label facet)).filter accept
+
+private def selectBody? (state : TraverseState) (label : Name) :
+    Option (PreviewCache.Facet × Verso.Multi.Object) :=
+  select? state label fun object =>
+    -- Inspect body presence without decoding the document AST for links and keys.
+    (object.data.getObjVal? "blocks" >>= Json.getArr?).toOption.any (fun blocks => !blocks.isEmpty)
+
+/-- The preferred nonempty facet, without decoding its document body. -/
+def selectedFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
+  (selectBody? state label).map (·.1)
+
+/-- Decode the selected nonempty body only when the caller needs its content. -/
+def selectedEntry? (state : TraverseState) (label : Name) : Option PreviewCache.Entry := do
+  let (_, object) ← selectBody? state label
+  (fromJson? object.data).toOption
+
+/-- Canonical links prefer a nonempty body but may target a bodyless occurrence. -/
+def canonicalOccurrence? (state : TraverseState) (label : Name) : Option PreviewCache.Occurrence := do
+  let (_, object) ← selectBody? state label <|> select? state label (fun _ => true)
+  (fromJson? object.data).toOption
+
+def href? (state : TraverseState) (previewKey : String) : Option String :=
+  (objectData? (α := PreviewCache.Occurrence) state domainName previewKey).bind (·.target) |>.bind fun id =>
+    (state.externalTags[id]?).map (·.relativeLink)
+
+def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
+    Option String :=
+  href? state (key label facet)
+
+def saveId
+    (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName previewKey id
+
+def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
+  saveObjectData state domainName previewKey data
+
+/-- Commit a selected facet's body, source metadata, and target together. -/
+def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
+    (entry : PreviewCache.Entry) : TraverseState :=
+  let previewKey := key entry.label entry.facet
+  saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
+
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+/-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
+  decodeStoreEntries state domainName
+
+end TraversalPreviews
+
+/-- Supply a rendering context through Verso's normal initialization hook. -/
+def withInitializer (impls : ExtensionImpls) (initializeState : TraverseState → TraverseState) : ExtensionImpls :=
+  impls.insertBlock `Informal.renderModel {
+    init := initializeState
+    traverse := fun _ _ _ => pure none
+    toHtml := none
+    toTeX := none
+  }
+
 namespace Nodes
 
 def spec : StoreSpec := {
   name := Resolve.informalDomainName
   kind := .semanticDomain
   key := "informal label"
-  value := "StoredBlockData plus node anchor ids"
-  summary := "Canonical traversal index for Blueprint node anchors and lightweight node metadata."
+  value := "RenderNode plus node anchor ids"
+  summary := "Shared rendering nodes, initialized at capture and completed by traversal."
 }
 
 def domainName : Name := spec.name
@@ -125,57 +211,177 @@ def domainName : Name := spec.name
 def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName label.toString
 
-def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData :=
+def node? (state : TraverseState) (label : Name) : Option Informal.RenderNode :=
   objectData? state domainName label.toString
 
-def data? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
-  (storedData? state label).map (·.toBlockData)
+/-- Required semantic lookups distinguish absent captures, unknown labels, and corrupt entries. -/
+def required (state : TraverseState) (label : Name) : Except String Informal.RenderNode := do
+  let some object := object? state label
+    | if (state.getDomainObject? `Informal.renderOverviews "graph").isNone then
+        throw s!"Missing rendering node '{label}'; initialize traversal with the document's RenderModel"
+      else
+        throw s!"Unknown Blueprint label '{label}' in the document's RenderModel"
+  fromJson? object.data |>.mapError (fun error => s!"Malformed rendering node '{label}': {error}")
+
+/-- Resolve canonical source metadata from the selected facet while preserving node numbering. -/
+def resolveCanonical (state : TraverseState) (node : Informal.RenderNode) : Informal.BlockData :=
+  let data := node.toBlockData
+  match TraversalPreviews.canonicalOccurrence? state node.label with
+  | none => data
+  | some occurrence => { data with
+      sourceLocation := occurrence.sourceLocation
+      sourceRef := occurrence.sourceRef }
+
+/-- Rendering metadata is available even before this node has a document occurrence. -/
+def capturedData? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
+  (node? state label).map (resolveCanonical state)
+
+/-- Canonical occurrence data is present only for traversed nodes. -/
+def hasRenderedOccurrence (state : TraverseState) (label : Name) : Bool :=
+  (object? state label).any fun object =>
+    !object.ids.isEmpty && (object.data.getObjVal? "occurrence").toOption.any (· != .null)
+
+/-- Read the occurrence without decoding semantic metadata or external code payloads. -/
+def occurrence? (state : TraverseState) (label : Name) : Option Informal.BlockOccurrence := do
+  let object ← object? state label
+  guard (!object.ids.isEmpty)
+  (object.data.getObjValAs? (Option Informal.BlockOccurrence) "occurrence").toOption.join
+
+/-- Resolve a node only after traversal has allocated its occurrence and target. -/
+def renderedData? (state : TraverseState) (label : Name) : Option Informal.BlockData := do
+  guard (hasRenderedOccurrence state label)
+  capturedData? state label
+
+def resolve? (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Option Informal.BlockData :=
+  (node? state occurrence.label).map (·.resolve occurrence)
+
+def resolve (state : TraverseState) (occurrence : Informal.BlockOccurrence) : Except String Informal.BlockData :=
+  (required state occurrence.label).map (·.resolve occurrence)
 
 def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
+  ((TraversalPreviews.canonicalOccurrence? state label).bind (·.target)).bind (fun id => (state.externalTags[id]?).map (·.relativeLink)) <|>
+    Resolve.resolveDomainHref? state domainName label.toString
+
+/-- The selected body target when available, otherwise the first traversal target. -/
+def target? (state : TraverseState) (label : Name) : Option Verso.Multi.InternalId :=
+  (TraversalPreviews.canonicalOccurrence? state label).bind (·.target) <|> (object? state label).bind (·.ids.toArray[0]?)
 
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 
-def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
-  saveObjectData state domainName label.toString data
+def saveNode (state : TraverseState) (node : Informal.RenderNode) : TraverseState :=
+  saveObjectData state domainName node.label.toString (toJson node)
+
+def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrence) : TraverseState :=
+  match object? state occurrence.label with
+  | none => state
+  | some object =>
+    -- The occurrence is the only mutable part of the captured record. Preserve
+    -- external declaration payloads without decoding or serializing them again.
+    saveObjectData state domainName occurrence.label.toString
+      (object.data.setObjVal! "occurrence" (toJson (some occurrence)))
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
-/-- Decode every informal-node store entry, preserving per-entry decode errors. -/
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry Informal.StoredBlockData)) :=
+/-- Capture the rendering projection without retaining elaboration or provenance state. -/
+def capture (state : Informal.Environment.State) : Array Informal.RenderNode :=
+  state.data.toArray.map fun (label, node) =>
+    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+
+def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
+  nodes.foldl saveNode state
+
+/-- Every captured node, including nodes without a rendered occurrence. -/
+def allEntries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.RenderNode)) :=
   decodeStoreEntries state domainName
 
+/-- Only traversed nodes participate in document numbering and relation indexes. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.BlockData)) :=
+  (allEntries state).filterMap fun decoded =>
+    match decoded with
+    | .error err => some (.error err)
+    | .ok stored =>
+      if !hasRenderedOccurrence state stored.data.label then none else
+        stored.data.occurrence.map fun occurrence =>
+          .ok { canonicalName := stored.canonicalName, data := stored.data.resolve occurrence }
+
 end Nodes
+
+/- Project overviews captured alongside the shared rendering nodes. -/
+namespace RenderOverviews
+
+def spec : StoreSpec := {
+  name := `Informal.renderOverviews
+  kind := .internalIndex
+  key := "overview name"
+  value := "Typed captured graph or summary data"
+  summary := "Project overviews selected by the generator and reused by traversal and rendering."
+}
+
+def required [FromJson α] (state : TraverseState) (name : Name) : Except String α := do
+  let some object := state.getDomainObject? spec.name name.toString
+    | throw s!"Missing captured Blueprint {name}; initialize traversal with the document's RenderModel"
+  fromJson? object.data |>.mapError (fun error => s!"Malformed captured Blueprint {name}: {error}")
+
+def saveData [ToJson α] (state : TraverseState) (name : Name) (data : α) : TraverseState :=
+  saveObjectData state spec.name name.toString (toJson data)
+
+end RenderOverviews
 
 namespace InlineCode
 
 def spec : StoreSpec := {
   name := Resolve.informalCodeDomainName
   kind := .internalIndex
-  key := "informal label"
+  key := "source code-block identity"
   value := "InlineCodeData plus code-panel anchor ids and folding settings"
-  summary := "Traversal-local index for Blueprint code-panel sources keyed by informal label."
+  summary := "Traversal-local code panels, each retaining its declarations and source identity."
+}
+
+def labelSpec : StoreSpec := {
+  name := `Informal.Block.inlineCodeLabels
+  kind := .internalIndex
+  key := "informal label"
+  value := "Ordered array of source code-block identities"
+  summary := "Index from each informal label to all of its rendered literate code blocks."
 }
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
+def object? (state : TraverseState) (blockId : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName blockId.toString
 
-def data? (state : TraverseState) (label : Name) : Option Informal.InlineCodeData :=
-  objectData? state domainName label.toString
+def data? (state : TraverseState) (blockId : Name) : Option Informal.InlineCodeData :=
+  objectData? state domainName blockId.toString
 
-def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
+def href? (state : TraverseState) (blockId : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName blockId.toString
 
-def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
-  saveObjectId state domainName label.toString id
+private def blockIds (state : TraverseState) (label : Name) : Array Name :=
+  (objectData? state labelSpec.name label.toString).getD #[]
 
-def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
-  saveObjectData state domainName label.toString data
+/-- Distinct blocks in document order; the block store remains the single owner of their data. -/
+def blocks (state : TraverseState) (label : Name) : Informal.InlineCodeBlocks :=
+  (blockIds state label).filterMap (data? state)
+
+def firstHref? (state : TraverseState) (label : Name) : Option String :=
+  (blockIds state label).findSome? (href? state)
+
+def forDecl? (state : TraverseState) (label decl : Name) : Option Informal.InlineCodeData :=
+  (blocks state label).find? fun block =>
+    block.declarations.any (fun candidate => candidate.name.eraseMacroScopes == decl.eraseMacroScopes)
+
+def saveId (state : TraverseState) (blockId : Name) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName blockId.toString id
+
+def saveData (state : TraverseState) (data : Informal.InlineCodeData) : TraverseState :=
+  let ids := blockIds state data.label
+  let ids := if ids.contains data.blockId then ids else ids.push data.blockId
+  saveObjectData (saveObjectData state domainName data.blockId.toString (toJson data))
+    labelSpec.name data.label.toString (toJson ids)
 
 end InlineCode
 
@@ -236,34 +442,6 @@ def entries (state : TraverseState) :
   decodeStoreEntries state domainName
 
 end SourceDocuments
-
-namespace SourceRefs
-
-def spec : StoreSpec := {
-  name := Resolve.sourceRefDomainName
-  kind := .semanticDomain
-  key := "informal label"
-  value := "Source.Ref provenance metadata"
-  summary := "Semantic index for original-source spans attached to Blueprint nodes."
-}
-
-def domainName : Name := spec.name
-
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
-
-def data? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
-  objectData? state domainName label.toString
-
-def saveData (state : TraverseState) (label : Name) (data : Informal.Source.Ref) :
-    TraverseState :=
-  saveObjectData state domainName label.toString (toJson data)
-
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry Informal.Source.Ref)) :=
-  decodeStoreEntries state domainName
-
-end SourceRefs
 
 namespace ExternalMarkup
 
@@ -355,59 +533,16 @@ def entries (state : TraverseState) :
 
 end Graphs
 
-namespace TraversalPreviews
 
-def spec : StoreSpec := {
-  name := Resolve.informalPreviewDomainName
-  kind := .runtimeCache
-  key := "(informal label, preview facet)"
-  value := "PreviewCache.Entry plus preview anchor ids"
-  summary := "Traversal-cached statement/proof preview payloads keyed by `(label, facet)`."
-}
-
-def domainName : Name := spec.name
-
-def key (label : Name) (facet : PreviewCache.Facet) : String :=
-  PreviewCache.key label facet
-
-def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName previewKey
-
-def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.Entry :=
-  objectData? state domainName previewKey
-
-def href? (state : TraverseState) (previewKey : String) : Option String :=
-  Resolve.resolveDomainHref? state domainName previewKey
-
-def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
-    Option String :=
-  href? state (key label facet)
-
-def saveId
-    (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
-  saveObjectId state domainName previewKey id
-
-def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
-  saveObjectData state domainName previewKey data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
-
-/-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
-def entries (state : TraverseState) :
-    Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
-  decodeStoreEntries state domainName
-
-end TraversalPreviews
 
 namespace LeanCodePreviews
 
 def spec : StoreSpec := {
   name := Informal.LeanCodePreviewKey.domainName
   kind := .runtimeCache
-  key := "external Lean declaration name or inline-code label"
+  key := "external Lean declaration name or source code-block identity"
   value := "LeanCodePreview.Entry plus code-preview anchor ids"
-  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or shared inline-code label."
+  summary := "Traversal-cached Lean code preview payloads keyed by external declaration name or source code-block identity."
 }
 
 def domainName : Name := spec.name
@@ -415,8 +550,8 @@ def domainName : Name := spec.name
 def lookupKey (decl : Name) : String :=
   Informal.LeanCodePreviewKey.lookupKey decl
 
-def lookupInlineKey (label : Name) : String :=
-  Informal.LeanCodePreviewKey.inlineLookupKey label
+def lookupInlineKey (blockId : Name) : String :=
+  Informal.LeanCodePreviewKey.inlineLookupKey blockId
 
 def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName previewKey
@@ -444,15 +579,15 @@ namespace ExternalDeclAnchors
 def spec : StoreSpec := {
   name := Resolve.externalRenderedDeclDomainName
   kind := .internalIndex
-  key := "(informal label, canonical external declaration)"
+  key := "(statement occurrence, canonical external declaration)"
   value := "rendered declaration row anchor ids"
   summary := "Traversal-local anchor index for rendered external declaration rows."
 }
 
 def domainName : Name := spec.name
 
-def key (label decl : Name) : String :=
-  Resolve.externalRenderedDeclTargetKey label decl
+def key (occurrence : Verso.Multi.InternalId) (decl : Name) : String :=
+  Resolve.externalRenderedDeclTargetKey occurrence decl
 
 def object? (state : TraverseState) (targetKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName targetKey
@@ -461,8 +596,8 @@ def href? (state : TraverseState) (label decl : Name) : Option String :=
   Resolve.resolveRenderedExternalDeclHref? state label decl
 
 /-- HTML `id` attributes for a registered rendered external-declaration row. -/
-def htmlIdAttrs (state : TraverseState) (label decl : Name) : Array (String × String) :=
-  match object? state (key label decl) with
+def htmlIdAttrs (state : TraverseState) (occurrence : Verso.Multi.InternalId) (decl : Name) : Array (String × String) :=
+  match object? state (key occurrence decl) with
   | none => #[]
   | some obj =>
     match obj.ids.toArray[0]? with
@@ -604,10 +739,11 @@ compare against one source location instead of rediscovering each domain name.
 -/
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
+  RenderOverviews.spec,
   InlineCode.spec,
+  InlineCode.labelSpec,
   RustInlineCode.spec,
   SourceDocuments.spec,
-  SourceRefs.spec,
   ExternalMarkup.spec,
   Groups.spec,
   Graphs.spec,

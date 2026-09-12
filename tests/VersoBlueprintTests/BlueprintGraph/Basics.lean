@@ -64,26 +64,4 @@ open Verso.VersoBlueprintTests.BlueprintGraph.Shared
     axiomView.codeEntryClassSuffix == "axiom" &&
     axiomView.statusMarkSymbol == "⚠"
 
-def nestedPopState : Environment.State :=
-  {
-    data := (mkState [(`outer, { kind := .definition, statement := some (mkInformal #[]) })]).data
-    stack := [
-      { label := `inner, kind := .statement .lemma },
-      { label := `outer, kind := .statement .definition }
-    ]
-  }
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  match nestedPopState.popNested? with
-  | none => false
-  | some st =>
-    let labels : Array String := st.data.toArray.map (fun (entry : Name × Node) => toString entry.1)
-    st.stack.length == 1 &&
-    (match st.stack.head? with | some frame => toString frame.label == "outer" | none => false) &&
-    st.data.size == nestedPopState.data.size &&
-    labels.contains "outer" &&
-    !labels.contains "inner"
-
 end Verso.VersoBlueprintTests.BlueprintGraph.Basics

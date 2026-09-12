@@ -94,14 +94,17 @@ Missing external declaration sample.
 Statement depending on {uses "def:showcase.lean_only"}[].
 :::
 
-:::lemma_ "lem:showcase.unknown_ref"
-Statement depending on {uses "def:showcase.ghost"}[].
+:::lemma_ "lem:showcase.unknown_ref" (uses := "def:showcase.ghost")
+Statement with an intentionally unresolved graph dependency, `def:showcase.ghost`.
 :::
 
 {blueprint_graph}
 
 {blueprint_summary}
 :::::::
+
+/-- Captured in this fixture's environment before unrelated fixtures are imported. -/
+def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShowcaseDoc.toPart
 
 /-- info: true -/
 #guard_msgs in
