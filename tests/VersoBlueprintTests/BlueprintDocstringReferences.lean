@@ -114,6 +114,22 @@ set_option doc.verso true in
 /-- {uses "bad" (intent := "mistyped")}[] -/
 def invalidDocstringIntent : Nat := 0
 
+-- Recovery keeps readable docstring content, but neither the reconstructed
+-- payload nor a later attribute may acquire a dependency from invalid metadata.
+attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
+
+/-- info: true -/
+#guard_msgs in
+#eval show MetaM Bool from do
+  let some (.inr doc) ← findInternalDocString? (← getEnv) ``invalidDocstringIntent
+    | return false
+  let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
+  let some node ← Informal.Environment.getNode? (Name.mkSimple "attr.doc.invalid.recovered")
+    | return false
+  pure <| dependencies.isEmpty &&
+    node.statement.all (·.deps.isEmpty) &&
+    hasSubstr (Informal.Docstring.versoDocstringToHtml doc).asString "bad"
+
 /-- error: Unexpected named argument `intent` -/
 #guard_msgs in
 set_option doc.verso true in

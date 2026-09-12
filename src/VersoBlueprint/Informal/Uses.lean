@@ -92,15 +92,18 @@ instance : FromArgs BprefConfig m where
 
 end
 
-def UsesConfig.useRef (cfg : UsesConfig) : Data.UseRef :=
-  { label := cfg.label, origin := cfg.origin, intent := cfg.intent }
+def UsesConfig.useRef? (cfg : UsesConfig) : Option Data.UseRef :=
+  if cfg.invalidOrigin.isNone && cfg.invalidIntent.isNone then
+    some { label := cfg.label, origin := cfg.origin, intent := cfg.intent }
+  else none
 
 def UsesConfig.validate [Monad m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
-    (cfg : UsesConfig) : m Unit := do
+    (cfg : UsesConfig) : m (Option Data.UseRef) := do
   if let some raw := cfg.invalidOrigin then
     logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
   if let some raw := cfg.invalidIntent then
     logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
+  return cfg.useRef?
 
 structure InlineData where
   label : Data.Label
@@ -175,11 +178,11 @@ def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term 
 def uses : RoleExpanderOf UsesConfig
   | cfg, contents => do
     Profile.withDocElab "role" "uses" <| do
-      cfg.validate
+      let dependency? ← cfg.validate
       let term ← nodeReferenceTerm cfg.label (← contents.mapM elabInline)
       let useRef ← getRef
-      if cfg.invalidOrigin.isNone && cfg.invalidIntent.isNone then
-        Environment.addUse useRef cfg.useRef
+      if let some dependency := dependency? then
+        Environment.addUse useRef dependency
       pure term
 
 /-- Reference a Blueprint node without registering a dependency edge. -/
