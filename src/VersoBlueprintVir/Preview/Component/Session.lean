@@ -22,6 +22,7 @@ structure Options where
   followCursor : Bool := true
   debug : Bool := false
   highlightChanges : Bool := false
+  timingTickMs : Nat := 1
 
 namespace Options
 
@@ -71,14 +72,29 @@ private def renderToggle (id label : String) (checked : Bool)
     Props.checked checked, Props.onChangeUnit onChange] #[]
   Node.elementWith "label" #[Props.htmlFor id] #[input, ← Node.text (← JsValue.ofString (" " ++ label))]
 
-/-- A fixed scale shared by every response: 100 ms occupies 40 CSS pixels. -/
-private def timingTickMs : Nat := 100
+/-- Explicit scales keep successive responses comparable at the chosen zoom. -/
+private def timingScales : Array Nat := #[1, 10, 100, 1000]
 private def timingTickPixels : Nat := 40
 
-private def timingPixels (nanos : Nat) : Float :=
+private def timingPixels (timingTickMs nanos : Nat) : Float :=
   nanos.toFloat / (timingTickMs * 1000000).toFloat * timingTickPixels.toFloat
 
-def renderServerTiming (timing? : Option ServerTiming) : ReactM (Js Node) := do
+private def renderTimingScale (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
+  let choices ← timingScales.mapM fun tick => do
+    Node.elementWith "option" #[Props.key (toString tick), Props.string "value" (toString tick)]
+      #[← Node.text (← JsValue.ofString s!"{tick} ms / tick")]
+  let select ← Node.elementWith "select" #[
+    Props.id "vir-verso-timing-scale", Props.string "value" (toString options.timingTickMs),
+    Props.onChange fun event => do
+      let some value ← Js.Nullable.toOption (← Browser.Event.formValueNullable event) | return ()
+      let value ← JsValue.toString value
+      let some tick := timingScales.find? (fun tick => toString tick == value) | return ()
+      updateOptions state fun current => { current with timingTickMs := tick }
+  ] choices
+  Node.elementWith "label" #[Props.htmlFor "vir-verso-timing-scale", ComponentStyle.debugNote]
+    #[← Node.text (← JsValue.ofString "Scale "), select]
+
+private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTiming) : ReactM (Js Node) := do
   let some timing := timing? |
     Node.pTextWith #[Props.id "vir-verso-server-timings", ComponentStyle.debugNote]
       "Server timing unavailable"
@@ -95,7 +111,7 @@ def renderServerTiming (timing? : Option ServerTiming) : ReactM (Js Node) := do
       Props.string "data-verso-nanos" (toString nanos),
       Props.string "title" (label ++ ": " ++ milliseconds nanos),
       Props.stylePairs #[
-        ("width", s!"{timingPixels nanos}px"), ("flexShrink", "0"),
+        ("width", s!"{timingPixels timingTickMs nanos}px"), ("flexShrink", "0"),
         ("minWidth", "0"), ("backgroundColor", color)
       ]] #[]
   let legend ← phases.mapM fun (key, label, color, nanos) => do
@@ -108,13 +124,14 @@ def renderServerTiming (timing? : Option ServerTiming) : ReactM (Js Node) := do
     ]] #[swatch, ← Node.text (← JsValue.ofString label)]
   let label ← Node.pTextWith #[ComponentStyle.debugNote,
     Props.title "Server preparation: snapshot wait, checked-environment wait, and document evaluation/cursor lookup. Includes scheduling; excludes encoding, transport and browser rendering."]
-    (summary ++ s!" · {timingTickMs} ms / tick")
+    summary
   let bar ← Node.divWith #[Props.id "vir-verso-server-bar", Props.role "img",
     Props.string "aria-label" (summary ++ "; " ++ String.intercalate ", "
       (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)),
     Props.string "data-verso-total-nanos" (toString total),
+    Props.string "data-verso-tick-ms" (toString timingTickMs),
     Props.stylePairs #[
-      ("display", "flex"), ("width", s!"{timingPixels total}px"), ("height", "12px")
+      ("display", "flex"), ("width", s!"{timingPixels timingTickMs total}px"), ("height", "12px")
     ]] segments
   let track ← Node.divWith #[Props.stylePairs #[
     ("width", "max-content"), ("minWidth", "100%"), ("paddingBottom", "5px"),
@@ -150,7 +167,10 @@ def renderConfigPanel
     ComponentStyle.configPanel
   ] #[legend, follow, debug, changes]
 
-def renderDebugPanel (sample : DebugSample) : ReactM (Js Node) := do
+def renderDebugPanel (options : Options) (state : State (JSL Options))
+    (timing? : Option ServerTiming) (sample : DebugSample) : ReactM (Js Node) := do
+  let scale ← renderTimingScale options state
+  let timing ← renderServerTiming options.timingTickMs timing?
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"
@@ -169,6 +189,6 @@ def renderDebugPanel (sample : DebugSample) : ReactM (Js Node) := do
     Props.string "data-verso-debug-block-count" (if sample.highlightChanges then toString sample.blockCount else "skipped"),
     Props.string "data-verso-debug-changed-block-count" (toString sample.changedCount),
     ComponentStyle.debugPanel
-  ] #[details]
+  ] #[scale, timing, details]
 
 end VersoBlueprint.Experimental.VirPreview.Session

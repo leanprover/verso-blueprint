@@ -66,6 +66,7 @@ def configLegend : Props.Entry := style #[
 ]
 
 def debugPanel : Props.Entry := style #[
+  ("minWidth", "0"),
   ("margin", "0"),
   ("padding", "5px 8px"),
   ("border", border borderColor),

@@ -96,33 +96,37 @@ or global DOM polling to work around this gap.
 
 ### Timing display
 
-The timing bar is always visible when the response supplies timings; no debug
-checkbox or expander is needed. One stacked bar shows
+Enable **Debug details** to show the timing bar and metrics together, without
+another expander. They are absent in normal mode. One stacked bar shows
 server preparation for the accepted response: blue **Snapshot** wait, amber
 **Checked** environment wait, and green **Document** evaluation/reconstruction
 and cursor lookup in the retained source syntax.
-The fixed scale is **100 ms per 40 CSS pixels**, with ruler ticks every 100 ms.
-Doubling a duration doubles its width, even across responses or panel sizes.
+The **Scale** selector offers **1, 10, 100, or 1000 ms per tick**, with each tick
+occupying 40 CSS pixels. The default is 1 ms, making millisecond-scale demo events
+visible; choose a coarser scale for FLT. The choice survives edits and Debug off/on.
+At the selected scale, doubling a duration doubles its width, even across responses
+or panel sizes. It does not automatically rescale each response to fill the panel.
 Long bars scroll horizontally instead of rescaling or clipping the measurement.
 Zero-duration phases have no width; absent timing is shown as unavailable, not zero.
 A single total sits above the bar. Hover a segment or legend label for its phase
-duration; the total's tooltip explains measurement scope. **Debug details** adds
-only the editor version/status and change-analysis counts, with no nested expander.
+duration; the total's tooltip explains measurement scope. Editor version/status
+and change-analysis counts appear below it, with no nested expander.
 
 The preview RPC takes four monotonic timestamps, with no per-node probes,
 extra rendering traversal, logs, timers or request. Measurements are collected for each
 successful document response independently of the Debug checkbox; changing a
 control reuses that response's server measurement. The bar reads the accepted
-response directly, without enabling diagnostic effects or duplicating timings
-in post-commit state. Snapshot/checked waits include
+response directly, without duplicating timings in post-commit state. Scale
+changes do not repeat the diagnostic effect, send an RPC, or take a new measurement.
+Snapshot/checked waits include
 scheduling and document work remaining when the RPC starts. The interval ends
 before response encoding. It excludes work before RPC entry, transport, and
 browser rendering, so it is **not edit-to-preview latency**. Browser timing remains
 pending the pinned VIR API; no VBP-local browser binding has been added.
 
-The timing acceptance reports in `_out/native-preview-modules/timing-scale/` check
-default visibility, actual browser geometry against a 1:2:3 sample, fixed-width
-6/600/1200 ms measurements, horizontal scrolling in a narrow panel, distinct
+The timing acceptance reports in `_out/native-preview-modules/timing-zoom/` check
+debug-only visibility, actual browser geometry against a 1:2:3 sample, all four
+selectable scales and their persistence, 6/600/1200 ms measurements, horizontal scrolling in a narrow panel, distinct
 colors, accessible labels, missing/zero measurements, and fresh measurements
 from the real document RPC across edits. The known embedded-shell unmount
 warning remains a strict failure.

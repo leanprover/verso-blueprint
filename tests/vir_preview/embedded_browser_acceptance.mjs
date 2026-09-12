@@ -67,9 +67,9 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(asset?.dataBase64, "shell did not read WASM through the asset RPC");
     const wasmHash = await sha256(Uint8Array.from(atob(asset.dataBase64), c => c.charCodeAt(0)));
     check(wasmHash === VBP_WASM_SHA256, "server-loaded WASM differs from the pinned SDK");
-    check(document.getElementById("vir-verso-server-bar") &&
+    check(!document.getElementById("vir-verso-server-timings") &&
       !document.getElementById("vir-verso-debug").checked,
-      "live server timing must be visible before opening debug controls");
+      "live server timing must stay hidden outside debug mode");
     const retained = checkbox();
     React.act(() => retained.click());
     React.act(() => document.getElementById("vir-verso-debug").click());
@@ -83,7 +83,16 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       "live server phases do not partition preparation time");
       return total;
     };
-    measuredBar();
+    const initialTotal = measuredBar();
+    const beforeScale = previewCalls().length;
+    React.act(() => {
+      const scale = document.getElementById("vir-verso-timing-scale");
+      scale.value = "100";
+      scale.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    check(previewCalls().length === beforeScale && measuredBar() === initialTotal &&
+      document.getElementById("vir-verso-server-bar").dataset.versoTickMs === "100",
+      "time scale change must reuse the measured response without an RPC");
     const beforeUnchanged = previewCalls().length;
     await render(a, config.a);
     await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
@@ -102,6 +111,8 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(document.getElementById("vir-verso-debug").checked,
       "embedded edit lost debug option");
     measuredBar();
+    check(document.getElementById("vir-verso-timing-scale").value === "100",
+      "document edit reset timing scale");
     check(packageCalls().length === 1, "document edit regenerated the client package");
 
     await render(b, config.b);
@@ -168,7 +179,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       registeredWidgetModule: true, shellSha256: hash, wasmSha256: wasmHash, liveSnapshotPackage: true,
       workspaceAssetRpc: true, editorContextBridge: true, samePositionEdit: true,
       liveBlueprintDocument: true, editedSourceRendered: true, measuredServerTimingBar: true,
-      alwaysVisibleTiming: true,
+      debugOnlyTiming: true, scaleChangeNoRpc: true, retainedScale: true,
       retainedControls: true, cursorRefresh: true, unchangedInputNoRpc: true,
       realSourceFocus: true, sourceHeadingFocus: true, outsideDocumentClearsFocus: true,
       disabledFollowRetained: true, reenabledFollowUsesLatestCursor: true,

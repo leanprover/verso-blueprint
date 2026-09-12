@@ -40,6 +40,10 @@ async function run() {
     const status = () => byId("preview")?.dataset.versoPreviewStatus;
     const panel = () => byId("debug-panel");
     const sequence = () => Number(panel()?.dataset.versoDebugSnapshotEffects);
+    const setScale = value => React.act(() => {
+      byId("timing-scale").value = value;
+      byId("timing-scale").dispatchEvent(new Event("change", { bubbles: true }));
+    });
 
     render(0);
     check(status() === "ready" && byId("preview").textContent.includes("Before edit"),
@@ -48,9 +52,8 @@ async function run() {
       "Blueprint adapter did not render the informal block");
     check(byId("follow-cursor").checked && !byId("highlight-changes").checked && !panel(),
       "incorrect default options");
-    check(byId("server-bar")?.getBoundingClientRect().width > 0 &&
-      byId("server-timings").textContent.includes("100 ms / tick"),
-      "scaled timing bar must be visible without enabling diagnostics");
+    check(!byId("server-timings") && !byId("timing-scale"),
+      "timing metrics and scale control must be hidden outside debug mode");
     render(0);
     check(!panel() && byId("preview").dataset.versoChangedBlockCount === "0",
       "unchanged normal input enabled diagnostics or highlighting");
@@ -81,10 +84,20 @@ async function run() {
     check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
       "timing phases lack distinct colors");
     const width = bar.getBoundingClientRect().width;
-    check(Math.abs(width - 2.4) < 0.05, "6 ms must occupy 2.4 CSS pixels, not the container width");
+    check(byId("timing-scale").value === "1" && Math.abs(width - 240) < 0.05,
+      "default 1 ms/tick scale must make 6 ms occupy 240 CSS pixels");
     segments.forEach((segment, index) => check(
       Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 0.05,
       "timing segment width is not proportional to duration"));
+    const beforeScale = sequence();
+    for (const [value, expected] of [["10", 24], ["1000", 0.24], ["100", 2.4]]) {
+      setScale(value);
+      check(byId("timing-scale").value === value &&
+        Math.abs(byId("server-bar").getBoundingClientRect().width - expected) < 0.05,
+        `scale ${value} did not change the bar width`);
+      check(sequence() === beforeScale && paragraph.isConnected,
+        "scale change repeated diagnostic effects or replaced document DOM");
+    }
     const unchangedSequence = sequence();
     render(1);
     check(sequence() === unchangedSequence, "unchanged input repeated the diagnostic effect");
@@ -98,6 +111,7 @@ async function run() {
       `${expected} transition reset options`);
       check(panel().dataset.versoDebugStatus === expected &&
         panel().dataset.versoDebugNewInput === "true", `${expected} diagnostic observation is stale`);
+      check(byId("timing-scale").value === "100", `${expected} transition reset the time scale`);
     }
     check(byId("preview").textContent.includes("Recovered preview"), "recovery lost document");
     render(6);
@@ -108,8 +122,12 @@ async function run() {
       [...byId("server-bar").children].every(s => s.getBoundingClientRect().width === 0),
       "zero timing should have an empty, finite bar");
     click("debug");
-    check(!panel() && byId("server-bar"), "debug switch must not hide the timing bar");
+    check(!panel() && !byId("server-timings") && !byId("timing-scale"),
+      "debug off must hide all timing metrics and controls");
     render(8);
+    check(!byId("server-timings"), "an edit restored timing while debug was off");
+    click("debug");
+    check(byId("timing-scale").value === "100", "debug off/on reset the selected scale");
     const firstWidth = byId("server-bar").getBoundingClientRect().width;
     check(Math.abs(firstWidth - 240) < 0.05, "600 ms must occupy 240 CSS pixels");
     const app = document.getElementById("app");
@@ -123,7 +141,6 @@ async function run() {
     scale.scrollLeft = 100;
     check(scale.scrollLeft > 0, "long timings must be horizontally scrollable");
     app.style.width = "";
-    click("debug");
     click("highlight-changes");
     check(panel().dataset.versoDebugBlockCount === "skipped" &&
       !document.querySelector(".vir-verso-block-changed"), "highlighting did not switch off");
@@ -132,6 +149,8 @@ async function run() {
     render(0);
     check(byId("follow-cursor").checked && !byId("highlight-changes").checked && !panel(),
       "intentional remount did not reset session state");
+    click("debug");
+    check(byId("timing-scale").value === "1", "intentional remount did not reset the scale");
     unmount();
     runtime.dispose();
     let rejected = false;
@@ -143,7 +162,8 @@ async function run() {
       retainedOptions: true, debugInsertionKeepsDocument: true,
       unchangedInputNoEffect: true, statusTransitions: 4, intentionalRemountResets: true,
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
-      alwaysVisibleTiming: true, fixedTimeScale: true, scrollableLongTiming: true,
+      debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
+      fixedTimeScale: true, scrollableLongTiming: true,
       missingAndZeroTiming: true, browserTimingExplicitlyPending: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
