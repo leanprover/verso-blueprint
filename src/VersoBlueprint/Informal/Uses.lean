@@ -9,13 +9,11 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.Lib.PreviewSource
-import VersoBlueprint.PreviewCache
+import VersoBlueprint.RenderingResolution
 import VersoBlueprint.Profiling
 import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
@@ -109,21 +107,8 @@ structure InlineData where
   label : Data.Label
 deriving FromJson, ToJson, Quote
 
-/-- A reference uses document numbering only for rendered nodes, and previews only
-when prose or a code-backed preview is available. HTML and TeX share the same title resolution. -/
-private structure NodeReference where
-  title : String
-  href : Option String
-  previewKey : Option PreviewKey
-
-private def resolveNodeReference (state : TraverseState) (label : Data.Label) : NodeReference := {
-  title := ((TraversalIndex.Nodes.renderedData? state label).map (·.displayTitle state)).getD
-    (label.toString (escape := false))
-  href := TraversalIndex.Nodes.href? state label
-  previewKey := PreviewSource.traversalPreviewCandidateKey? state label
-}
-
-private def NodeReference.withPreview (reference : NodeReference) (node : Verso.Output.Html) :
+private def RenderingResolution.Reference.withPreview
+    (reference : RenderingResolution.Reference) (node : Verso.Output.Html) :
     Verso.Output.Html :=
   match reference.previewKey with
   | none => node
@@ -151,7 +136,8 @@ inline_extension Inline.informal (data : InlineData) where
       let some { label } ← ExtensionDecode.decode? (α := InlineData) data
           (fun _ => "Malformed data in Inline.informal traversal")
         | pure .empty
-      let reference := resolveNodeReference (← HtmlT.state) label
+      let some reference ← ExtensionDecode.report? (RenderingResolution.reference (← HtmlT.state) label)
+        | pure .empty
       let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
       let labelText := label.toString (escape := false)
       let node := match reference.href with
@@ -164,8 +150,10 @@ inline_extension Inline.informal (data : InlineData) where
       let .ok inlineData := fromJson? (α := InlineData) data
         | Verso.reportError s!"Malformed data in Inline.informal.toTeX: {data}"
           pure .empty
+      let some reference ← ExtensionDecode.report?
+          (RenderingResolution.reference (← Verso.Doc.TeX.state) inlineData.label)
+        | pure .empty
       if inlines.isEmpty then
-        let reference := resolveNodeReference (← Verso.Doc.TeX.state) inlineData.label
         pure <| .text reference.title
       else
         inlines.mapM goI

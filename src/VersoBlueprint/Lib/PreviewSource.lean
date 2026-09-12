@@ -53,8 +53,9 @@ deriving Inhabited, Repr
 /--
 A decoded traversal-preview object as stored after Manual traversal.
 
-This is for whole-domain consumers such as manifest construction. Callers that
-need one best preview for a label should use `Selection` instead.
+This is for whole-domain consumers such as manifest construction. One-label
+consumers use `traversalEntry?` for selected prose and its provenance, or
+`traversalPreviewCandidateKey?` for a preview candidate including code and markup.
 -/
 structure StoredTraversalEntry where
   /-- Manifest/cache key for this statement or proof preview facet. -/
@@ -64,7 +65,7 @@ structure StoredTraversalEntry where
   entry : PreviewCache.Entry
 deriving Inhabited, Repr
 
-/-- A selected preview for one Blueprint label.
+/-- An environment-time preview for one Blueprint label.
 
 The `facet` and `key` fields identify the preview that should be used by
 callers, while `preview` contains the phase-local renderable payload. -/
@@ -142,18 +143,24 @@ Prefer statement/proof prose, then a code-backed facet, then a source-backed
 external-markup preview. Prose-only lookup helpers retain their body semantics. Final
 generated data still checks whether the candidate has both a manifest entry and
 rendered-fragment cache body before serializing it as a `previewKey`.
+
+An explicit facet never borrows another facet's prose or code. Only statements
+may fall back to source-backed external markup.
+
 -/
 def traversalPreviewCandidateKey?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey := do
-  let key ← (PreviewCache.key label <$>
-    Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
-    traversalExternalMarkupLookupKey? s label
+    (s : Verso.Genre.Manual.TraverseState) (label : Name)
+    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey := do
+  let key ← match facet? with
+    | none => (PreviewCache.key label <$>
+        Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
+        traversalExternalMarkupLookupKey? s label
+    | some facet =>
+      if Informal.TraversalIndex.TraversalPreviews.hasRenderablePreview s label facet then
+        some (PreviewCache.key label facet)
+      else if facet == .statement then traversalExternalMarkupLookupKey? s label
+      else none
   PreviewKey.ofString? key
-
-/-- Best preview candidate key for relation entries. -/
-def traversalRelationPreviewKey?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewKey :=
-  traversalPreviewCandidateKey? s label
 
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
