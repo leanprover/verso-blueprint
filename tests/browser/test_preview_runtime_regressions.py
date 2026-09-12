@@ -32,6 +32,30 @@ def assert_source_location_error(result: dict, needle: str):
 
 
 class TestPreviewRuntimeRegressions:
+    def test_code_only_attribute_references_discover_preview(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Code-Panels/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        paragraph = page.locator("p").filter(has_text="An automatic title follows:").filter(
+            has=page.locator(".bp_inline_preview_ref")
+        ).first
+        triggers = paragraph.locator(".bp_inline_preview_ref")
+        expect(triggers).to_have_count(2)  # Authored uses and bpref, not header chips.
+        key = "panel_docstring_target--statement"
+        for index in range(2):
+            trigger = triggers.nth(index)
+            expect(trigger).to_have_attribute("data-bp-preview-key", key)
+            trigger.hover()
+            panel = page.locator("#bp-inline-preview-panel")
+            expect(panel).to_be_visible()
+            expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
+                "docstringReferenceTarget"
+            )
+            page.mouse.move(0, 0)
+            expect(panel).to_be_hidden(timeout=1000)
+        assert_no_runtime_errors(errors)
+
     def test_attribute_summary_destinations_exist_once(self, server: str, page: Page):
         page.goto(f"{server}/Blueprint-Summary/")
         links = page.locator("a[href*='--informal-external-decl-']").evaluate_all(

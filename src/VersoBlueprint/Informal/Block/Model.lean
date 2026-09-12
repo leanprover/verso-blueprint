@@ -229,7 +229,8 @@ structure BlockPresentation where
   /--
   Elaboration-assigned source-local count. Zero requests generated allocation.
   Traversal offsets authored counts only for preceding generated placements in
-  the same source, before applying the configured numbering policy.
+  the same source, reserving a fresh number if reordering causes a collision,
+  before applying the configured numbering policy.
   -/
   count : Nat
   numberingMode : NumberingMode := .sub

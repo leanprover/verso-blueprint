@@ -184,7 +184,7 @@ private def resolveManualTargets
     let labels ← labelsForManualTarget currentDecl currentLabel target
     return labels.foldl Data.Label.pushUnique acc
 
-private def mergeAxisDeps
+private def collectAxisDeps
     (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
     (docstringDeps : Array Data.UseRef := #[]) :
     CoreM (Array Data.UseRef) := do
@@ -194,13 +194,13 @@ private def mergeAxisDeps
   let mut out := #[]
   for label in DependencyAnalysis.sortLabels inferred do
     if !excluded.contains label then
-      out := Data.UseRef.pushMergeByLabel out (DependencyAnalysis.automaticUseRef label)
+      out := out.push (DependencyAnalysis.automaticUseRef label)
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then
-      out := Data.UseRef.pushMergeByLabel out dependency
+      out := out.push dependency
   for label in explicit do
     if !excluded.contains label then
-      out := Data.UseRef.pushMergeByLabel out (manualUseRef label)
+      out := out.push (manualUseRef label)
   return out
 
 private def resolveAutoDeps
@@ -212,10 +212,10 @@ private def resolveAutoDeps
       DependencyAnalysis.infer decl info
     else
       pure {}
-  let statement ← mergeAxisDeps decl label inferred.statement cfg.uses docstringDeps
+  let statement ← collectAxisDeps decl label inferred.statement cfg.uses docstringDeps
   let statementLabels := Data.UseRef.labels statement
   let proofInferred := inferred.proof.filter fun label => !statementLabels.contains label
-  let proof ← mergeAxisDeps decl label proofInferred cfg.proofUses
+  let proof ← collectAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
 private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do

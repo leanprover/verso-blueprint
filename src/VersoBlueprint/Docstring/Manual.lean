@@ -42,7 +42,9 @@ private partial def inlineToManualStx
     if let .custom payload := extension then
       if let some reference := payload.get? Reference then
         if let .inr dependency := reference.target then
-          modify fun deps => Data.UseRef.pushMergeByLabel deps dependency
+          -- Preserve validation evidence; only the shared contribution reducer
+          -- may deduplicate declarations or reject conflicting intents.
+          modify fun deps => deps.push dependency
         return ← nodeReferenceTerm reference.label
           (if reference.hasCustomText then content else #[])
     `(Verso.Doc.Inline.concat #[$content,*])

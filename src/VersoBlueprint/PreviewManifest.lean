@@ -961,6 +961,9 @@ structure Entry extends Informal.BlockMetadata where
   parentTitle : Option String := none
   /-- Manifest/cache-backed preview keys for Lean code previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
+  /-- This facet has no prose/witness body; hover readers compose its associated
+  Lean cache fragments instead of displaying the inert block-body fragment. -/
+  codeOnlyPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
   /-- Whether the canonical proof shell is collapsed when this is a proof entry. -/
@@ -2205,11 +2208,10 @@ private def buildTraversalEntries
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      let hasLeanCode := !entry.leanCodePreviewKeys.isEmpty
       let externalBody? := if entry.facet == .statement then
         Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
         else none
-      if !entry.hasRenderedBody && !hasLeanCode then
+      if !entry.hasRenderablePreview then
         continue
       let html ←
         if entry.hasRenderedBody then
@@ -2223,7 +2225,8 @@ private def buildTraversalEntries
           pure html
         else
           pure (externalBody?.map (·.asString) |>.getD codeOnlyBlockPreviewHtml)
-      let manifestEntry := blockEntryOfTraversalPreview state entry
+      let manifestEntry := { blockEntryOfTraversalPreview state entry with
+        codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
   pure (entries, htmlEntries, hoverState)

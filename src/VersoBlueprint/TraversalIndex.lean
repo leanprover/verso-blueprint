@@ -135,15 +135,25 @@ private def select? (state : TraverseState) (label : Name)
     (accept : Verso.Multi.Object → Bool) : Option (PreviewCache.Facet × Verso.Multi.Object) :=
   PreviewCache.Facet.select? fun facet => (object? state (key label facet)).filter accept
 
+private def objectHasBody (object : Verso.Multi.Object) : Bool :=
+  -- Inspect body presence without decoding the document AST for links and keys.
+  (object.data.getObjVal? "blocks" >>= Json.getArr?).toOption.any (fun blocks => !blocks.isEmpty)
+
 private def selectBody? (state : TraverseState) (label : Name) :
     Option (PreviewCache.Facet × Verso.Multi.Object) :=
-  select? state label fun object =>
-    -- Inspect body presence without decoding the document AST for links and keys.
-    (object.data.getObjVal? "blocks" >>= Json.getArr?).toOption.any (fun blocks => !blocks.isEmpty)
+  select? state label objectHasBody
 
 /-- The preferred nonempty facet, without decoding its document body. -/
 def selectedFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
   (selectBody? state label).map (·.1)
+
+/-- Prefer actual statement/proof prose, then a code-backed facet. Unlike
+`selectedFacet?`, this selects a preview identity, not a nonempty Manual body. -/
+def selectedPreviewFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
+  selectedFacet? state label <|>
+    (select? state label fun object =>
+      (fromJson? (α := PreviewCache.Metadata) object.data).toOption.any fun metadata =>
+        metadata.hasRenderablePreview (objectHasBody object)).map (·.1)
 
 /-- Decode the selected nonempty body only when the caller needs its content. -/
 def selectedEntry? (state : TraverseState) (label : Name) : Option PreviewCache.Entry := do

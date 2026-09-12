@@ -40,32 +40,38 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   (next, st.set numberingCounterState (next + 1))
 
 /--
-Traversal-state namespace for source-local allocation. Each source keeps a next
-number and an offset counting generated placements encountered in that source.
+Traversal-state namespace for source-local allocation.
 -/
 private def sourceNumberingCounterState : Name :=
   Lean.Name.mkSimple "Informal.Block.sourceNumberingCounter"
 
+private structure SourceNumbering where
+  next : Nat := 1
+  offset : Nat := 0
+  reserved : Std.HashSet Nat := {}
+deriving ToJson, FromJson
+
 /--
 Preserve authored counts, offset only by preceding generated placements from
 the same source. Ordinary chapters never renumber one another. Reordering
-authored occurrences alone does not change their local numbers.
+authored occurrences alone does not change their local numbers. If insertion
+and reordering make a shifted count collide, allocate above all reserved counts.
 -/
 private def resolveSourceBlockNumber (st : TraverseState) (data : BlockData) :
     Nat × TraverseState :=
   let source := data.sourceLocation.location.map (·.path) |>.getD data.label.toString
   let counters := match st.get? sourceNumberingCounterState with
-    | some (.ok (counters : Array (String × Nat × Nat))) => counters
+    | some (.ok (counters : Array (String × SourceNumbering))) => counters
     | _ => #[]
-  let (next, offset) := (counters.find? (·.1 == source)).map (·.2) |>.getD (1, 0)
-  let save (next offset : Nat) :=
-    st.set sourceNumberingCounterState
-      ((counters.filter (·.1 != source)).push (source, next, offset))
-  if data.count == 0 then
-    (next, save (next + 1) (offset + 1))
-  else
-    let count := data.count + offset
-    (count, save (max next (count + 1)) offset)
+  let current := (counters.find? (·.1 == source)).map (·.2) |>.getD {}
+  let preferred := if data.count == 0 then current.next else data.count + current.offset
+  let count := if current.reserved.contains preferred then current.next else preferred
+  let updated := { current with
+    next := max current.next (count + 1)
+    offset := current.offset + if data.count == 0 then 1 else 0
+    reserved := current.reserved.insert count }
+  (count, st.set sourceNumberingCounterState
+    ((counters.filter (·.1 != source)).push (source, updated)))
 
 /-- Prefix-local counters, stored as a small association list in traversal state. -/
 private def prefixBlockCounters (st : TraverseState) : Array (String × Nat) :=

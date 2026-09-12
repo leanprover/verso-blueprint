@@ -76,7 +76,9 @@ def InferredDeps.toUseRefs (deps : InferredDeps)
     InferredUseRefs :=
   let statementLabels := removeSelfLabel currentLabel? deps.statement
   let proofLabels := removeSelfLabel currentLabel? deps.proof
-  let statement := Data.UseRef.mergeByLabel (automaticUseRefs statementLabels) statementManual
+  -- Keep both authorities until contribution validation. Effective-edge
+  -- precedence must not hide automatic conflicts from later contributions.
+  let statement := automaticUseRefs statementLabels ++ statementManual
   let statementLabels := Data.UseRef.labels statement
   let proofLabels := proofLabels.filter fun label => !statementLabels.contains label
   {
