@@ -6,9 +6,6 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintAutoDeps.Reexport
 
--- Deliberately remains active at EOF: importing modules must still start at .none.
-set_blueprint_helper_expansion .all
-
 namespace Verso.VersoBlueprintTests.BlueprintAutoDeps.HelperProvider
 
 open Provider
@@ -43,3 +40,6 @@ end
 theorem persisted : typeAlias := proofHop
 
 end Verso.VersoBlueprintTests.BlueprintAutoDeps.HelperProvider
+
+-- Deliberately remains active at EOF: this setting must not leak through imports.
+set_option verso.blueprint.expandHelpers false
