@@ -34,7 +34,7 @@ a filter on the result, not an instruction to expand that tagged declaration.
 | Concern | Verso Blueprint decision |
 | --- | --- |
 | Activation | `autoDeps := true` enables inference, still disabled by default. Helper expansion is independently enabled by default. |
-| Expansion | `set_option verso.blueprint.expandHelpers false` selects direct-only inference; `true` follows all unassociated helpers. |
+| Expansion | `set_option verso.blueprint.autoDeps.expandUntagged false` selects direct-only inference; `true` follows all unassociated helpers. |
 | Boundary | Stop at any Lean-to-Blueprint association, whether created by an attribute, external-Lean statement, or inline code. |
 | Identity | Map each frontier declaration to every associated label; deduplicate and sort labels. |
 | Timing | Infer at authoring elaboration using current associations; persist edges across imports. |
@@ -55,7 +55,7 @@ Unassociated axioms are terminal even if their types mention other declarations.
 The root's own type is always analyzed, including for an axiom root.
 
 Helper expansion uses the ordinary Boolean Lean option
-`verso.blueprint.expandHelpers`, read once per inferred root. Lean supplies its
+`verso.blueprint.autoDeps.expandUntagged`, read once per inferred root. Lean supplies its
 validation, command/section/namespace scoping, and document propagation. No
 custom syntax, configuration encoding, or persistent environment extension is
 needed. Unlike LeanArchitect's unconditional expansion, users may request

@@ -28,9 +28,9 @@ register_option verso.blueprint.autoDeps : Bool := {
   descr := "Infer Blueprint dependencies by default, using the configured helper expansion policy"
 }
 
-register_option verso.blueprint.expandHelpers : Bool := {
+register_option verso.blueprint.autoDeps.expandUntagged : Bool := {
   defValue := true
-  descr := "Expand unassociated Lean helpers during automatic Blueprint dependency inference; false inspects direct references only"
+  descr := "Infer dependencies through Lean declarations without Blueprint associations, stopping at associated declarations; false inspects direct references only. Requires autoDeps to be enabled."
 }
 
 /--
@@ -149,7 +149,7 @@ private def frontierLabels (root : Name) (seeds : Array Name)
 
 def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
   let decl := decl.eraseMacroScopes
-  let expandHelpers := verso.blueprint.expandHelpers.get (← getOptions)
+  let expandHelpers := verso.blueprint.autoDeps.expandUntagged.get (← getOptions)
   let statement ← frontierLabels decl info.type.getUsedConstants expandHelpers
   let proof ← frontierLabels decl (← rootBodyConstants info) expandHelpers
   return { statement, proof }

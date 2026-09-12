@@ -16,7 +16,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAutoDeps.ExpansionPolicy
 
 -- HelperProvider disables expansion at EOF; importers still get the true default.
 #eval show CoreM Unit from do
-  unless DependencyAnalysis.verso.blueprint.expandHelpers.get (← getOptions) do
+  unless DependencyAnalysis.verso.blueprint.autoDeps.expandUntagged.get (← getOptions) do
     throwError "Imported helper expansion setting leaked"
 
 def second : Nat := Provider.defSource
@@ -39,7 +39,7 @@ def disabledTarget : Nat := first
 @[blueprint "policy.not_enabled"]
 def notEnabledTarget : Nat := first
 
-set_option verso.blueprint.expandHelpers false in
+set_option verso.blueprint.autoDeps.expandUntagged false in
 @[blueprint "policy.once" (autoDeps := true)]
 def onceTarget : Nat := first
 
@@ -47,7 +47,7 @@ def onceTarget : Nat := first
 def afterOnceTarget : Nat := first
 
 section
-set_option verso.blueprint.expandHelpers false
+set_option verso.blueprint.autoDeps.expandUntagged false
 @[blueprint "policy.none" (autoDeps := true)]
 def noneTarget : Nat := first
 @[blueprint "policy.direct" (autoDeps := true)]
@@ -56,7 +56,7 @@ def directTarget : Nat := Provider.defSource
 theorem directStatementTarget : propFirst := True.intro
 
 namespace Nested
-set_option verso.blueprint.expandHelpers true
+set_option verso.blueprint.autoDeps.expandUntagged true
 @[blueprint "policy.all" (autoDeps := true)]
 def allTarget : Nat := first
 end Nested
@@ -88,7 +88,7 @@ def defaultInline : Nat := first
 ```
 :::::::
 
-set_option verso.blueprint.expandHelpers false in
+set_option verso.blueprint.autoDeps.expandUntagged false in
 #docs (Genre.Manual) noneDoc "No helper expansion" :=
 :::::::
 :::definition "policy.none.external" (lean := "externalTarget") (autoDeps := true)
@@ -103,8 +103,8 @@ def noneInline : Nat := first
 :::::::
 
 section
-set_option verso.blueprint.expandHelpers false
-set_option verso.blueprint.expandHelpers true in
+set_option verso.blueprint.autoDeps.expandUntagged false
+set_option verso.blueprint.autoDeps.expandUntagged true in
 #docs (Genre.Manual) allDoc "All helpers" :=
 :::::::
 :::definition "policy.all.external" (lean := "externalTarget") (autoDeps := true)
@@ -119,12 +119,12 @@ def allInline : Nat := first
 :::::::
 
 #eval show CoreM Unit from do
-  if DependencyAnalysis.verso.blueprint.expandHelpers.get (← getOptions) then
+  if DependencyAnalysis.verso.blueprint.autoDeps.expandUntagged.get (← getOptions) then
     throwError "Document-local configuration leaked into outer section"
 end
 
 #eval show CoreM Unit from do
-  unless DependencyAnalysis.verso.blueprint.expandHelpers.get (← getOptions) do
+  unless DependencyAnalysis.verso.blueprint.autoDeps.expandUntagged.get (← getOptions) do
     throwError "Section-local configuration leaked"
   let positive := #["policy.default", "policy.direct", "policy.after_once", "policy.all",
     "policy.default.external", "policy.default.inline", "policy.all.external", "policy.all.inline"]

@@ -268,7 +268,7 @@ The same flow can be read as four contracts:
    Automatic dependencies share one helper-aware declaration walker across
    attributes, external-Lean statements, and inline Lean code. It follows
    unassociated helpers to the first associated declarations on each path by
-   default; `verso.blueprint.expandHelpers` selects helper-aware or direct-only inference.
+   default; `verso.blueprint.autoDeps.expandUntagged` selects helper-aware or direct-only inference.
    The option uses ordinary Lean scoping, with no custom configuration representation;
    authoring adapters retain responsibility for axis and metadata precedence.
    See the [LeanArchitect comparison and adaptation decisions](HELPER_DEPENDENCY_INFERENCE.md).
