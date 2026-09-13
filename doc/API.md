@@ -342,8 +342,12 @@ Relation entries now carry `dependencies`, an array of records binding `facet`,
 views filter these records before deriving badge codes; statement metadata cannot
 leak into a proof panel. Graph-edge `axes` are unchanged. `PanelEntry` uses the same
 records and derives `badgeCodes`; relation-header helpers now return pure HTML.
-The shared `HeaderExtras.forFacet` policy applies to live and manifest-backed
-shells, including empty dependency chips and the missing Lean association signal.
+The shared `HeaderExtras.forFacet isProof uses statementExtras` policy selects
+before building: the statement-only builder is lazy and never runs for proofs.
+Attach source/custom extras to its result explicitly. Live and manifest-backed
+shells retain empty dependency chips and the missing Lean association signal.
+`Relation.Dependency.ofUseRef` and `Relation.addUse` take `PreviewCache.Facet`
+directly; callers should pass `.statement` or `.proof` instead of booleans.
 Rebuild downstream Lean consumers and regenerate manifests, traversal checkpoints,
 and browser API artifacts for this change (internal schema marker 9).
 Regenerate old artifacts after changes to the generated-data contract. The
@@ -411,7 +415,10 @@ self-contained intermediate HTML node. Fragments can be composed independently:
 there is no mutable session, indexed side table, or retained rendering closure.
 Keep them structured until `PreviewResources.finish available`, which returns
 `Except String Html` and diagnoses malformed choices or branches that disagree
-about body presence. Serialize only the successful result. These temporary nodes
+about body presence. It recursively validates the selected path, not discarded
+alternatives. Both unresolved and resolved fragments have type `Html`; the
+production boundary and tests enforce finalization before serialization, rather
+than a distinct resolved-HTML type. Serialize only the successful result. These temporary nodes
 are implementation data and never belong in emitted HTML or saved state.
 
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
@@ -438,16 +445,23 @@ this boundary; the upstream emitter seam is tracked in UPC-0002.
 `Informal.PreviewManifest.buildPreviewDataFiles` then assembles structured resource
 candidates and finalizes their nested views and manifest references against one
 resource index, producing the emission-ready semantic manifest/rendered-fragment-cache
-`Files` pair. `PreviewDataModel.finish` applies the same manifest-reference policy
-to callers that already own serialized bodies. The final type has a
-private constructor, so unresolved candidate references cannot enter the normal
-emission path. Generated ESM APIs load those two files; they do not rerun
+`Files` pair. This is the sole construction path for emission-ready resources.
+The redundant `PreviewDataModel` and its serialized-artifact promotion API have
+been removed. Tools that already own serialized data use `PersistedFiles` and
+`vbp check`; auditing does not promote that data to `Files`.
+`File.finalizePreviewReferences` is a pure semantic projection for testing and
+reference filtering, not an artifact validator or an admission function.
+The final type has a private constructor, so unresolved candidates cannot enter
+the normal emission path. Generated ESM APIs load those two files; they do not rerun
 traversal and should not recover semantics by scraping cached HTML.
 
 Persisted or externally supplied manifest/cache pairs enter maintainer audits
 as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each
 file cannot by itself establish their cross-artifact reference invariants;
 `vbp check` reports violations without repairing or promoting the decoded pair.
+A cache key with an empty or whitespace-only body is unavailable and receives an
+audit diagnostic even if nothing references it. Blank detection agrees with the
+browser's `String.trim()` contract, including Unicode whitespace.
 
 Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
@@ -735,7 +749,7 @@ or DOT variant that disagrees with the authoritative nodes.
 Topology finalization and preview-artifact resolution are separate boundaries.
 `GraphModel.finish` fixes topology and DOT exactly once. Later, after the
 manifest and rendered-fragment cache are both known,
-`PreviewManifest.PreviewDataModel.finish` uses
+`PreviewManifest.File.finalizePreviewReferences` uses
 `GraphData.filterPreviewReferences` to remove unavailable preview keys from nodes
 and their variant lookup entries together. That synchronized post-pass cannot
 change nodes' dependencies or parents, derived edges or children, or DOT, and

@@ -87,8 +87,6 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
-        let codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
-        let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
         let codeHint? :=
           match data.isProof with
           | true => none
@@ -98,14 +96,13 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
           Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s id decl.canonical
-        let cdata := {
-          codeHref
-          source := codeHint?
-          inlineBlocks
-        }
         let headingParts? : Option CodeSummary.RenderParts :=
           match data.isProof with
-          | false => some <| CodeSummary.renderParts data cdata getDeclHref
+          | false => some <| CodeSummary.renderParts data {
+              codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
+              source := codeHint?
+              inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
+            } getDeclHref
           | true => none
         let externalPanel : Output.Html ←
           match data.isProof with
@@ -132,18 +129,13 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry := RelatedPanel.renderGroupExtra s data renderPreview
         let usesEntry := RelatedPanel.renderUsesExtra s data renderPreview
-        let usedByEntry := RelatedPanel.renderUsedByExtra s data renderPreview
-        let markupEntry? :=
-          renderExternalMarkupHeaderExtra? markup
-        let headerExtras : HeaderExtras := HeaderExtras.forFacet {
-          group? := groupEntry.map HeaderExtra.group
-          uses? := some (HeaderExtra.uses usesEntry)
-          usedBy? := some (HeaderExtra.usedBy usedByEntry)
-          markup? := markupEntry?
+        let headerExtras := HeaderExtras.forFacet data.isProof (HeaderExtra.uses usesEntry) fun _ => {
+          group? := (RelatedPanel.renderGroupExtra s data renderPreview).map HeaderExtra.group
+          usedBy? := some (HeaderExtra.usedBy (RelatedPanel.renderUsedByExtra s data renderPreview))
+          markup? := renderExternalMarkupHeaderExtra? markup
           code? := some (HeaderExtra.code codeEntry)
-        } data.isProof
+        }
         return renderInformalBlockModel {
           data
           context := InformalBlockRenderContext.forBlock data

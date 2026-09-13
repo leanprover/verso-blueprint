@@ -226,35 +226,35 @@ private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry 
 private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 
-private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (isProof : Bool) :
+private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     UsedByEntry :=
   {
     existing with
-      dependencies := Relation.addUse existing.dependencies useRef isProof
+      dependencies := Relation.addUse existing.dependencies useRef facet
   }
 
 private def addUsedByEntry
-    (acc : Array UsedByEntry) (source : BlockData) (useRef : Data.UseRef) (isProof : Bool)
+    (acc : Array UsedByEntry) (source : BlockData) (useRef : Data.UseRef) (facet : PreviewCache.Facet)
     (target : Data.Label) : Array UsedByEntry :=
   if useRef.label != target then
     acc
   else if acc.any (·.source.label == source.label) then
     acc.map fun entry =>
       if entry.source.label == source.label then
-        mergeUsedByEntry entry useRef isProof
+        mergeUsedByEntry entry useRef facet
       else
         entry
   else
-    acc.push <| mergeUsedByEntry { source } useRef isProof
+    acc.push <| mergeUsedByEntry { source } useRef facet
 
 private def addUsedByCacheEntry
     (cache : Data.LabelMap (Array UsedByEntry)) (source : BlockData)
-    (useRef : Data.UseRef) (isProof : Bool) : Data.LabelMap (Array UsedByEntry) :=
+    (useRef : Data.UseRef) (facet : PreviewCache.Facet) : Data.LabelMap (Array UsedByEntry) :=
   if source.label == useRef.label then
     cache
   else
     let entries := cache.find? useRef.label |>.getD #[]
-    cache.insert useRef.label (addUsedByEntry entries source useRef isProof useRef.label)
+    cache.insert useRef.label (addUsedByEntry entries source useRef facet useRef.label)
 
 private def buildUsedByCache (blocks : Array BlockData) :
     Data.LabelMap (Array UsedByEntry) :=
@@ -266,9 +266,9 @@ private def buildUsedByCache (blocks : Array BlockData) :
   let unsorted := blocks.foldl
       (init := seeded) fun cache source =>
     let cache := source.statementUses.foldl (init := cache) fun cache useRef =>
-      addUsedByCacheEntry cache source useRef false
+      addUsedByCacheEntry cache source useRef .statement
     source.proofUses.foldl (init := cache) fun cache useRef =>
-      addUsedByCacheEntry cache source useRef true
+      addUsedByCacheEntry cache source useRef .proof
   unsorted.foldl
       (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache label entries =>
     cache.insert label (sortUsedByEntries entries)
@@ -312,31 +312,31 @@ private def collectUsedByEntries
         else
           let acc :=
             source.statementUses.foldl (init := acc) fun acc useRef =>
-              addUsedByEntry acc source useRef false target
+              addUsedByEntry acc source useRef .statement target
           source.proofUses.foldl (init := acc) fun acc useRef =>
-            addUsedByEntry acc source useRef true target
+            addUsedByEntry acc source useRef .proof target
 
-private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
+private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     UsesEntry :=
   {
     existing with
-      dependencies := Relation.addUse existing.dependencies useRef isProof
+      dependencies := Relation.addUse existing.dependencies useRef facet
   }
 
 private def addUsesEntry
-    (state : TraverseState) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    (state : TraverseState) (acc : Array UsesEntry) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     Array UsesEntry :=
   if acc.any (·.label == useRef.label) then
     acc.map fun entry =>
       if entry.label == useRef.label then
-        mergeUsesEntry entry useRef isProof
+        mergeUsesEntry entry useRef facet
       else
         entry
   else
     acc.push <| mergeUsesEntry {
       label := useRef.label
       target? := Informal.TraversalIndex.Nodes.capturedData? state useRef.label
-    } useRef isProof
+    } useRef facet
 
 private def usesEntryLess (a b : UsesEntry) : Bool :=
   match a.target?, b.target? with
@@ -350,8 +350,8 @@ private def collectUsesEntries
   let source := (Informal.TraversalIndex.Nodes.capturedData? state data.label).getD data
   let statement := if facet? == some .proof then #[] else source.statementUses
   let proof := if facet? == some .statement then #[] else source.proofUses
-  let entries := statement.foldl (fun acc useRef => addUsesEntry state acc useRef false) #[]
-  proof.foldl (fun acc useRef => addUsesEntry state acc useRef true) entries
+  let entries := statement.foldl (fun acc useRef => addUsesEntry state acc useRef .statement) #[]
+  proof.foldl (fun acc useRef => addUsesEntry state acc useRef .proof) entries
     |>.qsort usesEntryLess
 
 private def collectGroupEntries

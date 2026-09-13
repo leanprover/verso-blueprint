@@ -32,6 +32,29 @@ def assert_source_location_error(result: dict, needle: str):
 
 
 class TestPreviewRuntimeRegressions:
+    def test_html_cache_rejects_blank_bodies(self, server: str, page: Page):
+        page.goto(server)
+        result = page.evaluate(r"""async () => {
+          const {decodeBlueprintHtmlCache} = await import(
+            '/-verso-data/Commands/preview-runtime-data.mjs');
+          const whitespace = [9, 10, 11, 12, 13, 32, 160, 5760,
+            8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202,
+            8232, 8233, 8239, 8287, 12288, 65279];
+          const decode = html => {
+            try {
+              decodeBlueprintHtmlCache({entries: [{key: 'target', html}]});
+              return 'accepted';
+            } catch (error) { return error.message; }
+          };
+          return {
+            blank: ['', ' \t\r\n', ...whitespace.map(c => String.fromCodePoint(c))].map(decode),
+            nonblank: ['<span></span>', ' body ', String.fromCodePoint(0x200B)].map(decode)
+          };
+        }""")
+        assert all(message == "Blueprint HTML cache entry 0 has empty html"
+                   for message in result["blank"])
+        assert result["nonblank"] == ["accepted"] * 3
+
     def test_prepared_resources_preserve_relations_without_preview_bodies(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         cache_requests = []

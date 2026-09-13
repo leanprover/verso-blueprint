@@ -41,6 +41,12 @@ open Verso.VersoBlueprintTests.Blueprint.Support
   let presence := PreviewResources.deferred keyA (fun _ => .text true "body") (fun _ => .empty)
   unless !PreviewResources.htmlIsBlank malformed && !PreviewResources.htmlIsBlank presence do
     throw <| IO.userError "Blank-body filtering concealed an invalid choice"
+  let discarded := PreviewResources.deferred keyA (fun _ => .text true "selected") (fun _ => malformed)
+  let .ok selected := PreviewResources.finish (fun _ => true) discarded
+    | throw <| IO.userError "Finalization inspected a discarded alternative"
+  unless selected.asString == "selected" &&
+      !(PreviewResources.finish (fun _ => false) discarded).isOk do
+    throw <| IO.userError "Finalization did not validate the selected alternative"
   for (fragment, diagnostic) in #[(malformed, "Malformed"), (emptyKey, "Empty"),
       (presence, "changes body presence")] do
     match PreviewResources.finish (fun _ => true) fragment with
@@ -58,7 +64,13 @@ open Verso.VersoBlueprintTests.Blueprint.Support
   let render := fun entry => PreviewManifest.BlockRender.renderWithRenderedContent {} entry
     { body := .text true "body" } |>.asString
   let statementHtml := render statement
-  let proofHtml := render { statement with facet := .proof }
+  let proofConfig : PreviewManifest.BlockRender.RenderConfig := {
+    relationPanels := { wrapClass := fun kind =>
+      if kind == .uses then "proof-uses-only"
+      else panic! "Proof rendering constructed a statement-only relation panel" }
+  }
+  let proofHtml := PreviewManifest.BlockRender.renderWithRenderedContent proofConfig
+    { statement with facet := .proof } { body := .text true "body" } |>.asString
   unless hasSubstr statementHtml "No reverse dependencies" &&
       hasSubstr statementHtml "No associated Lean declarations" &&
       !(hasSubstr proofHtml "No reverse dependencies") &&

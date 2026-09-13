@@ -532,19 +532,21 @@ edges, group children, or DOT. It accepts only a retention predicate, so this
 post-pass cannot rewrite preview identities. Thus topology still crosses one
 finalization boundary even though manifest emission later prunes preview
 candidates that did not produce both a manifest entry and a rendered cache
-body. Resource construction and `PreviewManifest.PreviewDataModel.finish` share
-that manifest-reference post-pass and return `PreviewManifest.Files`, whose
-private constructor makes the phase transition concrete. Resource construction
-also resolves retained HTML views before serialization; `PreviewDataModel.finish`
-accepts already-serialized bodies. Finalized files cannot be finalized again.
+body. Resource construction runs the pure `File.finalizePreviewReferences`
+projection and returns `PreviewManifest.Files`, whose private constructor makes
+the phase transition concrete. It also resolves retained HTML choices before
+serialization. There is no second admission path accepting arbitrary serialized
+bodies; imported artifacts stay `PersistedFiles` and are audited as such.
+A key whose cache body is blank under the browser's whitespace rules does not
+count as available. The audit diagnoses blank bodies, including unreferenced ones.
 
 For `m` manifest preview/group records, `c` rendered-cache entries, `r`
 non-graph preview references, `n` graph nodes, and `v` graph-variant
-records/mappings, `finish` runs in expected `O(m + c + r + n + v)` time under
-hash-set operations. Its auxiliary indexes retain only the `O(m + c)` preview
-keys needed for membership checks, rather than duplicate full entry indexes;
-the finalized arrays it returns are linear in the candidate output size. Graph
-topology and DOT are not rebuilt.
+records/mappings, reference indexing and filtering take expected
+`O(m + c + r + n + v)` time under hash-set operations, plus the inspected body
+text when indexing serialized artifacts. Auxiliary indexes retain `O(m + c)`
+keys, and finalized arrays are linear in candidate output size. Graph topology
+and DOT are not rebuilt.
 
 Generated-data readers preserve the same boundary without charging every
 semantic query for projections it cannot consume. The general manifest reader
@@ -969,9 +971,11 @@ states used in tests. Cached bodies remain structured HTML until availability is
 known. `PreviewResources.deferred` stores a preview key and its two HTML branches
 in a self-contained choice node. Independent producers can compose fragments
 without a mutable session or a side table. The pure finalizer selects branches
-against the completed resource index and diagnoses malformed choices or branches
-that change body presence. Choices and hover payloads resolve before serialization;
-no temporary choice enters traversal state or generated files. This does not repeat
+against the completed resource index and diagnoses malformed choices along the
+selected path or branches that change body presence. Discarded branches are not recursively
+validated. Both phases use `Html`, so finalization before serialization is enforced
+by the production boundary and tests, not a second HTML type. Choices and hover
+payloads resolve before serialization; no temporary choice enters traversal state or generated files. This does not repeat
 semantic lookup or body rendering, and leaves raw external HTML opaque. Availability changes
 preview affordances, not whether an authored body exists. Plain/direct rendering
 and custom renderers outside this hook retain runtime availability diagnostics.
