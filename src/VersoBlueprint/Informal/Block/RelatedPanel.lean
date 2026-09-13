@@ -567,7 +567,7 @@ private def htmlScriptJsonString (json : Json) : String :=
 is unavailable. Only the optional preview key depends on resource availability. -/
 def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
     (previewAvailable : PreviewKey → Bool := fun _ => true) : Output.Html :=
-  open Verso.Output.Html in
+  open Verso.Output.Html in Id.run do
   let entries := entries.map fun entry =>
     { entry with previewKey := entry.previewKey.filter previewAvailable }
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
@@ -589,6 +589,11 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
       (previewHeaderLabel? := some s!"{entry.label}")
       (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
+  if entries.isEmpty then
+    return renderChip cfg.emptyChipClass (cfg.chipTitle 0) 0
+  if let #[entry] := entries then
+    if cfg.singleMode == .inlinePreview && entry.previewKey.isSome then
+      return renderInlinePreview entry
   let selectedEntry? := selectedPanelEntry? cfg entries
   let previewTitle :=
     match selectedEntry? with
@@ -634,15 +639,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
         </button>
         {{panel}}
       }}
-  if entries.isEmpty then
-    renderChip cfg.emptyChipClass (cfg.chipTitle 0) 0
-  else if h : entries.size = 1 then
-    let entry := entries[0]'(by simp [h])
-    match cfg.singleMode with
-    | .inlinePreview => if entry.previewKey.isSome then renderInlinePreview entry else panelShell
-    | .panel => panelShell
-  else
-    panelShell
+  return panelShell
 
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}

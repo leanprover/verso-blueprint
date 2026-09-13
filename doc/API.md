@@ -396,6 +396,10 @@ Semantic lookup and document-body rendering happen before that hook. Structured
 HTML and its hover payloads are finalized before cache serialization, without
 rendering bodies again or parsing opaque HTML. External raw HTML remains opaque;
 custom renderers must use the hook to participate in resource selection.
+A deferred view must preserve whether body content exists as availability changes.
+Keep its returned HTML structured, complete every render in the session before
+calling `Deferred.finish`, and resolve fragments with that same session. The
+session and its markers are temporary rendering state, not portable data.
 
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.
