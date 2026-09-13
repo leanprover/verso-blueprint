@@ -52,7 +52,7 @@ structure PanelEntry where
   previewTitle : String
   label : Data.Label
   href : Option String := none
-  badgeCodes : Array String := #[]
+  dependencies : Array Relation.Dependency := #[]
   active : Bool := false
 
 /-- Whether a one-entry related panel should stay as an inline preview chip or render the full panel. -/
@@ -197,18 +197,12 @@ def groupPanelConfig (groupLabel : Data.Label) (groupTitle : String) (declared :
 
 private structure UsedByEntry where
   source : BlockData
-  inStatement : Bool := false
-  inProof : Bool := false
-  origins : Array Data.UseOrigin := #[]
-  intents : Array Data.UseIntent := #[]
+  dependencies : Array Relation.Dependency := #[]
 
 private def UsedByEntry.toCacheEntry (entry : UsedByEntry) :
     Informal.TraversalIndex.RelatedPanelUsedByCache.Entry := {
   sourceLabel := entry.source.label
-  inStatement := entry.inStatement
-  inProof := entry.inProof
-  origins := entry.origins
-  intents := entry.intents
+  dependencies := entry.dependencies
 }
 
 private def UsedByEntry.ofCacheEntry?
@@ -217,19 +211,13 @@ private def UsedByEntry.ofCacheEntry?
   let source ← Informal.TraversalIndex.Nodes.capturedData? state entry.sourceLabel
   return {
     source
-    inStatement := entry.inStatement
-    inProof := entry.inProof
-    origins := entry.origins
-    intents := entry.intents
+    dependencies := entry.dependencies
   }
 
 private structure UsesEntry where
   label : Data.Label
   target? : Option BlockData := none
-  inStatement : Bool := false
-  inProof : Bool := false
-  origins : Array Data.UseOrigin := #[]
-  intents : Array Data.UseIntent := #[]
+  dependencies : Array Relation.Dependency := #[]
 
 private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry :=
   entries.qsort fun a b =>
@@ -242,10 +230,7 @@ private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (is
     UsedByEntry :=
   {
     existing with
-      inStatement := existing.inStatement || !isProof
-      inProof := existing.inProof || isProof
-      origins := pushUnique existing.origins useRef.origin
-      intents := pushUnique existing.intents useRef.intent
+      dependencies := Relation.addUse existing.dependencies useRef isProof
   }
 
 private def addUsedByEntry
@@ -335,10 +320,7 @@ private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProo
     UsesEntry :=
   {
     existing with
-      inStatement := existing.inStatement || !isProof
-      inProof := existing.inProof || isProof
-      origins := pushUnique existing.origins useRef.origin
-      intents := pushUnique existing.intents useRef.intent
+      dependencies := Relation.addUse existing.dependencies useRef isProof
   }
 
 private def addUsesEntry
@@ -364,14 +346,13 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
   | none, none => a.label.toString < b.label.toString
 
 private def collectUsesEntries
-    (state : TraverseState) (data : BlockData) : Array UsesEntry :=
+    (state : TraverseState) (data : BlockData) (facet? : Option PreviewCache.Facet) : Array UsesEntry :=
   let source := (Informal.TraversalIndex.Nodes.capturedData? state data.label).getD data
-  let isProof := data.isProof
-  let sourceUses :=
-    if isProof then source.proofUses else source.statementUses
-  sourceUses.foldl (init := #[]) (fun acc useRef =>
-    addUsesEntry state acc useRef isProof)
-  |>.qsort usesEntryLess
+  let statement := if facet? == some .proof then #[] else source.statementUses
+  let proof := if facet? == some .statement then #[] else source.proofUses
+  let entries := statement.foldl (fun acc useRef => addUsesEntry state acc useRef false) #[]
+  proof.foldl (fun acc useRef => addUsesEntry state acc useRef true) entries
+    |>.qsort usesEntryLess
 
 private def collectGroupEntries
     (state : TraverseState) (target : BlockData) (group : GroupRenderInfo) :
@@ -482,36 +463,37 @@ private def axisBadgeCodes (inStatement inProof : Bool) : Array String :=
     if inProof then #[proofAxisBadgeCode] else #[]
   statementBadge ++ proofBadge
 
-private def usedByAxisBadgeCodes (entry : UsedByEntry) : Array String :=
-  axisBadgeCodes entry.inStatement entry.inProof
+/-- Derive presentation codes from the same facet-bound facts in both adapters. -/
+def dependencyBadgeCodes (dependencies : Array Relation.Dependency) : Array String :=
+  let axes := axisBadgeCodes (dependencies.any (·.facet == .statement))
+    (dependencies.any (·.facet == .proof))
+  let origins := dependencies.filterMap (fun dep => useOriginBadgeCode? dep.origin)
+  let intents := dependencies.filterMap (fun dep => useIntentBadgeCode? dep.intent)
+  (axes ++ origins ++ intents).foldl (fun acc code => pushUnique acc code) #[]
 
-private def useAxisBadgeCodes (entry : UsesEntry) : Array String :=
-  axisBadgeCodes entry.inStatement entry.inProof
-
-private def useMetadataBadgeCodes
-    (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Array String :=
-  origins.filterMap useOriginBadgeCode? ++ intents.filterMap useIntentBadgeCode?
+def PanelEntry.badgeCodes (entry : PanelEntry) : Array String :=
+  dependencyBadgeCodes entry.dependencies
 
 private def mkEntry
     (label : Data.Label) (reference : RenderingResolution.Reference)
-    (previewId : String) (badgeCodes : Array String) : PanelEntry := {
+    (previewId : String) (dependencies : Array Relation.Dependency) : PanelEntry := {
   previewId
   previewKey := reference.previewKey
   previewTitle := reference.title
   label
   href := reference.href
-  badgeCodes
+  dependencies
 }
 
 private def mkBlockEntry
     (state : TraverseState) (source : BlockData) (previewId : String)
-    (badgeCodes : Array String := #[]) : PanelEntry :=
-  mkEntry source.label (RenderingResolution.referenceOfData state source) previewId badgeCodes
+    (dependencies : Array Relation.Dependency := #[]) : PanelEntry :=
+  mkEntry source.label (RenderingResolution.referenceOfData state source) previewId dependencies
 
 private def mkLabelEntry
     (state : TraverseState) (label : Data.Label) (previewId : String)
-    (badgeCodes : Array String := #[]) : PanelEntry :=
-  mkEntry label (RenderingResolution.referenceOrLabel state label) previewId badgeCodes
+    (dependencies : Array Relation.Dependency := #[]) : PanelEntry :=
+  mkEntry label (RenderingResolution.referenceOrLabel state label) previewId dependencies
 
 private def loadingBody (detail : String) : Output.Html :=
   open Verso.Output.Html in
@@ -539,37 +521,35 @@ private def panelEntryActive (selectedEntry? : Option PanelEntry) (entry : Panel
   | some selected => samePanelEntry selected entry
   | none => entry.active
 
-/--
-Compact relation-row payload consumed by `relation-panel.mjs`.
+private def scriptJson (json : Json) : Output.Html :=
+  .text false (json.compress.replace "<" "\\u003c")
 
-Array order is an internal renderer/runtime contract:
-`[title, previewKey?, label, href?, badgeCodes, active]`.
--/
-private def panelEntryDataJson (selectedEntry? : Option PanelEntry) (entry : PanelEntry) : Json :=
-  Json.arr #[
-    Json.str entry.previewTitle,
-    optionStringJson <| entry.previewKey.map toString,
-    Json.str s!"{entry.label}",
-    optionStringJson entry.href,
-    Json.arr <| entry.badgeCodes.map Json.str,
-    Json.bool <| panelEntryActive selectedEntry? entry
+/-- Assemble JSON leaves structurally so preview keys can be selected before
+serialization. No HTML or JSON string is parsed during resource finalization. -/
+private def jsonArrayHtml (values : Array Output.Html) : Output.Html :=
+  .seq (#[.text false "["] ++
+    (values.toList.intersperse (.text false ",")).toArray ++ #[.text false "]"])
+
+/-- Runtime row: [title, previewKey?, label, href?, badgeCodes, active]. -/
+private def panelEntryDataHtml (renderPreview : PreviewResources.Render)
+    (selectedEntry? : Option PanelEntry) (entry : PanelEntry) : Output.Html :=
+  jsonArrayHtml #[
+    scriptJson (.str entry.previewTitle),
+    match entry.previewKey with
+    | none => scriptJson Json.null
+    | some key => renderPreview key (fun _ => scriptJson (.str key.value))
+        (fun _ => scriptJson Json.null),
+    scriptJson (.str s!"{entry.label}"),
+    scriptJson (optionStringJson entry.href),
+    scriptJson (toJson entry.badgeCodes),
+    scriptJson (toJson (panelEntryActive selectedEntry? entry))
   ]
-
-private def panelEntriesDataJson (selectedEntry? : Option PanelEntry) (entries : Array PanelEntry) :
-    Json :=
-  Json.arr <| entries.map (panelEntryDataJson selectedEntry?)
-
-private def htmlScriptJsonString (json : Json) : String :=
-  json.compress
-  |>.replace "<" "\\u003c"
 
 /-- Keep relation rows, labels, links and badges even when their preview resource
 is unavailable. Only the optional preview key depends on resource availability. -/
 def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
-    (previewAvailable : PreviewKey → Bool := fun _ => true) : Output.Html :=
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) : Output.Html :=
   open Verso.Output.Html in Id.run do
-  let entries := entries.map fun entry =>
-    { entry with previewKey := entry.previewKey.filter previewAvailable }
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
     {{<span class={{chipClass}} title={{chipTitle}}>{{.text true (cfg.chipText n)}}</span>}}
   let renderInlinePreview (entry : PanelEntry) : Output.Html :=
@@ -591,105 +571,95 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
       (previewFooterHtml? := previewFooterHtml?)
   if entries.isEmpty then
     return renderChip cfg.emptyChipClass (cfg.chipTitle 0) 0
-  if let #[entry] := entries then
-    if cfg.singleMode == .inlinePreview && entry.previewKey.isSome then
-      return renderInlinePreview entry
-  let selectedEntry? := selectedPanelEntry? cfg entries
-  let previewTitle :=
-    match selectedEntry? with
-    | some entry => entry.previewTitle
-    | none => cfg.previewDefaultTitle
-  let previewBody : Output.Html := loadingBody cfg.previewEmptyText
-  let rowData := panelEntriesDataJson selectedEntry? entries |> htmlScriptJsonString
-  let rowList : Output.Html :=
-    .tag "ul" #[("class", "bp_relation_list")] <|
-      {{
-        <script type="application/json" class="bp-relation-entries">
-          {{.text false rowData}}
-        </script>
-      }}
-  let panel : Output.Html :=
-    .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
-      {{
-        <div class="bp_relation_panel_header">
-          <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
-          <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
-        </div>
-        <div class="bp_relation_panel_body">
-          {{rowList}}
-          <div class="bp_relation_preview_surface">
-            <div class="bp_relation_preview_header">
-              <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_heading bp_preview_header_heading">
-                <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
-                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
+  let renderPanelShell (_ : Unit) : Output.Html := Id.run do
+    let selectedEntry? := selectedPanelEntry? cfg entries
+    let previewTitle :=
+      match selectedEntry? with
+      | some entry => entry.previewTitle
+      | none => cfg.previewDefaultTitle
+    let previewBody : Output.Html := loadingBody cfg.previewEmptyText
+    let rowData := jsonArrayHtml (entries.map (panelEntryDataHtml renderPreview selectedEntry?))
+    let rowList : Output.Html :=
+      .tag "ul" #[("class", "bp_relation_list")] <|
+        {{
+          <script type="application/json" class="bp-relation-entries">
+            {{rowData}}
+          </script>
+        }}
+    let panel : Output.Html :=
+      .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
+        {{
+          <div class="bp_relation_panel_header">
+            <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
+            <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
+          </div>
+          <div class="bp_relation_panel_body">
+            {{rowList}}
+            <div class="bp_relation_preview_surface">
+              <div class="bp_relation_preview_header">
+                <div class="bp_relation_preview_label">"Preview"</div>
+                <div class="bp_relation_preview_heading bp_preview_header_heading">
+                  <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+                  <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
+                </div>
+              </div>
+              <div class="bp_relation_preview_body">
+                {{previewBody}}
               </div>
             </div>
-            <div class="bp_relation_preview_body">
-              {{previewBody}}
-            </div>
           </div>
-        </div>
-      }}
-  let panelShell : Output.Html :=
-    .tag "div" #[("class", cfg.wrapClass)] <|
-      {{
-        <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
-          {{.text true (cfg.chipText entries.size)}}
-        </button>
-        {{panel}}
-      }}
-  return panelShell
+        }}
+    let panelShell : Output.Html :=
+      .tag "div" #[("class", cfg.wrapClass)] <|
+        {{
+          <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
+            {{.text true (cfg.chipText entries.size)}}
+          </button>
+          {{panel}}
+        }}
+    return panelShell
+  if let #[entry] := entries then
+    if cfg.singleMode == .inlinePreview then
+      if let some key := entry.previewKey then
+        return renderPreview key (fun _ => renderInlinePreview entry) renderPanelShell
+  return renderPanelShell ()
+
+
+/-- Shared reverse-relation projection, independent of HTML and resource availability. -/
+def usedByEntries (state : TraverseState) (data : BlockData) : Array PanelEntry :=
+  (collectUsedByEntries state data.label).map fun entry =>
+    mkBlockEntry state entry.source (usedByPreviewId data.label entry.source.label) entry.dependencies
+
+/-- Shared forward-relation projection. `none` retains both facets for export;
+renderers select a facet before deriving badges. -/
+def usesEntries (state : TraverseState) (data : BlockData)
+    (facet? : Option PreviewCache.Facet) : Array PanelEntry :=
+  (collectUsesEntries state data facet?).map fun entry =>
+    match entry.target? with
+    | some target => mkBlockEntry state target (usesPreviewId data.label entry.label) entry.dependencies
+    | none => mkLabelEntry state entry.label (usesPreviewId data.label entry.label) entry.dependencies
 
 /-- Render the reverse-dependency header extra for a statement block. -/
-def renderUsedByExtra {m}
-    [Monad m] [MonadLiftT IO m]
-    (state : TraverseState)
-    (data : BlockData)
-    (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  match data.isProof with
-  | true => pure .empty
-  | false =>
-    let entries := collectUsedByEntries state data.label
-    let panelEntries := entries.map fun entry =>
-      let badgeCodes := usedByAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
-      mkBlockEntry state entry.source
-        (usedByPreviewId data.label entry.source.label)
-        (badgeCodes := badgeCodes)
-    return ← renderPreview (fun available => renderPanel (usedByPanelConfig (some data.label)) panelEntries available)
+def renderUsedByExtra (state : TraverseState) (data : BlockData)
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) : Output.Html :=
+  if data.isProof then .empty else
+    renderPanel (usedByPanelConfig (some data.label)) (usedByEntries state data) renderPreview
 
-/-- Render the forward-dependency header extra for a statement or proof block. -/
-def renderUsesExtra {m}
-    [Monad m] [MonadLiftT IO m]
-    (state : TraverseState)
-    (data : BlockData)
-    (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  let entries := collectUsesEntries state data
-  let panelEntries := entries.map fun entry =>
-    let badgeCodes := useAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
-    match entry.target? with
-    | some target =>
-      mkBlockEntry state target
-        (usesPreviewId data.label entry.label)
-        (badgeCodes := badgeCodes)
-    | none =>
-      mkLabelEntry state entry.label
-        (usesPreviewId data.label entry.label)
-        (badgeCodes := badgeCodes)
-  return ← renderPreview (fun available => renderPanel (usesPanelConfigForBlock data) panelEntries available)
+/-- Render the selected facet's dependency panel using the shared projection. -/
+def renderUsesExtra (state : TraverseState) (data : BlockData)
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) : Output.Html :=
+  renderPanel (usesPanelConfigForBlock data)
+    (usesEntries state data (some (if data.isProof then .proof else .statement))) renderPreview
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
-def renderGroupExtra {m}
-    [Monad m] [MonadLiftT IO m]
+def renderGroupExtra
     (state : TraverseState)
     (data : BlockData)
     (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
+    Option Output.Html := Id.run do
   match data.isProof, groupRenderInfo? state data with
-  | true, _ => pure none
-  | false, none => pure none
+  | true, _ => return none
+  | false, none => return none
   | false, some group =>
     let siblings := collectGroupEntries state data group
     if group.declared && siblings.isEmpty then
@@ -698,7 +668,7 @@ def renderGroupExtra {m}
       mkBlockEntry state source
         (groupPreviewId data.label source.label)
     let cfg := groupPanelConfig group.label group.title group.declared
-    return some (← renderPreview (fun available => renderPanel cfg panelEntries available))
+    return some (renderPanel cfg panelEntries renderPreview)
 
 end RelatedPanel
 end Informal

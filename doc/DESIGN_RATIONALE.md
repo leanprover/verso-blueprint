@@ -966,12 +966,13 @@ delayed checkpoints do not prepare resources. Hover-table merging remains after
 page emission. Direct preview-data callers retain the narrower
 `PreparedPreviewState` API, which only prepares indexes and supports synthetic
 states used in tests. Cached bodies remain structured HTML until availability is
-known. An output-local `PreviewResources.Deferred` session retains pure reference
-and relation-panel presentation decisions in a side table; temporary HTML markers
-carry their positions and candidate content for blank-body detection. Finalization
-resolves those decisions and hover payloads before serialization. This session
-never enters traversal state or generated files. It does not repeat semantic lookup
-or body rendering, and it leaves raw external HTML opaque. Availability changes
+known. `PreviewResources.deferred` stores a preview key and its two HTML branches
+in a self-contained choice node. Independent producers can compose fragments
+without a mutable session or a side table. The pure finalizer selects branches
+against the completed resource index and diagnoses malformed choices or branches
+that change body presence. Choices and hover payloads resolve before serialization;
+no temporary choice enters traversal state or generated files. This does not repeat
+semantic lookup or body rendering, and leaves raw external HTML opaque. Availability changes
 preview affordances, not whether an authored body exists. Plain/direct rendering
 and custom renderers outside this hook retain runtime availability diagnostics.
 
@@ -1450,7 +1451,7 @@ reasons:
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(statement occurrence, canonical declaration)`. Each rendered row has its own destination, including repeated occurrences of one label. Canonical links select the statement facet first and then its declaration row. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
-| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
+| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus dependency records binding each facet to its origin and intent. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
 | `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelGroupMembersCache.data?`, group relation-panel rendering, and same-document graft construction | Store ordered statement labels once per parent label. Resolve canonical member data through `Nodes` instead of copying full statement records into the group cache. |
 
 The node registry retains external declaration rendering data captured during

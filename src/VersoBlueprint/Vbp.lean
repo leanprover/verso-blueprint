@@ -17,7 +17,6 @@ abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
 abbrev Entry := Informal.PreviewManifest.Entry
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
-abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
 abbrev PersistedGeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
@@ -71,16 +70,13 @@ private def useRefJson (useRef : Informal.Data.UseRef) : Json :=
     ("intent", Json.str (toString useRef.intent))
   ]
 
-private def relationAxisJson (axis : RelationAxis) : Json :=
-  Json.str axis.display
-
 private def relatedEntryJson (entry : RelatedEntry) : Json :=
   Json.mkObj [
     ("label", nameJson entry.label),
     ("title", Json.str entry.title),
     ("href", optionStringJson entry.href),
     ("previewKey", toJson entry.previewKey),
-    ("axes", Json.arr (entry.axes.map relationAxisJson))
+    ("dependencies", toJson entry.dependencies)
   ]
 
 private def groupRelationJson (group : GroupRelation) : Json :=

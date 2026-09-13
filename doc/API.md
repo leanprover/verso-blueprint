@@ -337,6 +337,15 @@ Manifest-backed composite renderers pair the included `RenderedContent.codeBodie
 with their `codeData`, so panel status follows the included bodies while heading
 status follows the project entry.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
+Relation entries now carry `dependencies`, an array of records binding `facet`,
+`origin`, and `intent` together, instead of a separate `axes` array. Facet-specific
+views filter these records before deriving badge codes; statement metadata cannot
+leak into a proof panel. Graph-edge `axes` are unchanged. `PanelEntry` uses the same
+records and derives `badgeCodes`; relation-header helpers now return pure HTML.
+The shared `HeaderExtras.forFacet` policy applies to live and manifest-backed
+shells, including empty dependency chips and the missing Lean association signal.
+Rebuild downstream Lean consumers and regenerate manifests, traversal checkpoints,
+and browser API artifacts for this change (internal schema marker 9).
 Regenerate old artifacts after changes to the generated-data contract. The
 reader's stale-artifact diagnostic supplies the required rebuild guidance;
 clients must not depend on the value of the internal schema marker.
@@ -396,10 +405,14 @@ Semantic lookup and document-body rendering happen before that hook. Structured
 HTML and its hover payloads are finalized before cache serialization, without
 rendering bodies again or parsing opaque HTML. External raw HTML remains opaque;
 custom renderers must use the hook to participate in resource selection.
-A deferred view must preserve whether body content exists as availability changes.
-Keep its returned HTML structured, complete every render in the session before
-calling `Deferred.finish`, and resolve fragments with that same session. The
-session and its markers are temporary rendering state, not portable data.
+`PreviewResources.Render` is a pure keyed choice with two lazy HTML branches.
+`immediate` constructs the selected branch; `deferred` retains both branches in a
+self-contained intermediate HTML node. Fragments can be composed independently:
+there is no mutable session, indexed side table, or retained rendering closure.
+Keep them structured until `PreviewResources.finish available`, which returns
+`Except String Html` and diagnoses malformed choices or branches that disagree
+about body presence. Serialize only the successful result. These temporary nodes
+are implementation data and never belong in emitted HTML or saved state.
 
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.

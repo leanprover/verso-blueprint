@@ -206,6 +206,14 @@ structure HeaderExtras where
   markup? : Option HeaderExtra := none
   custom : Array HeaderExtra := #[]
 
+/-- Shared facet visibility policy for live and manifest-backed headers.
+Source/custom extras stay explicit; proofs expose only their dependency panel
+among the standard node extras. -/
+def HeaderExtras.forFacet (extras : HeaderExtras) (isProof : Bool) : HeaderExtras :=
+  if isProof then
+    { extras with group? := none, code? := none, usedBy? := none, markup? := none }
+  else extras
+
 private def HeaderExtra.asStandard (kind : HeaderExtraKind) (extra : HeaderExtra) : HeaderExtra :=
   { extra with kind, order := kind.defaultOrder }
 

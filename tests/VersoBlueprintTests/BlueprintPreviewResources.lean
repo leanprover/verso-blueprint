@@ -11,6 +11,60 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewResources
 open Lean Verso Genre Manual Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 
+-- Choices carry their own branches: fragments from independent producers can
+-- be composed, copied, and resolved repeatedly without a shared mutable session.
+#eval show IO Unit from do
+  let some keyA := PreviewKey.ofString? (PreviewCache.statementKey `choice_a)
+    | throw <| IO.userError "Invalid choice A key"
+  let some keyB := PreviewKey.ofString? (PreviewCache.statementKey `choice_b)
+    | throw <| IO.userError "Invalid choice B key"
+  let a := PreviewResources.deferred keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
+  let b := PreviewResources.deferred keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
+  let nested := PreviewResources.deferred keyA (fun _ => .seq #[a, b]) (fun _ => b)
+  let combined : Output.Html := .seq #[a, b, nested, a]
+  let .ok resolved := PreviewResources.finish (· == keyA) combined
+    | throw <| IO.userError "Independent choices failed to compose"
+  unless resolved.asString == "A+B-A+B-A+" do
+    throw <| IO.userError s!"Choice resolved another producer's content: {resolved.asString}"
+  let .ok repeated := PreviewResources.finish (fun _ => false) resolved
+    | throw <| IO.userError "Resolved HTML could not be finalized again"
+  unless repeated.asString == resolved.asString do
+    throw <| IO.userError "Finalization changed already resolved HTML"
+  let raw := "<verso-blueprint-preview-choice key=\"opaque\">external HTML</verso-blueprint-preview-choice>"
+  let .ok rawResult := PreviewResources.finish (fun _ => false) (.text false raw)
+    | throw <| IO.userError "Opaque HTML was interpreted as a choice"
+  unless rawResult.asString == raw do
+    throw <| IO.userError "Finalization rewrote opaque HTML"
+  let malformed : Output.Html := .tag "verso-blueprint-preview-choice" #[] .empty
+  let emptyKey : Output.Html := .tag "verso-blueprint-preview-choice" #[("key", "")]
+    (.seq #[.text true "present", .text true "absent"])
+  let presence := PreviewResources.deferred keyA (fun _ => .text true "body") (fun _ => .empty)
+  unless !PreviewResources.htmlIsBlank malformed && !PreviewResources.htmlIsBlank presence do
+    throw <| IO.userError "Blank-body filtering concealed an invalid choice"
+  for (fragment, diagnostic) in #[(malformed, "Malformed"), (emptyKey, "Empty"),
+      (presence, "changes body presence")] do
+    match PreviewResources.finish (fun _ => true) fragment with
+    | .error message =>
+      unless hasSubstr message diagnostic do
+        throw <| IO.userError s!"Unexpected choice diagnostic: {message}"
+    | .ok _ => throw <| IO.userError s!"Invalid choice accepted: {diagnostic}"
+
+-- Manifest-backed shells retain the same empty-status signals as live headers.
+-- Proofs keep only their own relation controls.
+#eval show IO Unit from do
+  let statement : PreviewManifest.Entry := {
+    label := `header_policy, key := "header_policy", targetKind := .block
+    facet := .statement, kind := some .theorem, title := "Theorem 1" }
+  let render := fun entry => PreviewManifest.BlockRender.renderWithRenderedContent {} entry
+    { body := .text true "body" } |>.asString
+  let statementHtml := render statement
+  let proofHtml := render { statement with facet := .proof }
+  unless hasSubstr statementHtml "No reverse dependencies" &&
+      hasSubstr statementHtml "No associated Lean declarations" &&
+      !(hasSubstr proofHtml "No reverse dependencies") &&
+      !(hasSubstr proofHtml "No associated Lean declarations") do
+    throw <| IO.userError "Manifest-backed header visibility differs from the shared facet policy"
+
 theorem resourceWitness (n : Nat) : n + 0 = n := Nat.add_zero n
 
 #docs (Manual) omittedDoc "Omitted resource" :=
@@ -23,7 +77,7 @@ This known node is deliberately omitted from the selected document.
 #docs (Manual) nestedDoc "Nested occurrence" :=
 :::::::
 :::lemma_ "resource_nested" (parent := "resource_group")
-Nested relations use {uses "resource_missing" (intent := "technical")}[],
+Nested relations use {uses "resource_missing" (origin := "automatic") (intent := "technical")}[],
 {uses "resource_markup"}[], and {uses "resource_statement"}[].
 A custom nested reference: {bpref "resource_missing"}[Nested unavailable target].
 :::
@@ -160,9 +214,44 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
           hasSubstr cached s!"<a href=\"{href}\" title=\"resource_missing\">Nested unavailable target</a>" do
         throw <| IO.userError "Cached references changed links or retained unavailable previews"
       for entry in files.htmlCache.entries do
-        unless !(hasSubstr entry.html "verso-blueprint-deferred-preview") do
+        unless !(hasSubstr entry.html "verso-blueprint-preview-choice") do
           throw <| IO.userError "Deferred render marker leaked into a serialized resource"
+      for doc in files.htmlCache.hoverDocs do
+        unless !(hasSubstr doc.html "verso-blueprint-preview-choice") do
+          throw <| IO.userError "Deferred render marker leaked into a hover payload"
+      for (label, facet, expected) in #[
+          (`resource_statement, PreviewCache.Facet.statement, #["s", "it"]),
+          (`resource_statement, .proof, #["p"]),
+          (`resource_nested, .statement, #["s", "oa", "it"])] do
+        let some entry := files.manifest.findEntry? (PreviewCache.key label facet)
+          | throw <| IO.userError s!"Missing relation source: {label}/{repr facet}"
+        let some relation := entry.usesForFacet.find? (·.label == `resource_missing)
+          | throw <| IO.userError "Manifest lost the unavailable dependency"
+        unless relation.badgeCodes == expected do
+          throw <| IO.userError s!"Manifest facet badges changed: {relation.badgeCodes}, expected {expected}"
+        let .ok data := RenderingResolution.canonical prepared.state label
+          | throw <| IO.userError "Missing live relation source"
+        let some live := (RelatedPanel.usesEntries prepared.state data (some facet)).find?
+            (·.label == `resource_missing)
+          | throw <| IO.userError "Live view lost the unavailable dependency"
+        unless live.dependencies == relation.dependencies && live.badgeCodes == expected do
+          throw <| IO.userError "Live and manifest relation facts disagree"
+        let shell := PreviewManifest.BlockRender.renderWithRenderedContent {} { entry with usedBy := #[] }
+          { body := .text true "body" } |>.asString
+        let mut found := false
+        for part in (shell.splitOn "class=\"bp-relation-entries\">").drop 1 do
+          let .ok rows := Json.parse (part.splitOn "</script>").head! >>=
+              fromJson? (α := Array (Array Json))
+            | throw <| IO.userError "Malformed manifest shell relation rows"
+          for row in rows do
+            if row[2]? == some (.str "resource_missing") then
+              found := true
+              unless row[4]? == some (toJson expected) do
+                throw <| IO.userError "Manifest shell lost badges or mixed statement/proof metadata"
+        unless found do
+          throw <| IO.userError "Manifest shell omitted the dependency row"
       let mut nestedMissingRows := 0
+      let mut nestedBadgeRows := 0
       for part in (cached.splitOn "class=\"bp-relation-entries\">").drop 1 do
         let .ok rows := Json.parse (part.splitOn "</script>").head! >>=
             fromJson? (α := Array (Array Json))
@@ -173,7 +262,9 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
             unless row[1]? == some Json.null && row[0]? == some (.str reference.title) &&
                 row[3]? == some (.str href) do
               throw <| IO.userError "Cached relation lost metadata or retained an unavailable key"
-      unless nestedMissingRows > 0 do
+            if row[4]? == some (toJson #["s", "oa", "it"]) then
+              nestedBadgeRows := nestedBadgeRows + 1
+      unless nestedMissingRows > 0 && nestedBadgeRows == 1 do
         throw <| IO.userError "Cached nested block did not retain its relation panel"
       let mut missingRows := 0
       let mut missingBadges := 0
@@ -240,12 +331,16 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
         !(← delayed.destination.pathExists) do
       throw <| IO.userError "Delayed generation prepared or emitted preview resources"
     let resumed := { cfg with
+      verbose := true
       destination := root / s!"{modeName}-resumed"
       emitHtmlSingle := if isSingle then .resumeFrom checkpoint else .no
       emitHtmlMulti := if !isSingle then .resumeFrom checkpoint else .no }
     let (messages, code) ← generate resumed
     unless code == 0 && (← renders.get) == 2 && (← seen.get) do
       throw <| IO.userError s!"Resume: code={code}, renders={← renders.get}, seen={← seen.get}: {messages}"
+    unless hasSubstr messages "Finalized and serialized" &&
+        !(hasSubstr messages "stringify") do
+      throw <| IO.userError "Verbose rendering did not report final serialization"
     let restored ← readFiles (siteDirectory resumed.toConfig mode)
     let restoredHtml ← readGraphHtml (siteDirectory resumed.toConfig mode) mode
     unless hasSubstr restoredHtml (toJson graph).compress &&
