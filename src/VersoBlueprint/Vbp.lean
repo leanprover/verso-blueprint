@@ -488,11 +488,14 @@ private def checkManifestGroupIntegrity
                 s!"entry {entry.key} belongs to manifest group " ++
                   s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
                   Informal.PreviewManifest.labelString parent
-  for (member, group) in memberGroups.toArray do
-    unless matchedMembers.contains member do
-      errors := errors.push <|
-        s!"manifest group {Informal.PreviewManifest.labelString group} member " ++
-          s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
+  -- Semantic group members survive blank resource omission. A member only
+  -- requires a preview entry when it advertises a preview key.
+  for group in manifest.groups do
+    for member in group.entries do
+      if member.previewKey.isSome && !matchedMembers.contains member.label then
+        errors := errors.push <|
+          s!"manifest group {Informal.PreviewManifest.labelString group.label} member " ++
+            s!"{Informal.PreviewManifest.labelString member.label} has no matching manifest entry"
   return errors
 
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=

@@ -32,6 +32,42 @@ def assert_source_location_error(result: dict, needle: str):
 
 
 class TestPreviewRuntimeRegressions:
+    def test_prepared_resources_preserve_relations_without_preview_bodies(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        cache_requests = []
+        page.on("request", lambda request: cache_requests.append(request.url)
+                if request.url.endswith("/blueprint-html-cache.json") else None)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+        blank_key = "prepared_resource_blank--statement"
+        expect(page.locator(f'.bp_inline_preview_ref[data-bp-preview-key="{blank_key}"]')).to_have_count(0)
+        blank_link = page.get_by_role("link", name="blank reference", exact=True)
+        expect(blank_link).to_have_attribute("href", re.compile("prepared_resource_blank"))
+        expect(blank_link.locator("xpath=ancestor::*[contains(@class, 'bp_inline_preview_ref')]")).to_have_count(0)
+
+        single = page.locator('.bp_wrapper[title="prepared_resource_single"] .bp_extra_slot_uses .bp_relation_wrap')
+        single.locator(".bp_relation_chip").first.hover()
+        missing = single.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_blank"]')
+        expect(missing).to_be_visible()
+        assert missing.get_attribute("data-bp-relation-preview-key") is None
+        expect(missing.locator("a.bp_relation_target")).to_have_attribute("href", blank_link.get_attribute("href"))
+        expect(missing).to_contain_text("technical")
+        expect(single.locator(".bp_relation_preview_body")).to_contain_text("does not have a rendered preview entry")
+        assert cache_requests == []
+
+        # Missing resources remain selectable in multi-row panels, alongside
+        # available resources that load normally when selected.
+        multiple = page.locator('.bp_wrapper[title="prepared_resource_multiple"] .bp_extra_slot_uses .bp_relation_wrap')
+        multiple.locator(".bp_relation_chip").first.hover()
+        missing = multiple.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_blank"]')
+        expect(missing).to_be_visible()
+        assert missing.get_attribute("data-bp-relation-preview-key") is None
+        available = multiple.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_target"]')
+        available.hover()
+        expect(multiple.locator(".bp_relation_preview_body")).to_contain_text("Available prepared resource body.")
+        assert len(cache_requests) == 1
+        assert_no_runtime_errors(errors)
+
     def test_code_only_attribute_references_discover_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Code-Panels/")
@@ -1400,7 +1436,10 @@ class TestPreviewRuntimeRegressions:
                     duplicateMember: manifest([], [duplicateMemberGroup]),
                     crossGroupMember: manifest([], [group, crossGroup]),
                     missingMember: manifest([entry], [{ ...group, entries: [] }]),
-                    orphanMember: manifest([], [group]),
+                    bodylessMember: manifest([], [group]),
+                    orphanMember: manifest([], [{ ...group,
+                        entries: [{ ...member, previewKey: entry.key }]
+                    }]),
                     mismatchedParent: manifest([
                         { ...entry, parent: "second_group", parentTitle: "Second group" }
                     ], [group, secondGroup]),
@@ -1435,6 +1474,8 @@ class TestPreviewRuntimeRegressions:
         assert result["valid"]["groupCount"] == 1
         assert result["validExternal"]["state"] == "ready"
         assert result["validExternal"]["groupCount"] == 1
+        assert result["bodylessMember"]["state"] == "ready"
+        assert result["bodylessMember"]["groupCount"] == 1
         assert result["duplicate"]["state"] == "error"
         assert result["duplicate"]["groupCount"] == 0
         assert "duplicate group sample_group" in result["duplicate"]["message"]

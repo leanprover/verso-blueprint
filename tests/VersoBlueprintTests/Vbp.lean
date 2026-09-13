@@ -1075,10 +1075,15 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
           group with entries := group.entries.filter (·.label != label "group_member")
         }]
     }
-    let orphanMemberManifest := {
+    let bodylessMemberManifest := {
       sampleGroupManifest with
         previews := sampleGroupManifest.previews.filter (·.label != label "group_peer")
     }
+    let orphanMemberManifest := { bodylessMemberManifest with
+      groups := #[{ group with entries := group.entries.map fun member =>
+        if member.label == label "group_peer" then
+          { member with previewKey := Informal.PreviewKey.ofString? "informal:group_peer:statement" }
+        else member }] }
     let mismatchedParentManifest := {
       sampleGroupManifest with
         previews := sampleGroupManifest.previews.map fun entry =>
@@ -1144,6 +1149,10 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let duplicateMemberErrors := checkGroups duplicateMemberManifest
     let crossGroupMemberErrors := checkGroups crossGroupMemberManifest
     let missingMemberErrors := checkGroups missingMemberManifest
+    let bodylessCache : HtmlCacheFile := { sampleGroupCache with
+      entries := sampleGroupCache.entries.filter (·.key != "informal:group_peer:statement") }
+    let bodylessErrors := VersoBlueprint.Vbp.checkGeneratedData
+      (persistedFiles bodylessMemberManifest bodylessCache)
     let orphanMemberErrors := checkGroups orphanMemberManifest
     let mismatchedParentErrors := checkGroups mismatchedParentManifest
     let mismatchedTitleErrors := checkGroups mismatchedTitleManifest
@@ -1153,7 +1162,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let emptyMemberLabelErrors := checkGroups emptyMemberLabelManifest
     let emptyEntryLabelErrors := checkGroups emptyEntryLabelManifest
     let invalidParentErrors := checkGroups invalidParentManifest
-    orphanErrors.any (fun err =>
+    bodylessErrors.isEmpty && orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
         err == "duplicate manifest group label: sample_group") &&

@@ -940,7 +940,7 @@ Lean/Verso source modules
   -> HtmlDocument (checked fixed point, captured state, text, layout)
   -> PreparedRendererState
        |-> optional resource preparation -> finalized Files
-       |       `-> graph HTML uses the finalized graph objects
+       |       `-> page extensions use finalized graphs and preview availability
        |-> completed TraverseState -> Manual HTML emission
        |-> export retained Files -> manifest/cache and merged hover docs
        `-> BlueprintExtraStep post-render steps
@@ -955,13 +955,19 @@ indexes through `PreparedRendererState`. HTML emission and post-render steps use
 the text, state, mode, and configuration retained in that wrapper. Preview-enabled
 generation also retains the finalized manifest/cache pair there, built once before
 pages. Embedded graph JSON reuses its graph objects, including resource availability,
-without another traversal store or semantic-resolution pass. Blank resource panels
+without another traversal store or semantic-resolution pass. `Files.withPageExtensions`
+uses one availability index for relation panels and inline references. Missing bodies
+remove preview triggers, without erasing node links or relation rows and badges.
+Single relations without a body use the regular panel's unavailable state.
+Blank resource panels
 remain omitted; external markup can retain semantic entries without cache bodies.
 Neither case removes graph topology or accepted node facts. Plain generation and
 delayed checkpoints do not prepare resources. Hover-table merging remains after
 page emission. Direct preview-data callers retain the narrower
 `PreparedPreviewState` API, which only prepares indexes and supports synthetic
-states used in tests.
+states used in tests. Cached bodies are built with the original extensions before
+availability is known, and their nested references retain runtime diagnostics.
+This boundary does not rerender or rewrite opaque cached fragments.
 
 A Blueprint HTML checkpoint stores the unpatched document and captured state
 alongside its serializable configuration. Resume preserves that document and

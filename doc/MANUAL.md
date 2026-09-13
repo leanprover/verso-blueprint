@@ -197,7 +197,8 @@ Blueprint node without registering that relationship as a dependency.
 References are checked during traversal against the captured project, so forward
 references work. A known node omitted from the document falls back to its authored
 label; an unknown label is an error. Reference-only documents also require the
-project's rendering model.
+project's rendering model. In preview-enabled pages, a rendered node whose preview
+body is unavailable still has its ordinary link and title, but no hover trigger.
 Dependency metadata can still describe unresolved graph edges, which appear in
 graph diagnostics; it does not create a prose link.
 
@@ -1332,8 +1333,10 @@ statement/proof badges plus any non-default dependency origin or intent badges.
 
 Relation previews show the human title and a right-aligned concrete Blueprint
 label in the preview header; the label links to the target statement. Single
-uses or used-by entries use the same inline preview chrome, with relation
-metadata badges shown in the preview footer.
+uses or used-by entries with a rendered preview use the same inline preview
+chrome, with relation metadata badges shown in the preview footer. If that body
+is unavailable, the chip opens a relation panel instead: its row, link, and badges
+remain visible, with an unavailable-preview message and no cache request.
 
 Inline preview triggers require manifest-backed rendered fragments. A missing
 or stale preview key renders the shared preview diagnostic instead of inventing

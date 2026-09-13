@@ -496,11 +496,12 @@ The target is elaborated after the reference.
       let references : Array (Doc.Block Genre.Manual) := #[.para #[
         .other (Inline.informal { label }) contents]]
       let (references, _) ← Informal.traverseManualBlocks references manualImpls (fun _ => pure ())
-      errors.set #[]
-      let html ← renderManualBlocksHtmlWithState references manualImpls state (logError := logError)
-      unless (← errors.get).any (hasSubstr · expected) &&
-          !hasSubstr html.asString "invalid authored reference" do
-        throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
+      for impls in #[manualImpls, Informal.Inline.withPreviewAvailability manualImpls (fun _ => false)] do
+        errors.set #[]
+        let html ← renderManualBlocksHtmlWithState references impls state (logError := logError)
+        unless (← errors.get).any (hasSubstr · expected) &&
+            !hasSubstr html.asString "invalid authored reference" do
+          throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
       let texError? ← try
         let _ ← renderManualBlocksTeXWithState manualImpls references state
         pure none

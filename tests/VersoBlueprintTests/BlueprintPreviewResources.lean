@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprintTests.Blueprint.Support
+import VersoBlueprint.Vbp
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewResources
 
@@ -12,11 +13,39 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 
 theorem resourceWitness (n : Nat) : n + 0 = n := Nat.add_zero n
 
+#docs (Manual) omittedDoc "Omitted resource" :=
+:::::::
+:::theorem "resource_omitted"
+This known node is deliberately omitted from the selected document.
+:::
+:::::::
+
 #docs (Manual) resourceDoc "Preview resources" :=
 :::::::
-:::theorem "resource_statement" (lean := "resourceWitness")
-The rendered statement has one preview resource and uses {uses "resource_markup"}[].
+:::group "resource_group"
+Resource group
 :::
+
+:::theorem "resource_statement" (lean := "resourceWitness") (parent := "resource_group")
+The rendered statement has one preview resource and uses {uses "resource_markup"}[]
+and {uses "resource_missing" (intent := "technical")}[].
+:::
+
+:::proof "resource_statement"
+The proof uses {uses "resource_missing"}[].
+:::
+
+:::theorem "resource_missing" (parent := "resource_group")
+A synthetic renderer will omit this body. It uses {uses "resource_statement"}[].
+:::
+
+:::theorem "resource_single" (parent := "resource_group")
+This node has one dependency: {uses "resource_missing"}[].
+:::
+
+References: {bpref "resource_statement"}[Available target],
+{bpref "resource_missing"}[Unavailable target], {bpref "resource_missing"}[],
+{bpref "resource_markup"}[Semantic-only target], and {bpref "resource_omitted"}[].
 
 ```md "resource_markup" (slot := statement)
 This semantic-only node must remain in the graph without a preview link.
@@ -56,13 +85,24 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
       renders.modify (· + 1)
       pure (.text false "resource-probe")
     toTeX := none }
+  let impls := impls.insertBlock `blankResource {
+    traverse := fun _ _ _ => pure none
+    toHtml := some fun _ _ _ _ _ => pure .empty
+    toTeX := none }
   let text := { resourceDoc.toPart with
     content := resourceDoc.toPart.content.map fun block => block.rewriteOther
       (fun go container contents => .other container (contents.map go))
       (fun _ go container contents =>
         let contents := contents.map go
         if container.name == ``Informal.Block.informal then
-          .other container (contents.push (.other { name := `resourceProbe } #[]))
+          match fromJson? (α := BlockOccurrence) container.data with
+          | .ok occurrence =>
+            if occurrence.label == `resource_missing then
+              .other container #[.other { name := `blankResource } #[]]
+            else if occurrence.label == `resource_statement && !occurrence.isProof then
+              .other container (contents.push (.other { name := `resourceProbe } #[]))
+            else .other container contents
+          | .error _ => .other container contents
         else .other container contents) }
   for mode in #[Mode.single, .multi] do
     let isSingle := match mode with | .single => true | .multi => false
@@ -79,9 +119,46 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
         | throw <| IO.userError "Post-render step did not receive prepared resources"
       let path := siteDirectory prepared.config.toConfig prepared.mode
       let emitted ← readFiles path
+      let validationErrors := VersoBlueprint.Vbp.checkGeneratedData emitted
+      unless validationErrors.isEmpty do
+        throw <| IO.userError s!"Prepared output failed data validation: {validationErrors}"
       unless toJson files.manifest == toJson emitted.manifest &&
           toJson files.htmlCache == toJson emitted.htmlCache do
         throw <| IO.userError "Export rebuilt or changed the prepared resources"
+      let page ← IO.FS.readFile (path / "index.html")
+      let missingKey := PreviewCache.key `resource_missing .statement
+      let markupKey := PreviewSource.externalMarkupKey `resource_markup
+      let availableKey := PreviewCache.key `resource_statement .statement
+      unless !(hasSubstr page s!"data-bp-preview-key=\"{missingKey}\"") &&
+          !(hasSubstr page s!"data-bp-preview-key=\"{markupKey}\"") &&
+          hasSubstr page s!"data-bp-preview-key=\"{availableKey}\"" do
+        throw <| IO.userError "Page inline references disagree with prepared availability"
+      let .ok reference := RenderingResolution.reference prepared.state `resource_missing
+        | throw <| IO.userError "Unavailable preview lost its semantic reference"
+      let some href := reference.href | throw <| IO.userError "Unavailable preview lost its link"
+      unless hasSubstr page s!"<a href=\"{href}\" title=\"resource_missing\">Unavailable target</a>" &&
+          hasSubstr page s!"<a href=\"{href}\" title=\"resource_missing\">{reference.title}</a>" &&
+          hasSubstr page "resource_omitted" do
+        throw <| IO.userError "Unavailable previews changed link text, titles, or omitted-node fallback"
+      let mut missingRows := 0
+      let mut missingBadges := 0
+      for part in (page.splitOn "class=\"bp-relation-entries\">").drop 1 do
+        let .ok rows := Json.parse (part.splitOn "</script>").head! >>=
+            fromJson? (α := Array (Array Json))
+          | throw <| IO.userError "Malformed relation panel rows"
+        for row in rows do
+          if row[2]? == some (.str "resource_missing") then
+            missingRows := missingRows + 1
+            unless row[1]? == some Json.null && row[0]? == some (.str reference.title) &&
+                row[3]? == some (.str href) do
+              throw <| IO.userError "Unavailable preview dropped relation metadata or retained a key"
+            if row[4]? != some (toJson (#[] : Array String)) then
+              missingBadges := missingBadges + 1
+      unless missingRows >= 4 && missingBadges >= 3 do
+        throw <| IO.userError s!"Missing uses/used-by/group rows or badges: {missingRows}/{missingBadges}"
+      unless (files.manifest.findEntry? missingKey).isNone &&
+          (files.htmlCache.findHtml? missingKey).isNone do
+        throw <| IO.userError "Blank resource unexpectedly acquired a manifest or cache body"
       seen.set true
     let generate := fun config => IO.FS.withIsolatedStreams <|
       PreviewManifest.blueprintMainWithPreviewData text

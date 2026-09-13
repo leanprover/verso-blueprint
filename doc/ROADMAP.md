@@ -125,11 +125,15 @@ Work:
    generated-data finalization. Generated JSON clears traversal preview
    candidates that lack cache bodies. Preview-enabled HTML generation now
    prepares resources before pages and reuses the finalized graphs for embedded
-   graph JSON. Page-local relation-panel markup and inline references still use
-   traversal candidates, so browser runtimes distinguish
-   `semantic-preview-body-missing` from stale or broken cache loads. Migrate
-   those consumers separately to the same prepared resources, preserving this
-   runtime distinction and the plain generator's resource-free behavior.
+   graph JSON. Page-local relation panels and inline references now share the
+   prepared availability index; missing bodies retain their semantic links,
+   relation rows, and badges. Cached bodies are still constructed before the
+   completed resource set is known, so nested references in those fragments and
+   plain/direct renderers can retain traversal candidates. Keep runtime
+   `semantic-preview-body-missing` diagnostics distinct from stale or broken
+   cache loads. Any later migration of fragment-internal references should retain
+   structured render output until finalization, without rerendering bodies or
+   repairing opaque HTML strings.
 12. keep the external-declaration hover transfer behind its current local
    bridge until the portable-fragment contract tracked by
    [`UPC-0014`](./roadmap/cards/UPC-0014-portable-hover-fragment-transfer/README.md)

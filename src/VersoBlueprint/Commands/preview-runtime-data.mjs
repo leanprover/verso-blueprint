@@ -782,13 +782,17 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       }
       matchedMembers.add(label);
     });
-    groupData.memberGroupsByLabel.forEach(function (group, member) {
-      if (!matchedMembers.has(member)) {
-        throw new Error(
-          "Blueprint manifest group " + group + " member " + member +
-            " has no matching manifest entry"
-        );
-      }
+    // Group membership is semantic data. A blank resource can leave a member
+    // without a preview entry; only members advertising a key require that join.
+    groupData.groups.forEach(function (group) {
+      group.entries.forEach(function (member) {
+        if (member.previewKey != null && !matchedMembers.has(member.label.trim())) {
+          throw new Error(
+            "Blueprint manifest group " + group.label.trim() + " member " + member.label.trim() +
+              " has no matching manifest entry"
+          );
+        }
+      });
     });
   }
 

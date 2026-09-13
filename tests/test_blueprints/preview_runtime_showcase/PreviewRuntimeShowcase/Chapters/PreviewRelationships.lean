@@ -6,6 +6,20 @@ open Verso.Genre
 open Verso.Genre.Manual
 open Informal
 
+-- A real rendered occurrence with an intentionally blank preview body. This
+-- distinguishes resource availability from accepted node/relationship semantics.
+open Verso Doc Elab Genre Manual in
+block_extension Block.blankPreviewResource where
+  data := Lean.Json.null
+  traverse _ _ _ := pure none
+  toHtml := some fun _ _ _ _ _ => pure .empty
+  toTeX := some fun _ _ _ _ _ => pure .empty
+
+open Verso Doc Elab in
+@[block_command]
+public meta def blank_preview_resource : BlockCommandOf Unit
+  | () => ``(Block.other Block.blankPreviewResource #[])
+
 #doc (Manual) "Preview Relationships" =>
 
 :::definition "used_target" (lean := "Nat.add")
@@ -59,3 +73,26 @@ Statement facet marker for preview relationships.
 :::proof "preview_facets"
 Proof facet marker for preview relationships.
 :::
+
+:::group "prepared_resource_group"
+Prepared resource group.
+:::
+
+:::definition "prepared_resource_target" (parent := "prepared_resource_group")
+Available prepared resource body.
+:::
+
+:::theorem "prepared_resource_blank" (uses := "prepared_resource_target") (parent := "prepared_resource_group")
+{blank_preview_resource}
+:::
+
+:::lemma_ "prepared_resource_single"
+This single dependency retains its link: {uses "prepared_resource_blank" (intent := "technical")}[blank target].
+:::
+
+:::lemma_ "prepared_resource_multiple" (uses := "prepared_resource_blank")
+A second dependency has a body: {uses "prepared_resource_target"}[available target].
+:::
+
+Explicit references retain their presentation: {bpref "prepared_resource_blank"}[blank reference]
+and {bpref "prepared_resource_target"}[available reference].

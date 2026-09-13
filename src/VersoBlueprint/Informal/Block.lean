@@ -57,37 +57,12 @@ Elaboration, traversal, and rendering are standard, using {ref VersoManual} help
 
 -/
 
-/- Informal custom blocks -/
-block_extension Block.informal (data : BlockOccurrence) where
-  -- for TOC
-  -- localContentItem _ _ _ := none
-  data := toJson data
-  usePackages := Informal.TeX.standardMathUsePackages
-  traverse id data _contents := do
-    -- XXX: (maybe) lift the Except into the main monad error thread
-    match ← ExtensionDecode.decode? (α := BlockOccurrence) data
-        (fun err => s!"Malformed data ({err}): {data}") with
-    | none =>
-      pure none
-    | some occurrence =>
-      registerTraversedBlock id occurrence _contents
-      return none
-  toTeX := some <| fun _goI goB _id data blocks => do
-      let .ok occurrence := fromJson? (α := BlockOccurrence) data
-        | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
-          pure .empty
-      let st ← Verso.Doc.TeX.state
-      let some data ← ExtensionDecode.report? (RenderingResolution.occurrence st occurrence)
-        | pure .empty
-      let title := data.displayTitle st
-      let body ← blocks.mapM goB
-      pure <| Informal.TeX.quotedBlock title body
-  extraCss := Informal.Block.Assets.blockCssAssets
-  extraJs := Informal.Block.Assets.blockJsAssets
-  toHtml :=
-    open Verso.Doc.Html in
-    open Verso.Output.Html in
-    some <| fun _goI goB id data blocks => do
+open Verso.Doc.Html in
+/-- Render this occurrence with relation previews restricted to the resources
+prepared for its output. Semantic resolution and numbering remain occurrence-owned. -/
+private def informalBlockToHtml (previewAvailable : PreviewKey → Bool := fun _ => true) :
+    BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+    fun _goI goB id data blocks => do
       match ← ExtensionDecode.decode? (α := BlockOccurrence) data
           (fun err => s!"Malformed data ({err}): {data}") with
       | none =>
@@ -157,9 +132,9 @@ block_extension Block.informal (data : BlockOccurrence) where
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra s data
-        let usesEntry ← RelatedPanel.renderUsesExtra s data
-        let usedByEntry ← RelatedPanel.renderUsedByExtra s data
+        let groupEntry ← RelatedPanel.renderGroupExtra s data previewAvailable
+        let usesEntry ← RelatedPanel.renderUsesExtra s data previewAvailable
+        let usedByEntry ← RelatedPanel.renderUsedByExtra s data previewAvailable
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
         let headerExtras : HeaderExtras :=
@@ -187,6 +162,45 @@ block_extension Block.informal (data : BlockOccurrence) where
           content
           companionPanels := #[externalPanel]
         }
+
+/- Informal custom blocks -/
+block_extension Block.informal (data : BlockOccurrence) where
+  -- for TOC
+  -- localContentItem _ _ _ := none
+  data := toJson data
+  usePackages := Informal.TeX.standardMathUsePackages
+  traverse id data _contents := do
+    -- XXX: (maybe) lift the Except into the main monad error thread
+    match ← ExtensionDecode.decode? (α := BlockOccurrence) data
+        (fun err => s!"Malformed data ({err}): {data}") with
+    | none =>
+      pure none
+    | some occurrence =>
+      registerTraversedBlock id occurrence _contents
+      return none
+  toTeX := some <| fun _goI goB _id data blocks => do
+      let .ok occurrence := fromJson? (α := BlockOccurrence) data
+        | Verso.reportError s!"Malformed data in Block.informal.toTeX: {data}"
+          pure .empty
+      let st ← Verso.Doc.TeX.state
+      let some data ← ExtensionDecode.report? (RenderingResolution.occurrence st occurrence)
+        | pure .empty
+      let title := data.displayTitle st
+      let body ← blocks.mapM goB
+      pure <| Informal.TeX.quotedBlock title body
+  extraCss := Informal.Block.Assets.blockCssAssets
+  extraJs := Informal.Block.Assets.blockJsAssets
+  toHtml := some (informalBlockToHtml (fun _ => true))
+
+/-- Bind the standard block HTML renderer's relation panels to prepared resources.
+Traversal, TeX, and other supplied extension hooks are retained. -/
+def Block.withPreviewAvailability (impls : ExtensionImpls)
+    (previewAvailable : PreviewKey → Bool) : ExtensionImpls :=
+  match impls.getBlock? ``Block.informal with
+  | none => impls
+  | some descriptor =>
+    impls.insertBlock ``Block.informal
+      { descriptor with toHtml := some (informalBlockToHtml previewAvailable) }
 
 private structure ParsedDirectiveContents where
   sourceRef? : Option Source.Ref := none
