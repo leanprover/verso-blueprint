@@ -590,10 +590,10 @@ interleaved among declarations; put compact prose in declaration docstrings, or
 use individual `{blueprint_node "label"}` placements inside an ordinary Verso
 chapter when the prose needs its own position.
 
-Module inclusion currently materializes the statement facet only. A separate
-informal `:::proof` body persisted in the defining module is not automatically
-registered in the consuming document. Proof prose written and traversed in the
-consuming document remains available through the ordinary proof facet. This is
+Module inclusion materializes the statement facet only. To display a separate
+informal `:::proof` body contributed by an imported module, add an explicit
+`{blueprint_node "label" (facet := "proof")}` placement. This does not require
+including the provider's original Verso document as content. This is
 separate from the compiled Lean proof: Blueprint's external-declaration panel
 does not reproduce the original `:= by ...` source text.
 
@@ -651,12 +651,25 @@ passed to the Slides generator.
 
 The usual graft options apply at the placement site, including `+compact`,
 `-header`, `(displayLabel := "...")`, and `(facet := "proof")`. Compact mode
-intentionally hides the attached Lean panel. For an imported attribute-owned
-node, the initial placement currently materializes only its statement facet; a
-proof facet is available after a matching `:::proof` has been traversed in the
-consuming document. A persisted provider-module proof is not automatically
-materialized, and a compiled theorem proof does not automatically become
-informal proof prose.
+intentionally hides the attached Lean panel. For an imported attribute-backed
+node, the default placement materializes only its statement facet. An explicit
+proof placement materializes the persisted informal proof, even if its provider
+document is not included as content:
+
+```lean
+{blueprint_node "k-interpolation-space"}
+
+{blueprint_node "k-interpolation-space" (facet := "proof")}
+```
+
+The chapter must import the declaration and proof-contributing modules, directly
+or transitively. Grafts do not discover or import modules. The proof may be
+contributed by a different module from the tagged declaration. Including and
+traversing the original proof document also remains supported; repeated grafts
+share the node's identity and number, with placement-local folding options.
+Proof dependencies stay on the proof axis. If no authored informal proof body
+is available, the graft retains the missing-facet notice: dependency-only proof
+metadata and compiled Lean proofs do not automatically become informal prose.
 
 Additional prose can simply surround the placement command. If the tagged
 declaration has no docstring and the prose should live inside the numbered
@@ -881,7 +894,7 @@ the inferred dependency edges.
 | Infer formal dependencies | Supported with `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true`. Follows unassociated helpers by default; `set_option verso.blueprint.autoDeps.expandUntagged false` selects direct-only inference. Type/body walks produce statement/proof dependencies respectively. |
 | Curate dependencies manually | Supported with attribute options `uses` and `proofUses`, using either Blueprint label strings or tagged Lean declaration names. Prefixing an entry with `-` excludes it on that axis. With `doc.verso` enabled, `{uses ...}[]` inside the adopted docstring adds statement dependencies; `{bpref ...}[]` adds links only. |
 | Attach several labels to one Lean declaration, or several Lean declarations to one label | Supported. Associations are many-to-many and are deduplicated by canonical Lean name or Blueprint label as appropriate. |
-| Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
+| Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. Reuse an imported proof body with `{blueprint_node "label" (facet := "proof")}` without including its original document. Default grafts and `{includeBlueprintModule}` remain statement-only. |
 | Show the formal declaration | Supported as a highlighted external-declaration panel with its signature, kind-specific structure information, docstring, proof/completeness status, and source link when available. |
 | Show the original definition body or `:= by ...` proof text | Not currently supported by the compiled-declaration renderer. The panel renders the declaration interface, not the original source body. Use the source link, or a labeled inline Lean block when the exact authored proof text must be embedded in the page. |
 | Put `parent`, `owner`, `tags`, `effort`, `priority`, or `pr_url` directly on `@[blueprint]` | Not currently supported. These remain Blueprint statement-block metadata. A separate attribute-side metadata surface needs an ownership and validation design before it is added. |
