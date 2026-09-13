@@ -376,10 +376,22 @@ configuration. Use `blueprintMainWithPreviewData` to request preparation, rather
 than adding the exporter to plain `blueprintMain`'s extra steps. Plain generation
 leaves `previewFiles?` absent and performs no preview resource rendering.
 
-`Commands.withPreparedGraphs` binds the standard graph HTML implementation to the
-prepared graph objects for page emission. It preserves the other supplied hooks
-and extensions; a custom replacement for the graph HTML renderer must integrate
-this resource selection explicitly instead of relying on its traversal candidates.
+`Files.withPageExtensions` binds the standard graph, informal-block, and Blueprint
+reference HTML implementations to the prepared output. Graphs reuse their finalized
+objects; relation panels and inline references share one `PreviewArtifactIndex`.
+Only preview keys are filtered: titles, links, relation rows, and badges retain
+their semantic meaning. A single relation without a preview opens a normal relation
+panel instead of creating an inline hover trigger without a lookup key.
+
+Traversal, TeX, and other extension hooks are preserved. Custom replacements for
+these standard HTML implementations need to integrate resource selection explicitly.
+The lower-level adapters are `Commands.withPreparedGraphs`,
+`Block.withPreviewAvailability`, and `Inline.withPreviewAvailability`.
+
+This is the page-emission boundary. Cached preview bodies are rendered earlier,
+with the original extensions, and can contain traversal-derived references to
+unavailable resources. They retain the runtime's explicit unavailable-preview
+handling. Constructing resources does not rerender their bodies after finalization.
 
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.
@@ -608,8 +620,11 @@ external-markup entry's optional `parent` names one record in the manifest's
 top-level `groups` array. Each group stores its traversal-ordered statement
 members once. Group labels are unique, each member label belongs to at most one
 group, and participating manifest entries must agree with the catalog on group
-ownership and `parentTitle`. Both `vbp check` and the browser manifest loader
-reject incomplete or inconsistent joins. Browser clients can join these records
+ownership and `parentTitle`. A member with a preview key must join to a matching
+block or external-markup entry. A member without a preview key may stand on its
+group metadata alone, for example when rendering its body produced no content.
+Both `vbp check` and the browser manifest loader enforce these joins and reject
+conflicting ownership, duplicate membership, and broken preview references. Browser clients can join these records
 with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
 clients can use `PreviewManifest.File.groupForEntry?` when they need the current
 entry filtered out of the member list.

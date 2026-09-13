@@ -263,7 +263,7 @@
  * @property {string} label Canonical group label.
  * @property {string} title Resolved display title for the group.
  * @property {boolean} declared Whether the group was explicitly declared.
- * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members that join to matching block or external-markup manifest entries.
+ * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members. Members advertising a preview key join to matching block or external-markup entries; members without a preview may have no manifest entry.
  */
 
 /**

@@ -562,8 +562,13 @@ private def htmlScriptJsonString (json : Json) : String :=
   json.compress
   |>.replace "<" "\\u003c"
 
-def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :=
+/-- Keep relation rows, labels, links and badges even when their preview resource
+is unavailable. Only the optional preview key depends on resource availability. -/
+def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
+    (previewAvailable : PreviewKey → Bool := fun _ => true) : Output.Html :=
   open Verso.Output.Html in
+  let entries := entries.map fun entry =>
+    { entry with previewKey := entry.previewKey.filter previewAvailable }
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
     {{<span class={{chipClass}} title={{chipTitle}}>{{.text true (cfg.chipText n)}}</span>}}
   let renderInlinePreview (entry : PanelEntry) : Output.Html :=
@@ -633,7 +638,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
   else if h : entries.size = 1 then
     let entry := entries[0]'(by simp [h])
     match cfg.singleMode with
-    | .inlinePreview => renderInlinePreview entry
+    | .inlinePreview => if entry.previewKey.isSome then renderInlinePreview entry else panelShell
     | .panel => panelShell
   else
     panelShell
@@ -642,7 +647,8 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
 def renderUsedByExtra {m}
     [Monad m]
     (state : TraverseState)
-    (data : BlockData) :
+    (data : BlockData)
+    (previewAvailable : PreviewKey → Bool := fun _ => true) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   match data.isProof with
   | true => pure .empty
@@ -653,13 +659,14 @@ def renderUsedByExtra {m}
       mkBlockEntry state entry.source
         (usedByPreviewId data.label entry.source.label)
         (badgeCodes := badgeCodes)
-    pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
+    pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries previewAvailable
 
 /-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
     (state : TraverseState)
-    (data : BlockData) :
+    (data : BlockData)
+    (previewAvailable : PreviewKey → Bool := fun _ => true) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries state data
   let panelEntries := entries.map fun entry =>
@@ -673,13 +680,14 @@ def renderUsesExtra {m}
       mkLabelEntry state entry.label
         (usesPreviewId data.label entry.label)
         (badgeCodes := badgeCodes)
-  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries
+  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries previewAvailable
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
     [Monad m]
     (state : TraverseState)
-    (data : BlockData) :
+    (data : BlockData)
+    (previewAvailable : PreviewKey → Bool := fun _ => true) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
   match data.isProof, groupRenderInfo? state data with
   | true, _ => pure none
@@ -692,7 +700,7 @@ def renderGroupExtra {m}
       mkBlockEntry state source
         (groupPreviewId data.label source.label)
     let cfg := groupPanelConfig group.label group.title group.declared
-    pure <| some (renderPanel cfg panelEntries)
+    pure <| some (renderPanel cfg panelEntries previewAvailable)
 
 end RelatedPanel
 end Informal

@@ -220,11 +220,13 @@ private def cachedStatement
 #eval
   show Bool from
     let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
-    let inlineOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
+    let singleOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
     let panelOut :=
       (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
-    hasSubstr inlineOut "data-bp-preview-id=\"missing-preview\"" &&
-      !hasSubstr inlineOut "data-bp-preview-key=" &&
+    !hasSubstr singleOut "bp_inline_preview_ref" &&
+      hasSubstr singleOut "class=\"bp-relation-entries\"" &&
+      hasSubstr singleOut "Missing Preview" &&
+      !hasSubstr singleOut "data-bp-preview-key=" &&
       hasSubstr panelOut "class=\"bp-relation-entries\"" &&
       hasSubstr panelOut "Missing Preview" &&
       hasSubstr panelOut "preview-key" &&

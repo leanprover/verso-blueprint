@@ -117,6 +117,25 @@ private def RenderingResolution.Reference.withPreview
       let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
       HoverRender.inlinePreviewTargetNode node target
 
+open Verso.Doc.Html Verso.Output.Html in
+/-- Render authored references with checked semantics and the selected output's
+preview availability. Direct rendering retains traversal candidates by default. -/
+private def informalReferenceToHtml (previewAvailable : PreviewKey → Bool := fun _ => true) :
+    InlineToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+    fun goI _id data inlines => do
+      let some { label } ← ExtensionDecode.decode? (α := InlineData) data
+          (fun _ => "Malformed data in Inline.informal.toHtml")
+        | pure .empty
+      let some reference ← ExtensionDecode.report? (RenderingResolution.reference (← HtmlT.state) label)
+        | pure .empty
+      let reference := { reference with previewKey := reference.previewKey.filter previewAvailable }
+      let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
+      let labelText := label.toString (escape := false)
+      let node := match reference.href with
+        | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
+        | none => {{<span title={{labelText}}>{{content}}</span>}}
+      return {{<span>{{reference.withPreview node}}</span>}}
+
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data
   usePackages := Informal.TeX.standardMathUsePackages
@@ -129,21 +148,7 @@ inline_extension Inline.informal (data : InlineData) where
     pure none
   extraCss := usesAssetBundle.css
   extraJs := usesAssetBundle.js
-  toHtml :=
-    open Verso.Doc.Html in
-    open Verso.Output.Html in
-    some <| fun goI _id data inlines => do
-      let some { label } ← ExtensionDecode.decode? (α := InlineData) data
-          (fun _ => "Malformed data in Inline.informal traversal")
-        | pure .empty
-      let some reference ← ExtensionDecode.report? (RenderingResolution.reference (← HtmlT.state) label)
-        | pure .empty
-      let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
-      let labelText := label.toString (escape := false)
-      let node := match reference.href with
-        | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
-        | none => {{<span title={{labelText}}>{{content}}</span>}}
-      return {{<span>{{reference.withPreview node}}</span>}}
+  toHtml := some (informalReferenceToHtml (fun _ => true))
   toTeX :=
     open Verso.Output.TeX in
     some <| fun goI _id data inlines => do
@@ -157,6 +162,16 @@ inline_extension Inline.informal (data : InlineData) where
         pure <| .text reference.title
       else
         inlines.mapM goI
+
+/-- Bind the standard reference HTML renderer to prepared preview availability.
+Traversal validation, TeX, and the other supplied extension hooks are retained. -/
+def Inline.withPreviewAvailability (impls : ExtensionImpls)
+    (previewAvailable : PreviewKey → Bool) : ExtensionImpls :=
+  match impls.getInline? ``Inline.informal with
+  | none => impls
+  | some descriptor =>
+    impls.insertInline ``Inline.informal
+      { descriptor with toHtml := some (informalReferenceToHtml previewAvailable) }
 
 def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
     let data : InlineData := { label }

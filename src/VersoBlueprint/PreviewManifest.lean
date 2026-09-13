@@ -12,6 +12,7 @@ import VersoManual
 import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
 import VersoBlueprint.Informal.Block
+import VersoBlueprint.Informal.Uses
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
@@ -1346,6 +1347,10 @@ private def PreviewArtifactIndex.ofArtifacts
 def PreviewArtifactIndex.ofModel (model : PreviewDataModel) : PreviewArtifactIndex :=
   PreviewArtifactIndex.ofArtifacts model.manifest model.htmlCache
 
+/-- Index the retained output pair once for page-rendering consumers. -/
+def PreviewArtifactIndex.ofFiles (files : Files) : PreviewArtifactIndex :=
+  PreviewArtifactIndex.ofArtifacts files.manifest files.htmlCache
+
 def PreviewArtifactIndex.ofPersistedFiles (files : PersistedFiles) : PreviewArtifactIndex :=
   PreviewArtifactIndex.ofArtifacts files.manifest files.htmlCache
 
@@ -1360,6 +1365,17 @@ def PreviewArtifactIndex.hasCacheKey
 def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
     Bool :=
   index.hasManifestKey key && index.hasCacheKey key
+
+/-- Install the standard page consumers of this output's prepared resources.
+The same availability index feeds relations and authored references; graph pages
+reuse the already-finalized graph objects. Resource-body construction continues
+with the original extensions, before the completed resource set is available. -/
+def Files.withPageExtensions (files : Files) (impls : ExtensionImpls) : ExtensionImpls :=
+  let index := PreviewArtifactIndex.ofFiles files
+  let available := fun key : PreviewKey => index.resolves key.value
+  Informal.Commands.withPreparedGraphs impls files.manifest.graphs
+    |> (Inline.withPreviewAvailability · available)
+    |> (Block.withPreviewAvailability · available)
 
 private def PreviewArtifactIndex.previewKey?
     (index : PreviewArtifactIndex) (key? : Option Informal.PreviewKey) :
@@ -2719,7 +2735,7 @@ private def emitBlueprintHtml
   let impls ← read
   let pageImpls := match prepared.previewFiles? with
     | none => impls
-    | some files => Informal.Commands.withPreparedGraphs impls files.manifest.graphs
+    | some files => files.withPageExtensions impls
   withReader (fun _ => pageImpls) <|
     withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" prepared.emit
   if prepared.previewFiles?.isSome then
