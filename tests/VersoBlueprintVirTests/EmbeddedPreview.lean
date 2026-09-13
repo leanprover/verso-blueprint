@@ -15,7 +15,6 @@ namespace VersoBlueprintVirTests.EmbeddedPreview
 vir_proof_widget
   (VersoBlueprint.Experimental.VirPreview.createWidgetComponent
     "VersoBlueprint.Experimental.VirPreview.Server.previewDocument")
-  with mountId := "vbp-native-preview"
 
 /-- Use the existing SDK facet's output; no manually copied WASM or asset polling. -/
 def panelProps : Lean.Vir.Infoview.WidgetProps := {

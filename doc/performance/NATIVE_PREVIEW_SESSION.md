@@ -7,15 +7,18 @@ FLT demo.
 ## Current isolated setup
 
 The manifests pin Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR
-`6c69603950955e8a9f8d874432b20d40ea557005`. The independent
+`9fafe9cfd594213ee39dc8205b08084c31101816`. The independent
 [verso-react](../../packages/verso-react/README.md) package uses the same pair.
 The integration was transplanted onto VBP `c47e317a` without unrelated profiling
 changes. Source dependencies are independent clones, not producer worktrees.
+This VIR candidate combines draft PR186's native panel props and same-tree React
+rendering, the existing 4.34 overlay, and the SDK panel-binding inventory repair.
+It is a local experimental successor, not a published 4.34 release.
 
 VIR still uses a local Git URL. This is reproducible with retained inputs,
 but **not yet a public download-and-build recipe**. The matching SDK archive
 has SHA-256
-`b8d501cee398bfab2f1f5f080580ece7e83a0ebf4c3fc355456a2abce7053a68`.
+`23a06e2e1b570e3be5708f6f2c1c77dfa522ff6f08f5a148468a234640ffb68c`.
 The release WASM hash is
 `3a92152e4431f86b73525cc23f88498f7b6c66f0f9e10ba10374eaf20a2c6e3f`.
 The existing `:virSdk` facet installs the archive. Test scripts derive the expected
@@ -29,7 +32,7 @@ to acquire dependencies, then:
 
 ```sh
 export VIR_SDK_ARCHIVE=/absolute/path/to/lean-vir-sdk.tar.gz
-export VBP_RENDERER_REPORT_DIR=/absolute/path/to/verso-blueprint/_out/native-preview-modules/renderer
+export VBP_RENDERER_REPORT_DIR=/absolute/path/to/verso-blueprint/_out/native-preview-vir-refresh/renderer
 export VBP_NATIVE_SESSION_REPORT="$VBP_RENDERER_REPORT_DIR/../session.json"
 
 npm --prefix .lake/packages/lean_vir ci --no-audit --no-fund
@@ -41,8 +44,9 @@ VBP_NATIVE_PREVIEW_REPORT="$VBP_RENDERER_REPORT_DIR/../widget.json" scripts/test
 ```
 
 Report paths are explicit so reruns cannot overwrite another experiment's
-evidence by default. Packaging uses scoped artifact restoration for this VIR pin;
-the upstream cache repair is not part of this checkpoint.
+evidence by default. Packaging conservatively retains scoped artifact restoration.
+The upstream cache repair is included, but these preview gates do not establish
+cache-only correctness; removing the override is a separate validation.
 
 ## Architecture
 
@@ -63,9 +67,11 @@ the upstream cache repair is not part of this checkpoint.
   ordinary effect owns each request and its `AbortController`. Cleanup disables
   publication before aborting. The server returns an explicitly encoded String,
   decoded once per accepted reply; there is no state-serialization layer.
-- `Preview.Widget` adapts VIR's cursor/session surface. `useMemo` stabilizes
-  parameters; checked conversions produce JSON numbers, not Lean bigints.
-  `vir_proof_widget` supplies registration and mounting.
+- `Preview.Widget` reads native `PanelWidgetProps` and calls the actual
+  `useRpcSession` hook. Cursor coordinates stay JavaScript numbers; `useMemo`
+  stabilizes the request object. `vir_proof_widget` registers one function-component
+  factory, which React invokes in the surrounding infoview tree. There is no
+  normalized Surface, mount entry, mount ID, or nested React root.
 - `Preview.Server` is a separate meta import. It reads the open module's Verso
   document from the end-of-file snapshot, waits for the checked environment,
   verifies the complete Manual document type, and evaluates it. The normal
@@ -128,8 +134,8 @@ The timing acceptance reports in `_out/native-preview-modules/timing-zoom/` chec
 debug-only visibility, actual browser geometry against a 1:2:3 sample, all four
 selectable scales and their persistence, 6/600/1200 ms measurements, horizontal scrolling in a narrow panel, distinct
 colors, accessible labels, missing/zero measurements, and fresh measurements
-from the real document RPC across edits. The known embedded-shell unmount
-warning remains a strict failure.
+from the real document RPC across edits. The refreshed campaign also keeps
+the strict zero-React-warning gate.
 
 Ordinary `import VersoBlueprint` does not import VIR. The server endpoint is not
 part of the client's runtime closure. No new build, rendering traversal, document cache,
@@ -150,6 +156,8 @@ The browser test reuses VIR's real-LSP harness and official `RpcSessions`.
 It obtains panel props and registered JavaScript through Lean widget RPC, checks
 the generated shell hash, and runs that exact shell. The shell packages the
 client from the live server snapshot and reads matched WASM through asset RPC.
+The open document and its imports must use the module system. A compiled widget
+package test alone does not check that live requirement.
 
 The campaign checks edited text, retained controls, unchanged-input suppression,
 cursor correlation, real source-to-DOM focus, disabled/reenabled Follow cursor,
@@ -159,17 +167,43 @@ failures, and disposal. The harness forwards edit notifications **after
 diagnostics**: these are correctness checks, not latency measurements or live
 VS Code/FLT acceptance.
 
-**Known strict gate:** pinned VIR synchronously unmounts its inner React root
-from the outer shell's effect cleanup. React warns about unmounting a root while
-rendering. The widget test records functional observations, then fails on this
-warning. It is not suppressed or patched locally. VIR has reviewed the lifecycle
-issue; no reviewed repair has been adopted here. The working FLT demo remains
-unchanged until a successor passes this gate.
+**Strict lifetime gate:** the refreshed embedded campaign passes with zero React
+warnings. VIR now renders the Lean component in the existing tree. The test still
+rejects every unexpected React warning; none is filtered or suppressed. The
+working FLT demo and its previous VBP/SDK pair remain unchanged during validation.
+Unmounting UI is not hard runtime disposal: surviving callbacks retain their
+runtime generation according to VIR's ownership contract.
 
 Historical profiling, widget campaigns, and evidence remain on the earlier
 research branches; they are not acceptance evidence for this base.
 
-## Local validation, 2026-09-13
+## Refreshed candidate validation, 2026-09-13
+
+Reports live under repository-root `_out/native-preview-vir-refresh/`:
+
+- Independent SDK installation: exact clean source identity, all 32 payload
+  hashes, and host-binding module import pass. The retained input archive is
+  `inputs/lean-vir-sdk.tar.gz`.
+- `renderer/renderer-acceptance.json`: generic Manual and Blueprint rendering pass.
+- `session.json`: Strict Mode, retained controls, debug-only timing and selectable
+  scale, timing geometry, and disposal checks pass without React warnings.
+- `scalar-rpc.json` and `string-rpc.json`: real-server RPC, cancellation, stale
+  replies, and edit-refresh campaigns pass; String RPC makes 23 requests.
+- `widget.json`: registered shell, live snapshot packaging and workspace WASM,
+  edited document, source focus, retained controls/scale, and unsubscribe pass.
+  Eight preview requests build one client package; React warnings are empty.
+- Lean Beam checks the native-props widget module with no diagnostics.
+
+This is isolated consumer acceptance, not FLT/VS Code acceptance, a new latency
+measurement, or approval of all upstream changes. The old VBP worktree, user-edited
+fixture, and live FLT dependency pins are preserved.
+
+To move FLT later, switch its VBP path to this worktree, update Lake, install this
+SDK, and remove `with mountId := ...` from its `vir_proof_widget` registration.
+Keep module headers on the open Blueprint files. Rebuild and validate live
+packaging before restarting the editor; do not mix the old JS SDK with this pin.
+
+## Previous baseline validation, 2026-09-13
 
 Reports are retained under repository-root `_out/native-preview-modules/`.
 The standalone renderer build/test and generic/Blueprint React output tests pass.

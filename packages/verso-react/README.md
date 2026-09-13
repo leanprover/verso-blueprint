@@ -35,7 +35,7 @@ Call this as an ordinary render helper inside a React component. It creates
 nodes; it does not create a React root, manage state, register a widget, fetch
 documents, or install a runtime. The application owns those operations.
 
-This checkpoint uses Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR `6c696039`.
+This checkpoint uses Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR `9fafe9cf`.
 VIR's exact pin still uses a local Git URL; this is not yet a published
 download-and-build recipe. Do not mix its Lean packages or SDK with another
 toolchain. The parent VBP package obtains VIR through this dependency.

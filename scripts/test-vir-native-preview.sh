@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 export VIR_SDK_EXPECT_COMMIT
 VIR_SDK_EXPECT_COMMIT=$(node -e 'const m = require("./lake-manifest.json"); console.log(m.packages.find(p => p.name === "lean_vir").rev)')
 
-# Scoped workaround for the reviewed VIR :vir cache-in-place import bug.
+# Retain restoration until this consumer has a separate cache-only acceptance.
 fixtureTarget=+VersoBlueprintVirTests.NativePreview:vir
 if [[ "${1:-}" == "--string-preview" ]]; then
   fixtureTarget=+VersoBlueprintVirTests.StringPreview:vir

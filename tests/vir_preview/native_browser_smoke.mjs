@@ -44,17 +44,14 @@ const bundle = await build({
   plugins: embeddedPreview ? [{
     name: "embedded-editor-context",
     setup(builder) {
-      // The infoview import map exports createRoot from "react-dom". Node's
-      // React 19 package exposes that function at "react-dom/client" instead.
-      builder.onResolve({ filter: /^react-dom$/ }, args => args.importer === shellPath
-        ? { path: createRequire(resolve(virRoot, "package.json")).resolve("react-dom/client") }
-        : undefined);
       builder.onResolve({ filter: /^@leanprover\/infoview$/ }, () => ({
         path: "infoview", namespace: "vbp-embedded-test",
       }));
       builder.onLoad({ filter: /.*/, namespace: "vbp-embedded-test" }, () => ({
         contents: `export { EditorConnection, EditorContext, useClientNotificationEffect }
           from ${JSON.stringify(createRequire(resolve(virRoot, "package.json")).resolve("@leanprover/infoview"))};
+          export { TaggedText_stripTags }
+          from ${JSON.stringify(createRequire(resolve(virRoot, "package.json")).resolve("@leanprover/infoview-api"))};
           export function useRpcSession() { return globalThis.__vbpEmbeddedSession; }`,
         loader: "js", resolveDir: virRoot,
       }));

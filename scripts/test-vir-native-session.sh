@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 export VIR_SDK_EXPECT_COMMIT
 VIR_SDK_EXPECT_COMMIT=$(node -e 'const m = require("./lake-manifest.json"); console.log(m.packages.find(p => p.name === "lean_vir").rev)')
 
-# Scoped workaround for the reviewed VIR packaging/cache-in-place import bug.
+# Retain restoration until this consumer has a separate cache-only acceptance.
 LAKE_RESTORE_ARTIFACTS=true scripts/lean-low-priority lake build \
   +VersoBlueprintVirTests.NativeSession:vir :virSdk
 scripts/lean-low-priority node tests/vir_preview/session_browser_smoke.mjs
