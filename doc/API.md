@@ -366,18 +366,35 @@ HTML asset patches, and constructs the `PreparedPreviewState` relation indexes.
 It retains the checked text, configuration, and mode; `BlueprintExtraStep` now
 accepts only this prepared wrapper. Custom steps read `text`, `config`, `mode`,
 and `state` from it instead of receiving four independent arguments.
+
+`blueprintMainWithPreviewData` also fills `previewFiles?` once before page
+emission. The standard graph HTML renderer consumes those finalized graphs;
+post-render export writes the same manifest/cache pair and merges hover docs only
+after Verso has written the page hover table. `emitBlueprintPreviewData` consumes
+this prepared result and no longer accepts extension implementations or markup
+configuration. Use `blueprintMainWithPreviewData` to request preparation, rather
+than adding the exporter to plain `blueprintMain`'s extra steps. Plain generation
+leaves `previewFiles?` absent and performs no preview resource rendering.
+
+`Commands.withPreparedGraphs` binds the standard graph HTML implementation to the
+prepared graph objects for page emission. It preserves the other supplied hooks
+and extensions; a custom replacement for the graph HTML renderer must integrate
+this resource selection explicitly instead of relying on its traversal candidates.
+
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.
 
 Delayed HTML generation writes a versioned Blueprint checkpoint containing the
-unpatched document/state pair and serializable layout settings. It emits no HTML
-or xrefs until resumed. Resume checks the layout and fixed point, reapplies
+unpatched document/state pair and serializable layout settings. It prepares no
+preview resources and emits no HTML or xrefs until resumed. Resume checks the layout and fixed point, reapplies
 renderer preparation, and writes xrefs into the selected output directory.
 The checkpoint's saved document and captured project model are authoritative;
 resume does not replace them with the current generator's document or model.
 Output destination, output scheduling, verbosity, and traversal limit may change.
 Other serializable settings must match, including draft selection, split depth,
-and assets. Single-page output normalizes split depth to zero. Legacy Verso
+and assets. Asset bundles compare as sets, independent of JSON array order;
+ordered configuration fields such as extra head elements remain order-sensitive.
+Single-page output normalizes split depth to zero. Legacy Verso
 `SavedState` files must be regenerated; they lack the layout binding.
 
 These checks establish a fixed point under the current extension implementations,

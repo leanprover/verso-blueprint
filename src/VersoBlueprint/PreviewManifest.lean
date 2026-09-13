@@ -23,6 +23,7 @@ import VersoBlueprint.PreviewRender
 import VersoBlueprint.RenderModel
 import VersoBlueprint.RenderingResolution
 import VersoBlueprint.GraphApi
+import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Git
 import VersoBlueprint.Html
 import VersoBlueprint.HtmlDocument
@@ -1213,12 +1214,29 @@ structure PreparedPreviewState where private mk ::
 def PreparedPreviewState.prepare (state : TraverseState) : PreparedPreviewState :=
   PreparedPreviewState.mk (Informal.RelatedPanel.patchRelationCaches state)
 
+/-- Paired, emission-ready preview-data outputs for a generated Blueprint site. -/
+structure Files where private mk ::
+  /--
+  Semantic preview data. This is the public source of truth for labels, hrefs,
+  relationship topology, Lean-code associations, external-markup metadata, and
+  other facts that generated consumers need.
+  -/
+  manifest : File := {}
+  /--
+  Opaque rendered fragments and their hover payload side table. Consumers join
+  this cache with `manifest` by preview key when they need presentation data.
+  -/
+  htmlCache : HtmlCache.File := {}
+deriving Repr
+
 /--
 Traversal state prepared for Blueprint HTML rendering and post-render steps.
 
 Renderer preparation installs the Blueprint HTML asset patches and crosses the
 preview-data preparation boundary exactly once. Post-render steps receive this
 type so they cannot assume that a raw traversal state was prepared elsewhere.
+Preview-enabled generation additionally retains the paired resources before page
+emission; plain generation leaves them absent.
 -/
 structure PreparedRendererState where private mk ::
   /-- Preview-data view of the same prepared traversal state. -/
@@ -1226,13 +1244,15 @@ structure PreparedRendererState where private mk ::
   text : Part Manual
   config : RenderConfig
   mode : Mode
+  /-- Prepared once before HTML emission, then reused for export. -/
+  previewFiles? : Option Files := none
 
 /-- Apply renderer patches to a checked document. Retain its text and output
 configuration so emission and post-render steps cannot receive a different pair. -/
 def PreparedRendererState.prepare (document : HtmlDocument) : PreparedRendererState :=
   PreparedRendererState.mk
     (PreparedPreviewState.prepare (document.state.modifyHtmlAssets patchBlueprintHtmlAssets))
-    document.text document.config document.mode
+    document.text document.config document.mode none
 
 /-- The underlying traversal state used by Verso's HTML emitters. -/
 def PreparedRendererState.state (preparedState : PreparedRendererState) : TraverseState :=
@@ -1256,21 +1276,6 @@ structure PreviewDataModel where
   manifest : File := {}
   htmlCache : HtmlCache.File := {}
 deriving Inhabited, Repr
-
-/-- Paired, emission-ready preview-data outputs for a generated Blueprint site. -/
-structure Files where private mk ::
-  /--
-  Semantic preview data. This is the public source of truth for labels, hrefs,
-  relationship topology, Lean-code associations, external-markup metadata, and
-  other facts that generated consumers need.
-  -/
-  manifest : File := {}
-  /--
-  Opaque rendered fragments and their hover payload side table. Consumers join
-  this cache with `manifest` by preview key when they need presentation data.
-  -/
-  htmlCache : HtmlCache.File := {}
-deriving Repr
 
 /--
 Manifest/cache files decoded from persisted or externally supplied output.
@@ -2600,7 +2605,9 @@ private def mergeHtmlCacheHoverDocsIntoVersoDocs
   IO.FS.writeFile docsPath (toString <| docs.mergeObj htmlCache.hoverDocsJson)
 
 /--
-Emit the canonical Blueprint manifest and rendered-fragment cache files.
+Export the canonical Blueprint manifest and rendered-fragment cache files
+already retained by preview-enabled renderer preparation. This step performs no
+fragment rendering and must run after page emission for hover-table merging.
 
 The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
 or citation key. The rendered-fragment cache contains the corresponding opaque
@@ -2609,19 +2616,15 @@ slides. Emission also writes the generated ESM APIs under `-verso-data/`, merges
 hover payloads into the Verso docs side table, and reports non-fatal warnings
 when traversal-preview metadata was lost before export.
 -/
-def emitBlueprintPreviewData
-    (extensionImpls : ExtensionImpls)
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
-    BlueprintExtraStep := fun preparedState => do
+def emitBlueprintPreviewData : BlueprintExtraStep := fun preparedState => do
   let mode := preparedState.mode
   let cfg := preparedState.config.toConfig
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
   let modeDescription := htmlModeDescription mode
   let state := preparedState.state
-  let files ← buildPreviewDataFiles extensionImpls logError
-    preparedState.previewState externalMarkupConfig
-    (verbose := cfg.verbose)
+  let some files := preparedState.previewFiles?
+    | Verso.reportError "Blueprint preview export requires prepared resources"; return
   reportPreviewMetadataLossWarnings logger state files.manifest
   let countSummary :=
     s!"{files.manifest.previews.size} previews, " ++
@@ -2684,6 +2687,7 @@ private def PreparedRendererState.emit (prepared : PreparedRendererState) : Emit
 
 private def emitBlueprintHtml
     (extraSteps : List BlueprintExtraStep)
+    (previewConfig? : Option Informal.ExternalMarkupRender.Config)
     (how : EmitHtml)
     (mode : Mode)
     (cfg : RenderConfig)
@@ -2703,9 +2707,23 @@ private def emitBlueprintHtml
       document.save path
     return
   let prepared := PreparedRendererState.prepare document
+  let prepared ← match previewConfig? with
+    | none => pure prepared
+    | some previewConfig => do
+      let logger ← readThe (Verso.Logger IO)
+      let files ← buildPreviewDataFiles (← read) logger.reportError
+        prepared.previewState previewConfig (verbose := cfg.verbose)
+      pure { prepared with previewFiles? := some files }
   withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
     emitXrefsJson (outDirForMode prepared.config.toConfig prepared.mode) prepared.state
-  withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" prepared.emit
+  let impls ← read
+  let pageImpls := match prepared.previewFiles? with
+    | none => impls
+    | some files => Informal.Commands.withPreparedGraphs impls files.manifest.graphs
+  withReader (fun _ => pageImpls) <|
+    withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" prepared.emit
+  if prepared.previewFiles?.isSome then
+    emitBlueprintPreviewData prepared
   for step in extraSteps do
     step prepared
 
@@ -2714,7 +2732,8 @@ private def blueprintMainCore (text : Part Manual)
     (options : List String)
     (config : RenderConfig := {})
     (extraSteps : List BlueprintExtraStep := [])
-    (pdfOptions : PdfOptions := {}) : IO UInt32 :=
+    (pdfOptions : PdfOptions := {})
+    (previewConfig? : Option Informal.ExternalMarkupRender.Config := none) : IO UInt32 :=
   ReaderT.run go extensionImpls
 where
   go : ReaderT ExtensionImpls IO UInt32 := do
@@ -2730,8 +2749,8 @@ where
           emitTeX cfg.toConfig text
           Informal.TeX.Cleanup.patchFile cfg.toConfig text
 
-      emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single cfg text
-      emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi cfg text
+      emitBlueprintHtml extraSteps previewConfig? cfg.emitHtmlSingle .single cfg text
+      emitBlueprintHtml extraSteps previewConfig? cfg.emitHtmlMulti .multi cfg text
 
       if let some wcFile := cfg.wordCount then
         withTimedBuildProgress cfg.verbose s!"word count emission to {wcFile}" <|
@@ -2769,7 +2788,7 @@ def blueprintMainWithPreviewData
         IO.eprintln err
         return 2
   blueprintMainCore text (extensionImpls := extensionImpls) (options := options) (config := config)
-    (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
-    (pdfOptions := pdfOptions)
+    (extraSteps := extraSteps) (pdfOptions := pdfOptions)
+    (previewConfig? := some externalMarkupConfig)
 
 end Informal.PreviewManifest

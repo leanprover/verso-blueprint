@@ -324,7 +324,9 @@ private def runHtmlCheck (action : EmitM (Option Informal.HtmlDocument))
     unless errors.isEmpty && resumed.text == document.text && resumed.state == document.state do
       throw <| IO.userError "Changing the resume traversal limit changed the saved pair"
   for (mode, changed) in #[(Mode.single, cfg), (.multi, { cfg with htmlDepth := 1 }),
-      (.multi, { cfg with draft := true }), (.multi, { cfg with features := {.KaTeX} })] do
+      (.multi, { cfg with draft := true }), (.multi, { cfg with features := {.KaTeX} }),
+      (.multi, { cfg with extraJs := ["console.log('changed asset');"] }),
+      (.multi, { cfg with extraHead := #[.text false "changed head"] })] do
     let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load mode changed path)
     unless result.isNone && errors.any (hasSubstr · "layout/configuration") do
       throw <| IO.userError "Resume accepted an incompatible layout/configuration"

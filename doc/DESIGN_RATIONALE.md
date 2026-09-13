@@ -571,7 +571,8 @@ flowchart TD
   versoEmit["Verso Manual HTML emitters<br/>single-page and multi-page output"]
   informalManual["Informal Manual block renderer<br/>Informal.Block.toHtml"]
   commandRenderers["Command/inline renderers<br/>graph, summary, bibliography, math, cite, code"]
-  previewExtra["Preview-data extra step<br/>emitBlueprintPreviewData"]
+  previewPrepare["Prepare resources once<br/>buildPreviewDataFiles"]
+  previewExtra["Export prepared resources after pages<br/>emitBlueprintPreviewData"]
   previewFiles["Manifest/cache files<br/>blueprint-manifest.json<br/>blueprint-html-cache.json"]
 
   attributeEnv["Persistent attribute node/catalog<br/>Environment.State"]
@@ -590,10 +591,12 @@ flowchart TD
   blockShell["Canonical block shell<br/>Informal.Block.Render.renderInformalBlockModel"]
   browserRuntime["Browser hydration<br/>blueprint-page-runtime / createPreview<br/>and feature hydrators"]
 
-  manualMain --> versoEmit
+  manualMain --> previewPrepare
+  previewPrepare --> versoEmit
   versoEmit --> informalManual
   versoEmit --> commandRenderers
-  manualMain --> previewExtra
+  versoEmit --> previewExtra
+  previewPrepare --> previewExtra
   previewExtra --> previewFiles
 
   attributeEnv --> moduleInclude
@@ -622,7 +625,7 @@ The current paths are:
 | Path | Entry point | Data input | Shared assembly point | Output |
 | --- | --- | --- | --- | --- |
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
-| Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
+| Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | checked document and its retained prepared `Files` | resource preparation before pages, paired export after pages | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
 | Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
 | Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | checked selected facet and node metadata from `RenderingResolution`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
@@ -936,11 +939,11 @@ Lean/Verso source modules
   -> Manual traversal completes occurrence facts and preview stores
   -> HtmlDocument (checked fixed point, captured state, text, layout)
   -> PreparedRendererState
+       |-> optional resource preparation -> finalized Files
+       |       `-> graph HTML uses the finalized graph objects
        |-> completed TraverseState -> Manual HTML emission
+       |-> export retained Files -> manifest/cache and merged hover docs
        `-> BlueprintExtraStep post-render steps
-             `-> PreparedPreviewState
-                   -> PreviewManifest.buildPreviewDataFiles
-                   -> blueprint-manifest.json and blueprint-html-cache.json
   -> generated ESM APIs and browser/custom clients
 ```
 
@@ -949,9 +952,16 @@ payloads for the current generator process, including bodyless directives whose
 visible text comes from an external source. The standard renderer first checks a fixed point
 through `HtmlDocument`, then applies Blueprint's HTML asset patches and relation
 indexes through `PreparedRendererState`. HTML emission and post-render steps use
-the text, state, mode, and configuration retained in that wrapper. Direct
-preview-data callers retain the narrower `PreparedPreviewState` API, which only
-prepares indexes and supports synthetic states used in tests.
+the text, state, mode, and configuration retained in that wrapper. Preview-enabled
+generation also retains the finalized manifest/cache pair there, built once before
+pages. Embedded graph JSON reuses its graph objects, including resource availability,
+without another traversal store or semantic-resolution pass. Blank resource panels
+remain omitted; external markup can retain semantic entries without cache bodies.
+Neither case removes graph topology or accepted node facts. Plain generation and
+delayed checkpoints do not prepare resources. Hover-table merging remains after
+page emission. Direct preview-data callers retain the narrower
+`PreparedPreviewState` API, which only prepares indexes and supports synthetic
+states used in tests.
 
 A Blueprint HTML checkpoint stores the unpatched document and captured state
 alongside its serializable configuration. Resume preserves that document and

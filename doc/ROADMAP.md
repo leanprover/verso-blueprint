@@ -123,12 +123,13 @@ Work:
    normalization semantics have one runtime owner.
 11. keep the landed runtime-side semantic-only preview handling aligned with
    generated-data finalization. Generated JSON clears traversal preview
-   candidates that lack cache bodies; page-local relation-panel markup and
-   embedded graph-block JSON are still derived during traversal, so browser
-   runtimes distinguish `semantic-preview-body-missing` from stale or broken
-   cache loads. A later Lean-side pass may pass preview availability into
-   page-local relation and graph rendering earlier, but should preserve this
-   runtime distinction.
+   candidates that lack cache bodies. Preview-enabled HTML generation now
+   prepares resources before pages and reuses the finalized graphs for embedded
+   graph JSON. Page-local relation-panel markup and inline references still use
+   traversal candidates, so browser runtimes distinguish
+   `semantic-preview-body-missing` from stale or broken cache loads. Migrate
+   those consumers separately to the same prepared resources, preserving this
+   runtime distinction and the plain generator's resource-free behavior.
 12. keep the external-declaration hover transfer behind its current local
    bridge until the portable-fragment contract tracked by
    [`UPC-0014`](./roadmap/cards/UPC-0014-portable-hover-fragment-transfer/README.md)

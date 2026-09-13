@@ -32,6 +32,14 @@ serializable settings must match, including draft selection and HTML assets. -/
 private def bindingConfig (config : Config) : Config :=
   { config with toOutputConfig := { draft := config.draft }, maxTraversals := 20 }
 
+/-- Assets are sets: their JSON array order can change after decoding. Keep
+ordered configuration fields (such as extraHead) order-sensitive, while using
+Verso's set-aware equality for the asset bundle. -/
+private def sameBindingConfig (saved requested : Config) : Bool :=
+  saved.toHtmlAssets == requested.toHtmlAssets &&
+    toJson { saved with toHtmlAssets := {} } ==
+      toJson { requested with toHtmlAssets := {} }
+
 private def withoutErrors (action : EmitM (Option α)) : EmitM (Option α) := do
   let logger ← readThe (Logger IO)
   let failed ← IO.mkRef false
@@ -99,7 +107,7 @@ def load (mode : Mode) (config : RenderConfig) (path : System.FilePath) :
     return none
   let singlePage := match mode with | .single => true | .multi => false
   unless checkpoint.singlePage == singlePage &&
-      toJson checkpoint.config == toJson (bindingConfig (effectiveConfig mode config)) do
+      sameBindingConfig checkpoint.config (bindingConfig (effectiveConfig mode config)) do
     reportError "Blueprint HTML checkpoint layout/configuration does not match this output; regenerate the saved traversal"
     return none
   check mode config checkpoint.saved.text checkpoint.saved.traverseState
