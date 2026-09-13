@@ -100,8 +100,8 @@ private def renderRelatedPanel
 /--
 Render a preview-manifest relation panel as a header extra.
 
-Most relation kinds disappear when they have no entries; undeclared groups are
-the exception, because their empty warning chip is the whole signal.
+Empty uses and used-by panels retain their status chip. Undeclared groups
+also retain an empty warning chip; declared empty groups have no panel.
 -/
 private def renderRelatedPanelExtra?
     (cfg : RelationPanelsConfig)
@@ -137,12 +137,6 @@ private def renderGroupExtra?
       Informal.HeaderExtra.group
       (showWhenEmpty := !group.declared)
 
-/-- Select the uses-panel wording from the manifest entry facet. -/
-private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.PanelConfig :=
-  match entry.blockKind with
-  | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
-  | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
-
 private def renderUsesExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
@@ -150,21 +144,18 @@ private def renderUsesExtra?
   renderRelatedPanelExtra?
     cfg
     .uses
-    (usesPanelConfigForEntry entry)
+    (Informal.RelatedPanel.usesPanelConfigForBlock entry.blockData)
     entry.usesForFacet
     entry
     Name.anonymous
     Informal.HeaderExtra.uses
     (showWhenEmpty := true)
 
-private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
-    Option Informal.HeaderExtra :=
-  entry.codeData.map fun codeData =>
-    let parts := Informal.CodeSummary.renderParts
-      blockData
-      { source := some codeData }
-      (fun _ => none)
-    Informal.HeaderExtra.code parts.codeEntry
+private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
+    Informal.HeaderExtra :=
+  let parts := Informal.CodeSummary.renderParts
+    blockData { source := entry.codeData } (fun _ => none)
+  Informal.HeaderExtra.code parts.codeEntry
 
 private def renderUsedByExtra?
     (cfg : RelationPanelsConfig)
@@ -173,11 +164,12 @@ private def renderUsedByExtra?
   renderRelatedPanelExtra?
     cfg
     .usedBy
-    Informal.RelatedPanel.usedByPanelConfig
+    (Informal.RelatedPanel.usedByPanelConfig (some entry.label))
     entry.usedBy
     entry
     Name.anonymous
     Informal.HeaderExtra.usedBy
+    (showWhenEmpty := true)
 
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
@@ -185,19 +177,13 @@ private def renderHeaderExtras
     (blockData : Informal.BlockData)
     (group? : Option GroupRelation) :
     Informal.HeaderExtras :=
-  match entry.facet with
-  | .proof =>
-    {
-      uses? := renderUsesExtra? cfg entry
-    }
-  | .statement =>
-    {
-      group? := renderGroupExtra? cfg entry group?
-      uses? := renderUsesExtra? cfg entry
-      code? := renderCodeExtra? entry blockData
-      usedBy? := renderUsedByExtra? cfg entry
-      markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
-    }
+  Informal.HeaderExtras.forFacet {
+    group? := renderGroupExtra? cfg entry group?
+    uses? := renderUsesExtra? cfg entry
+    code? := some (renderCodeExtra entry blockData)
+    usedBy? := renderUsedByExtra? cfg entry
+    markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
+  } blockData.isProof
 
 private def renderCodePanel
     (cfg : RenderConfig)

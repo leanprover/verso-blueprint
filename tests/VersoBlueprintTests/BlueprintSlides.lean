@@ -391,7 +391,7 @@ private def writeSlidesPreviewDataFiles
       match entry.usedBy[0]? with
       | some related =>
         entry.usedBy.size == 1 &&
-          related.axes.contains Informal.PreviewManifest.RelationAxis.statement
+          related.dependencies.any (·.facet == .statement)
       | none => false
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx

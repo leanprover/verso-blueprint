@@ -11,57 +11,52 @@ namespace Informal.PreviewResources
 
 open Verso.Output
 
-/-- A pure presentation decision over the completed preview resource set.
-Availability may change preview affordances, but must preserve body presence. -/
-abbrev View := (PreviewKey → Bool) → Html
-
-/-- Render now for pages, or retain the decision while constructing resources.
-Semantic lookup and body rendering happen before this hook. -/
-abbrev Render := View → IO Html
+/-- Select a preview affordance while preserving the underlying content.
+Branches are lazy so immediate page rendering constructs only the selected one. -/
+abbrev Render := PreviewKey → (Unit → Html) → (Unit → Html) → Html
 
 def immediate (available : PreviewKey → Bool := fun _ => true) : Render :=
-  fun view => pure (view available)
+  fun key present absent => if available key then present () else absent ()
 
-/-- An output-local collection of deferred presentation decisions. It never
-enters saved traversal state or the manifest/cache wire format. -/
-structure Deferred where
-  private mk ::
-  private views : IO.Ref (Array View)
+-- A self-contained choice in the intermediate Html tree, never emitted as HTML.
+-- Unlike an index into a render session, it can be freely composed and copied.
+private def marker := "verso-blueprint-preview-choice"
 
-def Deferred.create : IO Deferred :=
-  return ⟨← IO.mkRef #[]⟩
+/-- Retain both presentations until resource availability is known. There is no
+mutable session, side table, or function stored in the resulting fragment. -/
+def deferred : Render := fun key present absent =>
+  .tag marker #[("key", key.value)] (.seq #[present (), absent ()])
 
--- This tag exists only in the intermediate Html tree. Its contents preserve
--- the candidate presentation for blank-body detection; it is never serialized.
-private def marker := "verso-blueprint-deferred-preview"
-
-def Deferred.render (deferred : Deferred) : Render := fun view => do
-  let index ← deferred.views.modifyGet fun views => (views.size, views.push view)
-  return .tag marker #[("index", toString index)] (view (fun _ => true))
-
-/-- Test rendered content without serializing deferred markers. Availability
-only changes preview affordances, never the presence of authored body content. -/
+/-- Recognize blank fragments structurally, without serializing choices.
+Finalization rejects choices whose branches disagree about body presence. -/
 partial def htmlIsBlank : Html → Bool
   | .text _ text => text.all Char.isWhitespace
   | .seq children => children.all htmlIsBlank
-  | .tag name _ contents => name == marker && htmlIsBlank contents
-
-private partial def resolve (views : Array View) (available : PreviewKey → Bool) :
-    Html → Html
-  | .text escape text => .text escape text
-  | .seq children => .seq (children.map (resolve views available))
   | .tag name attrs contents =>
-    if name == marker then
-      match attrs[0]?.bind (fun (_, value) => value.toNat?) >>= (fun index => views[index]?) with
-      | some view => resolve views available (view available)
-      | none => panic! "Unbound deferred Blueprint preview view"
-    else .tag name attrs (resolve views available contents)
+    if name != marker then false
+    else
+      match attrs, contents with
+      | #[("key", key)], .seq #[present, absent] =>
+        (PreviewKey.ofString? key).isSome && htmlIsBlank present && htmlIsBlank absent
+      -- Keep malformed choices for finalization to diagnose, even if empty.
+      | _, _ => false
 
-/-- Freeze this render session's decisions, then resolve structured fragments
-before serialization. Nested decisions are resolved too, without re-elaborating
-or re-rendering their document bodies. -/
-def Deferred.finish (deferred : Deferred) (available : PreviewKey → Bool) :
-    IO (Html → Html) := do
-  return resolve (← deferred.views.get) available
+/-- Resolve self-contained choices before serialization. Invalid choice shapes
+or branches that change body presence are diagnosed, not replaced by empty HTML.
+Raw HTML strings remain opaque. -/
+partial def finish (available : PreviewKey → Bool) : Html → Except String Html
+  | .text escape text => pure (.text escape text)
+  | .seq children => .seq <$> children.mapM (finish available)
+  | .tag name attrs contents => do
+    if name == marker then
+      let (#[ ("key", key) ], .seq #[present, absent]) := (attrs, contents)
+        | throw "Malformed Blueprint preview choice"
+      unless htmlIsBlank present == htmlIsBlank absent do
+        throw s!"Blueprint preview choice '{key}' changes body presence"
+      let some key := PreviewKey.ofString? key
+        | throw "Empty Blueprint preview choice key"
+      finish available (if available key then present else absent)
+    else
+      return .tag name attrs (← finish available contents)
 
 end Informal.PreviewResources

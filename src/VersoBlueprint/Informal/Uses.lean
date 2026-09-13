@@ -133,9 +133,10 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
       let node := match reference.href with
         | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
         | none => {{<span title={{labelText}}>{{content}}</span>}}
-      return ← renderPreview fun available =>
-        let reference := { reference with previewKey := reference.previewKey.filter available }
-        {{<span>{{reference.withPreview node}}</span>}}
+      let content := match reference.previewKey with
+        | none => node
+        | some key => renderPreview key (fun _ => reference.withPreview node) (fun _ => node)
+      return {{<span>{{content}}</span>}}
 
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data

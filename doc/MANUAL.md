@@ -1331,6 +1331,11 @@ for the statement and prerequisites used only by the proof visually distinct.
 When local or external Lean material is available, the rendered page links or
 previews the associated content. Rows in the uses and used-by panels show
 statement/proof badges plus any non-default dependency origin or intent badges.
+A proof's dependency badges describe only the proof contribution, even when the
+same target has different statement metadata. Manifest-backed blocks, including
+grafts, use the same rule. Statement headers retain empty dependency chips and a
+missing Lean association indicator; proof headers show their own dependencies
+without repeating statement-only group, used-by, markup, or Lean status controls.
 
 Relation previews show the human title and a right-aligned concrete Blueprint
 label in the preview header; the label links to the target statement. Single

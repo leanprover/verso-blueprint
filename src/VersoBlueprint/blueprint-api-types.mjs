@@ -252,7 +252,15 @@
  * @property {string} title Resolved display title for the related node.
  * @property {string | null} href Link to the canonical generated node, when available.
  * @property {string | null} previewKey Manifest/cache-backed preview key for this related node, when available.
- * @property {string[]} axes Statement/proof dependency axes connecting the related node.
+ * @property {BlueprintRelationDependency[]} dependencies Facet-bound dependency origin and intent connecting these nodes.
+ */
+
+/**
+ * One facet-bound dependency fact in a related-node entry.
+ * @typedef {Object} BlueprintRelationDependency
+ * @property {"statement"|"proof"} facet Dependency facet.
+ * @property {"manual"|"automatic"} origin Dependency authority.
+ * @property {"regular"|"auxiliary"|"technical"} intent Dependency intent.
  */
 
 /**

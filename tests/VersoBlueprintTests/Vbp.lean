@@ -30,7 +30,7 @@ private def related (value title key : String) : RelatedEntry :=
     label := label value
     title := title
     previewKey := Informal.PreviewKey.ofString? key
-    axes := #[.statement]
+    dependencies := #[{ facet := .statement }]
   }
 
 private def relatedWithoutPreview (value title : String) : RelatedEntry :=
@@ -38,7 +38,7 @@ private def relatedWithoutPreview (value title : String) : RelatedEntry :=
     label := label value
     title := title
     href := some s!"{value}/"
-    axes := #[.statement]
+    dependencies := #[{ facet := .statement }]
   }
 
 private def finishedGraph (key : String) (nodes : Array NodeData) : GraphData :=

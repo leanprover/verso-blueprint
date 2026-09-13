@@ -240,23 +240,17 @@ private structure LeanCodePreviewTiming where
   kind : String
   totalMs : Nat
   renderMs : Nat
-  stringifyMs : Nat
   blankCheckMs : Nat
-  bytesMs : Nat
   metadataMs : Nat
   storeMs : Nat
-  htmlBytes : Nat
 
 private structure LeanCodePreviewTimingTotals where
   count : Nat := 0
   totalMs : Nat := 0
   renderMs : Nat := 0
-  stringifyMs : Nat := 0
   blankCheckMs : Nat := 0
-  bytesMs : Nat := 0
   metadataMs : Nat := 0
   storeMs : Nat := 0
-  htmlBytes : Nat := 0
 
 private def LeanCodePreviewTimingTotals.push
     (totals : LeanCodePreviewTimingTotals) (timing : LeanCodePreviewTiming) :
@@ -264,12 +258,9 @@ private def LeanCodePreviewTimingTotals.push
   { count := totals.count + 1
     totalMs := totals.totalMs + timing.totalMs
     renderMs := totals.renderMs + timing.renderMs
-    stringifyMs := totals.stringifyMs + timing.stringifyMs
     blankCheckMs := totals.blankCheckMs + timing.blankCheckMs
-    bytesMs := totals.bytesMs + timing.bytesMs
     metadataMs := totals.metadataMs + timing.metadataMs
-    storeMs := totals.storeMs + timing.storeMs
-    htmlBytes := totals.htmlBytes + timing.htmlBytes }
+    storeMs := totals.storeMs + timing.storeMs }
 
 private def leanCodePreviewTimingKind (entry : Informal.LeanCodePreview.Entry) : String :=
   match entry.source with
@@ -279,10 +270,8 @@ private def leanCodePreviewTimingKind (entry : Informal.LeanCodePreview.Entry) :
 private def describeLeanCodePreviewTiming
     (label : String) (totals : LeanCodePreviewTimingTotals) : String :=
   s!"{label}: {totals.count} entries, total {elapsedMsText totals.totalMs} " ++
-    s!"(render {elapsedMsText totals.renderMs}, stringify {elapsedMsText totals.stringifyMs}, " ++
-    s!"blank {elapsedMsText totals.blankCheckMs}, bytes {elapsedMsText totals.bytesMs}, " ++
-    s!"metadata {elapsedMsText totals.metadataMs}, store {elapsedMsText totals.storeMs}), " ++
-    s!"{totals.htmlBytes} HTML bytes"
+    s!"(render {elapsedMsText totals.renderMs}, blank {elapsedMsText totals.blankCheckMs}, " ++
+    s!"metadata {elapsedMsText totals.metadataMs}, store {elapsedMsText totals.storeMs})"
 
 private def logLeanCodePreviewTimings
     (verbose : Bool) (timings : Array LeanCodePreviewTiming) : IO Unit := do
@@ -297,17 +286,15 @@ private def logLeanCodePreviewTimings
         else
           (inlineTotals, externalTotals.push timing)
   logBuildProgress true <|
-    "Lean code preview breakdown: " ++
+    "Lean code preview preparation: " ++
       describeLeanCodePreviewTiming "inline" inlineTotals ++ "; " ++
       describeLeanCodePreviewTiming "external" externalTotals
   let slowest := timings.qsort (fun a b => a.totalMs > b.totalMs)
   for timing in slowest.extract 0 (Nat.min 5 slowest.size) do
     logBuildProgress true <|
       s!"slow Lean code preview: {timing.totalMs}ms " ++
-      s!"(render {timing.renderMs}ms, stringify {timing.stringifyMs}ms, " ++
-      s!"blank {timing.blankCheckMs}ms, bytes {timing.bytesMs}ms, " ++
+      s!"(render {timing.renderMs}ms, blank {timing.blankCheckMs}ms, " ++
       s!"metadata {timing.metadataMs}ms, store {timing.storeMs}ms), " ++
-      s!"{timing.htmlBytes} HTML bytes, " ++
       s!"{timing.kind}, {timing.key}"
 
 /--
@@ -696,7 +683,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 8
+def manifestInternalSchemaVersion : Nat := 9
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -865,16 +852,6 @@ inductive EntryKind where
   | externalMarkup
 deriving Inhabited, Repr, BEq, ToJson, FromJson
 
-/-- Dependency axis for a related informal node. -/
-inductive RelationAxis where
-  | statement
-  | proof
-deriving Inhabited, Repr, BEq, ToJson, FromJson
-
-def RelationAxis.display : RelationAxis → String
-  | .statement => "statement"
-  | .proof => "proof"
-
 /--
 Stable human-facing string form for Blueprint labels.
 
@@ -897,8 +874,8 @@ structure RelatedEntry where
   href : Option String := none
   /-- Manifest/cache-backed preview key for this related node, if available. -/
   previewKey : Option Informal.PreviewKey := none
-  /-- Statement/proof dependency axes through which this related node is connected. -/
-  axes : Array RelationAxis := #[]
+  /-- Facet-bound origin and intent of each dependency connecting these nodes. -/
+  dependencies : Array Relation.Dependency := #[]
 deriving Inhabited, Repr, ToJson
 
 private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback : α) :
@@ -913,8 +890,8 @@ instance : FromJson RelatedEntry where
     let title ← json.getObjValAs? String "title"
     let href ← jsonObjValAsD json "href" (none : Option String)
     let previewKey ← jsonObjValAsD json "previewKey" (none : Option Informal.PreviewKey)
-    let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
-    pure { label, title, href, previewKey, axes }
+    let dependencies ← json.getObjValAs? (Array Relation.Dependency) "dependencies"
+    pure { label, title, href, previewKey, dependencies }
 
 /-- Manifest-owned group metadata shared by all informal nodes in the group. -/
 structure GroupRelation where
@@ -975,22 +952,17 @@ structure Entry extends Informal.BlockMetadata where
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
   /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
   sources : Array Informal.Source.Ref := #[]
-  /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
+  /-- Informal nodes used by this entry, with facet-bound dependency facts and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
   usedBy : Array RelatedEntry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
-/-- Whether a related dependency participates in the selected statement or proof facet. -/
-def RelatedEntry.matchesFacet
-    (related : RelatedEntry) (facet : PreviewCache.Facet) : Bool :=
-  match facet with
-  | .statement => related.axes.contains .statement
-  | .proof => related.axes.contains .proof
-
 /-- Related dependencies that belong to this manifest entry's selected facet. -/
 def Entry.usesForFacet (entry : Entry) : Array RelatedEntry :=
-  entry.uses.filter (·.matchesFacet entry.facet)
+  entry.uses.filterMap fun related =>
+    let dependencies := related.dependencies.filter (·.facet == entry.facet)
+    if dependencies.isEmpty then none else some { related with dependencies }
 
 /-- Structured heading text for renderers that rebuild an informal block shell. -/
 structure EntryHeading where
@@ -1141,13 +1113,6 @@ def File.findHtml? (file : File) (key : String) : Option String :=
 def initialHoverState : Verso.Code.Hover.State Output.Html :=
   { dedup := { ({} : Verso.Code.Hover.Dedup Output.Html) with nextId := hoverIdStart }
     idSupply := {} }
-
-def HoverDoc.ofDedup (dedup : Verso.Code.Hover.Dedup Output.Html)
-    (resolve : Output.Html → Output.Html := fun html => html) : Array HoverDoc :=
-  dedup.contentId.toArray.map (fun (id, html) => {
-    id
-    html := (resolve html).asString
-  }) |>.qsort (fun a b => a.id < b.id)
 
 def HoverDoc.toHtml (doc : HoverDoc) : Output.Html :=
   Output.Html.text false doc.html
@@ -2052,58 +2017,32 @@ private def leanCodePreviewSourceRefs (state : TraverseState) (inputs : FacetInp
           sources := sources.insert key (pushUnique current sourceRef)
   sources
 
-private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
-  let axes : Array RelationAxis :=
-    if source.statementDeps.contains target then #[.statement] else #[]
-  if source.proofDeps.contains target then axes.push .proof else axes
-
-private def relatedEntryForLabel
-    (state : TraverseState)
-    (label : Name)
-    (axes : Array RelationAxis := #[]) : RelatedEntry :=
-  let reference := RenderingResolution.referenceOrLabel state label
-  {
-    label
-    title := reference.title
-    href := reference.href
-    previewKey := reference.previewKey
-    axes
-  }
-
 private def relatedEntryForBlock
     (state : TraverseState)
     (blockData : Informal.BlockData)
-    (axes : Array RelationAxis := #[]) : RelatedEntry :=
+    (dependencies : Array Relation.Dependency := #[]) : RelatedEntry :=
   let reference := RenderingResolution.referenceOfData state blockData
   {
     label := blockData.label
     title := reference.title
     href := reference.href
     previewKey := reference.previewKey
-    axes
+    dependencies
   }
 
-private def buildUsesRelations
-    (state : TraverseState)
-    (blockData : Informal.BlockData) : Array RelatedEntry :=
-  let labels := (blockData.statementDeps ++ blockData.proofDeps).foldl
-    (fun acc label => if acc.contains label then acc else acc.push label)
-    #[]
-  labels.map fun label =>
-    relatedEntryForLabel state label (relatedAxes blockData label)
+private def RelatedEntry.ofPanel (entry : Informal.RelatedPanel.PanelEntry) : RelatedEntry := {
+  label := entry.label
+  title := entry.previewTitle
+  href := entry.href
+  previewKey := entry.previewKey
+  dependencies := entry.dependencies
+}
 
-/-- Read the reverse-dependency index installed during preview-state preparation. -/
-private def buildUsedByRelations
-    (state : TraverseState)
-    (blockData : Informal.BlockData) : Array RelatedEntry :=
-  let cachedEntries :=
-    Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label |>.getD #[]
-  cachedEntries.filterMap fun cached => do
-    let source ← (RenderingResolution.canonical state cached.sourceLabel).toOption
-    let axes : Array RelationAxis :=
-      if cached.inStatement then #[.statement] else #[]
-    let axes := if cached.inProof then axes.push .proof else axes
-    some <| relatedEntryForBlock state source axes
+private def buildUsesRelations (state : TraverseState) (data : Informal.BlockData) : Array RelatedEntry :=
+  (Informal.RelatedPanel.usesEntries state data none).map RelatedEntry.ofPanel
+
+private def buildUsedByRelations (state : TraverseState) (data : Informal.BlockData) : Array RelatedEntry :=
+  (Informal.RelatedPanel.usedByEntries state data).map RelatedEntry.ofPanel
 
 private def groupRelationHeader
     (state : TraverseState)
@@ -2401,12 +2340,8 @@ private def buildLeanCodeEntries
         (logError := logError) (hoverState := hoverState)
       let renderFinish ← if verbose then IO.monoMsNow else pure 0
       hoverState := rendered.hoverState
-      let html := if verbose then rendered.html.asString else ""
-      let stringifyFinish ← if verbose then IO.monoMsNow else pure 0
       let htmlIsEmpty := PreviewResources.htmlIsBlank rendered.html
       let blankCheckFinish ← if verbose then IO.monoMsNow else pure 0
-      let htmlBytes := if verbose then html.utf8ByteSize else 0
-      let bytesFinish ← if verbose then IO.monoMsNow else pure 0
       let manifestEntry? := if htmlIsEmpty then none else
         some (leanCodePreviewManifestEntry state sourceRefs key panel)
       let metadataFinish ← if verbose then IO.monoMsNow else pure 0
@@ -2420,12 +2355,9 @@ private def buildLeanCodeEntries
           kind := leanCodePreviewTimingKind entry
           totalMs := storeFinish - start
           renderMs := renderFinish - start
-          stringifyMs := stringifyFinish - renderFinish
-          blankCheckMs := blankCheckFinish - stringifyFinish
-          bytesMs := bytesFinish - blankCheckFinish
-          metadataMs := if htmlIsEmpty then 0 else metadataFinish - bytesFinish
+          blankCheckMs := blankCheckFinish - renderFinish
+          metadataMs := if htmlIsEmpty then 0 else metadataFinish - blankCheckFinish
           storeMs := if htmlIsEmpty then 0 else storeFinish - metadataFinish
-          htmlBytes
         }
   if verbose then
     logBuildProgress true <|
@@ -2515,9 +2447,8 @@ def buildPreviewDataFiles
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
     (verbose : Bool := false) : IO Files := do
   let state := preparedState.state
-  let deferred ← PreviewResources.Deferred.create
-  let impls := Inline.withPreviewRendering impls deferred.render
-    |> (Block.withPreviewRendering · deferred.render)
+  let impls := Inline.withPreviewRendering impls PreviewResources.deferred
+    |> (Block.withPreviewRendering · PreviewResources.deferred)
   let inputs ← withTimedBuildProgress verbose "preparing facet export inputs" <|
     prepareFacetInputs state logError
   let hoverState := HtmlCache.initialHoverState
@@ -2558,10 +2489,26 @@ def buildPreviewDataFiles
       pure (previews, groups, htmlEntries, graphs)
   let manifest : File := { previews, groups, graphs, sourceDocuments }
   let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key))
-  let resolve ← deferred.finish (fun key => index.resolves key.value)
+  let resolve := PreviewResources.finish (fun key => index.resolves key.value)
+  let serializeStart ← if verbose then IO.monoMsNow else pure 0
+  let resolvedEntries ← htmlEntries.mapM fun entry => do
+    let html ← match resolve entry.html with
+      | .ok html => pure html
+      | .error error => throw (IO.userError s!"Blueprint resource {entry.key}: {error}")
+    pure ({ key := entry.key, html := html.asString } : HtmlCache.Entry)
+  let hoverDocs ← hoverState.dedup.contentId.toArray.mapM fun (id, html) => do
+    let html ← match resolve html with
+      | .ok html => pure html
+      | .error error => throw (IO.userError s!"Blueprint hover {id}: {error}")
+    pure ({ id, html := html.asString } : HtmlCache.HoverDoc)
+  if verbose then
+    let serializeFinish ← IO.monoMsNow
+    let bytes := resolvedEntries.foldl (fun n entry => n + entry.html.utf8ByteSize) 0
+    let hoverBytes := hoverDocs.foldl (fun n doc => n + doc.html.utf8ByteSize) 0
+    logBuildProgress true s!"Finalized and serialized {resolvedEntries.size} preview bodies and {hoverDocs.size} hover payloads in {elapsedMsText (serializeFinish - serializeStart)}; {bytes} body bytes, {hoverBytes} hover bytes"
   let htmlCache : HtmlCache.File := {
-    entries := htmlEntries.map fun entry => { key := entry.key, html := (resolve entry.html).asString }
-    hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup resolve
+    entries := resolvedEntries
+    hoverDocs := hoverDocs.qsort (fun a b => a.id < b.id)
   }
   pure <| Files.mk (manifest.finalizePreviewReferences index) htmlCache
 

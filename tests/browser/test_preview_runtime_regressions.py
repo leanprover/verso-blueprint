@@ -1391,7 +1391,7 @@ class TestPreviewRuntimeRegressions:
                     title: "Group member",
                     href: null,
                     previewKey: null,
-                    axes: []
+                    dependencies: []
                 };
                 const entry = {
                     key: "informal:group_member:statement",

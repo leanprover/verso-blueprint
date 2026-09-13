@@ -129,7 +129,10 @@ Work:
    prepared availability index; missing bodies retain their semantic links,
    relation rows, and badges. Cached bodies now retain structured HTML and defer
    reference/panel presentation until that same resource set is known, without
-   rerendering bodies or repairing opaque HTML strings. Plain/direct renderers
+   rerendering bodies or repairing opaque HTML strings. Deferred choices are pure,
+   self-contained HTML nodes; no mutable session or indexed closure table is needed.
+   Live and manifest-backed relation views share facet-bound dependency facts,
+   badge projection, and header visibility. Plain/direct renderers
    and custom renderers outside the resource hook can retain traversal candidates.
    Keep runtime `semantic-preview-body-missing` diagnostics distinct from stale
    or broken cache loads. Future consumers should share this presentation hook

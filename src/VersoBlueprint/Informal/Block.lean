@@ -132,25 +132,18 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra s data renderPreview
-        let usesEntry ← RelatedPanel.renderUsesExtra s data renderPreview
-        let usedByEntry ← RelatedPanel.renderUsedByExtra s data renderPreview
+        let groupEntry := RelatedPanel.renderGroupExtra s data renderPreview
+        let usesEntry := RelatedPanel.renderUsesExtra s data renderPreview
+        let usedByEntry := RelatedPanel.renderUsedByExtra s data renderPreview
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
-        let headerExtras : HeaderExtras :=
-          match data.isProof with
-          | true =>
-            {
-              uses? := some <| HeaderExtra.uses usesEntry
-            }
-          | false =>
-            {
-              group? := groupEntry.map HeaderExtra.group
-              uses? := some <| HeaderExtra.uses usesEntry
-              usedBy? := some <| HeaderExtra.usedBy usedByEntry
-              markup? := markupEntry?
-              code? := some <| HeaderExtra.code codeEntry
-            }
+        let headerExtras : HeaderExtras := HeaderExtras.forFacet {
+          group? := groupEntry.map HeaderExtra.group
+          uses? := some (HeaderExtra.uses usesEntry)
+          usedBy? := some (HeaderExtra.usedBy usedByEntry)
+          markup? := markupEntry?
+          code? := some (HeaderExtra.code codeEntry)
+        } data.isProof
         return renderInformalBlockModel {
           data
           context := InformalBlockRenderContext.forBlock data
