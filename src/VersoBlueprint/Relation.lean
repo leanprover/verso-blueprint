@@ -17,13 +17,13 @@ structure Dependency where
   intent : Data.UseIntent := .regular
 deriving Inhabited, Repr, BEq, ToJson, FromJson
 
-def Dependency.ofUseRef (useRef : Data.UseRef) (isProof : Bool) : Dependency :=
-  { facet := if isProof then .proof else .statement
+def Dependency.ofUseRef (useRef : Data.UseRef) (facet : PreviewCache.Facet) : Dependency :=
+  { facet
     origin := useRef.origin, intent := useRef.intent }
 
-def addUse (dependencies : Array Dependency) (useRef : Data.UseRef) (isProof : Bool) :
+def addUse (dependencies : Array Dependency) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     Array Dependency :=
-  let dependency := Dependency.ofUseRef useRef isProof
+  let dependency := Dependency.ofUseRef useRef facet
   if dependencies.contains dependency then dependencies else dependencies.push dependency
 
 end Informal.Relation

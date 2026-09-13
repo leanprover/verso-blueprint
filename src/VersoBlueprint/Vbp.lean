@@ -497,6 +497,8 @@ private def checkManifestGroupIntegrity
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
+  let cacheErrors := data.htmlCache.entries.foldl (init := #[]) fun errors entry =>
+    if entry.hasBody then errors else errors.push s!"empty HTML cache body for key {entry.key}"
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
@@ -515,7 +517,7 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
       checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)
-    #[]
+    cacheErrors
   let errors := manifest.groups.foldl
     (fun errors group =>
       checkRelatedEntries index

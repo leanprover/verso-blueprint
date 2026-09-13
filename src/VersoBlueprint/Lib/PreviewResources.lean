@@ -27,10 +27,19 @@ mutable session, side table, or function stored in the resulting fragment. -/
 def deferred : Render := fun key present absent =>
   .tag marker #[("key", key.value)] (.seq #[present (), absent ()])
 
+/-- Blank text under the browser cache's `String.trim()` contract. Includes
+ECMAScript whitespace and line terminators, including nonbreaking space and BOM. -/
+def textIsBlank (text : String) : Bool :=
+  text.all fun char =>
+    let code := char.toNat
+    (0x0009 ≤ code && code ≤ 0x000D) ||
+    (0x2000 ≤ code && code ≤ 0x200A) ||
+    #[0x0020, 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF].contains code
+
 /-- Recognize blank fragments structurally, without serializing choices.
 Finalization rejects choices whose branches disagree about body presence. -/
 partial def htmlIsBlank : Html → Bool
-  | .text _ text => text.all Char.isWhitespace
+  | .text _ text => textIsBlank text
   | .seq children => children.all htmlIsBlank
   | .tag name attrs contents =>
     if name != marker then false
@@ -41,9 +50,10 @@ partial def htmlIsBlank : Html → Bool
       -- Keep malformed choices for finalization to diagnose, even if empty.
       | _, _ => false
 
-/-- Resolve self-contained choices before serialization. Invalid choice shapes
-or branches that change body presence are diagnosed, not replaced by empty HTML.
-Raw HTML strings remain opaque. -/
+/-- Resolve self-contained choices before serialization. Invalid choices on the
+selected path or branches that disagree about body presence are diagnosed.
+Discarded alternatives are not recursively validated. Raw HTML stays opaque.
+The result still has type `Html`: callers must enforce this serialization boundary. -/
 partial def finish (available : PreviewKey → Bool) : Html → Except String Html
   | .text escape text => pure (.text escape text)
   | .seq children => .seq <$> children.mapM (finish available)

@@ -1080,6 +1080,10 @@ structure Entry where
   html : String
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- Whether the browser cache decoder accepts this body's content as nonblank. -/
+def Entry.hasBody (entry : Entry) : Bool :=
+  !PreviewResources.textIsBlank entry.html
+
 structure File where
   /-- Opaque rendered fragments keyed by preview/cache entry key. -/
   entries : Array Entry := #[]
@@ -1233,15 +1237,6 @@ def emitBuildMetadata (metadata : BuildMetadata) : BlueprintExtraStep := fun pre
   writeBuildMetadataHtml metadata (outDirForMode prepared.config.toConfig prepared.mode / "index.html")
 
 /--
-Assembled preview-data candidates before rendered-preview references are
-resolved against the paired manifest and HTML cache.
--/
-structure PreviewDataModel where
-  manifest : File := {}
-  htmlCache : HtmlCache.File := {}
-deriving Inhabited, Repr
-
-/--
 Manifest/cache files decoded from persisted or externally supplied output.
 
 Parsing establishes each file's local schema but does not establish the
@@ -1309,10 +1304,7 @@ private def PreviewArtifactIndex.ofKeys
 
 private def PreviewArtifactIndex.ofArtifacts
     (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex :=
-  PreviewArtifactIndex.ofKeys manifest (htmlCache.entries.map (·.key))
-
-def PreviewArtifactIndex.ofModel (model : PreviewDataModel) : PreviewArtifactIndex :=
-  PreviewArtifactIndex.ofArtifacts model.manifest model.htmlCache
+  PreviewArtifactIndex.ofKeys manifest (htmlCache.entries.filter (·.hasBody) |>.map (·.key))
 
 /-- Index the retained output pair once for page-rendering consumers. -/
 def PreviewArtifactIndex.ofFiles (files : Files) : PreviewArtifactIndex :=
@@ -1371,7 +1363,9 @@ private def graphFinalizePreviewReferences
     Informal.Graph.GraphData :=
   graph.filterPreviewReferences fun key => index.resolves key.value
 
-private def File.finalizePreviewReferences
+/-- Filter preview references without changing semantic facts. This projection
+alone does not validate serialized artifacts or promote them to emission-ready files. -/
+def File.finalizePreviewReferences
     (file : File) (index : PreviewArtifactIndex) : File :=
   {
     file with
@@ -1379,23 +1373,6 @@ private def File.finalizePreviewReferences
       groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
   }
-
-/--
-Finalize traversal-derived preview references against a paired manifest/cache value.
-
-Generated relation, group, Lean-code, and graph preview references are only
-advertised when the target key has both a semantic manifest entry and a rendered
-fragment cache body. Relations and graph nodes that fail that join remain
-present but lose their `previewKey`; Lean-code keys and graph-variant mappings
-are removed so generated JSON does not point at an unavailable preview body.
-
-The phase-changing result type makes the manifest/cache pair explicit at the
-construction boundary: unresolved candidates cannot be emitted as `Files`, and
-emission-ready files cannot be finalized a second time.
--/
-def PreviewDataModel.finish (model : PreviewDataModel) : Files :=
-  let index := PreviewArtifactIndex.ofModel model
-  Files.mk (model.manifest.finalizePreviewReferences index) model.htmlCache
 
 /-- Manifest metadata that was present during traversal but is absent from export. -/
 structure PreviewMetadataLoss where
