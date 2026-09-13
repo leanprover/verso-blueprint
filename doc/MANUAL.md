@@ -199,6 +199,7 @@ references work. A known node omitted from the document falls back to its author
 label; an unknown label is an error. Reference-only documents also require the
 project's rendering model. In preview-enabled pages, a rendered node whose preview
 body is unavailable still has its ordinary link and title, but no hover trigger.
+This also applies to references and relation panels inside cached preview bodies.
 Dependency metadata can still describe unresolved graph edges, which appear in
 graph diagnostics; it does not create a prose link.
 

@@ -127,13 +127,13 @@ Work:
    prepares resources before pages and reuses the finalized graphs for embedded
    graph JSON. Page-local relation panels and inline references now share the
    prepared availability index; missing bodies retain their semantic links,
-   relation rows, and badges. Cached bodies are still constructed before the
-   completed resource set is known, so nested references in those fragments and
-   plain/direct renderers can retain traversal candidates. Keep runtime
-   `semantic-preview-body-missing` diagnostics distinct from stale or broken
-   cache loads. Any later migration of fragment-internal references should retain
-   structured render output until finalization, without rerendering bodies or
-   repairing opaque HTML strings.
+   relation rows, and badges. Cached bodies now retain structured HTML and defer
+   reference/panel presentation until that same resource set is known, without
+   rerendering bodies or repairing opaque HTML strings. Plain/direct renderers
+   and custom renderers outside the resource hook can retain traversal candidates.
+   Keep runtime `semantic-preview-body-missing` diagnostics distinct from stale
+   or broken cache loads. Future consumers should share this presentation hook
+   instead of introducing another resource-discovery or rendering pass.
 12. keep the external-declaration hover transfer behind its current local
    bridge until the portable-fragment contract tracked by
    [`UPC-0014`](./roadmap/cards/UPC-0014-portable-hover-fragment-transfer/README.md)

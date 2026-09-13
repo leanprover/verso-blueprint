@@ -388,10 +388,14 @@ these standard HTML implementations need to integrate resource selection explici
 The lower-level adapters are `Commands.withPreparedGraphs`,
 `Block.withPreviewAvailability`, and `Inline.withPreviewAvailability`.
 
-This is the page-emission boundary. Cached preview bodies are rendered earlier,
-with the original extensions, and can contain traversal-derived references to
-unavailable resources. They retain the runtime's explicit unavailable-preview
-handling. Constructing resources does not rerender their bodies after finalization.
+Cached preview bodies use the same reference and relation presentation policy.
+`Block.withPreviewRendering` and `Inline.withPreviewRendering` accept a
+`PreviewResources.Render` hook: page adapters render immediately, while resource
+construction retains pure presentation decisions until availability is known.
+Semantic lookup and document-body rendering happen before that hook. Structured
+HTML and its hover payloads are finalized before cache serialization, without
+rendering bodies again or parsing opaque HTML. External raw HTML remains opaque;
+custom renderers must use the hook to participate in resource selection.
 
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.
@@ -414,9 +418,11 @@ not correctness of arbitrary extension code or cryptographic checkpoint integrit
 Function-valued hooks are supplied by the current generator, not serialized.
 TeX still uses Verso's separate traverse-and-emit function and does not yet cross
 this boundary; the upstream emitter seam is tracked in UPC-0002.
-`Informal.PreviewManifest.buildPreviewDataFiles` then assembles a
-`PreviewDataModel` and crosses its `finish` boundary into the emission-ready
-semantic manifest/rendered-fragment-cache `Files` pair. The final type has a
+`Informal.PreviewManifest.buildPreviewDataFiles` then assembles structured resource
+candidates and finalizes their nested views and manifest references against one
+resource index, producing the emission-ready semantic manifest/rendered-fragment-cache
+`Files` pair. `PreviewDataModel.finish` applies the same manifest-reference policy
+to callers that already own serialized bodies. The final type has a
 private constructor, so unresolved candidate references cannot enter the normal
 emission path. Generated ESM APIs load those two files; they do not rerun
 traversal and should not recover semantics by scraping cached HTML.
@@ -594,8 +600,8 @@ source; `.none` keeps
 external-markup entries semantic-only with no generated HTML-cache fragment.
 Relation, graph, and Lean-code preview references are serialized only when the
 referenced preview key resolves through both the manifest and HTML cache.
-Page-local relation panels and graph widgets that are rendered before generated
-data finalization may still start from traversal preview candidates; browser
+Plain/direct renderers without prepared resource data may still start from
+traversal preview candidates; browser
 preview APIs report semantic-only missing bodies as
 `semantic-preview-body-missing` rather than as stale cache data.
 Set `showSourceNotice := false` when an embedding context should omit the
@@ -783,10 +789,9 @@ their `externalMarkup:<label>` preview only when that key has a manifest entry
 and rendered cache body. When a retained node has no manifest/cache-backed
 preview in the generated artifact set, the manifest graph's `previewKey` is
 `null` and its bundled variants omit the node from `previewKeyByNodeId`.
-Embedded page graph data is emitted earlier and may still carry a traversal
-candidate that later fails artifact validation; the runtime resolves candidates
-through the manifest/cache pair rather than treating page JSON as proof that a
-fragment exists. Use fixed facet keys such as
+Preview-enabled pages reuse those finalized graph objects. Plain/direct graph
+renderers may retain traversal candidates; the runtime still resolves them through
+the manifest/cache pair. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 

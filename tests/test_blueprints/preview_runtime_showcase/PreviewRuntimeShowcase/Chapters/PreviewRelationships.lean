@@ -80,6 +80,9 @@ Prepared resource group.
 
 :::definition "prepared_resource_target" (parent := "prepared_resource_group")
 Available prepared resource body.
+
+This cached body retains {bpref "prepared_resource_blank"}[cached blank reference]
+and {uses "prepared_resource_single"}[cached available reference].
 :::
 
 :::theorem "prepared_resource_blank" (uses := "prepared_resource_target") (parent := "prepared_resource_group")
