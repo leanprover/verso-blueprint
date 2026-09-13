@@ -2704,7 +2704,7 @@ private def emitBlueprintHtml
     return
   let prepared := PreparedRendererState.prepare document
   withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
-    emitXrefsJson (cfg.destination / outputDirNameForMode mode) prepared.state
+    emitXrefsJson (outDirForMode prepared.config.toConfig prepared.mode) prepared.state
   withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" prepared.emit
   for step in extraSteps do
     step prepared
