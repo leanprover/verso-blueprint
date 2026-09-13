@@ -4,7 +4,7 @@ Status: open
 Kind: upstream-api
 Priority: high
 Origin: upstream-verso
-Last reviewed: 2026-07-16
+Last reviewed: 2026-09-13
 Owner: none
 Issue: none linked
 PR: none linked
@@ -39,6 +39,23 @@ candidate upstream shape.
 The most useful hook is a post-traversal, pre-HTML-emission transform for
 `TraverseState` and `HtmlAssets`. A lower-priority post-emit hook would still be
 useful for downstream files such as Blueprint preview data.
+
+The checked HTML document boundary adds two concrete API needs:
+
+- Return convergence explicitly from `Manual.traverse`. It currently returns
+  the same tuple after convergence and after exhausting `maxTraversals`.
+  Blueprint checks stability with one additional `traverseMulti` pass. An
+  upstream completed-result type would remove that extra pass.
+- Extract the body of `Manual.emitTeX` after its initial traversal into an
+  emit-from-state function. Keep `emitTeX` as the convenience composition of
+  traversal and emission. Blueprint could then feed the same checked
+  document/state boundary into TeX without copying the emitter or traversing
+  twice. The current Blueprint TeX path remains outside that boundary.
+
+Acceptance tests should reject exhausted/unstable traversal before file writes,
+and compare TeX output from the convenience entry point with output from a
+completed traversal passed to the new emitter. Keep HTML and TeX traversal
+configurations distinct; HTML single-page depth is not the TeX layout contract.
 
 ## Scope Boundary
 

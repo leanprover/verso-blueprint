@@ -83,7 +83,7 @@ private def cachedStatement
         StateM Verso.Genre.Manual.TraverseState Verso.Multi.InternalId).run state
       let state := Informal.TraversalIndex.Nodes.saveNode state (Informal.RenderNode.ofBlockData data)
       Informal.TraversalIndex.Nodes.saveId state data.label id
-    let state := Informal.PreviewManifest.PreparedRendererState.prepare state |>.state
+    let state := Informal.PreviewManifest.PreparedPreviewState.prepare state |>.state
     let targetEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state target
     let sourceEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state source
     let emptyEntries := Informal.TraversalIndex.RelatedPanelUsedByCache.data? state empty

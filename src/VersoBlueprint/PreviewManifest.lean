@@ -25,6 +25,7 @@ import VersoBlueprint.RenderingResolution
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
+import VersoBlueprint.HtmlDocument
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
 import VersoBlueprint.Source.Data
@@ -1222,11 +1223,16 @@ type so they cannot assume that a raw traversal state was prepared elsewhere.
 structure PreparedRendererState where private mk ::
   /-- Preview-data view of the same prepared traversal state. -/
   previewState : PreparedPreviewState
+  text : Part Manual
+  config : RenderConfig
+  mode : Mode
 
-/-- Apply every Blueprint renderer-state patch after Manual traversal. -/
-def PreparedRendererState.prepare (state : TraverseState) : PreparedRendererState :=
-  PreparedRendererState.mk <| PreparedPreviewState.prepare <|
-    state.modifyHtmlAssets patchBlueprintHtmlAssets
+/-- Apply renderer patches to a checked document. Retain its text and output
+configuration so emission and post-render steps cannot receive a different pair. -/
+def PreparedRendererState.prepare (document : HtmlDocument) : PreparedRendererState :=
+  PreparedRendererState.mk
+    (PreparedPreviewState.prepare (document.state.modifyHtmlAssets patchBlueprintHtmlAssets))
+    document.text document.config document.mode
 
 /-- The underlying traversal state used by Verso's HTML emitters. -/
 def PreparedRendererState.state (preparedState : PreparedRendererState) : TraverseState :=
@@ -1237,11 +1243,10 @@ Blueprint-specific post-render step whose traversal state has crossed the
 renderer-preparation boundary.
 -/
 abbrev BlueprintExtraStep :=
-  Verso.Genre.Manual.Mode → Verso.Genre.Manual.Config → PreparedRendererState →
-    Part Manual → BuildLogT IO Unit
+  PreparedRendererState → BuildLogT IO Unit
 
-def emitBuildMetadata (metadata : BuildMetadata) : BlueprintExtraStep := fun mode cfg _state _text => do
-  writeBuildMetadataHtml metadata (outDirForMode cfg mode / "index.html")
+def emitBuildMetadata (metadata : BuildMetadata) : BlueprintExtraStep := fun prepared => do
+  writeBuildMetadataHtml metadata (outDirForMode prepared.config.toConfig prepared.mode / "index.html")
 
 /--
 Assembled preview-data candidates before rendered-preview references are
@@ -2548,10 +2553,11 @@ private def dumpPreviewDataJson
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let traverseCfg := { cfg with verbose := false }
-  let (_text, traverseState) ←
-    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
+  let some document ←
+    ReaderT.run (HtmlDocument.traverse .multi traverseCfg text) extensionImpls
       |>.run (callbackLogger logError)
-  let preparedState := PreparedPreviewState.prepare traverseState
+    | return 1
+  let preparedState := PreparedPreviewState.prepare document.state
   let traverseState := preparedState.state
   let files ← buildPreviewDataFiles extensionImpls logError preparedState externalMarkupConfig
     (verbose := cfg.verbose)
@@ -2606,7 +2612,9 @@ when traversal-preview metadata was lost before export.
 def emitBlueprintPreviewData
     (extensionImpls : ExtensionImpls)
     (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
-    BlueprintExtraStep := fun mode cfg preparedState _text => do
+    BlueprintExtraStep := fun preparedState => do
+  let mode := preparedState.mode
+  let cfg := preparedState.config.toConfig
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
   let modeDescription := htmlModeDescription mode
@@ -2668,57 +2676,38 @@ def handleCliFlags
     else
       pure (none, options, externalMarkupConfig)
 
-private abbrev HtmlTraverse :=
-  RenderConfig → Part Manual → EmitM (Part Manual × TraverseState)
-
-private abbrev HtmlEmitter :=
-  RenderConfig → Part Manual → TraverseState → EmitM Unit
+/-- Emit only the document/layout pair admitted by the checked boundary. -/
+private def PreparedRendererState.emit (prepared : PreparedRendererState) : EmitM Unit := do
+  match prepared.mode with
+  | .single => emitHtmlSingle prepared.config prepared.text prepared.state
+  | .multi => emitHtmlMulti prepared.config prepared.text prepared.state
 
 private def emitBlueprintHtml
     (extraSteps : List BlueprintExtraStep)
     (how : EmitHtml)
     (mode : Mode)
     (cfg : RenderConfig)
-    (text : Part Manual)
-    (traverse : HtmlTraverse)
-    (emit : HtmlEmitter) :
-    EmitM Unit := do
+    (text : Part Manual) : EmitM Unit := do
+  if let .no := how then return
   let modeDescription := htmlModeDescription mode
-  let outDir := outputDirNameForMode mode
-  match how with
-  | .no => pure ()
-  | .immediately =>
-      let (text', traverseState) ←
-        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
-          traverse cfg text
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
-        emitXrefsJson (cfg.destination / outDir) traverseState
-      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
-        emit cfg text' traverseState
-      for step in extraSteps do
-        step mode cfg.toConfig preparedState text'
-  | .delay f =>
-      let (text', traverseState) ←
-        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
-          traverse cfg text
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
-        emitXrefsJson (cfg.destination / outDir) traverseState
-      withTimedBuildProgress cfg.verbose s!"saving {modeDescription} traversal state to {f}" <|
-        SavedState.mk text' traverseState |>.save f
-  | .resumeFrom f =>
-      let { text, traverseState } ←
-        withTimedBuildProgress cfg.verbose s!"loading {modeDescription} traversal state from {f}" <|
-          SavedState.load f
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
-        emit cfg text traverseState
-      for step in extraSteps do
-        step mode cfg.toConfig preparedState text
+  let document? ← match how with
+    | .resumeFrom path =>
+      withTimedBuildProgress cfg.verbose s!"loading {modeDescription} traversal state from {path}" <|
+        HtmlDocument.load mode cfg path
+    | _ =>
+      withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
+        HtmlDocument.traverse mode cfg text
+  let some document := document? | return
+  if let .delay path := how then
+    withTimedBuildProgress cfg.verbose s!"saving {modeDescription} traversal state to {path}" <|
+      document.save path
+    return
+  let prepared := PreparedRendererState.prepare document
+  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
+    emitXrefsJson (outDirForMode prepared.config.toConfig prepared.mode) prepared.state
+  withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" prepared.emit
+  for step in extraSteps do
+    step prepared
 
 private def blueprintMainCore (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
@@ -2742,9 +2731,7 @@ where
           Informal.TeX.Cleanup.patchFile cfg.toConfig text
 
       emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single cfg text
-        traverseHtmlSingle emitHtmlSingle
       emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi cfg text
-        traverseHtmlMulti emitHtmlMulti
 
       if let some wcFile := cfg.wordCount then
         withTimedBuildProgress cfg.verbose s!"word count emission to {wcFile}" <|
