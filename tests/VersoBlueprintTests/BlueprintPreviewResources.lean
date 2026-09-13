@@ -40,7 +40,6 @@ The rendered statement has one preview resource and uses {uses "resource_markup"
 and {uses "resource_missing" (intent := "technical")}[].
 :::
 
-
 :::proof "resource_statement"
 The proof uses {uses "resource_missing"}[].
 :::
