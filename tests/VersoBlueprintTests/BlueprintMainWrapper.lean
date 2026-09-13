@@ -316,6 +316,13 @@ private def runHtmlCheck (action : EmitM (Option Informal.HtmlDocument))
     | throw <| IO.userError "Could not resume with the saved project capture"
   unless errors.isEmpty && restored.text == document.text && restored.state == document.state do
     throw <| IO.userError "Checkpoint round trip changed the completed document/state"
+  for maxTraversals in #[0, 1, cfg.maxTraversals + 1] do
+    let (some resumed, errors) ← runHtmlCheck
+      (Informal.HtmlDocument.load .multi { cfg with maxTraversals } path)
+      extension_impls%
+      | throw <| IO.userError "Resume rejected a changed traversal limit"
+    unless errors.isEmpty && resumed.text == document.text && resumed.state == document.state do
+      throw <| IO.userError "Changing the resume traversal limit changed the saved pair"
   for (mode, changed) in #[(Mode.single, cfg), (.multi, { cfg with htmlDepth := 1 }),
       (.multi, { cfg with draft := true }), (.multi, { cfg with features := {.KaTeX} })] do
     let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load mode changed path)
@@ -323,6 +330,15 @@ private def runHtmlCheck (action : EmitM (Option Informal.HtmlDocument))
       throw <| IO.userError "Resume accepted an incompatible layout/configuration"
   let checkpoint ← IO.FS.readFile path
   let .ok json := Lean.Json.parse checkpoint | throw <| IO.userError "Malformed test checkpoint"
+  for (contents, diagnostic) in #[
+      ("{", "Invalid Blueprint HTML checkpoint"),
+      ((json.setObjVal! "version" (Lean.toJson (2 : Nat))).compress,
+        "Unsupported Blueprint HTML checkpoint version 2")] do
+    IO.FS.writeFile path contents
+    let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load .multi cfg path)
+    unless result.isNone && errors.any (hasSubstr · diagnostic) &&
+        errors.any (hasSubstr · "regenerate") do
+      throw <| IO.userError "Invalid checkpoint was accepted or lost its recovery diagnostic"
   let .ok saved := json.getObjVal? "saved" | throw <| IO.userError "Missing saved traversal"
   let corrupt := saved.setObjVal! "text" (Lean.toJson pdfSmokeDoc.toPart)
   IO.FS.writeFile path (json.setObjVal! "saved" corrupt).compress
@@ -333,6 +349,27 @@ private def runHtmlCheck (action : EmitM (Option Informal.HtmlDocument))
   let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load .multi cfg path)
   unless result.isNone && errors.any (hasSubstr · "regenerate") do
     throw <| IO.userError "Resume accepted a legacy unbound checkpoint"
+
+-- Resume must reject diagnostics even when the saved text/state remain a fixed
+-- point under the current extension implementations.
+#eval show IO Unit from do
+  let text := { pdfSmokeDoc.toPart with content := #[.other { name := `resumeLogging } #[]] }
+  let impls := (({} : Informal.RenderModel).withExtensions extension_impls%).insertBlock `resumeLogging {
+    traverse := fun _ _ _ => pure none
+    toHtml := none, toTeX := none }
+  let (some document, errors) ← runHtmlCheck (Informal.HtmlDocument.traverse .multi {} text) impls
+    | throw <| IO.userError "Could not prepare the resume diagnostic fixture"
+  unless errors.isEmpty do throw <| IO.userError s!"Unexpected fixture errors: {errors}"
+  IO.FS.withTempFile fun _ path => do
+    document.save path
+    let logging := impls.insertBlock `resumeLogging {
+      traverse := fun _ _ _ => do
+        Verso.reportError "synthetic resume error"
+        return none
+      toHtml := none, toTeX := none }
+    let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load .multi {} path) logging
+    unless result.isNone && errors == #["synthetic resume error"] do
+      throw <| IO.userError "Stable resumed traversal errors did not prevent admission"
 
 -- Exercise the public dispatcher: failed checks write no HTML/xrefs, and delayed
 -- generation writes only a checkpoint. Resume uses the saved text and output
