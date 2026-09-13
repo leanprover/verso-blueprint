@@ -934,6 +934,7 @@ Lean/Verso source modules
   -> RenderModel capture + compiled occurrence references
   -> initialized node registry
   -> Manual traversal completes occurrence facts and preview stores
+  -> HtmlDocument (checked fixed point, captured state, text, layout)
   -> PreparedRendererState
        |-> completed TraverseState -> Manual HTML emission
        `-> BlueprintExtraStep post-render steps
@@ -945,26 +946,32 @@ Lean/Verso source modules
 
 Traversal domains are richer than rendered page HTML. They carry semantic
 payloads for the current generator process, including bodyless directives whose
-visible text comes from an external source. The standard renderer turns raw
-traversal output into `PreparedRendererState` once, applying Blueprint's HTML
-asset patches and retaining a `PreparedPreviewState` projection for generated
-data. Verso's emitters receive the underlying traversal state, but Blueprint
-post-render steps receive the prepared wrapper; there is no raw-state escape
-hatch that lets preview-data emission merely assert that another caller already
-installed the required indexes. Direct preview-data callers explicitly create
-the narrower `PreparedPreviewState`.
+visible text comes from an external source. The standard renderer first checks a fixed point
+through `HtmlDocument`, then applies Blueprint's HTML asset patches and relation
+indexes through `PreparedRendererState`. HTML emission and post-render steps use
+the text, state, mode, and configuration retained in that wrapper. Direct
+preview-data callers retain the narrower `PreparedPreviewState` API, which only
+prepares indexes and supports synthetic states used in tests.
 
-These are preparation guarantees only. Neither constructor verifies completion
-of traversal or establishes document/model/layout pairing. `RenderingResolution`
-views likewise remain ordinary transient records tied by caller discipline to
-their originating state. A checked document boundary is a later increment.
+A Blueprint HTML checkpoint stores the unpatched document and captured state
+alongside its serializable configuration. Resume preserves that document and
+project snapshot, checks the requested layout/configuration, and reruns the
+fixed-point check before applying renderer patches. Output destination and
+scheduling may change. Old unbound Verso checkpoints require regeneration.
+This keeps one saved document/model pair rather than copying the original source
+or inventing a second semantic snapshot. It is a consistency boundary, not an
+integrity check for arbitrary modified files or extension code.
+
+Completion verification currently costs one additional Manual traversal pass;
+Verso's existing traversal result does not distinguish convergence from exhausted
+fuel. UPC-0002 tracks exposing that result and a TeX emit-from-state hook. TeX's
+separate pipeline remains outside this HTML boundary. Function-valued render
+hooks also remain runtime inputs and cannot be compared through the checkpoint.
 
 For `a` HTML assets, `b` stored blocks, and `e` dependency uses, renderer-state
-preparation is `O(a + b + e)`: the asset patch is linear in the asset set and
-relation-index construction is `O(b + e)`. The wrapper and its preview-state
-projection are `O(1)`, so each immediate, delayed-save, or resumed-emission path
-still performs one preparation pass. Resumed persisted state crosses the
-boundary again because its serialized raw type cannot witness preparation.
+preparation remains `O(a + b + e)`. Immediate and resumed emission perform one
+preparation pass; delayed generation saves checked, unpatched state and defers
+preparation until resume. The wrapper's preview-state projection is `O(1)`.
 Relation assembly consumes the cached rows; direct construction therefore
 cannot regress to the former `O(b²)` full-store fallback path.
 `buildPreviewDataFiles` is the normalization point where those traversal facts

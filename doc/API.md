@@ -355,21 +355,36 @@ committing a contribution.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
-state and traversal domains. Before HTML emission, the standard pipeline crosses
-the explicit `PreparedRendererState` boundary. Renderer preparation applies the
-Blueprint HTML asset patches and owns the `PreparedPreviewState` that installs
-the relation indexes consumed by manifest construction. Verso's HTML emitters
-receive the completed traversal state, while Blueprint post-render
-`BlueprintExtraStep`s receive the prepared wrapper and therefore cannot assume
-that a raw state was patched by an earlier caller. Direct preview-data callers
-cross the narrower boundary with `PreparedPreviewState.prepare`. Custom steps
-passed to `blueprintMain` or `blueprintMainWithPreviewData` use
-`BlueprintExtraStep`; steps that need Verso's raw traversal state project it
-explicitly with `PreparedRendererState.state`.
-These wrappers guarantee that the documented asset/index preparation was applied.
-They do not check traversal completion or bind a document, captured model, and
-output layout together. Those remain caller obligations; a checked document
-boundary is follow-up work.
+state and traversal domains. `HtmlDocument.traverse` runs Manual traversal and
+checks that another pass changes neither the document nor its state. Logged
+errors prevent admission, including errors from a stable traversal. The captured
+graph and summary must be present and decodable. This adds one verification pass
+until Verso exposes convergence in its traversal result.
+
+`PreparedRendererState.prepare` accepts that checked document, applies Blueprint
+HTML asset patches, and constructs the `PreparedPreviewState` relation indexes.
+It retains the checked text, configuration, and mode; `BlueprintExtraStep` now
+accepts only this prepared wrapper. Custom steps read `text`, `config`, `mode`,
+and `state` from it instead of receiving four independent arguments.
+Direct preview-data callers can still use `PreparedPreviewState.prepare` for
+synthetic or partial states: this narrower API only prepares relation indexes.
+
+Delayed HTML generation writes a versioned Blueprint checkpoint containing the
+unpatched document/state pair and serializable layout settings. It emits no HTML
+or xrefs until resumed. Resume checks the layout and fixed point, reapplies
+renderer preparation, and writes xrefs into the selected output directory.
+The checkpoint's saved document and captured project model are authoritative;
+resume does not replace them with the current generator's document or model.
+Output destination, output scheduling, verbosity, and traversal limit may change.
+Other serializable settings must match, including draft selection, split depth,
+and assets. Single-page output normalizes split depth to zero. Legacy Verso
+`SavedState` files must be regenerated; they lack the layout binding.
+
+These checks establish a fixed point under the current extension implementations,
+not correctness of arbitrary extension code or cryptographic checkpoint integrity.
+Function-valued hooks are supplied by the current generator, not serialized.
+TeX still uses Verso's separate traverse-and-emit function and does not yet cross
+this boundary; the upstream emitter seam is tracked in UPC-0002.
 `Informal.PreviewManifest.buildPreviewDataFiles` then assembles a
 `PreviewDataModel` and crosses its `finish` boundary into the emission-ready
 semantic manifest/rendered-fragment-cache `Files` pair. The final type has a
