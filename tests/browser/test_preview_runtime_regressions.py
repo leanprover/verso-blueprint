@@ -64,7 +64,12 @@ class TestPreviewRuntimeRegressions:
         assert missing.get_attribute("data-bp-relation-preview-key") is None
         available = multiple.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_target"]')
         available.hover()
-        expect(multiple.locator(".bp_relation_preview_body")).to_contain_text("Available prepared resource body.")
+        body = multiple.locator(".bp_relation_preview_body").first
+        expect(body).to_contain_text("Available prepared resource body.")
+        cached_link = body.get_by_role("link", name="cached blank reference", exact=True)
+        expect(cached_link).to_have_attribute("href", blank_link.get_attribute("href"))
+        expect(cached_link.locator("xpath=ancestor::*[contains(@class, 'bp_inline_preview_ref')]")).to_have_count(0)
+        expect(body.locator('.bp_inline_preview_ref[data-bp-preview-key="prepared_resource_single--statement"]')).not_to_have_count(0)
         assert len(cache_requests) == 1
         assert_no_runtime_errors(errors)
 

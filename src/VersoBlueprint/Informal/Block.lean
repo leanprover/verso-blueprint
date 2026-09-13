@@ -60,7 +60,7 @@ Elaboration, traversal, and rendering are standard, using {ref VersoManual} help
 open Verso.Doc.Html in
 /-- Render this occurrence with relation previews restricted to the resources
 prepared for its output. Semantic resolution and numbering remain occurrence-owned. -/
-private def informalBlockToHtml (previewAvailable : PreviewKey → Bool := fun _ => true) :
+private def informalBlockToHtml (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
     BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
     fun _goI goB id data blocks => do
       match ← ExtensionDecode.decode? (α := BlockOccurrence) data
@@ -132,9 +132,9 @@ private def informalBlockToHtml (previewAvailable : PreviewKey → Bool := fun _
           | some (_, selectedContent) => pure selectedContent
           | none => blocks.mapM goB
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra s data previewAvailable
-        let usesEntry ← RelatedPanel.renderUsesExtra s data previewAvailable
-        let usedByEntry ← RelatedPanel.renderUsedByExtra s data previewAvailable
+        let groupEntry ← RelatedPanel.renderGroupExtra s data renderPreview
+        let usesEntry ← RelatedPanel.renderUsesExtra s data renderPreview
+        let usedByEntry ← RelatedPanel.renderUsedByExtra s data renderPreview
         let markupEntry? :=
           renderExternalMarkupHeaderExtra? markup
         let headerExtras : HeaderExtras :=
@@ -190,17 +190,22 @@ block_extension Block.informal (data : BlockOccurrence) where
       pure <| Informal.TeX.quotedBlock title body
   extraCss := Informal.Block.Assets.blockCssAssets
   extraJs := Informal.Block.Assets.blockJsAssets
-  toHtml := some (informalBlockToHtml (fun _ => true))
+  toHtml := some (informalBlockToHtml PreviewResources.immediate)
 
-/-- Bind the standard block HTML renderer's relation panels to prepared resources.
+/-- Bind the standard block HTML renderer's relation presentation hook.
 Traversal, TeX, and other supplied extension hooks are retained. -/
-def Block.withPreviewAvailability (impls : ExtensionImpls)
-    (previewAvailable : PreviewKey → Bool) : ExtensionImpls :=
+def Block.withPreviewRendering (impls : ExtensionImpls)
+    (renderPreview : PreviewResources.Render) : ExtensionImpls :=
   match impls.getBlock? ``Block.informal with
   | none => impls
   | some descriptor =>
     impls.insertBlock ``Block.informal
-      { descriptor with toHtml := some (informalBlockToHtml previewAvailable) }
+      { descriptor with toHtml := some (informalBlockToHtml renderPreview) }
+
+/-- Resolve page relation previews immediately against prepared resources. -/
+def Block.withPreviewAvailability (impls : ExtensionImpls)
+    (available : PreviewKey → Bool) : ExtensionImpls :=
+  Block.withPreviewRendering impls (PreviewResources.immediate available)
 
 private structure ParsedDirectiveContents where
   sourceRef? : Option Source.Ref := none

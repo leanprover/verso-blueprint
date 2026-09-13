@@ -532,11 +532,11 @@ edges, group children, or DOT. It accepts only a retention predicate, so this
 post-pass cannot rewrite preview identities. Thus topology still crosses one
 finalization boundary even though manifest emission later prunes preview
 candidates that did not produce both a manifest entry and a rendered cache
-body. `PreviewManifest.PreviewDataModel.finish` owns that post-pass on the paired
-manifest/cache candidate and returns `PreviewManifest.Files`, whose private
-constructor makes the phase transition concrete. Production construction,
-indexing, and finalization therefore pass one explicit pair instead of
-repeatedly selecting artifacts, and finalized files cannot be finalized again.
+body. Resource construction and `PreviewManifest.PreviewDataModel.finish` share
+that manifest-reference post-pass and return `PreviewManifest.Files`, whose
+private constructor makes the phase transition concrete. Resource construction
+also resolves retained HTML views before serialization; `PreviewDataModel.finish`
+accepts already-serialized bodies. Finalized files cannot be finalized again.
 
 For `m` manifest preview/group records, `c` rendered-cache entries, `r`
 non-graph preview references, `n` graph nodes, and `v` graph-variant
@@ -965,9 +965,15 @@ Neither case removes graph topology or accepted node facts. Plain generation and
 delayed checkpoints do not prepare resources. Hover-table merging remains after
 page emission. Direct preview-data callers retain the narrower
 `PreparedPreviewState` API, which only prepares indexes and supports synthetic
-states used in tests. Cached bodies are built with the original extensions before
-availability is known, and their nested references retain runtime diagnostics.
-This boundary does not rerender or rewrite opaque cached fragments.
+states used in tests. Cached bodies remain structured HTML until availability is
+known. An output-local `PreviewResources.Deferred` session retains pure reference
+and relation-panel presentation decisions in a side table; temporary HTML markers
+carry their positions and candidate content for blank-body detection. Finalization
+resolves those decisions and hover payloads before serialization. This session
+never enters traversal state or generated files. It does not repeat semantic lookup
+or body rendering, and it leaves raw external HTML opaque. Availability changes
+preview affordances, not whether an authored body exists. Plain/direct rendering
+and custom renderers outside this hook retain runtime availability diagnostics.
 
 A Blueprint HTML checkpoint stores the unpatched document and captured state
 alongside its serializable configuration. Resume preserves that document and

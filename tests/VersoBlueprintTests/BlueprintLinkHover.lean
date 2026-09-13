@@ -496,7 +496,9 @@ The target is elaborated after the reference.
       let references : Array (Doc.Block Genre.Manual) := #[.para #[
         .other (Inline.informal { label }) contents]]
       let (references, _) ← Informal.traverseManualBlocks references manualImpls (fun _ => pure ())
-      for impls in #[manualImpls, Informal.Inline.withPreviewAvailability manualImpls (fun _ => false)] do
+      let deferred ← PreviewResources.Deferred.create
+      for impls in #[manualImpls, Informal.Inline.withPreviewAvailability manualImpls (fun _ => false),
+          Informal.Inline.withPreviewRendering manualImpls deferred.render] do
         errors.set #[]
         let html ← renderManualBlocksHtmlWithState references impls state (logError := logError)
         unless (← errors.get).any (hasSubstr · expected) &&

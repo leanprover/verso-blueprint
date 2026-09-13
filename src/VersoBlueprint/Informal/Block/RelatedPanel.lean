@@ -8,6 +8,7 @@ import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewResources
 import VersoBlueprint.RenderingResolution
 import VersoBlueprint.TraversalIndex
 
@@ -645,10 +646,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
 
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}
-    [Monad m]
+    [Monad m] [MonadLiftT IO m]
     (state : TraverseState)
     (data : BlockData)
-    (previewAvailable : PreviewKey → Bool := fun _ => true) :
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   match data.isProof with
   | true => pure .empty
@@ -659,14 +660,14 @@ def renderUsedByExtra {m}
       mkBlockEntry state entry.source
         (usedByPreviewId data.label entry.source.label)
         (badgeCodes := badgeCodes)
-    pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries previewAvailable
+    return ← renderPreview (fun available => renderPanel (usedByPanelConfig (some data.label)) panelEntries available)
 
 /-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
-    [Monad m]
+    [Monad m] [MonadLiftT IO m]
     (state : TraverseState)
     (data : BlockData)
-    (previewAvailable : PreviewKey → Bool := fun _ => true) :
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries state data
   let panelEntries := entries.map fun entry =>
@@ -680,14 +681,14 @@ def renderUsesExtra {m}
       mkLabelEntry state entry.label
         (usesPreviewId data.label entry.label)
         (badgeCodes := badgeCodes)
-  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries previewAvailable
+  return ← renderPreview (fun available => renderPanel (usesPanelConfigForBlock data) panelEntries available)
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
-    [Monad m]
+    [Monad m] [MonadLiftT IO m]
     (state : TraverseState)
     (data : BlockData)
-    (previewAvailable : PreviewKey → Bool := fun _ => true) :
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
   match data.isProof, groupRenderInfo? state data with
   | true, _ => pure none
@@ -700,7 +701,7 @@ def renderGroupExtra {m}
       mkBlockEntry state source
         (groupPreviewId data.label source.label)
     let cfg := groupPanelConfig group.label group.title group.declared
-    pure <| some (renderPanel cfg panelEntries previewAvailable)
+    return some (← renderPreview (fun available => renderPanel cfg panelEntries available))
 
 end RelatedPanel
 end Informal

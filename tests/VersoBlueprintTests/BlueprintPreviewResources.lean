@@ -20,6 +20,15 @@ This known node is deliberately omitted from the selected document.
 :::
 :::::::
 
+#docs (Manual) nestedDoc "Nested occurrence" :=
+:::::::
+:::lemma_ "resource_nested" (parent := "resource_group")
+Nested relations use {uses "resource_missing" (intent := "technical")}[],
+{uses "resource_markup"}[], and {uses "resource_statement"}[].
+A custom nested reference: {bpref "resource_missing"}[Nested unavailable target].
+:::
+:::::::
+
 #docs (Manual) resourceDoc "Preview resources" :=
 :::::::
 :::group "resource_group"
@@ -30,6 +39,7 @@ Resource group
 The rendered statement has one preview resource and uses {uses "resource_markup"}[]
 and {uses "resource_missing" (intent := "technical")}[].
 :::
+
 
 :::proof "resource_statement"
 The proof uses {uses "resource_missing"}[].
@@ -89,6 +99,9 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
     traverse := fun _ _ _ => pure none
     toHtml := some fun _ _ _ _ _ => pure .empty
     toTeX := none }
+  -- Compiled occurrences can be nested by document composition even though
+  -- authored Blueprint directives prohibit nested registrations.
+  let nested : Doc.Block Manual := .concat nestedDoc.toPart.content
   let text := { resourceDoc.toPart with
     content := resourceDoc.toPart.content.map fun block => block.rewriteOther
       (fun go container contents => .other container (contents.map go))
@@ -100,7 +113,7 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
             if occurrence.label == `resource_missing then
               .other container #[.other { name := `blankResource } #[]]
             else if occurrence.label == `resource_statement && !occurrence.isProof then
-              .other container (contents.push (.other { name := `resourceProbe } #[]))
+              .other container (contents.push nested |>.push (.other { name := `resourceProbe } #[]))
             else .other container contents
           | .error _ => .other container contents
         else .other container contents) }
@@ -140,6 +153,29 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
           hasSubstr page s!"<a href=\"{href}\" title=\"resource_missing\">{reference.title}</a>" &&
           hasSubstr page "resource_omitted" do
         throw <| IO.userError "Unavailable previews changed link text, titles, or omitted-node fallback"
+      let some cached := files.htmlCache.findHtml? availableKey
+        | throw <| IO.userError "Missing statement resource"
+      unless !(hasSubstr cached s!"data-bp-preview-key=\"{missingKey}\"") &&
+          !(hasSubstr cached s!"data-bp-preview-key=\"{markupKey}\"") &&
+          hasSubstr cached s!"data-bp-preview-key=\"{availableKey}\"" &&
+          hasSubstr cached s!"<a href=\"{href}\" title=\"resource_missing\">Nested unavailable target</a>" do
+        throw <| IO.userError "Cached references changed links or retained unavailable previews"
+      for entry in files.htmlCache.entries do
+        unless !(hasSubstr entry.html "verso-blueprint-deferred-preview") do
+          throw <| IO.userError "Deferred render marker leaked into a serialized resource"
+      let mut nestedMissingRows := 0
+      for part in (cached.splitOn "class=\"bp-relation-entries\">").drop 1 do
+        let .ok rows := Json.parse (part.splitOn "</script>").head! >>=
+            fromJson? (α := Array (Array Json))
+          | throw <| IO.userError "Malformed cached relation panel rows"
+        for row in rows do
+          if row[2]? == some (.str "resource_missing") then
+            nestedMissingRows := nestedMissingRows + 1
+            unless row[1]? == some Json.null && row[0]? == some (.str reference.title) &&
+                row[3]? == some (.str href) do
+              throw <| IO.userError "Cached relation lost metadata or retained an unavailable key"
+      unless nestedMissingRows > 0 do
+        throw <| IO.userError "Cached nested block did not retain its relation panel"
       let mut missingRows := 0
       let mut missingBadges := 0
       for part in (page.splitOn "class=\"bp-relation-entries\">").drop 1 do
