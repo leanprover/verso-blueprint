@@ -1,10 +1,14 @@
 // Browser-only extraction of the existing sampled-profile symbolication path.
+// Usage: node summarize_replay_profile.mjs CAPTURE [FLAMEGRAPH_PL] [--live]
+// --live summarizes a single edit capture; default retains replay phase slicing.
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const capture = resolve(process.argv[2]);
+const live = process.argv.includes("--live");
+const flamegraphPath = process.argv.slice(3).find(arg => arg !== "--live");
 const identity = JSON.parse(await readFile(resolve(capture, "identity.json")));
 const report = JSON.parse(await readFile(resolve(capture, "result.json")));
 const result = { ...report, root: identity.root };
@@ -86,11 +90,16 @@ for (const node of browser.nodes) {
 await writeFile(resolve(capture, "browser.symbolicated.cpuprofile"), JSON.stringify(browser));
 await writeFile(resolve(capture, "wasm-symbols.json"), JSON.stringify({ ...wasmEvidence, names: Object.fromEntries(wasmNames) }, null, 2));
 
-const clock = JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
-assert.ok(clock.uncertaintyMs < 5, "clock calibration too imprecise");
+const clock = live ? null : JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
+if (clock) assert.ok(clock.uncertaintyMs < 5, "clock calibration too imprecise");
+if (live) {
+  assert.equal(report.samples, 1, "live profile must isolate one measured edit");
+  assert.equal(report.result.rows.filter(row => !row.warmup).length, 1);
+  assert.ok(report.cpuSampling, "live capture must enable sampling");
+}
 const nodes = new Map(browser.nodes.map(n => [n.id,n])), parents = new Map();
 for (const n of browser.nodes) for (const child of n.children ?? []) parents.set(child,n.id);
-const windows = report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
+const windows = live ? [{ phase: "live-edit", start: browser.startTime, end: browser.endTime }] : report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
   const {start, decodedAt, committedAt} = row[mode].raw;
   return [
     {phase: mode + ":decode", start:(start+clock.offsetMs)*1000, end:(decodedAt+clock.offsetMs)*1000},
@@ -110,37 +119,47 @@ for (let i=0;i<browser.samples.length;i++) {
   for (const w of windows) {
     const weight=Math.min(timestamp,w.end)-Math.max(from,w.start);
     if(weight<=0)continue;
-    const a=summary[w.phase]??={us:0,samples:0,self:{},inclusive:{},folded:{}};
-    a.us+=weight; a.samples++;
-    a.self[stack[0]]=(a.self[stack[0]]??0)+weight;
-    for(const name of new Set(stack)) a.inclusive[name]=(a.inclusive[name]??0)+weight;
-    const folded=stack.toReversed().join(";");
-    a.folded[folded]=(a.folded[folded]??0)+weight;
+    // Caller groups are disjoint subdivisions of the live capture, not
+    // chronological decode/render boundaries or additional elapsed time.
+    const keys = [w.phase];
+    if (live) keys.push(stack.includes("renderWithHooks") ? "react-render-callbacks"
+      : stack.includes("virCallback") ? "other-lean-callbacks" : "outside-lean-callbacks");
+    for (const key of keys) {
+      const a=summary[key]??={us:0,samples:0,self:{},inclusive:{},folded:{}};
+      a.us+=weight; a.samples++;
+      a.self[stack[0]]=(a.self[stack[0]]??0)+weight;
+      for(const name of new Set(stack)) a.inclusive[name]=(a.inclusive[name]??0)+weight;
+      const folded=stack.toReversed().join(";");
+      a.folded[folded]=(a.folded[folded]??0)+weight;
+    }
   }
 }
 const top=(xs,total)=>Object.entries(xs).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([name,us])=>({name,ms:us/1000,percent:100*us/total}));
-const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes), phases:{}};
+const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes),
+  scope: live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases" : "calibrated replay decode/render windows",
+  phases:{}};
 for(const [phase,a]of Object.entries(summary)) {
   const categories = {};
   for (const [leaf, us] of Object.entries(a.self)) {
-    const category = /interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? "Interpreter dispatch/evaluation"
+    const category = leaf === "(idle)" ? "Idle"
+      : /interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? "Interpreter dispatch/evaluation"
       : /symbol_cache_entry|constant_cache_entry|interpreter::lookup_symbol|__hash.*find<lean::name>/.test(leaf) ? "Symbol/constant/name lookup"
       : /^(dlmalloc|dlfree|lean_dec_ref_cold)|interpreter::alloc_ctor|vector<.*>::resize/.test(leaf) ? "Allocation/refcount/vector storage"
       : leaf.includes("[wasm:") ? "Other WASM" : "JavaScript/browser";
     categories[category] = (categories[category] ?? 0) + us;
   }
-  compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:report.acceptance.rows.length,
+  compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:live ? 1 : report.acceptance.rows.length,
     categories:top(categories,a.us),self:top(a.self,a.us),inclusive:top(a.inclusive,a.us),
     hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
     commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us};
   const folded = Object.entries(a.folded).map(([stack,us])=>stack+" "+Math.round(us)).join("\n")+"\n";
   await writeFile(resolve(capture,phase.replace(":","-")+".folded"),folded);
-  if (process.argv[3]) {
-    const graph = spawnSync("perl", [resolve(process.argv[3]), "--title", phase + " - sampled CPU (not a timeline)",
+  if (flamegraphPath) {
+    const graph = spawnSync("perl", [resolve(flamegraphPath), "--title", phase + " - sampled CPU (not a timeline)",
       "--countname", "microseconds", "--width", "1600", "--hash"], {input:folded,encoding:"utf8",maxBuffer:32*1024*1024});
     assert.equal(graph.status,0,graph.stderr);
     await writeFile(resolve(capture,phase.replace(":","-")+".svg"),graph.stdout);
-    compact.flamegraphToolSha256 = sha(await readFile(resolve(process.argv[3])));
+    compact.flamegraphToolSha256 = sha(await readFile(resolve(flamegraphPath)));
   }
 }
 await writeFile(resolve(capture,"profile-summary.json"),JSON.stringify(compact,null,2));

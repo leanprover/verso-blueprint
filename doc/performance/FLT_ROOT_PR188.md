@@ -32,6 +32,8 @@ Both return 6,594,619 JSON characters per measured edit. Decode and browser
 rendering deserve priority over the small remaining server waits. The RPC
 remainder also contains dispatcher waits, encoding, transport, and scheduling;
 the server's internal timers do not measure all elaboration.
+The subsequent [quick sampled profile](FLT_ROOT_QUICK_PROFILE.md) separates
+interpreter and host-call costs without changing the runtime or wire contract.
 
 ## Complete observed edit bar
 
