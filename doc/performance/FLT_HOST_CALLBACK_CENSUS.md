@@ -101,3 +101,14 @@ Select the census with `VBP_LATENCY_HOST_CENSUS=1` in the existing latency harne
 do not combine it with CPU sampling, response probes, React profiling, or debug
 timing. No producer writes, pin changes, upstream messages, or publication were
 made. The next step is a reviewed upstream candidate and matched full-FLT A/B.
+
+## Standalone upstream reproducer
+
+The subsequent [minimal Node example](../../tests/vir_preview/repros/README.md)
+uses the real dispatcher **and real resource lifting**, mocking only Wasm
+memory/exports. One property write with three existing resources and 56 retained
+roots performs six registry traversals / 336 visits, creating zero callbacks.
+It passes against both the pinned SDK and producer-source dependency; all four
+recorded runtime-file hashes match. Evidence: `standalone-sdk.json` and
+`standalone-source.json` in the census directory. Optional timing uses ordinary
+Sets, separate from the counted witness. No producer fix is included.
