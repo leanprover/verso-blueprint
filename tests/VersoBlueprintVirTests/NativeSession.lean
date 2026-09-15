@@ -58,14 +58,14 @@ def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) :=
 def timingChecks (scenario : Nat) : Bool := Id.run do
   let server : ServerTiming := ⟨1000000, 2000000, 3000000⟩
   let sample : Session.BrowserTiming := {
-    response := ⟨10, 20, 25⟩, preparationMs := 2, renderMs := 3, observedMs := 35
+    response := ⟨10, 20, 25, none⟩, preparationMs := 2, renderMs := 3, observedMs := 35
   }
   match scenario with
   | 0 => return sample.partition? server == some (25000000,
-      #[1000000, 2000000, 3000000, 4000000, 5000000, 2000000, 3000000, 5000000])
+      #[1000000, 2000000, 3000000, 4000000, 5000000, 2000000, 3000000, 5000000, 0])
   | 1 => return ({ sample with preparationMs := 8 }.partition? server).isNone
   | 2 => return ({ sample with renderMs := 20 }.partition? server).isNone
-  | 3 => return ({ sample with response := ⟨20, 10, 25⟩ }.partition? server).isNone
+  | 3 => return ({ sample with response := ⟨20, 10, 25, none⟩ }.partition? server).isNone
   | 4 => return (sample.partition? ⟨11000000, 0, 0⟩).isNone
   | 5 => return ({ sample with preparationMs := -1 }.partition? server).isNone
   | 6 => return ({ sample with observedMs := 0 / 0 }.partition? server).isNone
@@ -75,12 +75,17 @@ def timingChecks (scenario : Nat) : Bool := Id.run do
       | return false
     return phases.foldl (· + ·) 0 == total && total == 25123456
   | 9 =>
-    let zero : Session.BrowserTiming := ⟨⟨0, 0, 0⟩, 0, 0, 0⟩
-    return zero.partition? ⟨0, 0, 0⟩ == some (0, Array.replicate 8 0)
+    let zero : Session.BrowserTiming := ⟨⟨0, 0, 0, none⟩, 0, 0, 0⟩
+    return zero.partition? ⟨0, 0, 0⟩ == some (0, Array.replicate 9 0)
+  | 11 =>
+    let some (total, phases) := { sample with response := ⟨10, 20, 25, some 7⟩ }.partition? server
+      | return false
+    return total == 28000000 && phases[8]! == 3000000 && phases.foldl (· + ·) 0 == total
+  | 12 => return ({ sample with response := ⟨10, 20, 25, some 11⟩ }.partition? server).isNone
   | _ =>
     let debug : Session.DebugSample := { correlationId := "same-position", browserTiming? := some sample }
     return (debug.forResponse "same-position" (some sample.response)).browserTiming?.isSome &&
-      (debug.forResponse "same-position" (some ⟨40, 50, 55⟩)).browserTiming?.isNone &&
+      (debug.forResponse "same-position" (some ⟨40, 50, 55, none⟩)).browserTiming?.isNone &&
       (debug.forResponse "different-position" (some sample.response)).browserTiming?.isNone
 
 @[vir_export]

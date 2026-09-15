@@ -79,7 +79,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       check(bar, "live server response has no timing bar");
       const phases = [...bar.querySelectorAll("[data-verso-phase]")];
       const total = Number(bar.dataset.versoTotalNanos);
-      check([3, 8].includes(phases.length) && total > 0 && phases.reduce((sum, phase) =>
+      check([3, 8, 9].includes(phases.length) && total > 0 && phases.reduce((sum, phase) =>
         sum + Number(phase.dataset.versoNanos), 0) === total,
       "live server phases do not partition preparation time");
       return total;
@@ -112,8 +112,10 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(document.getElementById("vir-verso-debug").checked,
       "embedded edit lost debug option");
     measuredBar();
-    check(document.querySelectorAll('#vir-verso-server-bar [data-verso-phase]').length === 8,
+    check(document.querySelectorAll('#vir-verso-server-bar [data-verso-phase]').length === 9,
       "accepted edit did not publish the full server/browser timing partition");
+    check(document.getElementById("vir-verso-server-timings").textContent.includes("Edit notification → content effect"),
+      "accepted edit timing omitted its notification boundary");
     check(document.getElementById("vir-verso-timing-scale").value === "100",
       "document edit reset timing scale");
     check(packageCalls().length === 1, "document edit regenerated the client package");
@@ -122,6 +124,9 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     await waitFor("embedded cursor refresh", () => panel()?.dataset.versoCorrelationId ===
       `${changed.textDocument.version}:${config.b.line}:${config.b.character}`);
     check(checkbox() === retained && retained.checked, "cursor movement remounted controls");
+    await waitFor("cursor-only timing", () => document.getElementById("vir-verso-server-timings")?.textContent.includes("RPC → content effect"));
+    check(!document.querySelector('#vir-verso-server-bar [data-verso-phase="dispatch"]'),
+      "cursor-only RPC reused an earlier edit notification timestamp");
     check(packageCalls().length === 1, "cursor movement regenerated the client package");
 
     // Move through real source blocks using the same official position-specific

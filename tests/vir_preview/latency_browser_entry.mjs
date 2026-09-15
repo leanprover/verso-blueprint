@@ -92,6 +92,11 @@ globalThis.rpcAcceptance = (async () => {
     const mountEnd = await initial;
     const retained = document.getElementById("vir-verso-highlight-changes");
     check(retained && !retained.checked && !document.getElementById("vir-verso-debug").checked, "diagnostics must be off");
+    if (DEBUG_TIMING) {
+      document.getElementById("vir-verso-debug").click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      check(document.getElementById("vir-verso-debug").checked, "debug toggle did not settle");
+    }
     const initialCalls = calls.map(({ method, start, reply }) => ({ method, elapsedMs: reply - start }));
     const rows = [];
     for (let trial = 0; trial < SAMPLES + 1; trial++) {
@@ -103,6 +108,12 @@ globalThis.rpcAcceptance = (async () => {
       const forwarded = performance.now();
       for (const handler of [...handlers]) handler(["textDocument/didChange", changed]);
       const visible = await done;
+      // The bar ends at a passive effect, later than the MutationObserver.
+      // Yield before any large textContent walk or JSON validation so the
+      // harness does not charge its own verification to the widget's interval.
+      if (DEBUG_TIMING)
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const verificationStartedMs = DEBUG_TIMING ? performance.now() : 0;
       if (SAMPLING && trial === SAMPLES) await post("/sampling/browser-stop", {});
       // Verification and diagnostic parsing are deliberately after the timed endpoint.
       check(panel().textContent.includes(`Preview timing sample ${String(version).padStart(2, "0")}`), "stale document");
@@ -125,6 +136,31 @@ globalThis.rpcAcceptance = (async () => {
       const checkedMs = timing.checkedWaitNanos / 1e6;
       const evaluationMs = timing.evaluationNanos / 1e6;
       const diagnostics = await post("/diagnostics", {});
+      let widgetTiming;
+      if (DEBUG_TIMING) {
+        // Read after the measured DOM endpoint; do not scan the document or
+        // poll from the widget itself. This checks the live bar's accounting.
+        const bar = document.getElementById("vir-verso-server-bar");
+        check(bar && document.getElementById("vir-verso-debug-panel")?.dataset.versoDebugBrowserTiming === "demo-clock",
+          "accepted root edit has no valid browser timing");
+        const phases = [...bar.querySelectorAll("[data-verso-phase]")].map(node => ({
+          phase: node.dataset.versoPhase, ms: Number(node.dataset.versoNanos) / 1e6,
+        }));
+        const totalMs = Number(bar.dataset.versoTotalNanos) / 1e6;
+        const startMs = Number(bar.dataset.versoStartMs), effectMs = Number(bar.dataset.versoEffectMs);
+        check(phases.length === 9 && phases[0].phase === "dispatch", "edit bar must include notification dispatch");
+        check(Math.abs(phases.reduce((sum, phase) => sum + phase.ms, 0) - totalMs) < 0.00001,
+          "bar phases do not sum to total");
+        check(Math.abs(effectMs - startMs - totalMs) < 0.00001,
+          "bar total differs from independently exposed clock endpoints");
+        check(startMs >= forwarded - 0.001 && startMs <= request.start && effectMs >= request.reply,
+          "bar clock boundaries do not belong to this edit/RPC");
+        check(effectMs <= verificationStartedMs,
+          "post-DOM verification started before the measured effect");
+        widgetTiming = { totalMs, phases, startMs, effectMs,
+          verificationStartedMs,
+          notificationOffsetMs: startMs - forwarded, effectMinusDomMs: effectMs - visible };
+      }
       if (SAMPLING && trial === SAMPLES) await post("/sampling/server-stop", {});
       rows.push({ trial, warmup: trial === 0, version, totalMs: visible - started,
         editBridgeMs: forwarded - started, notifyToRpcMs: request.start - forwarded,
@@ -132,6 +168,7 @@ globalThis.rpcAcceptance = (async () => {
         snapshotMs, checkedMs, evaluationMs,
         rpcRemainderMs: request.reply - request.start - snapshotMs - checkedMs - evaluationMs,
         diagnosticsMs: diagnostics.ms, payloadChars: JSON_BRIDGE_CANDIDATE ? JSON.stringify(request.value).length : request.value.length,
+        ...(DEBUG_TIMING ? { widgetTiming } : {}),
         ...(RESPONSE_PHASES ? { probeEnabled, responsePhases } : {}),
         ...(PROFILE ? { reactCommits: reactCommits.filter(c => c.startTime >= started && c.commitTime <= visible) } : {}) });
     }

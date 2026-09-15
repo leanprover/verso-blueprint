@@ -41,11 +41,13 @@ const profile = process.env.VBP_LATENCY_PROFILE === "1";
 const sampling = process.env.VBP_LATENCY_SAMPLING === "1";
 const responsePhases = process.env.VBP_LATENCY_RESPONSE_PHASES === "1";
 const captureResponse = process.env.VBP_LATENCY_CAPTURE_RESPONSE === "1";
+const debugTiming = process.env.VBP_LATENCY_DEBUG === "1";
 const waitForILeans = process.env.VBP_LATENCY_WAIT_ILEANS === "1";
 const stackBytes = Number(process.env.VBP_LATENCY_STACK_BYTES ?? 16384);
 assert.ok([16384, 65528].includes(stackBytes), "supported perf stack sizes: 16384 or 65528");
 assert.ok(!sampling || !profile, "CPU sampling and React profiling are separate experiments");
 assert.ok(!responsePhases || (!sampling && !profile), "response probes are a separate diagnostic campaign");
+assert.ok(!debugTiming || (!sampling && !profile && !responsePhases), "live bar validation is a separate diagnostic campaign");
 assert.ok(jsonBridge === "off" || (!responsePhases && !captureResponse), "JSON bridge uses ordinary timing, not the string-only response probe");
 const shellPath = resolve(process.env.VBP_LATENCY_SHELL ?? resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js"));
 const shellHash = sha(await readFile(shellPath));
@@ -92,7 +94,7 @@ const bundle = await build({ entryPoints: [clientEntry], bundle: true, format: "
         export { TaggedText_stripTags } from ${JSON.stringify(require.resolve("@leanprover/infoview-api"))};
         export function useRpcSession() { return globalThis.__vbpEmbeddedSession; }`, loader: "js", resolveDir: virRoot,
     }));
-  } }], define: { "process.env.NODE_ENV": '"production"', SHELL_HASH: JSON.stringify(shellHash), PREVIEW_METHOD: JSON.stringify(process.env.VBP_LATENCY_METHOD ?? "VersoBlueprint.Experimental.VirPreview.Server.previewDocument"), WIDGET_ID: JSON.stringify(process.env.VBP_LATENCY_WIDGET ?? "Lean.Vir.Infoview.widget"), SAMPLES: process.env.VBP_LATENCY_SAMPLES ?? "9", PROFILE: JSON.stringify(profile), SAMPLING: JSON.stringify(sampling), RESPONSE_PHASES: JSON.stringify(responsePhases), CAPTURE_RESPONSE: JSON.stringify(captureResponse), JSON_BRIDGE_CANDIDATE: JSON.stringify(jsonBridge === "candidate") },
+  } }], define: { "process.env.NODE_ENV": '"production"', SHELL_HASH: JSON.stringify(shellHash), PREVIEW_METHOD: JSON.stringify(process.env.VBP_LATENCY_METHOD ?? "VersoBlueprint.Experimental.VirPreview.Server.previewDocument"), WIDGET_ID: JSON.stringify(process.env.VBP_LATENCY_WIDGET ?? "Lean.Vir.Infoview.widget"), SAMPLES: process.env.VBP_LATENCY_SAMPLES ?? "9", DEBUG_TIMING: JSON.stringify(debugTiming), PROFILE: JSON.stringify(profile), SAMPLING: JSON.stringify(sampling), RESPONSE_PHASES: JSON.stringify(responsePhases), CAPTURE_RESPONSE: JSON.stringify(captureResponse), JSON_BRIDGE_CANDIDATE: JSON.stringify(jsonBridge === "candidate") },
 });
 const harnessPath = resolve(virRoot, "tests/infoview/rpc-browser-harness.mjs");
 const original = await readFile(harnessPath, "utf8");
@@ -208,7 +210,7 @@ const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
   driverSha256: sha(driverSource), bundleSha256: sha(bundle.outputFiles[0].contents),
   projectHead: git(root, "rev-parse", "HEAD").trim(), projectDiffSha256: sha(git(root, "diff", "HEAD")),
   cpu: os.cpus()[0].model, cpuCount: os.cpus().length, loadBefore: os.loadavg(),
-  startedAt: new Date().toISOString(), browserMode: "React production; highlighting/debug off", reactProfiler: profile,
+  startedAt: new Date().toISOString(), browserMode: `React production; highlighting off; debug ${debugTiming ? "on" : "off"}`, reactProfiler: profile,
   responsePhases: responsePhases ? { order: "off/on/on/off repeated, excluding one off warmup",
     diagnosticShellSha256: sha(diagnosticShell),
     probeSha256: sha(await readFile(resolve(output, "response_phase_probe.mjs"))),

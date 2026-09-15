@@ -35,12 +35,20 @@ private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Exce
     (input : RpcInput) : ReactM (Js Node) := do
   let state ← StateTuple.toState
     (← Hooks.useState (← LeanRef.toJSL ({ preview := .loading "Loading document" } : Session.Input)))
-  let edits ← StateTuple.toState (← Hooks.useState (← JsValue.ofNat 0))
+  let edits ← StateTuple.toState
+    (← Hooks.useState (← LeanRef.toJSL ((0, none) : Nat × Option Float)))
+  -- Effect/callback bookkeeping only: never read or mutate this ref in render.
+  -- An aborted request must not consume the edit's start; a later cursor-only
+  -- refresh after acceptance must not reuse that old start either.
+  let acceptedEdit ← Hooks.useRef (← JsValue.ofNat 0)
   let changed ← Js.Function.ofLeanVoid fun (params : Js.Any) => do
     let document ← Js.Object.get params (← JsValue.ofString "textDocument")
     let uri ← Js.String.fromAny (← Js.Object.get document (← JsValue.ofString "uri"))
     if (← JsValue.toString uri) == input.uri then
-      State.modify edits fun previous => do JsValue.ofNat ((← JsValue.toNat previous) + 1)
+      let notified ← clock?.getD (pure 0)
+      State.modify edits fun previous => do
+        let (count, _) : Nat × Option Float ← LeanRef.fromJSL previous
+        LeanRef.toJSL (count + 1, clock?.map fun _ => notified)
   -- Follow the current URI and replacement editor context on every render.
   Infoview.useClientNotificationEffect (← JsValue.ofString "textDocument/didChange") changed
     (← Js.UndefinedOr.undefined)
@@ -48,6 +56,10 @@ private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Exce
   let uri ← JsValue.ofString input.uri
   let effect ← EffectCallback.ofLean {
     setup := do
+      let (editCount, editNotified?) : Nat × Option Float ← LeanRef.fromJSL edits.value
+      let notified? := if editCount > (← JsValue.toNat (← React.Ref.get acceptedEdit)) then
+          editNotified?
+        else none
       let active ← RuntimeRef.new true
       let abort ← AbortController.create
       let options ← Infoview.ClientRequestOptions.empty
@@ -63,10 +75,12 @@ private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Exce
             | .ok preview => preview
             | .error message => .error s!"Invalid preview response: {message}"
           let decoded ← clock?.getD (pure 0)
+          React.Ref.set acceptedEdit (← JsValue.ofNat editCount)
           State.set state (← LeanRef.toJSL ({
             preview
             timing? := clock?.map fun _ => {
               requestedMs := requested, receivedMs := received, decodedMs := decoded
+              notifiedMs? := notified?
             }
           } : Session.Input))
       let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do

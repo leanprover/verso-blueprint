@@ -30,7 +30,7 @@ async function run() {
         reactHostBindings: createBrowserReactHostBindings,
       }),
     });
-    for (let scenario = 0; scenario < 11; scenario++) {
+    for (let scenario = 0; scenario < 13; scenario++) {
       check(runtime.call(`${entry}.timingChecks`, scenario) === true,
         `timing partition/correlation scenario ${scenario} failed`);
     }
@@ -170,7 +170,7 @@ async function run() {
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
       debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
       fixedTimeScale: true, scrollableLongTiming: true,
-      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 11,
+      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 13,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);

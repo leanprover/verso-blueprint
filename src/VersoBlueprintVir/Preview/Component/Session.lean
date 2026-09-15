@@ -36,6 +36,7 @@ structure ResponseTiming where
   requestedMs : Float
   receivedMs : Float
   decodedMs : Float
+  notifiedMs? : Option Float := none
   deriving BEq
 
 /-- Client-only React input; timing metadata never crosses the document codec. -/
@@ -55,24 +56,26 @@ The total is measured independently of the phase estimates. -/
 def BrowserTiming.partition? (sample : BrowserTiming) (server : ServerTiming) :
     Option (Nat × Array Nat) := do
   let r := sample.response
-  let values := #[r.requestedMs, r.receivedMs, r.decodedMs, sample.observedMs,
+  let start := r.notifiedMs?.getD r.requestedMs
+  let values := #[start, r.requestedMs, r.receivedMs, r.decodedMs, sample.observedMs,
     sample.preparationMs, sample.renderMs]
   -- Ordered bounds also reject NaN/infinity and keep nanoseconds within UInt64.
   guard (values.all fun value => value >= 0 && value < 18446744073709.0)
-  guard (r.requestedMs <= r.receivedMs && r.receivedMs <= r.decodedMs &&
+  guard (start <= r.requestedMs && r.requestedMs <= r.receivedMs && r.receivedMs <= r.decodedMs &&
     r.decodedMs <= sample.observedMs)
   let nanos := fun ms : Float => (ms * 1000000).toUInt64.toNat
-  let total := nanos (sample.observedMs - r.requestedMs)
+  let total := nanos (sample.observedMs - start)
+  let dispatch := nanos (r.requestedMs - start)
   let rpc := nanos (r.receivedMs - r.requestedMs)
   let decode := nanos (r.decodedMs - r.receivedMs)
   let browser := nanos (sample.observedMs - r.decodedMs)
   let prepare := nanos sample.preparationMs
   let render := nanos sample.renderMs
   guard (server.preparationNanos <= rpc && prepare + render <= browser &&
-    rpc + decode + prepare + render <= total)
+    dispatch + rpc + decode + prepare + render <= total)
   pure (total, #[server.snapshotWaitNanos, server.checkedWaitNanos, server.evaluationNanos,
     rpc - server.preparationNanos, decode, prepare, render,
-    total - rpc - decode - prepare - render])
+    total - dispatch - rpc - decode - prepare - render, dispatch])
 
 /-- One coherent post-commit diagnostic observation. -/
 structure DebugSample where
@@ -160,9 +163,12 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
     ("evaluation", "Evaluate / locate focus", "#42b89a", timing.evaluationNanos)
   ]
   let partition? := browser?.bind (·.partition? timing)
-  let phases := match partition? with
+  let fromEdit := browser?.any fun (b : BrowserTiming) => b.response.notifiedMs?.isSome
+  let phases : Array (String × String × String × Nat) := match partition? with
     | none => serverPhases
     | some (_, durations) =>
+      (if fromEdit then
+        #[("dispatch", "Notification / dispatch", "#63806b", durations[8]!)] else #[]) ++
       serverPhases ++ #[
         ("rpc-remainder", "Encode / transport / scheduling", "#8995a6", durations[3]!),
         ("decode", "Decode", "#a678cf", durations[4]!),
@@ -175,14 +181,19 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
     else if total <= 10000000 then 1
     else if total <= 100000000 then 10
     else if total <= 1000000000 then 100 else 1000
-  let summary := (if partition?.isSome then "RPC → content effect " else "RPC server only ") ++ milliseconds total
+  let summary := (if partition?.isSome then
+      if fromEdit then "Edit notification → content effect "
+      else "RPC → content effect "
+    else "RPC server only ") ++ milliseconds total
   let boundary := if partition?.isSome then
-      "Latest accepted request; excludes edit-to-request, startup and paint."
+      if fromEdit then
+        "Includes notification-to-dispatch. Keystroke-to-notification, startup and paint are not measured."
+      else "Cursor/initial/refresh RPC; excludes earlier edit processing, startup and paint."
     else if browser?.isSome then
       "Browser sample inconsistent; showing server phases only."
     else
       "Browser timing unavailable. RPC waits are not total elaboration time; encoding and rendering are excluded."
-  let segments := phases.map fun (key, label, color, nanos) => do
+  let segments : Array (ReactM (Js Node)) := phases.map fun (key, label, color, nanos) => do
     let style ← js%{
       "width" := (← JsValue.ofString s!"{timingPixels timingTickMs nanos}px"),
       "flexShrink" := (← js#"0"), "minWidth" := (← js#"0"), "backgroundColor" := (← JsValue.ofString color)
@@ -190,7 +201,7 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
     return ← <span key={(← JsValue.ofString key)} data-verso-phase={(← JsValue.ofString key)}
       data-verso-nanos={(← JsValue.ofString (toString nanos))} title={(← JsValue.ofString (label ++ ": " ++ milliseconds nanos))}
       style={style}/>
-  let legends := phases.map fun (key, label, color, nanos) => do
+  let legends : Array (ReactM (Js Node)) := phases.map fun (key, label, color, nanos) => do
     let style ← js%{ "display" := (← js#"inline-flex"), "alignItems" := (← js#"center"), "gap" := (← js#"4px") }
     let swatchStyle ← js%{
       "display" := (← js#"inline-block"), "width" := (← js#"8px"), "height" := (← js#"8px"),
@@ -215,12 +226,14 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
   }
   return ← <div id="vir-verso-server-timings" style={(← js%{ "minWidth" := (← js#"0") })}>
     <p style={(← ComponentStyle.debugNote)}
-      title="Server waits include remaining elaboration and scheduling, not pure CPU time. Full-chain endpoint is the content passive effect, not paint. RPC remainder is encoding, transport and scheduling together; its displayed position is schematic. Editor work before RPC dispatch is outside this bar.">
+      title="Server waits include remaining elaboration and scheduling, not pure CPU time. The endpoint is the content passive effect, not paint. RPC remainder is encoding, transport and scheduling together; its displayed position is schematic. Earlier editor work before the observed notification is not measured.">
       {Node.text (← JsValue.ofString summary)}
     </p>
     <p id="vir-verso-timing-boundary" style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString boundary)}</p>
     <div id="vir-verso-server-scale" style={scrollStyle}><div style={trackStyle}>
       <div id="vir-verso-server-bar" role="img" aria-label={(← JsValue.ofString ariaLabel)}
+        data-verso-start-ms={(← JsValue.ofString (browser?.map (fun b => toString (b.response.notifiedMs?.getD b.response.requestedMs)) |>.getD ""))}
+        data-verso-effect-ms={(← JsValue.ofString (browser?.map (fun b => toString b.observedMs) |>.getD ""))}
         data-verso-total-nanos={(← JsValue.ofString (toString total))} data-verso-tick-ms={(← JsValue.ofString (toString timingTickMs))}
         style={barStyle}>{Js.Array.ofArray (α := Node) (← segments.mapM id)}</div>
     </div></div>

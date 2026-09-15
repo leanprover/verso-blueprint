@@ -17,7 +17,9 @@ clock, and math demo seams are unchanged. This base does not provide the request
 public browser clock or checked-JSON decoder.
 
 The isolated `browser-pr188` worktree starts at VBP checkpoint `01f8ec60`.
-The prior `browser-pr187` worktree, running FLT demo, and user edits are preserved.
+The prior `browser-pr187` worktree is preserved. The live FLT demo now selects
+`browser-pr188`; its existing source edits are preserved. See the
+[whole-root edit measurement](FLT_ROOT_PR188.md) for the comparison.
 Retained inputs and evidence live under repository-root
 `_out/browser-pr188/adoption/`, including a copy of the matched SDK archive.
 
@@ -31,17 +33,21 @@ preview controls have stable React keys. Renderer assertions use React's own
 
 The debug timing bar now:
 
-- distinguishes **RPC server only** from **RPC to content passive effect**;
+- distinguishes **RPC server only**, **RPC to content passive effect**, and
+  **edit notification to content passive effect**;
 - calls the server phases **Snapshot wait**, **Checks wait**, and
   **Evaluate / locate focus**, rather than implying total elaboration time;
 - pairs browser observations with the exact accepted response timestamps, not
   just editor version/cursor (which can repeat across requests);
-- derives total elapsed time from request/effect endpoints and checks that the
+- derives total elapsed time from notification/request and effect endpoints and checks that the
   phase estimates fit before calculating residuals;
 - rejects negative, non-finite, out-of-range, reversed, or overlapping timing
   samples and explicitly labels invalid browser data instead of silently hiding it.
 
-No new per-node instrumentation, polling, or server serialization is introduced.
+The demo takes one additional clock sample per matching edit notification. An
+aborted request does not consume that edit boundary; a cursor-only request after
+acceptance does not reuse it. No new per-node instrumentation, polling, or server
+serialization is introduced.
 These are accounting fixes, not a measured speedup.
 
 ## Why server numbers can look too small
@@ -58,8 +64,10 @@ timings. The bar is a latest-request view, not a retained last-edit profile.
 Earlier edit/server work, encoding, and transport are absent from the server-only
 bar. With the demo clock, the RPC remainder includes dispatcher setup as well as
 encoding, transport, and scheduling. Its attribution cannot be made more precise
-from these boundaries alone. Even the complete bar excludes edit-to-request,
-startup, and paint. Use the external edit harness for integral latency.
+from these boundaries alone. The edit bar includes observed notification-to-request
+time, but excludes physical keystroke-to-notification, startup, and paint. The
+external edit harness separately observes edit forwarding and the first accepted
+DOM update; that endpoint precedes the bar's passive effect.
 
 ## Validation
 
@@ -76,10 +84,11 @@ VBP_NATIVE_PREVIEW_REPORT=/absolute/path/to/_out/browser-pr188/embedded.json scr
 VBP_NATIVE_PREVIEW_REPORT=/absolute/path/to/_out/browser-pr188/string-rpc.json scripts/test-vir-native-preview.sh --string-preview
 ```
 
-Session acceptance includes eleven timing/correlation cases executed by the actual
+Session acceptance includes thirteen timing/correlation cases executed by the actual
 Wasm runtime, retained controls, scales, missing/zero timings, and React StrictMode.
 The embedded gate exercises the registered shell and real Lean RPC, math, list
-cursor positions, edits, and the full eight-phase bar. Neither is a whole-FLT
+cursor positions, edits, the nine-phase edit bar, and the eight-phase cursor bar
+without a stale edit start. Neither is a whole-FLT
 latency measurement or a VS Code paint test. Historical chapter timings in
 `BROWSER_PR187.md` must not be relabeled as whole-FLT or PR188 measurements.
 
@@ -90,4 +99,6 @@ warnings. Reports are `renderer-fixed/renderer-acceptance.json`,
 directory above. Targeted Lean builds (including the decoding probe) and nine
 profiling-helper tests also pass. Earlier failing logs are retained: they caught
 the missing control keys and the test walker's flat-children assumption. No
-whole-FLT benchmark or live VS Code retarget was performed in this slice.
+whole-FLT benchmark or live VS Code retarget was performed in that initial slice.
+The subsequent [FLT root experiment](FLT_ROOT_PR188.md) records the live dependency
+switch, full root build, and latency measurements separately.
