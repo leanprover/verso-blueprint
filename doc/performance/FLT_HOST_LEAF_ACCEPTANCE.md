@@ -2,6 +2,10 @@
 
 2026-09-15. Follow-up to the [callback census](FLT_HOST_CALLBACK_CENSUS.md).
 
+Historical leaf-only acceptance. The revised reachability contract has its own
+[successor acceptance](FLT_HOST_REACHABILITY_ACCEPTANCE.md); this report does
+not qualify that changed callback-lifetime policy.
+
 ## Decision
 
 The reviewed leaf fast path passes the full-FLT consumer checks. Its intended
