@@ -5,6 +5,10 @@ import { RpcSessions } from "@leanprover/infoview-api";
 import { EditorContext, EditorConnection } from "@leanprover/infoview";
 import Widget from "@vir-embedded-shell";
 import { createResponsePhaseProbe, responsePhaseDurations } from "./response_phase_probe.mjs";
+import { createHostCallbackCensus } from "./host_callback_census.mjs";
+
+const hostCensus = globalThis.__vbpHostCensusEnabled ? createHostCallbackCensus() : null;
+if (hostCensus) globalThis.__vbpHostCallbackCensus = hostCensus;
 
 const check = (ok, message) => { if (!ok) throw Error(message); };
 async function post(path, body) {
@@ -103,11 +107,13 @@ globalThis.rpcAcceptance = (async () => {
       probeEnabled = RESPONSE_PHASES && trial > 0 && [false, true, true, false][(trial - 1) % 4];
       if (SAMPLING && trial === 1) await post("/sampling/start", {});
       const version = trial + 2, before = calls.length;
+      hostCensus?.reset();
       const done = committed(version), started = performance.now();
       const changed = await post("/edit", {});
       const forwarded = performance.now();
       for (const handler of [...handlers]) handler(["textDocument/didChange", changed]);
       const visible = await done;
+      const callbackCensus = hostCensus?.finish();
       // The bar ends at a passive effect, later than the MutationObserver.
       // Yield before any large textContent walk or JSON validation so the
       // harness does not charge its own verification to the widget's interval.
@@ -169,6 +175,7 @@ globalThis.rpcAcceptance = (async () => {
         rpcRemainderMs: request.reply - request.start - snapshotMs - checkedMs - evaluationMs,
         diagnosticsMs: diagnostics.ms, payloadChars: JSON_BRIDGE_CANDIDATE ? JSON.stringify(request.value).length : request.value.length,
         ...(DEBUG_TIMING ? { widgetTiming } : {}),
+        ...(hostCensus ? { callbackCensus } : {}),
         ...(RESPONSE_PHASES ? { probeEnabled, responsePhases } : {}),
         ...(PROFILE ? { reactCommits: reactCommits.filter(c => c.startTime >= started && c.commitTime <= visible) } : {}) });
     }

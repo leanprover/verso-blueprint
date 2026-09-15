@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
+import { instrumentCallbackCensus } from "./host_callback_census.mjs";
 const root = resolve(process.env.VBP_LATENCY_PROJECT);
 const sourcePath = resolve(root, process.env.VBP_LATENCY_SOURCE ?? "FLTBlueprint/Chapters/Reductions.lean");
 const output = resolve(process.env.VBP_LATENCY_OUTPUT);
@@ -42,12 +43,14 @@ const sampling = process.env.VBP_LATENCY_SAMPLING === "1";
 const responsePhases = process.env.VBP_LATENCY_RESPONSE_PHASES === "1";
 const captureResponse = process.env.VBP_LATENCY_CAPTURE_RESPONSE === "1";
 const debugTiming = process.env.VBP_LATENCY_DEBUG === "1";
+const hostCensus = process.env.VBP_LATENCY_HOST_CENSUS === "1";
 const waitForILeans = process.env.VBP_LATENCY_WAIT_ILEANS === "1";
 const stackBytes = Number(process.env.VBP_LATENCY_STACK_BYTES ?? 16384);
 assert.ok([16384, 65528].includes(stackBytes), "supported perf stack sizes: 16384 or 65528");
 assert.ok(!sampling || !profile, "CPU sampling and React profiling are separate experiments");
 assert.ok(!responsePhases || (!sampling && !profile), "response probes are a separate diagnostic campaign");
 assert.ok(!debugTiming || (!sampling && !profile && !responsePhases), "live bar validation is a separate diagnostic campaign");
+assert.ok(!hostCensus || (!sampling && !profile && !responsePhases && !debugTiming && jsonBridge === "off"), "callback census is a separate diagnostic campaign");
 assert.ok(jsonBridge === "off" || (!responsePhases && !captureResponse), "JSON bridge uses ordinary timing, not the string-only response probe");
 const shellPath = resolve(process.env.VBP_LATENCY_SHELL ?? resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js"));
 const shellHash = sha(await readFile(shellPath));
@@ -77,13 +80,19 @@ if (responsePhases) {
     await readFile(fileURLToPath(new URL("./response_phase_probe.mjs", import.meta.url))));
 }
 const clientEntry = fileURLToPath(new URL("./latency_browser_entry.mjs", import.meta.url));
+if (hostCensus) {
+  diagnosticShell = "globalThis.__vbpHostCensusEnabled = true;\n" + instrumentCallbackCensus(await readFile(shellPath, "utf8"));
+  await writeFile(resolve(output, "diagnostic-shell.js"), diagnosticShell);
+  await writeFile(resolve(output, "host_callback_census.mjs"),
+    await readFile(fileURLToPath(new URL("./host_callback_census.mjs", import.meta.url))));
+}
 const clientSource = await readFile(clientEntry);
 const driverSource = await readFile(fileURLToPath(import.meta.url));
 const bundle = await build({ entryPoints: [clientEntry], bundle: true, format: "iife", platform: "browser", write: false,
   nodePaths: [resolve(virRoot, "node_modules")], alias: { "@vir-embedded-shell": shellPath,
     ...(profile ? { "react-dom/client": require.resolve("react-dom/profiling") } : {}) },
   plugins: [...(diagnosticShell ? [{ name: "diagnostic-shell", setup(builder) {
-    builder.onLoad({ filter: /vir-infoview-widget\.js$/ }, args => {
+    builder.onLoad({ filter: /(?:vir-infoview-widget|checked-json-demo)\.js$/ }, args => {
       assert.equal(args.path, shellPath);
       return { contents: diagnosticShell, loader: "js", resolveDir: dirname(shellPath) };
     });
@@ -216,6 +225,9 @@ const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
     probeSha256: sha(await readFile(resolve(output, "response_phase_probe.mjs"))),
     scope: "four existing host calls in the matching synchronous response callback only" } : false,
   captureResponse,
+  hostCensus: hostCensus ? { diagnosticShellSha256: sha(diagnosticShell),
+    probeSha256: sha(await readFile(resolve(output, "host_callback_census.mjs"))),
+    scope: "argument/root census only; original tracking retained; elapsed time is instrumented" } : false,
   jsonBridge: jsonBridge === "off" ? false : { variant: jsonBridge,
     bridgeRevision: "5953a7aef6fe9ec83481e313fb045fc27f7a1a9e",
     leanSourceHashes: jsonLeanSources,

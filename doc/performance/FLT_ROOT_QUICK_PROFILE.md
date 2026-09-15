@@ -48,6 +48,8 @@ callback-set snapshots per argument, transaction handling, and result lowering
 on each call. Those checks preserve lifetime/error semantics, but their repeated
 cost is a concrete investigation target. FIR may remove much of the interpreter
 work; it does not by itself establish that shared JavaScript bridge work goes away.
+The [follow-up callback census](FLT_HOST_CALLBACK_CENSUS.md) quantifies that
+bookkeeping and records a callback-free leaf-type optimization candidate.
 
 **Conclusion:** payload size implies real traversal/copying work, but the current
 decode/render times are not demonstrated lower bounds. Keep the format and wire
