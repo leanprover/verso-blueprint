@@ -34,7 +34,14 @@ for (const match of [...mathCss.matchAll(/src:url\((fonts\/[^)]+\.woff2)\)[^}]*/
   mathCss = mathCss.replace(match[0], `src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2")`);
 }
 assert.ok(Object.keys(assetHashes).length > 0 && !mathCss.includes("url(fonts/"));
-const output = resolve(root, ".lake/build/checked-json-demo.js");
+const liveOutput = resolve(root, ".lake/build/checked-json-demo.js");
+const output = resolve(process.env.VBP_DEMO_OUTPUT ?? liveOutput);
+const hostOverridePath = process.env.VBP_DEMO_HOST_STATE;
+const hostOverride = hostOverridePath ? await read(hostOverridePath) : null;
+if (hostOverride !== null) {
+  assert.notEqual(output, liveOutput, "runtime qualification must not overwrite the live demo");
+  assert.equal(sha(hostOverride), process.env.VBP_DEMO_HOST_STATE_SHA256, "reviewed host source mismatch");
+}
 const brandQuery = "\nexport function isLeanObjectHandle(value) { return leanObjectHandleStates.has(value); }\n";
 const result = await build({
   absWorkingDir: vir, entryPoints: [shell], outfile: output,
@@ -43,6 +50,10 @@ const result = await build({
   legalComments: "none", write: false, metafile: true,
   alias: { "@vir-object-values": objects },
   plugins: [{ name: "checked-json-demo-only", setup(builder) {
+    if (hostOverride !== null) builder.onLoad({ filter: /runtime\/host-state\.js$/ }, ({ path }) => {
+      assert.equal(path, resolve(vir, "web/src/runtime/host-state.js"));
+      return { contents: hostOverride, loader: "js", resolveDir: dirname(path) };
+    });
     builder.onLoad({ filter: /vir-infoview-widget\.js$/ }, async ({ path }) => {
       assert.equal(path, shell);
       let contents = await read(path);
@@ -82,7 +93,8 @@ const result = await build({
     }));
   } }],
 });
-// Every runtime source in the bundle must match the full SDK, not a mixed checkout.
+// Verify the base sources against the full SDK; record any explicit one-file
+// qualification override separately below.
 const sourceHashes = {};
 for (const input of Object.keys(result.metafile.inputs)) {
   const path = resolve(vir, input);
@@ -92,7 +104,8 @@ for (const input of Object.keys(result.metafile.inputs)) {
     const expected = sdk.files.find(f => f.path === `js/${relative}`);
     if (expected) assert.equal(sha(bytes), expected.sha256, `SDK source mismatch: ${relative}`);
     else assert.equal(relative, "vir-widget-errors.js", "unexpected source outside SDK");
-    sourceHashes[relative] = sha(bytes);
+    sourceHashes[relative] = relative === "runtime/host-state.js" && hostOverride !== null
+      ? sha(hostOverride) : sha(bytes);
   }
 }
 assert.equal(result.outputFiles.length, 1);
@@ -106,6 +119,10 @@ await writeFile(output + ".identity.json", JSON.stringify({
   shellSourceSha256: sha(await readFile(shell)), bridgeSha256: sha(await readFile(bridge)),
   scriptSha256: sha(await readFile(fileURLToPath(import.meta.url))),
   bundleSha256: sha(bundle), brandQuery, sourceHashes,
+  hostOverride: hostOverride === null ? null : {
+    sourcePath: resolve(hostOverridePath), sourceSha256: sha(hostOverride),
+    baseSha256: sha(await readFile(resolve(sdkRoot, "js/runtime/host-state.js"))),
+  },
   mathComponentSha256: sha(await readFile(math)),
   katexSha256: sha(await readFile(resolve(katex, "katex.mjs"))),
   mathCssSha256: sha(mathCss), assetHashes,

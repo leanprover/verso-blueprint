@@ -104,6 +104,11 @@ made. The next step is a reviewed upstream candidate and matched full-FLT A/B.
 
 ## Standalone upstream reproducer
 
+The reviewed upstream fix now has a separate
+[full-FLT acceptance report](FLT_HOST_LEAF_ACCEPTANCE.md), including normal-mode
+A/B runs and fresh sampled profiles. The investigation below remains the
+pre-fix evidence.
+
 The subsequent [minimal Node example](../../tests/vir_preview/repros/README.md)
 uses the real dispatcher **and real resource lifting**, mocking only Wasm
 memory/exports. One property write with three existing resources and 56 retained

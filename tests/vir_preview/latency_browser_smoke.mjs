@@ -55,6 +55,19 @@ assert.ok(jsonBridge === "off" || (!responsePhases && !captureResponse), "JSON b
 const shellPath = resolve(process.env.VBP_LATENCY_SHELL ?? resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js"));
 const shellHash = sha(await readFile(shellPath));
 let diagnosticShell = null;
+const shellOverride = process.env.VBP_LATENCY_SHELL_OVERRIDE;
+let shellOverrideIdentity = null;
+if (shellOverride) {
+  assert.ok(jsonBridge === "off" && !responsePhases && !hostCensus, "shell qualification must not stack source adapters");
+  diagnosticShell = await readFile(shellOverride, "utf8");
+  shellOverrideIdentity = JSON.parse(await readFile(shellOverride + ".identity.json", "utf8"));
+  assert.equal(shellOverrideIdentity.bundleSha256, sha(diagnosticShell));
+  assert.equal(shellOverrideIdentity.virCommit, sdk.gitCommit);
+  assert.equal(shellOverrideIdentity.toolchain, sdk.leanToolchain);
+  assert.equal(shellOverrideIdentity.sdkManifestSha256, sha(await readFile(resolve(sdkRoot, "lean-vir-artifact.json"))));
+  await writeFile(resolve(output, "qualified-shell.js"), diagnosticShell);
+  await writeFile(resolve(output, "qualified-shell.identity.json"), JSON.stringify(shellOverrideIdentity, null, 2));
+}
 let jsonHostSource = null;
 if (jsonBridge !== "off") {
   const shell = await readFile(shellPath, "utf8");
@@ -225,6 +238,7 @@ const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
     probeSha256: sha(await readFile(resolve(output, "response_phase_probe.mjs"))),
     scope: "four existing host calls in the matching synchronous response callback only" } : false,
   captureResponse,
+  shellOverride: shellOverrideIdentity,
   hostCensus: hostCensus ? { diagnosticShellSha256: sha(diagnosticShell),
     probeSha256: sha(await readFile(resolve(output, "host_callback_census.mjs"))),
     scope: "argument/root census only; original tracking retained; elapsed time is instrumented" } : false,
