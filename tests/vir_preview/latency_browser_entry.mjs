@@ -94,6 +94,7 @@ globalThis.rpcAcceptance = (async () => {
         reactCommits.push({ phase, actualDuration, baseDuration, startTime, commitTime });
       } }, tree) : tree);
     const mountEnd = await initial;
+    const initialResponse = CAPTURE_RESPONSE ? calls.filter(c => c.method === previewMethod).at(-1).value : null;
     const retained = document.getElementById("vir-verso-highlight-changes");
     check(retained && !retained.checked && !document.getElementById("vir-verso-debug").checked, "diagnostics must be off");
     if (DEBUG_TIMING) {
@@ -185,7 +186,8 @@ globalThis.rpcAcceptance = (async () => {
     check(warnings.length === 0, warnings.join("\n"));
     return { ok: true, value: { initialMountMs: mountEnd - mountStart, initialCalls, rows,
       clientPackage: calls.find(c => c.method === "Lean.Vir.Infoview.buildIRPackage").value,
-      ...(CAPTURE_RESPONSE ? { capturedResponse: calls.filter(c => c.method === previewMethod).at(-1).value } : {}),
+      ...(CAPTURE_RESPONSE ? { capturedInitialResponse: initialResponse,
+        capturedResponse: calls.filter(c => c.method === previewMethod).at(-1).value } : {}),
       ...(config.indexWaitMs !== undefined ? { indexWaitMs: config.indexWaitMs } : {}),
       warnings, clientPackages: 1, endpoint: "MutationObserver after accepted version DOM commit; not paint" } };
   } finally { sessions.dispose(); console.error = previousError; }

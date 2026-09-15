@@ -8,6 +8,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { instrumentCallbackCensus } from "./host_callback_census.mjs";
+import { writePreviewInputs } from "./preview_inputs.mjs";
 const root = resolve(process.env.VBP_LATENCY_PROJECT);
 const sourcePath = resolve(root, process.env.VBP_LATENCY_SOURCE ?? "FLTBlueprint/Chapters/Reductions.lean");
 const output = resolve(process.env.VBP_LATENCY_OUTPUT);
@@ -269,7 +270,10 @@ try {
   if (captureResponse) {
     assert.equal(typeof result.capturedResponse, "string");
     await writeFile(resolve(output, "response.json"), result.capturedResponse);
+    await writeFile(resolve(output, "initial-response.json"), result.capturedInitialResponse);
+    result.capturedInputs = await writePreviewInputs(output, result.capturedInitialResponse, result.capturedResponse);
     result.capturedResponseSha256 = sha(result.capturedResponse);
+    delete result.capturedInitialResponse;
     delete result.capturedResponse;
   }
   assert.equal(sha(await readFile(sourcePath)), identity.sourceSha256, "source changed during campaign");

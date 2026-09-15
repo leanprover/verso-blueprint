@@ -9,10 +9,34 @@ import { createJsValueHostBindings } from "@vir-value-bindings";
 
 const check = (value, message) => { if (!value) throw new Error(message); };
 const title = 'FIR λ😀 <script>alert("escaped")</script> & title';
-const open = (module, manifest) => createRendererHostPrototype({ module, manifest,
+const open = (module, manifest, overrides = {}) => createRendererHostPrototype({ module, manifest,
   bindings: { ...createJsCollectionHostBindings(), ...createJsValueHostBindings(),
-    ...createBrowserReactHostBindings() },
+    ...createBrowserReactHostBindings(), ...overrides },
 });
+
+async function checkErrorRecovery(module, manifest) {
+  const react = createBrowserReactHostBindings();
+  const marker = { reason: "provider failure after retaining callback" };
+  let escaped;
+  const session = await open(module, manifest, {
+    "js.value.react.callback": (...args) => {
+      escaped = react["js.value.react.callback"](...args);
+      throw marker;
+    },
+  });
+  try {
+    let caught;
+    try { session.retainedCallback("survives provider error"); } catch (error) { caught = error; }
+    check(caught === marker, "provider error identity was lost");
+    check(!session.stats().disposed, "ordinary provider error disposed session");
+    const target = {};
+    escaped(target);
+    check(target.answer === "survives provider error", "escaped callback was revoked");
+    check(React.isValidElement(session.renderDocument("After provider error")), "renderer did not recover");
+    session.dispose();
+    rejectsAfterDisposal(session, escaped);
+  } finally { session.dispose(); }
+}
 
 function rejectsAfterDisposal(session, callback) {
   for (const call of [() => session.renderDocument("disposed"), () => callback({})]) {
@@ -23,6 +47,7 @@ function rejectsAfterDisposal(session, callback) {
 }
 
 export async function runSsr(module, manifest) {
+  await checkErrorRecovery(module, manifest);
   const session = await open(module, manifest);
   try {
     const node = session.renderDocument(title);
@@ -43,7 +68,7 @@ export async function runSsr(module, manifest) {
     session.dispose();
     rejectsAfterDisposal(session, callback);
     return { realReact: true, escapedTitle: true, metadata: true,
-      updates: 20, retainedCallback: true, postDisposalRejected: true, html };
+      updates: 20, retainedCallback: true, postDisposalRejected: true, errorRecovery: true, html };
   } finally { session.dispose(); }
 }
 
@@ -51,6 +76,7 @@ export async function runBrowser() {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const module = await WebAssembly.compile(await (await fetch("/renderer.wasm")).arrayBuffer());
   const manifest = await (await fetch("/manifest.json")).json();
+  await checkErrorRecovery(module, manifest);
   const session = await open(module, manifest);
   const warnings = [];
   const originalError = console.error, originalWarn = console.warn;
@@ -92,10 +118,61 @@ export async function runBrowser() {
     check(warnings.length === 0, `React warnings: ${warnings.join("\n")}`);
     return { realReact: true, strictModeWrapper: true, updates: 20,
       retainedArticleAndHeading: true, escapedTitle: true, retainedCallback: true,
-      unmountBeforeDispose: true, postDisposalRejected: true, noReactWarnings: true,
+      unmountBeforeDispose: true, postDisposalRejected: true, noReactWarnings: true, errorRecovery: true,
       scope: "Lean-built title-only document; no body blocks, controls, RPC, or timing claim" };
   } finally {
     try { if (root) await React.act(() => root.unmount()); }
     finally { session.dispose(); console.error = originalError; console.warn = originalWarn; }
   }
+}
+
+// Interactive shell only: the preview nodes still come from compiled Lean.
+// Runtime ownership is outside React; unmount completes before disposal.
+export async function mountDemo() {
+  const module = await WebAssembly.compile(await (await fetch("/renderer.wasm")).arrayBuffer());
+  const manifest = await (await fetch("/manifest.json")).json();
+  const session = await open(module, manifest);
+  const initialTitle = "A small FIR preview — edit this title";
+  let initialNode, callback, root;
+  try {
+    initialNode = session.renderDocument(initialTitle);
+    callback = session.retainedCallback("The retained Lean callback is alive.");
+    root = createRoot(document.getElementById("app"));
+  } catch (error) { session.dispose(); throw error; }
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    try { root.unmount(); } finally { session.dispose(); }
+    window.removeEventListener("pagehide", close);
+    document.getElementById("status").textContent = "Preview unmounted; FIR session disposed. Reload to reopen.";
+  };
+  function Demo() {
+    const [view, setView] = React.useState({ title: initialTitle, node: initialNode, updates: 0, message: "" });
+    const change = event => {
+      const title = event.target.value;
+      try {
+        const node = session.renderDocument(title);
+        setView(previous => ({ title, node, updates: previous.updates + 1, message: "" }));
+      } catch (error) { setView(previous => ({ ...previous, message: String(error) })); }
+    };
+    const invoke = () => {
+      try {
+        const target = {};
+        callback(target);
+        setView(previous => ({ ...previous, message: target.answer }));
+      } catch (error) { setView(previous => ({ ...previous, message: String(error) })); }
+    };
+    return React.createElement(React.Fragment, null,
+      React.createElement("label", null, "Document title",
+        React.createElement("input", { id: "fir-demo-title", value: view.title, onChange: change })),
+      React.createElement("button", { id: "fir-demo-callback", onClick: invoke }, "Invoke retained callback"),
+      React.createElement("button", { id: "fir-demo-close", onClick: close }, "Close preview"),
+      React.createElement("p", { id: "fir-demo-state", role: "status" },
+        `Updates in this session: ${view.updates}. ${view.message}`),
+      React.createElement("div", { id: "fir-demo-preview" }, view.node));
+  }
+  window.addEventListener("pagehide", close);
+  root.render(React.createElement(Demo));
+  document.getElementById("status").textContent = "FIR 8ec770fd · Lean 4.34 rc2 · retained session · no timing instrumentation";
 }

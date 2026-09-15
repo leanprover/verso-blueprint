@@ -1,5 +1,16 @@
 # FIR-compiled preview baseline
 
+## Shared successor setup (2026-09-16)
+
+See [the shared demo and input setup](WIDGET_BASELINE_DEMO.md). The current
+consumer runner uses error-aligned FIR `8ec770fd`, frozen renderer `c4430bfe`
+and VIR `9fafe9cf`. Fresh real React SSR/Chromium checks pass, including provider
+error identity, session recovery and escaped callback survival. This does not
+qualify the queued JSON decoder entry. Optimization is deferred until a baseline
+is established. The `0c2eaa62` results below remain historical evidence.
+
+## Original fork handoff (historical)
+
 This fork prepared the FIR renderer bridge acceptance and now owns later FIR
 optimization. The existing VIR widget-backend owner coordinates integration of
 both backends and runs the differential experiments, so their inputs and timing
@@ -39,7 +50,7 @@ This is a correctness result, not a timing comparison or complete preview accept
 Ordinary host failure recovery remains upstream work and is deliberately not
 part of this happy-path gate.
 
-Repeat locally from this worktree:
+Original invocation (use the shared setup above for the successor):
 
 ```sh
 node tests/vir_preview/fir_renderer_smoke.mjs \
