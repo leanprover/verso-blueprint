@@ -123,12 +123,22 @@ Work:
    normalization semantics have one runtime owner.
 11. keep the landed runtime-side semantic-only preview handling aligned with
    generated-data finalization. Generated JSON clears traversal preview
-   candidates that lack cache bodies; page-local relation-panel markup and
-   embedded graph-block JSON are still derived during traversal, so browser
-   runtimes distinguish `semantic-preview-body-missing` from stale or broken
-   cache loads. A later Lean-side pass may pass preview availability into
-   page-local relation and graph rendering earlier, but should preserve this
-   runtime distinction.
+   candidates that lack cache bodies. Preview-enabled HTML generation now
+   prepares resources before pages and reuses the finalized graphs for embedded
+   graph JSON. Page-local relation panels and inline references now share the
+   prepared availability index; missing bodies retain their semantic links,
+   relation rows, and badges. Cached bodies now retain structured HTML and defer
+   reference/panel presentation until that same resource set is known, without
+   rerendering bodies or repairing opaque HTML strings. Deferred choices are pure,
+   self-contained HTML nodes; no mutable session or indexed closure table is needed.
+   Live and manifest-backed relation views share facet-bound dependency facts,
+   badge projection, and header visibility. Facet selection precedes construction
+   of statement-only controls. Resource construction owns the sole admission path
+   to emission-ready files; serialized imports remain auditable artifacts. Plain/direct renderers
+   and custom renderers outside the resource hook can retain traversal candidates.
+   Keep runtime `semantic-preview-body-missing` diagnostics distinct from stale
+   or broken cache loads. Future consumers should share this presentation hook
+   instead of introducing another resource-discovery or rendering pass.
 12. keep the external-declaration hover transfer behind its current local
    bridge until the portable-fragment contract tracked by
    [`UPC-0014`](./roadmap/cards/UPC-0014-portable-hover-fragment-transfer/README.md)

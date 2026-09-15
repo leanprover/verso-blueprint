@@ -29,6 +29,7 @@
     "BlueprintSourceRef",
     "BlueprintUseRef",
     "BlueprintRelatedEntry",
+    "BlueprintRelationDependency",
     "BlueprintGroupRelation",
     "BlueprintManifestEntry",
     "BlueprintHtmlCacheEntry",

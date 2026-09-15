@@ -192,7 +192,7 @@ def facetBlueprint : BlueprintDocument := .capture
       throw <| IO.userError "Manifest relation target and preview disagree with node references"
     let .ok consumerData := RenderingResolution.canonical relationState `facet_consumer
       | throw <| IO.userError "Missing relation consumer"
-    let panel ← renderManualHtmlWithState (RelatedPanel.renderUsesExtra relationState consumerData)
+    let panel ← renderManualHtmlWithState (pure (RelatedPanel.renderUsesExtra relationState consumerData))
       extension_impls% relationState
     -- Compare the actual live panel's serialized row with the exported relation.
     let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
