@@ -532,19 +532,21 @@ edges, group children, or DOT. It accepts only a retention predicate, so this
 post-pass cannot rewrite preview identities. Thus topology still crosses one
 finalization boundary even though manifest emission later prunes preview
 candidates that did not produce both a manifest entry and a rendered cache
-body. `PreviewManifest.PreviewDataModel.finish` owns that post-pass on the paired
-manifest/cache candidate and returns `PreviewManifest.Files`, whose private
-constructor makes the phase transition concrete. Production construction,
-indexing, and finalization therefore pass one explicit pair instead of
-repeatedly selecting artifacts, and finalized files cannot be finalized again.
+body. Resource construction runs the pure `File.finalizePreviewReferences`
+projection and returns `PreviewManifest.Files`, whose private constructor makes
+the phase transition concrete. It also resolves retained HTML choices before
+serialization. There is no second admission path accepting arbitrary serialized
+bodies; imported artifacts stay `PersistedFiles` and are audited as such.
+A key whose cache body is blank under the browser's whitespace rules does not
+count as available. The audit diagnoses blank bodies, including unreferenced ones.
 
 For `m` manifest preview/group records, `c` rendered-cache entries, `r`
 non-graph preview references, `n` graph nodes, and `v` graph-variant
-records/mappings, `finish` runs in expected `O(m + c + r + n + v)` time under
-hash-set operations. Its auxiliary indexes retain only the `O(m + c)` preview
-keys needed for membership checks, rather than duplicate full entry indexes;
-the finalized arrays it returns are linear in the candidate output size. Graph
-topology and DOT are not rebuilt.
+records/mappings, reference indexing and filtering take expected
+`O(m + c + r + n + v)` time under hash-set operations, plus the inspected body
+text when indexing serialized artifacts. Auxiliary indexes retain `O(m + c)`
+keys, and finalized arrays are linear in candidate output size. Graph topology
+and DOT are not rebuilt.
 
 Generated-data readers preserve the same boundary without charging every
 semantic query for projections it cannot consume. The general manifest reader
@@ -571,7 +573,8 @@ flowchart TD
   versoEmit["Verso Manual HTML emitters<br/>single-page and multi-page output"]
   informalManual["Informal Manual block renderer<br/>Informal.Block.toHtml"]
   commandRenderers["Command/inline renderers<br/>graph, summary, bibliography, math, cite, code"]
-  previewExtra["Preview-data extra step<br/>emitBlueprintPreviewData"]
+  previewPrepare["Prepare resources once<br/>buildPreviewDataFiles"]
+  previewExtra["Export prepared resources after pages<br/>emitBlueprintPreviewData"]
   previewFiles["Manifest/cache files<br/>blueprint-manifest.json<br/>blueprint-html-cache.json"]
 
   attributeEnv["Persistent attribute node/catalog<br/>Environment.State"]
@@ -590,10 +593,12 @@ flowchart TD
   blockShell["Canonical block shell<br/>Informal.Block.Render.renderInformalBlockModel"]
   browserRuntime["Browser hydration<br/>blueprint-page-runtime / createPreview<br/>and feature hydrators"]
 
-  manualMain --> versoEmit
+  manualMain --> previewPrepare
+  previewPrepare --> versoEmit
   versoEmit --> informalManual
   versoEmit --> commandRenderers
-  manualMain --> previewExtra
+  versoEmit --> previewExtra
+  previewPrepare --> previewExtra
   previewExtra --> previewFiles
 
   attributeEnv --> moduleInclude
@@ -622,7 +627,7 @@ The current paths are:
 | Path | Entry point | Data input | Shared assembly point | Output |
 | --- | --- | --- | --- | --- |
 | Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
-| Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
+| Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | checked document and its retained prepared `Files` | resource preparation before pages, paired export after pages | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
 | Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
 | Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | checked selected facet and node metadata from `RenderingResolution`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
 | Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
@@ -936,11 +941,11 @@ Lean/Verso source modules
   -> Manual traversal completes occurrence facts and preview stores
   -> HtmlDocument (checked fixed point, captured state, text, layout)
   -> PreparedRendererState
+       |-> optional resource preparation -> finalized Files
+       |       `-> page extensions use finalized graphs and preview availability
        |-> completed TraverseState -> Manual HTML emission
+       |-> export retained Files -> manifest/cache and merged hover docs
        `-> BlueprintExtraStep post-render steps
-             `-> PreparedPreviewState
-                   -> PreviewManifest.buildPreviewDataFiles
-                   -> blueprint-manifest.json and blueprint-html-cache.json
   -> generated ESM APIs and browser/custom clients
 ```
 
@@ -949,9 +954,31 @@ payloads for the current generator process, including bodyless directives whose
 visible text comes from an external source. The standard renderer first checks a fixed point
 through `HtmlDocument`, then applies Blueprint's HTML asset patches and relation
 indexes through `PreparedRendererState`. HTML emission and post-render steps use
-the text, state, mode, and configuration retained in that wrapper. Direct
-preview-data callers retain the narrower `PreparedPreviewState` API, which only
-prepares indexes and supports synthetic states used in tests.
+the text, state, mode, and configuration retained in that wrapper. Preview-enabled
+generation also retains the finalized manifest/cache pair there, built once before
+pages. Embedded graph JSON reuses its graph objects, including resource availability,
+without another traversal store or semantic-resolution pass. `Files.withPageExtensions`
+uses one availability index for relation panels and inline references. Missing bodies
+remove preview triggers, without erasing node links or relation rows and badges.
+Single relations without a body use the regular panel's unavailable state.
+Blank resource panels
+remain omitted; external markup can retain semantic entries without cache bodies.
+Neither case removes graph topology or accepted node facts. Plain generation and
+delayed checkpoints do not prepare resources. Hover-table merging remains after
+page emission. Direct preview-data callers retain the narrower
+`PreparedPreviewState` API, which only prepares indexes and supports synthetic
+states used in tests. Cached bodies remain structured HTML until availability is
+known. `PreviewResources.deferred` stores a preview key and its two HTML branches
+in a self-contained choice node. Independent producers can compose fragments
+without a mutable session or a side table. The pure finalizer selects branches
+against the completed resource index and diagnoses malformed choices along the
+selected path or branches that change body presence. Discarded branches are not recursively
+validated. Both phases use `Html`, so finalization before serialization is enforced
+by the production boundary and tests, not a second HTML type. Choices and hover
+payloads resolve before serialization; no temporary choice enters traversal state or generated files. This does not repeat
+semantic lookup or body rendering, and leaves raw external HTML opaque. Availability changes
+preview affordances, not whether an authored body exists. Plain/direct rendering
+and custom renderers outside this hook retain runtime availability diagnostics.
 
 A Blueprint HTML checkpoint stores the unpatched document and captured state
 alongside its serializable configuration. Resume preserves that document and
@@ -1428,7 +1455,7 @@ reasons:
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(statement occurrence, canonical declaration)`. Each rendered row has its own destination, including repeated occurrences of one label. Canonical links select the statement facet first and then its declaration row. |
 | `CitationPreviews` | Citation inline traversal | `TraversalIndex.CitationPreviews.entries`, preview-manifest construction, and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | `TraversalIndex.CitationUsages.hrefs`, `TraversalIndex.CitationUsages.data?`, and bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
-| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus merged statement/proof axes and origin or intent metadata. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
+| `RelatedPanelUsedByCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelUsedByCache.data?`, used-by relation-panel rendering, and preview-manifest construction | Store only the source label plus dependency records binding each facet to its origin and intent. Resolve the source's canonical node data through `Nodes` instead of copying a full `BlockData` into every target cache. |
 | `RelatedPanelGroupMembersCache` | `Informal.RelatedPanel.patchRelationCaches` after traversal | `TraversalIndex.RelatedPanelGroupMembersCache.data?`, group relation-panel rendering, and same-document graft construction | Store ordered statement labels once per parent label. Resolve canonical member data through `Nodes` instead of copying full statement records into the group cache. |
 
 The node registry retains external declaration rendering data captured during

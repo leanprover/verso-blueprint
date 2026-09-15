@@ -441,7 +441,7 @@ The target is elaborated after the reference.
         | throw <| IO.userError "Missing qualified relation"
       let .ok data := RenderingResolution.canonical relationState `qualified_consumer
         | throw <| IO.userError "Missing qualified relation consumer"
-      let panel ← renderManualHtmlWithState (RelatedPanel.renderUsesExtra relationState data)
+      let panel ← renderManualHtmlWithState (pure (RelatedPanel.renderUsesExtra relationState data))
         manualImpls relationState
       let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
         toJson relation.label.toString, toJson relation.href]).compress.dropEnd 1 |>.toString
@@ -496,11 +496,13 @@ The target is elaborated after the reference.
       let references : Array (Doc.Block Genre.Manual) := #[.para #[
         .other (Inline.informal { label }) contents]]
       let (references, _) ← Informal.traverseManualBlocks references manualImpls (fun _ => pure ())
-      errors.set #[]
-      let html ← renderManualBlocksHtmlWithState references manualImpls state (logError := logError)
-      unless (← errors.get).any (hasSubstr · expected) &&
-          !hasSubstr html.asString "invalid authored reference" do
-        throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
+      for impls in #[manualImpls, Informal.Inline.withPreviewAvailability manualImpls (fun _ => false),
+          Informal.Inline.withPreviewRendering manualImpls PreviewResources.deferred] do
+        errors.set #[]
+        let html ← renderManualBlocksHtmlWithState references impls state (logError := logError)
+        unless (← errors.get).any (hasSubstr · expected) &&
+            !hasSubstr html.asString "invalid authored reference" do
+          throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
       let texError? ← try
         let _ ← renderManualBlocksTeXWithState manualImpls references state
         pure none

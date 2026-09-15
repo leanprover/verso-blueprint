@@ -82,42 +82,31 @@ def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : Str
 def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss])
 
-open Verso Doc Elab Genre Manual in
-block_extension Block.graph (graphData : GraphBlockData) where
-  -- for TOC
-  -- localContentItem _ _ _ := none
-  data := toJson graphData
-  usePackages := Informal.TeX.standardMathUsePackages
-  traverse id data _contents := do
-      match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
-          (fun _ => "Malformed data in Block.graph.traverse") with
-      | some graphData =>
-        -- Resolution and missing-model diagnostics belong to finalization. Do
-        -- not decode or duplicate the project topology on each traversal pass.
-        modify fun state =>
-          Informal.GraphApi.saveData state id graphData.graphModel graphData.options
-      | Option.none =>
-        pure ()
-      return none
-  toTeX :=
-    open Verso.Output.TeX in
-    some <| fun _goI _goB _id _data _blocks =>
-      pure <| .text "The dependency graph is available in the HTML output."
-  toHtml :=
-    open Verso.Doc.Html in
-    open Verso.Output.Html in
-    some <| fun _goI _goB id data _blocks => do
+open Verso Genre Manual Doc.Html Output.Html in
+/-- Render a graph from prepared resource data when available. Direct/plain HTML
+rendering retains traversal-based resolution. An explicitly prepared empty map
+is distinct from a generator that did not request preview resources. -/
+private def graphToHtml
+    (preparedGraphs? : Option (Std.HashMap String GraphData) := none) :
+    BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+    fun _goI _goB id data _blocks => do
       let some graphData ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
           (fun err => s!"Malformed data in Block.graph.toHtml ({err})")
         | pure .empty
       let s ← HtmlT.state
-      let model? ← match graphData.resolveModel s with
-        | .ok model => pure (some model)
-        | .error message => Verso.reportError message; pure none
-      let some model := model? | pure .empty
-      let publicGraphData :=
-        Informal.GraphApi.finishDataForBlock
-          s id model graphData.options
+      let resolved : Except String GraphData := match preparedGraphs? with
+        | some graphs => match graphs.get? (Informal.GraphApi.cacheKey id) with
+          | some graph => .ok graph
+          | none => .error s!"Missing prepared Blueprint graph {Informal.GraphApi.cacheKey id}"
+        | none => do
+            let model ← graphData.resolveModel s
+            pure (Informal.GraphApi.finishDataForBlock s id model graphData.options)
+      let publicGraphData? ← match resolved with
+        | .ok graph => pure (some graph)
+        | .error message => do
+          Verso.reportError message
+          pure none
+      let some publicGraphData := publicGraphData? | pure .empty
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
@@ -339,8 +328,43 @@ block_extension Block.graph (graphData : GraphBlockData) where
           {{groupHoverPanel}}
         </div>
       }}
+
+open Verso Doc Elab Genre Manual in
+block_extension Block.graph (graphData : GraphBlockData) where
+  -- for TOC
+  -- localContentItem _ _ _ := none
+  data := toJson graphData
+  usePackages := Informal.TeX.standardMathUsePackages
+  traverse id data _contents := do
+      match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+          (fun _ => "Malformed data in Block.graph.traverse") with
+      | some graphData =>
+        -- Resolution and missing-model diagnostics belong to finalization. Do
+        -- not decode or duplicate the project topology on each traversal pass.
+        modify fun state =>
+          Informal.GraphApi.saveData state id graphData.graphModel graphData.options
+      | Option.none =>
+        pure ()
+      return none
+  toTeX :=
+    open Verso.Output.TeX in
+    some <| fun _goI _goB _id _data _blocks =>
+      pure <| .text "The dependency graph is available in the HTML output."
+  toHtml := some (graphToHtml none)
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
+
+/-- Bind the standard graph HTML renderer to this output's finalized graphs.
+Only HTML emission uses this adapter; traversal, TeX, and other block hooks keep
+their supplied implementations. No graph data is copied into traversal stores. -/
+def withPreparedGraphs (impls : Verso.Genre.Manual.ExtensionImpls)
+    (graphs : Array GraphData) : Verso.Genre.Manual.ExtensionImpls :=
+  match impls.getBlock? ``Block.graph with
+  | none => impls
+  | some descriptor =>
+    let index := graphs.foldl (fun index graph => index.insert graph.key graph)
+      ({} : Std.HashMap String GraphData)
+    impls.insertBlock ``Block.graph { descriptor with toHtml := some (graphToHtml (some index)) }
 
 open Verso.ArgParse
 

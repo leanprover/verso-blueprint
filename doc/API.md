@@ -337,6 +337,19 @@ Manifest-backed composite renderers pair the included `RenderedContent.codeBodie
 with their `codeData`, so panel status follows the included bodies while heading
 status follows the project entry.
 Treat these keys as opaque; regenerate artifacts after changing source locations.
+Relation entries now carry `dependencies`, an array of records binding `facet`,
+`origin`, and `intent` together, instead of a separate `axes` array. Facet-specific
+views filter these records before deriving badge codes; statement metadata cannot
+leak into a proof panel. Graph-edge `axes` are unchanged. `PanelEntry` uses the same
+records and derives `badgeCodes`; relation-header helpers now return pure HTML.
+The shared `HeaderExtras.forFacet isProof uses statementExtras` policy selects
+before building: the statement-only builder is lazy and never runs for proofs.
+Attach source/custom extras to its result explicitly. Live and manifest-backed
+shells retain empty dependency chips and the missing Lean association signal.
+`Relation.Dependency.ofUseRef` and `Relation.addUse` take `PreviewCache.Facet`
+directly; callers should pass `.statement` or `.proof` instead of booleans.
+Rebuild downstream Lean consumers and regenerate manifests, traversal checkpoints,
+and browser API artifacts for this change (internal schema marker 9).
 Regenerate old artifacts after changes to the generated-data contract. The
 reader's stale-artifact diagnostic supplies the required rebuild guidance;
 clients must not depend on the value of the internal schema marker.
@@ -366,18 +379,62 @@ HTML asset patches, and constructs the `PreparedPreviewState` relation indexes.
 It retains the checked text, configuration, and mode; `BlueprintExtraStep` now
 accepts only this prepared wrapper. Custom steps read `text`, `config`, `mode`,
 and `state` from it instead of receiving four independent arguments.
+
+`blueprintMainWithPreviewData` also fills `previewFiles?` once before page
+emission. The standard graph HTML renderer consumes those finalized graphs;
+post-render export writes the same manifest/cache pair and merges hover docs only
+after Verso has written the page hover table. `emitBlueprintPreviewData` consumes
+this prepared result and no longer accepts extension implementations or markup
+configuration. Use `blueprintMainWithPreviewData` to request preparation, rather
+than adding the exporter to plain `blueprintMain`'s extra steps. Plain generation
+leaves `previewFiles?` absent and performs no preview resource rendering.
+
+`Files.withPageExtensions` binds the standard graph, informal-block, and Blueprint
+reference HTML implementations to the prepared output. Graphs reuse their finalized
+objects; relation panels and inline references share one `PreviewArtifactIndex`.
+Only preview keys are filtered: titles, links, relation rows, and badges retain
+their semantic meaning. A single relation without a preview opens a normal relation
+panel instead of creating an inline hover trigger without a lookup key.
+
+Traversal, TeX, and other extension hooks are preserved. Custom replacements for
+these standard HTML implementations need to integrate resource selection explicitly.
+The lower-level adapters are `Commands.withPreparedGraphs`,
+`Block.withPreviewAvailability`, and `Inline.withPreviewAvailability`.
+
+Cached preview bodies use the same reference and relation presentation policy.
+`Block.withPreviewRendering` and `Inline.withPreviewRendering` accept a
+`PreviewResources.Render` hook: page adapters render immediately, while resource
+construction retains pure presentation decisions until availability is known.
+Semantic lookup and document-body rendering happen before that hook. Structured
+HTML and its hover payloads are finalized before cache serialization, without
+rendering bodies again or parsing opaque HTML. External raw HTML remains opaque;
+custom renderers must use the hook to participate in resource selection.
+`PreviewResources.Render` is a pure keyed choice with two lazy HTML branches.
+`immediate` constructs the selected branch; `deferred` retains both branches in a
+self-contained intermediate HTML node. Fragments can be composed independently:
+there is no mutable session, indexed side table, or retained rendering closure.
+Keep them structured until `PreviewResources.finish available`, which returns
+`Except String Html` and diagnoses malformed choices or branches that disagree
+about body presence. It recursively validates the selected path, not discarded
+alternatives. Both unresolved and resolved fragments have type `Html`; the
+production boundary and tests enforce finalization before serialization, rather
+than a distinct resolved-HTML type. Serialize only the successful result. These temporary nodes
+are implementation data and never belong in emitted HTML or saved state.
+
 Direct preview-data callers can still use `PreparedPreviewState.prepare` for
 synthetic or partial states: this narrower API only prepares relation indexes.
 
 Delayed HTML generation writes a versioned Blueprint checkpoint containing the
-unpatched document/state pair and serializable layout settings. It emits no HTML
-or xrefs until resumed. Resume checks the layout and fixed point, reapplies
+unpatched document/state pair and serializable layout settings. It prepares no
+preview resources and emits no HTML or xrefs until resumed. Resume checks the layout and fixed point, reapplies
 renderer preparation, and writes xrefs into the selected output directory.
 The checkpoint's saved document and captured project model are authoritative;
 resume does not replace them with the current generator's document or model.
 Output destination, output scheduling, verbosity, and traversal limit may change.
 Other serializable settings must match, including draft selection, split depth,
-and assets. Single-page output normalizes split depth to zero. Legacy Verso
+and assets. Asset bundles compare as sets, independent of JSON array order;
+ordered configuration fields such as extra head elements remain order-sensitive.
+Single-page output normalizes split depth to zero. Legacy Verso
 `SavedState` files must be regenerated; they lack the layout binding.
 
 These checks establish a fixed point under the current extension implementations,
@@ -385,17 +442,26 @@ not correctness of arbitrary extension code or cryptographic checkpoint integrit
 Function-valued hooks are supplied by the current generator, not serialized.
 TeX still uses Verso's separate traverse-and-emit function and does not yet cross
 this boundary; the upstream emitter seam is tracked in UPC-0002.
-`Informal.PreviewManifest.buildPreviewDataFiles` then assembles a
-`PreviewDataModel` and crosses its `finish` boundary into the emission-ready
-semantic manifest/rendered-fragment-cache `Files` pair. The final type has a
-private constructor, so unresolved candidate references cannot enter the normal
-emission path. Generated ESM APIs load those two files; they do not rerun
+`Informal.PreviewManifest.buildPreviewDataFiles` then assembles structured resource
+candidates and finalizes their nested views and manifest references against one
+resource index, producing the emission-ready semantic manifest/rendered-fragment-cache
+`Files` pair. This is the sole construction path for emission-ready resources.
+The redundant `PreviewDataModel` and its serialized-artifact promotion API have
+been removed. Tools that already own serialized data use `PersistedFiles` and
+`vbp check`; auditing does not promote that data to `Files`.
+`File.finalizePreviewReferences` is a pure semantic projection for testing and
+reference filtering, not an artifact validator or an admission function.
+The final type has a private constructor, so unresolved candidates cannot enter
+the normal emission path. Generated ESM APIs load those two files; they do not rerun
 traversal and should not recover semantics by scraping cached HTML.
 
 Persisted or externally supplied manifest/cache pairs enter maintainer audits
 as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each
 file cannot by itself establish their cross-artifact reference invariants;
 `vbp check` reports violations without repairing or promoting the decoded pair.
+A cache key with an empty or whitespace-only body is unavailable and receives an
+audit diagnostic even if nothing references it. Blank detection agrees with the
+browser's `String.trim()` contract, including Unicode whitespace.
 
 Source-provenance data also lives in the manifest. Declared source documents
 are exported as `sourceDocuments`. Each manifest entry carries a `sources` array
@@ -565,8 +631,8 @@ source; `.none` keeps
 external-markup entries semantic-only with no generated HTML-cache fragment.
 Relation, graph, and Lean-code preview references are serialized only when the
 referenced preview key resolves through both the manifest and HTML cache.
-Page-local relation panels and graph widgets that are rendered before generated
-data finalization may still start from traversal preview candidates; browser
+Plain/direct renderers without prepared resource data may still start from
+traversal preview candidates; browser
 preview APIs report semantic-only missing bodies as
 `semantic-preview-body-missing` rather than as stale cache data.
 Set `showSourceNotice := false` when an embedding context should omit the
@@ -591,8 +657,11 @@ external-markup entry's optional `parent` names one record in the manifest's
 top-level `groups` array. Each group stores its traversal-ordered statement
 members once. Group labels are unique, each member label belongs to at most one
 group, and participating manifest entries must agree with the catalog on group
-ownership and `parentTitle`. Both `vbp check` and the browser manifest loader
-reject incomplete or inconsistent joins. Browser clients can join these records
+ownership and `parentTitle`. A member with a preview key must join to a matching
+block or external-markup entry. A member without a preview key may stand on its
+group metadata alone, for example when rendering its body produced no content.
+Both `vbp check` and the browser manifest loader enforce these joins and reject
+conflicting ownership, duplicate membership, and broken preview references. Browser clients can join these records
 with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
 clients can use `PreviewManifest.File.groupForEntry?` when they need the current
 entry filtered out of the member list.
@@ -680,7 +749,7 @@ or DOT variant that disagrees with the authoritative nodes.
 Topology finalization and preview-artifact resolution are separate boundaries.
 `GraphModel.finish` fixes topology and DOT exactly once. Later, after the
 manifest and rendered-fragment cache are both known,
-`PreviewManifest.PreviewDataModel.finish` uses
+`PreviewManifest.File.finalizePreviewReferences` uses
 `GraphData.filterPreviewReferences` to remove unavailable preview keys from nodes
 and their variant lookup entries together. That synchronized post-pass cannot
 change nodes' dependencies or parents, derived edges or children, or DOT, and
@@ -751,10 +820,9 @@ their `externalMarkup:<label>` preview only when that key has a manifest entry
 and rendered cache body. When a retained node has no manifest/cache-backed
 preview in the generated artifact set, the manifest graph's `previewKey` is
 `null` and its bundled variants omit the node from `previewKeyByNodeId`.
-Embedded page graph data is emitted earlier and may still carry a traversal
-candidate that later fails artifact validation; the runtime resolves candidates
-through the manifest/cache pair rather than treating page JSON as proof that a
-fragment exists. Use fixed facet keys such as
+Preview-enabled pages reuse those finalized graph objects. Plain/direct graph
+renderers may retain traversal candidates; the runtime still resolves them through
+the manifest/cache pair. Use fixed facet keys such as
 `PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
 explicitly requesting that facet.
 

@@ -200,6 +200,8 @@ private def checkObjectSchema (name : String) (fields : Array (String Ã— (Json â
         entryKindText.contains "inlineLeanCode" &&
         entryKindText.contains "externalMarkup" &&
         previewKeySchemaHasNonEmptyStringNull relatedEntrySchema &&
+        (relatedEntrySchema.compress.contains "dependencies") &&
+        !(relatedEntrySchema.compress.contains "\"axes\"") &&
         previewKeySchemaHasNonEmptyStringNull graphNodeSchema &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
@@ -207,7 +209,8 @@ private def checkObjectSchema (name : String) (fields : Array (String Ã— (Json â
         defs.contains "Informal.Data.UseIntent" &&
         defs.contains "Informal.PreviewManifest.RelatedEntry" &&
         defs.contains "Informal.PreviewManifest.GroupRelation" &&
-        defs.contains "Informal.PreviewManifest.RelationAxis" &&
+        defs.contains "Informal.Relation.Dependency" &&
+        !defs.contains "Informal.PreviewManifest.RelationAxis" &&
         defs.contains "Informal.Data.ExternalMarkup" &&
         defs.contains "Informal.Data.ExternalMarkupLanguage" &&
         defs.contains "Informal.Data.ExternalMarkupLocation" &&

@@ -17,7 +17,6 @@ abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
 abbrev Entry := Informal.PreviewManifest.Entry
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
-abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
 abbrev PersistedGeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
@@ -71,16 +70,13 @@ private def useRefJson (useRef : Informal.Data.UseRef) : Json :=
     ("intent", Json.str (toString useRef.intent))
   ]
 
-private def relationAxisJson (axis : RelationAxis) : Json :=
-  Json.str axis.display
-
 private def relatedEntryJson (entry : RelatedEntry) : Json :=
   Json.mkObj [
     ("label", nameJson entry.label),
     ("title", Json.str entry.title),
     ("href", optionStringJson entry.href),
     ("previewKey", toJson entry.previewKey),
-    ("axes", Json.arr (entry.axes.map relationAxisJson))
+    ("dependencies", toJson entry.dependencies)
   ]
 
 private def groupRelationJson (group : GroupRelation) : Json :=
@@ -488,16 +484,21 @@ private def checkManifestGroupIntegrity
                 s!"entry {entry.key} belongs to manifest group " ++
                   s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
                   Informal.PreviewManifest.labelString parent
-  for (member, group) in memberGroups.toArray do
-    unless matchedMembers.contains member do
-      errors := errors.push <|
-        s!"manifest group {Informal.PreviewManifest.labelString group} member " ++
-          s!"{Informal.PreviewManifest.labelString member} has no matching manifest entry"
+  -- Semantic group members survive blank resource omission. A member only
+  -- requires a preview entry when it advertises a preview key.
+  for group in manifest.groups do
+    for member in group.entries do
+      if member.previewKey.isSome && !matchedMembers.contains member.label then
+        errors := errors.push <|
+          s!"manifest group {Informal.PreviewManifest.labelString group.label} member " ++
+            s!"{Informal.PreviewManifest.labelString member.label} has no matching manifest entry"
   return errors
 
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
+  let cacheErrors := data.htmlCache.entries.foldl (init := #[]) fun errors entry =>
+    if entry.hasBody then errors else errors.push s!"empty HTML cache body for key {entry.key}"
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
@@ -516,7 +517,7 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
       checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)
-    #[]
+    cacheErrors
   let errors := manifest.groups.foldl
     (fun errors group =>
       checkRelatedEntries index

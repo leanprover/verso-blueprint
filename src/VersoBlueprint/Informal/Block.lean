@@ -57,6 +57,97 @@ Elaboration, traversal, and rendering are standard, using {ref VersoManual} help
 
 -/
 
+open Verso.Doc.Html in
+/-- Render this occurrence with relation previews restricted to the resources
+prepared for its output. Semantic resolution and numbering remain occurrence-owned. -/
+private def informalBlockToHtml (renderPreview : PreviewResources.Render := PreviewResources.immediate) :
+    BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+    fun _goI goB id data blocks => do
+      match ← ExtensionDecode.decode? (α := BlockOccurrence) data
+          (fun err => s!"Malformed data ({err}): {data}") with
+      | none =>
+        pure .empty
+      | some occurrence =>
+        let s ← HtmlT.state
+        let ctxt ← HtmlT.context
+        let some data ← ExtensionDecode.report? (RenderingResolution.occurrence s occurrence (some ctxt))
+          | pure .empty
+        let markup :=
+          (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
+        let selectedMarkupAndContent? :=
+          match data.isProof with
+          | false =>
+              if blocks.isEmpty then
+                Informal.ExternalMarkupRender.selectedContent? {} markup
+              else
+                none
+          | true => none
+        let sourceBackedAttrs :=
+          match selectedMarkupAndContent? with
+          | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
+          | none => #[]
+        let attrs := s.htmlId id ++ sourceBackedAttrs
+        let codeHint? :=
+          match data.isProof with
+          | true => none
+          | false => data.codeData
+        let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
+        let getDeclHref (decl : Name) : Option String :=
+          Resolve.resolveInformalDeclHref? s data.label decl
+        let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
+          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s id decl.canonical
+        let headingParts? : Option CodeSummary.RenderParts :=
+          match data.isProof with
+          | false => some <| CodeSummary.renderParts data {
+              codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
+              source := codeHint?
+              inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
+            } getDeclHref
+          | true => none
+        let externalPanel : Output.Html ←
+          match data.isProof with
+          | false =>
+            if externalDecls.isEmpty then
+              pure .empty
+            else
+              let externalCdata : CodeSummary.ComputedData := {
+                source := some { externalDecls := externalDecls }
+              }
+              let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
+              let panelHeader := codePanelHeader (data.display s)
+              ExternalCode.renderPanelWithPageHovers
+                panelHeader
+                externalSummary.summaryTitle
+                externalSummary.indicator
+                externalDecls
+                getDeclHref
+                getDeclAnchorAttrs
+                (folded := data.foldCodeBlock)
+          | true => pure .empty
+        let content ←
+          match selectedMarkupAndContent? with
+          | some (_, selectedContent) => pure selectedContent
+          | none => blocks.mapM goB
+        let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
+        let usesEntry := RelatedPanel.renderUsesExtra s data renderPreview
+        let headerExtras := HeaderExtras.forFacet data.isProof (HeaderExtra.uses usesEntry) fun _ => {
+          group? := (RelatedPanel.renderGroupExtra s data renderPreview).map HeaderExtra.group
+          usedBy? := some (HeaderExtra.usedBy (RelatedPanel.renderUsedByExtra s data renderPreview))
+          markup? := renderExternalMarkupHeaderExtra? markup
+          code? := some (HeaderExtra.code codeEntry)
+        }
+        return renderInformalBlockModel {
+          data
+          context := InformalBlockRenderContext.forBlock data
+            ((data.display s).number?.getD data.label.toString)
+            (proofCaption? := some (data.displayTitle s))
+            (attrs := attrs)
+            (headerExtras := headerExtras)
+            (folded := data.foldInformalShell)
+          content
+          companionPanels := #[externalPanel]
+        }
+
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockOccurrence) where
   -- for TOC
@@ -84,109 +175,22 @@ block_extension Block.informal (data : BlockOccurrence) where
       pure <| Informal.TeX.quotedBlock title body
   extraCss := Informal.Block.Assets.blockCssAssets
   extraJs := Informal.Block.Assets.blockJsAssets
-  toHtml :=
-    open Verso.Doc.Html in
-    open Verso.Output.Html in
-    some <| fun _goI goB id data blocks => do
-      match ← ExtensionDecode.decode? (α := BlockOccurrence) data
-          (fun err => s!"Malformed data ({err}): {data}") with
-      | none =>
-        pure .empty
-      | some occurrence =>
-        let s ← HtmlT.state
-        let ctxt ← HtmlT.context
-        let some data ← ExtensionDecode.report? (RenderingResolution.occurrence s occurrence (some ctxt))
-          | pure .empty
-        let markup :=
-          (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
-        let selectedMarkupAndContent? :=
-          match data.isProof with
-          | false =>
-              if blocks.isEmpty then
-                Informal.ExternalMarkupRender.selectedContent? {} markup
-              else
-                none
-          | true => none
-        let sourceBackedAttrs :=
-          match selectedMarkupAndContent? with
-          | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
-          | none => #[]
-        let attrs := s.htmlId id ++ sourceBackedAttrs
-        let codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
-        let inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
-        let codeHint? :=
-          match data.isProof with
-          | true => none
-          | false => data.codeData
-        let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
-        let getDeclHref (decl : Name) : Option String :=
-          Resolve.resolveInformalDeclHref? s data.label decl
-        let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
-          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s id decl.canonical
-        let cdata := {
-          codeHref
-          source := codeHint?
-          inlineBlocks
-        }
-        let headingParts? : Option CodeSummary.RenderParts :=
-          match data.isProof with
-          | false => some <| CodeSummary.renderParts data cdata getDeclHref
-          | true => none
-        let externalPanel : Output.Html ←
-          match data.isProof with
-          | false =>
-            if externalDecls.isEmpty then
-              pure .empty
-            else
-              let externalCdata : CodeSummary.ComputedData := {
-                source := some { externalDecls := externalDecls }
-              }
-              let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
-              let panelHeader := codePanelHeader (data.display s)
-              ExternalCode.renderPanelWithPageHovers
-                panelHeader
-                externalSummary.summaryTitle
-                externalSummary.indicator
-                externalDecls
-                getDeclHref
-                getDeclAnchorAttrs
-                (folded := data.foldCodeBlock)
-          | true => pure .empty
-        let content ←
-          match selectedMarkupAndContent? with
-          | some (_, selectedContent) => pure selectedContent
-          | none => blocks.mapM goB
-        let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra s data
-        let usesEntry ← RelatedPanel.renderUsesExtra s data
-        let usedByEntry ← RelatedPanel.renderUsedByExtra s data
-        let markupEntry? :=
-          renderExternalMarkupHeaderExtra? markup
-        let headerExtras : HeaderExtras :=
-          match data.isProof with
-          | true =>
-            {
-              uses? := some <| HeaderExtra.uses usesEntry
-            }
-          | false =>
-            {
-              group? := groupEntry.map HeaderExtra.group
-              uses? := some <| HeaderExtra.uses usesEntry
-              usedBy? := some <| HeaderExtra.usedBy usedByEntry
-              markup? := markupEntry?
-              code? := some <| HeaderExtra.code codeEntry
-            }
-        return renderInformalBlockModel {
-          data
-          context := InformalBlockRenderContext.forBlock data
-            ((data.display s).number?.getD data.label.toString)
-            (proofCaption? := some (data.displayTitle s))
-            (attrs := attrs)
-            (headerExtras := headerExtras)
-            (folded := data.foldInformalShell)
-          content
-          companionPanels := #[externalPanel]
-        }
+  toHtml := some (informalBlockToHtml PreviewResources.immediate)
+
+/-- Bind the standard block HTML renderer's relation presentation hook.
+Traversal, TeX, and other supplied extension hooks are retained. -/
+def Block.withPreviewRendering (impls : ExtensionImpls)
+    (renderPreview : PreviewResources.Render) : ExtensionImpls :=
+  match impls.getBlock? ``Block.informal with
+  | none => impls
+  | some descriptor =>
+    impls.insertBlock ``Block.informal
+      { descriptor with toHtml := some (informalBlockToHtml renderPreview) }
+
+/-- Resolve page relation previews immediately against prepared resources. -/
+def Block.withPreviewAvailability (impls : ExtensionImpls)
+    (available : PreviewKey → Bool) : ExtensionImpls :=
+  Block.withPreviewRendering impls (PreviewResources.immediate available)
 
 private structure ParsedDirectiveContents where
   sourceRef? : Option Source.Ref := none

@@ -11,6 +11,7 @@ import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.Relation
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
 import VersoBlueprint.Source.Data
@@ -708,10 +709,7 @@ namespace RelatedPanelUsedByCache
 /-- Compact reverse-dependency metadata; canonical source-node data remains in `Nodes`. -/
 structure Entry where
   sourceLabel : Data.Label
-  inStatement : Bool := false
-  inProof : Bool := false
-  origins : Array Data.UseOrigin := #[]
-  intents : Array Data.UseIntent := #[]
+  dependencies : Array Relation.Dependency := #[]
 deriving FromJson, ToJson
 
 def spec : StoreSpec := {
