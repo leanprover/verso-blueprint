@@ -6,15 +6,13 @@ Author: Emilio J. Gallego Arias
 
 module
 
-public import VersoBlueprintVir.Preview.Widget
+public import CheckedJsonPreview
 
 public section
 
 namespace VersoBlueprintVirTests.EmbeddedPreview
 
-vir_proof_widget
-  (VersoBlueprint.Experimental.VirPreview.createWidgetComponent
-    "VersoBlueprint.Experimental.VirPreview.Server.previewDocument")
+vir_proof_widget CheckedJsonPreview.createComponent
 
 /-- Use the existing SDK facet's output; no manually copied WASM or asset polling. -/
 def panelProps : Lean.Vir.Infoview.WidgetProps := {

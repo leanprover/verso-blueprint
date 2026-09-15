@@ -1,0 +1,147 @@
+// Browser-only extraction of the existing sampled-profile symbolication path.
+import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+const capture = resolve(process.argv[2]);
+const identity = JSON.parse(await readFile(resolve(capture, "identity.json")));
+const report = JSON.parse(await readFile(resolve(capture, "result.json")));
+const result = { ...report, root: identity.root };
+const sha = x => createHash("sha256").update(x).digest("hex");
+function reader(bytes) {
+  let offset = 0;
+  return {
+    get offset() { return offset; },
+    uleb() {
+      let value = 0, shift = 0, byte;
+      do {
+        assert.ok(offset < bytes.length && shift < 35, "invalid ULEB128");
+        byte = bytes[offset++]; value += (byte & 127) * 2 ** shift; shift += 7;
+      } while (byte & 128);
+      return value;
+    },
+    take(length) {
+      assert.ok(offset + length <= bytes.length, "truncated WASM section");
+      const value = bytes.subarray(offset, offset + length); offset += length; return value;
+    },
+  };
+}
+function executableSections(bytes) {
+  const r = reader(bytes), sections = [];
+  assert.deepEqual(r.take(8), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+  while (r.offset < bytes.length) {
+    const start = r.offset, id = r.take(1)[0]; r.take(r.uleb());
+    if (id !== 0) sections.push(bytes.subarray(start, r.offset));
+  }
+  return Buffer.concat(sections);
+}
+const sdkRoot = resolve(result.root, ".lake/build/vir/sdk");
+const sdkBytes = await readFile(resolve(sdkRoot, "lean-vir-artifact.json"));
+const sdk = JSON.parse(sdkBytes);
+assert.equal(sdk.gitCommit, result.virCommit);
+assert.equal(sdk.leanToolchain, result.toolchain);
+const wasmFiles = await Promise.all(["wasm/vir-upstream.wasm", "wasm/vir-upstream.dev.wasm"].map(async path => {
+  const bytes = await readFile(resolve(sdkRoot, path));
+  assert.equal(sha(bytes), sdk.files.find(f => f.path === path)?.sha256, `SDK checksum: ${path}`);
+  return bytes;
+}));
+assert.deepEqual(executableSections(wasmFiles[0]), executableSections(wasmFiles[1]));
+const wasmNames = new Map();
+for (const section of WebAssembly.Module.customSections(new WebAssembly.Module(wasmFiles[1]), "name")) {
+  const r = reader(Buffer.from(section));
+  while (r.offset < section.byteLength) {
+    const kind = r.take(1)[0], subsection = reader(r.take(r.uleb()));
+    if (kind !== 1) continue;
+    const count = subsection.uleb();
+    for (let i = 0; i < count; i++) {
+      const index = subsection.uleb(), name = subsection.take(subsection.uleb()).toString("utf8");
+      assert.ok(!wasmNames.has(index), "duplicate function name"); wasmNames.set(index, name);
+    }
+  }
+}
+assert.ok(wasmNames.size > 0, "missing WASM function names");
+const demangled = spawnSync("c++filt", [], {
+  input: [...wasmNames.values()].join("\n") + "\n", encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
+});
+assert.equal(demangled.status, 0, demangled.stderr);
+const demangledNames = demangled.stdout.trimEnd().split("\n");
+assert.equal(demangledNames.length, wasmNames.size);
+[...wasmNames.keys()].forEach((index, i) => wasmNames.set(index, demangledNames[i]));
+const wasmEvidence = { sdkManifestSha256: sha(sdkBytes), releaseSha256: sha(wasmFiles[0]),
+  unstrippedSha256: sha(wasmFiles[1]), executableSectionsSha256: sha(executableSections(wasmFiles[0])),
+  functionNames: wasmNames.size, resolvedFrames: 0, unresolvedFrames: 0 };
+
+const browserBytes = await readFile(resolve(capture, "browser.cpuprofile"));
+const browser = JSON.parse(browserBytes);
+const wasmUrls = new Set(browser.nodes.filter(n => /^wasm-function\[/.test(n.callFrame.functionName)).map(n => n.callFrame.url));
+assert.equal(wasmUrls.size, 1, "multiple WASM modules need separate symbol maps");
+for (const node of browser.nodes) {
+  const match = /^wasm-function\[(\d+)\]$/.exec(node.callFrame.functionName);
+  if (!match) continue;
+  const name = wasmNames.get(Number(match[1]));
+  if (name) { node.callFrame.functionName = `${name} [wasm:${match[1]}]`; wasmEvidence.resolvedFrames++; }
+  else wasmEvidence.unresolvedFrames++;
+}
+await writeFile(resolve(capture, "browser.symbolicated.cpuprofile"), JSON.stringify(browser));
+await writeFile(resolve(capture, "wasm-symbols.json"), JSON.stringify({ ...wasmEvidence, names: Object.fromEntries(wasmNames) }, null, 2));
+
+const clock = JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
+assert.ok(clock.uncertaintyMs < 5, "clock calibration too imprecise");
+const nodes = new Map(browser.nodes.map(n => [n.id,n])), parents = new Map();
+for (const n of browser.nodes) for (const child of n.children ?? []) parents.set(child,n.id);
+const windows = report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
+  const {start, decodedAt, committedAt} = row[mode].raw;
+  return [
+    {phase: mode + ":decode", start:(start+clock.offsetMs)*1000, end:(decodedAt+clock.offsetMs)*1000},
+    {phase: mode + ":render", start:(decodedAt+clock.offsetMs)*1000, end:(committedAt+clock.offsetMs)*1000},
+  ];
+}));
+const summary = {};
+let timestamp=browser.startTime;
+assert.equal(browser.samples.length,browser.timeDeltas.length);
+for (let i=0;i<browser.samples.length;i++) {
+  const from=timestamp; timestamp+=browser.timeDeltas[i];
+  const stack=[]; const seen=new Set();
+  for(let id=browser.samples[i]; id!==undefined; id=parents.get(id)) {
+    assert.ok(!seen.has(id)); seen.add(id);
+    stack.push(nodes.get(id).callFrame.functionName || "(anonymous)");
+  }
+  for (const w of windows) {
+    const weight=Math.min(timestamp,w.end)-Math.max(from,w.start);
+    if(weight<=0)continue;
+    const a=summary[w.phase]??={us:0,samples:0,self:{},inclusive:{},folded:{}};
+    a.us+=weight; a.samples++;
+    a.self[stack[0]]=(a.self[stack[0]]??0)+weight;
+    for(const name of new Set(stack)) a.inclusive[name]=(a.inclusive[name]??0)+weight;
+    const folded=stack.toReversed().join(";");
+    a.folded[folded]=(a.folded[folded]??0)+weight;
+  }
+}
+const top=(xs,total)=>Object.entries(xs).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([name,us])=>({name,ms:us/1000,percent:100*us/total}));
+const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes), phases:{}};
+for(const [phase,a]of Object.entries(summary)) {
+  const categories = {};
+  for (const [leaf, us] of Object.entries(a.self)) {
+    const category = /interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? "Interpreter dispatch/evaluation"
+      : /symbol_cache_entry|constant_cache_entry|interpreter::lookup_symbol|__hash.*find<lean::name>/.test(leaf) ? "Symbol/constant/name lookup"
+      : /^(dlmalloc|dlfree|lean_dec_ref_cold)|interpreter::alloc_ctor|vector<.*>::resize/.test(leaf) ? "Allocation/refcount/vector storage"
+      : leaf.includes("[wasm:") ? "Other WASM" : "JavaScript/browser";
+    categories[category] = (categories[category] ?? 0) + us;
+  }
+  compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:report.acceptance.rows.length,
+    categories:top(categories,a.us),self:top(a.self,a.us),inclusive:top(a.inclusive,a.us),
+    hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
+    commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us};
+  const folded = Object.entries(a.folded).map(([stack,us])=>stack+" "+Math.round(us)).join("\n")+"\n";
+  await writeFile(resolve(capture,phase.replace(":","-")+".folded"),folded);
+  if (process.argv[3]) {
+    const graph = spawnSync("perl", [resolve(process.argv[3]), "--title", phase + " - sampled CPU (not a timeline)",
+      "--countname", "microseconds", "--width", "1600", "--hash"], {input:folded,encoding:"utf8",maxBuffer:32*1024*1024});
+    assert.equal(graph.status,0,graph.stderr);
+    await writeFile(resolve(capture,phase.replace(":","-")+".svg"),graph.stdout);
+    compact.flamegraphToolSha256 = sha(await readFile(resolve(process.argv[3])));
+  }
+}
+await writeFile(resolve(capture,"profile-summary.json"),JSON.stringify(compact,null,2));
+console.log(JSON.stringify(compact,null,2));

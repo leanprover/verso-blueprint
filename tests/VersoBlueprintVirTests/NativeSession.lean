@@ -15,6 +15,7 @@ namespace VersoBlueprintVirTests.NativeSession
 
 open Verso Verso.Doc Lean.Vir Lean.Vir.React
 open VersoBlueprint.Experimental.VirPreview
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 private def document (version : Nat) (text : String) : Document := {
   version
@@ -49,11 +50,12 @@ private def preview (scenario : Nat) : Preview := match scenario with
   | _ => .ready (document 3 "Recovered preview")
 
 @[vir_export]
-def createComponent : RuntimeM (Js (Component Preview)) :=
+def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) :=
   VersoBlueprint.Experimental.VirPreview.createComponent
 
 @[vir_export]
-def render (component : Js (Component Preview)) (scenario : Nat) : ReactM (Js Node) := do
-  Node.component component (← LeanRef.toJSL (preview scenario))
+def render (component : FunctionComponent (Props.WithData Preview)) (scenario : Nat) : ReactM (Js Node) := do
+  let props ← Props.WithData.make (← LeanRef.toJSL (preview scenario))
+  Node.functionComponent component props (← js#[])
 
 end VersoBlueprintVirTests.NativeSession

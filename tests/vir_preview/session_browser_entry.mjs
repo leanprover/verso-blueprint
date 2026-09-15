@@ -70,7 +70,7 @@ async function run() {
     check(panel() && paragraph.isConnected, "debug insertion remounted document content");
     check(!byId("debug-disclosure") && document.querySelectorAll("#vir-verso-server-bar").length === 1,
       "debug controls must not hide or duplicate the timing bar");
-    check(panel().dataset.versoDebugBrowserTiming === "pending-upstream" &&
+    check(panel().dataset.versoDebugBrowserTiming === "unavailable" &&
       !panel().hasAttribute("data-verso-debug-browser-ms") && !byId("processing"),
     "pending browser timing was presented as a measurement");
     check(byId("server-timings").textContent.includes("Server 6.0 ms") &&
@@ -84,7 +84,7 @@ async function run() {
     check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
       "timing phases lack distinct colors");
     const width = bar.getBoundingClientRect().width;
-    check(byId("timing-scale").value === "1" && Math.abs(width - 240) < 0.05,
+    check(byId("timing-scale").value === "0" && Math.abs(width - 240) < 0.05,
       "default 1 ms/tick scale must make 6 ms occupy 240 CSS pixels");
     segments.forEach((segment, index) => check(
       Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 0.05,
@@ -150,7 +150,7 @@ async function run() {
     check(byId("follow-cursor").checked && !byId("highlight-changes").checked && !panel(),
       "intentional remount did not reset session state");
     click("debug");
-    check(byId("timing-scale").value === "1", "intentional remount did not reset the scale");
+    check(byId("timing-scale").value === "0", "intentional remount did not reset the scale");
     unmount();
     runtime.dispose();
     let rejected = false;
@@ -164,7 +164,7 @@ async function run() {
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
       debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
       fixedTimeScale: true, scrollableLongTiming: true,
-      missingAndZeroTiming: true, browserTimingExplicitlyPending: true,
+      missingAndZeroTiming: true, absentClockNotMeasured: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);

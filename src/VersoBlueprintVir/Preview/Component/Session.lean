@@ -16,19 +16,37 @@ namespace VersoBlueprint.Experimental.VirPreview.Session
 
 open Lean.Vir
 open Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 /-- Persistent options owned by one mounted preview session. -/
 structure Options where
   followCursor : Bool := true
   debug : Bool := false
   highlightChanges : Bool := false
-  timingTickMs : Nat := 1
+  timingTickMs : Nat := 0
 
 namespace Options
 
 def initial : Options := {}
 
 end Options
+
+/-- Browser-clock boundaries for one accepted reply. -/
+structure ResponseTiming where
+  requestedMs : Float
+  receivedMs : Float
+  decodedMs : Float
+
+/-- Client-only React input; timing metadata never crosses the document codec. -/
+structure Input where
+  preview : Preview
+  timing? : Option ResponseTiming := none
+
+structure BrowserTiming where
+  response : ResponseTiming
+  preparationMs : Float
+  renderMs : Float
+  observedMs : Float
 
 /-- One coherent post-commit diagnostic observation. -/
 structure DebugSample where
@@ -40,6 +58,7 @@ structure DebugSample where
   changedCount : Nat := 0
   highlightChanges : Bool := Options.initial.highlightChanges
   inputChanged : Bool := false
+  browserTiming? : Option BrowserTiming := none
 
 namespace DebugSample
 
@@ -68,127 +87,149 @@ def recordDebugSample
 
 private def renderToggle (id label : String) (checked : Bool)
     (onChange : Browser.DomM Unit) : ReactM (Js Node) := do
-  let input ← Node.elementWith "input" #[Props.id id, Props.type "checkbox",
-    Props.checked checked, Props.onChangeUnit onChange] #[]
-  Node.elementWith "label" #[Props.htmlFor id] #[input, ← Node.text (← JsValue.ofString (" " ++ label))]
+  let handler ← Callback.ofUnary fun (_ : Js Browser.Event) => onChange
+  return ← <label htmlFor={(← JsValue.ofString id)}>
+    <input id={(← JsValue.ofString id)} type="checkbox" checked={(← JsValue.ofBool checked)} onChange={handler}/>
+    {Node.text (← JsValue.ofString (" " ++ label))}
+  </label>
 
 /-- Explicit scales keep successive responses comparable at the chosen zoom. -/
-private def timingScales : Array Nat := #[1, 10, 100, 1000]
+private def timingScales : Array Nat := #[0, 1, 10, 100, 1000]
 private def timingTickPixels : Nat := 40
 
 private def timingPixels (timingTickMs nanos : Nat) : Float :=
   nanos.toFloat / (timingTickMs * 1000000).toFloat * timingTickPixels.toFloat
 
 private def renderTimingScale (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
-  let choices ← timingScales.mapM fun tick => do
-    Node.elementWith "option" #[Props.key (toString tick), Props.string "value" (toString tick)]
-      #[← Node.text (← JsValue.ofString s!"{tick} ms / tick")]
-  let select ← Node.elementWith "select" #[
-    Props.id "vir-verso-timing-scale", Props.string "value" (toString options.timingTickMs),
-    Props.onChange fun event => do
-      let some value ← Js.Nullable.toOption (← Browser.Event.formValueNullable event) | return ()
-      let value ← JsValue.toString value
-      let some tick := timingScales.find? (fun tick => toString tick == value) | return ()
-      updateOptions state fun current => { current with timingTickMs := tick }
-  ] choices
-  Node.elementWith "label" #[Props.htmlFor "vir-verso-timing-scale", ComponentStyle.debugNote]
-    #[← Node.text (← JsValue.ofString "Scale "), select]
+  let choices := timingScales.map fun tick => do
+    return ← <option key={(← JsValue.ofString (toString tick))} value={(← JsValue.ofString (toString tick))}>
+      {Node.text (← JsValue.ofString (if tick == 0 then "Auto" else s!"{tick} ms / tick"))}
+    </option>
+  let handler ← Callback.ofUnary fun (event : Js Browser.Event) => do
+    let some value ← Js.Nullable.toOption (← Browser.Event.formValueNullable event) | return ()
+    let value ← JsValue.toString value
+    let some tick := timingScales.find? (fun tick => toString tick == value) | return ()
+    updateOptions state fun current => { current with timingTickMs := tick }
+  return ← <label htmlFor="vir-verso-timing-scale" style={(← ComponentStyle.debugNote)}>
+    Scale <select id="vir-verso-timing-scale" value={(← JsValue.ofString (toString options.timingTickMs))} onChange={handler}>
+      {...choices}
+    </select>
+  </label>
 
-private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTiming) : ReactM (Js Node) := do
+private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTiming)
+    (browser? : Option BrowserTiming) : ReactM (Js Node) := do
   let some timing := timing? |
-    Node.pTextWith #[Props.id "vir-verso-server-timings", ComponentStyle.debugNote]
-      "Server timing unavailable"
+    return ← <p id="vir-verso-server-timings" style={(← ComponentStyle.debugNote)}>Server timing unavailable</p>
   let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
-  let phases := #[
+  let serverPhases := #[
     ("snapshot-wait", "Snapshot", "#4c9be8", timing.snapshotWaitNanos),
     ("checked-wait", "Checked", "#d99a32", timing.checkedWaitNanos),
     ("evaluation", "Document", "#42b89a", timing.evaluationNanos)
   ]
-  let total := timing.preparationNanos
-  let summary := "Server " ++ milliseconds total
-  let segments ← phases.mapM fun (key, label, color, nanos) =>
-    Node.spanWith #[Props.key key, Props.string "data-verso-phase" key,
-      Props.string "data-verso-nanos" (toString nanos),
-      Props.string "title" (label ++ ": " ++ milliseconds nanos),
-      Props.stylePairs #[
-        ("width", s!"{timingPixels timingTickMs nanos}px"), ("flexShrink", "0"),
-        ("minWidth", "0"), ("backgroundColor", color)
-      ]] #[]
-  let legend ← phases.mapM fun (key, label, color, nanos) => do
-    let swatch ← Node.spanWith #[Props.ariaHidden true, Props.stylePairs #[
-      ("display", "inline-block"), ("width", "8px"), ("height", "8px"),
-      ("borderRadius", "2px"), ("backgroundColor", color)
-    ]] #[]
-    Node.spanWith #[Props.key key, Props.title (label ++ ": " ++ milliseconds nanos), Props.stylePairs #[
-      ("display", "inline-flex"), ("alignItems", "center"), ("gap", "4px")
-    ]] #[swatch, ← Node.text (← JsValue.ofString label)]
-  let label ← Node.pTextWith #[ComponentStyle.debugNote,
-    Props.title "Server preparation: snapshot wait, checked-environment wait, and document evaluation/cursor lookup. Includes scheduling; excludes encoding, transport and browser rendering."]
-    summary
-  let bar ← Node.divWith #[Props.id "vir-verso-server-bar", Props.role "img",
-    Props.string "aria-label" (summary ++ "; " ++ String.intercalate ", "
-      (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)),
-    Props.string "data-verso-total-nanos" (toString total),
-    Props.string "data-verso-tick-ms" (toString timingTickMs),
-    Props.stylePairs #[
-      ("display", "flex"), ("width", s!"{timingPixels timingTickMs total}px"), ("height", "12px")
-    ]] segments
-  let track ← Node.divWith #[Props.stylePairs #[
-    ("width", "max-content"), ("minWidth", "100%"), ("paddingBottom", "5px"),
-    ("backgroundImage", s!"repeating-linear-gradient(to right, var(--vscode-descriptionForeground,#888) 0px, var(--vscode-descriptionForeground,#888) 1px, transparent 1px, transparent {timingTickPixels}px)")
-  ]] #[bar]
-  let track ← Node.divWith #[Props.id "vir-verso-server-scale", Props.stylePairs #[
-    ("overflowX", "auto"), ("minWidth", "0")
-  ]] #[track]
-  let legend ← Node.divWith #[Props.stylePairs #[
-    ("display", "flex"), ("flexWrap", "wrap"), ("gap", "4px 12px"),
-    ("marginTop", "5px"), ("fontSize", "0.85em")
-  ]] legend
-  Node.divWith #[Props.id "vir-verso-server-timings", Props.stylePairs #[("minWidth", "0")]]
-    #[label, track, legend]
+  let nanos := fun ms : Float => (max 0 ms * 1000000).toUInt64.toNat
+  let browser? := browser?.filter fun sample =>
+    sample.response.requestedMs <= sample.response.receivedMs &&
+    sample.response.receivedMs <= sample.response.decodedMs &&
+    sample.response.decodedMs <= sample.observedMs &&
+    timing.preparationNanos <= nanos (sample.response.receivedMs - sample.response.requestedMs)
+  let phases := match browser? with
+    | none => serverPhases
+    | some sample =>
+      let rpc := nanos (sample.response.receivedMs - sample.response.requestedMs)
+      let decode := nanos (sample.response.decodedMs - sample.response.receivedMs)
+      let prepare := nanos sample.preparationMs
+      let render := nanos sample.renderMs
+      let browser := nanos (sample.observedMs - sample.response.decodedMs)
+      serverPhases ++ #[
+        ("rpc-remainder", "Encode / transport / scheduling", "#8995a6", rpc - timing.preparationNanos),
+        ("decode", "Decode", "#a678cf", decode),
+        ("prepare", "Identity / change preparation", "#df7861", prepare),
+        ("render", "Build React elements", "#30a6b0", render),
+        ("commit", "React / effects / scheduling", "#c79351", browser - prepare - render)
+      ]
+  let total := phases.foldl (fun n (_, _, _, duration) => n + duration) 0
+  let timingTickMs := if timingTickMs != 0 then timingTickMs
+    else if total <= 10000000 then 1
+    else if total <= 100000000 then 10
+    else if total <= 1000000000 then 100 else 1000
+  let summary := (if browser?.isSome then "Request → preview " else "Server ") ++ milliseconds total
+  let segments := phases.map fun (key, label, color, nanos) => do
+    let style ← js%{
+      "width" := (← JsValue.ofString s!"{timingPixels timingTickMs nanos}px"),
+      "flexShrink" := (← js#"0"), "minWidth" := (← js#"0"), "backgroundColor" := (← JsValue.ofString color)
+    }
+    return ← <span key={(← JsValue.ofString key)} data-verso-phase={(← JsValue.ofString key)}
+      data-verso-nanos={(← JsValue.ofString (toString nanos))} title={(← JsValue.ofString (label ++ ": " ++ milliseconds nanos))}
+      style={style}/>
+  let legends := phases.map fun (key, label, color, nanos) => do
+    let style ← js%{ "display" := (← js#"inline-flex"), "alignItems" := (← js#"center"), "gap" := (← js#"4px") }
+    let swatchStyle ← js%{
+      "display" := (← js#"inline-block"), "width" := (← js#"8px"), "height" := (← js#"8px"),
+      "borderRadius" := (← js#"2px"), "backgroundColor" := (← JsValue.ofString color)
+    }
+    return ← <span key={(← JsValue.ofString key)} title={(← JsValue.ofString (label ++ ": " ++ milliseconds nanos))} style={style}>
+      <span aria-hidden={(← JsValue.ofBool true)} style={swatchStyle}/>{Node.text (← JsValue.ofString (label ++ " " ++ milliseconds nanos))}
+    </span>
+  let ariaLabel := summary ++ "; " ++ String.intercalate ", "
+    (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)
+  let barStyle ← js%{
+    "display" := (← js#"flex"), "width" := (← JsValue.ofString s!"{timingPixels timingTickMs total}px"), "height" := (← js#"12px")
+  }
+  let trackStyle ← js%{
+    "width" := (← js#"max-content"), "minWidth" := (← js#"100%"), "paddingBottom" := (← js#"5px"),
+    "backgroundImage" := (← JsValue.ofString s!"repeating-linear-gradient(to right, var(--vscode-descriptionForeground,#888) 0px, var(--vscode-descriptionForeground,#888) 1px, transparent 1px, transparent {timingTickPixels}px)")
+  }
+  let scrollStyle ← js%{ "overflowX" := (← js#"auto"), "minWidth" := (← js#"0") }
+  let legendStyle ← js%{
+    "display" := (← js#"flex"), "flexWrap" := (← js#"wrap"), "gap" := (← js#"4px 12px"),
+    "marginTop" := (← js#"5px"), "fontSize" := (← js#"0.85em")
+  }
+  return ← <div id="vir-verso-server-timings" style={(← js%{ "minWidth" := (← js#"0") })}>
+    <p style={(← ComponentStyle.debugNote)}
+      title="Server waits include remaining elaboration and scheduling, not pure CPU time. Full-chain endpoint is the content passive effect, not paint. RPC remainder is encoding, transport and scheduling together; its displayed position is schematic. Editor work before RPC dispatch is outside this bar.">
+      {Node.text (← JsValue.ofString summary)}
+    </p>
+    <div id="vir-verso-server-scale" style={scrollStyle}><div style={trackStyle}>
+      <div id="vir-verso-server-bar" role="img" aria-label={(← JsValue.ofString ariaLabel)}
+        data-verso-total-nanos={(← JsValue.ofString (toString total))} data-verso-tick-ms={(← JsValue.ofString (toString timingTickMs))}
+        style={barStyle}>{...segments}</div>
+    </div></div>
+    <div style={legendStyle}>{...legends}</div>
+  </div>
 
-def renderConfigPanel
-    (options : Options)
-    (state : State (JSL Options)) : ReactM (Js Node) := do
-  let legend ← Node.legendWith #[ComponentStyle.configLegend]
-    #[← Node.text (← JsValue.ofString "Preview options")]
-  let follow ← renderToggle "vir-verso-follow-cursor" "Follow cursor" options.followCursor
-    (updateOptions state fun current => { current with followCursor := !current.followCursor })
-  let debug ← renderToggle "vir-verso-debug" "Debug details" options.debug
-    (updateOptions state fun current => { current with debug := !current.debug })
-  let changes ← renderToggle "vir-verso-highlight-changes" "Highlight changes (debug)"
-    options.highlightChanges (updateOptions state fun current => {
-      current with highlightChanges := !current.highlightChanges })
-  Node.fieldsetWith #[
-    Props.id "vir-verso-config",
-    Props.string "data-verso-follow-cursor" (toString options.followCursor),
-    Props.string "data-verso-debug-enabled" (toString options.debug),
-    Props.string "data-verso-highlight-changes" (toString options.highlightChanges),
-    ComponentStyle.configPanel
-  ] #[legend, follow, debug, changes]
+def renderConfigPanel (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
+  return ← <fieldset id="vir-verso-config" style={(← ComponentStyle.configPanel)}
+    data-verso-follow-cursor={(← JsValue.ofString (toString options.followCursor))}
+    data-verso-debug-enabled={(← JsValue.ofString (toString options.debug))}
+    data-verso-highlight-changes={(← JsValue.ofString (toString options.highlightChanges))}>
+    <legend style={(← ComponentStyle.configLegend)}>Preview options</legend>
+    {renderToggle "vir-verso-follow-cursor" "Follow cursor" options.followCursor
+      (updateOptions state fun current => { current with followCursor := !current.followCursor })}
+    {renderToggle "vir-verso-debug" "Debug details" options.debug
+      (updateOptions state fun current => { current with debug := !current.debug })}
+    {renderToggle "vir-verso-highlight-changes" "Highlight changes (debug)" options.highlightChanges
+      (updateOptions state fun current => { current with highlightChanges := !current.highlightChanges })}
+  </fieldset>
 
 def renderDebugPanel (options : Options) (state : State (JSL Options))
     (timing? : Option ServerTiming) (sample : DebugSample) : ReactM (Js Node) := do
-  let scale ← renderTimingScale options state
-  let timing ← renderServerTiming options.timingTickMs timing?
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"
-  let details ← Node.pTextWith #[ComponentStyle.debugDetails]
-    s!"{sample.status} · editor v{sample.version} · {analysis}"
-  Node.asideWith #[
-    Props.id "vir-verso-debug-panel",
-    Props.string "data-verso-debug" "true",
-    Props.string "data-verso-debug-status" sample.status,
-    Props.string "data-verso-debug-browser-timing" "pending-upstream",
-    Props.string "data-verso-debug-new-input" (toString sample.inputChanged),
-    Props.string "data-verso-debug-highlight-changes" (toString sample.highlightChanges),
-    Props.string "data-verso-debug-snapshot-effects" (toString sample.sequence),
-    Props.string "data-verso-debug-version" (toString sample.version),
-    Props.string "data-verso-debug-correlation-id" sample.correlationId,
-    Props.string "data-verso-debug-block-count" (if sample.highlightChanges then toString sample.blockCount else "skipped"),
-    Props.string "data-verso-debug-changed-block-count" (toString sample.changedCount),
-    ComponentStyle.debugPanel
-  ] #[scale, timing, details]
+  return ← <aside id="vir-verso-debug-panel" data-verso-debug="true"
+    data-verso-debug-browser-timing={(← JsValue.ofString (if sample.browserTiming?.isSome then "demo-clock" else "unavailable"))}
+    style={(← ComponentStyle.debugPanel)}
+    data-verso-debug-status={(← JsValue.ofString sample.status)}
+    data-verso-debug-new-input={(← JsValue.ofString (toString sample.inputChanged))}
+    data-verso-debug-highlight-changes={(← JsValue.ofString (toString sample.highlightChanges))}
+    data-verso-debug-snapshot-effects={(← JsValue.ofString (toString sample.sequence))}
+    data-verso-debug-version={(← JsValue.ofString (toString sample.version))}
+    data-verso-debug-correlation-id={(← JsValue.ofString sample.correlationId)}
+    data-verso-debug-block-count={(← JsValue.ofString (if sample.highlightChanges then toString sample.blockCount else "skipped"))}
+    data-verso-debug-changed-block-count={(← JsValue.ofString (toString sample.changedCount))}>
+    {renderTimingScale options state}
+    {renderServerTiming options.timingTickMs timing? sample.browserTiming?}
+    <p style={(← ComponentStyle.debugDetails)}>{Node.text (← JsValue.ofString s!"{sample.status} · editor v{sample.version} · {analysis}")}</p>
+  </aside>
 
 end VersoBlueprint.Experimental.VirPreview.Session

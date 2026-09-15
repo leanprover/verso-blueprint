@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 module
 
 public import VersoReact
+public import VersoReactTests.Fingerprint
 meta import VersoReact.Renderer
 meta import Vir.Attributes
 
@@ -15,6 +16,7 @@ public section
 namespace VersoReactTests
 
 open Verso Verso.Doc VersoReact Lean.Vir Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 def paragraph (text : String) : Block Genre.Manual := .para #[.text text]
 
@@ -36,10 +38,12 @@ private def applicationExtensions : Renderer.Extensions := {
   blockIdentity? := fun ext => if ext.name == `Test.notice then some "notice" else none
   renderBlock? := fun key attributes ext children => do
     if ext.name == `Test.hidden then
-      return some (← Node.fragment (← Props.fromEntries #[Props.key key]) (← Js.Array.empty))
+      let props ← js%{ "key" := (← JsValue.ofString key) }
+      return some (← Node.fragment props (← Js.Array.empty))
     else if ext.name == `Test.notice then
-      return some (← Node.elementWith "aside" (attributes "notice" Renderer.Style.unsupported)
-        (← children ()))
+      let props ← attributes "notice" (← Renderer.Style.unsupported)
+      let childNodes ← children ()
+      return some (← <aside @props={props}>{...childNodes.map pure}</aside>)
     else return none
 }
 
@@ -71,6 +75,7 @@ def render (scenario : Nat) : ReactM (Js Node) :=
     | 0 => before | 1 => inserted | 2 => moved
     | 4 => document #[.concat #[.concat #[],
         .concat #[paragraph "first", paragraph "second"], paragraph "third"], paragraph "unrelated"]
+    | 5 => { rich with content := #[paragraph "Inserted before retained parents"] ++ rich.content }
     | _ => rich)
     { focus := if scenario == 4 then some "part-root-block-0" else none } applicationExtensions
 

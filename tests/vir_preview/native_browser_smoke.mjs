@@ -25,7 +25,8 @@ assert.equal(sdk.leanToolchain, (await readFile(resolve(root, "lean-toolchain"),
 const { runRpcBrowserAcceptance } = await import(pathToFileURL(
   resolve(virRoot, "tests/infoview/rpc-browser-harness.mjs")));
 const { build } = await import(pathToFileURL(resolve(virRoot, "node_modules/esbuild/lib/main.js")));
-const shellPath = resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js");
+const shellPath = embeddedPreview ? resolve(root, ".lake/build/checked-json-demo.js")
+  : resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js");
 const shellHash = embeddedPreview
   ? createHash("sha256").update(await readFile(shellPath)).digest("hex") : "";
 const bundle = await build({
@@ -48,7 +49,7 @@ const bundle = await build({
         path: "infoview", namespace: "vbp-embedded-test",
       }));
       builder.onLoad({ filter: /.*/, namespace: "vbp-embedded-test" }, () => ({
-        contents: `export { EditorConnection, EditorContext, useClientNotificationEffect }
+        contents: `export { DocumentPosition, EditorConnection, EditorContext, useClientNotificationEffect }
           from ${JSON.stringify(createRequire(resolve(virRoot, "package.json")).resolve("@leanprover/infoview"))};
           export { TaggedText_stripTags }
           from ${JSON.stringify(createRequire(resolve(virRoot, "package.json")).resolve("@leanprover/infoview-api"))};

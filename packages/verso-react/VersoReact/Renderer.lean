@@ -7,8 +7,10 @@ Author: Emilio J. Gallego Arias
 module
 
 public import Vir.React
+public import Vir.ProofWidgets.Jsx
 public import VersoManual.Basic
 public import VersoReact.RenderPath
+public import VersoReact.Fingerprint
 public meta import VersoReact.RenderPath
 
 public section
@@ -19,11 +21,9 @@ open Lean.Vir
 open Lean.Vir.React
 open Lean.Doc.Syntax
 open _root_.Verso
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 namespace Style
-
-private def style (entries : Array (String × String)) : Props.Entry :=
-  Props.stylePairs entries
 
 private def vscodeColor (name fallback : String) : String :=
   "var(--vscode-" ++ name ++ ", " ++ fallback ++ ")"
@@ -37,118 +37,21 @@ def background : String := vscodeColor "editor-background" "#ffffff"
 def codeBackground : String := vscodeColor "textCodeBlock-background" "#f6f8fa"
 def borderColor : String := vscodeColor "panel-border" "#d0d7de"
 
-def document : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "10px"),
-  ("minWidth", "0"),
-  ("padding", "10px 12px"),
-  ("border", border borderColor),
-  ("borderRadius", "6px"),
-  ("background", background),
-  ("color", foreground),
-  ("colorScheme", "light dark"),
-  ("fontFamily", "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"),
-  ("overflowWrap", "anywhere")
-]
-
-def part : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "10px"),
-  ("minWidth", "0")
-]
-
-def heading : Props.Entry := style #[
-  ("margin", "0"),
-  ("fontSize", "1.12rem"),
-  ("lineHeight", "1.3")
-]
-
-def paragraph : Props.Entry := style #[
-  ("margin", "0"),
-  ("lineHeight", "1.5")
-]
-
-def list : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "6px"),
-  ("margin", "0"),
-  ("paddingLeft", "1.5rem")
-]
-
-def listItem : Props.Entry := style #[
-  ("paddingLeft", "0.15rem")
-]
-
-def blockquote : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "8px"),
-  ("margin", "0"),
-  ("padding", "2px 0 2px 12px"),
-  ("borderLeft", border borderColor),
-  ("color", muted)
-]
-
-def descriptionList : Props.Entry := style #[
-  ("display", "grid"),
-  ("gridTemplateColumns", "max-content minmax(0, 1fr)"),
-  ("gap", "6px 10px"),
-  ("margin", "0")
-]
-
-def descriptionTerm : Props.Entry := style #[
-  ("fontWeight", "700")
-]
-
-def descriptionValue : Props.Entry := style #[
-  ("margin", "0")
-]
-
-def inlineCode : Props.Entry := style #[
-  ("padding", "0.08em 0.3em"),
-  ("borderRadius", "3px"),
-  ("background", codeBackground),
-  ("fontFamily", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"),
-  ("fontSize", "0.92em")
-]
-
-def codeBlock : Props.Entry := style #[
-  ("margin", "0"),
-  ("padding", "9px 10px"),
-  ("overflow", "auto"),
-  ("borderRadius", "5px"),
-  ("background", codeBackground),
-  ("fontFamily", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"),
-  ("fontSize", "0.78rem"),
-  ("lineHeight", "1.45"),
-  ("whiteSpace", "pre")
-]
-
-def mathInline : Props.Entry := style #[
-  ("padding", "0 0.08em"),
-  ("fontFamily", "KaTeX_Main, Cambria Math, STIX Two Math, serif"),
-  ("fontSize", "1.02em"),
-  ("whiteSpace", "pre-wrap")
-]
-
-def mathDisplay : Props.Entry := style #[
-  ("display", "block"),
-  ("padding", "8px 10px"),
-  ("overflowX", "auto"),
-  ("borderRadius", "5px"),
-  ("background", codeBackground),
-  ("fontFamily", "KaTeX_Main, Cambria Math, STIX Two Math, serif"),
-  ("fontSize", "1.02em"),
-  ("lineHeight", "1.5"),
-  ("textAlign", "center"),
-  ("whiteSpace", "pre-wrap")
-]
-
-def unsupported : Props.Entry := style #[
-  ("padding", "7px 9px"),
-  ("border", border borderColor),
-  ("borderRadius", "5px"),
-  ("color", muted)
-]
+def document : ReactM (Js Props) := js%{ "display" := (← js#"grid"), "gap" := (← js#"10px"), "minWidth" := (← js#"0"), "padding" := (← js#"10px 12px"), "border" := (← JsValue.ofString (border borderColor)), "borderRadius" := (← js#"6px"), "background" := (← JsValue.ofString background), "color" := (← JsValue.ofString foreground), "colorScheme" := (← js#"light dark"), "fontFamily" := (← js#"Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"), "overflowWrap" := (← js#"anywhere") }
+def part : ReactM (Js Props) := js%{ "display" := (← js#"grid"), "gap" := (← js#"10px"), "minWidth" := (← js#"0") }
+def heading : ReactM (Js Props) := js%{ "margin" := (← js#"0"), "fontSize" := (← js#"1.12rem"), "lineHeight" := (← js#"1.3") }
+def paragraph : ReactM (Js Props) := js%{ "margin" := (← js#"0"), "lineHeight" := (← js#"1.5") }
+def list : ReactM (Js Props) := js%{ "display" := (← js#"grid"), "gap" := (← js#"6px"), "margin" := (← js#"0"), "paddingLeft" := (← js#"1.5rem") }
+def listItem : ReactM (Js Props) := js%{ "paddingLeft" := (← js#"0.15rem") }
+def blockquote : ReactM (Js Props) := js%{ "display" := (← js#"grid"), "gap" := (← js#"8px"), "margin" := (← js#"0"), "padding" := (← js#"2px 0 2px 12px"), "borderLeft" := (← JsValue.ofString (border borderColor)), "color" := (← JsValue.ofString muted) }
+def descriptionList : ReactM (Js Props) := js%{ "display" := (← js#"grid"), "gridTemplateColumns" := (← js#"max-content minmax(0, 1fr)"), "gap" := (← js#"6px 10px"), "margin" := (← js#"0") }
+def descriptionTerm : ReactM (Js Props) := js%{ "fontWeight" := (← js#"700") }
+def descriptionValue : ReactM (Js Props) := js%{ "margin" := (← js#"0") }
+def inlineCode : ReactM (Js Props) := js%{ "padding" := (← js#"0.08em 0.3em"), "borderRadius" := (← js#"3px"), "background" := (← JsValue.ofString codeBackground), "fontFamily" := (← js#"ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"), "fontSize" := (← js#"0.92em") }
+def codeBlock : ReactM (Js Props) := js%{ "margin" := (← js#"0"), "padding" := (← js#"9px 10px"), "overflow" := (← js#"auto"), "borderRadius" := (← js#"5px"), "background" := (← JsValue.ofString codeBackground), "fontFamily" := (← js#"ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"), "fontSize" := (← js#"0.78rem"), "lineHeight" := (← js#"1.45"), "whiteSpace" := (← js#"pre") }
+def mathInline : ReactM (Js Props) := js%{ "padding" := (← js#"0 0.08em"), "fontFamily" := (← js#"KaTeX_Main, Cambria Math, STIX Two Math, serif"), "fontSize" := (← js#"1.02em"), "whiteSpace" := (← js#"pre-wrap") }
+def mathDisplay : ReactM (Js Props) := js%{ "display" := (← js#"block"), "padding" := (← js#"8px 10px"), "overflowX" := (← js#"auto"), "borderRadius" := (← js#"5px"), "background" := (← JsValue.ofString codeBackground), "fontFamily" := (← js#"KaTeX_Main, Cambria Math, STIX Two Math, serif"), "fontSize" := (← js#"1.02em"), "lineHeight" := (← js#"1.5"), "textAlign" := (← js#"center"), "whiteSpace" := (← js#"pre-wrap") }
+def unsupported : ReactM (Js Props) := js%{ "padding" := (← js#"7px 9px"), "border" := (← JsValue.ofString (border borderColor)), "borderRadius" := (← js#"5px"), "color" := (← JsValue.ofString muted) }
 
 end Style
 
@@ -158,15 +61,18 @@ with their children. The callbacks construct ordinary React nodes, not component
 or hook scopes. Children are lazy so hidden extensions need not render them.
 -/
 structure Extensions where
-  /-- Replace an inline extension (including its contents), or retain the visible fallback. -/
-  renderInline? : (path : String) → Genre.Manual.Inline → ReactM (Option (Js Node)) :=
+  /-- Optional stable leaf component. It receives source, mode and caller attributes. -/
+  mathComponent? : Option (FunctionComponent Props) := none
+  /-- Replace an inline extension using its sibling-local React key (not a source path),
+  or return `none` for the visible fallback. -/
+  renderInline? : (key : String) → Genre.Manual.Inline → ReactM (Option (Js Node)) :=
     fun _ _ => pure none
   /--
   Replace a block extension, or return `none` for the visible fallback.
   `attributes kind style` supplies the existing key, identity, focus and change
   markers. Call `children ()` once when needed; hidden blocks can skip it.
   -/
-  renderBlock? : (key : String) → (attributes : String → Props.Entry → Array Props.Entry) →
+  renderBlock? : (key : String) → (attributes : String → Js Props → ReactM (Js Props)) →
       Genre.Manual.Block → (children : Unit → ReactM (Array (Js Node))) →
       ReactM (Option (Js Node)) :=
     fun _ _ _ _ => pure none
@@ -216,7 +122,7 @@ private def fingerprintFriendlyId (value : String) : String :=
   s!"fp-{(hash value : UInt64)}"
 
 private def IdentityHints.resolve
-    (kind debugPath : String) (hints : IdentityHints) : IdentityBase :=
+    (kind : String) (index : Nat) (debugPath : String) (hints : IdentityHints) : IdentityBase :=
   match hints.explicitId?, hints.versoId?, hints.fingerprint? with
   | some value, _, _ =>
       { reactKey := s!"explicit:{value}", friendlyId := value, origin := .explicit }
@@ -229,7 +135,7 @@ private def IdentityHints.resolve
         friendlyId := fingerprintFriendlyId value
         origin := .fingerprint }
   | none, none, none =>
-      { reactKey := s!"position:{debugPath}", friendlyId := debugPath, origin := .positional }
+      { reactKey := s!"position:{kind}:{index}", friendlyId := debugPath, origin := .positional }
 
 private def allocateSiblingIdentities
     (parentSemanticKey debugParent segment kind : String)
@@ -238,7 +144,7 @@ private def allocateSiblingIdentities
   let mut identities := #[]
   for index in [:hints.size] do
     let debugPath := RenderPath.child debugParent segment index
-    let base := hints[index]!.resolve kind debugPath
+    let base := hints[index]!.resolve kind index debugPath
     let occurrence := seen.getD base.reactKey 0
     seen := seen.insert base.reactKey (occurrence + 1)
     let reactKey := s!"{base.reactKey}:occurrence:{occurrence}"
@@ -253,36 +159,71 @@ private def allocateSiblingIdentities
     }
   return identities
 
-private partial def blockIdentityHints (extensions : Extensions)
-    (block : _root_.Verso.Doc.Block Genre.Manual) : IdentityHints :=
+private partial def blockIdentitySource (extensions : Extensions)
+    (block : _root_.Verso.Doc.Block Genre.Manual) : String ⊕ Doc.Block Genre.Manual :=
   match block with
   | .concat content =>
       if content.size == 1 then
-        blockIdentityHints extensions content[0]!
+        blockIdentitySource extensions content[0]!
       else
-        { fingerprint? := some (Lean.toJson block).compress }
+        .inr block
   | .other extension _ =>
       match extensions.blockIdentity? extension with
-      | some identity => { explicitId? := some identity }
-      | none => { fingerprint? := some (Lean.toJson block).compress }
-  | _ => { fingerprint? := some (Lean.toJson block).compress }
+      | some identity => .inl identity
+      | none => .inr block
+  | _ => .inr block
+
+private def blockIdentityHints (extensions : Extensions) (block : Doc.Block Genre.Manual)
+    (fingerprint : Fingerprint.Value → String) : IdentityHints :=
+  match blockIdentitySource extensions block with
+  | .inl identity => { explicitId? := some identity }
+  | .inr block => { fingerprint? := some (fingerprint (.inl block)) }
 
 private def partIdentityHints
-    (part : _root_.Verso.Doc.Part Genre.Manual) : IdentityHints :=
+    (part : _root_.Verso.Doc.Part Genre.Manual)
+    (fingerprint : Fingerprint.Value → String) : IdentityHints :=
   -- A section title identifies the section without coupling its key to body edits.
-  { fingerprint? := some (Lean.toJson part.title).compress }
+  { fingerprint? := some (fingerprint (.inr part.title)) }
 
 private def blockIdentities (extensions : Extensions)
     (parentSemanticKey debugParent : String)
-    (blocks : Array (_root_.Verso.Doc.Block Genre.Manual)) : Array Identity :=
+    (blocks : Array (_root_.Verso.Doc.Block Genre.Manual))
+    (fingerprint : Fingerprint.Value → String := Fingerprint.canonicalKey) : Array Identity :=
   allocateSiblingIdentities parentSemanticKey debugParent "block" "block"
-    (blocks.map (blockIdentityHints extensions))
+    (blocks.map (fun block => blockIdentityHints extensions block fingerprint))
 
 private def partIdentities
     (parentSemanticKey debugParent : String)
-    (parts : Array (_root_.Verso.Doc.Part Genre.Manual)) : Array Identity :=
+    (parts : Array (_root_.Verso.Doc.Part Genre.Manual))
+    (fingerprint : Fingerprint.Value → String := Fingerprint.canonicalKey) : Array Identity :=
   allocateSiblingIdentities parentSemanticKey debugParent "part" "part"
-    (parts.map partIdentityHints)
+    (parts.map (fun part => partIdentityHints part fingerprint))
+
+private partial def appendFingerprintValues (extensions : Extensions)
+    (values : Array Fingerprint.Value) (block : Doc.Block Genre.Manual) : Array Fingerprint.Value := Id.run do
+  let values := match blockIdentitySource extensions block with
+    | .inl _ => values
+    | .inr value => values.push (.inl value)
+  match block with
+  | .para _ | .code _ => return values
+  | .concat blocks | .blockquote blocks | .other _ blocks =>
+    return blocks.foldl (appendFingerprintValues extensions) values
+  | .ul items | .ol _ items =>
+    return items.foldl (fun values item => item.contents.foldl (appendFingerprintValues extensions) values) values
+  | .dl items =>
+    return items.foldl (fun values item => item.desc.foldl (appendFingerprintValues extensions) values) values
+
+private partial def partFingerprintValues (extensions : Extensions)
+    (values : Array Fingerprint.Value) (part : Doc.Part Genre.Manual) : Array Fingerprint.Value :=
+  let values := part.content.foldl (appendFingerprintValues extensions) (values.push (.inr part.title))
+  part.subParts.foldl (partFingerprintValues extensions) values
+
+/-- Advance one mounted preview's content identities. Explicit labels retain
+their existing policy. Preparation visits document blocks but never renders
+extension children or invokes JavaScript. Retain the result in React state. -/
+def prepareIdentities (previous : Fingerprint.State) (document : Doc.Part Genre.Manual)
+    (extensions : Extensions := {}) : Fingerprint.State :=
+  previous.advance (partFingerprintValues extensions #[] document)
 
 private def rootIdentity : Identity := {
   reactKey := "structural:root"
@@ -395,234 +336,229 @@ def changedBlockIds (previous current : Doc.Part Genre.Manual)
 private def blockProps
     (identity : Identity)
     (kind : String)
-    (style : Props.Entry)
-    (changed focused : Bool) : Array Props.Entry := Id.run do
-  let mut classes := #["vir-verso-block"]
-  if changed then
-    classes := classes.push "vir-verso-block-changed"
-  if focused then
-    classes := classes.push "vir-verso-block-focused"
-  let mut props := #[
-    Props.key identity.reactKey,
-    Props.string "data-verso-block" identity.debugPath,
-    Props.string "data-verso-render-id" identity.friendlyId,
-    Props.string "data-verso-identity-origin" identity.origin.label,
-    Props.string "data-verso-kind" kind,
-    Props.title s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})",
-    Props.classList classes
-  ]
-  if changed then
-    props := props.push (Props.string "data-verso-change" "changed")
-  if focused then
-    props := props.push (Props.string "data-verso-focus" "cursor")
-  return props.push style
+    (style : Js Props)
+    (changed focused : Bool) : ReactM (Js Props) := do
+  let props ← js%{ "style" := style }
+  let classes := if focused then
+    if changed then "vir-verso-block vir-verso-block-changed vir-verso-block-focused"
+    else "vir-verso-block vir-verso-block-focused"
+  else if changed then "vir-verso-block vir-verso-block-changed" else "vir-verso-block"
+  Js.Object.set props (← js#"key") (← JsValue.ofString identity.reactKey)
+  Js.Object.set props (← js#"className") (← JsValue.ofString classes)
+  Js.Object.set props (← js#"data-verso-block") (← JsValue.ofString identity.debugPath)
+  Js.Object.set props (← js#"data-verso-render-id") (← JsValue.ofString identity.friendlyId)
+  Js.Object.set props (← js#"data-verso-identity-origin") (← JsValue.ofString identity.origin.label)
+  Js.Object.set props (← js#"data-verso-kind") (← JsValue.ofString kind)
+  Js.Object.set props (← js#"title") (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
+  if changed then Js.Object.set props (← js#"data-verso-change") (← js#"changed")
+  if focused then Js.Object.set props (← js#"data-verso-focus") (← js#"cursor")
+  pure props
 
 private def listItemProps
-    (path kind : String)
-    (style : Props.Entry)
-    (focused : Bool) : Array Props.Entry := Id.run do
-  let classes :=
-    if focused then #["vir-verso-list-item", "vir-verso-block-focused"]
-    else #["vir-verso-list-item"]
-  let mut props := #[
-    Props.key path,
-    Props.string "data-verso-list-item" path,
-    Props.string "data-verso-kind" kind,
-    Props.title s!"source list item: {path}",
-    Props.classList classes,
-    style
-  ]
-  if focused then
-    props := props.push (Props.string "data-verso-focus" "cursor")
-  return props
+    (key path kind : String)
+    (style : Js Props)
+    (focused : Bool) : ReactM (Js Props) := do
+  let props ← js%{ "style" := style }
+  Js.Object.set props (← js#"key") (← JsValue.ofString key)
+  Js.Object.set props (← js#"className") (← JsValue.ofString (if focused then "vir-verso-list-item vir-verso-block-focused" else "vir-verso-list-item"))
+  Js.Object.set props (← js#"data-verso-list-item") (← JsValue.ofString path)
+  Js.Object.set props (← js#"data-verso-kind") (← JsValue.ofString kind)
+  Js.Object.set props (← js#"title") (← JsValue.ofString s!"source list item: {path}")
+  if focused then Js.Object.set props (← js#"data-verso-focus") (← js#"cursor")
+  pure props
 
-/-- Source-preserving math node; callers may add attributes for their typesetter. -/
+/-- Source-preserving math node with a sibling-local React key;
+callers may add attributes for their typesetter. -/
 def renderMath
-    (path : String)
+    (key : String)
     (mode : Lean.Doc.MathMode)
     (source : String)
-    (attributes : Array Props.Entry := #[]) : ReactM (Lean.Vir.Js Node) := do
+    (attributes : Option (Js Props) := none)
+    (component? : Option (FunctionComponent Props) := none) : ReactM (Lean.Vir.Js Node) := do
   let modeClass := match mode with
     | Lean.Doc.MathMode.inline => "inline"
     | Lean.Doc.MathMode.display => "display"
-  let style := match mode with
+  let style ← match mode with
     | Lean.Doc.MathMode.inline => Style.mathInline
     | Lean.Doc.MathMode.display => Style.mathDisplay
-  let props := #[
-    Props.key path,
-    Props.className s!"vir-verso-math {modeClass}",
-    Props.string "data-verso-math-mode" modeClass,
-    style
-  ]
-  Node.codeText (props ++ attributes) source
+  let props ← match attributes with
+    | some attributes => do
+      Js.Object.set attributes (← js#"style") style
+      pure attributes
+    | none => js%{ "style" := style }
+  Js.Object.set props (← js#"key") (← JsValue.ofString key)
+  let className ← Js.Object.get props (← js#"className")
+  if ← JsValue.toBool (← Js.UndefinedOr.isUndefined (Js.UndefinedOr.ofJs className)) then
+    Js.Object.set props (← js#"className") (← JsValue.ofString s!"vir-verso-math {modeClass}")
+  Js.Object.set props (← js#"data-verso-math-mode") (← JsValue.ofString modeClass)
+  if let some component := component? then
+    Js.Object.set props (← js#"source") (← JsValue.ofString source)
+    return ← Node.functionComponent component props (← js#[])
+  return ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString source)}</code>
 
 private partial def renderInline (extensions : Extensions)
-    (path : String) : _root_.Verso.Doc.Inline Genre.Manual → ReactM (Lean.Vir.Js Node)
+    (key : String) : _root_.Verso.Doc.Inline Genre.Manual → ReactM (Lean.Vir.Js Node)
   | .text value | .linebreak value => do Node.text (← JsValue.ofString value)
-  | .code value => Node.codeText #[Props.key path, Style.inlineCode] value
-  | .math mode value => renderMath path mode value
+  | .code value => do
+      let style ← Style.inlineCode
+      let props ← js%{ "style" := style }
+      Js.Object.set props (← js#"key") (← JsValue.ofString key)
+      return ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString value)}</code>
+  | .math mode value => renderMath key mode value none extensions.mathComponent?
   | .emph content => do
-      Node.emWith #[Props.key path] (← renderInlines extensions path content)
+      let children ← renderInlines extensions content
+      return ← <em key={← JsValue.ofString key}>{...children.map pure}</em>
   | .bold content => do
-      Node.strongWith #[Props.key path] (← renderInlines extensions path content)
+      let children ← renderInlines extensions content
+      return ← <strong key={← JsValue.ofString key}>{...children.map pure}</strong>
   | .link content destination => do
-      Node.aWith #[Props.key path, Props.href destination] (← renderInlines extensions path content)
+      let children ← renderInlines extensions content
+      return ← <a key={← JsValue.ofString key} href={← JsValue.ofString destination}>{...children.map pure}</a>
   | .footnote name content => do
       let label ← Node.text (← JsValue.ofString s!"[{name}]")
-      let summary ← Node.elementWith "summary" #[Props.key s!"{path}-summary"] #[label]
-      Node.elementWith "details" #[Props.key path, Props.className "vir-verso-footnote"]
-        (#[summary] ++ (← renderInlines extensions path content))
-  | .image alt destination =>
-      Node.img #[Props.key path, Props.src destination, Props.alt alt]
+      let summary ← <summary key="structural:summary">{pure label}</summary>
+      let children ← renderInlines extensions content
+      return ← <details key={← JsValue.ofString key} className="vir-verso-footnote">{pure summary}{...children.map pure}</details>
+  | .image alt destination => do return ← <img key={← JsValue.ofString key} src={← JsValue.ofString destination} alt={← JsValue.ofString alt}/>
   | .concat content => do
-      Node.fragment (← Props.fromEntries #[Props.key path])
-        (← Js.Array.ofArray (← renderInlines extensions path content))
+      let props ← js%{ "key" := (← JsValue.ofString key) }
+      Node.fragment props (← Js.Array.ofArray (← renderInlines extensions content))
   | .other extension content => do
-      match ← extensions.renderInline? path extension with
+      match ← extensions.renderInline? key extension with
       | some rendered => pure rendered
       | none =>
-          let marker ← Node.codeText #[
-            Props.key s!"{path}-extension",
-            Props.className "vir-verso-extension-unsupported",
-            Props.string "data-verso-extension" extension.name.toString,
-            Style.inlineCode
-          ] s!"[inline extension: {extension.name}]"
-          Node.fragment (← Props.fromEntries #[Props.key path])
-            (← Js.Array.ofArray (#[marker] ++ (← renderInlines extensions path content)))
+          let style ← Style.inlineCode
+          let props ← js%{ "style" := style }
+          Js.Object.set props (← js#"key") (← js#"structural:extension")
+          Js.Object.set props (← js#"className") (← js#"vir-verso-extension-unsupported")
+          Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
+          let marker ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString s!"[inline extension: {extension.name}]")}</code>
+          let fragmentProps ← js%{ "key" := (← JsValue.ofString key) }
+          Node.fragment fragmentProps
+            (← Js.Array.ofArray (#[marker] ++ (← renderInlines extensions content)))
 
 where
   renderInlines (extensions : Extensions)
-      (path : String)
       (content : Array (_root_.Verso.Doc.Inline Genre.Manual)) : ReactM (Array (Lean.Vir.Js Node)) :=
-    content.mapIdxM fun index inline => renderInline extensions s!"{path}-inline-{index}" inline
+    content.mapIdxM fun index inline => renderInline extensions s!"inline:{index}" inline
 
 private partial def renderInlines (extensions : Extensions)
-    (path : String)
     (content : Array (_root_.Verso.Doc.Inline Genre.Manual)) : ReactM (Array (Lean.Vir.Js Node)) :=
-  content.mapIdxM fun index inline => renderInline extensions s!"{path}-inline-{index}" inline
+  content.mapIdxM fun index inline => renderInline extensions s!"inline:{index}" inline
 
 private def headingNode
     (identity : Identity)
     (level : Nat)
     (content : Array (Lean.Vir.Js Node))
-    (changed focused : Bool) : ReactM (Lean.Vir.Js Node) :=
-  let props := blockProps identity "heading" Style.heading changed focused
+    (changed focused : Bool) : ReactM (Lean.Vir.Js Node) := do
+  let props ← blockProps identity "heading" (← Style.heading) changed focused
   match level with
-  | 1 => Node.h1With props content
-  | 2 => Node.h2With props content
-  | 3 => Node.h3With props content
-  | 4 => Node.h4With props content
-  | 5 => Node.h5With props content
-  | _ => Node.h6With props content
+  | 1 => <h1 @props={props}>{...content.map pure}</h1>
+  | 2 => <h2 @props={props}>{...content.map pure}</h2>
+  | 3 => <h3 @props={props}>{...content.map pure}</h3>
+  | 4 => <h4 @props={props}>{...content.map pure}</h4>
+  | 5 => <h5 @props={props}>{...content.map pure}</h5>
+  | _ => <h6 @props={props}>{...content.map pure}</h6>
 
-private partial def renderBlock (extensions : Extensions)
+private partial def renderBlock (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
     (changedIds : Array String)
     (focus : Option String)
     (identity : Identity) : _root_.Verso.Doc.Block Genre.Manual → ReactM (Lean.Vir.Js Node)
   | .para content => do
-      Node.pWith
-        (blockProps identity "paragraph" Style.paragraph
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
-        (← renderInlines extensions identity.debugPath content)
+      let props ← blockProps identity "paragraph" (← Style.paragraph) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let children ← renderInlines extensions content
+      return ← <p @props={props}>{...children.map pure}</p>
   | .code source => do
       let text ← Node.text (← JsValue.ofString source)
-      let code ← Node.codeWith #[Props.string "data-language" ""] #[text]
-      Node.preWith
-        (blockProps identity "code" Style.codeBlock
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
-        #[code]
+      let codeProps ← js%{ "data-language" := (← js#"") }
+      let code ← <code @props={codeProps}>{pure text}</code>
+      let props ← blockProps identity "code" (← Style.codeBlock) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      return ← <pre @props={props}>{pure code}</pre>
   | .ul items => do
-      Node.ulWith
-        (blockProps identity "unordered-list" Style.list
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
-        (← items.mapIdxM fun index item =>
-          renderListItem extensions changedIds focus identity.semanticKey s!"{identity.debugPath}-item-{index}" item)
+      let props ← blockProps identity "unordered-list" (← Style.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let children ← items.mapIdxM fun index item => renderListItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
+      return ← <ul @props={props}>{...children.map pure}</ul>
   | .ol start items => do
-      Node.olWith
-        ((blockProps identity "ordered-list" Style.list
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath)).push
-            (Props.string "start" (toString (max start 0))))
-        (← items.mapIdxM fun index item =>
-          renderListItem extensions changedIds focus identity.semanticKey s!"{identity.debugPath}-item-{index}" item)
+      let props ← blockProps identity "ordered-list" (← Style.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      Js.Object.set props (← js#"start") (← JsValue.ofString (toString (max start 0)))
+      let children ← items.mapIdxM fun index item => renderListItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
+      return ← <ol @props={props}>{...children.map pure}</ol>
   | .dl items => do
       let children ← items.mapIdxM fun index item =>
-        renderDescItem extensions changedIds focus identity.semanticKey s!"{identity.debugPath}-item-{index}" item
-      Node.dlWith
-        (blockProps identity "description-list" Style.descriptionList
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
-        children.flatten
+        renderDescItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
+      let props ← blockProps identity "description-list" (← Style.descriptionList) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      return ← <dl @props={props}>{...children.flatten.map pure}</dl>
   | .blockquote content => do
-      Node.elementWith "blockquote"
-        (blockProps identity "blockquote" Style.blockquote
-          (changedIds.contains identity.debugPath) (focus == some identity.debugPath))
-        (← renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content)
+      let props ← blockProps identity "blockquote" (← Style.blockquote) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let children ← renderBlocks extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
+      return ← <blockquote @props={props}>{...children.map pure}</blockquote>
   | .concat content => do
       -- Concatenations are React fragments, not DOM nodes. A source block may
       -- expand to several children; mark those children without adding a wrapper.
-      Node.fragment (← Props.fromEntries #[Props.key identity.reactKey])
+      let props ← js%{ "key" := (← JsValue.ofString identity.reactKey) }
+      Node.fragment props
         (← Js.Array.ofArray
-          (← renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content
+          (← renderBlocks extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
             (focusChildren := focus == some identity.debugPath)))
   | .other extension content => do
       let changed := changedIds.contains identity.debugPath
       let focused := focus == some identity.debugPath
       let attributes := fun kind style => blockProps identity kind style changed focused
       let children := fun _ : Unit =>
-        renderBlocks extensions changedIds focus identity.semanticKey identity.debugPath content
+        renderBlocks extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
       match ← extensions.renderBlock? identity.reactKey attributes extension children with
       | some rendered => pure rendered
       | none =>
-          let marker ← Node.codeText #[Style.inlineCode]
-            s!"[block extension: {extension.name}]"
-          Node.divWith
-            ((attributes "unsupported-extension" Style.unsupported).push
-              (Props.string "data-verso-extension" extension.name.toString))
-            (#[marker] ++ (← children ()))
+          let markerStyle ← Style.inlineCode
+          let markerProps ← js%{ "style" := markerStyle }
+          let marker ← <code @props={markerProps}>{Lean.Vir.React.Node.text (← JsValue.ofString s!"[block extension: {extension.name}]")}</code>
+          let props ← attributes "unsupported-extension" (← Style.unsupported)
+          Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
+          let childNodes ← children ()
+          return ← <div @props={props}>{pure marker}{...childNodes.map pure}</div>
 
 where
-  renderListItem (extensions : Extensions)
+  renderListItem (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
       (changedIds : Array String)
       (focus : Option String)
-      (parentSemanticKey path : String)
+      (parentSemanticKey key path : String)
       (item : Lean.Doc.ListItem (_root_.Verso.Doc.Block Genre.Manual)) :
       ReactM (Lean.Vir.Js Node) := do
     let .mk content := item
-    Node.liWith (listItemProps path "list-item" Style.listItem (focus == some path))
-      (← renderBlocks extensions changedIds focus s!"{parentSemanticKey}/item/{path}" path content)
+    let props ← listItemProps key path "list-item" (← Style.listItem) (focus == some path)
+    let children ← renderBlocks extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}" path content
+    return ← <li @props={props}>{...children.map pure}</li>
 
-  renderDescItem (extensions : Extensions)
+  renderDescItem (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
       (changedIds : Array String)
       (focus : Option String)
-      (parentSemanticKey path : String)
+      (parentSemanticKey key path : String)
       (item : Lean.Doc.DescItem
         (_root_.Verso.Doc.Inline Genre.Manual) (_root_.Verso.Doc.Block Genre.Manual)) :
       ReactM (Array (Lean.Vir.Js Node)) := do
     let .mk term description := item
-    let termNode ← Node.dtWith
-      (listItemProps s!"{path}-term" "description-term" Style.descriptionTerm
-        (focus == some path))
-      (← renderInlines extensions s!"{path}-term" term)
-    let descriptionNode ← Node.ddWith
-      (listItemProps s!"{path}-description" "description-value" Style.descriptionValue
-        (focus == some path))
-      (← renderBlocks extensions changedIds focus s!"{parentSemanticKey}/item/{path}/description"
-        s!"{path}-description" description)
+    let termProps ← listItemProps s!"{key}:term" s!"{path}-term" "description-term" (← Style.descriptionTerm) (focus == some path)
+    let termChildren ← renderInlines extensions term
+    let termNode ← <dt @props={termProps}>{...termChildren.map pure}</dt>
+    let descriptionProps ← listItemProps s!"{key}:description" s!"{path}-description" "description-value" (← Style.descriptionValue) (focus == some path)
+    let descriptionChildren ← renderBlocks extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}/description" s!"{path}-description" description
+    let descriptionNode ← <dd @props={descriptionProps}>{...descriptionChildren.map pure}</dd>
     pure #[termNode, descriptionNode]
 
-  renderBlocks (extensions : Extensions)
+  renderBlocks (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
       (changedIds : Array String)
       (focus : Option String)
       (parentSemanticKey debugParent : String)
       (content : Array (_root_.Verso.Doc.Block Genre.Manual))
       (focusChildren : Bool := false) :
       ReactM (Array (Lean.Vir.Js Node)) := do
-    let identities := blockIdentities extensions parentSemanticKey debugParent content
+    let identities := blockIdentities extensions parentSemanticKey debugParent content fingerprint
     content.mapIdxM fun index block =>
       let identity := identities[index]!
-      renderBlock extensions changedIds
+      renderBlock extensions fingerprint changedIds
         (if focusChildren then some identity.debugPath else focus) identity block
 
-private partial def renderPart (extensions : Extensions)
+private partial def renderPart (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
     (changedIds : Array String)
     (focus : Option String)
     (identity : Identity)
@@ -630,55 +566,61 @@ private partial def renderPart (extensions : Extensions)
     (part : _root_.Verso.Doc.Part Genre.Manual) : ReactM (Lean.Vir.Js Node) := do
   let headingIdentity := headingIdentity identity
   let heading ← headingNode headingIdentity level
-    (← renderInlines extensions headingIdentity.debugPath part.title)
+    (← renderInlines extensions part.title)
     (changedIds.contains headingIdentity.debugPath) (focus == some headingIdentity.debugPath)
-  let identities := blockIdentities extensions identity.semanticKey identity.debugPath part.content
+  let identities := blockIdentities extensions identity.semanticKey identity.debugPath part.content fingerprint
   let content ← part.content.mapIdxM fun index block =>
-    renderBlock extensions changedIds focus identities[index]! block
-  let partIdentities := partIdentities identity.semanticKey identity.debugPath part.subParts
+    renderBlock extensions fingerprint changedIds focus identities[index]! block
+  let partIdentities := partIdentities identity.semanticKey identity.debugPath part.subParts fingerprint
   let subParts ← part.subParts.mapIdxM fun index child =>
-    renderPart extensions changedIds focus partIdentities[index]! (level + 1) child
-  Node.sectionWith #[
-    Props.key identity.reactKey,
-    Props.className "vir-verso-part",
-    Props.string "data-verso-part" identity.debugPath,
-    Props.string "data-verso-render-id" identity.friendlyId,
-    Props.string "data-verso-identity-origin" identity.origin.label,
-    Props.title s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})",
-    Style.part
-  ] (#[heading] ++ content ++ subParts)
+    renderPart extensions fingerprint changedIds focus partIdentities[index]! (level + 1) child
+  let style ← Style.part
+  let props ← js%{ "style" := style }
+  Js.Object.set props (← js#"key") (← JsValue.ofString identity.reactKey)
+  Js.Object.set props (← js#"className") (← js#"vir-verso-part")
+  Js.Object.set props (← js#"data-verso-part") (← JsValue.ofString identity.debugPath)
+  Js.Object.set props (← js#"data-verso-render-id") (← JsValue.ofString identity.friendlyId)
+  Js.Object.set props (← js#"data-verso-identity-origin") (← JsValue.ofString identity.origin.label)
+  Js.Object.set props (← js#"title") (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
+  return ← <section @props={props}>{pure heading}{...content.map pure}{...subParts.map pure}</section>
 
 /-- Options computed by the stateful component before constructing the Verso VDOM. -/
 structure Options where
   changedIds : Array String := #[]
   focus : Option String := none
-  attributes : Array Props.Entry := #[]
+  attributes : Option (Js Props) := none
+  /-- State prepared for this document. Omit for stateless exact-content keys. -/
+  identities? : Option Fingerprint.State := none
 
 /-- Construct the native React subtree for a Verso Manual document. -/
 def render (input : Doc.Part Genre.Manual) (options : Options := {})
     (extensions : Extensions := {}) : ReactM (Lean.Vir.Js Node) := do
-  let rootPart ← renderPart extensions options.changedIds options.focus rootIdentity 1 input
-  Node.articleWith (#[
-    Props.id "vir-verso-document",
-    Props.className "vir-verso-document",
-    Props.string "data-verso-changed-block-count" (toString options.changedIds.size),
-    Props.string "data-verso-focus-block" (options.focus.getD ""),
-    Style.document
-  ] ++ options.attributes) #[rootPart]
+  let fingerprint := options.identities?.map (fun state => state.key) |>.getD Fingerprint.canonicalKey
+  let rootPart ← renderPart extensions fingerprint options.changedIds options.focus rootIdentity 1 input
+  let props ← match options.attributes with
+    | some attributes => pure attributes
+    | none => do
+      let style ← Style.document
+      js%{ "style" := style }
+  Js.Object.set props (← js#"id") (← js#"vir-verso-document")
+  Js.Object.set props (← js#"className") (← js#"vir-verso-document")
+  Js.Object.set props (← js#"data-verso-changed-block-count") (← JsValue.ofString (toString options.changedIds.size))
+  Js.Object.set props (← js#"data-verso-focus-block") (← JsValue.ofString (options.focus.getD ""))
+  return ← <article @props={props}>{pure rootPart}</article>
 
 #guard
   let explicit := ({
     explicitId? := some "author"
     versoId? := some "verso"
     fingerprint? := some "content"
-  } : IdentityHints).resolve "block" "part-root-block-0"
+  } : IdentityHints).resolve "block" 0 "part-root-block-0"
   let verso := ({
     versoId? := some "verso"
     fingerprint? := some "content"
-  } : IdentityHints).resolve "block" "part-root-block-0"
+  } : IdentityHints).resolve "block" 0 "part-root-block-0"
   let fingerprint := ({ fingerprint? := some "content" } : IdentityHints).resolve
-    "block" "part-root-block-0"
-  let positional := ({} : IdentityHints).resolve "block" "part-root-block-0"
+    "block" 0 "part-root-block-0"
+  let positional := ({} : IdentityHints).resolve "block" 0 "part-root-block-0"
   explicit.origin == .explicit && explicit.reactKey == "explicit:author" &&
   verso.origin == .verso && verso.reactKey == "verso:verso" &&
   fingerprint.origin == .fingerprint && positional.origin == .positional
@@ -689,5 +631,13 @@ def render (input : Doc.Part Genre.Manual) (options : Options := {})
     #[duplicate, duplicate]
   identities[0]!.reactKey != identities[1]!.reactKey &&
   identities[0]!.friendlyId != identities[1]!.friendlyId
+
+#guard
+  let before := allocateSiblingIdentities "same-parent" "part-root-block-0" "block" "block" #[{}, {}]
+  let moved := allocateSiblingIdentities "same-parent" "part-root-block-1" "block" "block" #[{}, {}]
+  before[0]!.reactKey == moved[0]!.reactKey &&
+  before[0]!.semanticKey == moved[0]!.semanticKey &&
+  before[0]!.debugPath != moved[0]!.debugPath &&
+  before[0]!.reactKey != before[1]!.reactKey
 
 end VersoReact.Renderer

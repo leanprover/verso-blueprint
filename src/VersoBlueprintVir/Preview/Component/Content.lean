@@ -15,6 +15,7 @@ namespace VersoBlueprint.Experimental.VirPreview
 
 open Lean.Vir
 open Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 private def instrumentationCss (document : Document) : String :=
   let animationName := s!"virVersoChanged{document.version}"
@@ -28,7 +29,7 @@ private def instrumentationCss (document : Document) : String :=
 
 private def instrumentationStyleNode (document : Document) : ReactM (Js Node) := do
   let text ← Node.text (← JsValue.ofString (instrumentationCss document))
-  Node.elementWith "style" #[] #[text]
+  return ← <style>{pure text}</style>
 
 namespace Session
 
@@ -36,11 +37,14 @@ structure ContentProps where
   preview : Preview
   dependency : String
   changedIds : Array String
+  identities : VersoReact.Fingerprint.State
   blockCount : Nat
   followCursor : Bool
   highlightChanges : Bool
   diagnostics : Bool
   inputChanged : Bool
+  timing? : Option ResponseTiming := none
+  preparationMs : Float := 0
   onCommit : DebugSample → Browser.DomM Unit
 
 private structure RenderOutcome where
@@ -51,14 +55,14 @@ private structure RenderOutcome where
   blockCount : Nat := 0
 
 private def renderStatus (kind message : String) : ReactM (Js Node) := do
-  Node.divWith #[
-    Props.string "data-verso-preview-status" kind,
-    Props.role (if kind == "error" then "alert" else "status"),
-    Props.ariaLive "polite",
-    ComponentStyle.status
-  ] #[← Node.text (← JsValue.ofString message)]
+  return ← <div data-verso-preview-status={(← JsValue.ofString kind)}
+    role={(← JsValue.ofString (if kind == "error" then "alert" else "status"))}
+    aria-live="polite" style={(← ComponentStyle.status)}>
+    {Node.text (← JsValue.ofString message)}
+  </div>
 
-private def renderContent (props : ContentProps) : ReactM RenderOutcome := do
+private def renderContent (mathComponent? : Option (FunctionComponent Props))
+    (props : ContentProps) : ReactM RenderOutcome := do
   match props.preview with
   | .loading message =>
       let node ← renderStatus "loading" message
@@ -74,9 +78,10 @@ private def renderContent (props : ContentProps) : ReactM RenderOutcome := do
       let focus := if props.followCursor then document.focus else none
       let instrumentation ← instrumentationStyleNode document
       let rendered ← Renderer.render document {
+        identities? := some props.identities
         changedIds := highlightedIds
         focus
-      }
+      } mathComponent?
       let node ← Node.fragment (← Js.Object.empty) (← Js.Array.ofArray #[instrumentation, rendered])
       pure {
         node
@@ -86,16 +91,20 @@ private def renderContent (props : ContentProps) : ReactM RenderOutcome := do
         blockCount := props.blockCount
       }
 
-def createContentComponent : RuntimeM (Js (Component ContentProps)) :=
-  Component.ofLean fun props => do
-    let props ← LeanRef.fromJSL props
-    let outcome ← renderContent props
+def createContentComponent (clock : RuntimeM Float := pure 0)
+    (mathComponent? : Option (FunctionComponent Props) := none) : RuntimeM (FunctionComponent (Props.WithData ContentProps)) :=
+  FunctionComponent.ofLean fun props => do
+    let props ← LeanRef.fromJSL (← Props.WithData.data props)
+    let started ← if props.diagnostics then clock else pure 0
+    let outcome ← renderContent mathComponent? props
+    let rendered ← if props.diagnostics then clock else pure 0
     -- Keep hook order stable when diagnostics are toggled. The normal path
     -- does not construct a sample or update state. This observes a committed
     -- preview, not a duration; browser timing awaits VIR's native Performance API.
     let effect ← EffectCallback.ofLean {
       setup := do
         if props.diagnostics then
+          let observed ← clock
           props.onCommit {
             status := outcome.status
             version := outcome.version
@@ -104,6 +113,10 @@ def createContentComponent : RuntimeM (Js (Component ContentProps)) :=
             changedCount := props.changedIds.size
             highlightChanges := props.highlightChanges
             inputChanged := props.inputChanged
+            browserTiming? := props.timing?.map fun response => {
+              response, preparationMs := props.preparationMs,
+              renderMs := rendered - started, observedMs := observed
+            }
           }
         JsValue.ofBool false
       cleanup := fun _ => pure ()

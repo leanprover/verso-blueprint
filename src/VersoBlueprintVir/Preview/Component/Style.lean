@@ -6,16 +6,14 @@ Author: Emilio J. Gallego Arias
 
 module
 
-public import Vir.React
+public import Vir.ProofWidgets.Jsx
 
 public section
 
 namespace VersoBlueprint.Experimental.VirPreview.ComponentStyle
 
-open Lean.Vir.React
-
-private def style (entries : Array (String × String)) : Props.Entry :=
-  Props.stylePairs entries
+open Lean.Vir Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 private def vscodeColor (name fallback : String) : String :=
   "var(--vscode-" ++ name ++ ", " ++ fallback ++ ")"
@@ -30,72 +28,80 @@ def codeBackground : String := vscodeColor "textCodeBlock-background" "#f6f8fa"
 def borderColor : String := vscodeColor "panel-border" "#d0d7de"
 def debugForeground : String := vscodeColor "editorWarning-foreground" "#9a6700"
 
-def shell : Props.Entry := style #[
-  ("display", "grid"),
-  ("gap", "8px"),
-  ("minWidth", "0"),
-  ("padding", "8px 10px 12px"),
-  ("background", background),
-  ("color", foreground)
-]
+def shell : ReactM (Js Props) := do
+  js%{
+    "display" := (← JsValue.ofString ("grid")),
+    "gap" := (← JsValue.ofString ("8px")),
+    "minWidth" := (← JsValue.ofString ("0")),
+    "padding" := (← JsValue.ofString ("8px 10px 12px")),
+    "background" := (← JsValue.ofString (background)),
+    "color" := (← JsValue.ofString (foreground))
+  }
 
-def label : Props.Entry := style #[
-  ("margin", "0"),
-  ("color", muted),
-  ("fontSize", "0.68rem"),
-  ("fontWeight", "700"),
-  ("letterSpacing", "0.04em"),
-  ("textTransform", "uppercase")
-]
+def label : ReactM (Js Props) := do
+  js%{
+    "margin" := (← JsValue.ofString ("0")),
+    "color" := (← JsValue.ofString (muted)),
+    "fontSize" := (← JsValue.ofString ("0.68rem")),
+    "fontWeight" := (← JsValue.ofString ("700")),
+    "letterSpacing" := (← JsValue.ofString ("0.04em")),
+    "textTransform" := (← JsValue.ofString ("uppercase"))
+  }
 
-def configPanel : Props.Entry := style #[
-  ("display", "flex"),
-  ("flexWrap", "wrap"),
-  ("gap", "6px 14px"),
-  ("margin", "0"),
-  ("padding", "5px 8px 7px"),
-  ("border", border borderColor),
-  ("borderRadius", "5px"),
-  ("fontSize", "0.72rem")
-]
+def configPanel : ReactM (Js Props) := do
+  js%{
+    "display" := (← JsValue.ofString ("flex")),
+    "flexWrap" := (← JsValue.ofString ("wrap")),
+    "gap" := (← JsValue.ofString ("6px 14px")),
+    "margin" := (← JsValue.ofString ("0")),
+    "padding" := (← JsValue.ofString ("5px 8px 7px")),
+    "border" := (← JsValue.ofString (border borderColor)),
+    "borderRadius" := (← JsValue.ofString ("5px")),
+    "fontSize" := (← JsValue.ofString ("0.72rem"))
+  }
 
-def configLegend : Props.Entry := style #[
-  ("padding", "0 4px"),
-  ("color", muted),
-  ("fontWeight", "700")
-]
+def configLegend : ReactM (Js Props) := do
+  js%{
+    "padding" := (← JsValue.ofString ("0 4px")),
+    "color" := (← JsValue.ofString (muted)),
+    "fontWeight" := (← JsValue.ofString ("700"))
+  }
 
-def debugPanel : Props.Entry := style #[
-  ("minWidth", "0"),
-  ("margin", "0"),
-  ("padding", "5px 8px"),
-  ("border", border borderColor),
-  ("borderLeft", "3px solid " ++ debugForeground),
-  ("borderRadius", "5px"),
-  ("background", codeBackground),
-  ("fontFamily", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"),
-  ("fontSize", "0.68rem"),
-  ("lineHeight", "1.35"),
-  ("overflowWrap", "anywhere")
-]
+def debugPanel : ReactM (Js Props) := do
+  js%{
+    "minWidth" := (← JsValue.ofString ("0")),
+    "margin" := (← JsValue.ofString ("0")),
+    "padding" := (← JsValue.ofString ("5px 8px")),
+    "border" := (← JsValue.ofString (border borderColor)),
+    "borderLeft" := (← JsValue.ofString ("3px solid " ++ debugForeground)),
+    "borderRadius" := (← JsValue.ofString ("5px")),
+    "background" := (← JsValue.ofString (codeBackground)),
+    "fontFamily" := (← JsValue.ofString ("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace")),
+    "fontSize" := (← JsValue.ofString ("0.68rem")),
+    "lineHeight" := (← JsValue.ofString ("1.35")),
+    "overflowWrap" := (← JsValue.ofString ("anywhere"))
+  }
 
-def debugNote : Props.Entry := style #[
-  ("margin", "0"),
-  ("color", muted),
-  ("fontFamily", "ui-sans-serif, system-ui, sans-serif"),
-  ("fontSize", "0.62rem")
-]
+def debugNote : ReactM (Js Props) := do
+  js%{
+    "margin" := (← JsValue.ofString ("0")),
+    "color" := (← JsValue.ofString (muted)),
+    "fontFamily" := (← JsValue.ofString ("ui-sans-serif, system-ui, sans-serif")),
+    "fontSize" := (← JsValue.ofString ("0.62rem"))
+  }
 
-def debugDetails : Props.Entry := style #[
-  ("margin", "0"),
-  ("color", muted)
-]
+def debugDetails : ReactM (Js Props) := do
+  js%{
+    "margin" := (← JsValue.ofString ("0")),
+    "color" := (← JsValue.ofString (muted))
+  }
 
-def status : Props.Entry := style #[
-  ("padding", "10px"),
-  ("border", border borderColor),
-  ("borderRadius", "5px"),
-  ("color", muted)
-]
+def status : ReactM (Js Props) := do
+  js%{
+    "padding" := (← JsValue.ofString ("10px")),
+    "border" := (← JsValue.ofString (border borderColor)),
+    "borderRadius" := (← JsValue.ofString ("5px")),
+    "color" := (← JsValue.ofString (muted))
+  }
 
 end VersoBlueprint.Experimental.VirPreview.ComponentStyle

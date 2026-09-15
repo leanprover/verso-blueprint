@@ -14,19 +14,22 @@ namespace VersoBlueprint.Experimental.VirPreview
 
 open Lean.Vir
 open Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 /-- One session's previous input and its derived change flags, not a document format. -/
 private structure ChangeState where
   input? : Option Preview := none
   lastDocument? : Option Document := none
+  identities : VersoReact.Fingerprint.State := default
   changedIds : Array String := #[]
   blockCount? : Option Nat := none
   revision : Nat := 0
   highlightChanges : Bool := Session.Options.initial.highlightChanges
   diagnostics : Bool := false
   inputChanged : Bool := false
+  preparationMs : Float := 0
 
-private def useChangedBlockInfo
+private def useChangedBlockInfo (clock : RuntimeM Float)
     (preview : Preview) (highlightChanges diagnostics : Bool) : ReactM ChangeState := do
   let initial ← LeanRef.toJSL ({} : ChangeState)
   let state ← StateTuple.toState (← Hooks.useState initial)
@@ -35,7 +38,17 @@ private def useChangedBlockInfo
   if !inputChanged && previous.highlightChanges == highlightChanges &&
       previous.diagnostics == diagnostics then
     return previous
+  let started ← if diagnostics then clock else pure 0
   let document? := preview.document?
+  -- Content assignments are session state, not cursor/version/debug state.
+  -- This pure transition is safe to replay; no IDs escape an abandoned render.
+  let identities := match document? with
+    | some document =>
+        if previous.lastDocument?.map (·.document) == some document.document then
+          previous.identities
+        else
+          VersoReact.Renderer.prepareIdentities previous.identities document.document Renderer.extensions
+    | none => previous.identities
   let analyze := highlightChanges && document?.isSome &&
     (previous.blockCount?.isNone || previous.lastDocument? != document?)
   let (changedIds, blockCount?) :=
@@ -45,15 +58,18 @@ private def useChangedBlockInfo
         let (ids, count) := Renderer.changedBlockIdsAndCount previous.lastDocument? document
         (ids, some count)) |>.getD (#[], none)
     else (previous.changedIds, previous.blockCount?)
+  let finished ← if diagnostics then clock else pure 0
   let next := {
     input? := some preview
     lastDocument? := document?.or previous.lastDocument?
+    identities
     changedIds
     blockCount?
     revision := previous.revision + 1
     highlightChanges
     diagnostics
     inputChanged
+    preparationMs := finished - started
     : ChangeState
   }
   -- Guarded adjustment of this component's own state: React retries before
@@ -62,27 +78,30 @@ private def useChangedBlockInfo
   State.set state value
   return next
 
-private def renderSession (contentComponent : Js (Component Session.ContentProps))
-    (preview : Preview) : ReactM (Js Node) := do
+private def renderSession (contentComponent : FunctionComponent (Props.WithData Session.ContentProps))
+    (clock : RuntimeM Float) (preview : Preview)
+    (timing? : Option Session.ResponseTiming := none) : ReactM (Js Node) := do
   let optionsState ← StateTuple.toState
     (← Hooks.useState (← LeanRef.toJSL Session.Options.initial))
   let options ← LeanRef.fromJSL optionsState.value
   let document? := preview.document?
-  let changes ← useChangedBlockInfo preview options.highlightChanges options.debug
+  let changes ← useChangedBlockInfo clock preview options.highlightChanges options.debug
   let changedIds := if document?.isSome then changes.changedIds else #[]
 
   let debugSampleState ← StateTuple.toState
     (← Hooks.useState (← LeanRef.toJSL Session.DebugSample.initial))
 
-  let label ← Node.pTextWith #[Props.id "vir-verso-label", ComponentStyle.label]
-    "Verso React preview"
+  let label ← <p id="vir-verso-label" style={(← ComponentStyle.label)}>Verso React preview</p>
   let config ← Session.renderConfigPanel options optionsState
   -- Read durations directly from the accepted response, only in debug mode.
   -- Changing the display scale does not take another measurement.
   let debugPanel ←
     if options.debug then
+      let sample ← LeanRef.fromJSL debugSampleState.value
+      let sample := if sample.correlationId == (document?.map (·.correlationId) |>.getD "") then sample
+        else { sample with browserTiming? := none }
       some <$> Session.renderDebugPanel options optionsState (document?.bind (·.serverTiming?))
-        (← LeanRef.fromJSL debugSampleState.value)
+        sample
     else
       pure none
   -- The optional debug panel changes the sibling position, not document identity.
@@ -90,14 +109,19 @@ private def renderSession (contentComponent : Js (Component Session.ContentProps
     preview
     dependency := toString changes.revision
     changedIds
+    identities := changes.identities
     blockCount := changes.blockCount?.getD 0
     followCursor := options.followCursor
     highlightChanges := options.highlightChanges
     diagnostics := options.debug
     inputChanged := changes.inputChanged
+    timing? := if changes.inputChanged then timing? else none
+    preparationMs := changes.preparationMs
     onCommit := Session.recordDebugSample debugSampleState
   } : Session.ContentProps)
-  let content ← Node.keyedComponent contentComponent contentProps (← JsValue.ofString "document")
+  let nativeContentProps ← Props.WithData.make contentProps
+  Js.Object.set (Props.WithData.asProps nativeContentProps) (← js#"key") (← js#"document")
+  let content ← Node.functionComponent contentComponent nativeContentProps (← js#[])
   let version := document?.map (·.version) |>.getD 0
   let correlationId := document?.map (·.correlationId) |>.getD ""
   let focus :=
@@ -108,26 +132,33 @@ private def renderSession (contentComponent : Js (Component Session.ContentProps
     | .unavailable _ => "unavailable"
     | .ready _ => "ready"
     | .error _ => "error"
-  Node.sectionWith #[
-    Props.id "vir-verso-preview",
-    Props.string "data-verso-render-mode" (if options.debug then "debug" else "document"),
-    Props.string "data-verso-preview-status" status,
-    Props.string "data-verso-version" (toString version),
-    Props.string "data-verso-correlation-id" correlationId,
-    Props.string "data-verso-changed-block-count" (toString changedIds.size),
-    Props.string "data-verso-focus-block" (focus.getD ""),
-    Props.role "region",
-    Props.ariaLabel "Incremental Verso document preview",
-    ComponentStyle.shell
-  ] (#[label, config] ++ debugPanel.toArray ++ #[content])
+  let children := #[label, config] ++ debugPanel.toArray ++ #[content]
+  return ← <section id="vir-verso-preview" role="region" aria-label="Incremental Verso document preview"
+    data-verso-render-mode={(← JsValue.ofString (if options.debug then "debug" else "document"))}
+    data-verso-preview-status={(← JsValue.ofString status)} data-verso-version={(← JsValue.ofString (toString version))}
+    data-verso-correlation-id={(← JsValue.ofString correlationId)}
+    data-verso-changed-block-count={(← JsValue.ofString (toString changedIds.size))}
+    data-verso-focus-block={(← JsValue.ofString (focus.getD ""))} style={(← ComponentStyle.shell)}>
+    {...children.map pure}
+  </section>
 
 /--
 Create once per runtime and reuse this native React component type. Prop updates
 retain options and diagnostics; only unmounting resets them. Both component types
 are created outside render, so parent rerenders never remount the content.
 -/
-def createComponent : RuntimeM (Js (Component Preview)) := do
+def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) := do
   let content ← Session.createContentComponent
-  Component.ofLean fun props => do renderSession content (← LeanRef.fromJSL props)
+  FunctionComponent.ofLean fun props => do
+    renderSession content (pure 0) (← LeanRef.fromJSL (← Props.WithData.data props))
+
+/-- Explicit optional clock, supplied by the experimental demo only. -/
+def createTimedComponent (clock : RuntimeM Float)
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (FunctionComponent (Props.WithData Session.Input)) := do
+  let content ← Session.createContentComponent clock mathComponent?
+  FunctionComponent.ofLean fun props => do
+    let input ← LeanRef.fromJSL (← Props.WithData.data props)
+    renderSession content clock input.preview input.timing?
 
 end VersoBlueprint.Experimental.VirPreview

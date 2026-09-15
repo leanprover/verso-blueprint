@@ -8,10 +8,10 @@ module
 
 import VersoBlueprintVirTests.EmbeddedPreview
 meta import VersoBlueprintVirTests.EmbeddedPreview
-meta import VersoBlueprintVir.Preview.Server
+meta import CheckedJsonPreview.Server
 public import VersoBlueprint
 
-show_panel_widgets [local Lean.Vir.Infoview.widget with
+show_panel_widgets [local CheckedJsonPreview.widget with
   VersoBlueprintVirTests.EmbeddedPreview.panelProps]
 
 -- rpc-position-a
@@ -31,6 +31,13 @@ open Informal
 
 This paragraph comes from the open file's elaborated document, not a fixed RPC payload.
 Try changing it to see the retained preview update.
+
+* A preview list item.
+  * A nested preview list item with $`x + 1`.
+* Another preview list item.
+
+1. An ordered preview list item.
+2. Another ordered item.
 
 :::theorem "native_preview_identity"
 An informal statement with inline math $`a + 0 = a`.

@@ -29,6 +29,17 @@ export function checkRenderer(render) {
   assert.ok(html.includes("&lt;script&gt;unsafe()&lt;/script&gt;"));
   assert.ok(!html.includes("<script>") && !html.includes("hidden child"));
   assert.ok(!html.includes("data-bp-") && !html.includes("bp_math"));
+  function descendantKeys(node, found = []) {
+    if (!isValidElement(node)) return found;
+    if (["em", "strong", "code", "a", "li", "dt", "dd"].includes(node.type))
+      found.push([node.type, node.key]);
+    for (const child of [].concat(node.props.children ?? [])) descendantKeys(child, found);
+    return found;
+  }
+  const originalKeys = descendantKeys(render(3));
+  assert.ok(originalKeys.length >= 10, "missing nested key fixtures");
+  assert.deepEqual(descendantKeys(render(5)), originalKeys,
+    "moving a retained parent must not change inline/list descendant keys");
   const grouped = paragraphs(render(4));
   assert.equal(grouped.size, 4);
   for (const [html] of grouped) {
@@ -37,5 +48,5 @@ export function checkRenderer(render) {
   }
   return { ordinaryMarkup: true, escapedCode: true, visibleFallbacks: true,
     extensionCallbacks: true, hiddenContentOmitted: true, stableReactKeys: true,
-    concatenationFocus: true };
+    concatenationFocus: true, siblingLocalDescendantKeys: true };
 }

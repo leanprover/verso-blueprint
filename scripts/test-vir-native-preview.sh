@@ -12,6 +12,8 @@ fixtureTarget=+VersoBlueprintVirTests.NativePreview:vir
 if [[ "${1:-}" == "--string-preview" ]]; then
   fixtureTarget=+VersoBlueprintVirTests.StringPreview:vir
 elif [[ "${1:-}" == "--embedded-preview" ]]; then
+  LAKE_RESTORE_ARTIFACTS=true scripts/lean-low-priority lake build :virSdk
+  node tests/vir_preview/build_checked_json_demo.mjs
   # The shell packages the imported component from the live server snapshot.
   fixtureTarget=+VersoBlueprintVirTests.EmbeddedPreviewServer
 fi

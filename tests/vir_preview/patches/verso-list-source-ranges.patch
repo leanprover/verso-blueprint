@@ -1,0 +1,27 @@
+diff --git a/src/verso/Verso/Parser.lean b/src/verso/Verso/Parser.lean
+index 8db99208..77ec70fc 100644
+--- a/src/verso/Verso/Parser.lean
++++ b/src/verso/Verso/Parser.lean
+@@ -793,18 +793,18 @@ mutual
+     nodeFn ``ul <|
+       lookaheadUnorderedListIndicator ctxt fun type =>
+         withCurrentColumn fun c =>
+-          fakeAtom "ul{" >>
++          withInfoSyntaxFn skip.fn (fun info => fakeAtom "ul{" info) >>
+           many1Fn (listItem {ctxt with minIndent := c + 1 , inLists := ⟨c, .inr type⟩  :: ctxt.inLists}) >>
+-          fakeAtom "}"
++          withInfoSyntaxFn skip.fn (fun info => fakeAtom "}" info)
+ 
+   partial def orderedList (ctxt : BlockCtxt) : ParserFn :=
+     nodeFn ``ol <|
+-      fakeAtom "ol(" >>
++      withInfoSyntaxFn skip.fn (fun info => fakeAtom "ol(" info) >>
+       lookaheadOrderedListIndicator ctxt fun type _start => -- TODO? Validate list numbering?
+         withCurrentColumn fun c =>
+           fakeAtom ")" >> fakeAtom "{" >>
+           many1Fn (listItem {ctxt with minIndent := c + 1 , inLists := ⟨c, .inl type⟩  :: ctxt.inLists}) >>
+-          fakeAtom "}"
++          withInfoSyntaxFn skip.fn (fun info => fakeAtom "}" info)
+ 
+   partial def definitionList (ctxt : BlockCtxt) : ParserFn :=
+     nodeFn ``dl <|

@@ -1,5 +1,103 @@
 # Native Blueprint preview
 
+## Research checkpoint and whole-FLT timing caveat (2026-09-15)
+
+This checkpoint retains the native JSX migration, retained structural fingerprints,
+experimental checked-JSON decoder, KaTeX leaf, list-source-range patch, and browser
+profiling/acceptance tools. Generated bundles, SDKs, and raw profiles remain local
+artifacts, not Git contents. The local Verso patch must still be applied explicitly;
+the source pin alone does not contain that repair. This is an experimental local
+checkpoint, not a publication-ready or publicly reproducible release.
+
+The whole-FLT preview is now being tried interactively. Its displayed performance
+numbers are **not validated as whole-document latency**. Inspection of the saved
+FLT checkout found that `FLTBlueprint.lean` still registers
+`Lean.Vir.Infoview.widget` with `FLTBlueprint.Preview.panelProps`: the default String
+decoder and no browser clock. Only `FLTBlueprint/Chapters/Reductions.lean` selects
+the checked-JSON demo widget with its clock and math component. Unsaved editor
+changes may differ; the live FLT checkout is intentionally left untouched.
+
+Without that clock, the bar reports only server snapshot/checked waits and document
+evaluation. Those waits start at the RPC request, not the edit; they can be tiny
+when an environment is already ready. They exclude encoding, transport, browser
+decoding/rendering, and earlier server work. Even the clock-enabled bar ends at a
+content passive effect, not paint, and omits edit-to-request and startup costs.
+Turning debug on after a response does not retroactively measure that response.
+
+The clock-enabled accounting also needs a bounded follow-up: invalid timing falls
+back to server-only display, and the browser residual uses saturating subtraction
+without checking that preparation plus rendering fits the enclosing interval.
+The reported total is a sum of phase estimates, not an independently checked
+request-to-effect interval. These are audit findings, not established causes of
+the user's observed numbers. Before reporting whole-FLT performance, confirm the
+active widget, correlate one accepted update across phases, validate the elapsed
+total and residuals, and compare against an external browser observation. Keep
+debug-on/off runs separate to quantify instrumentation overhead.
+
+The retained `demo-integral-final` profile below is **one Reductions chapter edit**,
+not the complete FLT blueprint. No new benchmark was run for this checkpoint.
+
+## Demo: math, list navigation, and the processing bar (2026-09-15)
+
+The checked-JSON demo now includes KaTeX. Each formula is a stable React leaf;
+its effect depends on source, prelude, and display mode. React owns an empty
+container and KaTeX owns only its descendants. Unchanged formulas are not
+typeset again. Matching CSS/WOFF2 fonts are bundled locally, with `trust: false`
+and visible invalid-TeX output. Ordinary renderer factories still default to
+source-preserving math; the demo explicitly supplies the leaf component.
+
+Enable **Debug details**, then edit the document. The bar measures **RPC request
+to the content passive effect**, not physical keystroke-to-paint. It partitions:
+
+- server snapshot wait, checked-environment wait, and document evaluation;
+- RPC remainder (encoding, transport, and scheduling together);
+- accepted-response decoding;
+- identity/change preparation and React element construction;
+- remaining React, effects (including math), and scheduling.
+
+Server waits are subdivisions of RPC, not additional elapsed time. The remainder's
+position is schematic, not a claim that transport occurs entirely after server
+work. React's internal commit duration is not measured. Auto selects a readable
+time scale; explicit scales remain available. Timings stay hidden outside debug.
+Three browser clock reads bracket each demo RPC/decoder; preparation/render/effect
+reads are debug-only. No per-node instrumentation, polling, or global DOM observer
+is added to the widget. Client timing metadata is ordinary React input, separate
+from the document wire format. The clock binding is demo-only pending upstream;
+the VIR coordinator has received Emilio's priority request.
+
+The list-discovery repair is a four-line **local Verso parser patch**, not a
+VIR/JavaScript workaround. Its synthetic list delimiters now carry source
+positions like paragraphs and definition lists. See
+[`patches/README.md`](../../tests/vir_preview/patches/README.md) before reconstructing
+this demo from fresh dependencies. The VIR source/SDK remain unmodified.
+
+Validation and captures: `_out/browser-pr187/math-and-lists/`;
+the regenerated integral profile is `_out/browser-pr187/demo-integral-final/index.html`.
+The report is one sampled real-LSP/browser warm edit, with native worker lanes,
+browser samples, exact SDK symbols and raw downloads—not a latency distribution
+or VS Code paint measurement. Earlier reports/sections below describe the prior
+server-only and untypeset checkpoints.
+
+**2026-09-15 demo update:** the embedded fixture and FLT's `Reductions.lean`
+now explicitly select the temporary `CheckedJsonPreview` codec, paired with
+retained structural fingerprints. The ordinary RPC/widget factories still
+default to the String decoder. `tests/vir_preview/build_checked_json_demo.mjs`
+bundles the unchanged pinned VIR shell/lifecycle with the existing experimental
+JSON bindings and a native parse call; it verifies source/SDK identity and writes
+a demo-only `Widget.Module` bundle. Lake tracks that embedded file through
+`checkedJsonDemoBundle`. No producer or SDK files are modified. The demo server
+validates the safe-integer domain before encoding. This bridge should be deleted
+when the pinned VIR supplies the JSON codec.
+
+`scripts/test-vir-preview-widget.sh` prepares this bundle and validates the
+registered checked-JSON shell, real RPC, edits, retained controls/focus, and
+unsubscription. Evidence lives in `_out/browser-pr187/checked-json-demo/`.
+The live FLT folder is
+`.worktrees/_reference-blueprints/edit/native-preview-modules/verso-flt/`;
+its `PREVIEW_DEMO.md` records exact rebuild/open instructions. Browser timings
+in the research report remain replay measurements, not the widget's server bar
+or a new editor-latency claim.
+
 Experimental integration on the refreshed VBP module-system base. This is a
 correctness checkpoint, not a latency measurement or replacement for the working
 FLT demo.
@@ -7,20 +105,19 @@ FLT demo.
 ## Current isolated setup
 
 The manifests pin Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR
-`9fafe9cfd594213ee39dc8205b08084c31101816`. The independent
+`6e91bed83168c9cddf4f85e97cf0c58fc1e01e3d`. The independent
 [verso-react](../../packages/verso-react/README.md) package uses the same pair.
-The integration was transplanted onto VBP `c47e317a` without unrelated profiling
-changes. Source dependencies are independent clones, not producer worktrees.
-This VIR candidate combines draft PR186's native panel props and same-tree React
-rendering, the existing 4.34 overlay, and the SDK panel-binding inventory repair.
+Source dependencies are independent clones, not producer worktrees.
+This VIR candidate includes native panel props and same-tree React rendering,
+the PR187 native props/JSX API and follow-up `3b2cfd2f`, plus the 4.34 overlay.
 It is a local experimental successor, not a published 4.34 release.
 
 VIR still uses a local Git URL. This is reproducible with retained inputs,
 but **not yet a public download-and-build recipe**. The matching SDK archive
 has SHA-256
-`23a06e2e1b570e3be5708f6f2c1c77dfa522ff6f08f5a148468a234640ffb68c`.
+`82cab0c34b507c7cd1b765483547b4fb11d909da84aadfa408a06883251bb85a`.
 The release WASM hash is
-`3a92152e4431f86b73525cc23f88498f7b6c66f0f9e10ba10374eaf20a2c6e3f`.
+`3644f76050031b59ae84bd9f36379b6865a8c12d2438a83722ccc0613a8e916f`.
 The existing `:virSdk` facet installs the archive. Test scripts derive the expected
 source revision from the manifest and check the installed identity.
 Do not mix toolchains or copy individual runtime files.
@@ -32,7 +129,7 @@ to acquire dependencies, then:
 
 ```sh
 export VIR_SDK_ARCHIVE=/absolute/path/to/lean-vir-sdk.tar.gz
-export VBP_RENDERER_REPORT_DIR=/absolute/path/to/verso-blueprint/_out/native-preview-vir-refresh/renderer
+export VBP_RENDERER_REPORT_DIR=/absolute/path/to/verso-blueprint/_out/browser-pr187/renderer
 export VBP_NATIVE_SESSION_REPORT="$VBP_RENDERER_REPORT_DIR/../session.json"
 
 npm --prefix .lake/packages/lean_vir ci --no-audit --no-fund
@@ -63,6 +160,9 @@ cache-only correctness; removing the override is a separate validation.
   component types and keys preserve controls across edits. Highlighting is off
   by default. Browser timings remain pending upstream; server durations are
   displayed only when provided.
+  Components use `FunctionComponent (Props.WithData T)` with explicit Lean
+  handles in the `data` prop. Elements/styles use native props and JSX; the
+  retired Lean property-list builders are not recreated downstream.
 - `Preview.Rpc` uses the native editor context and edit-notification hook. One
   ordinary effect owns each request and its `AbortController`. Cleanup disables
   publication before aborting. The server returns an explicitly encoded String,
@@ -177,7 +277,10 @@ runtime generation according to VIR's ownership contract.
 Historical profiling, widget campaigns, and evidence remain on the earlier
 research branches; they are not acceptance evidence for this base.
 
-## Refreshed candidate validation, 2026-09-13
+## Previous candidate validation, 2026-09-13
+
+These results concern VIR `9fafe9cf`, not the current `6e91bed8` pin. See
+[the browser checkpoint report](BROWSER_PR187.md) for current validation and timings.
 
 Reports live under repository-root `_out/native-preview-vir-refresh/`:
 

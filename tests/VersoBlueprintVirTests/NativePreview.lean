@@ -6,8 +6,9 @@ Author: Emilio J. Gallego Arias
 
 module
 
-public import Vir.Infoview.Surface
+public import Vir.Infoview.Client
 public import Vir.React
+public import Vir.ProofWidgets.Jsx
 meta import Vir.Attributes
 
 public section
@@ -23,6 +24,7 @@ cancellation, lives in `StringPreview`. This fixture retains the scalar baseline
 namespace VersoBlueprintVirTests.NativePreview
 
 open Lean.Vir Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 structure Input where
   session : Js Infoview.RpcSession
@@ -77,27 +79,26 @@ private def renderView (method : String) (input : Input) : ReactM (Js Node) := d
     #[Js.erase input.session, Js.erase message, Js.erase fail]
   Hooks.useEffect effect (Js.UndefinedOr.ofJs deps)
   let current : ResponseState ← LeanRef.fromJSL response.value
-  let checkbox ← Node.elementWith "input" #[
-    Props.id "native-preview-checkbox", Props.type "checkbox",
-    Props.checked (← JsValue.toBool checked.value),
-    Props.onChangeUnit <| State.modify checked fun previous => do
+  let onChange ← Callback.ofUnary fun (_ : Js Lean.Vir.Browser.Event) =>
+    State.modify checked fun previous => do
       JsValue.ofBool (!(← JsValue.toBool previous))
-  ] #[]
-  let label ← Node.elementWith "label" #[Props.htmlFor "native-preview-checkbox"]
-    #[checkbox, ← Node.text (← JsValue.ofString " Keep this option across preview updates")]
-  let text ← Node.pTextWith #[Props.id "native-preview-message"] current.message
-  let status ← Node.pTextWith #[Props.id "native-preview-status"] current.status
-  Node.elementWith "section" #[Props.string "data-preview-status" current.status]
-    #[label, text, status]
+  let checkboxProps ← js%{ "id" := (← js#"native-preview-checkbox"), "type" := (← js#"checkbox"), "checked" := checked.value, "onChange" := onChange }
+  let checkbox ← <input @props={checkboxProps}/>
+  let label ← <label htmlFor="native-preview-checkbox">{pure checkbox}{Node.text (← js#" Keep this option across preview updates")}</label>
+  let text ← <p id="native-preview-message">{Node.text (← JsValue.ofString current.message)}</p>
+  let status ← <p id="native-preview-status">{Node.text (← JsValue.ofString current.status)}</p>
+  return ← <section data-preview-status={← JsValue.ofString current.status}>{pure label}{pure text}{pure status}</section>
 
 /-- Construct once per runtime, then keep this exact native React component type. -/
 @[vir_export]
-def createComponent (method : String) : RuntimeM (Js (Component Input)) :=
-  Component.ofLean fun props => do renderView method (← LeanRef.fromJSL props)
+def createComponent (method : String) : RuntimeM (FunctionComponent (Props.WithData Input)) :=
+  FunctionComponent.ofLean fun props => do
+    renderView method (← LeanRef.fromJSL (← Props.WithData.data props))
 
 /-- The browser test owns its ordinary React root; there is no VBP runtime wrapper. -/
 @[vir_export]
-def render (component : Js (Component Input)) (input : Input) : ReactM (Js Node) := do
-  Node.component component (← LeanRef.toJSL input)
+def render (component : FunctionComponent (Props.WithData Input)) (input : Input) : ReactM (Js Node) := do
+  let props ← Props.WithData.make (← LeanRef.toJSL input)
+  Node.functionComponent component props (← js#[])
 
 end VersoBlueprintVirTests.NativePreview

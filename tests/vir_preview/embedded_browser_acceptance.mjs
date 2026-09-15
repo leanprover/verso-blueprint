@@ -1,6 +1,7 @@
 /* Copyright (c) 2026 Lean FRO LLC. Released under Apache 2.0. */
 
 import * as React from "react";
+import { checkMathLifecycle } from "./katex_acceptance.mjs";
 import { createRoot } from "react-dom/client";
 import { EditorContext } from "@leanprover/infoview";
 import Widget from "@vir-embedded-shell";
@@ -17,7 +18,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
   const container = document.getElementById("app");
   const root = createRoot(container);
   const previewCalls = () => requests.filter(r =>
-    r.method === "VersoBlueprint.Experimental.VirPreview.Server.previewDocument");
+    r.method === "CheckedJsonPreview.Server.previewDocument");
   const packageCalls = () => requests.filter(r => r.method === "Lean.Vir.Infoview.buildIRPackage");
   const panel = () => document.getElementById("vir-verso-preview");
   const checkbox = () => document.getElementById("vir-verso-highlight-changes");
@@ -37,7 +38,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
   return withCleanup(async () => {
     // Read the actual panel registration, rather than duplicating its props here.
     const { widgets } = await a.call("Lean.Widget.getWidgets", config.a);
-    const registered = widgets.find(w => w.id === "Lean.Vir.Infoview.widget");
+    const registered = widgets.find(w => w.id === "CheckedJsonPreview.widget");
     check(registered, "native show_panel_widgets registration missing");
     const { sourcetext } = await a.call("Lean.Widget.getWidgetSource", {
       hash: registered.javascriptHash, pos: config.a,
@@ -78,7 +79,7 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       check(bar, "live server response has no timing bar");
       const phases = [...bar.querySelectorAll("[data-verso-phase]")];
       const total = Number(bar.dataset.versoTotalNanos);
-      check(phases.length === 3 && total > 0 && phases.reduce((sum, phase) =>
+      check([3, 8].includes(phases.length) && total > 0 && phases.reduce((sum, phase) =>
         sum + Number(phase.dataset.versoNanos), 0) === total,
       "live server phases do not partition preparation time");
       return total;
@@ -111,6 +112,8 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(document.getElementById("vir-verso-debug").checked,
       "embedded edit lost debug option");
     measuredBar();
+    check(document.querySelectorAll('#vir-verso-server-bar [data-verso-phase]').length === 8,
+      "accepted edit did not publish the full server/browser timing partition");
     check(document.getElementById("vir-verso-timing-scale").value === "100",
       "document edit reset timing scale");
     check(packageCalls().length === 1, "document edit regenerated the client package");
@@ -131,16 +134,29 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
       return { line: before.length - 1, character: before.at(-1).length };
     };
     const focused = () => [...panel().querySelectorAll('[data-verso-focus="cursor"]')];
+    const listRegistrations = [];
+    for (const anchor of ["* A preview list item", "A preview list item", "* A nested preview",
+      "A nested preview", "1. An ordered preview", "An ordered preview"]) {
+      const position = positionOf(anchor);
+      const found = await sessionAt(position).call("Lean.Widget.getWidgets", position);
+      listRegistrations.push({ anchor, present: found.widgets.some(w => w.id === "CheckedJsonPreview.widget") });
+    }
+    check(listRegistrations.every(x => x.present), `list registrations: ${JSON.stringify(listRegistrations)}`);
     const moveTo = async position => {
       await render(sessionAt(position), position);
       await waitFor("source focus refresh", () => panel()?.dataset.versoCorrelationId ===
         `${changed.textDocument.version}:${position.line}:${position.character}`);
     };
     check(focused().length === 0, "Lean code before #doc must not focus a document block");
+    for (const { anchor } of listRegistrations) {
+      await moveTo(positionOf(anchor));
+      check(panel() && checkbox() === retained && retained.checked && packageCalls().length === 1,
+        `list cursor move lost the retained preview: ${anchor}`);
+    }
     const statement = positionOf("An informal statement with inline math");
     const proof = positionOf("This proof body remains visible");
     const atStatement = await sessionAt(statement).call("Lean.Widget.getWidgets", statement);
-    check(atStatement.widgets.some(w => w.id === "Lean.Vir.Infoview.widget"),
+    check(atStatement.widgets.some(w => w.id === "CheckedJsonPreview.widget"),
       "panel registration is unavailable inside the real Blueprint statement");
     await moveTo(statement);
     check(focused().length === 1 && focused()[0].textContent.includes("An informal statement"),
@@ -172,11 +188,14 @@ export async function runEmbeddedAcceptance({ config, a, b, sessionAt, editor, e
     check(focused().length === 0, "leaving the document retained stale focus");
     check(checkbox() === retained && retained.checked && packageCalls().length === 1,
       "source navigation remounted controls or regenerated the client package");
+    check(panel().querySelector(".katex math"), "live Blueprint math was not typeset");
+    const math = checkMathLifecycle();
     await React.act(async () => root.render(null));
     await waitFor("embedded unmount cleanup", () => subscriptions() === 0 && listeners() === 0);
     check(!panel(), "embedded unmount retained the preview DOM");
     return {
       registeredWidgetModule: true, shellSha256: hash, wasmSha256: wasmHash, liveSnapshotPackage: true,
+      listRegistrations, math, fullChainTimingBar: true,
       workspaceAssetRpc: true, editorContextBridge: true, samePositionEdit: true,
       liveBlueprintDocument: true, editedSourceRendered: true, measuredServerTimingBar: true,
       debugOnlyTiming: true, scaleChangeNoRpc: true, retainedScale: true,

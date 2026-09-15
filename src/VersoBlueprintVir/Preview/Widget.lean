@@ -14,12 +14,17 @@ public section
 namespace VersoBlueprint.Experimental.VirPreview
 
 open Lean.Vir Lean.Vir.React
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 /-- Adapt native infoview panel props to a preview RPC taking `Lean.Lsp.Position`
 and returning `Preview.encode preview`. Create once, then register with
 `vir_proof_widget`; VIR owns the shell, editor context, and root lifecycle. -/
-def createWidgetComponent (method : String) : RuntimeM (FunctionComponent Infoview.PanelWidgetProps) := do
-  let preview ← createRpcComponent method
+def createWidgetComponent (method : String)
+    (decodeReply : Js.Any → RuntimeM (Except String Preview) := decodeStringReply)
+    (clock? : Option (RuntimeM Float) := none)
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (FunctionComponent Infoview.PanelWidgetProps) := do
+  let preview ← createRpcComponent method decodeReply clock? mathComponent?
   FunctionComponent.ofLean fun props => do
     let session ← Infoview.useRpcSession
     let position ← Infoview.PanelWidgetProps.pos props
@@ -35,11 +40,12 @@ def createWidgetComponent (method : String) : RuntimeM (FunctionComponent Infovi
       pure (Js.erase params)
     let deps ← Hooks.DependencyList.ofArray #[Js.erase line, Js.erase character]
     let params ← Hooks.useMemo calculate deps
-    Node.component preview (← LeanRef.toJSL ({
+    let previewProps ← Props.WithData.make (← LeanRef.toJSL ({
       session
       params
       uri
       revision := ""
     } : RpcInput))
+    Node.functionComponent preview previewProps (← js#[])
 
 end VersoBlueprint.Experimental.VirPreview

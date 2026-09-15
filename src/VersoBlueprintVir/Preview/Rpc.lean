@@ -7,13 +7,14 @@ Author: Emilio J. Gallego Arias
 module
 
 public import VersoBlueprintVir.Preview.Component
-public import Vir.Infoview.Surface
+public import Vir.Infoview.Client
 
 public section
 
 namespace VersoBlueprint.Experimental.VirPreview
 
 open Lean.Vir Lean.Vir.React Lean.Vir.Browser
+open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
 /-- Native RPC inputs under the infoview's `EditorContext`. Keep `params` identity
 stable until the request changes. Matching editor edits refresh automatically;
@@ -24,10 +25,16 @@ structure RpcInput where
   uri : String
   revision : String
 
-private def renderRpc (method : String) (view : Js (Component Preview))
+/-- Default String reply decoder. Alternative explicit codecs run only for accepted replies. -/
+def decodeStringReply (reply : Js.Any) : RuntimeM (Except String Preview) := do
+  let source ← JsValue.toString (← Js.String.fromAny reply)
+  pure (Preview.decode source)
+
+private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Except String Preview))
+    (clock? : Option (RuntimeM Float)) (view : FunctionComponent (Props.WithData Session.Input))
     (input : RpcInput) : ReactM (Js Node) := do
   let state ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL (Preview.loading "Loading document")))
+    (← Hooks.useState (← LeanRef.toJSL ({ preview := .loading "Loading document" } : Session.Input)))
   let edits ← StateTuple.toState (← Hooks.useState (← JsValue.ofNat 0))
   let changed ← Js.Function.ofLeanVoid fun (params : Js.Any) => do
     let document ← Js.Object.get params (← JsValue.ofString "textDocument")
@@ -45,20 +52,27 @@ private def renderRpc (method : String) (view : Js (Component Preview))
       let abort ← AbortController.create
       let options ← Infoview.ClientRequestOptions.empty
       Infoview.ClientRequestOptions.setAbortSignal options (← AbortController.getSignal abort)
+      let requested ← clock?.getD (pure 0)
       let request : Js.Promise Js.Any.Value ← Infoview.RpcSession.callWithOptions
         input.session (← JsValue.ofString method) input.params options
       let success ← Js.Function.ofLeanVoid fun (reply : Js.Any) => do
         -- Ignore obsolete replies before string conversion or document decoding.
         if ← active.get then
-          let source ← JsValue.toString (← Js.String.fromAny reply)
-          let preview := match Preview.decode source with
+          let received ← clock?.getD (pure 0)
+          let preview := match ← decodeReply reply with
             | .ok preview => preview
             | .error message => .error s!"Invalid preview response: {message}"
-          State.set state (← LeanRef.toJSL preview)
+          let decoded ← clock?.getD (pure 0)
+          State.set state (← LeanRef.toJSL ({
+            preview
+            timing? := clock?.map fun _ => {
+              requestedMs := requested, receivedMs := received, decodedMs := decoded
+            }
+          } : Session.Input))
       let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do
         if ← active.get then
           State.set state (← LeanRef.toJSL
-            (Preview.error "Preview RPC failed or returned a non-string response"))
+            ({ preview := .error "Preview RPC failed or returned a non-string response" } : Session.Input))
       let handled ← Js.Promise.thenVoid request success
       let finished ← Js.Function.ofLeanVoid fun (_ : Js.Undefined) => pure ()
       let _ ← Js.Promise.thenVoidWithRejection handled finished failure
@@ -73,13 +87,26 @@ private def renderRpc (method : String) (view : Js (Component Preview))
   Hooks.useEffect effect (Js.UndefinedOr.ofJs deps)
   -- Retain the last accepted preview while refreshing. The stable child type
   -- keeps controls alive through requests, errors, and document replacement.
-  Node.component view state.value
+  -- An edit changes request state, not the accepted preview. Retain this child
+  -- element so the pending request does not redraw the unchanged document.
+  -- The child's own control state still renders normally. Only its element is
+  -- memoized; document values are neither copied nor compared structurally.
+  let child ← MemoCalculation.ofLean do
+    let props ← Props.WithData.make state.value
+    Node.functionComponent view props (← js#[])
+  let childDeps ← Hooks.DependencyList.ofArray #[Js.erase view, Js.erase state.value]
+  Hooks.useMemo child childDeps
 
 /-- Create once per runtime. The server method returns `Preview.encode preview`
 as its String result. Decode once per accepted response, never during rendering.
 Cleanup aborts obsolete requests and independently suppresses stale publication. -/
-def createRpcComponent (method : String) : RuntimeM (Js (Component RpcInput)) := do
-  let view ← createComponent
-  Component.ofLean fun props => do renderRpc method view (← LeanRef.fromJSL props)
+def createRpcComponent (method : String)
+    (decodeReply : Js.Any → RuntimeM (Except String Preview) := decodeStringReply)
+    (clock? : Option (RuntimeM Float) := none)
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (FunctionComponent (Props.WithData RpcInput)) := do
+  let view ← createTimedComponent (clock?.getD (pure 0)) mathComponent?
+  FunctionComponent.ofLean fun props => do
+    renderRpc method decodeReply clock? view (← LeanRef.fromJSL (← Props.WithData.data props))
 
 end VersoBlueprint.Experimental.VirPreview

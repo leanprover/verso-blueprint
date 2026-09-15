@@ -33,6 +33,18 @@ lean_lib VersoBlueprintVir where
   precompileModules := false
   requiresModuleSystem := true
 
+-- Local demo only. Generate with `node tests/vir_preview/build_checked_json_demo.mjs`.
+-- include_str alone is not a Lake dependency.
+input_file checkedJsonDemoBundle where
+  path := ".lake/build/checked-json-demo.js"
+  text := true
+
+lean_lib CheckedJsonPreview where
+  srcDir := "tests"
+  roots := #[`CheckedJsonPreview]
+  requiresModuleSystem := true
+  needs := #[checkedJsonDemoBundle]
+
 lean_lib VersoBlueprintVirTests where
   srcDir := "tests"
   requiresModuleSystem := true
