@@ -1,5 +1,13 @@
 # Native Blueprint preview
 
+## Current development: PR188 and timing cleanup
+
+See [the PR188 setup and acceptance record](BROWSER_PR188.md) for the current
+VIR `36d26bc2` pin and matching SDK. The prior PR187 worktree and live FLT demo
+remain untouched. Sections below are retained checkpoint/history notes, not
+the setup identity of this checkout. The timing-accounting follow-up described
+below is implemented here; whole-FLT latency is still unmeasured.
+
 ## Research checkpoint and whole-FLT timing caveat (2026-09-15)
 
 This checkpoint retains the native JSX migration, retained structural fingerprints,

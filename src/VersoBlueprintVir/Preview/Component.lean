@@ -91,15 +91,16 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
   let debugSampleState ← StateTuple.toState
     (← Hooks.useState (← LeanRef.toJSL Session.DebugSample.initial))
 
-  let label ← <p id="vir-verso-label" style={(← ComponentStyle.label)}>Verso React preview</p>
+  let label ← <p key="label" id="vir-verso-label" style={(← ComponentStyle.label)}>Verso React preview</p>
   let config ← Session.renderConfigPanel options optionsState
   -- Read durations directly from the accepted response, only in debug mode.
   -- Changing the display scale does not take another measurement.
   let debugPanel ←
     if options.debug then
       let sample ← LeanRef.fromJSL debugSampleState.value
-      let sample := if sample.correlationId == (document?.map (·.correlationId) |>.getD "") then sample
-        else { sample with browserTiming? := none }
+      -- Cursor/version identifies the document position, not a particular RPC:
+      -- repeated refreshes at that position may have different server timings.
+      let sample := sample.forResponse (document?.map (·.correlationId) |>.getD "") timing?
       some <$> Session.renderDebugPanel options optionsState (document?.bind (·.serverTiming?))
         sample
     else
@@ -139,7 +140,7 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
     data-verso-correlation-id={(← JsValue.ofString correlationId)}
     data-verso-changed-block-count={(← JsValue.ofString (toString changedIds.size))}
     data-verso-focus-block={(← JsValue.ofString (focus.getD ""))} style={(← ComponentStyle.shell)}>
-    {...children.map pure}
+    {Js.Array.ofArray children}
   </section>
 
 /--

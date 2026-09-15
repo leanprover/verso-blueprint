@@ -43,7 +43,7 @@ private def applicationExtensions : Renderer.Extensions := {
     else if ext.name == `Test.notice then
       let props ← attributes "notice" (← Renderer.Style.unsupported)
       let childNodes ← children ()
-      return some (← <aside @props={props}>{...childNodes.map pure}</aside>)
+      return some (← <aside @props={props}>{Js.Array.ofArray childNodes}</aside>)
     else return none
 }
 

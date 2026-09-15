@@ -36,6 +36,7 @@ structure ResponseTiming where
   requestedMs : Float
   receivedMs : Float
   decodedMs : Float
+  deriving BEq
 
 /-- Client-only React input; timing metadata never crosses the document codec. -/
 structure Input where
@@ -47,6 +48,31 @@ structure BrowserTiming where
   preparationMs : Float
   renderMs : Float
   observedMs : Float
+
+/-- Partition one RPC-to-effect interval. Reject inconsistent samples instead of
+turning an overlapping phase into an inflated total through saturating subtraction.
+The total is measured independently of the phase estimates. -/
+def BrowserTiming.partition? (sample : BrowserTiming) (server : ServerTiming) :
+    Option (Nat × Array Nat) := do
+  let r := sample.response
+  let values := #[r.requestedMs, r.receivedMs, r.decodedMs, sample.observedMs,
+    sample.preparationMs, sample.renderMs]
+  -- Ordered bounds also reject NaN/infinity and keep nanoseconds within UInt64.
+  guard (values.all fun value => value >= 0 && value < 18446744073709.0)
+  guard (r.requestedMs <= r.receivedMs && r.receivedMs <= r.decodedMs &&
+    r.decodedMs <= sample.observedMs)
+  let nanos := fun ms : Float => (ms * 1000000).toUInt64.toNat
+  let total := nanos (sample.observedMs - r.requestedMs)
+  let rpc := nanos (r.receivedMs - r.requestedMs)
+  let decode := nanos (r.decodedMs - r.receivedMs)
+  let browser := nanos (sample.observedMs - r.decodedMs)
+  let prepare := nanos sample.preparationMs
+  let render := nanos sample.renderMs
+  guard (server.preparationNanos <= rpc && prepare + render <= browser &&
+    rpc + decode + prepare + render <= total)
+  pure (total, #[server.snapshotWaitNanos, server.checkedWaitNanos, server.evaluationNanos,
+    rpc - server.preparationNanos, decode, prepare, render,
+    total - rpc - decode - prepare - render])
 
 /-- One coherent post-commit diagnostic observation. -/
 structure DebugSample where
@@ -63,6 +89,13 @@ structure DebugSample where
 namespace DebugSample
 
 def initial : DebugSample := {}
+
+/-- Never pair an earlier browser observation with a later RPC at the same cursor. -/
+def forResponse (sample : DebugSample) (correlationId : String)
+    (timing? : Option ResponseTiming) : DebugSample :=
+  if sample.correlationId == correlationId && sample.browserTiming?.map (·.response) == timing? then
+    sample
+  else { sample with browserTiming? := none }
 
 end DebugSample
 
@@ -112,7 +145,7 @@ private def renderTimingScale (options : Options) (state : State (JSL Options)) 
     updateOptions state fun current => { current with timingTickMs := tick }
   return ← <label htmlFor="vir-verso-timing-scale" style={(← ComponentStyle.debugNote)}>
     Scale <select id="vir-verso-timing-scale" value={(← JsValue.ofString (toString options.timingTickMs))} onChange={handler}>
-      {...choices}
+      {Js.Array.ofArray (α := Node) (← choices.mapM id)}
     </select>
   </label>
 
@@ -122,37 +155,33 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
     return ← <p id="vir-verso-server-timings" style={(← ComponentStyle.debugNote)}>Server timing unavailable</p>
   let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
   let serverPhases := #[
-    ("snapshot-wait", "Snapshot", "#4c9be8", timing.snapshotWaitNanos),
-    ("checked-wait", "Checked", "#d99a32", timing.checkedWaitNanos),
-    ("evaluation", "Document", "#42b89a", timing.evaluationNanos)
+    ("snapshot-wait", "Snapshot wait", "#4c9be8", timing.snapshotWaitNanos),
+    ("checked-wait", "Checks wait", "#d99a32", timing.checkedWaitNanos),
+    ("evaluation", "Evaluate / locate focus", "#42b89a", timing.evaluationNanos)
   ]
-  let nanos := fun ms : Float => (max 0 ms * 1000000).toUInt64.toNat
-  let browser? := browser?.filter fun sample =>
-    sample.response.requestedMs <= sample.response.receivedMs &&
-    sample.response.receivedMs <= sample.response.decodedMs &&
-    sample.response.decodedMs <= sample.observedMs &&
-    timing.preparationNanos <= nanos (sample.response.receivedMs - sample.response.requestedMs)
-  let phases := match browser? with
+  let partition? := browser?.bind (·.partition? timing)
+  let phases := match partition? with
     | none => serverPhases
-    | some sample =>
-      let rpc := nanos (sample.response.receivedMs - sample.response.requestedMs)
-      let decode := nanos (sample.response.decodedMs - sample.response.receivedMs)
-      let prepare := nanos sample.preparationMs
-      let render := nanos sample.renderMs
-      let browser := nanos (sample.observedMs - sample.response.decodedMs)
+    | some (_, durations) =>
       serverPhases ++ #[
-        ("rpc-remainder", "Encode / transport / scheduling", "#8995a6", rpc - timing.preparationNanos),
-        ("decode", "Decode", "#a678cf", decode),
-        ("prepare", "Identity / change preparation", "#df7861", prepare),
-        ("render", "Build React elements", "#30a6b0", render),
-        ("commit", "React / effects / scheduling", "#c79351", browser - prepare - render)
+        ("rpc-remainder", "Encode / transport / scheduling", "#8995a6", durations[3]!),
+        ("decode", "Decode", "#a678cf", durations[4]!),
+        ("prepare", "Identity / change preparation", "#df7861", durations[5]!),
+        ("render", "Build React elements", "#30a6b0", durations[6]!),
+        ("commit", "React / effects / scheduling", "#c79351", durations[7]!)
       ]
-  let total := phases.foldl (fun n (_, _, _, duration) => n + duration) 0
+  let total := partition?.map (·.1) |>.getD timing.preparationNanos
   let timingTickMs := if timingTickMs != 0 then timingTickMs
     else if total <= 10000000 then 1
     else if total <= 100000000 then 10
     else if total <= 1000000000 then 100 else 1000
-  let summary := (if browser?.isSome then "Request → preview " else "Server ") ++ milliseconds total
+  let summary := (if partition?.isSome then "RPC → content effect " else "RPC server only ") ++ milliseconds total
+  let boundary := if partition?.isSome then
+      "Latest accepted request; excludes edit-to-request, startup and paint."
+    else if browser?.isSome then
+      "Browser sample inconsistent; showing server phases only."
+    else
+      "Browser timing unavailable. RPC waits are not total elaboration time; encoding and rendering are excluded."
   let segments := phases.map fun (key, label, color, nanos) => do
     let style ← js%{
       "width" := (← JsValue.ofString s!"{timingPixels timingTickMs nanos}px"),
@@ -189,16 +218,17 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
       title="Server waits include remaining elaboration and scheduling, not pure CPU time. Full-chain endpoint is the content passive effect, not paint. RPC remainder is encoding, transport and scheduling together; its displayed position is schematic. Editor work before RPC dispatch is outside this bar.">
       {Node.text (← JsValue.ofString summary)}
     </p>
+    <p id="vir-verso-timing-boundary" style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString boundary)}</p>
     <div id="vir-verso-server-scale" style={scrollStyle}><div style={trackStyle}>
       <div id="vir-verso-server-bar" role="img" aria-label={(← JsValue.ofString ariaLabel)}
         data-verso-total-nanos={(← JsValue.ofString (toString total))} data-verso-tick-ms={(← JsValue.ofString (toString timingTickMs))}
-        style={barStyle}>{...segments}</div>
+        style={barStyle}>{Js.Array.ofArray (α := Node) (← segments.mapM id)}</div>
     </div></div>
-    <div style={legendStyle}>{...legends}</div>
+    <div style={legendStyle}>{Js.Array.ofArray (α := Node) (← legends.mapM id)}</div>
   </div>
 
 def renderConfigPanel (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
-  return ← <fieldset id="vir-verso-config" style={(← ComponentStyle.configPanel)}
+  return ← <fieldset key="config" id="vir-verso-config" style={(← ComponentStyle.configPanel)}
     data-verso-follow-cursor={(← JsValue.ofString (toString options.followCursor))}
     data-verso-debug-enabled={(← JsValue.ofString (toString options.debug))}
     data-verso-highlight-changes={(← JsValue.ofString (toString options.highlightChanges))}>
@@ -216,8 +246,10 @@ def renderDebugPanel (options : Options) (state : State (JSL Options))
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"
-  return ← <aside id="vir-verso-debug-panel" data-verso-debug="true"
-    data-verso-debug-browser-timing={(← JsValue.ofString (if sample.browserTiming?.isSome then "demo-clock" else "unavailable"))}
+  return ← <aside key="debug" id="vir-verso-debug-panel" data-verso-debug="true"
+    data-verso-debug-browser-timing={(← JsValue.ofString (match sample.browserTiming? with
+      | none => "unavailable"
+      | some browser => if (timing?.bind (browser.partition?)).isSome then "demo-clock" else "invalid"))}
     style={(← ComponentStyle.debugPanel)}
     data-verso-debug-status={(← JsValue.ofString sample.status)}
     data-verso-debug-new-input={(← JsValue.ofString (toString sample.inputChanged))}

@@ -100,7 +100,8 @@ def createContentComponent (clock : RuntimeM Float := pure 0)
     let rendered ← if props.diagnostics then clock else pure 0
     -- Keep hook order stable when diagnostics are toggled. The normal path
     -- does not construct a sample or update state. This observes a committed
-    -- preview, not a duration; browser timing awaits VIR's native Performance API.
+    -- preview, not paint. The optional demo clock brackets element construction
+    -- and observes this passive effect; without a clock no duration is published.
     let effect ← EffectCallback.ofLean {
       setup := do
         if props.diagnostics then

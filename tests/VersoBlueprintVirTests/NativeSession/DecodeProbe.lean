@@ -54,7 +54,7 @@ private def identityExtensions : VersoReact.Renderer.Extensions := {
     Js.Object.set props (← js#"data-test-label") (← JsValue.ofString label)
     let nodes ← children ()
     return some (← <details @props={props}>
-      <summary>{Node.text (← JsValue.ofString label)}</summary>{...nodes.map pure}
+      <summary>{Node.text (← JsValue.ofString label)}</summary>{Js.Array.ofArray nodes}
     </details>)
 }
 

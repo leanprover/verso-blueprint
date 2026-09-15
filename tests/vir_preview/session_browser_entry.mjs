@@ -30,6 +30,10 @@ async function run() {
         reactHostBindings: createBrowserReactHostBindings,
       }),
     });
+    for (let scenario = 0; scenario < 11; scenario++) {
+      check(runtime.call(`${entry}.timingChecks`, scenario) === true,
+        `timing partition/correlation scenario ${scenario} failed`);
+    }
     const component = runtime.call(`${entry}.createComponent`);
     root = createRoot(document.getElementById("app"));
     const render = scenario => React.act(() => root.render(
@@ -73,12 +77,14 @@ async function run() {
     check(panel().dataset.versoDebugBrowserTiming === "unavailable" &&
       !panel().hasAttribute("data-verso-debug-browser-ms") && !byId("processing"),
     "pending browser timing was presented as a measurement");
-    check(byId("server-timings").textContent.includes("Server 6.0 ms") &&
+    check(byId("server-timings").textContent.includes("RPC server only 6.0 ms") &&
       panel().dataset.versoDebugNewInput === "false", "option toggle misreported server sample");
+    check(byId("timing-boundary").textContent.includes("not total elaboration time"),
+      "server-only display did not explain the measurement boundary");
     const bar = byId("server-bar");
     const segments = [...bar.querySelectorAll("[data-verso-phase]")];
     check(bar.getAttribute("role") === "img" &&
-      bar.getAttribute("aria-label").includes("Snapshot 1.0 ms"), "timing bar lacks a text alternative");
+      bar.getAttribute("aria-label").includes("Snapshot wait 1.0 ms"), "timing bar lacks a text alternative");
     check(segments.length === 3 && segments.map(s => Number(s.dataset.versoNanos)).join() ===
       "1000000,2000000,3000000", "timing phases differ from the server sample");
     check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
@@ -164,7 +170,7 @@ async function run() {
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
       debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
       fixedTimeScale: true, scrollableLongTiming: true,
-      missingAndZeroTiming: true, absentClockNotMeasured: true,
+      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 11,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);

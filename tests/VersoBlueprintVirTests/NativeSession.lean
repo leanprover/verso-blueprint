@@ -53,6 +53,36 @@ private def preview (scenario : Nat) : Preview := match scenario with
 def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) :=
   VersoBlueprint.Experimental.VirPreview.createComponent
 
+/-- Exercise timing arithmetic through the browser runtime, without a mock codec. -/
+@[vir_export]
+def timingChecks (scenario : Nat) : Bool := Id.run do
+  let server : ServerTiming := ⟨1000000, 2000000, 3000000⟩
+  let sample : Session.BrowserTiming := {
+    response := ⟨10, 20, 25⟩, preparationMs := 2, renderMs := 3, observedMs := 35
+  }
+  match scenario with
+  | 0 => return sample.partition? server == some (25000000,
+      #[1000000, 2000000, 3000000, 4000000, 5000000, 2000000, 3000000, 5000000])
+  | 1 => return ({ sample with preparationMs := 8 }.partition? server).isNone
+  | 2 => return ({ sample with renderMs := 20 }.partition? server).isNone
+  | 3 => return ({ sample with response := ⟨20, 10, 25⟩ }.partition? server).isNone
+  | 4 => return (sample.partition? ⟨11000000, 0, 0⟩).isNone
+  | 5 => return ({ sample with preparationMs := -1 }.partition? server).isNone
+  | 6 => return ({ sample with observedMs := 0 / 0 }.partition? server).isNone
+  | 7 => return ({ sample with observedMs := 1 / 0 }.partition? server).isNone
+  | 8 =>
+    let some (total, phases) := { sample with observedMs := 35.1234567 }.partition? server
+      | return false
+    return phases.foldl (· + ·) 0 == total && total == 25123456
+  | 9 =>
+    let zero : Session.BrowserTiming := ⟨⟨0, 0, 0⟩, 0, 0, 0⟩
+    return zero.partition? ⟨0, 0, 0⟩ == some (0, Array.replicate 8 0)
+  | _ =>
+    let debug : Session.DebugSample := { correlationId := "same-position", browserTiming? := some sample }
+    return (debug.forResponse "same-position" (some sample.response)).browserTiming?.isSome &&
+      (debug.forResponse "same-position" (some ⟨40, 50, 55⟩)).browserTiming?.isNone &&
+      (debug.forResponse "different-position" (some sample.response)).browserTiming?.isNone
+
 @[vir_export]
 def render (component : FunctionComponent (Props.WithData Preview)) (scenario : Nat) : ReactM (Js Node) := do
   let props ← Props.WithData.make (← LeanRef.toJSL (preview scenario))

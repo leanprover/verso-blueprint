@@ -90,7 +90,7 @@ private def malformedBlock (message : String) (extension : Genre.Manual.Block)
   let props ← attributes "unsupported-extension" (← VersoReact.Renderer.Style.unsupported)
   Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
   let childNodes ← children ()
-  return ← <div @props={props}>{pure marker}{...childNodes.map pure}</div>
+  return ← <div @props={props}>{pure marker}{Js.Array.ofArray childNodes}</div>
 
 private def renderBlock? (key : String)
     (attributes : String → Js Props → ReactM (Js Props))
@@ -114,7 +114,7 @@ private def renderBlock? (key : String)
           let bodyStyle ← Style.informalBody
           let bodyProps ← js%{ "style" := bodyStyle }
           let bodyChildren ← children ()
-          let body ← <div @props={bodyProps}>{...bodyChildren.map pure}</div>
+          let body ← <div @props={bodyProps}>{Js.Array.ofArray bodyChildren}</div>
           let props ← attributes "informal" (← Style.informalBlock)
           Js.Object.set props (← js#"data-verso-informal-kind") (← JsValue.ofString kindLabel)
           Js.Object.set props (← js#"data-verso-informal-label") (← JsValue.ofString data.label.toString)

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isValidElement } from "react";
+import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 // Actual React elements, not a shadow VDOM or a replacement host implementation.
@@ -7,7 +7,7 @@ export function checkRenderer(render) {
   function paragraphs(node, found = new Map()) {
     if (!isValidElement(node)) return found;
     if (node.type === "p") found.set(renderToStaticMarkup(node), node.key);
-    for (const child of [].concat(node.props.children ?? [])) paragraphs(child, found);
+    Children.forEach(node.props.children, child => paragraphs(child, found));
     return found;
   }
   const before = paragraphs(render(0));
@@ -33,7 +33,7 @@ export function checkRenderer(render) {
     if (!isValidElement(node)) return found;
     if (["em", "strong", "code", "a", "li", "dt", "dd"].includes(node.type))
       found.push([node.type, node.key]);
-    for (const child of [].concat(node.props.children ?? [])) descendantKeys(child, found);
+    Children.forEach(node.props.children, child => descendantKeys(child, found));
     return found;
   }
   const originalKeys = descendantKeys(render(3));

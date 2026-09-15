@@ -407,18 +407,18 @@ private partial def renderInline (extensions : Extensions)
   | .math mode value => renderMath key mode value none extensions.mathComponent?
   | .emph content => do
       let children ← renderInlines extensions content
-      return ← <em key={← JsValue.ofString key}>{...children.map pure}</em>
+      return ← <em key={← JsValue.ofString key}>{Js.Array.ofArray children}</em>
   | .bold content => do
       let children ← renderInlines extensions content
-      return ← <strong key={← JsValue.ofString key}>{...children.map pure}</strong>
+      return ← <strong key={← JsValue.ofString key}>{Js.Array.ofArray children}</strong>
   | .link content destination => do
       let children ← renderInlines extensions content
-      return ← <a key={← JsValue.ofString key} href={← JsValue.ofString destination}>{...children.map pure}</a>
+      return ← <a key={← JsValue.ofString key} href={← JsValue.ofString destination}>{Js.Array.ofArray children}</a>
   | .footnote name content => do
       let label ← Node.text (← JsValue.ofString s!"[{name}]")
       let summary ← <summary key="structural:summary">{pure label}</summary>
       let children ← renderInlines extensions content
-      return ← <details key={← JsValue.ofString key} className="vir-verso-footnote">{pure summary}{...children.map pure}</details>
+      return ← <details key={← JsValue.ofString key} className="vir-verso-footnote">{pure summary}{Js.Array.ofArray children}</details>
   | .image alt destination => do return ← <img key={← JsValue.ofString key} src={← JsValue.ofString destination} alt={← JsValue.ofString alt}/>
   | .concat content => do
       let props ← js%{ "key" := (← JsValue.ofString key) }
@@ -453,12 +453,12 @@ private def headingNode
     (changed focused : Bool) : ReactM (Lean.Vir.Js Node) := do
   let props ← blockProps identity "heading" (← Style.heading) changed focused
   match level with
-  | 1 => <h1 @props={props}>{...content.map pure}</h1>
-  | 2 => <h2 @props={props}>{...content.map pure}</h2>
-  | 3 => <h3 @props={props}>{...content.map pure}</h3>
-  | 4 => <h4 @props={props}>{...content.map pure}</h4>
-  | 5 => <h5 @props={props}>{...content.map pure}</h5>
-  | _ => <h6 @props={props}>{...content.map pure}</h6>
+  | 1 => <h1 @props={props}>{Js.Array.ofArray content}</h1>
+  | 2 => <h2 @props={props}>{Js.Array.ofArray content}</h2>
+  | 3 => <h3 @props={props}>{Js.Array.ofArray content}</h3>
+  | 4 => <h4 @props={props}>{Js.Array.ofArray content}</h4>
+  | 5 => <h5 @props={props}>{Js.Array.ofArray content}</h5>
+  | _ => <h6 @props={props}>{Js.Array.ofArray content}</h6>
 
 private partial def renderBlock (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
     (changedIds : Array String)
@@ -467,7 +467,7 @@ private partial def renderBlock (extensions : Extensions) (fingerprint : Fingerp
   | .para content => do
       let props ← blockProps identity "paragraph" (← Style.paragraph) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← renderInlines extensions content
-      return ← <p @props={props}>{...children.map pure}</p>
+      return ← <p @props={props}>{Js.Array.ofArray children}</p>
   | .code source => do
       let text ← Node.text (← JsValue.ofString source)
       let codeProps ← js%{ "data-language" := (← js#"") }
@@ -477,21 +477,21 @@ private partial def renderBlock (extensions : Extensions) (fingerprint : Fingerp
   | .ul items => do
       let props ← blockProps identity "unordered-list" (← Style.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← items.mapIdxM fun index item => renderListItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
-      return ← <ul @props={props}>{...children.map pure}</ul>
+      return ← <ul @props={props}>{Js.Array.ofArray children}</ul>
   | .ol start items => do
       let props ← blockProps identity "ordered-list" (← Style.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       Js.Object.set props (← js#"start") (← JsValue.ofString (toString (max start 0)))
       let children ← items.mapIdxM fun index item => renderListItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
-      return ← <ol @props={props}>{...children.map pure}</ol>
+      return ← <ol @props={props}>{Js.Array.ofArray children}</ol>
   | .dl items => do
       let children ← items.mapIdxM fun index item =>
         renderDescItem extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
       let props ← blockProps identity "description-list" (← Style.descriptionList) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
-      return ← <dl @props={props}>{...children.flatten.map pure}</dl>
+      return ← <dl @props={props}>{Js.Array.ofArray children.flatten}</dl>
   | .blockquote content => do
       let props ← blockProps identity "blockquote" (← Style.blockquote) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← renderBlocks extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
-      return ← <blockquote @props={props}>{...children.map pure}</blockquote>
+      return ← <blockquote @props={props}>{Js.Array.ofArray children}</blockquote>
   | .concat content => do
       -- Concatenations are React fragments, not DOM nodes. A source block may
       -- expand to several children; mark those children without adding a wrapper.
@@ -515,7 +515,7 @@ private partial def renderBlock (extensions : Extensions) (fingerprint : Fingerp
           let props ← attributes "unsupported-extension" (← Style.unsupported)
           Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
           let childNodes ← children ()
-          return ← <div @props={props}>{pure marker}{...childNodes.map pure}</div>
+          return ← <div @props={props}>{pure marker}{Js.Array.ofArray childNodes}</div>
 
 where
   renderListItem (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
@@ -527,7 +527,7 @@ where
     let .mk content := item
     let props ← listItemProps key path "list-item" (← Style.listItem) (focus == some path)
     let children ← renderBlocks extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}" path content
-    return ← <li @props={props}>{...children.map pure}</li>
+    return ← <li @props={props}>{Js.Array.ofArray children}</li>
 
   renderDescItem (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
       (changedIds : Array String)
@@ -539,10 +539,10 @@ where
     let .mk term description := item
     let termProps ← listItemProps s!"{key}:term" s!"{path}-term" "description-term" (← Style.descriptionTerm) (focus == some path)
     let termChildren ← renderInlines extensions term
-    let termNode ← <dt @props={termProps}>{...termChildren.map pure}</dt>
+    let termNode ← <dt @props={termProps}>{Js.Array.ofArray termChildren}</dt>
     let descriptionProps ← listItemProps s!"{key}:description" s!"{path}-description" "description-value" (← Style.descriptionValue) (focus == some path)
     let descriptionChildren ← renderBlocks extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}/description" s!"{path}-description" description
-    let descriptionNode ← <dd @props={descriptionProps}>{...descriptionChildren.map pure}</dd>
+    let descriptionNode ← <dd @props={descriptionProps}>{Js.Array.ofArray descriptionChildren}</dd>
     pure #[termNode, descriptionNode]
 
   renderBlocks (extensions : Extensions) (fingerprint : Fingerprint.Value → String)
@@ -582,7 +582,7 @@ private partial def renderPart (extensions : Extensions) (fingerprint : Fingerpr
   Js.Object.set props (← js#"data-verso-render-id") (← JsValue.ofString identity.friendlyId)
   Js.Object.set props (← js#"data-verso-identity-origin") (← JsValue.ofString identity.origin.label)
   Js.Object.set props (← js#"title") (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
-  return ← <section @props={props}>{pure heading}{...content.map pure}{...subParts.map pure}</section>
+  return ← <section @props={props}>{pure heading}{Js.Array.ofArray content}{Js.Array.ofArray subParts}</section>
 
 /-- Options computed by the stateful component before constructing the Verso VDOM. -/
 structure Options where
