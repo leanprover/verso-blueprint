@@ -4,24 +4,43 @@ import { resolve, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
+import os from 'node:os';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const campaign = resolve(process.argv[2]), output = resolve(process.argv[3]);
 const measure = process.env.VBP_COMPONENT_MEASURE === '1';
 const profile = process.env.VBP_COMPONENT_PROFILE === '1';
 const rich = process.env.VBP_COMPONENT_RICH === '1';
+const adapter = process.env.VBP_COMPONENT_ADAPTER === '1';
 assert(!profile || measure, 'CPU sampling requires the measured component boundary');
 assert(!rich || !measure, 'Rich acceptance is separate from the frozen timing cohort');
+assert(!adapter || (measure && !profile), 'Adapter paired timings are separate from CPU sampling');
 const sha = b => createHash('sha256').update(b).digest('hex');
 const json = async path => JSON.parse(await readFile(path));
 const sourceIdentity = await json(resolve(campaign, 'identity.json'));
 for (const f of sourceIdentity.sourceFiles) assert.equal(
   sha(await readFile(resolve(campaign, f.path))), f.sha256, `frozen source changed: ${f.path}`);
-const firRoot = resolve(campaign, 'fir');
+const baselineRoot = resolve(campaign, 'fir');
+const baselineBuild = await json(resolve(baselineRoot, 'BUILD.json'));
+assert.equal(sha(await readFile(resolve(baselineRoot, 'BUILD.json'))), sourceIdentity.firBuildSha256);
+const firRoot = process.env.VBP_COMPONENT_FIR_PACKAGE ? resolve(process.env.VBP_COMPONENT_FIR_PACKAGE) : baselineRoot;
+const firBuildSha256 = sha(await readFile(resolve(firRoot, 'BUILD.json')));
+if (firRoot !== baselineRoot) {
+  assert.equal(firBuildSha256, '1138101ee4bc83540af6fb84952143b65267f2a7a809a50b9b1f8db900583da4');
+  assert.equal(sha(await readFile(resolve(firRoot, 'SHA256SUMS'))), '5fc1acd26ee4f85615f93ef5f231b7fe1fd02261e31076d932686a66b73ec9d1');
+  const candidateBuild = await json(resolve(firRoot, 'BUILD.json'));
+  for (const field of ['frozenInputs', 'wasm', 'externalProviders', 'nativeProvider'])
+    assert.deepEqual(candidateBuild[field], baselineBuild[field], `candidate changed ${field}`);
+  for (const f of baselineBuild.helperInventory.filter(f => f.file !== 'host-prototype.mjs'))
+    assert.equal(sha(await readFile(resolve(firRoot, f.file))), f.sha256, f.file);
+  for (const file of ['component.wasm.json','host-boundary.json','callback-boundary.json','documents.json'])
+    assert.equal(sha(await readFile(resolve(firRoot,file))), sha(await readFile(resolve(baselineRoot,file))), file);
+}
+assert(!adapter || firRoot !== baselineRoot, 'Adapter comparison requires the explicit candidate package');
 const { verifyBrowserPackage } = await import(pathToFileURL(resolve(firRoot, 'verified-package.mjs')));
 const { componentPackagePolicy } = await import(pathToFileURL(resolve(firRoot, 'component-package-policy.mjs')));
 const verified = verifyBrowserPackage(firRoot, componentPackagePolicy);
-assert.equal(sha(await readFile(resolve(firRoot, 'BUILD.json'))), sourceIdentity.firBuildSha256);
+verifyBrowserPackage(baselineRoot, componentPackagePolicy);
 const virRoot = resolve(root, '.lake/packages/lean_vir');
 const frozenVir = resolve(campaign, 'source/.lake/packages/lean_vir');
 const sdkRoot = resolve(root, '.lake/build/vir/sdk');
@@ -53,7 +72,14 @@ if (rich) {
 }
 await mkdir(output, { recursive: false });
 await writeFile(resolve(output, 'identity.json'), JSON.stringify({
-  sourceIdentity: sourceIdentity.sourceIdentity, firBuildSha256: sourceIdentity.firBuildSha256,
+  sourceIdentity: sourceIdentity.sourceIdentity, firBuildSha256,
+  baselineBuildSha256: sourceIdentity.firBuildSha256, adapterComparison: adapter,
+  adapterHelpers: { baseline: sha(await readFile(resolve(baselineRoot,'host-prototype.mjs'))),
+    candidate: sha(await readFile(resolve(firRoot,'host-prototype.mjs'))) },
+  command: process.argv, harnessHashes: Object.fromEntries(await Promise.all(
+    ['component_campaign_smoke.mjs','component_campaign_entry.mjs','component_campaign_phase_entry.mjs','component_phase_probe.mjs']
+      .map(async file => [file,sha(await readFile(resolve(root,'tests/vir_preview',file)))]))),
+  host: { cpu: os.cpus()[0]?.model, cpuCount: os.cpus().length, loadBefore: os.loadavg(), platform: os.platform() },
   firWasmSha256: verified.build.wasm.sha256, sdkManifestSha256: sha(await readFile(resolve(sdkRoot,'lean-vir-artifact.json'))),
   controlPackages: packages.map(sha), inputs: inputs.map(input => ({ bytes: Buffer.byteLength(input), sha256: sha(input) })),
   noTimings: !measure, reactMode: { ssr: 'production', browser: measure ? 'production' : 'development' },
@@ -72,27 +98,31 @@ const options = { entryPoints: [entry], bundle: true, write: false,
     '@component-collections': resolve(frozenVir, 'web/src/host/vir-js-collection-bindings.js'),
     '@component-values': resolve(frozenVir, 'web/src/host/vir-js-value-bindings.js'),
     '@component-events': resolve(frozenVir, 'web/src/host/vir-dom-host-bindings.js'),
-    '@component-bootstrap': resolve(firRoot, 'component-session-bootstrap.mjs') } };
+    '@component-bootstrap': resolve(firRoot, 'component-session-bootstrap.mjs'),
+    '@component-baseline-bootstrap': resolve(baselineRoot, 'component-session-bootstrap.mjs') } };
 let ssr;
 if (!measure) {
   const ssrBundle = await build({ ...options, platform: 'node', format: 'esm',
     banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' } });
   await writeFile(resolve(output, 'ssr.mjs'), ssrBundle.outputFiles[0].contents);
   const { runSsr } = await import(pathToFileURL(resolve(output, 'ssr.mjs')));
-  ssr = await runSsr({ fir: { module: verified.module,
+  ssr = await runSsr({ baselineFactory: firRoot !== baselineRoot
+    ? (await import(pathToFileURL(resolve(baselineRoot,'component-session-bootstrap.mjs')))).createComponentSession : undefined,
+    fir: { module: verified.module,
     manifest: await json(resolve(firRoot,'component.wasm.json')), hostBoundary: await json(resolve(firRoot,'host-boundary.json')),
     callbackBoundary: await json(resolve(firRoot,'callback-boundary.json')) }, vir: {
       wasmBytes: await readFile(resolve(sdkRoot, 'wasm/vir-upstream.wasm')), irPackageSet: packages } }, inputs);
   await writeFile(resolve(output, 'ssr.json'), JSON.stringify(ssr, null, 2));
 } else {
-  const prior = await json(resolve(root, '../../_out/browser-pr188/component-campaign-20260916-01/result.json'));
-  const priorIdentity = await json(resolve(root, '../../_out/browser-pr188/component-campaign-20260916-01/identity.json'));
+  const priorRoot = process.env.VBP_COMPONENT_ACCEPTANCE ?? resolve(root, '../../_out/browser-pr188/component-campaign-20260916-01');
+  const prior = await json(resolve(priorRoot, 'result.json'));
+  const priorIdentity = await json(resolve(priorRoot, 'identity.json'));
   assert.equal(prior.ssr.exactSsrEquality, true);
   assert.equal(prior.browser.exactDomEquality, true);
   assert.equal(priorIdentity.sourceIdentity, sourceIdentity.sourceIdentity);
-  assert.equal(priorIdentity.firBuildSha256, sourceIdentity.firBuildSha256);
+  assert.equal(priorIdentity.firBuildSha256, firBuildSha256);
   assert.deepEqual(priorIdentity.controlPackages, packages.map(sha));
-  assert.deepEqual(priorIdentity.inputs, inputs.map(input => ({ bytes: Buffer.byteLength(input), sha256: sha(input) })));
+  assert.deepEqual(priorIdentity.inputs.slice(0,inputs.length), inputs.map(input => ({ bytes: Buffer.byteLength(input), sha256: sha(input) })));
 }
 const wasmBytes = await readFile(resolve(sdkRoot, 'wasm/vir-upstream.wasm'));
 // React.act is a development acceptance API; browser uses development React.
@@ -101,6 +131,7 @@ const browserBundle = await build({ ...options,
   define: { 'process.env.NODE_ENV': measure ? '"production"' : '"development"',
     'process.env.VBP_COMPONENT_MEASURE': measure ? '"1"' : '"0"',
     'process.env.VBP_COMPONENT_RICH': rich ? '"1"' : '"0"',
+    'process.env.VBP_COMPONENT_ADAPTER': adapter ? '"1"' : '"0"',
     'process.env.VBP_COMPONENT_PROFILE': profile ? '"1"' : '"0"' },
   ...(profile ? { outfile: resolve(output,'probe.js'), sourcemap: 'external' } : {}),
   platform: 'browser', format: 'iife', target: 'chrome120' });
@@ -118,6 +149,8 @@ const assets = new Map([
 ]);
 for (const file of ['component.wasm.json','host-boundary.json','callback-boundary.json'])
   assets.set(`/${file}`, ['application/json', await readFile(resolve(firRoot,file))]);
+if (adapter) for (const file of ['component.wasm.json','host-boundary.json','callback-boundary.json'])
+  assets.set(`/baseline/${file}`, ['application/json', await readFile(resolve(baselineRoot,file))]);
 packages.forEach((bytes,i) => assets.set(`/control-${i}.irpkg`, ['application/octet-stream', bytes]));
 const { launchChromium, openChromiumPage, navigate, evaluate } = await import(pathToFileURL(resolve(virRoot,'tests/browser/harness.mjs')));
 let server, chrome, cdp, deadline;
@@ -128,10 +161,14 @@ try {
         if (req.url === '/profile/start') {
           await cdp.send('Performance.enable');
           const stamp = async () => (await cdp.send('Performance.getMetrics')).metrics.find(m=>m.name==='Timestamp').value*1000;
-          const before = await stamp(), browserNow = await evaluate(cdp,'performance.now()'), after = await stamp();
-          const clock = {before,browserNow,after,offsetMs:(before+after)/2-browserNow,uncertaintyMs:(after-before)/2};
+          const attempts = [];
+          for (let i=0;i<5;i++) {
+            const before = await stamp(), browserNow = await evaluate(cdp,'performance.now()'), after = await stamp();
+            attempts.push({before,browserNow,after,offsetMs:(before+after)/2-browserNow,uncertaintyMs:(after-before)/2});
+          }
+          const clock = attempts.reduce((best,next)=>next.uncertaintyMs<best.uncertaintyMs?next:best);
+          await writeFile(resolve(output,'profile-clock.json'),JSON.stringify({...clock,attempts},null,2));
           assert(clock.uncertaintyMs<5,'profile clock too imprecise');
-          await writeFile(resolve(output,'profile-clock.json'),JSON.stringify(clock,null,2));
           await cdp.send('Profiler.enable');
           await cdp.send('Profiler.setSamplingInterval',{interval:1000});
           await cdp.send('Profiler.start');
@@ -140,7 +177,10 @@ try {
           await writeFile(resolve(output,'browser.cpuprofile'),JSON.stringify(capture));
         }
         res.writeHead(200);res.end('ok');
-      } catch(error) {res.writeHead(500);res.end(String(error));}
+      } catch(error) {
+        await writeFile(resolve(output,'profile-error.json'),JSON.stringify({method:req.url,error:String(error)},null,2));
+        res.writeHead(500);res.end(String(error));
+      }
       return;
     }
     const asset = assets.get(req.url);

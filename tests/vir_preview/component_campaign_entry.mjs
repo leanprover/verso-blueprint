@@ -13,7 +13,7 @@ import { createComponentPhaseProbe } from './component_phase_probe.mjs';
 
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const entry = 'VersoBlueprintVirTests.NativeSession.createEncodedDocumentComponent';
-export async function open(backend, assets) {
+export async function open(backend, assets, firFactory = createComponentSession) {
   check(backend === 'vir' || backend === 'fir', `Unknown component backend: ${backend}`);
   let probe;
   const measured = bindings => {
@@ -30,7 +30,7 @@ export async function open(backend, assets) {
       return { Component, probe, dispose: () => runtime.dispose() };
     } catch (error) { runtime.dispose(); throw error; }
   }
-  const session = await createComponentSession({ apiVersion: COMPONENT_SESSION_API,
+  const session = await firFactory({ apiVersion: COMPONENT_SESSION_API,
     ...assets.fir, bindings: measured({ ...createJsCollectionHostBindings(), ...createJsValueHostBindings(),
       ...createBrowserEventHostBindings(), ...createBrowserReactHostBindings() }) });
   probe?.finishFactory();
@@ -39,8 +39,9 @@ export async function open(backend, assets) {
 
 export async function runSsr(assets, inputs) {
   const html = {};
-  for (const backend of ['vir', 'fir']) {
-    const session = await open(backend, assets);
+  const backends = ['vir','fir', ...(assets.baselineFactory ? ['fir-baseline'] : [])];
+  for (const backend of backends) {
+    const session = backend === 'fir-baseline' ? await open('fir', assets, assets.baselineFactory) : await open(backend, assets);
     try {
       html[backend] = inputs.map(document => {
         const result = renderToStaticMarkup(React.createElement(session.Component, { document }));
@@ -54,7 +55,9 @@ export async function runSsr(assets, inputs) {
     } finally { session.dispose(); }
   }
   check(html.vir.every((value, i) => value === html.fir[i]), 'matched factory SSR differs');
-  return { exactSsrEquality: true, readyDocumentsPerBackend: inputs.length, malformedRecovery: true, noTimings: true };
+  if (assets.baselineFactory) check(html.vir.every((value,i) => value === html['fir-baseline'][i]), 'baseline/candidate SSR differs');
+  return { exactSsrEquality: true, readyDocumentsPerBackend: inputs.length,
+    ...(assets.baselineFactory ? { pairedFirAdapterSsr: true } : {}), malformedRecovery: true, noTimings: true };
 }
 
 export async function runBrowser() {

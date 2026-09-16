@@ -117,7 +117,7 @@ if (component) {
     const position=consumer.originalPositionFor({line:frame.lineNumber+1,column:frame.columnNumber});
     if (!position.source) continue;
     const source=position.source;
-    nodeCategories.set(node.id, source.includes('/fir/host-prototype.mjs') ? 'FIR JS adapter'
+    nodeCategories.set(node.id, source.endsWith('/host-prototype.mjs') ? 'FIR JS adapter'
       : source.includes('node_modules/react-dom/') ? 'React hooks (JS)'
       : source.includes('node_modules/react/') ? 'React elements (JS)'
       : source.endsWith('vir-react-host-bindings.js') ? 'React host provider (JS)'
