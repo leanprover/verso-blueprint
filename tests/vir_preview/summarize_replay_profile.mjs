@@ -160,7 +160,13 @@ if (live) {
   assert.ok(report.cpuSampling, "live capture must enable sampling");
 }
 const windows = component ? componentWindows : live ? [{ phase: "live-edit", start: browser.startTime, end: browser.endTime }] : report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
-  const {start, decodedAt, committedAt} = row[mode].raw;
+  if (!row[mode]) return [];
+  const {start, decodedAt, committedAt, parsedAt, convertedAt, end} = row[mode].raw;
+  if (decodedAt === undefined) return [
+    { phase: mode + ":parse", start: (start + clock.offsetMs) * 1000, end: (parsedAt + clock.offsetMs) * 1000 },
+    { phase: mode + ":convert", start: (parsedAt + clock.offsetMs) * 1000, end: (convertedAt + clock.offsetMs) * 1000 },
+    { phase: mode + ":reconstruct", start: (convertedAt + clock.offsetMs) * 1000, end: (end + clock.offsetMs) * 1000 },
+  ];
   return [
     {phase: mode + ":decode", start:(start+clock.offsetMs)*1000, end:(decodedAt+clock.offsetMs)*1000},
     {phase: mode + ":render", start:(decodedAt+clock.offsetMs)*1000, end:(committedAt+clock.offsetMs)*1000},

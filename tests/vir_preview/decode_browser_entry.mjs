@@ -5,10 +5,11 @@ import { createVirRuntime } from "lean-vir";
 import { createBrowserHostBindings } from "lean-vir/host-bindings";
 import { createBrowserReactHostBindings } from "lean-vir/react-host-bindings";
 import { describeError, withCleanup } from "@vir-test-support";
-import { measureHostCalls } from "./response_phase_probe.mjs";
-import { createJsonValueHostBindings } from "./upstream-json-value-bindings.mjs";
+import { createJsonValueHostBindings } from "@vbp-json-value-bindings";
 import { createIdentityPhaseProbe } from "./identity_phase_probe.mjs";
 import { identityBrowserCases } from "./identity_browser_cases.mjs";
+import { jsonValueContractCases } from "./json_value_contract_cases.mjs";
+import { withScopedStringIntern } from "./scoped_string_intern.mjs";
 
 const entry = "VersoBlueprintVirTests.NativeSession.DecodeProbe";
 const check = (value, message) => { if (!value) throw Error(message); };
@@ -20,6 +21,7 @@ async function run() {
   let marker;
   let observeMarker = false;
   let identityProbe;
+  let jsonBindings;
   return withCleanup(async () => {
     const source = await (await fetch("/response.json")).text();
     const expectedVersion = JSON.parse(source).ready.document.version;
@@ -29,12 +31,62 @@ async function run() {
         const defaults = createBrowserHostBindings({ reactHostBindings: createBrowserReactHostBindings });
         const bool = defaults["js.bool"];
         if (process.env.VBP_REPLAY_IDENTITY_PHASES === "1") identityProbe = createIdentityPhaseProbe(defaults);
-        return { ...defaults, ...identityProbe?.bindings, ...createJsonValueHostBindings(), "js.bool": (...args) => {
+        jsonBindings = createJsonValueHostBindings();
+        return { ...defaults, ...identityProbe?.bindings, ...jsonBindings, "js.bool": (...args) => {
           if (observeMarker) marker = performance.now();
           return bool(...args);
         } };
       },
     });
+    const codecContract = jsonValueContractCases(jsonBindings, runtime.call(`${entry}.emptyIdentityState`));
+    if (process.env.VBP_REPLAY_STRING_INTERN_CONTROLS === "1") {
+      const original = runtime.makeObjectString;
+      const stats = {};
+      const text = '{"same":"same","nested":["same","same"]}';
+      const parsed = JSON.parse(text);
+      const sentinel = {};
+      let retained;
+      try {
+        withScopedStringIntern(runtime, () => {
+          check(runtime.call(`${entry}.jsonEquivalent`, text, parsed), "interned JSON differs");
+          runtime.exports.memory.grow(0); // Buffer replacement without address change.
+          check(runtime.call(`${entry}.jsonEquivalent`, text, parsed), "interning failed after grow(0)");
+          runtime.exports.memory.grow(1);
+          check(runtime.call(`${entry}.jsonEquivalent`, text, parsed), "interning failed after growth");
+          retained = runtime.call(`${entry}.browserParsed`, {});
+          throw sentinel;
+        }, stats);
+        throw Error("string-intern failure control did not throw");
+      } catch (error) { check(error === sentinel, "failure identity changed"); }
+      check(runtime.makeObjectString === original && !Object.hasOwn(runtime, "makeObjectString"), "converter not restored");
+      check(stats.hits > 0 && stats.entries === stats.rootsReleased && stats.entries <= 256, "cache roots not balanced");
+      check(runtime.call(`${entry}.describe`, retained).startsWith("error:"), "retained result lost after cache cleanup");
+      check(runtime.call(`${entry}.jsonEquivalent`, text, parsed), "runtime did not recover after cleanup");
+      const fullDocumentStats = {};
+      const fullResult = withScopedStringIntern(runtime,
+        () => runtime.call(`${entry}.browserParsed`, JSON.parse(source)), fullDocumentStats);
+      check(fullDocumentStats.entries === fullDocumentStats.rootsReleased && fullDocumentStats.entries <= 256,
+        "full document retained cache roots");
+      check(runtime.call(`${entry}.describe`, fullResult) === `ready:${expectedVersion}`,
+        "full decoded document invalid after cache cleanup");
+      return { codecContract, stats, fullDocumentStats, growZero: true, growOne: true, retainedResult: true,
+        failureIdentity: true, recovered: true, restoredInheritedConverter: true,
+        boundary: "real Wasm correctness controls only; no performance claim" };
+    }
+    if (process.env.VBP_REPLAY_VALIDATION_ONLY === "1") {
+      const parsed = JSON.parse(source);
+      const samples = [];
+      const updates = Number(process.env.VBP_REPLAY_UPDATES ?? "16");
+      for (let sample = -2; sample < updates; sample++) {
+        const start = performance.now();
+        const result = jsonBindings["jsonValue.check"](parsed);
+        const end = performance.now();
+        check(result.kind === "ok", "captured JSON graph rejected");
+        if (sample >= 0) samples.push({ sample, validationMs: end - start });
+      }
+      return { samples, warmupUpdates: 2, codecContract, sourceChars: source.length,
+        boundary: "focused native-JS graph validation only; excludes parse, conversion, typed decode, identity and rendering" };
+    }
     if (process.env.VBP_REPLAY_FINGERPRINT_CHECK === "1") {
       check(runtime.call(`${entry}.checkFingerprint`), "structural fingerprint/collision checks failed");
       return { structuralFingerprint: true, forcedCollisions: true, boundedRetention: true };
@@ -49,45 +101,9 @@ async function run() {
     if (process.env.VBP_REPLAY_IDENTITY_TEST !== "") return identityBrowserCases(
       scenario => runtime.call(`${entry}.renderIdentityScenario`, scenario), process.env.VBP_REPLAY_IDENTITY_TEST);
     if (process.env.VBP_REPLAY_COMPRESSION_CHECK === "1") return compressionCheck(runtime, source);
-    if (process.env.VBP_REPLAY_RENDER === "1") return renderExperiment(runtime, source, identityProbe);
-    if (process.env.VBP_DECODE_BROWSER_JSON === "1") {
-      return browserJsonExperiment(runtime, source, expectedVersion,
-        active => { observeMarker = active; marker = undefined; }, () => marker);
-    }
-    const rows = [];
-    const call = (mode, input) => {
-      const raw = {};
-      const value = measureHostCalls(runtime.hostState, () => runtime.call(`${entry}.${mode}`, input), raw);
-      const targets = raw.hosts.map(h => h.target);
-      const expected = mode === "split" ? ["js.string.value", "js.bool", "js.leanRef"] : ["js.string.value", "js.leanRef"];
-      check(JSON.stringify(targets) === JSON.stringify(expected), `host sequence: ${targets}`);
-      const [string, next] = raw.hosts, last = raw.hosts.at(-1);
-      const timing = { totalMs: raw.end - raw.start, decodeMs: last.start - string.end,
-        stringMs: string.end - string.start,
-        ...(mode === "split" ? { parseMs: next.start - string.end,
-          markerMs: next.end - next.start, reconstructMs: last.start - next.end } : {}), raw };
-      return { value, timing };
-    };
-    // Adjacent pairs reverse order. Equality/description checks are outside
-    // timing; handles are local to each pair and released by runtime disposal.
-    for (let pair = -1; pair < 16; pair++) {
-      const order = pair % 2 === 0 ? ["whole", "split"] : ["split", "whole"];
-      const results = {};
-      for (const mode of order) results[mode] = call(mode, source);
-      check(runtime.call(`${entry}.equivalent`, results.whole.value, results.split.value), "decoder results differ");
-      check(runtime.call(`${entry}.describe`, results.whole.value) === `ready:${expectedVersion}`, "wrong document version");
-      if (pair >= 0) rows.push({ pair, order, whole: results.whole.timing, split: results.split.timing });
-    }
-    const invalid = [];
-    for (const source of ["{", "{}", '{"ready":{}}']) {
-      const whole = call("whole", source), split = call("split", source);
-      check(runtime.call(`${entry}.equivalent`, whole.value, split.value), "error results differ");
-      const description = runtime.call(`${entry}.describe`, whole.value);
-      check(description.startsWith("error:"), "malformed response accepted");
-      invalid.push({ source, description });
-    }
-    return { sourceChars: source.length, expectedVersion, warmupPairs: 1, rows, invalid,
-      boundary: "browser replay of the captured response; no RPC, React render, or DOM included" };
+    if (process.env.VBP_REPLAY_RENDER === "1") return { ...await renderExperiment(runtime, source, identityProbe), codecContract };
+    return { ...await browserJsonExperiment(runtime, source, expectedVersion,
+      active => { observeMarker = active; marker = undefined; }, () => marker), codecContract };
   }, [["runtime", () => runtime?.dispose()]]);
 }
 
@@ -142,7 +158,10 @@ async function renderExperiment(runtime, source, identityProbe) {
       observer.observe(container, { subtree: true, childList: true, attributes: true, characterData: true });
     });
     const start = performance.now();
-    const decoded = invoke(mode, mode === "browserParsed" ? JSON.parse(input) : input);
+    const parsed = mode === "browserParsed" ? JSON.parse(input) : input;
+    const decode = () => invoke(mode, parsed);
+    const decoded = process.env.VBP_REPLAY_STRING_INTERN === "1"
+      ? withScopedStringIntern(runtime, decode) : decode();
     const decodedAt = performance.now();
     identityProbe?.begin();
     const node = invoke("renderDecoded", component, decoded);
@@ -173,18 +192,20 @@ async function renderExperiment(runtime, source, identityProbe) {
   };
   return withCleanup(async () => {
     const rows = [];
-    await one("whole");
+    await one("browserParsed");
     checkbox = byId("follow-cursor");
     flushSync(() => checkbox.click());
     await settle();
     paragraph = [...container.querySelectorAll("article p")].find(p => !p.textContent.includes("Preview timing sample"));
     check(paragraph, "FLT paragraph missing");
-    // Two complete warmup pairs; sixteen measured pairs, alternating order.
-    for (let pair = -2; pair < 16; pair++) {
+    // The active rendering experiment uses only the preferred checked codec.
+    // Plain-parser equivalence remains an untimed correctness gate above.
+    const updates = Number(process.env.VBP_REPLAY_UPDATES ?? "16");
+    for (let pair = -2; pair < updates; pair++) {
       if (pair === 0 && process.env.VBP_REPLAY_PROFILE === "1") {
         check((await fetch("/profile/start")).ok, "profile start failed");
       }
-      const order = pair % 2 === 0 ? ["whole", "browserParsed"] : ["browserParsed", "whole"];
+      const order = ["browserParsed"];
       const results = {};
       for (const mode of order) results[mode] = await one(mode);
       if (pair >= 0) rows.push({ pair, order, ...results });
@@ -206,7 +227,7 @@ async function renderExperiment(runtime, source, identityProbe) {
     };
     const renderedDom = tree(container.querySelector("article"));
     const renderedDomSha256 = await digest(JSON.stringify(renderedDom));
-    return { rows, warmupPairs: 2, sourceChars: source.length, renderedTextSha256,
+    return { rows, warmupUpdates: 2, sourceChars: source.length, renderedTextSha256,
       renderedDomSha256, renderedDom,
       elementCount: container.querySelectorAll("*").length, warnings,
       retainedCheckbox: true, retainedParagraph: true,
@@ -233,51 +254,55 @@ async function browserJsonExperiment(runtime, source, expectedVersion, setMarker
   const rejectedSources = ['9007199254740992', '9007199254740991.4', '0.5', '{'];
   for (const text of rejectedSources) check(!invoke("validateSource", text), `unsafe source accepted: ${text}`);
 
-  const call = (mode, input) => {
-    setMarker(mode === "browserParsed");
+  const call = input => {
+    setMarker(true);
     try {
       const start = performance.now();
-      const parsed = mode === "browserParsed" ? JSON.parse(input) : input;
+      const parsed = JSON.parse(input);
       const parsedAt = performance.now();
-      const value = invoke(mode, parsed);
+      const decode = () => invoke("browserParsed", parsed);
+      const value = process.env.VBP_REPLAY_STRING_INTERN === "1"
+        ? withScopedStringIntern(runtime, decode) : decode();
       const end = performance.now();
       const convertedAt = getMarker();
-      if (mode === "browserParsed") check(Number.isFinite(convertedAt), "conversion marker missing");
+      check(Number.isFinite(convertedAt), "conversion marker missing");
       return { value, timing: { totalMs: end - start,
-        ...(mode === "browserParsed" ? { parseMs: parsedAt - start,
-          conversionMs: convertedAt - parsedAt, reconstructMs: end - convertedAt } : {}),
+        parseMs: parsedAt - start,
+        conversionMs: convertedAt - parsedAt, reconstructMs: end - convertedAt,
         raw: { start, parsedAt, convertedAt, end } } };
     } finally { setMarker(false); }
   };
   const rows = [];
-  for (let pair = -1; pair < 16; pair++) {
-    const order = pair % 2 === 0 ? ["whole", "browserParsed"] : ["browserParsed", "whole"];
-    const results = {};
-    for (const mode of order) results[mode] = call(mode, source);
-    check(invoke("equivalent", results.whole.value, results.browserParsed.value), "Preview decoder results differ");
-    check(invoke("describe", results.whole.value) === `ready:${expectedVersion}`, "wrong document version");
-    if (pair >= 0) rows.push({ pair, order, whole: results.whole.timing, browserParsed: results.browserParsed.timing });
+  const updates = Number(process.env.VBP_REPLAY_UPDATES ?? "16");
+  for (let sample = -2; sample < updates; sample++) {
+    if (sample === 0 && process.env.VBP_REPLAY_PROFILE === "1")
+      check((await fetch("/profile/start")).ok, "profile start failed");
+    const result = call(source);
+    check(invoke("describe", result.value) === `ready:${expectedVersion}`, "wrong document version");
+    if (sample >= 0) rows.push({ sample, browserParsed: result.timing });
   }
+  if (process.env.VBP_REPLAY_PROFILE === "1")
+    check((await fetch("/profile/stop")).ok, "profile stop failed");
   const invalid = [];
   for (const text of ['{}', '{"ready":{}}']) {
-    const whole = call("whole", text), candidate = call("browserParsed", text);
-    check(invoke("equivalent", whole.value, candidate.value), "typed error results differ");
+    const candidate = call(text);
+    check(invoke("equivalent", invoke("whole", text), candidate.value), "typed error results differ");
     const description = invoke("describe", candidate.value);
     check(description.startsWith("error:"), "malformed response accepted");
     invalid.push({ source: text, description });
   }
   let syntaxRejected = false;
-  try { call("browserParsed", "{"); } catch (error) { syntaxRejected = error instanceof SyntaxError; }
+  try { call("{"); } catch (error) { syntaxRejected = error instanceof SyntaxError; }
   check(syntaxRejected, "malformed JSON accepted");
   const cycle = {}; cycle.self = cycle;
   const getter = Object.defineProperty({}, "x", { enumerable: true, get() { throw Error("getter executed"); } });
   const rejectedValues = [undefined, 0.5, -0, 9007199254740992, "\ud800", [ , ], cycle, getter,
-    new Date(), invoke("whole", source)];
+    new Date(), invoke("emptyIdentityState")];
   for (const value of rejectedValues) {
     const description = invoke("describe", invoke("browserParsed", value));
     check(description.startsWith("error:$"), "invalid JS value or Lean handle accepted");
   }
-  return { sourceChars: source.length, expectedVersion, warmupPairs: 1, rows, invalid,
+  return { sourceChars: source.length, expectedVersion, warmupUpdates: 2, rows, invalid,
     validJsonCases: validJson.length, rejectedSourceCases: rejectedSources.length,
     rejectedJsCases: rejectedValues.length, fullJsonEquality: true,
     boundary: "same-runtime captured-response replay: JSON.parse + upstream checked JS-to-Lean.Json conversion + existing FromJson Preview; no RPC, React, or DOM",
