@@ -21,8 +21,7 @@ meta structure Query where
   waitForCancellation : Bool := false
   deriving RpcEncodable
 
-@[server_rpc_method]
-meta def preview (query : Query) : RequestM (RequestTask String) := RequestM.asTask do
+private meta def reply (query : Query) (encodedDocument : Bool) : RequestM String := do
   -- This fixture mode can finish only when transport cancellation reaches Lean.
   while query.waitForCancellation do
     RequestM.checkCancelled
@@ -38,7 +37,15 @@ meta def preview (query : Query) : RequestM (RequestTask String) := RequestM.asT
     document := .mk #[.text "String RPC preview"] "String RPC preview" none
       #[.para #[.text query.message]] #[]
   }
-  return (Preview.ready document).encode
+  return if encodedDocument then document.encode else (Preview.ready document).encode
+
+@[server_rpc_method]
+meta def preview (query : Query) : RequestM (RequestTask String) :=
+  RequestM.asTask (reply query false)
+
+@[server_rpc_method]
+meta def encodedDocument (query : Query) : RequestM (RequestTask String) :=
+  RequestM.asTask (reply query true)
 
 @[server_rpc_method]
 meta def wrongType (_query : Query) : RequestM (RequestTask Nat) :=

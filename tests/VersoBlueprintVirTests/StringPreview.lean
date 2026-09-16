@@ -21,6 +21,10 @@ def createComponent (method : String) : RuntimeM (FunctionComponent (Props.WithD
   createRpcComponent method
 
 @[vir_export]
+def createEncodedComponent (method : String) : RuntimeM (FunctionComponent (Props.WithData RpcInput)) := do
+  createEncodedDocumentRpcComponent method (← createEncodedDocumentComponent)
+
+@[vir_export]
 def render (component : FunctionComponent (Props.WithData RpcInput)) (input : RpcInput) : ReactM (Js Node) := do
   let props ← Props.WithData.make (← LeanRef.toJSL input)
   Node.functionComponent component props (← js#[])

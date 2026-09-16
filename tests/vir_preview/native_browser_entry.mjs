@@ -10,6 +10,7 @@ import { createBrowserReactHostBindings } from "lean-vir/react-host-bindings";
 import { describeError, until, withCleanup } from "@vir-test-support";
 
 const stringPreview = VBP_STRING_PREVIEW;
+const encodedDocument = VBP_ENCODED_DOCUMENT;
 const entry = `VersoBlueprintVirTests.${stringPreview ? "StringPreview" : "NativePreview"}`;
 const check = (value, message) => { if (!value) throw new Error(message); };
 async function post(path, body) {
@@ -115,8 +116,10 @@ async function run() {
         infoviewUseClientNotificationEffect: useClientNotificationEffect,
       }),
     });
-    const method = stringPreview ? "StringPreviewServer.preview" : "RpcBrowserServer.create";
-    let view = runtime.call(`${entry}.createComponent`, method);
+    const factory = `${entry}.${encodedDocument ? "createEncodedComponent" : "createComponent"}`;
+    const method = encodedDocument ? "StringPreviewServer.encodedDocument"
+      : stringPreview ? "StringPreviewServer.preview" : "RpcBrowserServer.create";
+    let view = runtime.call(factory, method);
     root = createRoot(document.getElementById("app"));
     // Keep native parameter identity stable for unchanged requests.
     const parameters = new Map();
@@ -130,9 +133,13 @@ async function run() {
         React.createElement(EditorContext.Provider, { value: editor },
           runtime.call(`${entry}.render`, view, input)))));
     };
-    const status = () => stringPreview
-      ? document.getElementById("vir-verso-preview")?.dataset.versoPreviewStatus
-      : document.querySelector("[data-preview-status]")?.dataset.previewStatus;
+    const status = () => {
+      if (encodedDocument && document.querySelector("[data-verso-rpc-status]")
+        ?.dataset.versoRpcStatus === "error") return "error";
+      return stringPreview
+        ? document.getElementById("vir-verso-preview")?.dataset.versoPreviewStatus
+        : document.querySelector("[data-preview-status]")?.dataset.previewStatus;
+    };
     const text = () => stringPreview
       ? document.getElementById("vir-verso-preview")?.dataset.versoCorrelationId
       : document.getElementById("native-preview-message")?.textContent;
@@ -158,6 +165,13 @@ async function run() {
         .filter(r => r.message === message).every(r => r.settled));
     });
 
+    if (encodedDocument) {
+      render(a, "initial rejection", true);
+      await settled("initial rejection");
+      check(status() === "error" && !checkbox(), "initial failure fabricated a document session");
+      unmount();
+      root = createRoot(document.getElementById("app"));
+    }
     render(a, "first preview");
     await ready("first preview");
     if (stringPreview) check(document.getElementById("vir-verso-preview")
@@ -245,15 +259,28 @@ async function run() {
 
     render(b, "server rejection", true);
     await settled("server rejection");
-    check(status() === "error", "missing visible RPC error");
+    check(status() === "error", `missing visible RPC error: ${status()}`);
     check((stringPreview || text() === "second preview") && checkbox().checked,
       "error lost expected response or checkbox state");
+    check(checkbox() === retainedCheckbox, "RPC error remounted the document controls");
+    if (encodedDocument) {
+      check(text() === "second preview", "RPC error replaced the last accepted document");
+      check(document.querySelector("[data-verso-rpc-status]").textContent.includes("Preview RPC failed"),
+        "retained document hides the RPC error");
+      render(b, "RPC recovery");
+      await ready("RPC recovery");
+      check(checkbox() === retainedCheckbox && checkbox().checked &&
+        document.getElementById("vir-verso-debug").checked,
+        "RPC recovery reset document controls");
+    }
     if (stringPreview) {
       for (const malformed of ["malformed JSON", "wrong schema"]) {
         render(b, malformed);
         await settled(malformed);
-        check(status() === "error" && document.getElementById("vir-verso-preview")
-          .textContent.includes("Invalid preview response"), "missing visible decode error");
+        const alert = document.querySelector('[role="alert"]');
+        check(status() === "error" && alert?.textContent.trim() &&
+          (encodedDocument || alert.textContent.includes("Invalid preview response")),
+          "missing visible decode error");
         check(checkbox() === retainedCheckbox && checkbox().checked,
           "decode error remounted controls");
         check(document.getElementById("vir-verso-debug").checked, "decode error reset debug option");
@@ -296,7 +323,7 @@ async function run() {
     await ready("new session lifetime");
     check(!checkbox().checked, "intentional remount did not reset local state");
     if (stringPreview) {
-      view = runtime.call(`${entry}.createComponent`, "StringPreviewServer.wrongType");
+      view = runtime.call(factory, "StringPreviewServer.wrongType");
       render(b, "non-string response");
       await settled("non-string response");
       check(status() === "error", "missing checked string conversion error");
@@ -322,12 +349,15 @@ async function run() {
       lateUnmountSuppressed: true, intentionalRemountResets: true,
       postDisposalRejected: true,
       noReactWarnings: true,
+      ...(encodedDocument ? { encodedDocumentRpc: true, initialErrorWithoutDocument: true,
+        rpcErrorRetainsDocument: true,
+        rpcRecoveryRetainsControls: true } : {}),
       transportCancellation: stringPreview ? "Lean cancellation token observed (-32800)"
         : "not exercised: scalar baseline uses call",
       editorDidChange: stringPreview ? "two real LSP edits; server version rendered at unchanged cursor"
         : "not exercised: explicit input updates only",
       ...(stringPreview ? {
-        fullPreviewStringRpc: true, invalidJson: true, invalidSchema: true,
+        fullPreviewStringRpc: !encodedDocument, invalidJson: true, invalidSchema: true,
         nonStringRejected: true, staleMalformedSuppressed: true, explicitRevisionRefresh: true,
         pendingRefreshRetainsPreview: true,
         unrelatedNotificationsIgnored: true, staleEditSuppressed: true,

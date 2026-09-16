@@ -10,7 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 assert.ok(process.env.VBP_NATIVE_PREVIEW_REPORT, "Set VBP_NATIVE_PREVIEW_REPORT to a report file");
 const output = resolve(process.env.VBP_NATIVE_PREVIEW_REPORT);
-const stringPreview = process.argv.includes("--string-preview");
+const encodedDocument = process.argv.includes("--encoded-document");
+const stringPreview = process.argv.includes("--string-preview") || encodedDocument;
 const embeddedPreview = process.argv.includes("--embedded-preview");
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
 const dependency = manifest.packages.find(p => p.name === "lean_vir");
@@ -74,6 +75,7 @@ const bundle = await build({
   define: {
     "process.env.NODE_ENV": '"development"',
     VBP_STRING_PREVIEW: JSON.stringify(stringPreview),
+    VBP_ENCODED_DOCUMENT: JSON.stringify(encodedDocument),
     VBP_EMBEDDED_PREVIEW: JSON.stringify(embeddedPreview),
     VBP_EMBEDDED_SHELL_SHA256: JSON.stringify(shellHash),
     VBP_WASM_SHA256: JSON.stringify(sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256),
@@ -108,7 +110,9 @@ const report = {
   virCommit: dependency.rev, toolchain: sdk.leanToolchain,
   wasmSha256: sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256,
   packageMembers,
-  scope: embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT" : stringPreview
+  encodedDocument,
+  scope: embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT"
+    : encodedDocument ? "shared document-String RPC adapter and native document session; real server and Chromium, not FIR or FLT" : stringPreview
     ? "full VBP preview decoded from VBP-owned String RPC fixture; server cwd is VBP, not FLT"
     : "native Lean component with real VIR fixture RPC; not the FLT renderer",
   acceptance,

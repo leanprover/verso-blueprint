@@ -168,7 +168,11 @@ There is no shell Preview decoding, document reconstruction, or re-encoding.
 The standard VIR widget retains its existing Preview endpoint and decoder.
 The component uses the same frozen Lean session, controls, identity preparation
 and renderer as the matched VIR control. Controls and open details retain state
-through edits. Its document-only boundary supplies no RPC/browser timings;
+through edits. RPC failures now leave the last accepted document mounted and
+show a separate request-error message; recovery retains controls and DOM identity.
+Failure clears response timing so the retained document is not presented as a
+newly measured response. Initial failures have no document to retain.
+Its document-only boundary supplies no RPC/browser timings;
 math remains source display (`none`), not the live VIR/KaTeX variant.
 One FIR session and one native component type belong to each upstream
 shell runtime; creation failure, obsolete setup and normal disposal release it.
@@ -256,6 +260,19 @@ at `_out/browser-pr188/fir-direct-string-vir-regression.json`: cancellation,
 stale/malformed responses, editor subscriptions, retained controls and DOM, and
 unmount/disposal. That runner now starts Lean in VBP for VBP fixtures instead of
 incorrectly using VIR's package root. Focused batch build and Beam checks pass.
+
+The document-String adapter's error lifetime is covered by the same runner's
+`--encoded-document` mode. Evidence:
+`_out/browser-pr188/encoded-rpc-retention-20260916-06.json` (initial rejection,
+retained document and controls across RPC failure/recovery, malformed input,
+cancellation, stale replies and disposal) and
+`_out/browser-pr188/string-rpc-retention-20260916-03.json` (standard VIR adapter).
+Both use real Lean RPC and Chromium under Strict Mode, not FIR execution or
+performance measurements. The compiled FIR package is unchanged.
+The live full-FLT FIR update gate also passes at
+`_out/browser-pr188/fir-rpc-refactor-20260916-02/result.json`: one client package,
+retained controls/DOM, one RPC per edit, and no React warnings. This covers normal
+updates with the existing FIR package, not injected RPC failures or new timings.
 
 Historical initial live ProofWidgets acceptance passes at
 `_out/browser-pr188/fir-live-widget-v2/result.json`: two edits, one RPC per edit,

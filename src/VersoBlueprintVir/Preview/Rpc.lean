@@ -30,10 +30,11 @@ def decodeStringReply (reply : Js.Any) : RuntimeM (Except String Preview) := do
   let source ← JsValue.toString (← Js.String.fromAny reply)
   pure (Preview.decode source)
 
-/-- State of one request stream. `none` means the initial request is pending;
-later requests retain the previous accepted reply until replacement. -/
+/-- State of one request stream. Refreshes and failures retain the last accepted
+value; an error is a separate request outcome, not a replacement document. -/
 structure RpcState (α : Type) where
-  reply? : Option (Except String α) := none
+  value? : Option α := none
+  error? : Option String := none
   timing? : Option Session.ResponseTiming := none
 
 private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → RuntimeM (Except String α))
@@ -80,17 +81,24 @@ private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → Ru
           let reply ← decodeReply reply
           let decoded ← clock?.getD (pure 0)
           React.Ref.set acceptedEdit (← JsValue.ofNat editCount)
-          State.set state (← LeanRef.toJSL ({
-            reply? := some reply
-            timing? := clock?.map fun _ => {
-              requestedMs := requested, receivedMs := received, decodedMs := decoded
-              notifiedMs? := notified?
-            }
-          } : RpcState α))
+          State.modify state fun previous => do
+            let previous : RpcState α ← LeanRef.fromJSL previous
+            LeanRef.toJSL (match reply with
+              | .ok value => {
+                  value? := some value
+                  timing? := clock?.map fun _ => {
+                    requestedMs := requested, receivedMs := received, decodedMs := decoded
+                    notifiedMs? := notified?
+                  }
+                }
+              | .error message => { previous with error? := some message, timing? := none })
       let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do
         if ← active.get then
-          State.set state (← LeanRef.toJSL
-            ({ reply? := some (.error "Preview RPC failed or returned an invalid response") } : RpcState α))
+          State.modify state fun previous => do
+            let previous : RpcState α ← LeanRef.fromJSL previous
+            LeanRef.toJSL { previous with
+              error? := some "Preview RPC failed or returned an invalid response"
+              timing? := none }
       let handled ← Js.Promise.thenVoid request success
       let finished ← Js.Function.ofLeanVoid fun (_ : Js.Undefined) => pure ()
       let _ ← Js.Promise.thenVoidWithRejection handled finished failure
@@ -134,8 +142,8 @@ def createEncodedDocumentRpcComponent (method : String)
   let DocumentComponent := documentComponent
   let view ← FunctionComponent.ofLean fun (props : Js (Props.WithData (RpcState (Js String)))) => do
     let state : RpcState (Js String) ← LeanRef.fromJSL (← Props.WithData.data props)
-    match state.reply? with
-    | some (.ok encoded) => do
+    let document : Js Node ← match state.value? with
+    | some encoded => do
       let number := fun (value : Option Float) => (do
         match value with
         | none => Js.UndefinedOr.undefined
@@ -144,10 +152,20 @@ def createEncodedDocumentRpcComponent (method : String)
       let requested ← number (state.timing?.map (·.requestedMs))
       let received ← number (state.timing?.map (·.receivedMs))
       let notified ← number (state.timing?.bind (·.notifiedMs?))
-      return ← <DocumentComponent document={encoded} requestedMs={requested}
+      let node ← <DocumentComponent document={encoded} requestedMs={requested}
         receivedMs={received} notifiedMs={notified} />
-    | none => renderStatus "loading" "Loading document"
-    | some (.error message) => renderStatus "error" message
+      pure node
+    | none => do Node.text (← js#"")
+    let status : Js Node ← match state.error? with
+      | some message => renderStatus "error" message
+      | none => do
+        if state.value?.isNone then renderStatus "loading" "Loading document"
+        else Node.text (← js#"")
+    let outcome := if state.error?.isSome then "error"
+      else if state.value?.isNone then "loading" else "ready"
+    -- Keep the document at the same child position through errors/recovery.
+    -- This is request status only; the selected component owns the document shell.
+    return ← <div data-verso-rpc-status={← JsValue.ofString outcome}>{status}{document}</div>
   createRpcComponentFor method (fun reply => Except.ok <$> Js.String.fromAny reply) view clock?
 
 /-- Create once per runtime. The server method returns `Preview.encode preview`
@@ -161,10 +179,9 @@ def createRpcComponent (method : String)
   let content ← createTimedComponent (clock?.getD (pure 0)) mathComponent?
   let view ← FunctionComponent.ofLean fun (props : Js (Props.WithData (RpcState Preview))) => do
     let state : RpcState Preview ← LeanRef.fromJSL (← Props.WithData.data props)
-    let preview := match state.reply? with
-      | none => .loading "Loading document"
-      | some (.ok preview) => preview
-      | some (.error message) => .error s!"Invalid preview response: {message}"
+    let preview := match state.error? with
+      | some message => .error s!"Invalid preview response: {message}"
+      | none => state.value?.getD (.loading "Loading document")
     let props ← Props.WithData.make (← LeanRef.toJSL ({ preview, timing? := state.timing? } : Session.Input))
     Node.functionComponent content props (← js#[])
   createRpcComponentFor method decodeReply view clock?
