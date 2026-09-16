@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { prepareFirDemo } from "./fir_demo_bundle.mjs";
+import { configureDemoShell } from "./demo_shell.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const vir = resolve(root, ".lake/packages/lean_vir");
@@ -64,42 +65,9 @@ const result = await build({
     });
     builder.onLoad({ filter: /vir-infoview-widget\.js$/ }, async ({ path }) => {
       assert.equal(path, shell);
-      let contents = await read(path);
-      const seam = "  runtimeOptions.defaultHostBindings = () =>";
-      assert.equal(contents.split(seam).length, 2, "upstream shell drift");
-      if (!firDemo) {
-      const styleSeam = "    loaded?.configurationKey === configurationKey";
-      assert.equal(contents.split(styleSeam).length, 2, "upstream shell root drift");
-      contents = contents.replace(styleSeam,
-        `    e("style", { "data-verso-math-styles": true }, ${JSON.stringify(mathCss)}),\n${styleSeam}`);
-      contents = `import { createJsonValueHostBindings } from ${JSON.stringify(bridge)};\n` +
-        `import { createMathComponent } from ${JSON.stringify(math)};\n` +
-        `import katex from ${JSON.stringify(resolve(katex, "katex.mjs"))};\n` +
-        `const PreviewMath = createMathComponent(katex);\n` +
-        contents.replace(seam, `  runtimeOptions.hostBindings = {
-    ...createJsonValueHostBindings(),
-    "previewDemo.now": () => performance.now(),
-    "previewDemo.mathComponent": () => PreviewMath,
-    "previewDemo.parse": source => {
-      if (typeof source !== "string") throw new TypeError("Preview reply must be a String");
-      return JSON.parse(source);
-    },
-  };\n${seam}`);
-      }
-      if (firDemo) {
-        contents = 'import { openFirDemo } from "@fir-demo";\n' + contents;
-        contents = contents.replace(seam, `  const fir = await openFirDemo();
-  runtimeOptions.hostBindings = {};
-  runtimeOptions.hostBindings["previewDemo.componentFir"] = () => fir.Component;
-${seam}`);
-        const runtimeSite = "    runtime: await createBundledVirRuntime(runtimeOptions),";
-        assert.equal(contents.split(runtimeSite).length, 2);
-        contents = contents.replace(runtimeSite, `    fir,
-    runtime: await createBundledVirRuntime(runtimeOptions).catch(error => { fir.dispose(); throw error; }),`);
-        const disposeSite = "    service.runtime.dispose?.();";
-        assert.equal(contents.split(disposeSite).length, 2);
-        contents = contents.replace(disposeSite, "    try { service.runtime.dispose?.(); } finally { service.fir?.dispose(); }");
-      }
+      const contents = configureDemoShell(await read(path), Boolean(firDemo), {
+        bridge, math, katex: resolve(katex, "katex.mjs"), mathCss,
+      });
       return { contents, loader: "js", resolveDir: dirname(path) };
     });
     builder.onLoad({ filter: /runtime\/object-values\.js$/ }, async ({ path }) => {
@@ -142,6 +110,7 @@ await writeFile(output + ".identity.json", JSON.stringify({
   sdkManifestSha256: sha(await readFile(resolve(sdkRoot, "lean-vir-artifact.json"))),
   shellSourceSha256: sha(await readFile(shell)), bridgeSha256: firDemo ? null : sha(await readFile(bridge)),
   scriptSha256: sha(await readFile(fileURLToPath(import.meta.url))),
+  shellEditsSha256: sha(await readFile(new URL("./demo_shell.mjs", import.meta.url))),
   bundleSha256: sha(bundle), brandQuery: firDemo ? null : brandQuery, sourceHashes,
   firDemo: firDemo?.identity ?? null,
   hostOverride: hostOverride === null ? null : {

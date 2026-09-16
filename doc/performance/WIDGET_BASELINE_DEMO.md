@@ -178,6 +178,12 @@ One FIR session and one native component type belong to each upstream
 shell runtime; creation failure, obsolete setup and normal disposal release it.
 The Wasm and adapter are bundled locally with no extra CDN or WASI setup.
 
+The demo bundler keeps its temporary upstream-shell edits in `demo_shell.mjs`;
+`node --test tests/vir_preview/demo_shell.test.mjs` checks binding separation,
+startup-failure cleanup, disposal ordering and fail-closed source matching.
+The extraction produces byte-identical FIR/VIR bundles and adds no runtime
+layer. Bundle identities record the shell-edit helper hash as well as the builder.
+
 Build the separate FIR shell (the VIR shell is not overwritten):
 
 ```sh
