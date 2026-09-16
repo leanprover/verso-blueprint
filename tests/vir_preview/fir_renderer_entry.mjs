@@ -2,19 +2,21 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createRendererHostPrototype } from "@fir-host-prototype";
+import * as prototype from "@fir-host-prototype";
 import { createBrowserReactHostBindings } from "@vir-react-bindings";
 import { createJsCollectionHostBindings } from "@vir-collection-bindings";
 import { createJsValueHostBindings } from "@vir-value-bindings";
 
 const check = (value, message) => { if (!value) throw new Error(message); };
 const title = 'FIR λ😀 <script>alert("escaped")</script> & title';
-const open = (module, manifest, overrides = {}) => createRendererHostPrototype({ module, manifest,
+export const open = (module, manifest, overrides = {}) =>
+  (WebAssembly.Module.imports(module).length === 13
+    ? prototype.createCurrentRendererHostPrototype : prototype.createRendererHostPrototype)({ module, manifest,
   bindings: { ...createJsCollectionHostBindings(), ...createJsValueHostBindings(),
     ...createBrowserReactHostBindings(), ...overrides },
 });
 
-async function checkErrorRecovery(module, manifest) {
+export async function checkErrorRecovery(module, manifest) {
   const react = createBrowserReactHostBindings();
   const marker = { reason: "provider failure after retaining callback" };
   let escaped;

@@ -30,11 +30,17 @@ def decodeStringReply (reply : Js.Any) : RuntimeM (Except String Preview) := do
   let source ← JsValue.toString (← Js.String.fromAny reply)
   pure (Preview.decode source)
 
-private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Except String Preview))
-    (clock? : Option (RuntimeM Float)) (view : FunctionComponent (Props.WithData Session.Input))
+/-- State of one request stream. `none` means the initial request is pending;
+later requests retain the previous accepted reply until replacement. -/
+structure RpcState (α : Type) where
+  reply? : Option (Except String α) := none
+  timing? : Option Session.ResponseTiming := none
+
+private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → RuntimeM (Except String α))
+    (clock? : Option (RuntimeM Float)) (view : FunctionComponent (Props.WithData (RpcState α)))
     (input : RpcInput) : ReactM (Js Node) := do
   let state ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL ({ preview := .loading "Loading document" } : Session.Input)))
+    (← Hooks.useState (← LeanRef.toJSL ({} : RpcState α)))
   let edits ← StateTuple.toState
     (← Hooks.useState (← LeanRef.toJSL ((0, none) : Nat × Option Float)))
   -- Effect/callback bookkeeping only: never read or mutate this ref in render.
@@ -71,22 +77,20 @@ private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Exce
         -- Ignore obsolete replies before string conversion or document decoding.
         if ← active.get then
           let received ← clock?.getD (pure 0)
-          let preview := match ← decodeReply reply with
-            | .ok preview => preview
-            | .error message => .error s!"Invalid preview response: {message}"
+          let reply ← decodeReply reply
           let decoded ← clock?.getD (pure 0)
           React.Ref.set acceptedEdit (← JsValue.ofNat editCount)
           State.set state (← LeanRef.toJSL ({
-            preview
+            reply? := some reply
             timing? := clock?.map fun _ => {
               requestedMs := requested, receivedMs := received, decodedMs := decoded
               notifiedMs? := notified?
             }
-          } : Session.Input))
+          } : RpcState α))
       let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do
         if ← active.get then
           State.set state (← LeanRef.toJSL
-            ({ preview := .error "Preview RPC failed or returned a non-string response" } : Session.Input))
+            ({ reply? := some (.error "Preview RPC failed or returned an invalid response") } : RpcState α))
       let handled ← Js.Promise.thenVoid request success
       let finished ← Js.Function.ofLeanVoid fun (_ : Js.Undefined) => pure ()
       let _ ← Js.Promise.thenVoidWithRejection handled finished failure
@@ -111,6 +115,16 @@ private def renderRpc (method : String) (decodeReply : Js.Any → RuntimeM (Exce
   let childDeps ← Hooks.DependencyList.ofArray #[Js.erase view, Js.erase state.value]
   Hooks.useMemo child childDeps
 
+/-- Reuse the editor subscription, cancellation and stale-reply protection with
+an explicitly chosen decoder and a caller-owned React view. -/
+def createRpcComponentFor {α : Type} (method : String)
+    (decodeReply : Js.Any → RuntimeM (Except String α))
+    (view : FunctionComponent (Props.WithData (RpcState α)))
+    (clock? : Option (RuntimeM Float) := none) :
+    RuntimeM (FunctionComponent (Props.WithData RpcInput)) :=
+  FunctionComponent.ofLean fun props => do
+    renderRpc method decodeReply clock? view (← LeanRef.fromJSL (← Props.WithData.data props))
+
 /-- Create once per runtime. The server method returns `Preview.encode preview`
 as its String result. Decode once per accepted response, never during rendering.
 Cleanup aborts obsolete requests and independently suppresses stale publication. -/
@@ -119,8 +133,15 @@ def createRpcComponent (method : String)
     (clock? : Option (RuntimeM Float) := none)
     (mathComponent? : Option (FunctionComponent Props) := none) :
     RuntimeM (FunctionComponent (Props.WithData RpcInput)) := do
-  let view ← createTimedComponent (clock?.getD (pure 0)) mathComponent?
-  FunctionComponent.ofLean fun props => do
-    renderRpc method decodeReply clock? view (← LeanRef.fromJSL (← Props.WithData.data props))
+  let content ← createTimedComponent (clock?.getD (pure 0)) mathComponent?
+  let view ← FunctionComponent.ofLean fun (props : Js (Props.WithData (RpcState Preview))) => do
+    let state : RpcState Preview ← LeanRef.fromJSL (← Props.WithData.data props)
+    let preview := match state.reply? with
+      | none => .loading "Loading document"
+      | some (.ok preview) => preview
+      | some (.error message) => .error s!"Invalid preview response: {message}"
+    let props ← Props.WithData.make (← LeanRef.toJSL ({ preview, timing? := state.timing? } : Session.Input))
+    Node.functionComponent content props (← js#[])
+  createRpcComponentFor method decodeReply view clock?
 
 end VersoBlueprint.Experimental.VirPreview

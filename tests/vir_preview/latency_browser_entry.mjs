@@ -29,7 +29,7 @@ function committed(version) {
       if (failure || view?.dataset.versoPreviewStatus === "error") {
         observer.disconnect(); clearTimeout(timer);
         reject(Error((failure ?? view).textContent));
-      } else if (Number(view?.dataset.versoVersion) === version) {
+      } else if (Number((FIR_RENDERER ? view?.querySelector("article") : view)?.dataset.versoVersion) === version) {
         const time = performance.now();
         observer.disconnect(); clearTimeout(timer); resolve(time);
       }
@@ -94,9 +94,33 @@ globalThis.rpcAcceptance = (async () => {
         reactCommits.push({ phase, actualDuration, baseDuration, startTime, commitTime });
       } }, tree) : tree);
     const mountEnd = await initial;
+    const retainedShell = document.getElementById("vir-verso-shell");
+    const contentContainer = document.getElementById("vir-verso-content");
+    check(panel()?.getAttribute("role") === "region" && retainedShell?.parentElement === panel() &&
+      contentContainer?.parentElement === panel() && getComputedStyle(retainedShell).position === "sticky",
+      "preview must use the shared sticky shell outside the document");
     const initialResponse = CAPTURE_RESPONSE ? calls.filter(c => c.method === previewMethod).at(-1).value : null;
     const retained = document.getElementById("vir-verso-highlight-changes");
+    if (FIR_RENDERER) {
+      check(panel()?.closest('[data-verso-backend="fir"]'), "FIR backend not selected");
+      if (FIR_MODE === "correctness") {
+      check(globalThis.__vbpFirRenders === 1, "FIR must render once on mount");
+      check(globalThis.__vbpFirFactories === 1, "FIR native component must be created once");
+      check(globalThis.__vbpFirInput === calls.findLast(c => c.method === previewMethod).value,
+        "FIR must receive the unchanged RPC String");
+      }
+    }
     check(retained && !retained.checked && !document.getElementById("vir-verso-debug").checked, "diagnostics must be off");
+    const follow = document.getElementById("vir-verso-follow-cursor");
+    if (FIR_RENDERER && FIR_MODE === "correctness") {
+      retained.click();
+      follow.click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      check(retained.checked && !follow.checked, "FIR native controls did not respond");
+    }
+    const firArticle = FIR_RENDERER ? document.getElementById("vir-verso-document") : null;
+    const firDetails = FIR_RENDERER ? firArticle?.querySelector("details") : null;
+    if (firDetails) firDetails.querySelector("summary").click();
     if (DEBUG_TIMING) {
       document.getElementById("vir-verso-debug").click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -124,7 +148,22 @@ globalThis.rpcAcceptance = (async () => {
       if (SAMPLING && trial === SAMPLES) await post("/sampling/browser-stop", {});
       // Verification and diagnostic parsing are deliberately after the timed endpoint.
       check(panel().textContent.includes(`Preview timing sample ${String(version).padStart(2, "0")}`), "stale document");
-      check(document.getElementById("vir-verso-highlight-changes") === retained && !retained.checked, "control reset");
+      if (FIR_RENDERER) {
+        if (FIR_MODE === "correctness") {
+        check(globalThis.__vbpFirRenders === trial + 2, "FIR must render once per accepted edit");
+        check(globalThis.__vbpFirInput === calls.findLast(c => c.method === previewMethod).value,
+          "FIR edit must receive the unchanged RPC String");
+        }
+        check(document.getElementById("vir-verso-document") === firArticle, "FIR edit replaced document root");
+        check(document.getElementById("vir-verso-shell") === retainedShell, "FIR edit replaced the shared shell");
+        check(globalThis.__vbpFirFactories === 1 || FIR_MODE !== "correctness", "FIR edit recreated component type");
+        check(document.getElementById("vir-verso-highlight-changes") === retained &&
+          retained.checked === (FIR_MODE === "correctness") &&
+          document.getElementById("vir-verso-follow-cursor") === follow &&
+          follow.checked === (FIR_MODE !== "correctness"),
+          "FIR edit reset native controls");
+        if (firDetails) check(firDetails.isConnected && firDetails.open, "FIR edit reset open details");
+      } else check(document.getElementById("vir-verso-highlight-changes") === retained && !retained.checked, "control reset");
       const requests = calls.slice(before).filter(c => c.method === previewMethod);
       check(requests.length === 1, `expected one preview RPC, got ${requests.length}`);
       const request = requests[0];
@@ -169,22 +208,40 @@ globalThis.rpcAcceptance = (async () => {
           notificationOffsetMs: startMs - forwarded, effectMinusDomMs: effectMs - visible };
       }
       if (SAMPLING && trial === SAMPLES) await post("/sampling/server-stop", {});
-      rows.push({ trial, warmup: trial === 0, version, totalMs: visible - started,
+      rows.push(FIR_RENDERER && FIR_MODE === "correctness" ? { trial, version, previewRequests: requests.length,
+        retainedDocument: true, retainedDetails: !!firDetails } : { trial, warmup: trial === 0, version, totalMs: visible - started,
         editBridgeMs: forwarded - started, notifyToRpcMs: request.start - forwarded,
         rpcMs: request.reply - request.start, replyToDomMs: visible - request.reply,
         snapshotMs, checkedMs, evaluationMs,
         rpcRemainderMs: request.reply - request.start - snapshotMs - checkedMs - evaluationMs,
         diagnosticsMs: diagnostics.ms, payloadChars: JSON_BRIDGE_CANDIDATE ? JSON.stringify(request.value).length : request.value.length,
         ...(DEBUG_TIMING ? { widgetTiming } : {}),
+        ...(FIR_RENDERER ? { previewRequests: requests.length, retainedDocument: true,
+          } : {}),
         ...(hostCensus ? { callbackCensus } : {}),
         ...(RESPONSE_PHASES ? { probeEnabled, responsePhases } : {}),
         ...(PROFILE ? { reactCommits: reactCommits.filter(c => c.startTime >= started && c.commitTime <= visible) } : {}) });
+    }
+    let focusAvailable;
+    if (FIR_RENDERER && FIR_MODE === "correctness") {
+      const focus = JSON.parse(globalThis.__vbpFirInput).focus ?? "";
+      follow.click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      check(follow.checked && panel().dataset.versoFocusBlock === focus, "FIR follow control ignored server focus");
+      focusAvailable = focus !== "";
+      follow.click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      check(!follow.checked && panel().dataset.versoFocusBlock === "", "FIR follow-off did not clear focus");
     }
     check(calls.filter(c => c.method === "Lean.Vir.Infoview.buildIRPackage").length === 1, "client package rebuilt on edits");
     root.unmount();
     await new Promise(resolve => setTimeout(resolve, 20));
     check(warnings.length === 0, warnings.join("\n"));
-    return { ok: true, value: { initialMountMs: mountEnd - mountStart, initialCalls, rows,
+    return { ok: true, value: { ...(FIR_RENDERER && FIR_MODE === "correctness" ? { backend: "fir", noTimingReport: true,
+      directRpcString: true, shellPreviewDecoderUnused: true,
+      acceptedDocumentUpdates: globalThis.__vbpFirRenders, componentFactories: globalThis.__vbpFirFactories,
+      retainedNativeControls: true, followControlUsesServerFocus: true, focusAvailable }
+      : { initialMountMs: mountEnd - mountStart, initialCalls }), rows,
       clientPackage: calls.find(c => c.method === "Lean.Vir.Infoview.buildIRPackage").value,
       ...(CAPTURE_RESPONSE ? { capturedInitialResponse: initialResponse,
         capturedResponse: calls.filter(c => c.method === previewMethod).at(-1).value } : {}),

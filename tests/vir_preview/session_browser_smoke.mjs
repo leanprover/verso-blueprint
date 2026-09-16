@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
+const output = resolve(process.env.VBP_NATIVE_SESSION_REPORT);
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
 const dependency = manifest.packages.find(p => p.name === "lean_vir");
 assert.equal(dependency?.type, "git");
@@ -78,7 +79,6 @@ const acceptance = await withCleanup(async () => {
 ]);
 const report = { virCommit: dependency.rev, toolchain: sdk.leanToolchain,
   packageMembers: descriptor.packages.length, acceptance };
-const output = resolve(process.env.VBP_NATIVE_SESSION_REPORT);
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));

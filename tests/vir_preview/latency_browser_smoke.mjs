@@ -44,7 +44,14 @@ const sampling = process.env.VBP_LATENCY_SAMPLING === "1";
 const responsePhases = process.env.VBP_LATENCY_RESPONSE_PHASES === "1";
 const captureResponse = process.env.VBP_LATENCY_CAPTURE_RESPONSE === "1";
 const debugTiming = process.env.VBP_LATENCY_DEBUG === "1";
+const firRenderer = process.env.VBP_LATENCY_BACKEND === "fir";
+const firMode = process.env.VBP_LATENCY_FIR_MODE ?? "correctness";
+assert.ok(["correctness", "timing"].includes(firMode), "Use component_campaign_smoke for isolated FIR phases");
+assert.ok(firRenderer || firMode === "correctness", "FIR mode requires the FIR backend");
+assert.ok(!firRenderer || (!debugTiming && !sampling && !profile && !responsePhases && !captureResponse && jsonBridge === "off"),
+  "FIR measurements do not enable VIR-specific probes or options");
 const hostCensus = process.env.VBP_LATENCY_HOST_CENSUS === "1";
+assert.ok(!firRenderer || !hostCensus, "FIR measurements do not use callback census");
 const waitForILeans = process.env.VBP_LATENCY_WAIT_ILEANS === "1";
 const stackBytes = Number(process.env.VBP_LATENCY_STACK_BYTES ?? 16384);
 assert.ok([16384, 65528].includes(stackBytes), "supported perf stack sizes: 16384 or 65528");
@@ -94,6 +101,25 @@ if (responsePhases) {
     await readFile(fileURLToPath(new URL("./response_phase_probe.mjs", import.meta.url))));
 }
 const clientEntry = fileURLToPath(new URL("./latency_browser_entry.mjs", import.meta.url));
+if (firRenderer && firMode !== "timing") {
+  // Correctness-only probe: the live demo has neither counters nor this guard.
+  const site = 'runtimeOptions.hostBindings["previewDemo.componentFir"] = () => fir.Component;';
+  diagnosticShell ??= await readFile(shellPath, "utf8");
+  assert.equal(diagnosticShell.split(site).length, 2, "FIR entry drift");
+  diagnosticShell = diagnosticShell.replace(site, `
+  runtimeOptions.hostBindings["previewDemo.parse"] = () => { throw new Error("FIR must not decode Preview in the shell"); };
+  runtimeOptions.hostBindings["previewDemo.componentFir"] = () => {
+    globalThis.__vbpFirFactories = (globalThis.__vbpFirFactories ?? 0) + 1;
+    return function FirDocumentProbe(props) {
+      if (globalThis.__vbpFirInput !== props.document) {
+        globalThis.__vbpFirRenders = (globalThis.__vbpFirRenders ?? 0) + 1;
+        globalThis.__vbpFirInput = props.document;
+      }
+      return e(fir.Component, props);
+    };
+  };`);
+  await writeFile(resolve(output, "diagnostic-shell.js"), diagnosticShell);
+}
 if (hostCensus) {
   diagnosticShell = "globalThis.__vbpHostCensusEnabled = true;\n" + instrumentCallbackCensus(await readFile(shellPath, "utf8"));
   await writeFile(resolve(output, "diagnostic-shell.js"), diagnosticShell);
@@ -105,8 +131,11 @@ const driverSource = await readFile(fileURLToPath(import.meta.url));
 const bundle = await build({ entryPoints: [clientEntry], bundle: true, format: "iife", platform: "browser", write: false,
   nodePaths: [resolve(virRoot, "node_modules")], alias: { "@vir-embedded-shell": shellPath,
     ...(profile ? { "react-dom/client": require.resolve("react-dom/profiling") } : {}) },
-  plugins: [...(diagnosticShell ? [{ name: "diagnostic-shell", setup(builder) {
-    builder.onLoad({ filter: /(?:vir-infoview-widget|checked-json-demo)\.js$/ }, args => {
+  plugins: [{ name: "widget-backend", setup(builder) {
+    builder.onLoad({ filter: /latency_browser_entry\.mjs$/ }, async ({ path }) => ({
+      contents: `const FIR_RENDERER = ${JSON.stringify(firRenderer)};\nconst FIR_MODE = ${JSON.stringify(firMode)};\n` + await readFile(path, "utf8"), loader: "js", resolveDir: dirname(path) }));
+  } }, ...(diagnosticShell ? [{ name: "diagnostic-shell", setup(builder) {
+    builder.onLoad({ filter: /(?:vir-infoview-widget|checked-json-demo|fir-json-demo)\.js$/ }, args => {
       assert.equal(args.path, shellPath);
       return { contents: diagnosticShell, loader: "js", resolveDir: dirname(shellPath) };
     });
@@ -117,7 +146,7 @@ const bundle = await build({ entryPoints: [clientEntry], bundle: true, format: "
         export { TaggedText_stripTags } from ${JSON.stringify(require.resolve("@leanprover/infoview-api"))};
         export function useRpcSession() { return globalThis.__vbpEmbeddedSession; }`, loader: "js", resolveDir: virRoot,
     }));
-  } }], define: { "process.env.NODE_ENV": '"production"', SHELL_HASH: JSON.stringify(shellHash), PREVIEW_METHOD: JSON.stringify(process.env.VBP_LATENCY_METHOD ?? "VersoBlueprint.Experimental.VirPreview.Server.previewDocument"), WIDGET_ID: JSON.stringify(process.env.VBP_LATENCY_WIDGET ?? "Lean.Vir.Infoview.widget"), SAMPLES: process.env.VBP_LATENCY_SAMPLES ?? "9", DEBUG_TIMING: JSON.stringify(debugTiming), PROFILE: JSON.stringify(profile), SAMPLING: JSON.stringify(sampling), RESPONSE_PHASES: JSON.stringify(responsePhases), CAPTURE_RESPONSE: JSON.stringify(captureResponse), JSON_BRIDGE_CANDIDATE: JSON.stringify(jsonBridge === "candidate") },
+  } }], define: { "process.env.NODE_ENV": '"production"', SHELL_HASH: JSON.stringify(shellHash), PREVIEW_METHOD: JSON.stringify(process.env.VBP_LATENCY_METHOD ?? (firRenderer ? "FirJsonPreview.Server.previewDocument" : "VersoBlueprint.Experimental.VirPreview.Server.previewDocument")), WIDGET_ID: JSON.stringify(process.env.VBP_LATENCY_WIDGET ?? (firRenderer ? "FirJsonPreview.widget" : "Lean.Vir.Infoview.widget")), SAMPLES: process.env.VBP_LATENCY_SAMPLES ?? "9", DEBUG_TIMING: JSON.stringify(debugTiming), PROFILE: JSON.stringify(profile), SAMPLING: JSON.stringify(sampling), RESPONSE_PHASES: JSON.stringify(responsePhases), CAPTURE_RESPONSE: JSON.stringify(captureResponse), JSON_BRIDGE_CANDIDATE: JSON.stringify(jsonBridge === "candidate") },
 });
 const harnessPath = resolve(virRoot, "tests/infoview/rpc-browser-harness.mjs");
 const original = await readFile(harnessPath, "utf8");
@@ -131,7 +160,7 @@ if (jsonBridge !== "off") replaceOnce('const source = await readFile(sourcePath,
   `const source = await readFile(${JSON.stringify(resolve(output, "effective-source.lean"))}, "utf8");`);
 replaceOnce('a: fixturePosition(source, "rpc-position-a"),\n    b: fixturePosition(source, "rpc-position-b"),', `a: ${JSON.stringify(position)}, b: ${JSON.stringify(position)},`);
 replaceOnce('let documentVersion = 1;', 'let documentVersion = 1; let diagnosticsDone;');
-replaceOnce('120000,', '300000,');
+replaceOnce('120000,', firRenderer && firMode !== "correctness" ? '900000,' : '300000,');
 if (waitForILeans) {
   replaceOnce('    const config = {', `    const indexWaitStarted = performance.now();
     await Promise.race([connection.sendRequest("$/lean/waitForILeans", {}), timedOut]);
@@ -208,6 +237,21 @@ const vbp = manifest.packages.find(p => p.name === "VersoBlueprint")?.dir;
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" });
 const rpcSource = vbp ? await readFile(resolve(vbp, "src/VersoBlueprintVir/Preview/Rpc.lean")) : null;
 if (rpcSource) await writeFile(resolve(output, "Rpc.lean"), rpcSource);
+let firIdentity = null;
+if (firRenderer) {
+  assert.ok(vbp, "FIR demo requires the VBP path dependency");
+  const shellIdentity = JSON.parse(await readFile(shellPath + ".identity.json", "utf8"));
+  assert.equal(shellIdentity.bundleSha256, shellHash, "FIR shell identity drift");
+  const sources = {};
+  for (const path of [resolve(vbp, "tests/FirJsonPreview.lean"),
+    resolve(vbp, "tests/FirJsonPreview/Server.lean"), resolve(root, "FLTBlueprint/FirPreview.lean"),
+    resolve(vbp, "src/VersoBlueprintVir/Preview/Server.lean"), resolve(vbp, "src/VersoBlueprintVir/Preview/Widget.lean")]) {
+    const bytes = await readFile(path);
+    sources[path] = sha(bytes);
+    await writeFile(resolve(output, `source-${Object.keys(sources).length}.lean`), bytes);
+  }
+  firIdentity = { shellIdentity, sources };
+}
 const jsonLeanSources = {};
 if (jsonBridge !== "off") {
   assert.ok(vbp, "VBP path dependency required");
@@ -222,6 +266,12 @@ if (jsonBridge !== "off") {
   }
 }
 const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
+  widgetBackend: firRenderer ? `fir (${firMode})` : "vir",
+  firIdentity,
+  firProbe: firRenderer && firMode !== "timing" ? {
+    mode: firMode, diagnosticShellSha256: sha(diagnosticShell),
+    scope: "correctness-only component factory/input guards; no timing claims",
+  } : false,
   sdkManifestSha256: sha(await readFile(resolve(sdkRoot, "lean-vir-artifact.json"))),
   wasmSha256: sha(await readFile(resolve(sdkRoot, "wasm/vir-upstream.wasm"))),
   vbpCommit: vbp ? git(vbp, "rev-parse", "HEAD").trim() : null,

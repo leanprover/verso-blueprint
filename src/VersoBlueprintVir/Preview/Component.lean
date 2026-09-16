@@ -19,6 +19,7 @@ open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 /-- One session's previous input and its derived change flags, not a document format. -/
 private structure ChangeState where
   input? : Option Preview := none
+  timing? : Option Session.ResponseTiming := none
   lastDocument? : Option Document := none
   identities : VersoReact.Fingerprint.State := default
   changedIds : Array String := #[]
@@ -30,11 +31,12 @@ private structure ChangeState where
   preparationMs : Float := 0
 
 private def useChangedBlockInfo (clock : RuntimeM Float)
-    (preview : Preview) (highlightChanges diagnostics : Bool) : ReactM ChangeState := do
+    (preview : Preview) (timing? : Option Session.ResponseTiming)
+    (highlightChanges diagnostics : Bool) : ReactM ChangeState := do
   let initial ← LeanRef.toJSL ({} : ChangeState)
   let state ← StateTuple.toState (← Hooks.useState initial)
   let previous ← LeanRef.fromJSL state.value
-  let inputChanged := previous.input? != some preview
+  let inputChanged := previous.input? != some preview || previous.timing? != timing?
   if !inputChanged && previous.highlightChanges == highlightChanges &&
       previous.diagnostics == diagnostics then
     return previous
@@ -61,6 +63,7 @@ private def useChangedBlockInfo (clock : RuntimeM Float)
   let finished ← if diagnostics then clock else pure 0
   let next := {
     input? := some preview
+    timing?
     lastDocument? := document?.or previous.lastDocument?
     identities
     changedIds
@@ -85,7 +88,7 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
     (← Hooks.useState (← LeanRef.toJSL Session.Options.initial))
   let options ← LeanRef.fromJSL optionsState.value
   let document? := preview.document?
-  let changes ← useChangedBlockInfo clock preview options.highlightChanges options.debug
+  let changes ← useChangedBlockInfo clock preview timing? options.highlightChanges options.debug
   let changedIds := if document?.isSome then changes.changedIds else #[]
 
   let debugSampleState ← StateTuple.toState
@@ -93,36 +96,40 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
 
   let label ← <p key="label" id="vir-verso-label" style={(← ComponentStyle.label)}>Verso React preview</p>
   let config ← Session.renderConfigPanel options optionsState
-  -- Read durations directly from the accepted response, only in debug mode.
-  -- Changing the display scale does not take another measurement.
+  -- Show one completed observation, including its own server timing. While the
+  -- next document commits, retain this sample rather than briefly showing a
+  -- server-only bar with a different scale and legend.
   let debugPanel ←
     if options.debug then
       let sample ← LeanRef.fromJSL debugSampleState.value
-      -- Cursor/version identifies the document position, not a particular RPC:
-      -- repeated refreshes at that position may have different server timings.
-      let sample := sample.forResponse (document?.map (·.correlationId) |>.getD "") timing?
-      some <$> Session.renderDebugPanel options optionsState (document?.bind (·.serverTiming?))
-        sample
+      some <$> Session.renderDebugPanel options optionsState sample
     else
       pure none
-  -- The optional debug panel changes the sibling position, not document identity.
-  let contentProps ← LeanRef.toJSL ({
-    preview
-    dependency := toString changes.revision
-    changedIds
-    identities := changes.identities
-    blockCount := changes.blockCount?.getD 0
-    followCursor := options.followCursor
-    highlightChanges := options.highlightChanges
-    diagnostics := options.debug
-    inputChanged := changes.inputChanged
-    timing? := if changes.inputChanged then timing? else none
-    preparationMs := changes.preparationMs
-    onCommit := Session.recordDebugSample debugSampleState
-  } : Session.ContentProps)
-  let nativeContentProps ← Props.WithData.make contentProps
-  Js.Object.set (Props.WithData.asProps nativeContentProps) (← js#"key") (← js#"document")
-  let content ← Node.functionComponent contentComponent nativeContentProps (← js#[])
+  -- Retain the child element across shell-only updates. The revision covers the
+  -- accepted response (including timing), identities and analysis/debug options;
+  -- follow-cursor is the remaining content input. No document serialization or
+  -- deep comparison is added to this boundary. React owns the memo's lifetime.
+  let calculate ← MemoCalculation.ofLean do
+    let contentProps ← LeanRef.toJSL ({
+      preview
+      dependency := toString changes.revision
+      changedIds
+      identities := changes.identities
+      blockCount := changes.blockCount?.getD 0
+      followCursor := options.followCursor
+      highlightChanges := options.highlightChanges
+      diagnostics := options.debug
+      inputChanged := changes.inputChanged
+      timing? := if changes.inputChanged then timing? else none
+      preparationMs := changes.preparationMs
+      onCommit := Session.recordDebugSample debugSampleState
+    } : Session.ContentProps)
+    let nativeContentProps ← Props.WithData.make contentProps
+    Node.functionComponent contentComponent nativeContentProps (← js#[])
+  let contentDeps ← Hooks.DependencyList.ofArray #[
+    Js.erase contentComponent, Js.erase (← JsValue.ofString (toString changes.revision)),
+    Js.erase (← JsValue.ofBool options.followCursor)]
+  let content ← Hooks.useMemo calculate contentDeps
   let version := document?.map (·.version) |>.getD 0
   let correlationId := document?.map (·.correlationId) |>.getD ""
   let focus :=
@@ -133,15 +140,16 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
     | .unavailable _ => "unavailable"
     | .ready _ => "ready"
     | .error _ => "error"
-  let children := #[label, config] ++ debugPanel.toArray ++ #[content]
-  return ← <section id="vir-verso-preview" role="region" aria-label="Incremental Verso document preview"
-    data-verso-render-mode={(← JsValue.ofString (if options.debug then "debug" else "document"))}
-    data-verso-preview-status={(← JsValue.ofString status)} data-verso-version={(← JsValue.ofString (toString version))}
-    data-verso-correlation-id={(← JsValue.ofString correlationId)}
-    data-verso-changed-block-count={(← JsValue.ofString (toString changedIds.size))}
-    data-verso-focus-block={(← JsValue.ofString (focus.getD ""))} style={(← ComponentStyle.shell)}>
-    {Js.Array.ofArray children}
-  </section>
+  let headerChildren := #[label, config] ++ debugPanel.toArray
+  let attributes ← js%{
+    "data-verso-render-mode" := (← JsValue.ofString (if options.debug then "debug" else "document")),
+    "data-verso-preview-status" := (← JsValue.ofString status),
+    "data-verso-version" := (← JsValue.ofString (toString version)),
+    "data-verso-correlation-id" := (← JsValue.ofString correlationId),
+    "data-verso-changed-block-count" := (← JsValue.ofString (toString changedIds.size)),
+    "data-verso-focus-block" := (← JsValue.ofString (focus.getD ""))
+  }
+  renderShell attributes headerChildren content
 
 /--
 Create once per runtime and reuse this native React component type. Prop updates
@@ -161,5 +169,26 @@ def createTimedComponent (clock : RuntimeM Float)
   FunctionComponent.ofLean fun props => do
     let input ← LeanRef.fromJSL (← Props.WithData.data props)
     renderSession content clock input.preview input.timing?
+
+/-- Native backend boundary: `document` is the existing Document.encode String.
+Create this type once and let React retain its controls and identity state.
+Only native JS props cross runtimes; decoded documents and Lean refs belong to
+the runtime executing this component. Math remains an explicit native component.
+No RPC timing is supplied by this document-only boundary. -/
+def createEncodedDocumentComponent
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (FunctionComponent Props) := do
+  let content ← Session.createContentComponent (pure 0) mathComponent?
+  FunctionComponent.ofLean fun props => do
+    let encoded ← Js.String.fromAny (← Js.Object.get props (← js#"document"))
+    let calculate ← MemoCalculation.ofLean do
+      let source ← JsValue.toString encoded
+      let preview := match Document.decode source with
+        | .ok document => Preview.ready document
+        | .error message => Preview.error message
+      LeanRef.toJSL preview
+    let deps ← Hooks.DependencyList.ofArray #[Js.erase encoded]
+    let preview ← LeanRef.fromJSL (← Hooks.useMemo calculate deps)
+    renderSession content (pure 0) preview
 
 end VersoBlueprint.Experimental.VirPreview

@@ -38,6 +38,16 @@ def shell : ReactM (Js Props) := do
     "color" := (← JsValue.ofString (foreground))
   }
 
+/-- Shell controls remain visible while the sibling document scrolls past. -/
+def stickyHeader : ReactM (Js Props) := do
+  js%{
+    "position" := (← js#"sticky"), "top" := (← js#"0"),
+    "zIndex" := (← js#"10"), "alignSelf" := (← js#"start"),
+    "display" := (← js#"grid"), "gap" := (← js#"8px"),
+    "minWidth" := (← js#"0"), "paddingBottom" := (← js#"8px"),
+    "background" := (← JsValue.ofString background)
+  }
+
 def label : ReactM (Js Props) := do
   js%{
     "margin" := (← JsValue.ofString ("0")),

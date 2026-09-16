@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 module
 
 public import VersoBlueprintVir.Preview.Component.Session
+public import VersoBlueprintVir.Preview.Component.Shell
 public import VersoBlueprintVir.Preview.Renderer
 
 public section
@@ -52,14 +53,8 @@ private structure RenderOutcome where
   status : String
   version : Nat := 0
   correlationId : String := ""
+  serverTiming? : Option ServerTiming := none
   blockCount : Nat := 0
-
-private def renderStatus (kind message : String) : ReactM (Js Node) := do
-  return ← <div data-verso-preview-status={(← JsValue.ofString kind)}
-    role={(← JsValue.ofString (if kind == "error" then "alert" else "status"))}
-    aria-live="polite" style={(← ComponentStyle.status)}>
-    {Node.text (← JsValue.ofString message)}
-  </div>
 
 private def renderContent (mathComponent? : Option (FunctionComponent Props))
     (props : ContentProps) : ReactM RenderOutcome := do
@@ -88,6 +83,7 @@ private def renderContent (mathComponent? : Option (FunctionComponent Props))
         status := "ready"
         version := document.version
         correlationId := document.correlationId
+        serverTiming? := document.serverTiming?
         blockCount := props.blockCount
       }
 
@@ -110,6 +106,7 @@ def createContentComponent (clock : RuntimeM Float := pure 0)
             status := outcome.status
             version := outcome.version
             correlationId := outcome.correlationId
+            serverTiming? := outcome.serverTiming?
             blockCount := outcome.blockCount
             changedCount := props.changedIds.size
             highlightChanges := props.highlightChanges

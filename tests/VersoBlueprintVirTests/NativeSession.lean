@@ -53,6 +53,15 @@ private def preview (scenario : Nat) : Preview := match scenario with
 def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) :=
   VersoBlueprint.Experimental.VirPreview.createComponent
 
+@[vir_export]
+def createEncodedDocumentComponent : RuntimeM (FunctionComponent Props) :=
+  VersoBlueprint.Experimental.VirPreview.createEncodedDocumentComponent
+
+@[vir_export]
+def encodedDocument (scenario : Nat) : String :=
+  if scenario == 2 then "not JSON"
+  else Document.encode (document (scenario + 1) (if scenario == 0 then "Before edit" else "After edit"))
+
 /-- Exercise timing arithmetic through the browser runtime, without a mock codec. -/
 @[vir_export]
 def timingChecks (scenario : Nat) : Bool := Id.run do
@@ -82,15 +91,38 @@ def timingChecks (scenario : Nat) : Bool := Id.run do
       | return false
     return total == 28000000 && phases[8]! == 3000000 && phases.foldl (· + ·) 0 == total
   | 12 => return ({ sample with response := ⟨10, 20, 25, some 11⟩ }.partition? server).isNone
+  | 13 => return Session.autoRangeNanos 6000000 == 10000000 &&
+      Session.autoRangeNanos 11000000 == 20000000 &&
+      Session.autoRangeNanos 21000000 == 50000000 &&
+      Session.autoRangeNanos 1200000000 == 2000000000
   | _ =>
-    let debug : Session.DebugSample := { correlationId := "same-position", browserTiming? := some sample }
-    return (debug.forResponse "same-position" (some sample.response)).browserTiming?.isSome &&
-      (debug.forResponse "same-position" (some ⟨40, 50, 55, none⟩)).browserTiming?.isNone &&
-      (debug.forResponse "different-position" (some sample.response)).browserTiming?.isNone
+    let debug : Session.DebugSample := {
+      correlationId := "same-position", serverTiming? := some server, browserTiming? := some sample }
+    let control : Session.DebugSample := {
+      correlationId := "same-position", serverTiming? := some server }
+    return (debug.record control).browserTiming?.isSome &&
+      (debug.record { control with inputChanged := true }).browserTiming?.isNone &&
+      (debug.record { control with correlationId := "different-position" }).browserTiming?.isNone &&
+      (debug.record { control with serverTiming? := none }).browserTiming?.isNone
 
 @[vir_export]
 def render (component : FunctionComponent (Props.WithData Preview)) (scenario : Nat) : ReactM (Js Node) := do
   let props ← Props.WithData.make (← LeanRef.toJSL (preview scenario))
+  Node.functionComponent component props (← js#[])
+
+/-- Deterministic browser-clock endpoint for coherent-sample acceptance. -/
+@[vir_export]
+def createTimedComponent : RuntimeM (FunctionComponent (Props.WithData Session.Input)) :=
+  VersoBlueprint.Experimental.VirPreview.createTimedComponent (pure 100)
+
+@[vir_export]
+def renderTimed (component : FunctionComponent (Props.WithData Session.Input))
+    (refresh : Nat) : ReactM (Js Node) := do
+  let offset := refresh.toFloat * 10
+  let props ← Props.WithData.make (← LeanRef.toJSL ({
+    preview := preview 0
+    timing? := some ⟨10 + offset, 20 + offset, 25 + offset, none⟩
+  } : Session.Input))
   Node.functionComponent component props (← js#[])
 
 end VersoBlueprintVirTests.NativeSession

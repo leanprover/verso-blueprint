@@ -8,6 +8,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
+assert.ok(process.env.VBP_NATIVE_PREVIEW_REPORT, "Set VBP_NATIVE_PREVIEW_REPORT to a report file");
+const output = resolve(process.env.VBP_NATIVE_PREVIEW_REPORT);
 const stringPreview = process.argv.includes("--string-preview");
 const embeddedPreview = process.argv.includes("--embedded-preview");
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
@@ -22,8 +24,19 @@ assert.equal(sdk.leanToolchain, (await readFile(resolve(root, "lean-toolchain"),
 
 // Reuse VIR's real-server transport and browser lifecycle, without a second LSP harness.
 // This pinned internal test entry is temporary pending a supported external entry.
-const { runRpcBrowserAcceptance } = await import(pathToFileURL(
-  resolve(virRoot, "tests/infoview/rpc-browser-harness.mjs")));
+const harnessPath = resolve(virRoot, "tests/infoview/rpc-browser-harness.mjs");
+let harnessSource = await readFile(harnessPath, "utf8");
+const rootSite = 'const root = fileURLToPath(new URL("../../", import.meta.url));';
+assert.equal(harnessSource.split(rootSite).length, 2, "pinned harness root drift");
+harnessSource = harnessSource.replace(rootSite,
+  `const root = ${JSON.stringify(stringPreview || embeddedPreview ? root : virRoot)};`);
+const require = createRequire(resolve(virRoot, "package.json"));
+harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) => {
+  if (specifier.startsWith("node:")) return match;
+  const path = specifier.startsWith(".") ? resolve(dirname(harnessPath), specifier) : require.resolve(specifier);
+  return `from ${JSON.stringify(pathToFileURL(path).href)}`;
+});
+const { runRpcBrowserAcceptance } = await import(`data:text/javascript;base64,${Buffer.from(harnessSource).toString("base64")}`);
 const { build } = await import(pathToFileURL(resolve(virRoot, "node_modules/esbuild/lib/main.js")));
 const shellPath = embeddedPreview ? resolve(root, ".lake/build/checked-json-demo.js")
   : resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js");
@@ -96,11 +109,10 @@ const report = {
   wasmSha256: sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256,
   packageMembers,
   scope: embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT" : stringPreview
-    ? "full VBP preview decoded from VBP-owned String RPC fixture; harness server cwd is VIR, not FLT"
+    ? "full VBP preview decoded from VBP-owned String RPC fixture; server cwd is VBP, not FLT"
     : "native Lean component with real VIR fixture RPC; not the FLT renderer",
   acceptance,
 };
-const output = resolve(process.env.VBP_NATIVE_PREVIEW_REPORT);
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));

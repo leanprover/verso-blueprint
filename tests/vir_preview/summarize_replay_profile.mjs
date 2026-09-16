@@ -3,15 +3,18 @@
 // --live summarizes a single edit capture; default retains replay phase slicing.
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, basename } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const capture = resolve(process.argv[2]);
 const live = process.argv.includes("--live");
-const flamegraphPath = process.argv.slice(3).find(arg => arg !== "--live");
+const component = process.argv.includes("--component");
+const flamegraphPath = process.argv.slice(3).find(arg => !arg.startsWith("--"));
 const identity = JSON.parse(await readFile(resolve(capture, "identity.json")));
 const report = JSON.parse(await readFile(resolve(capture, "result.json")));
-const result = { ...report, root: identity.root };
+const result = { ...report, root: identity.root,
+  ...(component ? {virCommit:identity.virCommit,toolchain:identity.toolchain} : {}) };
 const sha = x => createHash("sha256").update(x).digest("hex");
 function reader(bytes) {
   let offset = 0;
@@ -78,11 +81,70 @@ const wasmEvidence = { sdkManifestSha256: sha(sdkBytes), releaseSha256: sha(wasm
 
 const browserBytes = await readFile(resolve(capture, "browser.cpuprofile"));
 const browser = JSON.parse(browserBytes);
+const componentClock = component ? JSON.parse(await readFile(resolve(capture,"profile-clock.json"))) : null;
+const componentWindows = component ? report.browser.samples.map(row => ({phase:row.backend+":content",
+  start:(row.contentStartMs+componentClock.offsetMs)*1000,end:(row.contentEndMs+componentClock.offsetMs)*1000})) : [];
+const nodes = new Map(browser.nodes.map(n => [n.id,n])), parents = new Map();
+for (const n of browser.nodes) for (const child of n.children ?? []) parents.set(child,n.id);
+const moduleOwners = new Map(), nodeCategories = new Map();
+if (component) {
+  let time = browser.startTime;
+  for (let i=0;i<browser.samples.length;i++) {
+    const from=time;time+=browser.timeDeltas[i];
+    const window = componentWindows.find(w=>Math.min(time,w.end)>Math.max(from,w.start));
+    if (!window) continue;
+    for(let id=browser.samples[i];id!==undefined;id=parents.get(id)) {
+      const frame=nodes.get(id).callFrame;
+      // V8 can share js-to-wasm trampolines between modules of the same
+      // signature; their attributed URL is not evidence of body ownership.
+      if (!frame.url.startsWith('wasm://') || /^(js-to-wasm|wasm-to-js)/.test(frame.functionName)) continue;
+      const owner=window.phase.split(':')[0];
+      assert(!moduleOwners.has(frame.url)||moduleOwners.get(frame.url)===owner,'Wasm URL crosses backend content windows');
+      moduleOwners.set(frame.url,owner);
+    }
+  }
+  assert.deepEqual([...new Set(moduleOwners.values())].sort(),['fir','vir'],'both backend Wasm modules must be sampled');
+  const mapBytes = await readFile(resolve(capture,'probe.js.map'));
+  const sourceMapPath = resolve(result.root,'.lake/packages/lean_vir/node_modules/source-map-js/source-map.js');
+  const mapping = await import(pathToFileURL(sourceMapPath));
+  const consumer = new (mapping.SourceMapConsumer??mapping.default.SourceMapConsumer)(JSON.parse(mapBytes));
+  wasmEvidence.componentModules=Object.fromEntries(moduleOwners);
+  wasmEvidence.sourceMapSha256=sha(mapBytes);
+  wasmEvidence.sourceMapToolSha256=sha(await readFile(sourceMapPath));
+  for (const node of browser.nodes) {
+    const frame=node.callFrame;
+    if (!frame.url.includes('/probe.js') || frame.lineNumber<0) continue;
+    const position=consumer.originalPositionFor({line:frame.lineNumber+1,column:frame.columnNumber});
+    if (!position.source) continue;
+    const source=position.source;
+    nodeCategories.set(node.id, source.includes('/fir/host-prototype.mjs') ? 'FIR JS adapter'
+      : source.includes('node_modules/react-dom/') ? 'React hooks (JS)'
+      : source.includes('node_modules/react/') ? 'React elements (JS)'
+      : source.endsWith('vir-react-host-bindings.js') ? 'React host provider (JS)'
+      : /vir-js-(collection|value)-bindings|vir-dom-host-bindings/.test(source) ? 'JS value/collection providers'
+      : source.includes('/js/') || source.includes('/web/src/runtime/') ? 'VIR JS runtime/boundary'
+      : 'Other JavaScript');
+    frame.functionName=`${frame.functionName||position.name||'(anonymous)'} [${basename(source)}:${position.line}]`;
+  }
+  for (const node of browser.nodes) {
+    if (node.callFrame.functionName!=='decode') continue;
+    const parent=nodes.get(parents.get(node.id))?.callFrame.functionName??'';
+    if (/^read(String|WasmString)/.test(parent)) nodeCategories.set(node.id,'Host UTF-8 conversion (JS builtin)');
+  }
+  consumer.destroy?.();
+}
 const wasmUrls = new Set(browser.nodes.filter(n => /^wasm-function\[/.test(n.callFrame.functionName)).map(n => n.callFrame.url));
-assert.equal(wasmUrls.size, 1, "multiple WASM modules need separate symbol maps");
+if (!component) assert.equal(wasmUrls.size, 1, "multiple WASM modules need separate symbol maps");
 for (const node of browser.nodes) {
   const match = /^wasm-function\[(\d+)\]$/.exec(node.callFrame.functionName);
   if (!match) continue;
+  if (component && moduleOwners.get(node.callFrame.url)!=='vir') {
+    if (moduleOwners.get(node.callFrame.url)==='fir') {
+      node.callFrame.functionName=`FIR wasm:function${match[1]} (stripped)`;
+      nodeCategories.set(node.id,'FIR Wasm (internal symbols unavailable)');
+    }
+    continue;
+  }
   const name = wasmNames.get(Number(match[1]));
   if (name) { node.callFrame.functionName = `${name} [wasm:${match[1]}]`; wasmEvidence.resolvedFrames++; }
   else wasmEvidence.unresolvedFrames++;
@@ -90,16 +152,14 @@ for (const node of browser.nodes) {
 await writeFile(resolve(capture, "browser.symbolicated.cpuprofile"), JSON.stringify(browser));
 await writeFile(resolve(capture, "wasm-symbols.json"), JSON.stringify({ ...wasmEvidence, names: Object.fromEntries(wasmNames) }, null, 2));
 
-const clock = live ? null : JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
+const clock = live ? null : componentClock??JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
 if (clock) assert.ok(clock.uncertaintyMs < 5, "clock calibration too imprecise");
 if (live) {
   assert.equal(report.samples, 1, "live profile must isolate one measured edit");
   assert.equal(report.result.rows.filter(row => !row.warmup).length, 1);
   assert.ok(report.cpuSampling, "live capture must enable sampling");
 }
-const nodes = new Map(browser.nodes.map(n => [n.id,n])), parents = new Map();
-for (const n of browser.nodes) for (const child of n.children ?? []) parents.set(child,n.id);
-const windows = live ? [{ phase: "live-edit", start: browser.startTime, end: browser.endTime }] : report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
+const windows = component ? componentWindows : live ? [{ phase: "live-edit", start: browser.startTime, end: browser.endTime }] : report.acceptance.rows.flatMap(row => ["whole","browserParsed"].flatMap(mode => {
   const {start, decodedAt, committedAt} = row[mode].raw;
   return [
     {phase: mode + ":decode", start:(start+clock.offsetMs)*1000, end:(decodedAt+clock.offsetMs)*1000},
@@ -125,9 +185,20 @@ for (let i=0;i<browser.samples.length;i++) {
     if (live) keys.push(stack.includes("renderWithHooks") ? "react-render-callbacks"
       : stack.includes("virCallback") ? "other-lean-callbacks" : "outside-lean-callbacks");
     for (const key of keys) {
-      const a=summary[key]??={us:0,samples:0,self:{},inclusive:{},folded:{}};
+      const a=summary[key]??={us:0,samples:0,self:{},inclusive:{},folded:{},categories:{}};
       a.us+=weight; a.samples++;
       a.self[stack[0]]=(a.self[stack[0]]??0)+weight;
+      if (component) {
+        const frame=nodes.get(browser.samples[i]).callFrame;
+        const leaf=stack[0];
+        const category=nodeCategories.get(browser.samples[i])??(leaf==='(garbage collector)' ? 'Browser GC'
+          : /^(js-to-wasm|wasm-to-js)/.test(leaf) ? 'JS/Wasm transition (shared wrapper)'
+          : moduleOwners.get(frame.url)==='vir' ? (/interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? 'VIR interpreter dispatch/evaluation'
+            : /symbol_cache_entry|constant_cache_entry|interpreter::lookup_symbol|__hash.*find<lean::name>/.test(leaf) ? 'VIR symbol/constant/name lookup'
+            : /^(dlmalloc|dlfree|lean_dec_ref_cold)|interpreter::alloc_ctor|vector<.*>::resize/.test(leaf) ? 'VIR allocation/refcount/vector storage'
+            : 'Other VIR Wasm') : 'Unattributed/browser');
+        a.categories[category]=(a.categories[category]??0)+weight;
+      }
       for(const name of new Set(stack)) a.inclusive[name]=(a.inclusive[name]??0)+weight;
       const folded=stack.toReversed().join(";");
       a.folded[folded]=(a.folded[folded]??0)+weight;
@@ -136,11 +207,12 @@ for (let i=0;i<browser.samples.length;i++) {
 }
 const top=(xs,total)=>Object.entries(xs).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([name,us])=>({name,ms:us/1000,percent:100*us/total}));
 const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes),
-  scope: live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases" : "calibrated replay decode/render windows",
+  scope: component ? 'calibrated matched content callback windows; sampled attribution, not baseline wall timings; FIR internal symbols stripped'
+    : live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases" : "calibrated replay decode/render windows",
   phases:{}};
 for(const [phase,a]of Object.entries(summary)) {
-  const categories = {};
-  for (const [leaf, us] of Object.entries(a.self)) {
+  const categories = component ? a.categories : {};
+  if (!component) for (const [leaf, us] of Object.entries(a.self)) {
     const category = leaf === "(idle)" ? "Idle"
       : /interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? "Interpreter dispatch/evaluation"
       : /symbol_cache_entry|constant_cache_entry|interpreter::lookup_symbol|__hash.*find<lean::name>/.test(leaf) ? "Symbol/constant/name lookup"
@@ -148,10 +220,10 @@ for(const [phase,a]of Object.entries(summary)) {
       : leaf.includes("[wasm:") ? "Other WASM" : "JavaScript/browser";
     categories[category] = (categories[category] ?? 0) + us;
   }
-  compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:live ? 1 : report.acceptance.rows.length,
+  compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:component ? windows.filter(w=>w.phase===phase).length : live ? 1 : report.acceptance.rows.length,
     categories:top(categories,a.us),self:top(a.self,a.us),inclusive:top(a.inclusive,a.us),
-    hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
-    commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us};
+    ...(component ? {} : {hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
+    commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us})};
   const folded = Object.entries(a.folded).map(([stack,us])=>stack+" "+Math.round(us)).join("\n")+"\n";
   await writeFile(resolve(capture,phase.replace(":","-")+".folded"),folded);
   if (flamegraphPath) {

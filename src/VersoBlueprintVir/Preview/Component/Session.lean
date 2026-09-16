@@ -83,6 +83,7 @@ structure DebugSample where
   status : String := "waiting"
   version : Nat := 0
   correlationId : String := ""
+  serverTiming? : Option ServerTiming := none
   blockCount : Nat := 0
   changedCount : Nat := 0
   highlightChanges : Bool := Options.initial.highlightChanges
@@ -93,12 +94,14 @@ namespace DebugSample
 
 def initial : DebugSample := {}
 
-/-- Never pair an earlier browser observation with a later RPC at the same cursor. -/
-def forResponse (sample : DebugSample) (correlationId : String)
-    (timing? : Option ResponseTiming) : DebugSample :=
-  if sample.correlationId == correlationId && sample.browserTiming?.map (·.response) == timing? then
-    sample
-  else { sample with browserTiming? := none }
+/-- Control-only observations do not replace a completed response measurement. -/
+def record (previous sample : DebugSample) : DebugSample :=
+  { sample with
+    sequence := previous.sequence + 1
+    browserTiming? := if !sample.inputChanged && sample.correlationId == previous.correlationId &&
+        sample.serverTiming? == previous.serverTiming? then
+      sample.browserTiming?.or previous.browserTiming?
+    else sample.browserTiming? }
 
 end DebugSample
 
@@ -117,9 +120,7 @@ def recordDebugSample
     (sample : DebugSample) : Browser.DomM Unit :=
   State.modify state fun previous => do
     let previousSample ← LeanRef.fromJSL previous
-    LeanRef.toJSL {
-      sample with sequence := previousSample.sequence + 1
-    }
+    LeanRef.toJSL (previousSample.record sample)
 
 private def renderToggle (id label : String) (checked : Bool)
     (onChange : Browser.DomM Unit) : ReactM (Js Node) := do
@@ -135,6 +136,16 @@ private def timingTickPixels : Nat := 40
 
 private def timingPixels (timingTickMs nanos : Nat) : Float :=
   nanos.toFloat / (timingTickMs * 1000000).toFloat * timingTickPixels.toFloat
+
+/-- A readable 1–2–5 upper bound. Auto bars occupy 40–100% of the available
+width instead of jumping between coarse fixed-pixel decade scales. -/
+def autoRangeNanos (total : Nat) : Nat := Id.run do
+  let mut unit := 100000
+  for _ in [:20] do
+    for factor in #[1, 2, 5] do
+      if total <= factor * unit then return factor * unit
+    unit := unit * 10
+  return max total unit
 
 private def renderTimingScale (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
   let choices := timingScales.map fun tick => do
@@ -177,10 +188,9 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
         ("commit", "React / effects / scheduling", "#c79351", durations[7]!)
       ]
   let total := partition?.map (·.1) |>.getD timing.preparationNanos
-  let timingTickMs := if timingTickMs != 0 then timingTickMs
-    else if total <= 10000000 then 1
-    else if total <= 100000000 then 10
-    else if total <= 1000000000 then 100 else 1000
+  let automatic := timingTickMs == 0
+  let range := autoRangeNanos total
+  let tickNanos := if automatic then range / 10 else timingTickMs * 1000000
   let summary := (if partition?.isSome then
       if fromEdit then "Edit notification → content effect "
       else "RPC → content effect "
@@ -195,7 +205,9 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
       "Browser timing unavailable. RPC waits are not total elaboration time; encoding and rendering are excluded."
   let segments : Array (ReactM (Js Node)) := phases.map fun (key, label, color, nanos) => do
     let style ← js%{
-      "width" := (← JsValue.ofString s!"{timingPixels timingTickMs nanos}px"),
+      "width" := (← JsValue.ofString (if automatic then
+        s!"{if total == 0 then 0 else nanos.toFloat / total.toFloat * 100}%"
+        else s!"{timingPixels timingTickMs nanos}px")),
       "flexShrink" := (← js#"0"), "minWidth" := (← js#"0"), "backgroundColor" := (← JsValue.ofString color)
     }
     return ← <span key={(← JsValue.ofString key)} data-verso-phase={(← JsValue.ofString key)}
@@ -213,11 +225,14 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
   let ariaLabel := summary ++ "; " ++ String.intercalate ", "
     (phases.toList.map fun (_, label, _, nanos) => label ++ " " ++ milliseconds nanos)
   let barStyle ← js%{
-    "display" := (← js#"flex"), "width" := (← JsValue.ofString s!"{timingPixels timingTickMs total}px"), "height" := (← js#"12px")
+    "display" := (← js#"flex"), "width" := (← JsValue.ofString (if automatic then
+      s!"{total.toFloat / range.toFloat * 100}%" else s!"{timingPixels timingTickMs total}px")),
+    "height" := (← js#"12px")
   }
   let trackStyle ← js%{
-    "width" := (← js#"max-content"), "minWidth" := (← js#"100%"), "paddingBottom" := (← js#"5px"),
-    "backgroundImage" := (← JsValue.ofString s!"repeating-linear-gradient(to right, var(--vscode-descriptionForeground,#888) 0px, var(--vscode-descriptionForeground,#888) 1px, transparent 1px, transparent {timingTickPixels}px)")
+    "width" := (← JsValue.ofString (if automatic then "100%" else "max-content")),
+    "minWidth" := (← js#"100%"), "paddingBottom" := (← js#"5px"),
+    "backgroundImage" := (← JsValue.ofString s!"repeating-linear-gradient(to right, var(--vscode-descriptionForeground,#888) 0px, var(--vscode-descriptionForeground,#888) 1px, transparent 1px, transparent {if automatic then "10%" else s!"{timingTickPixels}px"})")
   }
   let scrollStyle ← js%{ "overflowX" := (← js#"auto"), "minWidth" := (← js#"0") }
   let legendStyle ← js%{
@@ -230,13 +245,16 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
       {Node.text (← JsValue.ofString summary)}
     </p>
     <p id="vir-verso-timing-boundary" style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString boundary)}</p>
-    <div id="vir-verso-server-scale" style={scrollStyle}><div style={trackStyle}>
+    <div id="vir-verso-server-scale" style={scrollStyle}
+      title={(← JsValue.ofString s!"{milliseconds tickNanos} / tick") }><div style={trackStyle}>
       <div id="vir-verso-server-bar" role="img" aria-label={(← JsValue.ofString ariaLabel)}
         data-verso-start-ms={(← JsValue.ofString (browser?.map (fun b => toString (b.response.notifiedMs?.getD b.response.requestedMs)) |>.getD ""))}
         data-verso-effect-ms={(← JsValue.ofString (browser?.map (fun b => toString b.observedMs) |>.getD ""))}
         data-verso-total-nanos={(← JsValue.ofString (toString total))} data-verso-tick-ms={(← JsValue.ofString (toString timingTickMs))}
+        data-verso-range-nanos={(← JsValue.ofString (if automatic then toString range else ""))}
         style={barStyle}>{Js.Array.ofArray (α := Node) (← segments.mapM id)}</div>
     </div></div>
+    <p style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString s!"{milliseconds tickNanos} / tick")}</p>
     <div style={legendStyle}>{Js.Array.ofArray (α := Node) (← legends.mapM id)}</div>
   </div>
 
@@ -255,7 +273,8 @@ def renderConfigPanel (options : Options) (state : State (JSL Options)) : ReactM
   </fieldset>
 
 def renderDebugPanel (options : Options) (state : State (JSL Options))
-    (timing? : Option ServerTiming) (sample : DebugSample) : ReactM (Js Node) := do
+    (sample : DebugSample) : ReactM (Js Node) := do
+  let timing? := sample.serverTiming?
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"

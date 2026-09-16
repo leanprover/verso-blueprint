@@ -45,6 +45,16 @@ lean_lib CheckedJsonPreview where
   requiresModuleSystem := true
   needs := #[checkedJsonDemoBundle]
 
+input_file firJsonDemoBundle where
+  path := ".lake/build/fir-json-demo.js"
+  text := true
+
+lean_lib FirJsonPreview where
+  srcDir := "tests"
+  roots := #[`FirJsonPreview]
+  requiresModuleSystem := true
+  needs := #[firJsonDemoBundle]
+
 lean_lib VersoBlueprintVirTests where
   srcDir := "tests"
   requiresModuleSystem := true

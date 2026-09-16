@@ -16,15 +16,10 @@ namespace VersoBlueprint.Experimental.VirPreview
 open Lean.Vir Lean.Vir.React
 open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
-/-- Adapt native infoview panel props to a preview RPC taking `Lean.Lsp.Position`
-and returning `Preview.encode preview`. Create once, then register with
-`vir_proof_widget`; VIR owns the shell, editor context, and root lifecycle. -/
-def createWidgetComponent (method : String)
-    (decodeReply : Js.Any → RuntimeM (Except String Preview) := decodeStringReply)
-    (clock? : Option (RuntimeM Float) := none)
-    (mathComponent? : Option (FunctionComponent Props) := none) :
+/-- Adapt native panel position props to an existing RPC component. Create once;
+VIR owns the shell, editor context and root lifecycle. -/
+def createWidgetComponentWithRpc (preview : FunctionComponent (Props.WithData RpcInput)) :
     RuntimeM (FunctionComponent Infoview.PanelWidgetProps) := do
-  let preview ← createRpcComponent method decodeReply clock? mathComponent?
   FunctionComponent.ofLean fun props => do
     let session ← Infoview.useRpcSession
     let position ← Infoview.PanelWidgetProps.pos props
@@ -47,5 +42,14 @@ def createWidgetComponent (method : String)
       revision := ""
     } : RpcInput))
     Node.functionComponent preview previewProps (← js#[])
+
+/-- Standard Preview-codec widget. Alternative reply types reuse the same panel
+adapter with `createRpcComponentFor` and `createWidgetComponentWithRpc`. -/
+def createWidgetComponent (method : String)
+    (decodeReply : Js.Any → RuntimeM (Except String Preview) := decodeStringReply)
+    (clock? : Option (RuntimeM Float) := none)
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (FunctionComponent Infoview.PanelWidgetProps) := do
+  createWidgetComponentWithRpc (← createRpcComponent method decodeReply clock? mathComponent?)
 
 end VersoBlueprint.Experimental.VirPreview

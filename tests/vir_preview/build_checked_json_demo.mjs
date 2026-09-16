@@ -6,6 +6,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { prepareFirDemo } from "./fir_demo_bundle.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const vir = resolve(root, ".lake/packages/lean_vir");
@@ -13,6 +14,7 @@ const sdkRoot = resolve(root, ".lake/build/vir/sdk");
 const read = path => readFile(path, "utf8");
 const sha = value => createHash("sha256").update(value).digest("hex");
 const sdk = JSON.parse(await read(resolve(sdkRoot, "lean-vir-artifact.json")));
+const firPackage = process.env.VBP_DEMO_FIR_PACKAGE;
 const manifest = JSON.parse(await read(resolve(root, "lake-manifest.json")));
 assert.equal(sdk.gitCommit, manifest.packages.find(p => p.name === "lean_vir").rev);
 assert.equal(sdk.gitCommit, execFileSync("git", ["rev-parse", "HEAD"], { cwd: vir, encoding: "utf8" }).trim());
@@ -26,16 +28,18 @@ const bridge = resolve(root, "tests/vir_preview/upstream-json-value-bindings.mjs
 const math = resolve(root, "packages/verso-react/web/katex.mjs");
 const katex = resolve(root, ".lake/packages/verso/vendored-js/katex");
 // One stylesheet per shell, with matching local WOFF2 assets. No CDN/font fetch.
-let mathCss = await read(resolve(katex, "katex.min.css"));
+let mathCss = firPackage ? "" : await read(resolve(katex, "katex.min.css"));
 const assetHashes = {};
 for (const match of [...mathCss.matchAll(/src:url\((fonts\/[^)]+\.woff2)\)[^}]*/g)]) {
   const bytes = await readFile(resolve(katex, match[1]));
   assetHashes[match[1]] = sha(bytes);
   mathCss = mathCss.replace(match[0], `src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2")`);
 }
-assert.ok(Object.keys(assetHashes).length > 0 && !mathCss.includes("url(fonts/"));
+assert.ok(firPackage || (Object.keys(assetHashes).length > 0 && !mathCss.includes("url(fonts/")));
 const liveOutput = resolve(root, ".lake/build/checked-json-demo.js");
 const output = resolve(process.env.VBP_DEMO_OUTPUT ?? liveOutput);
+const firDemo = firPackage ? await prepareFirDemo(firPackage, root) : null;
+if (firDemo) assert.notEqual(output, liveOutput, "FIR must not overwrite the VIR demo");
 const hostOverridePath = process.env.VBP_DEMO_HOST_STATE;
 const hostOverride = hostOverridePath ? await read(hostOverridePath) : null;
 if (hostOverride !== null) {
@@ -50,6 +54,10 @@ const result = await build({
   legalComments: "none", write: false, metafile: true,
   alias: { "@vir-object-values": objects },
   plugins: [{ name: "checked-json-demo-only", setup(builder) {
+    if (firDemo) {
+      builder.onResolve({ filter: /^@fir-demo$/ }, () => ({ path: "fir", namespace: "fir-demo" }));
+      builder.onLoad({ filter: /.*/, namespace: "fir-demo" }, () => ({ contents: firDemo.source, loader: "js", resolveDir: root }));
+    }
     if (hostOverride !== null) builder.onLoad({ filter: /runtime\/host-state\.js$/ }, ({ path }) => {
       assert.equal(path, resolve(vir, "web/src/runtime/host-state.js"));
       return { contents: hostOverride, loader: "js", resolveDir: dirname(path) };
@@ -59,6 +67,7 @@ const result = await build({
       let contents = await read(path);
       const seam = "  runtimeOptions.defaultHostBindings = () =>";
       assert.equal(contents.split(seam).length, 2, "upstream shell drift");
+      if (!firDemo) {
       const styleSeam = "    loaded?.configurationKey === configurationKey";
       assert.equal(contents.split(styleSeam).length, 2, "upstream shell root drift");
       contents = contents.replace(styleSeam,
@@ -76,6 +85,21 @@ const result = await build({
       return JSON.parse(source);
     },
   };\n${seam}`);
+      }
+      if (firDemo) {
+        contents = 'import { openFirDemo } from "@fir-demo";\n' + contents;
+        contents = contents.replace(seam, `  const fir = await openFirDemo();
+  runtimeOptions.hostBindings = {};
+  runtimeOptions.hostBindings["previewDemo.componentFir"] = () => fir.Component;
+${seam}`);
+        const runtimeSite = "    runtime: await createBundledVirRuntime(runtimeOptions),";
+        assert.equal(contents.split(runtimeSite).length, 2);
+        contents = contents.replace(runtimeSite, `    fir,
+    runtime: await createBundledVirRuntime(runtimeOptions).catch(error => { fir.dispose(); throw error; }),`);
+        const disposeSite = "    service.runtime.dispose?.();";
+        assert.equal(contents.split(disposeSite).length, 2);
+        contents = contents.replace(disposeSite, "    try { service.runtime.dispose?.(); } finally { service.fir?.dispose(); }");
+      }
       return { contents, loader: "js", resolveDir: dirname(path) };
     });
     builder.onLoad({ filter: /runtime\/object-values\.js$/ }, async ({ path }) => {
@@ -83,7 +107,7 @@ const result = await build({
       const contents = await read(path);
       assert.ok(contents.includes("const leanObjectHandleStates = new WeakMap();"));
       assert.ok(!contents.includes("export function isLeanObjectHandle"));
-      return { contents: contents + brandQuery, loader: "js", resolveDir: dirname(path) };
+      return { contents: contents + (firDemo ? "" : brandQuery), loader: "js", resolveDir: dirname(path) };
     });
     builder.onResolve({ filter: /vir-react-dom-client\.js$/ }, () => ({
       path: "react-dom-client", namespace: "infoview-client",
@@ -116,15 +140,16 @@ if (await readFile(output).then(bytes => sha(bytes)).catch(() => null) !== sha(b
 await writeFile(output + ".identity.json", JSON.stringify({
   virCommit: sdk.gitCommit, toolchain: sdk.leanToolchain,
   sdkManifestSha256: sha(await readFile(resolve(sdkRoot, "lean-vir-artifact.json"))),
-  shellSourceSha256: sha(await readFile(shell)), bridgeSha256: sha(await readFile(bridge)),
+  shellSourceSha256: sha(await readFile(shell)), bridgeSha256: firDemo ? null : sha(await readFile(bridge)),
   scriptSha256: sha(await readFile(fileURLToPath(import.meta.url))),
-  bundleSha256: sha(bundle), brandQuery, sourceHashes,
+  bundleSha256: sha(bundle), brandQuery: firDemo ? null : brandQuery, sourceHashes,
+  firDemo: firDemo?.identity ?? null,
   hostOverride: hostOverride === null ? null : {
     sourcePath: resolve(hostOverridePath), sourceSha256: sha(hostOverride),
     baseSha256: sha(await readFile(resolve(sdkRoot, "js/runtime/host-state.js"))),
   },
-  mathComponentSha256: sha(await readFile(math)),
-  katexSha256: sha(await readFile(resolve(katex, "katex.mjs"))),
-  mathCssSha256: sha(mathCss), assetHashes,
+  math: firDemo ? "none" : { componentSha256: sha(await readFile(math)),
+    katexSha256: sha(await readFile(resolve(katex, "katex.mjs"))),
+    cssSha256: sha(mathCss), assetHashes },
 }, null, 2) + "\n");
 console.log(`Prepared ${output} (${bundle.length} bytes)`);

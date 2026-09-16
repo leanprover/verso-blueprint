@@ -15,6 +15,7 @@ globalThis.sessionAcceptance = run().then(
 
 async function run() {
   let runtime, root;
+  let documentRenders = 0;
   const warnings = [];
   const originalError = console.error, originalWarn = console.warn;
   console.error = (...args) => { warnings.push(args.map(String).join(" ")); originalError(...args); };
@@ -27,10 +28,18 @@ async function run() {
     runtime = await createVirRuntime({
       wasmUrl: "/runtime.wasm", irPackageSet: "/widget.irpkg-set.json",
       defaultHostBindings: () => createBrowserHostBindings({
-        reactHostBindings: createBrowserReactHostBindings,
+        reactHostBindings: lifecycle => {
+          const bindings = createBrowserReactHostBindings(lifecycle);
+          const createElement = bindings["react.node.createElement"];
+          bindings["react.node.createElement"] = (type, props, children) => {
+            if (props?.id === "vir-verso-document") documentRenders++;
+            return createElement(type, props, children);
+          };
+          return bindings;
+        },
       }),
     });
-    for (let scenario = 0; scenario < 13; scenario++) {
+    for (let scenario = 0; scenario < 14; scenario++) {
       check(runtime.call(`${entry}.timingChecks`, scenario) === true,
         `timing partition/correlation scenario ${scenario} failed`);
     }
@@ -70,7 +79,10 @@ async function run() {
       "document edit lost checkbox identity or state");
     check(byId("preview").dataset.versoChangedBlockCount !== "0", "edit was not highlighted");
     const paragraph = [...document.querySelectorAll("p")].find(p => p.textContent === "After edit");
+    const beforeDebug = documentRenders;
     click("debug");
+    check(documentRenders - beforeDebug === 2,
+      `debug rendered document ${documentRenders - beforeDebug} times; expected only Strict Mode's two calls`);
     check(panel() && paragraph.isConnected, "debug insertion remounted document content");
     check(!byId("debug-disclosure") && document.querySelectorAll("#vir-verso-server-bar").length === 1,
       "debug controls must not hide or duplicate the timing bar");
@@ -90,12 +102,15 @@ async function run() {
     check(new Set(segments.map(s => getComputedStyle(s).backgroundColor)).size === 3,
       "timing phases lack distinct colors");
     const width = bar.getBoundingClientRect().width;
-    check(byId("timing-scale").value === "0" && Math.abs(width - 240) < 0.05,
-      "default 1 ms/tick scale must make 6 ms occupy 240 CSS pixels");
+    check(byId("timing-scale").value === "0" &&
+      bar.dataset.versoRangeNanos === "10000000" &&
+      Math.abs(width / byId("server-scale").clientWidth - 0.6) < 0.01,
+      "auto scale must make 6 ms occupy 60% of the available 10 ms ruler");
     segments.forEach((segment, index) => check(
       Math.abs(segment.getBoundingClientRect().width - width * (index + 1) / 6) < 0.05,
       "timing segment width is not proportional to duration"));
     const beforeScale = sequence();
+    const beforeScaleRenders = documentRenders;
     for (const [value, expected] of [["10", 24], ["1000", 0.24], ["100", 2.4]]) {
       setScale(value);
       check(byId("timing-scale").value === value &&
@@ -103,11 +118,24 @@ async function run() {
         `scale ${value} did not change the bar width`);
       check(sequence() === beforeScale && paragraph.isConnected,
         "scale change repeated diagnostic effects or replaced document DOM");
+      check(documentRenders === beforeScaleRenders, "scale change rebuilt the document");
     }
     const unchangedSequence = sequence();
     render(1);
     check(sequence() === unchangedSequence, "unchanged input repeated the diagnostic effect");
+    check(documentRenders === beforeScaleRenders, "unchanged input rebuilt the document");
     check(paragraph.isConnected, "unchanged input replaced paragraph DOM");
+
+    const shell = byId("shell"), content = byId("content");
+    check(shell.contains(panel()) && !content.contains(panel()) &&
+      content.contains(byId("document")), "debug shell is not outside the document");
+    check(getComputedStyle(shell).position === "sticky", "shell is not sticky");
+    content.style.minHeight = "2000px";
+    window.scrollTo(0, 500);
+    check(window.scrollY > 0 && Math.abs(shell.getBoundingClientRect().top) < 1 &&
+      content.getBoundingClientRect().top < 0, "shell did not stay on top while content scrolled");
+    window.scrollTo(0, 0);
+    content.style.minHeight = "";
 
     for (const [scenario, expected] of [[2, "loading"], [3, "unavailable"], [4, "error"], [5, "ready"]]) {
       render(scenario);
@@ -147,6 +175,17 @@ async function run() {
     scale.scrollLeft = 100;
     check(scale.scrollLeft > 0, "long timings must be horizontally scrollable");
     app.style.width = "";
+    setScale("0");
+    for (const pixels of [220, 800]) {
+      app.style.width = `${pixels}px`;
+      const autoBar = byId("server-bar");
+      check(autoBar.dataset.versoRangeNanos === "2000000000" &&
+        Math.abs(autoBar.getBoundingClientRect().width / byId("server-scale").clientWidth - 0.6) < 0.01,
+        "auto scale did not adapt to the available width");
+      check(byId("server-scale").scrollWidth <= byId("server-scale").clientWidth + 1,
+        "auto ruler overflowed");
+    }
+    app.style.width = "";
     click("highlight-changes");
     check(panel().dataset.versoDebugBlockCount === "skipped" &&
       !document.querySelector(".vir-verso-block-changed"), "highlighting did not switch off");
@@ -157,6 +196,65 @@ async function run() {
       "intentional remount did not reset session state");
     click("debug");
     check(byId("timing-scale").value === "0", "intentional remount did not reset the scale");
+    unmount();
+
+    // Observe every commit, not just the final DOM: a new accepted response must
+    // not temporarily pair its server data with an old browser sample or drop
+    // to the server-only scale. This also exercises timing-only invalidation.
+    const timedComponent = runtime.call(`${entry}.createTimedComponent`);
+    root = createRoot(document.getElementById("app"));
+    const commits = [];
+    const renderTimed = refresh => React.act(() => root.render(
+      React.createElement(React.StrictMode, null,
+        React.createElement(React.Profiler, { id: "timing", onRender: () => {
+          const bar = byId("server-bar");
+          if (bar) commits.push({ total: Number(bar.dataset.versoTotalNanos),
+            timing: panel().dataset.versoDebugBrowserTiming });
+        } }, runtime.call(`${entry}.renderTimed`, timedComponent, refresh)))));
+    renderTimed(0);
+    click("debug");
+    renderTimed(1);
+    check(panel().dataset.versoDebugBrowserTiming === "demo-clock" &&
+      byId("server-bar").dataset.versoTotalNanos === "80000000", "timed sample did not settle");
+    commits.length = 0;
+    const beforeRefresh = documentRenders;
+    renderTimed(2);
+    check(documentRenders - beforeRefresh === 2, "timing-only response rebuilt content more than once per Strict Mode pass");
+    check(byId("server-bar").dataset.versoTotalNanos === "70000000", "timing-only response was ignored");
+    check(commits.length >= 2 && commits.every(c => c.timing === "demo-clock" &&
+      [80000000, 70000000].includes(c.total)), "debug bar displayed an incomplete sample during refresh");
+    const beforeTimedScale = documentRenders;
+    setScale("10");
+    check(documentRenders === beforeTimedScale &&
+      byId("server-bar").dataset.versoTotalNanos === "70000000", "scale change rebuilt or remeasured content");
+    click("highlight-changes");
+    check(byId("server-bar").dataset.versoTotalNanos === "70000000", "highlight control discarded the completed measurement");
+    unmount();
+    const encodedComponent = runtime.call(`${entry}.createEncodedDocumentComponent`);
+    root = createRoot(document.getElementById("app"));
+    const renderEncoded = scenario => React.act(() => root.render(
+      React.createElement(React.StrictMode, null, React.createElement(encodedComponent,
+        { document: runtime.call(`${entry}.encodedDocument`, scenario) }))));
+    renderEncoded(0);
+    click("highlight-changes");
+    click("follow-cursor");
+    const encodedArticle = document.getElementById("vir-verso-document");
+    const encodedRenders = documentRenders;
+    renderEncoded(0);
+    check(documentRenders === encodedRenders, "unchanged document String rebuilt content");
+    renderEncoded(1);
+    check(document.getElementById("vir-verso-document") === encodedArticle &&
+      byId("highlight-changes").checked && !byId("follow-cursor").checked,
+      "native String update lost document/options identity");
+    check(document.querySelector('.vir-verso-block-changed') &&
+      !document.querySelector('.vir-verso-block-focused'),
+      "native String options did not reach the renderer");
+    renderEncoded(2);
+    check(document.querySelector('[data-verso-preview-status="error"]'),
+      "malformed document String did not display an error");
+    renderEncoded(1);
+    check(byId("highlight-changes").checked && !byId("follow-cursor").checked,
+      "decode error recovery lost options");
     unmount();
     runtime.dispose();
     let rejected = false;
@@ -170,7 +268,11 @@ async function run() {
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
       debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
       fixedTimeScale: true, scrollableLongTiming: true,
-      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 13,
+      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 14,
+      documentRenderCounts: true, shellOnlyUpdatesSkipDocument: true,
+      stickyShellOutsideDocument: true, responsiveAutoScale: true,
+      coherentCompletedSamples: true, timingOnlyResponseRefresh: true,
+      nativeDocumentStringOptions: true, nativeDocumentStringErrorRecovery: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);
