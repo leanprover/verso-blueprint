@@ -146,15 +146,26 @@ the copied v2 package and its parity acceptance directory.
 The separate `.lake/build/fir-json-demo.js` now bundles the verified v2 package
 (2,977,956 bytes). The original fast VIR bundle, frozen baseline package,
 producer sources, Lean toolchain and SDK pins remain unchanged. The dedicated
-FLT demo currently selects VIR on disk; its editor-owned registration is not
-silently rewritten. The FIR live gate can select FIR explicitly in memory using
-`VBP_LATENCY_FIR_REGISTRATION=1`, recording the effective source and checking the
-original source hash afterward.
+FLT demo now has one `FLTBlueprint.DemoPreview.useFir` startup flag: true selects
+FIR (the default), false selects fast VIR, pairing the selected bundle and props.
+The harness can exercise either choice in memory with
+`VBP_LATENCY_DEMO_USE_FIR=1` or `0`, recording effective source and checking the
+original source hash afterward. Set `VBP_LATENCY_WIDGET=FLTBlueprint.DemoPreview.widget`.
 `fir-v2-adopted-live-20260916-02/result.json` passes the actual full-FLT
 ProofWidgets/LSP shell: one factory/package, three accepted Strings, one RPC per
 edit, retained DOM/controls and real server focus, zero warnings. Disk source is
 unchanged; no live timing claim is made. The preceding attempt is excluded because
 the on-disk demo selected VIR rather than the requested FIR widget.
+That historical gate used the earlier registration adapter retained in its
+capture; the current harness edits only the new boolean selector.
+Both startup choices pass: `demo-selector-fir-20260916-02/result.json` tests the
+on-disk true default; `demo-selector-vir-20260916-01/result.json` tests false in
+memory. The selected module hash and actual RPC path match each backend. Each
+opens one client package with no warnings; FIR retains its one component,
+document/controls and actual server focus through two edits. Beam accepts the
+selector with zero diagnostics. These concurrently executed checks are correctness
+evidence only, not another paired performance comparison. The first FIR attempt
+failed registration discovery and is preserved/excluded.
 
 The shared Lean `EncodedDocumentProps` schema declares the unchanged document
 String plus requested/received/notified native Number-or-undefined fields.

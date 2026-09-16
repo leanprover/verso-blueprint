@@ -155,6 +155,10 @@ It is a separate copy of the root Blueprint so existing user edits and the VIR
 registration in `FLTBlueprint.lean` remain untouched. Its wrapper identifies FIR.
 Restart the Lean server after a rebuild. This is the actual ProofWidgets RPC
 path, not a standalone browser substitute.
+The dedicated file has one `FLTBlueprint.DemoPreview.useFir` flag: true selects
+FIR, false selects the fast VIR demo, with matching widget/props and just one
+mounted backend. Changing backend resets controls; ordinary edits retain them.
+This selection does not make the two live configurations a matched benchmark.
 
 The temporary view reuses the existing VBP RPC lifecycle with a dedicated
 `FirJsonPreview.Server.previewDocument` endpoint. The server sends the existing
@@ -201,6 +205,7 @@ VBP_LATENCY_PROJECT=/path/to/verso-flt \
 VBP_LATENCY_SOURCE=FLTBlueprintFirDemo.lean \
 VBP_LATENCY_ANCHOR='This repository is the Verso blueprint integration layer for the FLT project.' \
 VBP_LATENCY_BACKEND=fir \
+VBP_LATENCY_WIDGET=FLTBlueprint.DemoPreview.widget \
 VBP_LATENCY_SHELL="$PWD/.lake/build/fir-json-demo.js" \
 VBP_LATENCY_SAMPLES=1 \
 VBP_LATENCY_OUTPUT=/path/to/fresh-evidence-directory \

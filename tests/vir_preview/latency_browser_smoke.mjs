@@ -23,16 +23,15 @@ const jsonBridge = process.env.VBP_LATENCY_JSON_BRIDGE ?? "off";
 assert.ok(["off", "control", "candidate"].includes(jsonBridge));
 const diskSource = await readFile(sourcePath, "utf8");
 let source = diskSource;
-// Opt-in local fixture selection without changing an editor-owned demo file.
-const firRegistration = process.env.VBP_LATENCY_FIR_REGISTRATION === "1";
-if (firRegistration) {
-  assert.equal(process.env.VBP_LATENCY_BACKEND, "fir");
+// Exercise either startup choice without changing the editor-owned flag.
+const demoUseFir = process.env.VBP_LATENCY_DEMO_USE_FIR;
+assert.ok(demoUseFir === undefined || demoUseFir === "0" || demoUseFir === "1");
+if (demoUseFir !== undefined) {
+  assert.equal(process.env.VBP_LATENCY_BACKEND === "fir", demoUseFir === "1");
   assert.equal(jsonBridge, "off");
-  const virPanel = 'show_panel_widgets [local Lean.Vir.Infoview.widget with FLTBlueprint.Preview.panelProps]';
-  const firPanel = '-- show_panel_widgets [local FirJsonPreview.widget with FLTBlueprint.FirPreview.panelProps]';
-  assert.equal(source.split(virPanel).length, 2, "FLT VIR registration drift");
-  assert.equal(source.split(firPanel).length, 2, "FLT FIR registration drift");
-  source = source.replace(virPanel, `-- ${virPanel}`).replace(firPanel, firPanel.slice(3));
+  const selector = /^def useFir : Bool := (true|false)$/gm;
+  assert.equal([...source.matchAll(selector)].length, 1, "unique FLT startup selector required");
+  source = source.replace(selector, `def useFir : Bool := ${demoUseFir === "1" ? "true" : "false"}`);
   await writeFile(resolve(output, "effective-source.lean"), source);
 }
 if (jsonBridge !== "off") {
@@ -279,7 +278,7 @@ if (jsonBridge !== "off") {
 }
 const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
   widgetBackend: firRenderer ? `fir (${firMode})` : "vir",
-  firIdentity, firRegistration,
+  firIdentity, demoUseFir,
   firProbe: firRenderer && firMode !== "timing" ? {
     mode: firMode, diagnosticShellSha256: sha(diagnosticShell),
     scope: "correctness-only component factory/input guards; no timing claims",

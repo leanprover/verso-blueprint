@@ -82,7 +82,9 @@ globalThis.rpcAcceptance = (async () => {
   try {
     const { widgets } = await session.call("Lean.Widget.getWidgets", config.a);
     const registered = widgets.find(w => w.id === WIDGET_ID);
-    check(registered && registered.props.autoReloadMs === 0, "missing non-polling widget");
+    check(registered && registered.props.autoReloadMs === 0,
+      `missing non-polling widget ${WIDGET_ID}; got ${JSON.stringify(widgets.map(w =>
+        ({ id:w.id, autoReloadMs:w.props.autoReloadMs, entry:w.props.componentEntry })))}`);
     const { sourcetext } = await session.call("Lean.Widget.getWidgetSource", { hash: registered.javascriptHash, pos: config.a });
     const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sourcetext)))].map(b => b.toString(16).padStart(2, "0")).join("");
     check(hash === SHELL_HASH, "registered shell hash mismatch");
