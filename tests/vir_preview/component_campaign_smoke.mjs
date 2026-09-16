@@ -12,9 +12,13 @@ const measure = process.env.VBP_COMPONENT_MEASURE === '1';
 const profile = process.env.VBP_COMPONENT_PROFILE === '1';
 const rich = process.env.VBP_COMPONENT_RICH === '1';
 const adapter = process.env.VBP_COMPONENT_ADAPTER === '1';
+const retention = process.env.VBP_COMPONENT_RETENTION === '1';
+const retentionReverse = process.env.VBP_COMPONENT_RETENTION_REVERSE === '1';
 assert(!profile || measure, 'CPU sampling requires the measured component boundary');
 assert(!rich || !measure, 'Rich acceptance is separate from the frozen timing cohort');
 assert(!adapter || (measure && !profile), 'Adapter paired timings are separate from CPU sampling');
+assert(!retention || (measure && !profile && !adapter && !rich), 'Session-age diagnostic is a separate unsampled measured cohort');
+assert(!retentionReverse || retention, 'Reverse session-age order requires the session-age diagnostic');
 const sha = b => createHash('sha256').update(b).digest('hex');
 const json = async path => JSON.parse(await readFile(path));
 const sourceIdentity = await json(resolve(campaign, 'identity.json'));
@@ -74,10 +78,12 @@ await mkdir(output, { recursive: false });
 await writeFile(resolve(output, 'identity.json'), JSON.stringify({
   sourceIdentity: sourceIdentity.sourceIdentity, firBuildSha256,
   baselineBuildSha256: sourceIdentity.firBuildSha256, adapterComparison: adapter,
+  sessionAgeComparison: retention, sessionAgeReverse: retentionReverse,
   adapterHelpers: { baseline: sha(await readFile(resolve(baselineRoot,'host-prototype.mjs'))),
     candidate: sha(await readFile(resolve(firRoot,'host-prototype.mjs'))) },
   command: process.argv, harnessHashes: Object.fromEntries(await Promise.all(
-    ['component_campaign_smoke.mjs','component_campaign_entry.mjs','component_campaign_phase_entry.mjs','component_phase_probe.mjs']
+    ['component_campaign_smoke.mjs','component_campaign_entry.mjs','component_campaign_phase_entry.mjs','component_phase_probe.mjs',
+      ...(retention ? ['component_retention_entry.mjs'] : [])]
       .map(async file => [file,sha(await readFile(resolve(root,'tests/vir_preview',file)))]))),
   host: { cpu: os.cpus()[0]?.model, cpuCount: os.cpus().length, loadBefore: os.loadavg(), platform: os.platform() },
   firWasmSha256: verified.build.wasm.sha256, sdkManifestSha256: sha(await readFile(resolve(sdkRoot,'lean-vir-artifact.json'))),
@@ -127,12 +133,14 @@ if (!measure) {
 const wasmBytes = await readFile(resolve(sdkRoot, 'wasm/vir-upstream.wasm'));
 // React.act is a development acceptance API; browser uses development React.
 const browserBundle = await build({ ...options,
-  entryPoints: [measure ? resolve(root,'tests/vir_preview/component_campaign_phase_entry.mjs') : entry],
+  entryPoints: [retention ? resolve(root,'tests/vir_preview/component_retention_entry.mjs')
+    : measure ? resolve(root,'tests/vir_preview/component_campaign_phase_entry.mjs') : entry],
   define: { 'process.env.NODE_ENV': measure ? '"production"' : '"development"',
     'process.env.VBP_COMPONENT_MEASURE': measure ? '"1"' : '"0"',
     'process.env.VBP_COMPONENT_RICH': rich ? '"1"' : '"0"',
     'process.env.VBP_COMPONENT_ADAPTER': adapter ? '"1"' : '"0"',
-    'process.env.VBP_COMPONENT_PROFILE': profile ? '"1"' : '"0"' },
+    'process.env.VBP_COMPONENT_PROFILE': profile ? '"1"' : '"0"',
+    'process.env.VBP_COMPONENT_RETENTION_REVERSE': retentionReverse ? '"1"' : '"0"' },
   ...(profile ? { outfile: resolve(output,'probe.js'), sourcemap: 'external' } : {}),
   platform: 'browser', format: 'iife', target: 'chrome120' });
 const browserCode = profile ? browserBundle.outputFiles.find(f => f.path.endsWith('/probe.js')).contents
