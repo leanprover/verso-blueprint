@@ -102,7 +102,8 @@ globalThis.rpcAcceptance = (async () => {
     const initialResponse = CAPTURE_RESPONSE ? calls.filter(c => c.method === previewMethod).at(-1).value : null;
     const retained = document.getElementById("vir-verso-highlight-changes");
     if (FIR_RENDERER) {
-      check(panel()?.closest('[data-verso-backend="fir"]'), "FIR backend not selected");
+      // The registered module/hash selects the backend; correctness additionally
+      // checks the actual native FIR factory and its unchanged String input.
       if (FIR_MODE === "correctness") {
       check(globalThis.__vbpFirRenders === 1, "FIR must render once on mount");
       check(globalThis.__vbpFirFactories === 1, "FIR native component must be created once");

@@ -170,17 +170,28 @@ def createTimedComponent (clock : RuntimeM Float)
     let input ← LeanRef.fromJSL (← Props.WithData.data props)
     renderSession content clock input.preview input.timing?
 
+/-- Explicit native props shared by interpreted and compiled document components.
+Timing numbers use the same browser clock; undefined means no observation.
+No decoded document or Lean reference crosses the runtime boundary. -/
+structure EncodedDocumentProps where
+  document : Js String
+  requestedMs : Js.UndefinedOr Float
+  receivedMs : Js.UndefinedOr Float
+  notifiedMs : Js.UndefinedOr Float
+
 /-- Native backend boundary: `document` is the existing Document.encode String.
 Create this type once and let React retain its controls and identity state.
 Only native JS props cross runtimes; decoded documents and Lean refs belong to
 the runtime executing this component. Math remains an explicit native component.
-No RPC timing is supplied by this document-only boundary. -/
+RPC timing is optional native metadata, separate from the document codec. -/
 def createEncodedDocumentComponent
-    (mathComponent? : Option (FunctionComponent Props) := none) :
-    RuntimeM (FunctionComponent Props) := do
-  let content ← Session.createContentComponent (pure 0) mathComponent?
+    (mathComponent? : Option (FunctionComponent Props) := none)
+    (clock? : Option (RuntimeM Float) := none) :
+    RuntimeM (FunctionComponent EncodedDocumentProps) := do
+  let clock := clock?.getD (pure 0)
+  let content ← Session.createContentComponent clock mathComponent?
   FunctionComponent.ofLean fun props => do
-    let encoded ← Js.String.fromAny (← Js.Object.get props (← js#"document"))
+    let encoded ← js_field% props "document"
     let calculate ← MemoCalculation.ofLean do
       let source ← JsValue.toString encoded
       let preview := match Document.decode source with
@@ -189,6 +200,32 @@ def createEncodedDocumentComponent
       LeanRef.toJSL preview
     let deps ← Hooks.DependencyList.ofArray #[Js.erase encoded]
     let preview ← LeanRef.fromJSL (← Hooks.useMemo calculate deps)
-    renderSession content (pure 0) preview
+    let timing? ← match clock? with
+      | none => pure none
+      | some clock => do
+        let requested ← js_field% props "requestedMs"
+        let received ← js_field% props "receivedMs"
+        let notified ← js_field% props "notifiedMs"
+        -- Separate from decoding: a new request can return an unchanged String.
+        -- Retain this timestamp across control and post-commit shell renders.
+        let observe ← MemoCalculation.ofLean do
+          let timing? ← match (← Js.UndefinedOr.toOption requested),
+              (← Js.UndefinedOr.toOption received) with
+            | some requested, some received => do
+              let notified? ← match ← Js.UndefinedOr.toOption notified with
+                | none => pure none
+                | some value => some <$> JsValue.toFloat value
+              pure (some {
+                requestedMs := ← JsValue.toFloat requested
+                receivedMs := ← JsValue.toFloat received
+                decodedMs := ← clock
+                notifiedMs? := notified?
+              } : Option Session.ResponseTiming)
+            | _, _ => pure none
+          LeanRef.toJSL timing?
+        let deps ← Hooks.DependencyList.ofArray
+          #[Js.erase encoded, Js.erase requested, Js.erase received, Js.erase notified]
+        LeanRef.fromJSL (← Hooks.useMemo observe deps)
+    renderSession content clock preview timing?
 
 end VersoBlueprint.Experimental.VirPreview

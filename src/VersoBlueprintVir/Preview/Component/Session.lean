@@ -182,7 +182,7 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
         #[("dispatch", "Notification / dispatch", "#63806b", durations[8]!)] else #[]) ++
       serverPhases ++ #[
         ("rpc-remainder", "Encode / transport / scheduling", "#8995a6", durations[3]!),
-        ("decode", "Decode", "#a678cf", durations[4]!),
+        ("decode", "Reply → decoded / scheduling", "#a678cf", durations[4]!),
         ("prepare", "Identity / change preparation", "#df7861", durations[5]!),
         ("render", "Build React elements", "#30a6b0", durations[6]!),
         ("commit", "React / effects / scheduling", "#c79351", durations[7]!)

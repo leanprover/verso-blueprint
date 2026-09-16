@@ -54,8 +54,24 @@ def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) :=
   VersoBlueprint.Experimental.VirPreview.createComponent
 
 @[vir_export]
-def createEncodedDocumentComponent : RuntimeM (FunctionComponent Props) :=
+def createEncodedDocumentComponent : RuntimeM (FunctionComponent EncodedDocumentProps) :=
   VersoBlueprint.Experimental.VirPreview.createEncodedDocumentComponent
+
+@[vir_export]
+def createTimedEncodedDocumentComponent : RuntimeM (FunctionComponent EncodedDocumentProps) :=
+  VersoBlueprint.Experimental.VirPreview.createEncodedDocumentComponent none (some (pure 100))
+
+/-- Demo-only binding until the matched upstream SDK supplies a browser clock. -/
+@[vir_js "previewDemo.now"]
+private opaque browserNow : RuntimeM (Js Float)
+
+/-- The same factory for both backends, with explicit native math and clock.
+Native components are passed unchanged; neither host reconstructs a document. -/
+@[vir_export]
+def createBrowserEncodedDocumentComponent (math : FunctionComponent Props) :
+    RuntimeM (FunctionComponent EncodedDocumentProps) :=
+  VersoBlueprint.Experimental.VirPreview.createEncodedDocumentComponent (some math)
+    (some (do JsValue.toFloat (← browserNow)))
 
 @[vir_export]
 def encodedDocument (scenario : Nat) : String :=

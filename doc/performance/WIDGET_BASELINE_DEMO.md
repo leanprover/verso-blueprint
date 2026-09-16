@@ -174,7 +174,7 @@ Build the separate FIR shell (the VIR shell is not overwritten):
 
 ```sh
 VBP_DEMO_OUTPUT="$PWD/.lake/build/fir-json-demo.js" \
-VBP_DEMO_FIR_PACKAGE="$PWD/.deps/component-campaign-20260916-01/fir" \
+VBP_DEMO_FIR_PACKAGE="$PWD/.deps/adapter-header-v2-20260916" \
 node tests/vir_preview/build_checked_json_demo.mjs
 scripts/lean-low-priority lake build FirJsonPreview +FirJsonPreview.Server:olean
 ```
@@ -183,11 +183,16 @@ scripts/lean-low-priority lake build FirJsonPreview +FirJsonPreview.Server:olean
 identity; checksums, typed inventories, SDK/provider sources and React lock
 identity are verified before bundling. The current package is local/provisional,
 not a published dependency. BUILD SHA256 is
-`33b3ad90c23864fc17bc8a50624de3e68aa43256ce1a1b7a40d20dbe2bef72f8`;
+`1138101ee4bc83540af6fb84952143b65267f2a7a809a50b9b1f8db900583da4`;
 Wasm SHA256 is
 `98504ee775e4f4c6c1028d1e497671240ae79480023c0c648f5bc40bc89c0aa6`.
 FIR mode omits the VIR JSON bridge, demo clock and KaTeX assets. Its active
 binding is `previewDemo.componentFir`; there is no stateless `renderFir` path.
+The live FIR demo adopts the accepted immutable header-v2 adapter; the original
+package remains in `.deps/component-campaign-20260916-01/fir` for paired replay.
+The new shared factory supports native timing props and explicit math/clock,
+but this frozen FIR binary still uses its original clock-free `none` factory.
+Full timing/math adoption awaits a newly compiled package, not a JS document shim.
 
 The stateful full-FLT live gate uses the existing pinned ProofWidgets/LSP harness:
 

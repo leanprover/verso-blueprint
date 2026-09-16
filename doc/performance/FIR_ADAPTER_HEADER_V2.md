@@ -1,7 +1,8 @@
 # FIR adapter header v2: package-only acceptance
 
-2026-09-16. Qualified for the provisional local `none`-component experiment;
-not adopted in source or the live demo. Main lacks the prototype stack, so
+2026-09-16. Initially qualified for the provisional local `none`-component
+experiment; subsequently adopted in the separate FIR demo (see below).
+Main lacks the prototype stack, so
 source landing remains parked under `ROOT-W7-20260916-026`.
 
 The candidate caches DataView by memory.buffer identity and uses fresh scalar
@@ -108,3 +109,80 @@ node tests/vir_preview/summarize_replay_profile.mjs /path/to/profile --component
 Decision: accept the immutable v2 package for this bounded consumer experiment;
 correctness, paired content performance and expected profile movement agree.
 Baseline artifacts, source/toolchain pins and live demo remain unchanged.
+
+## Fresh matched VIR / FIR v2 comparison
+
+Two fresh browser sessions use the same frozen factory, captured full-FLT
+before/after inputs, providers and options as above. Each session performs two
+warmup updates/backend and four AB/BA rounds, without CPU sampling. This compares
+FIR v2 against the frozen VIR `36d26bc2`, not newer VIR optimizations.
+
+| Backend | Content median, eight updates | Range |
+| --- | ---: | ---: |
+| VIR | 1.309 s | 1.022–1.486 s |
+| FIR header v2 | 0.836 s | 0.707–1.230 s |
+
+Median paired reduction is **29.6%**; FIR is faster in every pair (8.8–46.4%).
+The ratio of independent pooled medians gives 36.1%; the paired statistic above
+preserves update and run-order correspondence. Batch medians are VIR/FIR
+1.341/0.836 s and 1.285/0.859 s. Absolute FIR times differ from the preceding
+baseline/candidate experiment: only within-run paired comparisons support the
+claims here.
+
+Every round passes exact DOM equality and retained article checks. The boundary
+remains decoded Document and prepared identities to returned React elements;
+it excludes decoding, identity preparation and React reconciliation/commit.
+The outer callback records combined document-session work, not independent
+decode and identity phases. No total preview speedup or fine phase attribution
+is inferred. Neither the live FIR package nor VIR source/SDK pins are changed.
+
+Raw results and complete command/input/artifact identities are retained in
+`_out/browser-pr188/vir-fir-v2-timing-20260916-{01,02}/`. Reproduce using the
+unsampled timing command above with `VBP_COMPONENT_ADAPTER` omitted, selecting
+the copied v2 package and its parity acceptance directory.
+
+## Demo adoption and remaining alignment
+
+The separate `.lake/build/fir-json-demo.js` now bundles the verified v2 package
+(2,977,956 bytes). The original fast VIR bundle, frozen baseline package,
+producer sources, Lean toolchain and SDK pins remain unchanged. The dedicated
+FLT demo currently selects VIR on disk; its editor-owned registration is not
+silently rewritten. The FIR live gate can select FIR explicitly in memory using
+`VBP_LATENCY_FIR_REGISTRATION=1`, recording the effective source and checking the
+original source hash afterward.
+`fir-v2-adopted-live-20260916-02/result.json` passes the actual full-FLT
+ProofWidgets/LSP shell: one factory/package, three accepted Strings, one RPC per
+edit, retained DOM/controls and real server focus, zero warnings. Disk source is
+unchanged; no live timing claim is made. The preceding attempt is excluded because
+the on-disk demo selected VIR rather than the requested FIR widget.
+
+The shared Lean `EncodedDocumentProps` schema declares the unchanged document
+String plus requested/received/notified native Number-or-undefined fields.
+`createEncodedDocumentRpcComponent` owns the common RPC adaptation. No decoded
+document, Lean reference, extra document JSON conversion, or second shell crosses
+runtimes. The factory has explicit optional math and clock inputs. Document
+decoding and timestamp observation have separate native React memo dependencies.
+
+`native-timing-props-20260916-04.json` records shared Chromium StrictMode checks:
+timing-only updates refresh the coherent bar, preserve DOM/options, and skip
+decoding; unchanged props and scale-only updates skip content construction;
+absent timestamps remain unavailable. The timing bar calls the received-to-
+decoded interval "Reply → decoded / scheduling": it is not a pure decoder timer.
+Targeted batch build passes (1049 jobs); this is not clean full-project CI.
+
+The existing FIR Wasm still contains the old clock-free `none` factory. The
+new shared factory is therefore preparation, not a live FIR math/timing claim.
+Request `VBP-FIR-20260916-CONFIGURED-FACTORY-001` asks the producer for a portable
+isolated successor compiling the actual
+`VersoBlueprintVirTests.NativeSession.createBrowserEncodedDocumentComponent`
+entry with a native math argument and the explicitly demo-only browser clock.
+Complete frozen source identity: `d356ba46715f26c2f427d40d82f46b85e05c0eee9ac7436604dfae9bbdcbdcb6`;
+archive SHA256: `cc5d3b28d9459909f6878019f4410246db7030f45e74bc7ccef0b4475336786e`.
+It preserves all dependency working bytes, including the dirty parser; private
+setup regeneration must record new inventory/artifact/plugin identities.
+
+Next acceptance uses the same configured entry, document inputs, native math
+component, clock and providers for both backends. It must qualify real KaTeX,
+full timing accounting, recovery and retained controls before adoption. The
+experimental fast-decoder VIR demo remains separately labeled; its numbers
+must not be compared with the plain Lean decoder in these frozen controls.

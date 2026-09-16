@@ -23,6 +23,18 @@ const jsonBridge = process.env.VBP_LATENCY_JSON_BRIDGE ?? "off";
 assert.ok(["off", "control", "candidate"].includes(jsonBridge));
 const diskSource = await readFile(sourcePath, "utf8");
 let source = diskSource;
+// Opt-in local fixture selection without changing an editor-owned demo file.
+const firRegistration = process.env.VBP_LATENCY_FIR_REGISTRATION === "1";
+if (firRegistration) {
+  assert.equal(process.env.VBP_LATENCY_BACKEND, "fir");
+  assert.equal(jsonBridge, "off");
+  const virPanel = 'show_panel_widgets [local Lean.Vir.Infoview.widget with FLTBlueprint.Preview.panelProps]';
+  const firPanel = '-- show_panel_widgets [local FirJsonPreview.widget with FLTBlueprint.FirPreview.panelProps]';
+  assert.equal(source.split(virPanel).length, 2, "FLT VIR registration drift");
+  assert.equal(source.split(firPanel).length, 2, "FLT FIR registration drift");
+  source = source.replace(virPanel, `-- ${virPanel}`).replace(firPanel, firPanel.slice(3));
+  await writeFile(resolve(output, "effective-source.lean"), source);
+}
 if (jsonBridge !== "off") {
   const imports = "meta import FLTBlueprint.Preview";
   assert.equal(source.split(imports).length, 2, "FLT preview import drift");
@@ -156,7 +168,7 @@ function replaceOnce(before, after) {
   harness = harness.replace(before, () => after);
 }
 replaceOnce('const root = fileURLToPath(new URL("../../", import.meta.url));', `const root = ${JSON.stringify(root)};`);
-if (jsonBridge !== "off") replaceOnce('const source = await readFile(sourcePath, "utf8");',
+if (source !== diskSource) replaceOnce('const source = await readFile(sourcePath, "utf8");',
   `const source = await readFile(${JSON.stringify(resolve(output, "effective-source.lean"))}, "utf8");`);
 replaceOnce('a: fixturePosition(source, "rpc-position-a"),\n    b: fixturePosition(source, "rpc-position-b"),', `a: ${JSON.stringify(position)}, b: ${JSON.stringify(position)},`);
 replaceOnce('let documentVersion = 1;', 'let documentVersion = 1; let diagnosticsDone;');
@@ -267,7 +279,7 @@ if (jsonBridge !== "off") {
 }
 const identity = { root, sourcePath, anchor, position, virCommit: sdk.gitCommit,
   widgetBackend: firRenderer ? `fir (${firMode})` : "vir",
-  firIdentity,
+  firIdentity, firRegistration,
   firProbe: firRenderer && firMode !== "timing" ? {
     mode: firMode, diagnosticShellSha256: sha(diagnosticShell),
     scope: "correctness-only component factory/input guards; no timing claims",

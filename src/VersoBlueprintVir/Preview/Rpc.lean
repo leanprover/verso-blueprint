@@ -125,6 +125,31 @@ def createRpcComponentFor {α : Type} (method : String)
   FunctionComponent.ofLean fun props => do
     renderRpc method decodeReply clock? view (← LeanRef.fromJSL (← Props.WithData.data props))
 
+/-- Shared document-String RPC adapter. The selected runtime owns decoding and
+the single document session; only native String/number props reach its component. -/
+def createEncodedDocumentRpcComponent (method : String)
+    (documentComponent : FunctionComponent EncodedDocumentProps)
+    (clock? : Option (RuntimeM Float) := none) :
+    RuntimeM (FunctionComponent (Props.WithData RpcInput)) := do
+  let DocumentComponent := documentComponent
+  let view ← FunctionComponent.ofLean fun (props : Js (Props.WithData (RpcState (Js String)))) => do
+    let state : RpcState (Js String) ← LeanRef.fromJSL (← Props.WithData.data props)
+    match state.reply? with
+    | some (.ok encoded) => do
+      let number := fun (value : Option Float) => (do
+        match value with
+        | none => Js.UndefinedOr.undefined
+        | some value => pure (Js.UndefinedOr.ofJs (← JsValue.ofFloat value))
+        : RuntimeM (Js.UndefinedOr Float))
+      let requested ← number (state.timing?.map (·.requestedMs))
+      let received ← number (state.timing?.map (·.receivedMs))
+      let notified ← number (state.timing?.bind (·.notifiedMs?))
+      return ← <DocumentComponent document={encoded} requestedMs={requested}
+        receivedMs={received} notifiedMs={notified} />
+    | none => renderStatus "loading" "Loading document"
+    | some (.error message) => renderStatus "error" message
+  createRpcComponentFor method (fun reply => Except.ok <$> Js.String.fromAny reply) view clock?
+
 /-- Create once per runtime. The server method returns `Preview.encode preview`
 as its String result. Decode once per accepted response, never during rendering.
 Cleanup aborts obsolete requests and independently suppresses stale publication. -/

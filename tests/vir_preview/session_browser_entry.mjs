@@ -16,6 +16,7 @@ globalThis.sessionAcceptance = run().then(
 async function run() {
   let runtime, root;
   let documentRenders = 0;
+  let trackedDocument = null, trackedDocumentDecodes = 0;
   const warnings = [];
   const originalError = console.error, originalWarn = console.warn;
   console.error = (...args) => { warnings.push(args.map(String).join(" ")); originalError(...args); };
@@ -27,7 +28,9 @@ async function run() {
   return withCleanup(async () => {
     runtime = await createVirRuntime({
       wasmUrl: "/runtime.wasm", irPackageSet: "/widget.irpkg-set.json",
-      defaultHostBindings: () => createBrowserHostBindings({
+      hostBindings: { "previewDemo.now": () => performance.now() },
+      defaultHostBindings: () => {
+        const bindings = createBrowserHostBindings({
         reactHostBindings: lifecycle => {
           const bindings = createBrowserReactHostBindings(lifecycle);
           const createElement = bindings["react.node.createElement"];
@@ -37,7 +40,14 @@ async function run() {
           };
           return bindings;
         },
-      }),
+        });
+        const stringValue = bindings["js.string.value"];
+        bindings["js.string.value"] = value => {
+          if (value === trackedDocument) trackedDocumentDecodes++;
+          return stringValue(value);
+        };
+        return bindings;
+      },
     });
     for (let scenario = 0; scenario < 14; scenario++) {
       check(runtime.call(`${entry}.timingChecks`, scenario) === true,
@@ -256,6 +266,42 @@ async function run() {
     check(byId("highlight-changes").checked && !byId("follow-cursor").checked,
       "decode error recovery lost options");
     unmount();
+    const timedEncoded = runtime.call(`${entry}.createTimedEncodedDocumentComponent`);
+    const timedDocument = runtime.call(`${entry}.encodedDocument`, 0);
+    trackedDocument = timedDocument;
+    root = createRoot(document.getElementById("app"));
+    const renderTimedEncoded = (requestedMs, receivedMs) => React.act(() => root.render(
+      React.createElement(React.StrictMode, null, React.createElement(timedEncoded,
+        { document: timedDocument, requestedMs, receivedMs }))));
+    renderTimedEncoded(10, 20);
+    const initialNativeDecodes = trackedDocumentDecodes;
+    check(initialNativeDecodes > 0, "native decode guard did not observe its String");
+    click("debug");
+    // Diagnostics start with the next accepted response, not a retroactive
+    // observation of the mount that ran with debug disabled.
+    renderTimedEncoded(10, 25);
+    check(byId("server-bar").dataset.versoTotalNanos === "90000000",
+      "encoded document boundary did not connect native RPC/browser timings");
+    const nativeTimedArticle = byId("document");
+    const beforeNativeSame = documentRenders;
+    renderTimedEncoded(10, 25);
+    check(documentRenders === beforeNativeSame,
+      "unchanged native timing props rebuilt content");
+    renderTimedEncoded(15, 30);
+    check(byId("server-bar").dataset.versoTotalNanos === "85000000" &&
+      byId("document") === nativeTimedArticle && byId("debug").checked,
+      "timing-only native props lost coherent sample, DOM or controls");
+    const beforeNativeScale = documentRenders;
+    setScale("10");
+    check(documentRenders === beforeNativeScale &&
+      byId("server-bar").dataset.versoTotalNanos === "85000000",
+      "native scale update rebuilt content or changed its timestamp");
+    renderTimedEncoded(undefined, undefined);
+    check(panel().dataset.versoDebugBrowserTiming === "unavailable",
+      "absent native timing props were presented as a measured interval");
+    check(trackedDocumentDecodes === initialNativeDecodes,
+      "timing/control-only native updates decoded the unchanged document again");
+    unmount();
     runtime.dispose();
     let rejected = false;
     try { runtime.call(`${entry}.createComponent`); } catch { rejected = true; }
@@ -273,6 +319,8 @@ async function run() {
       stickyShellOutsideDocument: true, responsiveAutoScale: true,
       coherentCompletedSamples: true, timingOnlyResponseRefresh: true,
       nativeDocumentStringOptions: true, nativeDocumentStringErrorRecovery: true,
+      nativeDocumentStringTiming: true, nativeTimingOnlyUpdate: true,
+      nativeTimingUpdatesSkipDecode: true,
       noReactWarnings: true, scope: "explicit Lean fixture inputs, not editor/RPC integration" };
   }, [["React root", unmount], ["VIR runtime", () => runtime?.dispose()],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);
