@@ -15,103 +15,40 @@ namespace VersoBlueprint.Experimental.VirPreview.ComponentStyle
 open Lean.Vir Lean.Vir.React
 open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 
-private def vscodeColor (name fallback : String) : String :=
-  "var(--vscode-" ++ name ++ ", " ++ fallback ++ ")"
+/-- Constant presentation belongs to CSS rather than per-render native objects.
+Selectors are scoped to the preview; VS Code theme variables remain live. -/
+def css : String := "
+#vir-verso-preview { display: grid; gap: 8px; min-width: 0; padding: 8px 10px 12px;
+  background: var(--vscode-editor-background, #ffffff); color: var(--vscode-editor-foreground, #24292f); }
+#vir-verso-preview #vir-verso-shell { position: sticky; top: 0; z-index: 10; align-self: start;
+  display: grid; gap: 8px; min-width: 0; padding-bottom: 8px; background: var(--vscode-editor-background, #ffffff); }
+#vir-verso-preview #vir-verso-label { margin: 0; color: var(--vscode-descriptionForeground, #57606a);
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+#vir-verso-preview #vir-verso-config { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0;
+  padding: 5px 8px 7px; border: 1px solid var(--vscode-panel-border, #d0d7de); border-radius: 5px; font-size: 0.72rem; }
+#vir-verso-preview #vir-verso-config legend { padding: 0 4px; color: var(--vscode-descriptionForeground, #57606a); font-weight: 700; }
+#vir-verso-preview #vir-verso-debug-panel { min-width: 0; margin: 0; padding: 5px 8px;
+  border: 1px solid var(--vscode-panel-border, #d0d7de); border-left: 3px solid var(--vscode-editorWarning-foreground, #9a6700);
+  border-radius: 5px; background: var(--vscode-textCodeBlock-background, #f6f8fa);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.68rem; line-height: 1.35; overflow-wrap: anywhere; }
+#vir-verso-preview .vir-verso-debug-note { margin: 0; color: var(--vscode-descriptionForeground, #57606a);
+  font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.62rem; }
+#vir-verso-preview .vir-verso-debug-details { margin: 0; color: var(--vscode-descriptionForeground, #57606a); }
+"
 
-private def border (color : String) : String :=
-  "1px solid " ++ color
+/-- Create once per runtime-owned component factory. React reuses this immutable
+element across shell updates; no runtime-global native handles are retained. -/
+def createStylesheet : RuntimeM (Js Node) := do
+  return ← <style data-verso-shell-styles="true">{Node.text (← JsValue.ofString css)}</style>
 
-def foreground : String := vscodeColor "editor-foreground" "#24292f"
-def muted : String := vscodeColor "descriptionForeground" "#57606a"
-def background : String := vscodeColor "editor-background" "#ffffff"
-def codeBackground : String := vscodeColor "textCodeBlock-background" "#f6f8fa"
-def borderColor : String := vscodeColor "panel-border" "#d0d7de"
-def debugForeground : String := vscodeColor "editorWarning-foreground" "#9a6700"
-
-def shell : ReactM (Js Props) := do
-  js%{
-    "display" := (← JsValue.ofString ("grid")),
-    "gap" := (← JsValue.ofString ("8px")),
-    "minWidth" := (← JsValue.ofString ("0")),
-    "padding" := (← JsValue.ofString ("8px 10px 12px")),
-    "background" := (← JsValue.ofString (background)),
-    "color" := (← JsValue.ofString (foreground))
-  }
-
-/-- Shell controls remain visible while the sibling document scrolls past. -/
-def stickyHeader : ReactM (Js Props) := do
-  js%{
-    "position" := (← js#"sticky"), "top" := (← js#"0"),
-    "zIndex" := (← js#"10"), "alignSelf" := (← js#"start"),
-    "display" := (← js#"grid"), "gap" := (← js#"8px"),
-    "minWidth" := (← js#"0"), "paddingBottom" := (← js#"8px"),
-    "background" := (← JsValue.ofString background)
-  }
-
-def label : ReactM (Js Props) := do
-  js%{
-    "margin" := (← JsValue.ofString ("0")),
-    "color" := (← JsValue.ofString (muted)),
-    "fontSize" := (← JsValue.ofString ("0.68rem")),
-    "fontWeight" := (← JsValue.ofString ("700")),
-    "letterSpacing" := (← JsValue.ofString ("0.04em")),
-    "textTransform" := (← JsValue.ofString ("uppercase"))
-  }
-
-def configPanel : ReactM (Js Props) := do
-  js%{
-    "display" := (← JsValue.ofString ("flex")),
-    "flexWrap" := (← JsValue.ofString ("wrap")),
-    "gap" := (← JsValue.ofString ("6px 14px")),
-    "margin" := (← JsValue.ofString ("0")),
-    "padding" := (← JsValue.ofString ("5px 8px 7px")),
-    "border" := (← JsValue.ofString (border borderColor)),
-    "borderRadius" := (← JsValue.ofString ("5px")),
-    "fontSize" := (← JsValue.ofString ("0.72rem"))
-  }
-
-def configLegend : ReactM (Js Props) := do
-  js%{
-    "padding" := (← JsValue.ofString ("0 4px")),
-    "color" := (← JsValue.ofString (muted)),
-    "fontWeight" := (← JsValue.ofString ("700"))
-  }
-
-def debugPanel : ReactM (Js Props) := do
-  js%{
-    "minWidth" := (← JsValue.ofString ("0")),
-    "margin" := (← JsValue.ofString ("0")),
-    "padding" := (← JsValue.ofString ("5px 8px")),
-    "border" := (← JsValue.ofString (border borderColor)),
-    "borderLeft" := (← JsValue.ofString ("3px solid " ++ debugForeground)),
-    "borderRadius" := (← JsValue.ofString ("5px")),
-    "background" := (← JsValue.ofString (codeBackground)),
-    "fontFamily" := (← JsValue.ofString ("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace")),
-    "fontSize" := (← JsValue.ofString ("0.68rem")),
-    "lineHeight" := (← JsValue.ofString ("1.35")),
-    "overflowWrap" := (← JsValue.ofString ("anywhere"))
-  }
-
-def debugNote : ReactM (Js Props) := do
-  js%{
-    "margin" := (← JsValue.ofString ("0")),
-    "color" := (← JsValue.ofString (muted)),
-    "fontFamily" := (← JsValue.ofString ("ui-sans-serif, system-ui, sans-serif")),
-    "fontSize" := (← JsValue.ofString ("0.62rem"))
-  }
-
-def debugDetails : ReactM (Js Props) := do
-  js%{
-    "margin" := (← JsValue.ofString ("0")),
-    "color" := (← JsValue.ofString (muted))
-  }
-
+/-- Initial RPC errors can precede the document shell. This small status style
+is not on the document traversal or shell-update hot path. -/
 def status : ReactM (Js Props) := do
   js%{
-    "padding" := (← JsValue.ofString ("10px")),
-    "border" := (← JsValue.ofString (border borderColor)),
-    "borderRadius" := (← JsValue.ofString ("5px")),
-    "color" := (← JsValue.ofString (muted))
+    "padding" := (← js#"10px"),
+    "border" := (← js#"1px solid var(--vscode-panel-border, #d0d7de)"),
+    "borderRadius" := (← js#"5px"),
+    "color" := (← js#"var(--vscode-descriptionForeground, #57606a)")
   }
 
 end VersoBlueprint.Experimental.VirPreview.ComponentStyle

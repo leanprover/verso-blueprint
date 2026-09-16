@@ -23,25 +23,27 @@ def createWidgetComponentWithRpc (preview : FunctionComponent (Props.WithData Rp
   FunctionComponent.ofLean fun props => do
     let session ← Infoview.useRpcSession
     let position ← Infoview.PanelWidgetProps.pos props
-    let uri ← JsValue.toString (← Infoview.PanelPosition.uri position)
+    let uri ← Infoview.PanelPosition.uri position
     let line ← Infoview.PanelPosition.line position
     let character ← Infoview.PanelPosition.character position
-    -- A fresh parameter object on each shell render would restart the RPC effect.
-    let calculate ← MemoCalculation.ofLean do
+    -- Retain the complete child element through unchanged shell progress updates.
+    -- Convert URI and construct request/Lean-backed props only when the native
+    -- session or position changes. The child still receives context and its own
+    -- edit/control state updates normally.
+    let calculate ← Js.Function.ofLean0 do
       -- Native position fields are already JavaScript numbers.
       let params ← Js.Object.empty
       Js.Object.set params (← JsValue.ofString "line") line
       Js.Object.set params (← JsValue.ofString "character") character
-      pure (Js.erase params)
-    let deps ← Hooks.DependencyList.ofArray #[Js.erase line, Js.erase character]
-    let params ← Hooks.useMemo calculate deps
-    let previewProps ← Props.WithData.make (← LeanRef.toJSL ({
-      session
-      params
-      uri
-      revision := ""
-    } : RpcInput))
-    Node.functionComponent preview previewProps (← js#[])
+      let previewProps ← Props.WithData.make (← LeanRef.toJSL ({
+        session
+        params := Js.erase params
+        uri := ← JsValue.toString uri
+        revision := ""
+      } : RpcInput))
+      Node.functionComponent preview previewProps (← js#[])
+    let deps ← js#[Js.erase preview, Js.erase session, Js.erase uri, Js.erase line, Js.erase character]
+    Hooks.useMemo calculate deps
 
 /-- Standard Preview-codec widget. Alternative reply types reuse the same panel
 adapter with `createRpcComponentFor` and `createWidgetComponentWithRpc`. -/

@@ -98,28 +98,25 @@ def createContentComponent (clock : RuntimeM Float := pure 0)
     -- does not construct a sample or update state. This observes a committed
     -- preview, not paint. The optional demo clock brackets element construction
     -- and observes this passive effect; without a clock no duration is published.
-    let effect ← EffectCallback.ofLean {
-      setup := do
-        if props.diagnostics then
-          let observed ← clock
-          props.onCommit {
-            status := outcome.status
-            version := outcome.version
-            correlationId := outcome.correlationId
-            serverTiming? := outcome.serverTiming?
-            blockCount := outcome.blockCount
-            changedCount := props.changedIds.size
-            highlightChanges := props.highlightChanges
-            inputChanged := props.inputChanged
-            browserTiming? := props.timing?.map fun response => {
-              response, preparationMs := props.preparationMs,
-              renderMs := rendered - started, observedMs := observed
-            }
+    let effect ← Js.Function.ofLean0 do
+      if props.diagnostics then
+        let observed ← clock
+        Browser.DomM.toRuntime <| props.onCommit {
+          status := outcome.status
+          version := outcome.version
+          correlationId := outcome.correlationId
+          serverTiming? := outcome.serverTiming?
+          blockCount := outcome.blockCount
+          changedCount := props.changedIds.size
+          highlightChanges := props.highlightChanges
+          inputChanged := props.inputChanged
+          browserTiming? := props.timing?.map fun response => {
+            response, preparationMs := props.preparationMs,
+            renderMs := rendered - started, observedMs := observed
           }
-        JsValue.ofBool false
-      cleanup := fun _ => pure ()
-    }
-    let deps ← Hooks.DependencyList.ofArray #[
+        }
+      Js.UndefinedOr.undefined (α := Js.Function.Nullary Unit)
+    let deps ← js#[
       Js.erase (← JsValue.ofString props.dependency), Js.erase (← JsValue.ofBool props.diagnostics)]
     Hooks.useEffect effect (Js.UndefinedOr.ofJs deps)
     pure outcome.node

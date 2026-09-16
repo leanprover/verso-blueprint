@@ -30,12 +30,11 @@ private structure ChangeState where
   inputChanged : Bool := false
   preparationMs : Float := 0
 
-private def useChangedBlockInfo (clock : RuntimeM Float)
+private def useChangedBlockInfo (initial : JSL ChangeState) (clock : RuntimeM Float)
     (preview : Preview) (timing? : Option Session.ResponseTiming)
     (highlightChanges diagnostics : Bool) : ReactM ChangeState := do
-  let initial ← LeanRef.toJSL ({} : ChangeState)
-  let state ← StateTuple.toState (← Hooks.useState initial)
-  let previous ← LeanRef.fromJSL state.value
+  let state ← Hooks.useState initial
+  let previous ← LeanRef.fromJSL (← Js.Tuple2.first state)
   let inputChanged := previous.input? != some preview || previous.timing? != timing?
   if !inputChanged && previous.highlightChanges == highlightChanges &&
       previous.diagnostics == diagnostics then
@@ -78,38 +77,40 @@ private def useChangedBlockInfo (clock : RuntimeM Float)
   -- Guarded adjustment of this component's own state: React retries before
   -- rendering children. Unlike refs, this state participates in render replay.
   let value ← LeanRef.toJSL next
-  State.set state value
+  Js.Function.callVoid (← Js.Tuple2.second state) (SetStateAction.ofValue value)
   return next
 
-private def renderSession (contentComponent : FunctionComponent (Props.WithData Session.ContentProps))
+private def renderSession (stylesheet : Js Node) (contentComponent : FunctionComponent (Props.WithData Session.ContentProps))
+    (initialOptions : JSL Session.Options) (initialSample : JSL Session.DebugSample)
+    (initialChanges : JSL ChangeState)
     (clock : RuntimeM Float) (preview : Preview)
     (timing? : Option Session.ResponseTiming := none) : ReactM (Js Node) := do
-  let optionsState ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL Session.Options.initial))
-  let options ← LeanRef.fromJSL optionsState.value
+  let optionsState ← Hooks.useState initialOptions
+  let options ← LeanRef.fromJSL (← Js.Tuple2.first optionsState)
+  let optionsSetter ← Js.Tuple2.second optionsState
   let document? := preview.document?
-  let changes ← useChangedBlockInfo clock preview timing? options.highlightChanges options.debug
+  let changes ← useChangedBlockInfo initialChanges clock preview timing? options.highlightChanges options.debug
   let changedIds := if document?.isSome then changes.changedIds else #[]
 
-  let debugSampleState ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL Session.DebugSample.initial))
+  let debugSampleState ← Hooks.useState initialSample
 
-  let label ← <p key="label" id="vir-verso-label" style={(← ComponentStyle.label)}>Verso React preview</p>
-  let config ← Session.renderConfigPanel options optionsState
+  let label ← <p key="label" id="vir-verso-label">Verso React preview</p>
+  let config ← Session.renderConfigPanel options optionsSetter
   -- Show one completed observation, including its own server timing. While the
   -- next document commits, retain this sample rather than briefly showing a
   -- server-only bar with a different scale and legend.
   let debugPanel ←
     if options.debug then
-      let sample ← LeanRef.fromJSL debugSampleState.value
-      some <$> Session.renderDebugPanel options optionsState sample
+      let sample ← LeanRef.fromJSL (← Js.Tuple2.first debugSampleState)
+      some <$> Session.renderDebugPanel options optionsSetter sample
     else
       pure none
   -- Retain the child element across shell-only updates. The revision covers the
   -- accepted response (including timing), identities and analysis/debug options;
   -- follow-cursor is the remaining content input. No document serialization or
   -- deep comparison is added to this boundary. React owns the memo's lifetime.
-  let calculate ← MemoCalculation.ofLean do
+  let calculate ← Js.Function.ofLean0 do
+    let debugSampleSetter ← Js.Tuple2.second debugSampleState
     let contentProps ← LeanRef.toJSL ({
       preview
       dependency := toString changes.revision
@@ -122,11 +123,11 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
       inputChanged := changes.inputChanged
       timing? := if changes.inputChanged then timing? else none
       preparationMs := changes.preparationMs
-      onCommit := Session.recordDebugSample debugSampleState
+      onCommit := Session.recordDebugSample debugSampleSetter
     } : Session.ContentProps)
     let nativeContentProps ← Props.WithData.make contentProps
     Node.functionComponent contentComponent nativeContentProps (← js#[])
-  let contentDeps ← Hooks.DependencyList.ofArray #[
+  let contentDeps ← js#[
     Js.erase contentComponent, Js.erase (← JsValue.ofString (toString changes.revision)),
     Js.erase (← JsValue.ofBool options.followCursor)]
   let content ← Hooks.useMemo calculate contentDeps
@@ -149,7 +150,21 @@ private def renderSession (contentComponent : FunctionComponent (Props.WithData 
     "data-verso-changed-block-count" := (← JsValue.ofString (toString changedIds.size)),
     "data-verso-focus-block" := (← JsValue.ofString (focus.getD ""))
   }
-  renderShell attributes headerChildren content
+  renderShell stylesheet attributes headerChildren content
+
+/-- Runtime-owned immutable initial values and presentation are created once,
+not converted again on every render. Each mount still owns separate React state;
+updates replace these values and never mutate the shared initial objects. -/
+private def createSession (clock : RuntimeM Float := pure 0)
+    (mathComponent? : Option (FunctionComponent Props) := none) :
+    RuntimeM (Preview → Option Session.ResponseTiming → ReactM (Js Node)) := do
+  let stylesheet ← ComponentStyle.createStylesheet
+  let content ← Session.createContentComponent clock mathComponent?
+  let initialOptions ← LeanRef.toJSL Session.Options.initial
+  let initialSample ← LeanRef.toJSL Session.DebugSample.initial
+  let initialChanges ← LeanRef.toJSL ({} : ChangeState)
+  pure fun preview timing? =>
+    renderSession stylesheet content initialOptions initialSample initialChanges clock preview timing?
 
 /--
 Create once per runtime and reuse this native React component type. Prop updates
@@ -157,18 +172,18 @@ retain options and diagnostics; only unmounting resets them. Both component type
 are created outside render, so parent rerenders never remount the content.
 -/
 def createComponent : RuntimeM (FunctionComponent (Props.WithData Preview)) := do
-  let content ← Session.createContentComponent
+  let render ← createSession
   FunctionComponent.ofLean fun props => do
-    renderSession content (pure 0) (← LeanRef.fromJSL (← Props.WithData.data props))
+    render (← LeanRef.fromJSL (← Props.WithData.data props)) none
 
 /-- Explicit optional clock, supplied by the experimental demo only. -/
 def createTimedComponent (clock : RuntimeM Float)
     (mathComponent? : Option (FunctionComponent Props) := none) :
     RuntimeM (FunctionComponent (Props.WithData Session.Input)) := do
-  let content ← Session.createContentComponent clock mathComponent?
+  let render ← createSession clock mathComponent?
   FunctionComponent.ofLean fun props => do
     let input ← LeanRef.fromJSL (← Props.WithData.data props)
-    renderSession content clock input.preview input.timing?
+    render input.preview input.timing?
 
 /-- Explicit native props shared by interpreted and compiled document components.
 Timing numbers use the same browser clock; undefined means no observation.
@@ -189,16 +204,16 @@ def createEncodedDocumentComponent
     (clock? : Option (RuntimeM Float) := none) :
     RuntimeM (FunctionComponent EncodedDocumentProps) := do
   let clock := clock?.getD (pure 0)
-  let content ← Session.createContentComponent clock mathComponent?
+  let render ← createSession clock mathComponent?
   FunctionComponent.ofLean fun props => do
     let encoded ← js_field% props "document"
-    let calculate ← MemoCalculation.ofLean do
+    let calculate ← Js.Function.ofLean0 do
       let source ← JsValue.toString encoded
       let preview := match Document.decode source with
         | .ok document => Preview.ready document
         | .error message => Preview.error message
       LeanRef.toJSL preview
-    let deps ← Hooks.DependencyList.ofArray #[Js.erase encoded]
+    let deps ← js#[Js.erase encoded]
     let preview ← LeanRef.fromJSL (← Hooks.useMemo calculate deps)
     let timing? ← match clock? with
       | none => pure none
@@ -208,7 +223,7 @@ def createEncodedDocumentComponent
         let notified ← js_field% props "notifiedMs"
         -- Separate from decoding: a new request can return an unchanged String.
         -- Retain this timestamp across control and post-commit shell renders.
-        let observe ← MemoCalculation.ofLean do
+        let observe ← Js.Function.ofLean0 do
           let timing? ← match (← Js.UndefinedOr.toOption requested),
               (← Js.UndefinedOr.toOption received) with
             | some requested, some received => do
@@ -223,9 +238,8 @@ def createEncodedDocumentComponent
               } : Option Session.ResponseTiming)
             | _, _ => pure none
           LeanRef.toJSL timing?
-        let deps ← Hooks.DependencyList.ofArray
-          #[Js.erase encoded, Js.erase requested, Js.erase received, Js.erase notified]
+        let deps ← js#[Js.erase encoded, Js.erase requested, Js.erase received, Js.erase notified]
         LeanRef.fromJSL (← Hooks.useMemo observe deps)
-    renderSession content clock preview timing?
+    render preview timing?
 
 end VersoBlueprint.Experimental.VirPreview

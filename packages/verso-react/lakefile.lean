@@ -5,7 +5,7 @@ require verso from git "https://github.com/leanprover/verso" @
   "52c8c9557bcb5cc8c0edc0ee37e74311a3d53ee9"
 -- Local-only 4.34 checkpoint; replace the URL once upstream publishes it.
 require lean_vir from git "/home/egallego/lean/vir" @
-  "36d26bc224f0c2a52cd586587b2c3e1b1ade70d6"
+  "92d7cc91e4f9bbf48b7c113cfd76d56ff767df4d"
 
 package «verso-react» where
   leanOptions := #[⟨`experimental.module, true⟩]

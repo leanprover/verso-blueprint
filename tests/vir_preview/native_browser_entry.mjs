@@ -176,6 +176,18 @@ async function run() {
     await ready("first preview");
     if (stringPreview) check(document.getElementById("vir-verso-preview")
       .textContent.includes("first preview"), "decoded Manual document did not render");
+    const shellStylesheet = stringPreview
+      ? document.querySelector("style[data-verso-shell-styles]") : null;
+    if (stringPreview) {
+      check(shellStylesheet && document.querySelectorAll("style[data-verso-shell-styles]").length === 1,
+        "preview must own one shell stylesheet");
+      check(getComputedStyle(document.getElementById("vir-verso-preview")).display === "grid" &&
+        getComputedStyle(document.getElementById("vir-verso-shell")).position === "sticky" &&
+        getComputedStyle(document.getElementById("vir-verso-config")).display === "flex",
+        "static CSS lost shell layout or sticky controls");
+      check(!document.getElementById("vir-verso-config").hasAttribute("style"),
+        "constant shell style is still constructed inline");
+    }
     check(requests.filter(r => r.message === "first preview").length === 2,
       "Strict Mode did not replay effect setup");
     const retainedCheckbox = checkbox();
@@ -196,6 +208,15 @@ async function run() {
       const beforeDebug = requests.length;
       React.act(() => document.getElementById("vir-verso-debug").click());
       check(requests.length === beforeDebug, "debug controls triggered another RPC");
+      const scale = document.getElementById("vir-verso-timing-scale");
+      React.act(() => {
+        scale.value = "10";
+        scale.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      check(scale.value === "10" && requests.length === beforeDebug,
+        "native synthetic scale event lost control state or triggered RPC");
+      check(document.querySelector("style[data-verso-shell-styles]") === shellStylesheet,
+        "shell controls replaced the factory-owned stylesheet");
 
       check(subscriptions === 1 && notificationHandlers.size === 1,
         "Strict Mode leaked editor subscriptions");
@@ -362,6 +383,7 @@ async function run() {
         pendingRefreshRetainsPreview: true,
         unrelatedNotificationsIgnored: true, staleEditSuppressed: true,
         editorSubscriptionsCleaned: true, retainedControlsAcrossEdits: true,
+        staticShellStyles: true, retainedStylesheet: true, syntheticScaleEvent: true,
       } : {}),
     };
   }, [

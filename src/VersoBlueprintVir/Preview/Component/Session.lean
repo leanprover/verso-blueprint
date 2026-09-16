@@ -110,21 +110,23 @@ def formatMs (value : Float) : String :=
   s!"{tenths / 10}.{tenths % 10}"
 
 def updateOptions
-    (state : State (JSL Options))
-    (update : Options → Options) : Browser.DomM Unit :=
-  State.modify state fun previous => do
+    (setter : Js (StateSetter (LeanRef.Handle Options)))
+    (update : Options → Options) : Browser.DomM Unit := do
+  let action ← Js.Function.ofLean fun previous => do
     LeanRef.toJSL (update (← LeanRef.fromJSL previous))
+  Js.Function.callVoid setter (SetStateAction.ofUpdater action)
 
 def recordDebugSample
-    (state : State (JSL DebugSample))
-    (sample : DebugSample) : Browser.DomM Unit :=
-  State.modify state fun previous => do
+    (setter : Js (StateSetter (LeanRef.Handle DebugSample)))
+    (sample : DebugSample) : Browser.DomM Unit := do
+  let action ← Js.Function.ofLean fun previous => do
     let previousSample ← LeanRef.fromJSL previous
     LeanRef.toJSL (previousSample.record sample)
+  Js.Function.callVoid setter (SetStateAction.ofUpdater action)
 
 private def renderToggle (id label : String) (checked : Bool)
     (onChange : Browser.DomM Unit) : ReactM (Js Node) := do
-  let handler ← Callback.ofUnary fun (_ : Js Browser.Event) => onChange
+  let handler ← Js.Function.ofLeanVoid fun (_ : Js SyntheticEvent) => Browser.DomM.toRuntime onChange
   return ← <label htmlFor={(← JsValue.ofString id)}>
     <input id={(← JsValue.ofString id)} type="checkbox" checked={(← JsValue.ofBool checked)} onChange={handler}/>
     {Node.text (← JsValue.ofString (" " ++ label))}
@@ -147,17 +149,18 @@ def autoRangeNanos (total : Nat) : Nat := Id.run do
     unit := unit * 10
   return max total unit
 
-private def renderTimingScale (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
+private def renderTimingScale (options : Options) (setter : Js (StateSetter (LeanRef.Handle Options))) : ReactM (Js Node) := do
   let choices := timingScales.map fun tick => do
     return ← <option key={(← JsValue.ofString (toString tick))} value={(← JsValue.ofString (toString tick))}>
       {Node.text (← JsValue.ofString (if tick == 0 then "Auto" else s!"{tick} ms / tick"))}
     </option>
-  let handler ← Callback.ofUnary fun (event : Js Browser.Event) => do
-    let some value ← Js.Nullable.toOption (← Browser.Event.formValueNullable event) | return ()
+  let handler ← Js.Function.ofLeanVoid fun (event : Js SyntheticEvent) => do
+    let nativeEvent ← SyntheticEvent.nativeEvent event
+    let some value ← Js.Nullable.toOption (← Browser.DomM.toRuntime (Browser.Event.formValueNullable nativeEvent)) | return ()
     let value ← JsValue.toString value
     let some tick := timingScales.find? (fun tick => toString tick == value) | return ()
-    updateOptions state fun current => { current with timingTickMs := tick }
-  return ← <label htmlFor="vir-verso-timing-scale" style={(← ComponentStyle.debugNote)}>
+    Browser.DomM.toRuntime (updateOptions setter fun current => { current with timingTickMs := tick })
+  return ← <label htmlFor="vir-verso-timing-scale" className="vir-verso-debug-note">
     Scale <select id="vir-verso-timing-scale" value={(← JsValue.ofString (toString options.timingTickMs))} onChange={handler}>
       {Js.Array.ofArray (α := Node) (← choices.mapM id)}
     </select>
@@ -166,7 +169,7 @@ private def renderTimingScale (options : Options) (state : State (JSL Options)) 
 private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTiming)
     (browser? : Option BrowserTiming) : ReactM (Js Node) := do
   let some timing := timing? |
-    return ← <p id="vir-verso-server-timings" style={(← ComponentStyle.debugNote)}>Server timing unavailable</p>
+    return ← <p id="vir-verso-server-timings" className="vir-verso-debug-note">Server timing unavailable</p>
   let milliseconds := fun nanos : Nat => formatMs (nanos.toFloat / 1000000.0) ++ " ms"
   let serverPhases := #[
     ("snapshot-wait", "Snapshot wait", "#4c9be8", timing.snapshotWaitNanos),
@@ -240,11 +243,11 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
     "marginTop" := (← js#"5px"), "fontSize" := (← js#"0.85em")
   }
   return ← <div id="vir-verso-server-timings" style={(← js%{ "minWidth" := (← js#"0") })}>
-    <p style={(← ComponentStyle.debugNote)}
+    <p className="vir-verso-debug-note"
       title="Server waits include remaining elaboration and scheduling, not pure CPU time. The endpoint is the content passive effect, not paint. RPC remainder is encoding, transport and scheduling together; its displayed position is schematic. Earlier editor work before the observed notification is not measured.">
       {Node.text (← JsValue.ofString summary)}
     </p>
-    <p id="vir-verso-timing-boundary" style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString boundary)}</p>
+    <p id="vir-verso-timing-boundary" className="vir-verso-debug-note">{Node.text (← JsValue.ofString boundary)}</p>
     <div id="vir-verso-server-scale" style={scrollStyle}
       title={(← JsValue.ofString s!"{milliseconds tickNanos} / tick") }><div style={trackStyle}>
       <div id="vir-verso-server-bar" role="img" aria-label={(← JsValue.ofString ariaLabel)}
@@ -254,25 +257,25 @@ private def renderServerTiming (timingTickMs : Nat) (timing? : Option ServerTimi
         data-verso-range-nanos={(← JsValue.ofString (if automatic then toString range else ""))}
         style={barStyle}>{Js.Array.ofArray (α := Node) (← segments.mapM id)}</div>
     </div></div>
-    <p style={(← ComponentStyle.debugNote)}>{Node.text (← JsValue.ofString s!"{milliseconds tickNanos} / tick")}</p>
+    <p className="vir-verso-debug-note">{Node.text (← JsValue.ofString s!"{milliseconds tickNanos} / tick")}</p>
     <div style={legendStyle}>{Js.Array.ofArray (α := Node) (← legends.mapM id)}</div>
   </div>
 
-def renderConfigPanel (options : Options) (state : State (JSL Options)) : ReactM (Js Node) := do
-  return ← <fieldset key="config" id="vir-verso-config" style={(← ComponentStyle.configPanel)}
+def renderConfigPanel (options : Options) (setter : Js (StateSetter (LeanRef.Handle Options))) : ReactM (Js Node) := do
+  return ← <fieldset key="config" id="vir-verso-config"
     data-verso-follow-cursor={(← JsValue.ofString (toString options.followCursor))}
     data-verso-debug-enabled={(← JsValue.ofString (toString options.debug))}
     data-verso-highlight-changes={(← JsValue.ofString (toString options.highlightChanges))}>
-    <legend style={(← ComponentStyle.configLegend)}>Preview options</legend>
+    <legend>Preview options</legend>
     {renderToggle "vir-verso-follow-cursor" "Follow cursor" options.followCursor
-      (updateOptions state fun current => { current with followCursor := !current.followCursor })}
+      (updateOptions setter fun current => { current with followCursor := !current.followCursor })}
     {renderToggle "vir-verso-debug" "Debug details" options.debug
-      (updateOptions state fun current => { current with debug := !current.debug })}
+      (updateOptions setter fun current => { current with debug := !current.debug })}
     {renderToggle "vir-verso-highlight-changes" "Highlight changes (debug)" options.highlightChanges
-      (updateOptions state fun current => { current with highlightChanges := !current.highlightChanges })}
+      (updateOptions setter fun current => { current with highlightChanges := !current.highlightChanges })}
   </fieldset>
 
-def renderDebugPanel (options : Options) (state : State (JSL Options))
+def renderDebugPanel (options : Options) (setter : Js (StateSetter (LeanRef.Handle Options)))
     (sample : DebugSample) : ReactM (Js Node) := do
   let timing? := sample.serverTiming?
   let analysis := if sample.highlightChanges then
@@ -282,7 +285,6 @@ def renderDebugPanel (options : Options) (state : State (JSL Options))
     data-verso-debug-browser-timing={(← JsValue.ofString (match sample.browserTiming? with
       | none => "unavailable"
       | some browser => if (timing?.bind (browser.partition?)).isSome then "demo-clock" else "invalid"))}
-    style={(← ComponentStyle.debugPanel)}
     data-verso-debug-status={(← JsValue.ofString sample.status)}
     data-verso-debug-new-input={(← JsValue.ofString (toString sample.inputChanged))}
     data-verso-debug-highlight-changes={(← JsValue.ofString (toString sample.highlightChanges))}
@@ -291,9 +293,9 @@ def renderDebugPanel (options : Options) (state : State (JSL Options))
     data-verso-debug-correlation-id={(← JsValue.ofString sample.correlationId)}
     data-verso-debug-block-count={(← JsValue.ofString (if sample.highlightChanges then toString sample.blockCount else "skipped"))}
     data-verso-debug-changed-block-count={(← JsValue.ofString (toString sample.changedCount))}>
-    {renderTimingScale options state}
+    {renderTimingScale options setter}
     {renderServerTiming options.timingTickMs timing? sample.browserTiming?}
-    <p style={(← ComponentStyle.debugDetails)}>{Node.text (← JsValue.ofString s!"{sample.status} · editor v{sample.version} · {analysis}")}</p>
+    <p className="vir-verso-debug-details">{Node.text (← JsValue.ofString s!"{sample.status} · editor v{sample.version} · {analysis}")}</p>
   </aside>
 
 end VersoBlueprint.Experimental.VirPreview.Session

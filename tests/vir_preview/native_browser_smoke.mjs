@@ -106,11 +106,28 @@ const acceptance = await runRpcBrowserAcceptance({
   } : {}),
   label: embeddedPreview ? "VBP native embedded preview" : stringPreview ? "VBP string RPC preview" : "VBP native preview first slice",
 });
+// Evidence collection is outside the widget runtime. These are the relevant
+// consumer seams, not a claim to freeze the complete dependency closure.
+const sourceHashes = {};
+for (const path of [
+  "src/VersoBlueprintVir/Preview/Component.lean",
+  ...["Content", "Session", "Shell", "Style"].map(name =>
+    `src/VersoBlueprintVir/Preview/Component/${name}.lean`),
+  "src/VersoBlueprintVir/Preview/Rpc.lean",
+  "src/VersoBlueprintVir/Preview/Widget.lean",
+  "tests/VersoBlueprintVirTests/NativePreview.lean",
+  "tests/VersoBlueprintVirTests/StringPreview.lean",
+  "tests/vir_preview/native_browser_entry.mjs",
+]) sourceHashes[path] = createHash("sha256").update(await readFile(resolve(root, path))).digest("hex");
 const report = {
   virCommit: dependency.rev, toolchain: sdk.leanToolchain,
   wasmSha256: sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256,
   packageMembers,
-  encodedDocument,
+  encodedDocument, embeddedPreview, sourceHashes,
+  sdkManifestSha256: createHash("sha256").update(await readFile(
+    resolve(sdkRoot, "lean-vir-artifact.json"))).digest("hex"),
+  versoParserSha256: createHash("sha256").update(await readFile(resolve(root,
+    manifest.packagesDir, "verso/src/verso/Verso/Parser.lean"))).digest("hex"),
   scope: embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT"
     : encodedDocument ? "shared document-String RPC adapter and native document session; real server and Chromium, not FIR or FLT" : stringPreview
     ? "full VBP preview decoded from VBP-owned String RPC fixture; server cwd is VBP, not FLT"

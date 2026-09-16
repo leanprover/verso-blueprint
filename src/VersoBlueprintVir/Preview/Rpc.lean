@@ -40,10 +40,12 @@ structure RpcState (α : Type) where
 private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → RuntimeM (Except String α))
     (clock? : Option (RuntimeM Float)) (view : FunctionComponent (Props.WithData (RpcState α)))
     (input : RpcInput) : ReactM (Js Node) := do
-  let state ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL ({} : RpcState α)))
-  let edits ← StateTuple.toState
-    (← Hooks.useState (← LeanRef.toJSL ((0, none) : Nat × Option Float)))
+  let state ← Hooks.useState (← LeanRef.toJSL ({} : RpcState α))
+  let stateValue ← Js.Tuple2.first state
+  let stateSetter ← Js.Tuple2.second state
+  let edits ← Hooks.useState (← LeanRef.toJSL ((0, none) : Nat × Option Float))
+  let editsValue ← Js.Tuple2.first edits
+  let editsSetter ← Js.Tuple2.second edits
   -- Effect/callback bookkeeping only: never read or mutate this ref in render.
   -- An aborted request must not consume the edit's start; a later cursor-only
   -- refresh after acceptance must not reuse that old start either.
@@ -53,63 +55,62 @@ private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → Ru
     let uri ← Js.String.fromAny (← Js.Object.get document (← JsValue.ofString "uri"))
     if (← JsValue.toString uri) == input.uri then
       let notified ← clock?.getD (pure 0)
-      State.modify edits fun previous => do
+      let action ← Js.Function.ofLean fun previous => do
         let (count, _) : Nat × Option Float ← LeanRef.fromJSL previous
         LeanRef.toJSL (count + 1, clock?.map fun _ => notified)
+      Js.Function.callVoid editsSetter (SetStateAction.ofUpdater action)
   -- Follow the current URI and replacement editor context on every render.
   Infoview.useClientNotificationEffect (← JsValue.ofString "textDocument/didChange") changed
     (← Js.UndefinedOr.undefined)
   let revision ← JsValue.ofString input.revision
   let uri ← JsValue.ofString input.uri
-  let effect ← EffectCallback.ofLean {
-    setup := do
-      let (editCount, editNotified?) : Nat × Option Float ← LeanRef.fromJSL edits.value
-      let notified? := if editCount > (← JsValue.toNat (← React.Ref.get acceptedEdit)) then
-          editNotified?
-        else none
-      let active ← RuntimeRef.new true
-      let abort ← AbortController.create
-      let options ← Infoview.ClientRequestOptions.empty
-      Infoview.ClientRequestOptions.setAbortSignal options (← AbortController.getSignal abort)
-      let requested ← clock?.getD (pure 0)
-      let request : Js.Promise Js.Any.Value ← Infoview.RpcSession.callWithOptions
-        input.session (← JsValue.ofString method) input.params options
-      let success ← Js.Function.ofLeanVoid fun (reply : Js.Any) => do
-        -- Ignore obsolete replies before string conversion or document decoding.
-        if ← active.get then
-          let received ← clock?.getD (pure 0)
-          let reply ← decodeReply reply
-          let decoded ← clock?.getD (pure 0)
-          React.Ref.set acceptedEdit (← JsValue.ofNat editCount)
-          State.modify state fun previous => do
-            let previous : RpcState α ← LeanRef.fromJSL previous
-            LeanRef.toJSL (match reply with
-              | .ok value => {
-                  value? := some value
-                  timing? := clock?.map fun _ => {
-                    requestedMs := requested, receivedMs := received, decodedMs := decoded
-                    notifiedMs? := notified?
-                  }
+  let effect ← Js.Function.ofLean0 do
+    let (editCount, editNotified?) : Nat × Option Float ← LeanRef.fromJSL editsValue
+    let notified? := if editCount > (← JsValue.toNat (← React.Ref.get acceptedEdit)) then
+        editNotified?
+      else none
+    let active ← RuntimeRef.new true
+    let abort ← DomM.toRuntime AbortController.create
+    let options ← Infoview.ClientRequestOptions.empty
+    Infoview.ClientRequestOptions.setAbortSignal options (← DomM.toRuntime (AbortController.getSignal abort))
+    let requested ← clock?.getD (pure 0)
+    let request : Js.Promise Js.Any.Value ← Infoview.RpcSession.callWithOptions
+      input.session (← JsValue.ofString method) input.params options
+    let success ← Js.Function.ofLeanVoid fun (reply : Js.Any) => do
+      -- Ignore obsolete replies before string conversion or document decoding.
+      if ← active.get then
+        let received ← clock?.getD (pure 0)
+        let reply ← decodeReply reply
+        let decoded ← clock?.getD (pure 0)
+        React.Ref.set acceptedEdit (← JsValue.ofNat editCount)
+        let action ← Js.Function.ofLean fun previous => do
+          let previous : RpcState α ← LeanRef.fromJSL previous
+          LeanRef.toJSL (match reply with
+            | .ok value => {
+                value? := some value
+                timing? := clock?.map fun _ => {
+                  requestedMs := requested, receivedMs := received, decodedMs := decoded
+                  notifiedMs? := notified?
                 }
-              | .error message => { previous with error? := some message, timing? := none })
-      let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do
-        if ← active.get then
-          State.modify state fun previous => do
-            let previous : RpcState α ← LeanRef.fromJSL previous
-            LeanRef.toJSL { previous with
-              error? := some "Preview RPC failed or returned an invalid response"
-              timing? := none }
-      let handled ← Js.Promise.thenVoid request success
-      let finished ← Js.Function.ofLeanVoid fun (_ : Js.Undefined) => pure ()
-      let _ ← Js.Promise.thenVoidWithRejection handled finished failure
-      LeanRef.toJSL (active, abort)
-    cleanup := fun resource => do
-      let (active, abort) : RuntimeRef Bool × Js AbortController ← LeanRef.fromJSL resource
+              }
+            | .error message => { previous with error? := some message, timing? := none })
+        Js.Function.callVoid stateSetter (SetStateAction.ofUpdater action)
+    let failure ← Js.Function.ofLeanVoid fun (_error : Js.Any) => do
+      if ← active.get then
+        let action ← Js.Function.ofLean fun previous => do
+          let previous : RpcState α ← LeanRef.fromJSL previous
+          LeanRef.toJSL { previous with
+            error? := some "Preview RPC failed or returned an invalid response"
+            timing? := none }
+        Js.Function.callVoid stateSetter (SetStateAction.ofUpdater action)
+    let handled ← Js.Promise.thenVoid request success
+    let finished ← Js.Function.ofLeanVoid fun (_ : Js.Undefined) => pure ()
+    let _ ← Js.Promise.thenVoidWithRejection handled finished failure
+    let cleanup ← Js.Function.ofLean0Void do
       active.set false
-      AbortController.abort abort
-  }
-  let deps ← Hooks.DependencyList.ofArray
-    #[Js.erase input.session, input.params, Js.erase uri, Js.erase revision, Js.erase edits.value]
+      DomM.toRuntime (AbortController.abort abort)
+    pure (Js.UndefinedOr.ofJs cleanup)
+  let deps ← js#[Js.erase input.session, input.params, Js.erase uri, Js.erase revision, Js.erase editsValue]
   Hooks.useEffect effect (Js.UndefinedOr.ofJs deps)
   -- Retain the last accepted preview while refreshing. The stable child type
   -- keeps controls alive through requests, errors, and document replacement.
@@ -117,10 +118,10 @@ private def renderRpc {α : Type} (method : String) (decodeReply : Js.Any → Ru
   -- element so the pending request does not redraw the unchanged document.
   -- The child's own control state still renders normally. Only its element is
   -- memoized; document values are neither copied nor compared structurally.
-  let child ← MemoCalculation.ofLean do
-    let props ← Props.WithData.make state.value
+  let child ← Js.Function.ofLean0 do
+    let props ← Props.WithData.make stateValue
     Node.functionComponent view props (← js#[])
-  let childDeps ← Hooks.DependencyList.ofArray #[Js.erase view, Js.erase state.value]
+  let childDeps ← js#[Js.erase view, Js.erase stateValue]
   Hooks.useMemo child childDeps
 
 /-- Reuse the editor subscription, cancellation and stale-reply protection with
