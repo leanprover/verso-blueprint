@@ -4,6 +4,7 @@ import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 // An explicit root lets the same driver compare two source/SDK checkpoints.
 const root = resolve(process.env.VBP_REPLAY_ROOT ?? fileURLToPath(new URL("../../", import.meta.url)));
@@ -161,6 +162,7 @@ if (process.env.VBP_REPLAY_PROFILE === "1") {
 }
 await writeFile(resolve(output, "driver.mjs"), driver);
 const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
+  "src/VersoBlueprintVir/Preview/Component/Session.lean",
   "tests/vir_preview/decode_browser_smoke.mjs",
   "tests/vir_preview/decode_browser_entry.mjs", "tests/vir_preview/response_phase_probe.mjs",
   "tests/vir_preview/identity_phase_probe.mjs",
@@ -191,7 +193,10 @@ const packageHashes = await Promise.all(descriptor.packages.map(async member => 
   assert.equal(sha256, member.sha256, `package hash mismatch: ${member.path}`);
   return { path: member.path, sha256 };
 }));
+const git = args => execFileSync("git", args, { cwd: root, encoding: "utf8" });
 await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes, packageHashes,
+  gitIdentity: { commit: git(["rev-parse", "HEAD"]).trim(),
+    status: git(["status", "--short"]), trackedDiffSha256: sha(git(["diff", "HEAD"])) },
   backend: firIdentity ? "fir" : "vir", firIdentity,
   root, descriptorPath, virCommit: sdk.gitCommit, captureVirCommit: capture.virCommit,
   checkpointComparison: process.env.VBP_REPLAY_CHECKPOINT_COMPARISON === "1",

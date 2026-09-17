@@ -10,8 +10,12 @@ open scoped Lean.Vir.Js Lean.Vir.ProofWidgets.Jsx
 @[vir_js "previewDemo.matchedComponent"]
 private opaque component : RuntimeM (FunctionComponent EncodedDocumentProps)
 
+@[vir_js "previewDemo.now"]
+private opaque browserNow : RuntimeM (Js Float)
+
 def createView : RuntimeM (FunctionComponent Infoview.PanelWidgetProps) := do
   let rpc ← createEncodedDocumentRpcComponent "MatchedPreview.Server.previewDocument" (← component)
+    (some (do JsValue.toFloat (← browserNow)))
   createWidgetComponentWithRpc rpc
 
 vir_proof_widget MatchedPreview.createView

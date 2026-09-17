@@ -111,6 +111,19 @@ def timingChecks (scenario : Nat) : Bool := Id.run do
       Session.autoRangeNanos 11000000 == 20000000 &&
       Session.autoRangeNanos 21000000 == 50000000 &&
       Session.autoRangeNanos 1200000000 == 2000000000
+  | 15 =>
+    let initial := Session.DebugSample.initial.record {
+      status := "ready", version := 1, correlationId := "initial", serverTiming? := some server }
+    let edited := initial.record {
+      status := "ready", version := 2, correlationId := "edit", serverTiming? := some server }
+    let cursor := edited.record {
+      status := "ready", version := 2, correlationId := "cursor", serverTiming? := some ⟨1, 0, 0⟩ }
+    let loading := cursor.record { status := "loading", version := 3 }
+    return initial.completedTiming?.any (!·.fromEdit) &&
+      edited.completedTiming?.any (·.fromEdit) &&
+      cursor.completedTiming?.any (fun c => c.version == 2 && c.correlationId == "edit" &&
+        c.server == server) &&
+      loading.completedTiming?.any (·.correlationId == "edit") && cursor.correlationId == "cursor"
   | _ =>
     let debug : Session.DebugSample := {
       correlationId := "same-position", serverTiming? := some server, browserTiming? := some sample }

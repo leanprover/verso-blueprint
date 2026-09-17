@@ -76,6 +76,39 @@ def finish (input : JSL Preview) : RuntimeM (JSL (Except String Preview)) := do
 @[vir_export] def createView := DecodeProbe.createView
 @[vir_export] def renderDecoded := DecodeProbe.renderDecoded
 
+@[vir_js "previewDemo.now"]
+private opaque browserNow : RuntimeM (Js Float)
+
+@[vir_export]
+def createTimedView : RuntimeM (Lean.Vir.React.FunctionComponent
+    (Lean.Vir.React.Props.WithData Session.Input)) :=
+  createTimedComponent (do JsValue.toFloat (← browserNow))
+
+/-- Client timing is supplied separately; it is not encoded into the document. -/
+@[vir_export]
+def renderTimedDecoded (view : Lean.Vir.React.FunctionComponent
+    (Lean.Vir.React.Props.WithData Session.Input))
+    (decoded : JSL (Except String Preview)) (requested received : Js.UndefinedOr Float)
+    (notified : Js.UndefinedOr Float) (decodedAt : Js Float) :
+    Lean.Vir.React.ReactM (Js Lean.Vir.React.Node) := do
+  let preview := match ← LeanRef.fromJSL decoded with
+    | .ok preview => preview
+    | .error message => .error message
+  let timing? ← match (← Js.UndefinedOr.toOption requested), (← Js.UndefinedOr.toOption received) with
+    | some requested, some received => do
+      let notified? ← match ← Js.UndefinedOr.toOption notified with
+        | none => pure none
+        | some value => some <$> JsValue.toFloat value
+      pure (some {
+        requestedMs := ← JsValue.toFloat requested
+        receivedMs := ← JsValue.toFloat received
+        decodedMs := ← JsValue.toFloat decodedAt
+        notifiedMs? := notified?
+      } : Option Session.ResponseTiming)
+    | _, _ => pure none
+  let props ← Lean.Vir.React.Props.WithData.make (← LeanRef.toJSL ({ preview, timing? } : Session.Input))
+  Lean.Vir.React.Node.functionComponent view props (← Js.Array.ofArray #[])
+
 -- Generated artifact: constructor tags and field layouts come from the pinned
 -- compiler, never a handwritten memory-layout table in the JS decoder.
 meta section

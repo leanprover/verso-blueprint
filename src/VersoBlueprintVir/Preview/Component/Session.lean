@@ -77,6 +77,14 @@ def BrowserTiming.partition? (sample : BrowserTiming) (server : ServerTiming) :
     rpc - server.preparationNanos, decode, prepare, render,
     total - dispatch - rpc - decode - prepare - render, dispatch])
 
+/-- A completed measurement, independent of subsequent cursor/control observations. -/
+structure CompletedTiming where
+  version : Nat
+  correlationId : String
+  server : ServerTiming
+  browser? : Option BrowserTiming
+  fromEdit : Bool
+
 /-- One coherent post-commit diagnostic observation. -/
 structure DebugSample where
   sequence : Nat := 0
@@ -89,15 +97,30 @@ structure DebugSample where
   highlightChanges : Bool := Options.initial.highlightChanges
   inputChanged : Bool := false
   browserTiming? : Option BrowserTiming := none
+  completedTiming? : Option CompletedTiming := none
 
 namespace DebugSample
 
 def initial : DebugSample := {}
 
-/-- Control-only observations do not replace a completed response measurement. -/
-def record (previous sample : DebugSample) : DebugSample :=
-  { sample with
+/-- Retain the last completed version-changing/edit-origin measurement. Same-version
+cursor and control observations update status but cannot replace the primary bar. -/
+def record (previous sample : DebugSample) : DebugSample := Id.run do
+  let mut completed := previous.completedTiming?
+  if sample.status == "ready" then
+    if let some server := sample.serverTiming? then
+      let editOrigin := sample.browserTiming?.any (·.response.notifiedMs?.isSome)
+      let newerVersion := completed.any (sample.version > ·.version)
+      let upgradeBrowser := completed.any (fun old => old.version == sample.version &&
+        old.correlationId == sample.correlationId && old.browser?.isNone && sample.browserTiming?.isSome)
+      if completed.isNone || newerVersion || upgradeBrowser ||
+          (editOrigin && completed.any (fun old => old.correlationId != sample.correlationId &&
+            sample.version >= old.version)) then
+        completed := some ⟨sample.version, sample.correlationId, server, sample.browserTiming?,
+          editOrigin || newerVersion || completed.any (·.fromEdit)⟩
+  return { sample with
     sequence := previous.sequence + 1
+    completedTiming? := completed
     browserTiming? := if !sample.inputChanged && sample.correlationId == previous.correlationId &&
         sample.serverTiming? == previous.serverTiming? then
       sample.browserTiming?.or previous.browserTiming?
@@ -277,12 +300,14 @@ def renderConfigPanel (options : Options) (setter : Js (StateSetter (LeanRef.Han
 
 def renderDebugPanel (options : Options) (setter : Js (StateSetter (LeanRef.Handle Options)))
     (sample : DebugSample) : ReactM (Js Node) := do
-  let timing? := sample.serverTiming?
+  let completed := sample.completedTiming?
+  let timing? := completed.map (·.server)
+  let browser? := completed.bind (·.browser?)
   let analysis := if sample.highlightChanges then
     s!"{sample.blockCount} analyzed nodes · {sample.changedCount} changed"
     else "change analysis skipped"
   return ← <aside key="debug" id="vir-verso-debug-panel" data-verso-debug="true"
-    data-verso-debug-browser-timing={(← JsValue.ofString (match sample.browserTiming? with
+    data-verso-debug-browser-timing={(← JsValue.ofString (match browser? with
       | none => "unavailable"
       | some browser => if (timing?.bind (browser.partition?)).isSome then "demo-clock" else "invalid"))}
     data-verso-debug-status={(← JsValue.ofString sample.status)}
@@ -294,7 +319,14 @@ def renderDebugPanel (options : Options) (setter : Js (StateSetter (LeanRef.Hand
     data-verso-debug-block-count={(← JsValue.ofString (if sample.highlightChanges then toString sample.blockCount else "skipped"))}
     data-verso-debug-changed-block-count={(← JsValue.ofString (toString sample.changedCount))}>
     {renderTimingScale options setter}
-    {renderServerTiming options.timingTickMs timing? sample.browserTiming?}
+    <p id="vir-verso-measurement" className="vir-verso-debug-note"
+      data-verso-measurement-version={(← JsValue.ofString (completed.map (fun c => toString c.version) |>.getD ""))}
+      data-verso-measurement-correlation={(← JsValue.ofString (completed.map (·.correlationId) |>.getD ""))}>
+      {Node.text (← JsValue.ofString (match completed with
+        | none => "Waiting for a completed preview measurement"
+        | some c => s!"{if c.fromEdit then "Last completed edit" else "Initial preview"} · editor v{c.version}"))}
+    </p>
+    {renderServerTiming options.timingTickMs timing? browser?}
     <p className="vir-verso-debug-details">{Node.text (← JsValue.ofString s!"{sample.status} · editor v{sample.version} · {analysis}")}</p>
   </aside>
 

@@ -8,11 +8,14 @@ function replaceOnce(source, site, replacement) {
 }
 
 // Reuse upstream RPC/editor/lifetime handling for either external native view.
-export function configureNativeComponentShell(source, { module, open, binding }) {
+export function configureNativeComponentShell(source, { module, open, binding, clock = false }) {
   const site = "  runtimeOptions.defaultHostBindings = () =>";
   source = `import { ${open} as openNativePreview } from ${JSON.stringify(module)};\n` + source;
   source = replaceOnce(source, site, `  const nativePreview = await openNativePreview();
-  runtimeOptions.hostBindings = { ${JSON.stringify(binding)}: () => nativePreview.Component };
+  runtimeOptions.hostBindings = {
+    ${JSON.stringify(binding)}: () => nativePreview.Component,
+    ${clock ? '"previewDemo.now": () => performance.now(),' : ""}
+  };
 ${site}`);
   source = replaceOnce(source, "    runtime: await createBundledVirRuntime(runtimeOptions),", `    nativePreview,
     runtime: await createBundledVirRuntime(runtimeOptions).catch(error => { nativePreview.dispose(); throw error; }),`);

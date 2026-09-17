@@ -12,6 +12,12 @@ Lean view. RPC/editor subscription, cancellation, package loading and shell
 lifetime remain upstream-owned. The selected external runtime is disposed
 after the shell runtime, including failed-open cleanup.
 
+A subtle sticky top-right label identifies the selected VIR/FIR renderer,
+independently of debug mode. The shared wrapper forwards native RPC timestamps
+separately from document decoding and memoizes the decoded endpoint across
+control renders. An unchanged document with new RPC timestamps is not decoded
+again, but receives a fresh endpoint timestamp.
+
 The ESM bundle redirects `react-dom/client` to the ProofWidgets `react-dom`
 entry, including imports already embedded in the frozen FIR provider bundle.
 Bundling rejects external imports outside `react`, `react-dom` and
@@ -49,6 +55,83 @@ node --test tests/vir_preview/demo_shell.test.mjs
 The `MatchedPreview` library declares both embedded bundles with Lake `needs`.
 The FIR package is copied and checksummed under `.deps/matched-fir-package`;
 producer artifacts and existing live pins are untouched.
+
+## Experimental direct-decoder/timing mode
+
+The current VIR demo can instead use the latest source-built direct converter
+with bounded string reuse and UTF-8/pointer scratch buffers. This is deliberately
+**not a matched FIR comparison**: FIR retains its immutable checked-decoder
+package and older compiled timing UI. Its backend label is shared and qualified;
+the new Lean timing UI needs a new FIR package before adoption there.
+
+```sh
+LAKE_RESTORE_ARTIFACTS=true scripts/lean-low-priority lake build \
+  +VersoBlueprintVirTests.NativeSession.DirectCodecProbe:vir
+VBP_DEMO_MATCHED_BACKEND=vir VBP_DEMO_DIRECT_TYPED=1 \
+VBP_MATCHED_IR_SET=.lake/build/vir/module-sets/VersoBlueprintVirTests/NativeSession/DirectCodecProbe.irpkg-set.json \
+VBP_DEMO_OUTPUT=.lake/build/matched-vir-demo.js \
+node tests/vir_preview/build_checked_json_demo.mjs
+scripts/lean-low-priority lake build +MatchedPreview:olean
+```
+
+In this mode, debug shows the last completed edit/version measurement and its
+editor version. Cursor replies, control changes and pending/error observations
+update current status without replacing that bar. Before the first edit it
+shows an explicitly labeled initial measurement. The bar partitions notification
+dispatch, snapshot/check waits, evaluation/focus, RPC remainder, decode,
+identity preparation, element construction and React/effect observation.
+The browser endpoint is a passive content effect, not paint or React internal
+commit duration. The demo-only clock uses `performance.now()` at coarse boundaries.
+
+Fresh full-FLT replay on the same cddcc35a SDK, package set and authenticated
+input used checked/direct/direct/checked order, two warmups and six measured
+updates per browser session. Debug/highlighting and profiling were off.
+
+| Browser phase (mean) | Checked | Direct |
+| --- | ---: | ---: |
+| JSON.parse | 17.2 ms | 13.3 ms |
+| Typed conversion/decoding | 921.3 ms | 50.5 ms |
+| Parse + decode | 938.5 ms | 63.8 ms |
+| Decoded value → observed DOM | 1,446.2 ms | 1,116.7 ms |
+| Browser total | 2,384.7 ms | 1,180.5 ms |
+
+Parse/decode is 93.2% lower in this replay. Rendering was unchanged and noisy:
+checked batch means were 1,282/1,610 ms versus direct 1,114/1,119 ms, so the
+rendering difference is not evidence of a rendering optimization. These numbers
+exclude server/LSP, encoding, transport, startup, passive effects and paint.
+The earlier ~352 ms direct-decoder report did not include this complete scratch
+configuration; the transitional ~70 ms report was a different implementation.
+
+Raw identities, rows and DOM checks are at repository-root
+`_out/matched-demo-v434/direct-refresh-{b01,c02,c03,b02}/`.
+All four runs have identical response, SDK Wasm and package-set hashes and
+the same normalized 7,011-element DOM. The first screening run `c01` is excluded
+from this aggregate. Live fixture gates are `vir-edit-bar-refresh.json`,
+`fir-backend-label-refresh.json` and `session-timing-refresh.json` in that directory.
+The RPC harness emits its synthetic edit notification after waiting for server
+diagnostics, so its bar is a lifecycle/accounting check, not keystroke latency.
+External FLT acceptance starts Lake in the FLT project, not the VBP package root.
+
+The assembled FLT widget also passes: registered shell, retained controls/bar,
+one client package, three preview RPCs and no React warnings. Its single
+debug-enabled observation (`flt-edit-bar-refresh.json`) is a different workload
+from the frozen debug-off replay above:
+
+| Live full-FLT notification → content effect | Time |
+| --- | ---: |
+| Dispatch + snapshot/check waits | 2.2 ms |
+| Evaluate / locate focus | 15.0 ms |
+| Encode / transport / scheduling remainder | 427.0 ms |
+| Reply → decoded / scheduling | 116.7 ms |
+| Identity preparation | 384.7 ms |
+| Build React elements | 2,723.6 ms |
+| React / effects / scheduling | 267.4 ms |
+| Total | 3,936.5 ms |
+
+This is functional timing-bar evidence, not a repeated latency benchmark or a
+comparison with FIR. The synthetic notification starts after server diagnostics;
+earlier elaboration is excluded. Restart the Lean server in the existing VS Code
+demo to load the rebuilt embedded widget and its new clock-bearing client root.
 
 ## Acceptance and demo
 

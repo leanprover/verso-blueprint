@@ -36,11 +36,15 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     };
     await render(a, config.a);
     await wait(() => version() === 1);
+    const badge = document.querySelector("[data-preview-backend]");
+    check(badge && badge.dataset.previewBackend === VBP_MATCHED_BACKEND,
+      "renderer badge does not identify selected backend");
     for (const text of VBP_MATCHED_FLT_PREVIEW ? ["Fermat's Last Theorem", "Diophantine"]
       : ["A live Blueprint document", "An informal statement with inline math", "This proof body remains visible"])
       check(panel().textContent.includes(text), `missing ${text}`);
     check(!document.querySelector(".katex"), "matched source-display mode unexpectedly uses KaTeX");
     const follow = document.getElementById("vir-verso-follow-cursor");
+    if (VBP_NATIVE_DIRECT_TIMING) React.act(() => document.getElementById("vir-verso-debug").click());
     React.act(() => follow.click());
     const selected = follow.checked;
     const before = calls().length;
@@ -52,15 +56,30 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     React.act(() => emit("textDocument/didChange", edit.result));
     await wait(() => version() === edit.result.textDocument.version);
     check(panel().textContent.includes(`browser edit ${version()}`), "edited text missing");
+    let measurement;
+    if (VBP_NATIVE_DIRECT_TIMING) {
+      await wait(() => document.getElementById("vir-verso-measurement")?.dataset.versoMeasurementVersion === String(version()));
+      const bar = document.getElementById("vir-verso-server-bar");
+      measurement = { ...document.getElementById("vir-verso-measurement").dataset,
+        totalNanos: bar.dataset.versoTotalNanos,
+        phases: [...bar.children].map(s => ({ phase: s.dataset.versoPhase, nanos: Number(s.dataset.versoNanos) })) };
+      check(bar.getAttribute("aria-label").startsWith("Edit notification → content effect"),
+        "edit bar lacks the full notification-to-effect boundary");
+      check(measurement.phases.length === 9, "edit bar is missing browser or server phases");
+    }
     check(document.getElementById("vir-verso-follow-cursor") === follow && follow.checked === selected,
       "edit reset controls");
     await render(b, config.b);
     await wait(() => calls().at(-1)?.settled);
     check(document.getElementById("vir-verso-follow-cursor") === follow && follow.checked === selected,
       "cursor update reset controls");
+    if (measurement) check(document.getElementById("vir-verso-server-bar").dataset.versoTotalNanos === measurement.totalNanos &&
+      document.getElementById("vir-verso-measurement").dataset.versoMeasurementCorrelation === measurement.versoMeasurementCorrelation,
+      "cursor reply replaced the edit bar");
     check(requests.filter(r => r.method === "Lean.Vir.Infoview.buildIRPackage").length === 1,
       "edit or cursor update rebuilt client package");
-    return { registeredWidget: registered.id, shellSha256: hash, retainedControl: true,
+    return { registeredWidget: registered.id, shellSha256: hash, retainedControl: true, backendBadge: badge.dataset.previewBackend,
+      measurement, retainedEditBar: Boolean(measurement),
       initialAndEditedDocument: true, previewRpcCalls: calls().length,
       subscriptions: subscriptions(), listeners: listeners(), warnings };
   }, [["unmount", () => React.act(() => root.unmount())]]);

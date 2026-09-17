@@ -79,7 +79,7 @@ const result = await build({
     builder.onLoad({ filter: /vir-infoview-widget\.js$/ }, async ({ path }) => {
       assert.equal(path, shell);
       const contents = matchedDemo ? configureNativeComponentShell(await read(path), {
-        module: "@matched-demo", open: "openMatchedDemo", binding: "previewDemo.matchedComponent",
+        module: "@matched-demo", open: "openMatchedDemo", binding: "previewDemo.matchedComponent", clock: true,
       }) : configureDemoShell(await read(path), Boolean(firDemo), {
         bridge, math, katex: resolve(katex, "katex.mjs"), mathCss,
       });

@@ -49,7 +49,7 @@ async function run() {
         return bindings;
       },
     });
-    for (let scenario = 0; scenario < 14; scenario++) {
+    for (let scenario = 0; scenario < 16; scenario++) {
       check(runtime.call(`${entry}.timingChecks`, scenario) === true,
         `timing partition/correlation scenario ${scenario} failed`);
     }
@@ -159,8 +159,9 @@ async function run() {
     }
     check(byId("preview").textContent.includes("Recovered preview"), "recovery lost document");
     render(6);
-    check(!byId("server-bar") && byId("server-timings").textContent.includes("unavailable"),
-      "missing timing was displayed as zero or retained from an old response");
+    check(byId("measurement").dataset.versoMeasurementVersion === "3" &&
+      panel().dataset.versoDebugVersion === "4",
+      "missing timing must keep the explicitly versioned last completed measurement");
     render(7);
     check(byId("server-bar").dataset.versoTotalNanos === "0" &&
       [...byId("server-bar").children].every(s => s.getBoundingClientRect().width === 0),
@@ -230,15 +231,15 @@ async function run() {
     const beforeRefresh = documentRenders;
     renderTimed(2);
     check(documentRenders - beforeRefresh === 2, "timing-only response rebuilt content more than once per Strict Mode pass");
-    check(byId("server-bar").dataset.versoTotalNanos === "70000000", "timing-only response was ignored");
+    check(byId("server-bar").dataset.versoTotalNanos === "80000000", "refresh replaced the completed edit measurement");
     check(commits.length >= 2 && commits.every(c => c.timing === "demo-clock" &&
-      [80000000, 70000000].includes(c.total)), "debug bar displayed an incomplete sample during refresh");
+      c.total === 80000000), "debug bar displayed an incomplete sample during refresh");
     const beforeTimedScale = documentRenders;
     setScale("10");
     check(documentRenders === beforeTimedScale &&
-      byId("server-bar").dataset.versoTotalNanos === "70000000", "scale change rebuilt or remeasured content");
+      byId("server-bar").dataset.versoTotalNanos === "80000000", "scale change rebuilt or remeasured content");
     click("highlight-changes");
-    check(byId("server-bar").dataset.versoTotalNanos === "70000000", "highlight control discarded the completed measurement");
+    check(byId("server-bar").dataset.versoTotalNanos === "80000000", "highlight control discarded the completed measurement");
     unmount();
     const encodedComponent = runtime.call(`${entry}.createEncodedDocumentComponent`);
     root = createRoot(document.getElementById("app"));
@@ -288,17 +289,18 @@ async function run() {
     check(documentRenders === beforeNativeSame,
       "unchanged native timing props rebuilt content");
     renderTimedEncoded(15, 30);
-    check(byId("server-bar").dataset.versoTotalNanos === "85000000" &&
+    check(byId("server-bar").dataset.versoTotalNanos === "90000000" &&
       byId("document") === nativeTimedArticle && byId("debug").checked,
       "timing-only native props lost coherent sample, DOM or controls");
     const beforeNativeScale = documentRenders;
     setScale("10");
     check(documentRenders === beforeNativeScale &&
-      byId("server-bar").dataset.versoTotalNanos === "85000000",
+      byId("server-bar").dataset.versoTotalNanos === "90000000",
       "native scale update rebuilt content or changed its timestamp");
     renderTimedEncoded(undefined, undefined);
-    check(panel().dataset.versoDebugBrowserTiming === "unavailable",
-      "absent native timing props were presented as a measured interval");
+    check(panel().dataset.versoDebugBrowserTiming === "demo-clock" &&
+      byId("server-bar").dataset.versoTotalNanos === "90000000",
+      "absent timing props discarded the explicitly retained measurement");
     check(trackedDocumentDecodes === initialNativeDecodes,
       "timing/control-only native updates decoded the unchanged document again");
     unmount();
@@ -314,7 +316,7 @@ async function run() {
       postDisposalRejected: true, serverTimingDisplay: true, proportionalTimingBar: true,
       debugOnlyTiming: true, selectableTimeScale: true, retainedScale: true,
       fixedTimeScale: true, scrollableLongTiming: true,
-      missingAndZeroTiming: true, absentClockNotMeasured: true, timingAccountingCases: 14,
+      missingAndZeroTiming: true, retainedMeasurementVersion: true, timingAccountingCases: 16,
       documentRenderCounts: true, shellOnlyUpdatesSkipDocument: true,
       stickyShellOutsideDocument: true, responsiveAutoScale: true,
       coherentCompletedSamples: true, timingOnlyResponseRefresh: true,

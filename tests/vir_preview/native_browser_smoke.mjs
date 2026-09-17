@@ -15,11 +15,13 @@ const stringPreview = process.argv.includes("--string-preview") || encodedDocume
 const embeddedPreview = process.argv.includes("--embedded-preview");
 const matchedBackend = process.env.VBP_NATIVE_MATCHED_BACKEND;
 if (matchedBackend) assert.ok(embeddedPreview && ["vir", "fir"].includes(matchedBackend));
+if (process.env.VBP_NATIVE_DIRECT_TIMING === "1") assert.equal(matchedBackend, "vir");
 const embeddedFixture = matchedBackend ? "MatchedPreviewServer" : "EmbeddedPreviewServer";
 const embeddedSourcePath = resolve(process.env.VBP_NATIVE_MATCHED_SOURCE ??
   resolve(root, `tests/VersoBlueprintVirTests/${embeddedFixture}.lean`));
 const matchedFlt = Boolean(process.env.VBP_NATIVE_MATCHED_SOURCE);
 assert.ok(!matchedFlt || matchedBackend, "external matched source requires a backend");
+const serverRoot = matchedFlt ? dirname(embeddedSourcePath) : root;
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
 const dependency = manifest.packages.find(p => p.name === "lean_vir");
 assert.equal(dependency?.type, "git");
@@ -29,6 +31,12 @@ const sdk = JSON.parse(await readFile(resolve(sdkRoot, "lean-vir-artifact.json")
 assert.equal(sdk.gitCommit, dependency.rev, "SDK must match the pinned Lean package");
 assert.equal(sdk.gitDirty, false, "acceptance requires a clean-source SDK");
 assert.equal(sdk.leanToolchain, (await readFile(resolve(root, "lean-toolchain"), "utf8")).trim());
+if (matchedFlt) {
+  assert.equal((await readFile(resolve(serverRoot, "lean-toolchain"), "utf8")).trim(), sdk.leanToolchain);
+  const projectSdk = JSON.parse(await readFile(resolve(serverRoot, ".lake/build/vir/sdk/lean-vir-artifact.json"), "utf8"));
+  assert.equal(projectSdk.gitCommit, sdk.gitCommit, "external project SDK differs from browser SDK");
+  assert.deepEqual(projectSdk.files, sdk.files, "external project SDK contents differ");
+}
 
 // Reuse VIR's real-server transport and browser lifecycle, without a second LSP harness.
 // This pinned internal test entry is temporary pending a supported external entry.
@@ -37,7 +45,7 @@ let harnessSource = await readFile(harnessPath, "utf8");
 const rootSite = 'const root = fileURLToPath(new URL("../../", import.meta.url));';
 assert.equal(harnessSource.split(rootSite).length, 2, "pinned harness root drift");
 harnessSource = harnessSource.replace(rootSite,
-  `const root = ${JSON.stringify(stringPreview || embeddedPreview ? root : virRoot)};`);
+  `const root = ${JSON.stringify(stringPreview || embeddedPreview ? serverRoot : virRoot)};`);
 const require = createRequire(resolve(virRoot, "package.json"));
 harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) => {
   if (specifier.startsWith("node:")) return match;
@@ -85,6 +93,8 @@ const bundle = await build({
     VBP_ENCODED_DOCUMENT: JSON.stringify(encodedDocument),
     VBP_EMBEDDED_PREVIEW: JSON.stringify(embeddedPreview),
     VBP_MATCHED_PREVIEW: JSON.stringify(Boolean(matchedBackend)),
+    VBP_MATCHED_BACKEND: JSON.stringify(matchedBackend ?? ""),
+    VBP_NATIVE_DIRECT_TIMING: JSON.stringify(process.env.VBP_NATIVE_DIRECT_TIMING === "1"),
     VBP_MATCHED_FLT_PREVIEW: JSON.stringify(matchedFlt),
     VBP_EMBEDDED_SHELL_SHA256: JSON.stringify(shellHash),
     VBP_WASM_SHA256: JSON.stringify(sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256),
@@ -132,7 +142,7 @@ const report = {
   virCommit: dependency.rev, toolchain: sdk.leanToolchain,
   wasmSha256: sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256,
   packageMembers,
-  encodedDocument, embeddedPreview, matchedBackend, sourceHashes,
+  encodedDocument, embeddedPreview, matchedBackend, serverRoot, sourceHashes,
   ...(embeddedPreview ? { fixtureSourcePath: embeddedSourcePath,
     fixtureSourceSha256: createHash("sha256").update(await readFile(embeddedSourcePath)).digest("hex") } : {}),
   sdkManifestSha256: createHash("sha256").update(await readFile(
