@@ -248,6 +248,7 @@ async function renderExperiment(runtime, source, identityProbe) {
     });
     const start = performance.now();
     const parsed = mode === "browserParsed" ? JSON.parse(input) : input;
+    const parsedAt = performance.now();
     const decode = () => decodeDirect ? decodeDirect(parsed) : invoke(mode, parsed);
     const decoded = decodeScoped(runtime, decode);
     const decodedAt = performance.now();
@@ -258,7 +259,8 @@ async function renderExperiment(runtime, source, identityProbe) {
     const identityEvents = identityProbe?.finish();
     observer.disconnect();
     const sample = { totalMs: committedAt - start, decodeMs: decodedAt - start,
-      renderToDomMs: committedAt - decodedAt, raw: { start, decodedAt, committedAt }, version };
+      parseMs: parsedAt - start, codecMs: decodedAt - parsedAt,
+      renderToDomMs: committedAt - decodedAt, raw: { start, parsedAt, decodedAt, committedAt }, version };
     if (identityEvents) {
       check(identityEvents.filter(e => e.kind === "calibration").length === 1, "expected one instrumented render");
       check(identityEvents.filter(e => e.kind === "render").length === 1, "expected one renderer interval");
@@ -322,7 +324,7 @@ async function renderExperiment(runtime, source, identityProbe) {
       boundary: "captured FLT response decode to MutationObserver after React DOM commit; real retained preview, debug/highlighting off, no RPC/LSP, no paint or passive-effect wait included",
       instrumentation: identityProbe ? "diagnostic identity boundaries; no CPU sampler; not headline timings" : process.env.VBP_REPLAY_PROFILE === "1"
         ? "Chrome CPU sampling at 1000 us; diagnostic timings, no host timers"
-        : "three coarse timestamps per update; no host timers or profiler" };
+        : "four coarse timestamps per update; no host timers or profiler" };
   }, [["React root", () => { flushSync(() => root.unmount()); }],
     ["console", () => { console.error = originalError; console.warn = originalWarn; }]]);
 }
