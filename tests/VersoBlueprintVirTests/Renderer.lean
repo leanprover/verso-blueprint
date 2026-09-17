@@ -55,6 +55,8 @@ private def rich := document #[
 ]
 
 @[vir_export]
-def render : ReactM (Js Node) := VersoBlueprint.Experimental.VirPreview.Renderer.render rich
+def render : ReactM (Js Node) := do
+  VersoBlueprint.Experimental.VirPreview.Renderer.render
+    (← VersoBlueprint.Experimental.VirPreview.Renderer.Styles.create) rich
 
 end VersoBlueprintVirTests.Renderer

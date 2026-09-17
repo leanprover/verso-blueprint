@@ -26,16 +26,22 @@ The public Lean entry point is:
 ```lean
 import VersoReact
 
-def renderDocument (part : Verso.Doc.Part Verso.Genre.Manual) :
+def renderDocument (styles : VersoReact.Renderer.Styles)
+    (part : Verso.Doc.Part Verso.Genre.Manual) :
     Lean.Vir.React.ReactM (Lean.Vir.Js Lean.Vir.React.Node) :=
-  VersoReact.Renderer.render part
+  VersoReact.Renderer.render styles part
 ```
+
+Create `styles ← VersoReact.Renderer.Styles.create` once in the component factory,
+then capture them in its render callback. Treat the style objects as read-only;
+keys, focus and other node attributes are still constructed separately. Colors
+use CSS variables, so theme changes do not require rebuilding the styles.
 
 Call this as an ordinary render helper inside a React component. It creates
 nodes; it does not create a React root, manage state, register a widget, fetch
 documents, or install a runtime. The application owns those operations.
 
-This checkpoint uses Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR `36d26bc2`.
+This checkpoint uses Lean **4.34.0-rc2**, Verso `52c8c955`, and VIR `92d7cc91`.
 VIR's exact pin still uses a local Git URL; this is not yet a published
 download-and-build recipe. Do not mix its Lean packages or SDK with another
 toolchain. The parent VBP package obtains VIR through this dependency.
@@ -83,7 +89,7 @@ existing React state, initially `default`. On a document-content update:
 
 ```lean
 let identities := VersoReact.Renderer.prepareIdentities previous document extensions
-VersoReact.Renderer.render document { identities? := some identities } extensions
+VersoReact.Renderer.render styles document { identities? := some identities } extensions
 ```
 
 Retain `identities` as part of the same pure state transition as the accepted

@@ -56,7 +56,7 @@ private structure RenderOutcome where
   serverTiming? : Option ServerTiming := none
   blockCount : Nat := 0
 
-private def renderContent (mathComponent? : Option (FunctionComponent Props))
+private def renderContent (styles : Renderer.Styles) (mathComponent? : Option (FunctionComponent Props))
     (props : ContentProps) : ReactM RenderOutcome := do
   match props.preview with
   | .loading message =>
@@ -72,7 +72,7 @@ private def renderContent (mathComponent? : Option (FunctionComponent Props))
       let highlightedIds := if props.highlightChanges then props.changedIds else #[]
       let focus := if props.followCursor then document.focus else none
       let instrumentation ← instrumentationStyleNode document
-      let rendered ← Renderer.render document {
+      let rendered ← Renderer.render styles document {
         identities? := some props.identities
         changedIds := highlightedIds
         focus
@@ -88,11 +88,12 @@ private def renderContent (mathComponent? : Option (FunctionComponent Props))
       }
 
 def createContentComponent (clock : RuntimeM Float := pure 0)
-    (mathComponent? : Option (FunctionComponent Props) := none) : RuntimeM (FunctionComponent (Props.WithData ContentProps)) :=
+    (mathComponent? : Option (FunctionComponent Props) := none) : RuntimeM (FunctionComponent (Props.WithData ContentProps)) := do
+  let styles ← Renderer.Styles.create
   FunctionComponent.ofLean fun props => do
     let props ← LeanRef.fromJSL (← Props.WithData.data props)
     let started ← if props.diagnostics then clock else pure 0
-    let outcome ← renderContent mathComponent? props
+    let outcome ← renderContent styles mathComponent? props
     let rendered ← if props.diagnostics then clock else pure 0
     -- Keep hook order stable when diagnostics are toggled. The normal path
     -- does not construct a sample or update state. This observes a committed

@@ -38,6 +38,28 @@ def externalMarkupSource : ReactM (Js Props) := js%{ "margin" := (← js#"0"), "
 
 end Style
 
+/-- Component-owned read-only styles for Blueprint presentation. -/
+structure Styles where
+  verso : VersoReact.Renderer.Styles
+  informalBlock : Js Props
+  informalHeader : Js Props
+  informalKind : Js Props
+  informalLabel : Js Props
+  informalBody : Js Props
+  externalMarkup : Js Props
+  externalMarkupSummary : Js Props
+  externalMarkupSource : Js Props
+
+def Styles.create : ReactM Styles := do
+  return {
+    verso := ← VersoReact.Renderer.Styles.create
+    informalBlock := ← Style.informalBlock, informalHeader := ← Style.informalHeader
+    informalKind := ← Style.informalKind, informalLabel := ← Style.informalLabel
+    informalBody := ← Style.informalBody, externalMarkup := ← Style.externalMarkup
+    externalMarkupSummary := ← Style.externalMarkupSummary
+    externalMarkupSource := ← Style.externalMarkupSource
+  }
+
 private def decodeExtension? [Lean.FromJson α] (data : Lean.Json) : Option α :=
   match Lean.fromJson? data with
   | .ok value => some value
@@ -61,7 +83,7 @@ private def blockIdentity? (extension : Genre.Manual.Block) : Option String :=
       s!"external-markup:{data.label}:{data.markup.language.key}:{data.markup.slot}"
   else none
 
-private def renderInline? (component? : Option (FunctionComponent Props))
+private def renderInline? (styles : Styles) (component? : Option (FunctionComponent Props))
     (key : String) (extension : Genre.Manual.Inline) :
     ReactM (Option (Js Node)) := do
   if !isBlueprintMath extension then return none
@@ -71,9 +93,9 @@ private def renderInline? (component? : Option (FunctionComponent Props))
         let attributes ← js%{ "className" := (← JsValue.ofString s!"vir-verso-math bp_math {mode}") }
         if !data.texPrelude.isEmpty then
           Js.Object.set attributes (← js#"data-bp-tex-prelude") (← JsValue.ofString data.texPrelude)
-        VersoReact.Renderer.renderMath key data.mode data.source (some attributes) component?
+        VersoReact.Renderer.renderMath styles.verso key data.mode data.source (some attributes) component?
     | none => do
-        let style ← VersoReact.Renderer.Style.inlineCode
+        let style := styles.verso.inlineCode
         let props ← js%{ "style" := style }
         Js.Object.set props (← js#"key") (← JsValue.ofString key)
         Js.Object.set props (← js#"className") (← js#"vir-verso-extension-unsupported")
@@ -81,18 +103,18 @@ private def renderInline? (component? : Option (FunctionComponent Props))
         return ← <code @props={props}>{Node.text (← JsValue.ofString s!"[malformed math extension: {extension.name}]")}</code>
   return some node
 
-private def malformedBlock (message : String) (extension : Genre.Manual.Block)
+private def malformedBlock (styles : Styles) (message : String) (extension : Genre.Manual.Block)
     (attributes : String → Js Props → ReactM (Js Props))
     (children : Unit → ReactM (Array (Js Node))) : ReactM (Js Node) := do
-  let markerStyle ← VersoReact.Renderer.Style.inlineCode
+  let markerStyle := styles.verso.inlineCode
   let markerProps ← js%{ "style" := markerStyle }
   let marker ← <code @props={markerProps}>{Node.text (← JsValue.ofString message)}</code>
-  let props ← attributes "unsupported-extension" (← VersoReact.Renderer.Style.unsupported)
+  let props ← attributes "unsupported-extension" (styles.verso.unsupported)
   Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
   let childNodes ← children ()
   return ← <div @props={props}>{pure marker}{Js.Array.ofArray childNodes}</div>
 
-private def renderBlock? (key : String)
+private def renderBlock? (styles : Styles) (key : String)
     (attributes : String → Js Props → ReactM (Js Props))
     (extension : Genre.Manual.Block)
     (children : Unit → ReactM (Array (Js Node))) : ReactM (Option (Js Node)) := do
@@ -102,26 +124,26 @@ private def renderBlock? (key : String)
           -- Occurrences carry the facet, not the canonical node's mathematical
           -- kind. A Part-only preview must not invent a theorem/lemma title.
           let kindLabel := if data.isProof then "Proof" else "Statement"
-          let kindStyle ← Style.informalKind
+          let kindStyle := styles.informalKind
           let kindProps ← js%{ "style" := kindStyle }
           let kind ← <strong @props={kindProps}>{Node.text (← JsValue.ofString kindLabel)}</strong>
-          let labelStyle ← Style.informalLabel
+          let labelStyle := styles.informalLabel
           let labelProps ← js%{ "style" := labelStyle }
           let label ← <code @props={labelProps}>{Node.text (← JsValue.ofString data.label.toString)}</code>
-          let headerStyle ← Style.informalHeader
+          let headerStyle := styles.informalHeader
           let headerProps ← js%{ "style" := headerStyle }
           let header ← <header @props={headerProps}>{pure kind}{pure label}</header>
-          let bodyStyle ← Style.informalBody
+          let bodyStyle := styles.informalBody
           let bodyProps ← js%{ "style" := bodyStyle }
           let bodyChildren ← children ()
           let body ← <div @props={bodyProps}>{Js.Array.ofArray bodyChildren}</div>
-          let props ← attributes "informal" (← Style.informalBlock)
+          let props ← attributes "informal" (styles.informalBlock)
           Js.Object.set props (← js#"data-verso-informal-kind") (← JsValue.ofString kindLabel)
           Js.Object.set props (← js#"data-verso-informal-label") (← JsValue.ofString data.label.toString)
           Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
           return ← <article @props={props}>{pure header}{pure body}</article>
       | none =>
-          malformedBlock s!"[malformed informal block: {extension.name}]"
+          malformedBlock styles s!"[malformed informal block: {extension.name}]"
             extension attributes children
     return some node
   else if isExternalMarkupBlock extension then
@@ -142,44 +164,44 @@ private def renderBlock? (key : String)
               let props ← js%{ "key" := (← JsValue.ofString key) }
               Node.fragment props (← Js.Array.empty)
           | .summary =>
-              let props ← extensionProps "summary" (← Style.externalMarkupSummary)
+              let props ← extensionProps "summary" (styles.externalMarkupSummary)
               return ← <p @props={props}>{Node.text (← JsValue.ofString summary)}</p>
           | .source =>
-              let summaryStyle ← Style.externalMarkupSummary
+              let summaryStyle := styles.externalMarkupSummary
               let summaryProps ← js%{ "style" := summaryStyle }
               let summaryNode ← <summary @props={summaryProps}>{Node.text (← JsValue.ofString summary)}</summary>
               let sourceProps ← js%{ "className" := (← JsValue.ofString s!"language-{markup.language.key}") }
               let source ← <code @props={sourceProps}>{Node.text (← JsValue.ofString markup.raw)}</code>
-              let sourceNodeStyle ← Style.externalMarkupSource
+              let sourceNodeStyle := styles.externalMarkupSource
               let sourceNodeProps ← js%{ "style" := sourceNodeStyle }
               let sourceNode ← <pre @props={sourceNodeProps}>{pure source}</pre>
-              let props ← extensionProps "source" (← Style.externalMarkup)
+              let props ← extensionProps "source" (styles.externalMarkup)
               return ← <details @props={props}>{pure summaryNode}{pure sourceNode}</details>
       | none =>
-          malformedBlock s!"[malformed external markup block: {extension.name}]"
+          malformedBlock styles s!"[malformed external markup block: {extension.name}]"
             extension attributes children
     return some node
   else return none
 
-/-- Blueprint extension semantics; the independent package knows none of these names. -/
+/-- Blueprint semantic identities. Rendering adds callbacks owning the component's styles. -/
 def extensions : VersoReact.Renderer.Extensions := {
-  renderInline? := renderInline? none, renderBlock?, blockIdentity?
+  blockIdentity?
 }
 
 /-- Session metadata belongs to VBP, not the reusable Part-to-React renderer. -/
-def render (input : Document) (options : VersoReact.Renderer.Options := {})
+def render (styles : Styles) (input : Document) (options : VersoReact.Renderer.Options := {})
     (mathComponent? : Option (FunctionComponent Props) := none) :
     ReactM (Js Node) := do
   let attributes ← match options.attributes with
     | some attributes => pure attributes
     | none => do
-      let style ← VersoReact.Renderer.Style.document
+      let style := styles.verso.document
       js%{ "style" := style }
   Js.Object.set attributes (← js#"data-verso-version") (← JsValue.ofString (toString input.version))
   Js.Object.set attributes (← js#"data-verso-correlation-id") (← JsValue.ofString input.correlationId)
   Js.Object.set attributes (← js#"data-verso-cursor-token") (← JsValue.ofString input.cursorToken)
-  VersoReact.Renderer.render input.document { options with attributes := some attributes }
-    { extensions with mathComponent?, renderInline? := renderInline? mathComponent? }
+  VersoReact.Renderer.render styles.verso input.document { options with attributes := some attributes }
+    { extensions with mathComponent?, renderInline? := renderInline? styles mathComponent?, renderBlock? := renderBlock? styles }
 
 def changedBlockIdsAndCount (previous : Option Document) (current : Document) :
     Array String × Nat :=

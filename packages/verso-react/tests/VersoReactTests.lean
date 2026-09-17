@@ -70,8 +70,9 @@ private def rich : Part Genre.Manual := document #[
 
 /-- Test export only: the library itself has no runtime or widget entry point. -/
 @[vir_export]
-def render (scenario : Nat) : ReactM (Js Node) :=
-  Renderer.render (match scenario with
+def render (scenario : Nat) : ReactM (Js Node) := do
+  let styles ← Renderer.Styles.create
+  Renderer.render styles (match scenario with
     | 0 => before | 1 => inserted | 2 => moved
     | 4 => document #[.concat #[.concat #[],
         .concat #[paragraph "first", paragraph "second"], paragraph "third"], paragraph "unrelated"]

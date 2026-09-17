@@ -99,8 +99,8 @@ private def identityScenarioDocument (scenario : Nat) : Verso.Doc.Part Verso.Gen
 
 /-- Browser-only identity experiment; disclosures hold native DOM state. -/
 @[vir_export]
-def renderIdentityScenario (scenario : Nat) : ReactM (Js Node) :=
-  VersoReact.Renderer.render (identityScenarioDocument scenario) {} identityExtensions
+def renderIdentityScenario (scenario : Nat) : ReactM (Js Node) := do
+  VersoReact.Renderer.render (← VersoReact.Renderer.Styles.create) (identityScenarioDocument scenario) {} identityExtensions
 
 @[vir_export]
 def emptyIdentityState : RuntimeM (JSL VersoReact.Fingerprint.State) :=
@@ -115,7 +115,7 @@ def advanceIdentityScenario (previous : JSL VersoReact.Fingerprint.State) (scena
 @[vir_export]
 def renderIdentityScenarioRetained (state : JSL VersoReact.Fingerprint.State) (scenario : Nat) :
     ReactM (Js Node) := do
-  VersoReact.Renderer.render (identityScenarioDocument scenario)
+  VersoReact.Renderer.render (← VersoReact.Renderer.Styles.create) (identityScenarioDocument scenario)
     { identities? := some (← LeanRef.fromJSL state) } identityExtensions
 
 /-- Untimed byte-equivalence gate for the experimental serializer. -/
