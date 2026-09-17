@@ -78,6 +78,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintMainWrapper,
     `VersoBlueprintTests.BlueprintMathLint,
     `VersoBlueprintTests.BlueprintMetadataPanel,
+    `VersoBlueprintTests.BlueprintIssueUrl,
     `VersoBlueprintTests.BlueprintNumbering,
     `VersoBlueprintTests.BlueprintSlides,
     `VersoBlueprintTests.BlueprintPreviewPanels,

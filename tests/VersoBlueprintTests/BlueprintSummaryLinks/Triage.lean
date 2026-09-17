@@ -46,6 +46,10 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "Alice Example" &&
       hasSubstr out "Bob Example" &&
       hasSubstr out "https://example.com/pr/12" &&
+      -- Issue links render beside PR links; an issue without a PR does not count as a linked PR.
+      hasSubstr out "href=\"https://example.com/issues/12\">Issue</a>" &&
+      appearsBefore out "https://example.com/pr/12\">PR</a>" "https://example.com/issues/12\">Issue</a>" &&
+      hasSubstr out "href=\"https://example.com/issues/13\">Issue</a>" &&
       hasSubstr out "quick-win" &&
       hasSubstr out "leaf-quick-win" &&
       hasSubstr out "def:triage.leaf" &&
