@@ -133,11 +133,11 @@ Definition 10.
 Definition 11.
 :::
 
-:::definition "def:triage.12" (parent := "triage.group") (owner := "bob") (tags := "critical, quick-win") (effort := "small") (priority := "high") (pr_url := "https://example.com/pr/12")
+:::definition "def:triage.12" (parent := "triage.group") (owner := "bob") (tags := "critical, quick-win") (effort := "small") (priority := "high") (pr_url := "https://example.com/pr/12") (issue_url := "https://example.com/issues/12")
 Definition 12.
 :::
 
-:::definition "def:triage.leaf" (parent := "triage.group") (owner := "bob") (tags := "critical, leaf-quick-win") (effort := "small") (priority := "high")
+:::definition "def:triage.leaf" (parent := "triage.group") (owner := "bob") (tags := "critical, leaf-quick-win") (effort := "small") (priority := "high") (issue_url := "https://example.com/issues/13")
 Actionable leaf definition with no downstream users.
 :::
 

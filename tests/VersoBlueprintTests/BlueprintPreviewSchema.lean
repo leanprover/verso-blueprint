@@ -179,6 +179,8 @@ private def checkObjectSchema (name : String) (fields : Array (String Ã— (Json â
         entryProps.contains "ownerUrl" &&
         entryProps.contains "ownerImageUrl" &&
         entryProps.contains "prUrl" &&
+        entryProps.contains "issueUrl" &&
+        entryProps.contains "issueNumber" &&
         !entryProps.contains "toBlockMetadata" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&
