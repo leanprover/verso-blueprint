@@ -145,4 +145,27 @@ node tests/vir_preview/summarize_replay_profile.mjs \
   --out=<fresh-report-directory>
 ```
 
-Real internal symbol attribution remains pending the producer handoff.
+### Diagnostic handoff, not release symbols
+
+`W7-ROOT-20260917-017` returned producer checkpoint `19fdf1ed`, root review
+pending. Exact frozen private SDK/context replay reused the saved factory/codec
+closure; raw/resident bytes matched preserved products. Names survive the
+unchanged merge/metadce/O3 flags, but metadce/final sections 1,3,7,8,9,10 differ.
+Diagnostic Wasm SHA256:
+`f28fd9d4cbb6a5ebca124418808be2b36cc1f07a675ef8c47226af7b6a1564f2`.
+Its names are **not valid for the existing fa24e89b release profile**.
+
+Under FIR's `.deps/native-session-probe/renderer-origin-diagnostic/`,
+`FUNCTION-OWNERS.json` (SHA256
+`bc6814b21139d9d6f0035e1ebb1bac58e1b7c4fd7ba552d478e3cb16ec251250`)
+covers 3,282 absolute indices: 37 imports, 735 source identities, 2,494 resident
+identities and 16 explicitly unattributed definitions. Section comparison SHA256:
+`7004fcf83406c3b00619d45f630c01ff8393128f8c90b1c5b582ce98132f611e`.
+
+Consumer read-only checks verify the supplied hashes, unique index inventory and
+import count. The offline symbol importer correctly rejects this actual diagnostic
+against the old capture, before creating an output directory. No names have been
+applied to old frames. After producer root review, qualify and capture this artifact
+separately for diagnostic attribution; retain the unsampled release comparison
+above as the headline baseline. No consumer execution or timing claim is made for
+the new artifact yet.

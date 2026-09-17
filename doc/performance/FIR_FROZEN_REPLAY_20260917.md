@@ -1,5 +1,10 @@
 # Frozen FIR artifact: FLT browser profile
 
+For the subsequent matched backend comparison and current symbol disposition,
+see [the checked-codec comparison](VIR_FIR_CHECKED_COMPARISON_20260917.md).
+This report preserves the earlier screening and diagnostic captures; its timing
+table is not the current balanced comparison.
+
 Consumer package `23dfd8ab282aa8b5b0b7d90b`, from W7 checkpoint `ddac2af9`,
 uses source snapshot `bc9685f9` (VBP `99caaacb`, VIR `92d7cc91`, Lean 4.34.0-rc2).
 The Wasm is unchanged: 2,034,522 bytes, SHA256
