@@ -215,7 +215,30 @@ structure BlockMetadata where
   priority : Option String := none
   /-- Pull request associated with this informal node, if any. -/
   prUrl : Option String := none
+  /-- Tracking issue associated with this informal node, if any. -/
+  issueUrl : Option String := none
 deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
+
+/--
+The trailing path segment of an http(s) URL when it is all digits, as written.
+The query and fragment are dropped first and the authority is never a segment,
+so `https://host/issues/109#discussion` yields `109` and `https://109` yields
+`none`. Renderers caption issue links with it; the manifest derives
+`issueNumber` from it.
+-/
+def issueNumberSegment? (url : String) : Option String :=
+  let noFragment := (url.splitOn "#").headD ""
+  let noQuery := (noFragment.splitOn "?").headD ""
+  let afterScheme :=
+    match noQuery.splitOn "://" with
+    | [_, rest] => rest
+    | _ => noQuery
+  match afterScheme.splitOn "/" with
+  | _authority :: path =>
+    match (path.filter (· != "")).getLast? with
+    | some segment => if segment.all Char.isDigit then some segment else none
+    | none => none
+  | [] => none
 
 /-- Source and presentation settings belonging to one document occurrence. -/
 structure BlockPresentation where
@@ -295,6 +318,7 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
   effort := node.effort
   priority := node.priority
   prUrl := node.prUrl
+  issueUrl := node.issueUrl
 }
 
 def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {

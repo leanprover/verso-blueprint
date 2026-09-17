@@ -604,6 +604,10 @@ private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html 
     match metadata.prUrl with
     | some href => renderMetadataItem "PR" (renderMetadataLinkValue href "link")
     | none => .empty
+  let issueNode : Verso.Output.Html :=
+    match metadata.issueUrl with
+    | some href => renderMetadataItem "Issue" (renderMetadataLinkValue href (issueLinkText href))
+    | none => .empty
   let tagNodes : Verso.Output.Html :=
     if metadata.tags.isEmpty then
       .empty
@@ -621,6 +625,7 @@ private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html 
         {{priorityNode}}
         {{tagNodes}}
         {{prNode}}
+        {{issueNode}}
       </div>
     }}
   else

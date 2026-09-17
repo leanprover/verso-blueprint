@@ -30,6 +30,7 @@ structure InProgress where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
   deps : Array UseRef := #[]
   proofUses : Array UseRef := #[]
 deriving Inhabited, Repr
@@ -344,6 +345,7 @@ private def InProgress.toContribution (current : InProgress) (count : Nat) (ref 
   tags := current.tags
   effort := current.effort
   prUrl := current.prUrl
+  issueUrl := current.issueUrl
 }
 
 private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
