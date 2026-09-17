@@ -18,7 +18,8 @@ const codecBindingsPath = resolve(process.env.VBP_JSON_BINDINGS_FILE ??
   fileURLToPath(new URL("./upstream-json-value-bindings.mjs", import.meta.url)));
 if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
   assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "direct decoder needs matched typed package");
-  assert.notEqual(process.env.VBP_REPLAY_PROFILE, "1", "direct decoder profile phase mapping is not yet qualified");
+  if (process.env.VBP_REPLAY_PROFILE === "1")
+    assert.equal(process.env.VBP_REPLAY_RENDER, "1", "direct decoder sampling currently requires decode/render windows");
 }
 assert.ok(inputArg && outputArg, "usage: decode_browser_smoke.mjs CAPTURE_DIR OUTPUT_DIR");
 const input = resolve(inputArg), output = resolve(outputArg);
