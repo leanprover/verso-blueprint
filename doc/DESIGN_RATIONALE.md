@@ -474,7 +474,7 @@ that owner.
 
 | Fact family | Owner | Stored as | Main consumers |
 | --- | --- | --- | --- |
-| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` registered nodes; captured `RenderNode` records for rendering | traversal, graph, summary, manifest construction |
+| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL, issue URL | Elaboration | `Environment.State.data` registered nodes; captured `RenderNode` records for rendering | traversal, graph, summary, manifest construction |
 | Attribute-module ownership and first-application order | Attribute elaboration | `Environment.State.blueprintAttributeLabelsByModule`; node semantics remain in `Environment.State.data` | `{includeBlueprintModule}`, exact-module diagnostics |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
@@ -682,7 +682,7 @@ hydration.
 | Component | Single owner | Used by | Duplication status |
 | --- | --- | --- | --- |
 | Node wrapper, heading, title row, label, body container, and folded/open details shape | `Informal.Block.Render.renderInformalBlockModel` through `renderInformalBlockShell` | normal Manual blocks, manifest/cache rendering, grafted nodes, Slides nodes | single Lean owner |
-| Statement metadata panel for owner, effort, priority, tags, and PR link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
+| Statement metadata panel for owner, effort, priority, tags, PR link, and issue link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
 | Header-extra slot ordering and wrapper classes | `Informal.Block.Render.renderHeaderExtras` | group, uses, used-by, code, and custom extras in normal and manifest-backed nodes | single layout owner |
 | Relation panel shell, chip configuration, compact row payloads, and single-entry inline badges | `Informal.RelatedPanel.renderPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | Lean owns semantic entry selection, compact badge codes, the panel shell, and inline-preview footer rendering |
 | Multi-entry relation-row DOM and badge presentation | `Informal/Block/relation-panel.mjs` | compact relation payloads emitted by normal, grafted, Slides, and custom generated nodes | one browser hydration owner; its positional row schema and badge-code vocabulary must stay aligned with `Informal.RelatedPanel` |
