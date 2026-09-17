@@ -10,12 +10,18 @@ import { createIdentityPhaseProbe } from "./identity_phase_probe.mjs";
 import { identityBrowserCases } from "./identity_browser_cases.mjs";
 import { jsonValueContractCases } from "./json_value_contract_cases.mjs";
 import { withScopedStringIntern } from "./scoped_string_intern.mjs";
-import { createDirectPreviewDecoder } from "./direct_typed_decoder.mjs";
+import { createDirectPreviewDecoder } from "@vbp-direct-typed-decoder";
+import { withUtf8Scratch } from "./utf8_scratch.mjs";
 
 const entry = process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
   ? "VersoBlueprintVirTests.NativeSession.DirectCodecProbe"
   : "VersoBlueprintVirTests.NativeSession.DecodeProbe";
 let decodeDirect;
+function decodeScoped(runtime, decode) {
+  const intern = () => process.env.VBP_REPLAY_STRING_INTERN === "1"
+    ? withScopedStringIntern(runtime, decode) : decode();
+  return process.env.VBP_REPLAY_UTF8_SCRATCH === "1" ? withUtf8Scratch(runtime, intern) : intern();
+}
 const check = (value, message) => { if (!value) throw Error(message); };
 globalThis.decodeAcceptance = run().then(
   value => ({ ok: true, value }), error => ({ ok: false, error: describeError(error) }));
@@ -45,8 +51,10 @@ async function run() {
     const codecContract = jsonValueContractCases(jsonBindings, runtime.call(`${entry}.emptyIdentityState`));
     if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1") {
       const layouts = await (await fetch("/direct-layouts.json")).json();
-      const directControl = createDirectPreviewDecoder(runtime, layouts, jsonBindings);
-      if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") decodeDirect = directControl;
+      const directControl = createDirectPreviewDecoder(runtime, layouts, jsonBindings, { validate: true });
+      if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
+        decodeDirect = createDirectPreviewDecoder(runtime, layouts, jsonBindings);
+      }
       const allInlines = [{ text: "α😀" }, { code: "x" }, { linebreak: "\n" },
         { emph: [{ text: "emph" }] }, { bold: [] }, { concat: [] },
         { math: { mode: "inline", str: "x^2" } }, { math: { mode: "display", str: "y" } },
@@ -58,15 +66,21 @@ async function run() {
         { ol: { start: -2, items: [{ contents: [{ code: "item" }] }] } },
         { dl: [{ term: [{ text: "term" }], contents: [] }] }, { blockquote: [] }, { concat: [] },
         { other: { container: { name: "Prototype.block", id: null,
-          data: { a: [], b: {}, c: 9007199254740991 }, properties: { "Prototype.key": "value" } }, content: [] } }];
+          data: { a: [], b: {}, c: 9007199254740991,
+            bounds: [-1073741824, 1073741823, -1073741825, 1073741824] }, properties: { "Prototype.key": "value" } }, content: [] } }];
       const rich = { ready: { document: { version: 42, correlationId: "", cursorToken: "", focus: null, serverTiming: null,
-        document: { title: allInlines, titleString: "title", metadata: null, content: allBlocks, subParts: [] } } } };
+        document: { title: allInlines, titleString: "α😀\0".repeat(2000), metadata: null, content: allBlocks, subParts: [] } } } };
       for (const fixture of [rich, { loading: { message: "loading" } },
-        { unavailable: { message: "unavailable" } }, { error: { message: "error" } }])
+        { unavailable: { message: "unavailable" } }, { error: { message: "error" } }]) {
         check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(fixture)), directControl(fixture)),
           "direct typed rich constructor fixture differs");
+        if (decodeDirect) check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(fixture)),
+          decodeScoped(runtime, () => decodeDirect(fixture))), "fast direct typed fixture differs");
+      }
       const control = directControl(JSON.parse(source));
       check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, source), control), "direct typed document differs");
+      if (decodeDirect) check(runtime.call(`${entry}.equivalent`, control,
+        decodeScoped(runtime, () => decodeDirect(JSON.parse(source)))), "fast full typed document differs");
       runtime.exports.memory.grow(0);
       runtime.exports.memory.grow(1);
       check(runtime.call(`${entry}.describe`, control) === `ready:${expectedVersion}`, "direct result invalid after growth");
@@ -200,8 +214,7 @@ async function renderExperiment(runtime, source, identityProbe) {
     const start = performance.now();
     const parsed = mode === "browserParsed" ? JSON.parse(input) : input;
     const decode = () => decodeDirect ? decodeDirect(parsed) : invoke(mode, parsed);
-    const decoded = process.env.VBP_REPLAY_STRING_INTERN === "1"
-      ? withScopedStringIntern(runtime, decode) : decode();
+    const decoded = decodeScoped(runtime, decode);
     const decodedAt = performance.now();
     identityProbe?.begin();
     const node = invoke("renderDecoded", component, decoded);
@@ -301,8 +314,7 @@ async function browserJsonExperiment(runtime, source, expectedVersion, setMarker
       const parsed = JSON.parse(input);
       const parsedAt = performance.now();
       const decode = () => decodeDirect ? decodeDirect(parsed) : invoke("browserParsed", parsed);
-      const value = process.env.VBP_REPLAY_STRING_INTERN === "1"
-        ? withScopedStringIntern(runtime, decode) : decode();
+      const value = decodeScoped(runtime, decode);
       const end = performance.now();
       if (decodeDirect) return { value, timing: { totalMs: end - start, parseMs: parsedAt - start,
         directTypedMs: end - parsedAt, raw: { start, parsedAt, end } } };

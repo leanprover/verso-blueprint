@@ -1,5 +1,84 @@
 # Direct typed document decoding: first feasibility probe
 
+## Allocation and UTF-8 follow-up
+
+The next local candidate removes per-field closures and per-node layout
+interpretation, constructs object-only records through the existing owned-field
+API, and uses exact Wasm32 Lean small-integer boxing bounds. Larger integers
+retain decimal construction. An ownership frontier releases partially built
+children on failure; successful parents consume those roots. Scoped name,
+property and boolean caches own separate references.
+
+Whole-graph validation is now opt-in (`{ validate: true }`). The default path
+assumes ordinary server-produced `JSON.parse` data; field/type and integer
+checks remain. This is not a decoder for arbitrary objects, accessors or
+proxies. Debug controls still exercise the full validator.
+
+A bounded 256-entry JavaScript-only shape cache reuses sorted JSON-object keys.
+It holds no Lean pointers across updates. `withUtf8Scratch` uses
+`TextEncoder.encodeInto` directly into a conversion-scoped Wasm buffer, avoiding
+temporary JavaScript byte arrays and their copy into Wasm. Native Lean String
+construction still copies bytes into owned storage. Views are acquired after
+allocation and never retained across native calls; scratch storage is freed
+and the converter restored even on failure. String interning wraps this
+converter inside its scope, so cache hits skip encoding entirely.
+
+Raw UTF-8 byte-array transport was not introduced: ordinary JSON-RPC already
+delivers JavaScript strings. A numeric-array or base64 representation would
+change the wire schema and add transport/decode work; it needs a separate
+end-to-end comparison, not an assertion of zero-copy strings.
+
+### Matched decoder comparison
+
+Frozen baseline is the direct decoder from `c82ad255`, not the older
+checked-JSON/FromJson pipeline. Same 6,598,356-byte response, package set,
+compiler layouts, VIR `92d7cc91`, SDK and string-intern settings. Fresh browser
+batches run C/B/B/C, each with two warmups and eight measured samples; no
+sampling or per-node counters. Both paths run identical untimed controls.
+Combined candidate includes allocation, boxing, validation policy, shape reuse
+and UTF-8 changes; this experiment does not separately attribute each gain.
+
+| Batch | Previous direct decoder | Optimized direct decoder |
+| --- | ---: | ---: |
+| First | 293.9 ms | 78.4 ms |
+| Second | 214.4 ms | 77.1 ms |
+
+| Pooled median, 16 samples/path | Before | After |
+| --- | ---: | ---: |
+| JSON.parse + typed construction | 282.5 ms | 77.6 ms |
+| Typed construction only | 265.8 ms | 65.2 ms |
+| JSON.parse | 14.8 ms | 12.1 ms |
+
+Parsing plus construction improves 72.5%; phase medians do not add. Baseline
+batch variability is visible above. An additional eight-sample screening batch
+with the optimized decoder but UTF-8 scratch disabled gives 115.5 ms total,
+101.2 ms construction. That one-order result suggests the scratch path helps,
+but is not a balanced standalone estimate of its effect.
+
+Evidence under `_out/upstream-vir-20260917/`:
+`direct-optimized-{c01,b01,b02,c02,noscratch}`. Each includes input, selected
+decoder source, layouts, exact package/source/SDK hashes, driver and raw samples.
+The baseline source is frozen as `direct-typed-decoder-baseline.mjs`; selection
+uses `VBP_DIRECT_DECODER_FILE`, recorded with its source hash. Timings exclude
+RPC, server elaboration, React and DOM work. Live demo and FIR pins are unchanged.
+
+Six Node ownership/UTF-8 controls pass, covering partial construction, allocator
+failure identity/recovery, scoped reference cleanup, debug validation, boxing
+boundaries and scratch buffer replacement/growth. Actual Chromium/Wasm rich
+fixtures verify typed equivalence, including signed integer boundaries; the
+separate retained-render acceptance also checks the fast full-FLT path and
+long Unicode/NUL strings against the original Lean decoder.
+
+`direct-optimized-render` passes actual retained Chromium/React acceptance:
+7,011 elements, unchanged DOM/text hashes, retained checkbox and paragraph,
+zero warnings. Four measured updates after two warmups give medians of
+1,513.8 ms total, 92.0 ms parse/decode and 1,418.3 ms render-to-DOM observation.
+This is a screening run, not a paired rendering speedup estimate. It excludes
+RPC/LSP, paint and passive effects; rendering is now the dominant browser block.
+The untimed acceptance adds full fast-path typed equality and long Unicode/NUL
+fixtures; that setup-only change is captured in its own source identities.
+
+
 The target supersedes inspect-many as the preferred next experiment:
 
 ```

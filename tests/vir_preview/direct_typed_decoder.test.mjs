@@ -36,6 +36,10 @@ function fakeRuntime() {
     makeObjectArrayFromOwnedElements(objects) {
       const ptr = allocate("array", objects); objects.length = 0; return ptr;
     },
+    makeObjectCtorFromOwnedFields(tag, fields, name) {
+      return runtime.makeObjectCtorFromOwnedLayout(tag,
+        { objectFields: fields, scalarBytes: [] }, name);
+    },
     makeObjectCtorFromOwnedLayout(tag, layout, name) {
       if (runtime.failAt === name) throw runtime.sentinel;
       const ptr = allocate({ tag, name, scalar: [...layout.scalarBytes] }, layout.objectFields);
@@ -85,5 +89,31 @@ test("disposed runtimes are rejected before allocation", () => {
   const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
   runtime.disposed = true;
   assert.throws(() => decode(fixture()), /disposed/);
+  assert.equal(runtime.heap.size, 0);
+});
+
+test("whole-graph validation is opt-in", () => {
+  let checks = 0;
+  const checker = { "jsonValue.check": () => { checks++; return { kind: "ok" }; } };
+  const runtime = fakeRuntime();
+  for (const validate of [false, true]) {
+    const decode = createDirectPreviewDecoder(runtime, layouts, checker, { validate });
+    runtime.releaseLeanObjectHandleCell(decode(fixture()));
+    assert.equal(runtime.heap.size, 0);
+  }
+  assert.equal(checks, 1);
+});
+
+test("small integers bypass decimal conversion, large integers retain it", () => {
+  const runtime = fakeRuntime(), decimals = [];
+  const original = runtime.makeObjectDecimal;
+  runtime.makeObjectDecimal = (ctor, value) => { decimals.push([ctor, value]); return original(ctor, value); };
+  const input = fixture();
+  input.ready.document.document.content[0].other.container.data =
+    [-1073741824, 1073741823, -1073741825, 1073741824];
+  input.ready.document.version = 2147483647;
+  const decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  runtime.releaseLeanObjectHandleCell(decode(input));
+  assert.deepEqual(decimals, [["vir_obj_int", "-1073741825"], ["vir_obj_int", "1073741824"]]);
   assert.equal(runtime.heap.size, 0);
 });
