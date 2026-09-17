@@ -7,7 +7,8 @@ const check = (ok, message) => { if (!ok) throw new Error(message); };
  * content includes props access, VDOM construction and effect registration.
  * outer includes decode/identity/shell work and is NOT a pure identity timer.
  */
-export function createComponentPhaseProbe(bindings, now = () => performance.now()) {
+export function createComponentPhaseProbe(bindings, now = () => performance.now(), factoryCount = 1) {
+  check(Number.isInteger(factoryCount) && factoryCount > 0, 'invalid expected factory count');
   const target = 'js.value.function.unary';
   check(typeof bindings[target] === 'function', 'missing generic unary function provider');
   const records = [];
@@ -17,8 +18,8 @@ export function createComponentPhaseProbe(bindings, now = () => performance.now(
     const native = bindings[target](callback);
     if (!factoryOpen) return native;
     const index = created++;
-    check(index < 2, 'frozen factory created an unexpected unary function');
-    const phase = index === 0 ? 'decoded-document-to-elements' : 'document-session';
+    check(index < factoryCount * 2, 'frozen factory created an unexpected unary function');
+    const phase = index % 2 === 0 ? 'decoded-document-to-elements' : 'document-session';
     return function (...args) {
       const startMs = now();
       let ok = false;
@@ -28,14 +29,14 @@ export function createComponentPhaseProbe(bindings, now = () => performance.now(
         return result;
       } finally {
         const endMs = now();
-        records.push({ phase, startMs, endMs, durationMs: endMs - startMs, ok });
+        records.push({ phase, factory: Math.floor(index / 2), startMs, endMs, durationMs: endMs - startMs, ok });
       }
     };
   } };
   return { bindings: measuredBindings, records,
     finishFactory() {
       check(factoryOpen, 'factory boundary already closed');
-      check(created === 2, 'frozen factory must create content then session');
+      check(created === factoryCount * 2, 'frozen factories must create content then session');
       factoryOpen = false;
     },
     clear() { records.length = 0; },

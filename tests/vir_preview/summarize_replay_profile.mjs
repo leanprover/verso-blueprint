@@ -12,6 +12,8 @@ const live = process.argv.includes("--live");
 const component = process.argv.includes("--component");
 const flamegraphPath = process.argv.slice(3).find(arg => !arg.startsWith("--"));
 const identity = JSON.parse(await readFile(resolve(capture, "identity.json")));
+const fir = identity.backend === "fir";
+assert.ok(!fir || (!component && !live), "FIR replay uses its own phase windows");
 const report = JSON.parse(await readFile(resolve(capture, "result.json")));
 const result = { ...report, root: identity.root,
   ...(component ? {virCommit:identity.virCommit,toolchain:identity.toolchain} : {}) };
@@ -75,9 +77,17 @@ assert.equal(demangled.status, 0, demangled.stderr);
 const demangledNames = demangled.stdout.trimEnd().split("\n");
 assert.equal(demangledNames.length, wasmNames.size);
 [...wasmNames.keys()].forEach((index, i) => wasmNames.set(index, demangledNames[i]));
-const wasmEvidence = { sdkManifestSha256: sha(sdkBytes), releaseSha256: sha(wasmFiles[0]),
+let wasmEvidence = { sdkManifestSha256: sha(sdkBytes), releaseSha256: sha(wasmFiles[0]),
   unstrippedSha256: sha(wasmFiles[1]), executableSectionsSha256: sha(executableSections(wasmFiles[0])),
   functionNames: wasmNames.size, resolvedFrames: 0, unresolvedFrames: 0 };
+if (fir) {
+  const bytes = await readFile(resolve(capture, "fir/component.wasm"));
+  assert.equal(sha(bytes), identity.firIdentity.build.wasm.sha256);
+  assert.equal(WebAssembly.Module.customSections(new WebAssembly.Module(bytes), "name").length, 0,
+    "named FIR artifacts need an explicit symbol map");
+  wasmNames.clear();
+  wasmEvidence = { firWasmSha256: sha(bytes), functionNames: 0, resolvedFrames: 0, unresolvedFrames: 0 };
+}
 
 const browserBytes = await readFile(resolve(capture, "browser.cpuprofile"));
 const browser = JSON.parse(browserBytes);
@@ -87,7 +97,8 @@ const componentWindows = component ? report.browser.samples.map(row => ({phase:r
 const nodes = new Map(browser.nodes.map(n => [n.id,n])), parents = new Map();
 for (const n of browser.nodes) for (const child of n.children ?? []) parents.set(child,n.id);
 const moduleOwners = new Map(), nodeCategories = new Map();
-if (component) {
+if (component || fir) {
+  if (component) {
   let time = browser.startTime;
   for (let i=0;i<browser.samples.length;i++) {
     const from=time;time+=browser.timeDeltas[i];
@@ -104,6 +115,11 @@ if (component) {
     }
   }
   assert.deepEqual([...new Set(moduleOwners.values())].sort(),['fir','vir'],'both backend Wasm modules must be sampled');
+  } else {
+    const urls = new Set(browser.nodes.filter(n => /^wasm-function\[/.test(n.callFrame.functionName)).map(n => n.callFrame.url));
+    assert.equal(urls.size, 1, "multiple FIR modules need explicit owner mapping");
+    for (const url of urls) moduleOwners.set(url, "fir");
+  }
   const mapBytes = await readFile(resolve(capture,'probe.js.map'));
   const sourceMapPath = resolve(result.root,'.lake/packages/lean_vir/node_modules/source-map-js/source-map.js');
   const mapping = await import(pathToFileURL(sourceMapPath));
@@ -118,6 +134,7 @@ if (component) {
     if (!position.source) continue;
     const source=position.source;
     nodeCategories.set(node.id, source.endsWith('/host-prototype.mjs') ? 'FIR JS adapter'
+      : source.endsWith('/providers.mjs') ? 'Author provider bundle (JS)'
       : source.includes('node_modules/react-dom/') ? 'React hooks (JS)'
       : source.includes('node_modules/react/') ? 'React elements (JS)'
       : source.endsWith('vir-react-host-bindings.js') ? 'React host provider (JS)'
@@ -138,10 +155,11 @@ if (!component) assert.equal(wasmUrls.size, 1, "multiple WASM modules need separ
 for (const node of browser.nodes) {
   const match = /^wasm-function\[(\d+)\]$/.exec(node.callFrame.functionName);
   if (!match) continue;
-  if (component && moduleOwners.get(node.callFrame.url)!=='vir') {
+  if ((component || fir) && moduleOwners.get(node.callFrame.url)!=='vir') {
     if (moduleOwners.get(node.callFrame.url)==='fir') {
       node.callFrame.functionName=`FIR wasm:function${match[1]} (stripped)`;
       nodeCategories.set(node.id,'FIR Wasm (internal symbols unavailable)');
+      wasmEvidence.unresolvedFrames++;
     }
     continue;
   }
@@ -172,6 +190,19 @@ const windows = component ? componentWindows : live ? [{ phase: "live-edit", sta
     {phase: mode + ":render", start:(decodedAt+clock.offsetMs)*1000, end:(committedAt+clock.offsetMs)*1000},
   ];
 }));
+if (fir) for (const row of report.acceptance.rows) {
+  const sample = row.browserParsed;
+  const { start, parsedAt, decodedAt } = sample.raw;
+  windows.push({ phase: "fir:parse", start: (start + clock.offsetMs) * 1000,
+    end: (parsedAt + clock.offsetMs) * 1000 },
+    { phase: "fir:checked-codec", start: (parsedAt + clock.offsetMs) * 1000,
+      end: (decodedAt + clock.offsetMs) * 1000 });
+  for (const event of sample.componentEvents ?? []) {
+    assert.equal(event.factory, 1, "default view must own measured callbacks");
+    windows.push({ phase: "fir:" + event.phase, start: (event.startMs + clock.offsetMs) * 1000,
+      end: (event.endMs + clock.offsetMs) * 1000 });
+  }
+}
 const summary = {};
 let timestamp=browser.startTime;
 assert.equal(browser.samples.length,browser.timeDeltas.length);
@@ -194,7 +225,7 @@ for (let i=0;i<browser.samples.length;i++) {
       const a=summary[key]??={us:0,samples:0,self:{},inclusive:{},folded:{},categories:{}};
       a.us+=weight; a.samples++;
       a.self[stack[0]]=(a.self[stack[0]]??0)+weight;
-      if (component) {
+      if (component || fir) {
         const frame=nodes.get(browser.samples[i]).callFrame;
         const leaf=stack[0];
         const category=nodeCategories.get(browser.samples[i])??(leaf==='(garbage collector)' ? 'Browser GC'
@@ -214,11 +245,13 @@ for (let i=0;i<browser.samples.length;i++) {
 const top=(xs,total)=>Object.entries(xs).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([name,us])=>({name,ms:us/1000,percent:100*us/total}));
 const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes),
   scope: component ? 'calibrated matched content callback windows; sampled attribution, not baseline wall timings; FIR internal symbols stripped'
-    : live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases" : "calibrated replay decode/render windows",
+    : live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases"
+    : fir ? "FIR calibrated replay; parse/codec subdivide decode; session/content subdivide render; overlapping windows must not be added; FIR internal symbols stripped"
+    : "calibrated replay decode/render windows",
   phases:{}};
 for(const [phase,a]of Object.entries(summary)) {
-  const categories = component ? a.categories : {};
-  if (!component) for (const [leaf, us] of Object.entries(a.self)) {
+  const categories = component || fir ? a.categories : {};
+  if (!component && !fir) for (const [leaf, us] of Object.entries(a.self)) {
     const category = leaf === "(idle)" ? "Idle"
       : /interpreter::(eval_body|eval_expr|call)\(/.test(leaf) ? "Interpreter dispatch/evaluation"
       : /symbol_cache_entry|constant_cache_entry|interpreter::lookup_symbol|__hash.*find<lean::name>/.test(leaf) ? "Symbol/constant/name lookup"
@@ -228,7 +261,7 @@ for(const [phase,a]of Object.entries(summary)) {
   }
   compact.phases[phase]={samples:a.samples,sampledMs:a.us/1000,observations:component ? windows.filter(w=>w.phase===phase).length : live ? 1 : report.acceptance.rows.length,
     categories:top(categories,a.us),self:top(a.self,a.us),inclusive:top(a.inclusive,a.us),
-    ...(component ? {} : {hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
+    ...(component || fir ? {} : {hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
     commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us})};
   const folded = Object.entries(a.folded).map(([stack,us])=>stack+" "+Math.round(us)).join("\n")+"\n";
   await writeFile(resolve(capture,phase.replace(":","-")+".folded"),folded);

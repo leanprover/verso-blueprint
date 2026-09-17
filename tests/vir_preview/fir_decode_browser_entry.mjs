@@ -1,0 +1,103 @@
+/* Frozen FIR checked codec, using the existing retained FLT replay boundary. */
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { createConfiguredCodecSession, CODEC_SESSION_API } from "@fir-codec-bootstrap";
+import * as providers from "@fir-codec-providers";
+import { describeError, withCleanup } from "@vir-test-support";
+import { createComponentPhaseProbe } from "./component_phase_probe.mjs";
+
+const check = (ok, message) => { if (!ok) throw Error(message); };
+const sampled = process.env.VBP_REPLAY_PROFILE === "1";
+globalThis.decodeAcceptance = run().then(value => ({ ok: true, value }),
+  error => ({ ok: false, error: describeError(error) }));
+
+async function run() {
+  const source = await (await fetch("/response.json")).text();
+  const json = async file => (await fetch(`/${file}`)).json();
+  const bindings = { ...providers.createJsCollectionHostBindings(),
+    ...providers.createJsValueHostBindings(), ...providers.createBrowserEventHostBindings(),
+    ...providers.createBrowserReactHostBindings(), ...providers.createJsonValueHostBindings(),
+    "previewDemo.now": () => performance.now() };
+  // The bootstrap creates the configured factory, then its separate default view.
+  // Brackets are enabled only in the diagnostic/profile run, never headline timing.
+  const probe = sampled ? createComponentPhaseProbe(bindings, () => performance.now(), 2) : undefined;
+  const session = await createConfiguredCodecSession({ apiVersion: CODEC_SESSION_API,
+    module: await WebAssembly.compile(await (await fetch("/component.wasm")).arrayBuffer()),
+    manifest: await json("component.wasm.json"), hostBoundary: await json("host-boundary.json"),
+    callbackBoundary: await json("callback-boundary.json"), entryBoundary: await json("entry-boundary.json"),
+    bindings: probe?.bindings ?? bindings });
+  probe?.finishFactory();
+  const container = document.getElementById("app"), root = createRoot(container);
+  const byId = id => document.getElementById(`vir-verso-${id}`);
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  const warnings = [], originalError = console.error;
+  console.error = (...args) => { warnings.push(args.map(String).join(" ")); originalError(...args); };
+  let nextVersion = 10, checkbox, paragraph, canonicalText;
+  const one = async () => {
+    const version = nextVersion++, marker = `Preview timing sample ${String(version).padStart(2, "0")}`;
+    const input = source.replace(/"version":3/, `"version":${version}`).replace("Preview timing sample 03", marker);
+    check(input.includes(marker), "missing captured edit marker");
+    let observer;
+    const committed = new Promise(resolve => {
+      observer = new MutationObserver(() => {
+        if (byId("preview")?.dataset.versoVersion === String(version)) resolve(performance.now());
+      });
+      observer.observe(container, { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    const start = performance.now(), parsed = JSON.parse(input), parsedAt = performance.now();
+    const token = session.browserParsed(parsed), decodedAt = performance.now();
+    probe?.clear();
+    root.render(session.renderDecoded(token));
+    const committedAt = await committed;
+    observer.disconnect();
+    if (probe) {
+      check(probe.records.filter(e => e.phase === "decoded-document-to-elements").length === 1,
+        "expected exactly one document construction");
+      check(probe.records.every(e => e.factory === 1 && e.ok && e.startMs >= decodedAt && e.endMs <= committedAt),
+        "component bracket outside measured default-view update");
+    }
+    const sample = { totalMs: committedAt - start, parseMs: parsedAt - start,
+      decodeMs: decodedAt - start, codecMs: decodedAt - parsedAt,
+      renderToDomMs: committedAt - decodedAt, raw: { start, parsedAt, decodedAt, committedAt }, version,
+      ...(probe ? { componentEvents: [...probe.records] } : {}) };
+    check(byId("preview").textContent.includes(marker), "new text missing");
+    check(!byId("debug-panel") && !byId("highlight-changes").checked, "debug/highlighting enabled");
+    const text = container.querySelector("article").textContent.replace(marker, "Preview timing sample XX");
+    canonicalText ??= text;
+    check(text === canonicalText, "rendered text changed unexpectedly");
+    if (checkbox) check(checkbox === byId("follow-cursor") && !checkbox.checked, "control lost state/identity");
+    if (paragraph) check(paragraph.isConnected, "unchanged paragraph replaced");
+    await settle();
+    sample.retention = session.stats();
+    return sample;
+  };
+  return withCleanup(async () => {
+    await one();
+    checkbox = byId("follow-cursor");
+    flushSync(() => checkbox.click());
+    await settle();
+    paragraph = [...container.querySelectorAll("article p")].find(p => !p.textContent.includes("Preview timing sample"));
+    check(paragraph, "missing retained paragraph");
+    const rows = [], updates = Number(process.env.VBP_REPLAY_UPDATES);
+    for (let pair = -2; pair < updates; pair++) {
+      if (pair === 0 && sampled) check((await fetch("/profile/start")).ok, "profile start failed");
+      const sample = await one();
+      if (pair >= 0) rows.push({ pair, order: ["browserParsed"], browserParsed: sample });
+    }
+    if (sampled) check((await fetch("/profile/stop")).ok, "profile stop failed");
+    check(warnings.length === 0, `browser warnings: ${warnings.join("; ")}`);
+    const digest = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(b => b.toString(16).padStart(2, "0")).join("");
+    const normalize = text => text.replaceAll(/Preview timing sample \d\d/g, "Preview timing sample XX");
+    const tree = node => node.nodeType === Node.TEXT_NODE ? normalize(node.textContent) : {
+      tag: node.tagName, attributes: [...node.attributes].map(({ name, value }) => [name,
+        name === "data-verso-version" ? "VERSION" : normalize(value)]).sort(([a], [b]) => a.localeCompare(b)),
+      children: [...node.childNodes].map(tree) };
+    const renderedDom = tree(container.querySelector("article"));
+    return { rows, warmupUpdates: 2, elementCount: container.querySelectorAll("*").length, renderedDom,
+      renderedTextSha256: await digest(canonicalText), renderedDomSha256: await digest(JSON.stringify(renderedDom)),
+      retainedCheckbox: true, retainedParagraph: true, warnings,
+      boundary: "parse + checked JSON/FromJson; render-to-DOM includes identity, elements and React commit; excludes RPC/server/startup/paint/passive-effect wait",
+      instrumentation: sampled ? "CDP 1ms and two component-callback brackets" : "coarse phase timestamps only" };
+  }, [["React", () => { flushSync(() => root.unmount()); console.error = originalError; }],
+    ["FIR", () => session.dispose()]]);
+}

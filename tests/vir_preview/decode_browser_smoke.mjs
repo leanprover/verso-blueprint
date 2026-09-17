@@ -1,6 +1,6 @@
 /* Reuse the existing session browser driver with a diagnostic package/payload. */
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
@@ -23,10 +23,32 @@ if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
 }
 assert.ok(inputArg && outputArg, "usage: decode_browser_smoke.mjs CAPTURE_DIR OUTPUT_DIR");
 const input = resolve(inputArg), output = resolve(outputArg);
+const sha = value => createHash("sha256").update(value).digest("hex");
 await mkdir(output, { recursive: false });
+// Explicit local producer handoff; never alter the producer or live widget pin.
+const firPackage = process.env.VBP_REPLAY_FIR_PACKAGE;
+let firIdentity;
+if (firPackage) {
+  assert.equal(process.env.VBP_REPLAY_RENDER, "1");
+  assert.notEqual(process.env.VBP_REPLAY_DIRECT_TYPED, "1", "FIR uses its checked codec");
+  const packageRoot = resolve(output, "fir");
+  await mkdir(packageRoot);
+  const sums = await readFile(resolve(firPackage, "SHA256SUMS"), "utf8");
+  assert.equal(sha(sums), "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
+  for (const line of sums.trim().split("\n")) {
+    const [, hash, file] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
+    assert.ok(file, "invalid package checksum entry");
+    const bytes = await readFile(resolve(firPackage, file));
+    assert.equal(sha(bytes), hash, file);
+    await writeFile(resolve(packageRoot, file), bytes);
+  }
+  await copyFile(resolve(firPackage, "SHA256SUMS"), resolve(packageRoot, "SHA256SUMS"));
+  const buildBytes = await readFile(resolve(packageRoot, "BUILD.json"));
+  assert.equal(sha(buildBytes), "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
+  firIdentity = { packageRoot, buildSha256: sha(buildBytes), build: JSON.parse(buildBytes) };
+}
 const response = await readFile(resolve(input, "response.json"));
 const capture = JSON.parse(await readFile(resolve(input, "result.json"), "utf8"));
-const sha = value => createHash("sha256").update(value).digest("hex");
 const bridgeRevision = "5953a7aef6fe9ec83481e313fb045fc27f7a1a9e";
 const objectValuesPath = resolve(root, ".lake/build/vir/sdk/js/runtime/object-values.js");
 const objectValues = await readFile(objectValuesPath, "utf8");
@@ -53,6 +75,15 @@ function replace(before, after) {
 replace('const root = fileURLToPath(new URL("../../", import.meta.url));', `const root = ${JSON.stringify(root)};`);
 // Always use this driver's browser fixture, also for the old control root.
 replace('resolve(root, "tests/vir_preview/session_browser_entry.mjs")', JSON.stringify(fileURLToPath(new URL("./decode_browser_entry.mjs", import.meta.url))));
+if (firIdentity) {
+  replace(JSON.stringify(fileURLToPath(new URL("./decode_browser_entry.mjs", import.meta.url))),
+    JSON.stringify(fileURLToPath(new URL("./fir_decode_browser_entry.mjs", import.meta.url))));
+  replace('alias: {', `alias: {\n    "@fir-codec-bootstrap": ${JSON.stringify(resolve(firIdentity.packageRoot, "codec-session-bootstrap.mjs"))},\n    "@fir-codec-providers": ${JSON.stringify(resolve(firIdentity.packageRoot, "providers.mjs"))},`);
+  replace('const assets = new Map([', `const assets = new Map([\n${[
+    "component.wasm", "component.wasm.json", "host-boundary.json", "callback-boundary.json", "entry-boundary.json"
+  ].map(file => `  ["/${file}", [${JSON.stringify(file.endsWith("wasm") ? "application/wasm" : "application/json")}, await readFile(${JSON.stringify(resolve(firIdentity.packageRoot, file))})]],`).join("\n")}`);
+  replace('packageMembers: descriptor.packages.length, acceptance', 'backend: "fir", packageMembers: 0, acceptance');
+}
 replace('resolve(root,\n  ".lake/build/vir/module-sets/VersoBlueprintVirTests/NativeSession.irpkg-set.json")', JSON.stringify(descriptorPath));
 replace('"globalThis.sessionAcceptance"', '"globalThis.decodeAcceptance"');
 replace('const output = resolve(process.env.VBP_NATIVE_SESSION_REPORT);', `const output = ${JSON.stringify(resolve(output, "result.json"))};`);
@@ -92,6 +123,11 @@ if (process.env.VBP_REPLAY_IDENTITY_PHASES === "1") {
   assert.notEqual(process.env.VBP_REPLAY_PROFILE, "1", "keep identity and CPU-sampling probes separate");
 }
 if (process.env.VBP_REPLAY_PROFILE === "1") {
+  if (firIdentity) {
+    replace('write: false,', `write: false, outfile: ${JSON.stringify(resolve(output, "probe.js"))}, sourcemap: "external",`);
+    replace('bundle.outputFiles[0].contents', 'bundle.outputFiles.find(file => file.path.endsWith(".js")).contents');
+    replace('const descriptorPath = ', `for (const file of bundle.outputFiles) await writeFile(file.path, file.contents);\nconst descriptorPath = `);
+  }
   assert.notEqual(process.env.VBP_REPLAY_VALIDATION_ONLY, "1",
     "profile the complete decoder or renderer; keep focused validation separate");
   replace('server = createServer((req, res) => {', `server = createServer(async (req, res) => {
@@ -137,6 +173,7 @@ const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
   "tests/vir_preview/upstream-json-value-bindings.mjs",
   ...["Types", "Generated", "Codec", "Js"].map(name =>
     `tests/VersoBlueprintVirTests/NativeSession/UpstreamJson/${name}.lean`)];
+if (firIdentity) sources.push("tests/vir_preview/fir_decode_browser_entry.mjs", "tests/vir_preview/component_phase_probe.mjs");
 if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1")
   sources.push("tests/VersoBlueprintVirTests/NativeSession/DirectCodecProbe.lean");
 const sourceHashes = {};
@@ -155,6 +192,7 @@ const packageHashes = await Promise.all(descriptor.packages.map(async member => 
   return { path: member.path, sha256 };
 }));
 await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes, packageHashes,
+  backend: firIdentity ? "fir" : "vir", firIdentity,
   root, descriptorPath, virCommit: sdk.gitCommit, captureVirCommit: capture.virCommit,
   checkpointComparison: process.env.VBP_REPLAY_CHECKPOINT_COMPARISON === "1",
   replayUpdates,
