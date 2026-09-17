@@ -29,6 +29,7 @@ assert.equal(sdk.gitDirty, false);
 const { build } = await import(pathToFileURL(resolve(vir, "node_modules/esbuild/lib/main.js")));
 const shell = resolve(vir, "web/app/vir-infoview-widget.js");
 const objects = resolve(vir, "web/src/runtime/object-values.js");
+const reactDomClient = resolve(root, "tests/vir_preview/infoview_react_dom_client.mjs");
 const bridge = resolve(root, "tests/vir_preview/upstream-json-value-bindings.mjs");
 const math = resolve(root, "packages/verso-react/web/katex.mjs");
 const katex = resolve(root, ".lake/packages/verso/vendored-js/katex");
@@ -58,7 +59,10 @@ const result = await build({
   bundle: true, charset: "utf8", format: "esm", platform: "browser", target: "es2022",
   external: ["@leanprover/infoview", "react", "react-dom"],
   legalComments: "none", write: false, metafile: true,
-  alias: { "@vir-object-values": objects },
+  // Frozen provider bundles already contain react-dom/client imports. The
+  // ProofWidgets import map exposes createRoot through react-dom, not that
+  // subpath. Alias before esbuild's package-external matching runs.
+  alias: { "@vir-object-values": objects, "react-dom/client": reactDomClient },
   plugins: [{ name: "checked-json-demo-only", setup(builder) {
     if (matchedDemo) {
       builder.onResolve({ filter: /^@matched-demo$/ }, () => ({ path: "matched", namespace: "matched-demo" }));
@@ -89,10 +93,7 @@ const result = await build({
       return { contents: contents + (firDemo ? "" : brandQuery), loader: "js", resolveDir: dirname(path) };
     });
     builder.onResolve({ filter: /vir-react-dom-client\.js$/ }, () => ({
-      path: "react-dom-client", namespace: "infoview-client",
-    }));
-    builder.onLoad({ filter: /.*/, namespace: "infoview-client" }, () => ({
-      contents: 'export { createRoot } from "react-dom";', loader: "js",
+      path: reactDomClient,
     }));
   } }],
 });
@@ -112,6 +113,11 @@ for (const input of Object.keys(result.metafile.inputs)) {
   }
 }
 assert.equal(result.outputFiles.length, 1);
+for (const file of Object.values(result.metafile.outputs)) {
+  for (const entry of file.imports) if (entry.external)
+    assert.ok(["@leanprover/infoview", "react", "react-dom"].includes(entry.path),
+      `module absent from the ProofWidgets import map: ${entry.path}`);
+}
 const bundle = result.outputFiles[0].contents;
 await mkdir(dirname(output), { recursive: true });
 if (await readFile(output).then(bytes => sha(bytes)).catch(() => null) !== sha(bundle))

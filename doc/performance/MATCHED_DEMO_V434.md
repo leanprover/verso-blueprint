@@ -12,6 +12,12 @@ Lean view. RPC/editor subscription, cancellation, package loading and shell
 lifetime remain upstream-owned. The selected external runtime is disposed
 after the shell runtime, including failed-open cleanup.
 
+The ESM bundle redirects `react-dom/client` to the ProofWidgets `react-dom`
+entry, including imports already embedded in the frozen FIR provider bundle.
+Bundling rejects external imports outside `react`, `react-dom` and
+`@leanprover/infoview`. The IIFE Chromium harness can otherwise resolve a
+subpath that the VS Code import map does not provide.
+
 VIR uses the frozen `styles-baseline-ir/DecodeProbe.irpkg-set.json` from the
 earlier paired campaign, verifying every member hash and length. FIR uses
 immutable package `23dfd8ab282aa8b5b0b7d90b`, SHA256SUMS hash
