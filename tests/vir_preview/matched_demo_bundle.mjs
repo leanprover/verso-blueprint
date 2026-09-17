@@ -13,6 +13,9 @@ export async function prepareMatchedDemo(root, backend) {
   const prefix = `import { createMatchedDocumentComponent } from ${quote(common)};\n`;
   if (backend === "vir") {
     const direct = process.env.VBP_DEMO_DIRECT_TYPED === "1";
+    const timedChecked = process.env.VBP_DEMO_TIMED_CHECKED === "1";
+    assert.ok(!(direct && timedChecked), "choose direct or timed checked decoding");
+    const currentView = direct || timedChecked;
     assert.ok(process.env.VBP_MATCHED_IR_SET, "set VBP_MATCHED_IR_SET to the selected codec package-set descriptor");
     const descriptorPath = resolve(process.env.VBP_MATCHED_IR_SET);
     const descriptorBytes = await readFile(descriptorPath);
@@ -20,7 +23,7 @@ export async function prepareMatchedDemo(root, backend) {
     assert.equal(descriptor.format, "lean-vir-ir-package-set");
     assert.equal(descriptor.version, 2);
     assert.equal(descriptor.packages.at(-1).role, "root");
-    if (!direct) assert.equal(descriptor.packages.at(-1).sha256,
+    if (!currentView) assert.equal(descriptor.packages.at(-1).sha256,
       "81d366e20fb716f511f45623e018636f5e67e0bd49fce76f6b58e061106afa68",
       "matched demo requires the frozen paired DecodeProbe");
     const members = [];
@@ -34,10 +37,11 @@ export async function prepareMatchedDemo(root, backend) {
     const sdkManifest = JSON.parse(await readFile(resolve(sdk, "lean-vir-artifact.json"), "utf8"));
     assert.equal(sha(wasm), sdkManifest.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256);
     const layoutsBytes = direct ? await readFile(resolve(root, ".deps/direct-codec/layouts.json")) : null;
-    if (direct) assert.equal(descriptor.packages.at(-1).module,
+    if (currentView) assert.equal(descriptor.packages.at(-1).module,
       "VersoBlueprintVirTests.NativeSession.DirectCodecProbe");
     return { identity: { backend, descriptorSha256: sha(descriptorBytes), wasmSha256: sha(wasm),
       codec: direct ? "experimental-direct-typed" : "checked",
+      timedView: currentView,
       layoutsSha256: layoutsBytes ? sha(layoutsBytes) : null,
       members: descriptor.packages.length, commonSha256: sha(await readFile(common)) }, source: prefix + (direct ? `
 import { createDirectPreviewDecoder } from ${quote(resolve(root, "tests/vir_preview/direct_typed_decoder.mjs"))};
@@ -57,19 +61,20 @@ export async function openMatchedDemo() {
       ...createBrowserHostBindings({ reactHostBindings: createBrowserReactHostBindings }),
       ...jsonBindings, "previewDemo.now": () => performance.now() }) });
   try {
-    const entry = ${quote("VersoBlueprintVirTests.NativeSession." + (direct ? "DirectCodecProbe" : "DecodeProbe"))};
-    const view = runtime.call(entry + ${quote(direct ? ".createTimedView" : ".createView")});
+    const entry = ${quote("VersoBlueprintVirTests.NativeSession." + (currentView ? "DirectCodecProbe" : "DecodeProbe"))};
+    const view = runtime.call(entry + ${quote(currentView ? ".createTimedView" : ".createView")});
     ${direct ? `const decode = createDirectPreviewDecoder(runtime, ${layoutsBytes.toString("utf8")}, jsonBindings);` : ""}
     return { Component: createMatchedDocumentComponent(
       ${direct ? `value => withPointerScratch(runtime, () => withUtf8Scratch(runtime,
         () => withScopedStringIntern(runtime, () => decode(value))))` : `value => runtime.call(entry + ".browserParsed", value)`},
-      ${direct ? `(value, timing) => runtime.call(entry + ".renderTimedDecoded", view, value,
+      ${currentView ? `(value, timing) => runtime.call(entry + ".renderTimedDecoded", view, value,
         timing.requestedMs, timing.receivedMs, timing.notifiedMs, timing.decodedMs)` : `value => runtime.call(entry + ".renderDecoded", view, value)`}, "vir"), dispose: () => runtime.dispose() };
   } catch (error) { runtime.dispose(); throw error; }
 }
 ` };
   }
   assert.notEqual(process.env.VBP_DEMO_DIRECT_TYPED, "1", "direct typed converter is VIR-only");
+  assert.notEqual(process.env.VBP_DEMO_TIMED_CHECKED, "1", "FIR timed-view package acceptance is pending");
   assert.ok(process.env.VBP_MATCHED_FIR_PACKAGE, "set VBP_MATCHED_FIR_PACKAGE to the immutable package");
   const input = resolve(process.env.VBP_MATCHED_FIR_PACKAGE);
   const copied = resolve(root, ".deps/matched-fir-package");

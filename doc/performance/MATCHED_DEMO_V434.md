@@ -133,6 +133,64 @@ comparison with FIR. The synthetic notification starts after server diagnostics;
 earlier elaboration is excluded. Restart the Lean server in the existing VS Code
 demo to load the rebuilt embedded widget and its new clock-bearing client root.
 
+## Shared FIR timing-view request and rendering attribution
+
+FIR request `VBP-FIR-20260917-001` is delivered to its integration owner.
+It requests `DirectCodecProbe.browserParsed`, `createTimedView` and
+`renderTimedDecoded` from clean VBP `3839f92f` and the same cddcc35a/4.34-rc2
+dependency closure. The complete 2,592-file source snapshot is retained under
+repository-root `_out/matched-demo-v434/timed-fir-source/`:
+
+- Source identity: `6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94`.
+- Archive SHA256: `4654b3d357fc8ecc8247ee65b0f64a2b74eb7e5ca9b7a808e8e20e7aa36b9ae7`.
+
+Producer handoff and shared consumer qualification are pending. This request
+keeps checked decoding on both backends for the next differential experiment;
+it does not request a FIR port of the experimental raw-object converter.
+Existing packages and live pins remain unchanged.
+
+The VIR counterpart can already bundle the same source-built timed view while
+using checked decoding (`VBP_DEMO_TIMED_CHECKED=1`, instead of
+`VBP_DEMO_DIRECT_TYPED=1`). The selected package-set descriptor is still the
+current `DirectCodecProbe`; this selects its `browserParsed` export, not the
+direct converter. The prepared alternate bundle is
+`.lake/build/matched-vir-timed-checked.js`, leaving the active fast VIR bundle
+untouched. Bundling/import-map checks pass; shared live qualification waits for
+the new FIR package and does not follow from bundling alone.
+
+A fresh VIR sampled attribution capture is retained at
+`_out/matched-demo-v434/render-profile-next/`. It uses the same authenticated
+full-FLT response and source-built package as the direct replay, production
+React, debug/highlighting off, two warmups and four measured retained updates.
+This sampled run is not a new uninstrumented timing result. CDP main-thread
+sampling is 1 ms, with bracketed clock calibration (0.334 ms uncertainty).
+Intervals are weighted/clipped to the four recorded decode/render windows.
+
+| Render-window self-time category | Sample share |
+| --- | ---: |
+| Interpreter dispatch/evaluation | 41.4% |
+| Symbol/constant/name lookup | 15.2% |
+| Allocation/refcount/vector storage | 6.8% |
+| Other Wasm | 13.8% |
+| JavaScript/browser | 22.7% |
+
+These are disjoint self-time buckets over 5,530 ms of sampled render windows,
+not contributions to the live 3.94 s sample. Host-dispatch inclusive time is
+19.0%; it overlaps those buckets and must not be added. `commitRoot` inclusive
+share is 0.46%, not paint or all React overhead. Raw and symbolicated profiles,
+clock trials, package/input/source identities and `profile-summary.json` are
+retained together. All 7,503 Wasm frames resolve; release/development SDK
+non-custom sections match exactly before names are borrowed.
+
+Source inspection confirms renderer styles are already constructed once per
+component. Block/list/part props still use individual native property writes,
+including identity/debug attributes. This is a candidate for the existing VIR
+native-array/props review, not evidence that a particular write dominates.
+The current shim already applies closures through the persistent interpreter;
+lookup samples do not establish cache misses or reproduce the earlier temporary
+closure-context issue. Representative feedback was sent once to the existing
+VIR construction owner; no competing prototype or runtime change was started.
+
 ## Acceptance and demo
 
 Both registered widgets pass real LSP/Chromium initial rendering, edit
