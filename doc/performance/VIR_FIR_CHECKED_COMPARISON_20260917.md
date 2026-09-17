@@ -108,11 +108,41 @@ For FIR add `VBP_REPLAY_FIR_PACKAGE` pointing to the immutable package documente
 in [the frozen FIR profile report](FIR_FROZEN_REPLAY_20260917.md). Run sequentially
 in the recorded AB/BA order; do not enable sampling for headline timing.
 
-FIR's current Wasm has no name section. Existing sampled captures remain valid
-but internally unresolved. The FIR coordinator has the explicit matching-symbol
-request `VBP-FIR-20260917-PROFILE-001` plus queued follow-up
-`01a0ad33-c743-76f3-b4c9-2b3bf6fb4963`. Required authority is a verified final
-function-index/name inventory, or a named artifact whose **all non-custom
-sections** equal the captured Wasm. No declaration-order guesses, borrowing VIR
-names, producer mutation or live pin changes. Full FIR symbol attribution remains
-pending that substantive handoff.
+FIR's current Wasm has no name section. Root-reviewed `ROOT-W7-20260917-012`
+establishes that internal names are unavailable from preserved products: all
+eight audited binaries are stripped, no final function map survives, and native
+merge/metadce/optimization did not preserve raw encoder identity. The exact
+index space is 37 imports followed by 3,245 definitions. Declaration or closure
+order is not an index map. Existing sampled captures remain internally unresolved.
+
+Audit: `FUNCTION-ORIGIN-AVAILABILITY.json`, SHA256
+`b2a9225eaa81eee8a9c7421ca8d35c01930026d6b9ea9042e5df759c7d8e482f`,
+under FIR's `.worktrees/wasm-generation-4.34/.deps/native-session-probe/`.
+The audit recipe SHA256 is
+`c052fb7a07f891b60b9ae0bb1935a5b817ee6dc9596b52ba92e1ef37b60550f6`.
+The first bounded diagnostic attempt (`ROOT-W7-20260917-013`, closed in `-014`)
+also found missing private ConfiguredSdk/CodecSdk/compiler-context products.
+Replaying the prior recipe would compile those private products, forbidden in
+that slice. The shared consumer owner subsequently authorized only the exact
+frozen private SDK/context replay (queue receipt
+`01a0ae95-b1db-73c2-8526-6872ece02a00`), not source-closure recapture or retargeting.
+Raw/resident bytes must match authenticated prior stages before name transport;
+release artifacts and live pins remain unchanged. Producer root owns disposition.
+
+The offline summarizer now accepts `--fir-named-wasm=FILE --out=FRESH_DIR`.
+It rejects names unless **all non-custom sections** equal the captured FIR Wasm,
+records both hashes and resolution counts, and writes a separate profile/report.
+Synthetic-name integration controls pass exact-match acceptance, mismatched
+module rejection, missing-name rejection and output-overwrite rejection. These
+are parser guardrails, not real FIR symbols. No new capture is needed for a
+matching named artifact. A differing diagnostic artifact instead requires its
+own diagnostic capture; its names must never be applied to the old profile.
+
+```bash
+node tests/vir_preview/summarize_replay_profile.mjs \
+  /home/egallego/lean/verso-blueprint/_out/upstream-vir-20260917/fir-bc968-profile-03 \
+  --fir-named-wasm=<verified-producer-artifact> \
+  --out=<fresh-report-directory>
+```
+
+Real internal symbol attribution remains pending the producer handoff.

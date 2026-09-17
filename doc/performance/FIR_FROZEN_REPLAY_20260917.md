@@ -9,8 +9,9 @@ BUILD SHA256:
 Checksum-manifest SHA256:
 `d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122`.
 Each capture verifies and copies the complete immutable package. No producer
-source, live widget, package pin or publication is changed. FIR root review is
-separate from this bounded consumer experiment.
+source, live widget, package pin or publication is changed. FIR root accepted
+the provisional local package in `ROOT-W7-20260917-010`; this bounded consumer
+experiment remains separate from live adoption or publication.
 
 This artifact does **not** contain VBP `239e423c` style reuse or the VIR-only
 direct typed converter. Its actual codec is JS JSON validation/conversion to

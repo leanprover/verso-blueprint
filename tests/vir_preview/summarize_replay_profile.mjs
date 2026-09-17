@@ -1,18 +1,24 @@
 // Browser-only extraction of the existing sampled-profile symbolication path.
-// Usage: node summarize_replay_profile.mjs CAPTURE [FLAMEGRAPH_PL] [--live]
+// Usage: node summarize_replay_profile.mjs CAPTURE [FLAMEGRAPH_PL] [--live] [--out=DIR] [--fir-named-wasm=FILE]
 // --live summarizes a single edit capture; default retains replay phase slicing.
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const capture = resolve(process.argv[2]);
+const outputArg = process.argv.slice(3).find(arg => arg.startsWith("--out="));
+const output = outputArg ? resolve(outputArg.slice("--out=".length)) : capture;
+assert.ok(!outputArg || outputArg.length > "--out=".length, "empty output path");
 const live = process.argv.includes("--live");
 const component = process.argv.includes("--component");
 const flamegraphPath = process.argv.slice(3).find(arg => !arg.startsWith("--"));
 const identity = JSON.parse(await readFile(resolve(capture, "identity.json")));
 const fir = identity.backend === "fir";
+const namedArg = process.argv.slice(3).find(arg => arg.startsWith("--fir-named-wasm="));
+assert.ok(!namedArg || (fir && namedArg.length > "--fir-named-wasm=".length),
+  "--fir-named-wasm requires a FIR capture and a nonempty path");
 assert.ok(!fir || (!component && !live), "FIR replay uses its own phase windows");
 const report = JSON.parse(await readFile(resolve(capture, "result.json")));
 const result = { ...report, root: identity.root,
@@ -45,6 +51,23 @@ function executableSections(bytes) {
   }
   return Buffer.concat(sections);
 }
+function functionNames(bytes) {
+  const names = new Map();
+  for (const section of WebAssembly.Module.customSections(new WebAssembly.Module(bytes), "name")) {
+    const r = reader(Buffer.from(section));
+    while (r.offset < section.byteLength) {
+      const kind = r.take(1)[0], payload = r.take(r.uleb()), subsection = reader(payload);
+      if (kind !== 1) continue;
+      const count = subsection.uleb();
+      for (let i = 0; i < count; i++) {
+        const index = subsection.uleb(), name = subsection.take(subsection.uleb()).toString("utf8");
+        assert.ok(!names.has(index), "duplicate function name"); names.set(index, name);
+      }
+      assert.equal(subsection.offset, payload.length, "trailing function-name bytes");
+    }
+  }
+  return names;
+}
 const sdkRoot = resolve(result.root, ".lake/build/vir/sdk");
 const sdkBytes = await readFile(resolve(sdkRoot, "lean-vir-artifact.json"));
 const sdk = JSON.parse(sdkBytes);
@@ -56,19 +79,7 @@ const wasmFiles = await Promise.all(["wasm/vir-upstream.wasm", "wasm/vir-upstrea
   return bytes;
 }));
 assert.deepEqual(executableSections(wasmFiles[0]), executableSections(wasmFiles[1]));
-const wasmNames = new Map();
-for (const section of WebAssembly.Module.customSections(new WebAssembly.Module(wasmFiles[1]), "name")) {
-  const r = reader(Buffer.from(section));
-  while (r.offset < section.byteLength) {
-    const kind = r.take(1)[0], subsection = reader(r.take(r.uleb()));
-    if (kind !== 1) continue;
-    const count = subsection.uleb();
-    for (let i = 0; i < count; i++) {
-      const index = subsection.uleb(), name = subsection.take(subsection.uleb()).toString("utf8");
-      assert.ok(!wasmNames.has(index), "duplicate function name"); wasmNames.set(index, name);
-    }
-  }
-}
+const wasmNames = functionNames(wasmFiles[1]);
 assert.ok(wasmNames.size > 0, "missing WASM function names");
 const demangled = spawnSync("c++filt", [], {
   input: [...wasmNames.values()].join("\n") + "\n", encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
@@ -87,6 +98,17 @@ if (fir) {
     "named FIR artifacts need an explicit symbol map");
   wasmNames.clear();
   wasmEvidence = { firWasmSha256: sha(bytes), functionNames: 0, resolvedFrames: 0, unresolvedFrames: 0 };
+  if (namedArg) {
+    assert.ok(outputArg, "FIR symbols require a separate --out directory");
+    const namedPath = resolve(namedArg.slice("--fir-named-wasm=".length));
+    const named = await readFile(namedPath);
+    assert.ok(executableSections(bytes).equals(executableSections(named)),
+      "FIR named Wasm does not match all captured non-custom sections");
+    for (const [index, name] of functionNames(named)) wasmNames.set(index, name);
+    assert.ok(wasmNames.size > 0, "missing FIR function names");
+    Object.assign(wasmEvidence, { namedWasmPath: namedPath, namedWasmSha256: sha(named),
+      executableSectionsSha256: sha(executableSections(bytes)), functionNames: wasmNames.size });
+  }
 }
 
 const browserBytes = await readFile(resolve(capture, "browser.cpuprofile"));
@@ -157,9 +179,10 @@ for (const node of browser.nodes) {
   if (!match) continue;
   if ((component || fir) && moduleOwners.get(node.callFrame.url)!=='vir') {
     if (moduleOwners.get(node.callFrame.url)==='fir') {
-      node.callFrame.functionName=`FIR wasm:function${match[1]} (stripped)`;
-      nodeCategories.set(node.id,'FIR Wasm (internal symbols unavailable)');
-      wasmEvidence.unresolvedFrames++;
+      const name = fir ? wasmNames.get(Number(match[1])) : undefined;
+      node.callFrame.functionName=name ? `${name} [fir-wasm:${match[1]}]` : `FIR wasm:function${match[1]} (stripped)`;
+      nodeCategories.set(node.id, name ? 'FIR Wasm (named)' : 'FIR Wasm (internal symbols unavailable)');
+      if (name) wasmEvidence.resolvedFrames++; else wasmEvidence.unresolvedFrames++;
     }
     continue;
   }
@@ -167,8 +190,9 @@ for (const node of browser.nodes) {
   if (name) { node.callFrame.functionName = `${name} [wasm:${match[1]}]`; wasmEvidence.resolvedFrames++; }
   else wasmEvidence.unresolvedFrames++;
 }
-await writeFile(resolve(capture, "browser.symbolicated.cpuprofile"), JSON.stringify(browser));
-await writeFile(resolve(capture, "wasm-symbols.json"), JSON.stringify({ ...wasmEvidence, names: Object.fromEntries(wasmNames) }, null, 2));
+if (outputArg) await mkdir(output, { recursive: false });
+await writeFile(resolve(output, "browser.symbolicated.cpuprofile"), JSON.stringify(browser));
+await writeFile(resolve(output, "wasm-symbols.json"), JSON.stringify({ ...wasmEvidence, names: Object.fromEntries(wasmNames) }, null, 2));
 
 const clock = live ? null : componentClock??JSON.parse(await readFile(resolve(capture, "profile-clock.json")));
 if (clock) assert.ok(clock.uncertaintyMs < 5, "clock calibration too imprecise");
@@ -244,9 +268,10 @@ for (let i=0;i<browser.samples.length;i++) {
 }
 const top=(xs,total)=>Object.entries(xs).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([name,us])=>({name,ms:us/1000,percent:100*us/total}));
 const compact={clock,wasmEvidence,rawProfileSha256:sha(browserBytes),
+  capture,
   scope: component ? 'calibrated matched content callback windows; sampled attribution, not baseline wall timings; FIR internal symbols stripped'
     : live ? "capture surrounding one edit through accepted DOM; includes RPC idle and capture-control overhead; caller groups subdivide live-edit, not temporal phases"
-    : fir ? "FIR calibrated replay; parse/codec subdivide decode; session/content subdivide render; overlapping windows must not be added; FIR internal symbols stripped"
+    : fir ? `FIR calibrated replay; parse/codec subdivide decode; session/content subdivide render; overlapping windows must not be added; ${wasmNames.size ? "FIR names from matching non-custom sections" : "FIR internal symbols stripped"}`
     : "calibrated replay decode/render windows",
   phases:{}};
 for(const [phase,a]of Object.entries(summary)) {
@@ -264,14 +289,14 @@ for(const [phase,a]of Object.entries(summary)) {
     ...(component || fir ? {} : {hostBoundaryPercent:100*(a.inclusive.callObjectsImpl??0)/a.us,
     commitRootPercent:100*(a.inclusive.commitRoot??0)/a.us})};
   const folded = Object.entries(a.folded).map(([stack,us])=>stack+" "+Math.round(us)).join("\n")+"\n";
-  await writeFile(resolve(capture,phase.replace(":","-")+".folded"),folded);
+  await writeFile(resolve(output,phase.replace(":","-")+".folded"),folded);
   if (flamegraphPath) {
     const graph = spawnSync("perl", [resolve(flamegraphPath), "--title", phase + " - sampled CPU (not a timeline)",
       "--countname", "microseconds", "--width", "1600", "--hash"], {input:folded,encoding:"utf8",maxBuffer:32*1024*1024});
     assert.equal(graph.status,0,graph.stderr);
-    await writeFile(resolve(capture,phase.replace(":","-")+".svg"),graph.stdout);
+    await writeFile(resolve(output,phase.replace(":","-")+".svg"),graph.stdout);
     compact.flamegraphToolSha256 = sha(await readFile(resolve(flamegraphPath)));
   }
 }
-await writeFile(resolve(capture,"profile-summary.json"),JSON.stringify(compact,null,2));
+await writeFile(resolve(output,"profile-summary.json"),JSON.stringify(compact,null,2));
 console.log(JSON.stringify(compact,null,2));
