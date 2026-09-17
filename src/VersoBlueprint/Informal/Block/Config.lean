@@ -195,15 +195,21 @@ private def resolveTags {m}
   else
     pure cfg.tags
 
-private def resolvePrUrl? {m}
+/--
+Validate a URL-valued statement option such as `pr_url`. Proof blocks reject the
+option; a blank value counts as absent; anything else must be an http(s) URL and
+is kept as written after trimming.
+-/
+private def resolveHttpUrlOption? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
-    (cfg : Config) (isProof : Bool) : m (Option String) := do
+    (cfg : Config) (isProof : Bool) (optionName : String) (value : Option String) :
+    m (Option String) := do
   if isProof then
-    if cfg.prUrl.isSome then
-      logErrorAt cfg.labelSyntax m!"Label {cfg.label} cannot use '(pr_url := ...)' in a proof block"
+    if value.isSome then
+      logErrorAt cfg.labelSyntax m!"Label {cfg.label} cannot use '({optionName} := ...)' in a proof block"
     pure none
   else
-    match cfg.prUrl with
+    match value with
     | some url =>
       let url := url.trimAscii.toString
       if url.isEmpty then
@@ -211,7 +217,7 @@ private def resolvePrUrl? {m}
       else if url.startsWith "http://" || url.startsWith "https://" then
         pure (some url)
       else
-        logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '(pr_url := \"{url}\")'; expected an http(s) URL"
+        logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '({optionName} := \"{url}\")'; expected an http(s) URL"
         pure none
     | none => pure none
 
@@ -243,7 +249,7 @@ def Config.resolveForDirective {m}
   let owner ← resolveOwner? cfg isProof
   let effort ← resolveEffort? cfg isProof
   let tags ← resolveTags cfg isProof
-  let prUrl ← resolvePrUrl? cfg isProof
+  let prUrl ← resolveHttpUrlOption? cfg isProof "pr_url" cfg.prUrl
   let hasExternal := hasExternalRaw && !isProof
   let inferredDeps ←
     if hasExternal && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
