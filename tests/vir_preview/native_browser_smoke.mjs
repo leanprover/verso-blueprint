@@ -15,7 +15,7 @@ const stringPreview = process.argv.includes("--string-preview") || encodedDocume
 const embeddedPreview = process.argv.includes("--embedded-preview");
 const matchedBackend = process.env.VBP_NATIVE_MATCHED_BACKEND;
 if (matchedBackend) assert.ok(embeddedPreview && ["vir", "fir"].includes(matchedBackend));
-if (process.env.VBP_NATIVE_DIRECT_TIMING === "1") assert.equal(matchedBackend, "vir");
+if (process.env.VBP_NATIVE_DIRECT_TIMING === "1") assert.ok(matchedBackend);
 const embeddedFixture = matchedBackend ? "MatchedPreviewServer" : "EmbeddedPreviewServer";
 const embeddedSourcePath = resolve(process.env.VBP_NATIVE_MATCHED_SOURCE ??
   resolve(root, `tests/VersoBlueprintVirTests/${embeddedFixture}.lean`));
@@ -46,6 +46,16 @@ const rootSite = 'const root = fileURLToPath(new URL("../../", import.meta.url))
 assert.equal(harnessSource.split(rootSite).length, 2, "pinned harness root drift");
 harnessSource = harnessSource.replace(rootSite,
   `const root = ${JSON.stringify(stringPreview || embeddedPreview ? serverRoot : virRoot)};`);
+// Select only the open-buffer backend; never rewrite the user's demo file.
+const sourceSite = 'const source = await readFile(sourcePath, "utf8");';
+const selectBackend = source => source.replace(/def useFir : Bool := (?:true|false)/,
+  `def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`);
+if (matchedBackend) {
+  assert.equal(harnessSource.split(sourceSite).length, 2, "pinned harness source seam drift");
+  harnessSource = harnessSource.replace(sourceSite,
+    `const source = (await readFile(sourcePath, "utf8")).replace(/def useFir : Bool := (?:true|false)/,
+      ${JSON.stringify(`def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`)});`);
+}
 const require = createRequire(resolve(virRoot, "package.json"));
 harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) => {
   if (specifier.startsWith("node:")) return match;
@@ -101,8 +111,10 @@ const bundle = await build({
   },
 });
 const assets = new Map([["/probe.js", ["text/javascript", bundle.outputFiles[0].contents]]]);
-if (embeddedPreview) assets.set("/blueprint-source", ["text/plain", await readFile(
-  embeddedSourcePath, "utf8")]);
+if (embeddedPreview) {
+  const source = await readFile(embeddedSourcePath, "utf8");
+  assets.set("/blueprint-source", ["text/plain", matchedBackend ? selectBackend(source) : source]);
+}
 let packageMembers;
 if (!embeddedPreview) {
   const descriptorPath = resolve(root,
@@ -144,7 +156,10 @@ const report = {
   packageMembers,
   encodedDocument, embeddedPreview, matchedBackend, serverRoot, sourceHashes,
   ...(embeddedPreview ? { fixtureSourcePath: embeddedSourcePath,
-    fixtureSourceSha256: createHash("sha256").update(await readFile(embeddedSourcePath)).digest("hex") } : {}),
+    fixtureSourceSha256: createHash("sha256").update(await readFile(embeddedSourcePath)).digest("hex"),
+    openedSourceSha256: createHash("sha256").update(matchedBackend
+      ? selectBackend(await readFile(embeddedSourcePath, "utf8"))
+      : await readFile(embeddedSourcePath)).digest("hex") } : {}),
   sdkManifestSha256: createHash("sha256").update(await readFile(
     resolve(sdkRoot, "lean-vir-artifact.json"))).digest("hex"),
   versoParserSha256: createHash("sha256").update(await readFile(resolve(root,

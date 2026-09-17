@@ -1,5 +1,39 @@
 # Matched widget refresh on Lean 4.34
 
+## Current timed-view refresh
+
+The current paired demo uses the source-built `DirectCodecProbe` retained timed
+view on VIR and immutable FIR package `58c676728ace1b0c3b0721fa`. Both use the
+checked browser JSON codec and the same VBP `3839f92f` / VIR `cddcc35a` source
+snapshot, identity `6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94`.
+FIR Wasm SHA256 is `f734de1aba28097bd009427e92bd00b78cdc79b5550f32759c1f633dcf9cb7d8`;
+SHA256SUMS hash is `1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18`.
+
+Rebuild each bundle with `VBP_DEMO_TIMED_CHECKED=1`, plus the backend-specific
+input: `VBP_MATCHED_IR_SET=.lake/build/vir/module-sets/VersoBlueprintVirTests/NativeSession/DirectCodecProbe.irpkg-set.json`
+for VIR, or `VBP_MATCHED_FIR_PACKAGE` pointing to the delivered `timed-6c7b96d8/packages/58c676728ace1b0c3b0721fa`
+for FIR. Use the ordinary `build_checked_json_demo.mjs` command and
+`.lake/build/matched-{vir,fir}-demo.js` output, then rebuild `MatchedPreview`.
+Prior working generated bundles are preserved locally under
+`.deps/pre-timed-demo-bundles`; the previous producer package is not modified.
+
+Both backends pass the copied FIR SSR smoke / shared registered-widget checks
+as applicable. Evidence: `_out/matched-demo-v434/{vir,fir}-timed-widget.json`.
+The bar covers notification dispatch, snapshot/check waits, document evaluation,
+remaining RPC time, reply-to-decoded endpoint, identity preparation, element
+construction and content-effect observation. The last two boundary names do
+not claim isolated React commit duration or completed paint. Cursor/control
+updates retain the explicitly versioned last edit measurement.
+
+The browser harness selects the backend only in its open-buffer source; it
+does not rewrite the user's file or backend selection. Full-FLT widgets also
+pass edit/control/cursor and retained-bar checks without React warnings;
+evidence is `_out/matched-demo-v434/flt-{vir,fir}-timed-widget.json`. These
+concurrent, debug-enabled acceptance runs are not backend speed measurements.
+Paired timing conclusions must be recorded separately. The earlier sections
+below retain the previous package/interpreter and direct-decoder experiments;
+their commands are historical, not the current paired-demo configuration.
+
 The isolated `feat/matched-demo-v434` checkpoint refreshes the shared upstream
 ProofWidgets shell and interpreter to VIR `cddcc35a46fd4683d2437369072d4ecc5a5a84be`.
 Lean remains `leanprover/lean4:v4.34.0-rc2`; the matching clean SDK manifest has

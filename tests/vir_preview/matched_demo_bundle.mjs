@@ -74,13 +74,15 @@ export async function openMatchedDemo() {
 ` };
   }
   assert.notEqual(process.env.VBP_DEMO_DIRECT_TYPED, "1", "direct typed converter is VIR-only");
-  assert.notEqual(process.env.VBP_DEMO_TIMED_CHECKED, "1", "FIR timed-view package acceptance is pending");
+  const timedChecked = process.env.VBP_DEMO_TIMED_CHECKED === "1";
   assert.ok(process.env.VBP_MATCHED_FIR_PACKAGE, "set VBP_MATCHED_FIR_PACKAGE to the immutable package");
   const input = resolve(process.env.VBP_MATCHED_FIR_PACKAGE);
-  const copied = resolve(root, ".deps/matched-fir-package");
+  const copied = resolve(root, timedChecked ? ".deps/matched-fir-timed-package" : ".deps/matched-fir-package");
   await mkdir(copied, { recursive: true });
   const sums = await readFile(resolve(input, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
+  assert.equal(sha(sums), timedChecked
+    ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
+    : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
     const [, hash, name] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
     assert.ok(name);
@@ -90,6 +92,11 @@ export async function openMatchedDemo() {
   }
   await writeFile(resolve(copied, "SHA256SUMS"), sums);
   const build = JSON.parse(await readFile(resolve(copied, "BUILD.json"), "utf8"));
+  if (timedChecked) {
+    assert.equal(build.capability, "retained-timed-view/v1");
+    assert.equal(build.frozenInputs.identity,
+      "6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94");
+  }
   // A new interpreter checkpoint does not silently retarget the compiled FIR
   // closure: its author-side provider modules must still be byte-identical.
   for (const provider of build.externalProviders.sources) {
@@ -106,7 +113,7 @@ export async function openMatchedDemo() {
   const wasm = await readFile(resolve(copied, "component.wasm"));
   const json = async name => JSON.parse(await readFile(resolve(copied, name), "utf8"));
   return { identity: { backend, packageChecksumsSha256: sha(sums), wasmSha256: sha(wasm),
-    frozenSourceIdentity: build.frozenInputs.identity, providerSourcesVerified: true,
+    frozenSourceIdentity: build.frozenInputs.identity, timedView: timedChecked, codec: "checked", providerSourcesVerified: true,
     commonSha256: sha(await readFile(common)) }, source: prefix + `
 import { createConfiguredCodecSession, CODEC_SESSION_API } from ${quote(resolve(copied, "codec-session-bootstrap.mjs"))};
 import * as providers from ${quote(resolve(copied, "providers.mjs"))};
@@ -121,7 +128,10 @@ export async function openMatchedDemo() {
     bindings: { ...providers.createJsCollectionHostBindings(), ...providers.createJsValueHostBindings(),
       ...providers.createBrowserEventHostBindings(), ...providers.createBrowserReactHostBindings(),
       ...providers.createJsonValueHostBindings(), "previewDemo.now": () => performance.now() } });
-  return { Component: createMatchedDocumentComponent(session.browserParsed, session.renderDecoded, "fir"),
+  return { Component: createMatchedDocumentComponent(session.browserParsed,
+    ${timedChecked ? `(value, timing) => session.renderTimedDecoded(value, {
+      requested: timing.requestedMs, received: timing.receivedMs,
+      notified: timing.notifiedMs, decodedAt: timing.decodedMs })` : "session.renderDecoded"}, "fir"),
     dispose: session.dispose };
 }
 ` };

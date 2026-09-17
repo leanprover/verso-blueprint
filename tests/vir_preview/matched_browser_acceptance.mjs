@@ -66,6 +66,9 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
       check(bar.getAttribute("aria-label").startsWith("Edit notification → content effect"),
         "edit bar lacks the full notification-to-effect boundary");
       check(measurement.phases.length === 9, "edit bar is missing browser or server phases");
+      check(measurement.phases.every(p => Number.isFinite(p.nanos) && p.nanos >= 0) &&
+        Math.abs(measurement.phases.reduce((sum, p) => sum + p.nanos, 0) - Number(measurement.totalNanos)) <= 9,
+        "edit phases do not account for the displayed total");
     }
     check(document.getElementById("vir-verso-follow-cursor") === follow && follow.checked === selected,
       "edit reset controls");
