@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { createDirectPreviewDecoder } from "./direct_typed_decoder.mjs";
+
+// Ownership controls only; real type/value equivalence is checked in Chromium.
+// Run the DirectCodecProbe build first to generate authoritative layouts.
+const layouts = JSON.parse(readFileSync(new URL("../../.deps/direct-codec/layouts.json", import.meta.url)));
+const bindings = { "jsonValue.check": () => ({ kind: "ok" }) };
+const fixture = () => ({ ready: { document: { version: 1, correlationId: "", cursorToken: "", focus: null,
+  serverTiming: null, document: { title: [{ text: "title" }], titleString: "title", metadata: null,
+    content: [{ other: { container: { name: "Prototype.block", id: 7, data: { z: false, a: [1, "x", null] }, properties: {} },
+      content: [{ para: [{ other: { container: { name: "Prototype.block", id: null, data: {} }, content: [] } }] }] } }],
+    subParts: [] } } } });
+
+function fakeRuntime() {
+  let serial = 0;
+  const heap = new Map();
+  const allocate = (value, children = []) => {
+    children.forEach(ptr => assert.ok(heap.has(ptr), "dangling child"));
+    const ptr = ++serial;
+    heap.set(ptr, { refs: 1, value, children: [...children] });
+    return ptr;
+  };
+  const inc = ptr => { const obj = heap.get(ptr); assert.ok(obj, "retain freed pointer"); obj.refs++; };
+  const dec = ptr => {
+    const obj = heap.get(ptr); assert.ok(obj, "double release");
+    if (--obj.refs === 0) { heap.delete(ptr); obj.children.forEach(dec); }
+  };
+  const runtime = {
+    heap, exports: { vir_obj_inc: inc, vir_obj_dec: dec },
+    makeObjectString: value => allocate(value),
+    makeObjectScalar: value => allocate(value),
+    makeObjectDecimal: (_ctor, value) => allocate(value),
+    releaseOwnedObjects: objects => { objects.forEach(ptr => { if (ptr) dec(ptr); }); objects.length = 0; },
+    makeObjectArrayFromOwnedElements(objects) {
+      const ptr = allocate("array", objects); objects.length = 0; return ptr;
+    },
+    makeObjectCtorFromOwnedLayout(tag, layout, name) {
+      if (runtime.failAt === name) throw runtime.sentinel;
+      const ptr = allocate({ tag, name, scalar: [...layout.scalarBytes] }, layout.objectFields);
+      layout.objectFields.length = 0; return ptr;
+    },
+    makeLeanObjectHandleResource(ptr) { inc(ptr); return { ptr, live: true }; },
+    leanObjectHandleCell(handle) { assert.ok(handle.live); return handle; },
+    retainLeanObjectHandleValue(handle) { assert.ok(handle.live); inc(handle.ptr); return handle.ptr; },
+    releaseLeanObjectHandleCell(handle) { assert.ok(handle.live); handle.live = false; dec(handle.ptr); },
+    call(name, value) {
+      if (name.endsWith(".finish")) {
+        const child = runtime.retainLeanObjectHandleValue(value);
+        const ptr = allocate("Except.ok", [child]);
+        const handle = runtime.makeLeanObjectHandleResource(ptr); dec(ptr); return handle;
+      }
+      const ptr = allocate(name.endsWith(".name") ? value : "properties");
+      const handle = runtime.makeLeanObjectHandleResource(ptr); dec(ptr); return handle;
+    },
+  };
+  return runtime;
+}
+
+test("scoped constants release their roots while the result stays owned", () => {
+  const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  const result = decode(fixture());
+  assert.ok(runtime.heap.size > 0);
+  assert.ok(runtime.heap.has(result.ptr));
+  runtime.releaseLeanObjectHandleCell(result);
+  assert.equal(runtime.heap.size, 0);
+});
+
+test("partial construction and allocator failure clean up and preserve errors", () => {
+  const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  const bad = fixture(); delete bad.ready.document.document.titleString;
+  assert.throws(() => decode(bad), /missing field/);
+  assert.equal(runtime.heap.size, 0);
+  runtime.sentinel = {};
+  runtime.failAt = "Lean.Doc.Inline.other";
+  assert.throws(() => decode(fixture()), error => error === runtime.sentinel);
+  assert.equal(runtime.heap.size, 0);
+  runtime.failAt = undefined;
+  const result = decode(fixture()); runtime.releaseLeanObjectHandleCell(result);
+  assert.equal(runtime.heap.size, 0);
+});
+
+test("disposed runtimes are rejected before allocation", () => {
+  const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  runtime.disposed = true;
+  assert.throws(() => decode(fixture()), /disposed/);
+  assert.equal(runtime.heap.size, 0);
+});

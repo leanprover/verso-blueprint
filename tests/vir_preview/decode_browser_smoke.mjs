@@ -16,6 +16,10 @@ assert.ok(Number.isInteger(replayUpdates) && replayUpdates >= 2,
   "VBP_REPLAY_UPDATES must be an integer of at least two");
 const codecBindingsPath = resolve(process.env.VBP_JSON_BINDINGS_FILE ??
   fileURLToPath(new URL("./upstream-json-value-bindings.mjs", import.meta.url)));
+if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
+  assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "direct decoder needs matched typed package");
+  assert.notEqual(process.env.VBP_REPLAY_PROFILE, "1", "direct decoder profile phase mapping is not yet qualified");
+}
 assert.ok(inputArg && outputArg, "usage: decode_browser_smoke.mjs CAPTURE_DIR OUTPUT_DIR");
 const input = resolve(inputArg), output = resolve(outputArg);
 await mkdir(output, { recursive: false });
@@ -55,6 +59,11 @@ replace('const output = resolve(process.env.VBP_NATIVE_SESSION_REPORT);', `const
 // small session acceptance fixture whose driver we reuse.
 replace('60000); }),', '600000); }),');
 replace('const assets = new Map([', `const assets = new Map([\n  ["/response.json", ["application/json", await readFile(${JSON.stringify(resolve(output, "response.json"))})]],`);
+if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1") {
+  const layouts = await readFile(resolve(root, ".deps/direct-codec/layouts.json"));
+  await writeFile(resolve(output, "direct-layouts.json"), layouts);
+  replace('const assets = new Map([', `const assets = new Map([\n  ["/direct-layouts.json", ["application/json", await readFile(${JSON.stringify(resolve(output, "direct-layouts.json"))})]],`);
+}
 replace('"process.env.NODE_ENV": \'"development"\'', '"process.env.NODE_ENV": \'"production"\'');
 replace('alias: {', `alias: {\n    "@vbp-json-value-bindings": ${JSON.stringify(codecBindingsPath)},\n    "@vir-object-values": ${JSON.stringify(objectValuesPath)},`);
 replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugin) {
@@ -64,6 +73,8 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
     });
   } }],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_DIRECT_TYPED": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_DIRECT_TYPED ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_UPDATES": ${JSON.stringify(JSON.stringify(replayUpdates))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_STRING_INTERN": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_STRING_INTERN ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_STRING_INTERN_CONTROLS": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_STRING_INTERN_CONTROLS ?? "0"))}, `);
@@ -116,9 +127,12 @@ const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
   "tests/vir_preview/identity_browser_cases.mjs",
   "tests/vir_preview/json_value_contract_cases.mjs",
   "tests/vir_preview/scoped_string_intern.mjs",
+  "tests/vir_preview/direct_typed_decoder.mjs",
   "tests/vir_preview/upstream-json-value-bindings.mjs",
   ...["Types", "Generated", "Codec", "Js"].map(name =>
     `tests/VersoBlueprintVirTests/NativeSession/UpstreamJson/${name}.lean`)];
+if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1")
+  sources.push("tests/VersoBlueprintVirTests/NativeSession/DirectCodecProbe.lean");
 const sourceHashes = {};
 for (const path of sources) {
   const bytes = await readFile(path.endsWith(".mjs") ? fileURLToPath(new URL(path.split("/").at(-1), import.meta.url)) : resolve(root, path));
@@ -138,6 +152,10 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   root, descriptorPath, virCommit: sdk.gitCommit, captureVirCommit: capture.virCommit,
   checkpointComparison: process.env.VBP_REPLAY_CHECKPOINT_COMPARISON === "1",
   replayUpdates,
+  directTyped: process.env.VBP_REPLAY_DIRECT_TYPED === "1",
+  typedPackage: process.env.VBP_REPLAY_TYPED_PACKAGE === "1",
+  directLayoutsSha256: process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
+    ? sha(await readFile(resolve(output, "direct-layouts.json"))) : null,
   scopedStringIntern: process.env.VBP_REPLAY_STRING_INTERN === "1",
   stringInternControls: process.env.VBP_REPLAY_STRING_INTERN_CONTROLS === "1",
   validationOnly: process.env.VBP_REPLAY_VALIDATION_ONLY === "1",

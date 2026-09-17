@@ -10,8 +10,12 @@ import { createIdentityPhaseProbe } from "./identity_phase_probe.mjs";
 import { identityBrowserCases } from "./identity_browser_cases.mjs";
 import { jsonValueContractCases } from "./json_value_contract_cases.mjs";
 import { withScopedStringIntern } from "./scoped_string_intern.mjs";
+import { createDirectPreviewDecoder } from "./direct_typed_decoder.mjs";
 
-const entry = "VersoBlueprintVirTests.NativeSession.DecodeProbe";
+const entry = process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
+  ? "VersoBlueprintVirTests.NativeSession.DirectCodecProbe"
+  : "VersoBlueprintVirTests.NativeSession.DecodeProbe";
+let decodeDirect;
 const check = (value, message) => { if (!value) throw Error(message); };
 globalThis.decodeAcceptance = run().then(
   value => ({ ok: true, value }), error => ({ ok: false, error: describeError(error) }));
@@ -39,6 +43,42 @@ async function run() {
       },
     });
     const codecContract = jsonValueContractCases(jsonBindings, runtime.call(`${entry}.emptyIdentityState`));
+    if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1") {
+      const layouts = await (await fetch("/direct-layouts.json")).json();
+      const directControl = createDirectPreviewDecoder(runtime, layouts, jsonBindings);
+      if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") decodeDirect = directControl;
+      const allInlines = [{ text: "α😀" }, { code: "x" }, { linebreak: "\n" },
+        { emph: [{ text: "emph" }] }, { bold: [] }, { concat: [] },
+        { math: { mode: "inline", str: "x^2" } }, { math: { mode: "display", str: "y" } },
+        { link: { content: [], url: "https://example.invalid" } },
+        { footnote: { name: "n", content: [] } }, { image: { alt: "a", url: "u" } },
+        { other: { container: { name: "Prototype.inline", id: 7,
+          data: { "\ue000": 1, "😀": 2, "2": false, "10": null, nested: [true, -3, "x"] } }, content: [] } }];
+      const allBlocks = [{ para: allInlines }, { code: "code" }, { ul: [{ contents: [] }] },
+        { ol: { start: -2, items: [{ contents: [{ code: "item" }] }] } },
+        { dl: [{ term: [{ text: "term" }], contents: [] }] }, { blockquote: [] }, { concat: [] },
+        { other: { container: { name: "Prototype.block", id: null,
+          data: { a: [], b: {}, c: 9007199254740991 }, properties: { "Prototype.key": "value" } }, content: [] } }];
+      const rich = { ready: { document: { version: 42, correlationId: "", cursorToken: "", focus: null, serverTiming: null,
+        document: { title: allInlines, titleString: "title", metadata: null, content: allBlocks, subParts: [] } } } };
+      for (const fixture of [rich, { loading: { message: "loading" } },
+        { unavailable: { message: "unavailable" } }, { error: { message: "error" } }])
+        check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(fixture)), directControl(fixture)),
+          "direct typed rich constructor fixture differs");
+      const control = directControl(JSON.parse(source));
+      check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, source), control), "direct typed document differs");
+      runtime.exports.memory.grow(0);
+      runtime.exports.memory.grow(1);
+      check(runtime.call(`${entry}.describe`, control) === `ready:${expectedVersion}`, "direct result invalid after growth");
+      const partial = structuredClone(rich);
+      delete partial.ready.document.document.titleString;
+      for (const malformed of [undefined, {}, { ready: {} }, { ready: { document: { version: -1 } } }, partial]) {
+        let rejected = false;
+        try { directControl(malformed); } catch { rejected = true; }
+        check(rejected, "direct malformed document accepted");
+      }
+      check(runtime.call(`${entry}.describe`, directControl(JSON.parse(source))) === `ready:${expectedVersion}`, "direct error recovery failed");
+    }
     if (process.env.VBP_REPLAY_STRING_INTERN_CONTROLS === "1") {
       const original = runtime.makeObjectString;
       const stats = {};
@@ -159,7 +199,7 @@ async function renderExperiment(runtime, source, identityProbe) {
     });
     const start = performance.now();
     const parsed = mode === "browserParsed" ? JSON.parse(input) : input;
-    const decode = () => invoke(mode, parsed);
+    const decode = () => decodeDirect ? decodeDirect(parsed) : invoke(mode, parsed);
     const decoded = process.env.VBP_REPLAY_STRING_INTERN === "1"
       ? withScopedStringIntern(runtime, decode) : decode();
     const decodedAt = performance.now();
@@ -260,10 +300,12 @@ async function browserJsonExperiment(runtime, source, expectedVersion, setMarker
       const start = performance.now();
       const parsed = JSON.parse(input);
       const parsedAt = performance.now();
-      const decode = () => invoke("browserParsed", parsed);
+      const decode = () => decodeDirect ? decodeDirect(parsed) : invoke("browserParsed", parsed);
       const value = process.env.VBP_REPLAY_STRING_INTERN === "1"
         ? withScopedStringIntern(runtime, decode) : decode();
       const end = performance.now();
+      if (decodeDirect) return { value, timing: { totalMs: end - start, parseMs: parsedAt - start,
+        directTypedMs: end - parsedAt, raw: { start, parsedAt, end } } };
       const convertedAt = getMarker();
       check(Number.isFinite(convertedAt), "conversion marker missing");
       return { value, timing: { totalMs: end - start,
@@ -284,6 +326,10 @@ async function browserJsonExperiment(runtime, source, expectedVersion, setMarker
   if (process.env.VBP_REPLAY_PROFILE === "1")
     check((await fetch("/profile/stop")).ok, "profile stop failed");
   const invalid = [];
+  if (decodeDirect) return { sourceChars: source.length, expectedVersion, warmupUpdates: 2, rows,
+    fullTypedEquality: true, malformedRecovery: true, growth: true,
+    boundary: "JSON.parse + specialized native document/extension construction; metadata/property maps retain existing codecs; excludes RPC/React/DOM",
+    instrumentation: "coarse timers; no profiler or per-node counters" };
   for (const text of ['{}', '{"ready":{}}']) {
     const candidate = call(text);
     check(invoke("equivalent", invoke("whole", text), candidate.value), "typed error results differ");
