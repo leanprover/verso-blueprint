@@ -47,7 +47,8 @@ async function run() {
     const start = performance.now(), parsed = JSON.parse(input), parsedAt = performance.now();
     const token = session.browserParsed(parsed), decodedAt = performance.now();
     probe?.clear();
-    root.render(session.renderDecoded(token));
+    root.render(process.env.VBP_REPLAY_TIMED_VIEW === "1"
+      ? session.renderTimedDecoded(token, { decodedAt }) : session.renderDecoded(token));
     const committedAt = await committed;
     observer.disconnect();
     if (probe) {

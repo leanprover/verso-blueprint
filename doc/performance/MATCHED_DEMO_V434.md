@@ -30,9 +30,58 @@ does not rewrite the user's file or backend selection. Full-FLT widgets also
 pass edit/control/cursor and retained-bar checks without React warnings;
 evidence is `_out/matched-demo-v434/flt-{vir,fir}-timed-widget.json`. These
 concurrent, debug-enabled acceptance runs are not backend speed measurements.
-Paired timing conclusions must be recorded separately. The earlier sections
+The paired browser replay results are recorded immediately below. The earlier sections
 below retain the previous package/interpreter and direct-decoder experiments;
 their commands are historical, not the current paired-demo configuration.
+
+### Paired checked-codec replay
+
+Fresh retained sessions ran sequentially in VIR–FIR–FIR–VIR order, using the
+same authenticated 6,598,356-byte full-FLT response. Each session mounts once,
+disables follow-cursor, retains an unchanged paragraph/control, then performs
+two warm-up and six measured edits. React is production mode in Google Chrome
+153.0.8010.36; highlighting, debug, string-intern experiments, host timers and
+CPU sampling are disabled. Both backends invoke the shared timed view with
+optional client timing inputs absent; normal rendering does not collect debug
+samples. Codec/factory validation and setup are outside the measured boundary.
+
+Arithmetic means over twelve measured updates per backend:
+
+| Browser phase | VIR | FIR |
+| --- | ---: | ---: |
+| JavaScript JSON parse | 26 ms | 22 ms |
+| Checked graph → Lean.Json → typed Preview | 1,658 ms | 1,474 ms |
+| Decoded document → DOM observation | 2,450 ms | 1,865 ms |
+| Total measured browser update | 4,134 ms | 3,360 ms |
+
+The decoded-document phase includes identity preparation, element construction
+and React reconciliation/DOM update; its endpoint is a MutationObserver, not
+completed paint or an isolated React commit timer. RPC/LSP, server encoding,
+elaboration, startup and passive-effect waiting are excluded. The physical
+backend adapters differ by necessity; this is a runtime-plus-adapter comparison,
+not isolated compiled-IR throughput. No comparison with older absolute timings
+is claimed.
+
+Per-session render means are 2,448 / 1,861 / 1,868 / 2,452 ms in run order.
+FIR reduces that phase by 24.0% and 23.8% in the two pairs, respectively; total
+reductions are 17.5% and 19.9% (18.7% pooled). Checked decoding improvements
+are smaller and noisier (8.0% and 14.2% paired). Individual render ranges are
+2,184–2,900 ms for VIR and 1,670–2,081 ms for FIR. These are two sessions per
+backend, not a universal backend performance claim.
+
+All four runs preserve the same normalized text and exact article DOM hash
+`a9e9a56c67368a62745096dce9cbc06855793cdd79f912a78f201baa758769d9`,
+7,011 total elements, retained controls and paragraph, and zero React warnings.
+Only edit-marker/version metadata is normalized. Input, SDK, descriptor and
+codec-binding hashes match across the runs.
+
+Raw results/identities/source copies are under repository-root
+`_out/matched-demo-v434/timed-pair-{vir-a1,fir-b1,fir-b2,vir-a2}/`.
+`timed-pair-summary.json` in the same parent preserves the batch means, every
+measured sample, paired deltas, identity checks and exclusions. Replay uses
+`VBP_REPLAY_TYPED_PACKAGE=1 VBP_REPLAY_TIMED_VIEW=1 VBP_REPLAY_RENDER=1`
+with `VBP_REPLAY_UPDATES=6`, the current DirectCodecProbe package-set descriptor,
+and the delivered FIR package path only for FIR runs.
 
 The isolated `feat/matched-demo-v434` checkpoint refreshes the shared upstream
 ProofWidgets shell and interpreter to VIR `cddcc35a46fd4683d2437369072d4ecc5a5a84be`.

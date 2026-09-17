@@ -28,6 +28,8 @@ const sha = value => createHash("sha256").update(value).digest("hex");
 await mkdir(output, { recursive: false });
 // Explicit local producer handoff; never alter the producer or live widget pin.
 const firPackage = process.env.VBP_REPLAY_FIR_PACKAGE;
+const timedView = process.env.VBP_REPLAY_TIMED_VIEW === "1";
+if (timedView) assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "timed view needs DirectCodecProbe");
 let firIdentity;
 if (firPackage) {
   assert.equal(process.env.VBP_REPLAY_RENDER, "1");
@@ -35,7 +37,9 @@ if (firPackage) {
   const packageRoot = resolve(output, "fir");
   await mkdir(packageRoot);
   const sums = await readFile(resolve(firPackage, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
+  assert.equal(sha(sums), timedView
+    ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
+    : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
     const [, hash, file] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
     assert.ok(file, "invalid package checksum entry");
@@ -45,7 +49,9 @@ if (firPackage) {
   }
   await copyFile(resolve(firPackage, "SHA256SUMS"), resolve(packageRoot, "SHA256SUMS"));
   const buildBytes = await readFile(resolve(packageRoot, "BUILD.json"));
-  assert.equal(sha(buildBytes), "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
+  assert.equal(sha(buildBytes), timedView
+    ? "b1d17d869f264f58ea6c8b8a3ec5a33fc31fb062c90cca780598090c145a2342"
+    : "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
   firIdentity = { packageRoot, buildSha256: sha(buildBytes), build: JSON.parse(buildBytes) };
 }
 const response = await readFile(resolve(input, "response.json"));
@@ -108,6 +114,7 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
   } }],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_TIMED_VIEW": ${JSON.stringify(JSON.stringify(timedView ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_DIRECT_TYPED": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_DIRECT_TYPED ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_UTF8_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_UTF8_SCRATCH ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_POINTER_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_POINTER_SCRATCH ?? "0"))}, `);
@@ -206,6 +213,7 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   utf8Scratch: process.env.VBP_REPLAY_UTF8_SCRATCH === "1",
   pointerScratch: process.env.VBP_REPLAY_POINTER_SCRATCH === "1",
   typedPackage: process.env.VBP_REPLAY_TYPED_PACKAGE === "1",
+  timedView,
   directLayoutsSha256: process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
     ? sha(await readFile(resolve(output, "direct-layouts.json"))) : null,
   scopedStringIntern: process.env.VBP_REPLAY_STRING_INTERN === "1",

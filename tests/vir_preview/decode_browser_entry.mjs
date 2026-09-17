@@ -44,7 +44,8 @@ async function run() {
         const bool = defaults["js.bool"];
         if (process.env.VBP_REPLAY_IDENTITY_PHASES === "1") identityProbe = createIdentityPhaseProbe(defaults);
         jsonBindings = createJsonValueHostBindings();
-        return { ...defaults, ...identityProbe?.bindings, ...jsonBindings, "js.bool": (...args) => {
+        return { ...defaults, ...identityProbe?.bindings, ...jsonBindings,
+          "previewDemo.now": () => performance.now(), "js.bool": (...args) => {
           if (observeMarker) marker = performance.now();
           return bool(...args);
         } };
@@ -221,7 +222,8 @@ async function renderExperiment(runtime, source, identityProbe) {
   const invoke = (name, ...args) => runtime.call(`${entry}.${name}`, ...args);
   check(invoke("validateSource", source), "unsafe producer number domain");
   check(invoke("jsonEquivalent", source, JSON.parse(source)), "full JSON differs");
-  const component = invoke("createView");
+  const timedView = process.env.VBP_REPLAY_TIMED_VIEW === "1";
+  const component = invoke(timedView ? "createTimedView" : "createView");
   const container = document.getElementById("app");
   const root = createRoot(container);
   const byId = id => document.getElementById(`vir-verso-${id}`);
@@ -253,7 +255,9 @@ async function renderExperiment(runtime, source, identityProbe) {
     const decoded = decodeScoped(runtime, decode);
     const decodedAt = performance.now();
     identityProbe?.begin();
-    const node = invoke("renderDecoded", component, decoded);
+    const node = timedView
+      ? invoke("renderTimedDecoded", component, decoded, undefined, undefined, undefined, decodedAt)
+      : invoke("renderDecoded", component, decoded);
     root.render(node);
     const committedAt = await committed;
     const identityEvents = identityProbe?.finish();
