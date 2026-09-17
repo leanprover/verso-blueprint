@@ -1,5 +1,5 @@
 /* Local staged experiment: specialized Verso tree and extension construction.
- * Small metadata/property-map leaves retain their exact existing Lean codecs. */
+ * Names retain their existing codec; properties use a typed native map helper. */
 const entry = "VersoBlueprintVirTests.NativeSession.DirectCodecProbe";
 const previewType = "VersoBlueprint.Experimental.VirPreview.Preview";
 const documentType = "VersoBlueprint.Experimental.VirPreview.Document";
@@ -34,16 +34,21 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
       pending.length -= count; // The constructor now owns these child roots.
       return track(ptr);
     };
+    const finishStack = () => {
+      const ptr = runtime.makeObjectCtorFromOwnedStack(plan.tag, pending, plan.objects, name);
+      pending.length -= plan.objects;
+      return track(ptr);
+    };
     if (!plan.scalarBytes) {
       if (plan.fields.some((field, i) => field.kind !== "object" || field.index !== i))
         fail(`unsupported reordered layout: ${name}`);
       switch (plan.objects) {
-        case 1: return a => finish([a]);
-        case 2: return (a, b) => finish([a, b]);
-        case 3: return (a, b, c) => finish([a, b, c]);
-        case 4: return (a, b, c, d) => finish([a, b, c, d]);
-        case 5: return (a, b, c, d, e) => finish([a, b, c, d, e]);
-        case 6: return (a, b, c, d, e, f) => finish([a, b, c, d, e, f]);
+        case 1: return a => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a]);
+        case 2: return (a, b) => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a, b]);
+        case 3: return (a, b, c) => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a, b, c]);
+        case 4: return (a, b, c, d) => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a, b, c, d]);
+        case 5: return (a, b, c, d, e) => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a, b, c, d, e]);
+        case 6: return (a, b, c, d, e, f) => runtime.makeObjectCtorFromOwnedStack ? finishStack() : finish([a, b, c, d, e, f]);
         default: fail(`unsupported arity: ${name}`);
       }
     }
@@ -72,6 +77,31 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   const descCtor = constructor("Lean.Doc.DescItem.mk");
   const listCtor = constructor("Lean.Doc.ListItem.mk");
   const someCtor = constructor("Option.some");
+  const timingCtor = constructor("VersoBlueprint.Experimental.VirPreview.ServerTiming.mk");
+  const pairCtor = constructor("Prod.mk"), consCtor = constructor("List.cons");
+  const numberingNat = constructor("Verso.Genre.Manual.Numbering.nat");
+  const tagCtors = Object.fromEntries(["provided", "external", "internal"].map(kind =>
+    [kind, constructor([...definitions.keys()].find(name => name.endsWith(`Verso.Genre.Manual.Tag.${kind}`)))]));
+  const mixedConstructor = name => {
+    const plan = definitions.get(name);
+    if (!plan || plan.usize || plan.trivial !== null) fail(`unsupported mixed layout: ${name}`);
+    return values => {
+      const objects = new Array(plan.objects), bytes = new Uint8Array(plan.scalarBytes);
+      const view = new DataView(bytes.buffer);
+      plan.fields.forEach((field, i) => {
+        if (field.kind === "object") objects[field.index] = values[i];
+        else if (field.kind === "scalar" && field.size === 1) view.setUint8(field.offset, values[i]);
+        else if (field.kind === "scalar" && field.size === 4) view.setUint32(field.offset, values[i], true);
+        else fail(`unsupported field in ${name}`);
+      });
+      const ptr = runtime.makeObjectCtorFromOwnedLayout(plan.tag,
+        { objectFields: objects, usizeFields: [], scalarBytes: bytes }, name);
+      pending.length -= plan.objects;
+      return track(ptr);
+    };
+  };
+  const metadataCtor = mixedConstructor("Verso.Genre.Manual.PartMetadata.mk");
+  const numberingLetter = mixedConstructor("Verso.Genre.Manual.Numbering.letter");
   const manualInlineCtor = constructor("Verso.Genre.Manual.Inline.mk");
   const manualBlockCtor = constructor("Verso.Genre.Manual.Block.mk");
   const idName = [...definitions.keys()].find(name => name.endsWith("Verso.Multi.InternalId.mk"));
@@ -85,9 +115,24 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   let constants;
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value) ? value : fail("expected object");
   const field = (value, name) => Object.hasOwn(object(value), name) ? value[name] : fail(`missing field: ${name}`);
-  const single = value => { const keys = Object.keys(object(value)); if (keys.length !== 1) fail("expected one-field constructor object"); return keys[0]; };
+  const single = value => {
+    object(value);
+    let found;
+    for (const key in value) if (Object.hasOwn(value, key)) {
+      if (found !== undefined) fail("expected one-field constructor object");
+      found = key;
+    }
+    if (found === undefined) fail("expected one-field constructor object");
+    return found;
+  };
   const sequence = (value, decode) => {
     if (!Array.isArray(value)) fail("expected array");
+    if (runtime.makeObjectArrayFromOwnedStack) {
+      for (const child of value) decode(child);
+      const ptr = runtime.makeObjectArrayFromOwnedStack(pending, value.length, "array");
+      pending.length -= value.length;
+      return track(ptr);
+    }
     const children = [];
     for (const child of value) children.push(decode(child));
     const count = children.length;
@@ -97,17 +142,15 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   };
   const optionString = value => value === null ? scalar(0) : someCtor(string(value));
   const leaf = (name, value) => {
-    if (value === null && (name === "metadata" || name === "serverTiming"))
-      return scalar(0);
     const handle = runtime.call(`${entry}.${name}`, value);
     const cell = runtime.leanObjectHandleCell(handle, name);
     try { return track(runtime.retainLeanObjectHandleValue(handle, name)); }
     finally { runtime.releaseLeanObjectHandleCell(cell); }
   };
-  const cached = (key, make) => {
+  const cached = (key, make, value) => {
     if (!constants.has(key)) {
-      if (constants.size >= 256) return make();
-      const ptr = make();
+      if (constants.size >= 256) return make(value);
+      const ptr = make(value);
       runtime.exports.vir_obj_inc(ptr); // Separate table root from pending ownership.
       try { constants.set(key, ptr); }
       catch (error) { runtime.exports.vir_obj_dec(ptr); throw error; }
@@ -119,8 +162,11 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   };
   const name = value => {
     if (typeof value !== "string") fail("expected name string");
-    return cached(`name:${value}`, () => leaf("name", value));
+    return cached(value, nameLeaf, value);
   };
+  const nameLeaf = value => leaf("name", value);
+  const boolTrue = () => jsonCtors.bool(1), boolFalse = () => jsonCtors.bool(0);
+  const emptyProperties = value => propertiesNative(value);
   const id = value => value === null ? scalar(0) : someCtor(idCtor(integer(value)));
   // UTF-8 lexical order agrees with Unicode scalar order for well-formed text,
   // unlike JS's default UTF-16 sort when supplementary characters are present.
@@ -152,7 +198,7 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   const json = value => {
     if (value === null) return jsonCtors.null();
     switch (typeof value) {
-      case "boolean": return cached(`json-bool:${value}`, () => jsonCtors.bool(value ? 1 : 0));
+      case "boolean": return cached(value, value ? boolTrue : boolFalse);
       case "number": return jsonCtors.num(numberCtor(integer(value, true), integer(0)));
       case "string": return jsonCtors.str(string(value));
       case "object": {
@@ -168,11 +214,60 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   };
   const manualInline = value => manualInlineCtor(name(field(value, "name")), id(field(value, "id")),
     json(field(value, "data")));
+  const propertiesNative = value => {
+    const ptr = sequence(Object.entries(object(value)), pair => pairCtor(string(pair[0]), string(pair[1])));
+    let input, output;
+    try {
+      input = runtime.makeLeanObjectHandleResource(ptr, "property entries");
+      const result = runtime.call(`${entry}.propertiesNative`, input);
+      const cell = runtime.leanObjectHandleCell(result, "property map");
+      try { output = runtime.retainLeanObjectHandleValue(result, "property map"); }
+      finally { runtime.releaseLeanObjectHandleCell(cell); }
+    } finally {
+      if (input) runtime.releaseLeanObjectHandleCell(runtime.leanObjectHandleCell(input, "property entries"));
+      pending.pop(); runtime.exports.vir_obj_dec(ptr);
+    }
+    return track(output);
+  };
   const properties = value => {
       const properties = field(value, "properties");
       return Object.keys(object(properties)).length === 0
-        ? cached("empty-properties", () => leaf("properties", properties)) : leaf("properties", properties);
+        ? cached(emptyProperties, emptyProperties, properties) : propertiesNative(properties);
   };
+  const boolean = value => typeof value === "boolean" ? +value : fail("expected boolean");
+  const optional = (value, decode) => value === null ? scalar(0) : someCtor(decode(value));
+  const tag = value => {
+    const kind = single(value);
+    if (!Object.hasOwn(tagCtors, kind)) fail("unknown tag");
+    const text = field(value[kind], "name");
+    if (kind === "external" && (typeof text !== "string" || !/^[a-zA-Z0-9_-]*$/.test(text))) fail("invalid slug");
+    return tagCtors[kind](string(text));
+  };
+  const numbering = value => {
+    if (typeof value === "number") return numberingNat(integer(value));
+    if (typeof value !== "string" || [...value].length !== 1) fail("expected one character");
+    return numberingLetter([value.codePointAt(0)]);
+  };
+  const metadata = value => {
+    if (value === null) return scalar(0);
+    object(value);
+    const get = (key, fallback) => Object.hasOwn(value, key) ? value[key] : fallback;
+    const authors = field(value, "authors");
+    if (!Array.isArray(authors)) fail("expected authors array");
+    const list = i => i === authors.length ? scalar(0) : consCtor(string(authors[i]), list(i + 1));
+    const split = field(value, "htmlSplit"), priority = field(value, "searchPriority");
+    if (split !== "default" && split !== "never") fail("unknown HTML split mode");
+    if (!Number.isInteger(priority) || priority < 0 || priority >= 100) fail("invalid search priority");
+    return someCtor(metadataCtor([
+      optionString(get("shortTitle", null)), optionString(get("shortContextTitle", null)), list(0),
+      optionString(get("authorshipNote", null)), optionString(get("date", null)), optional(get("tag", null), tag),
+      optionString(get("file", null)), id(get("id", null)), boolean(field(value, "number")), boolean(field(value, "draft")),
+      optional(get("assignedNumber", null), numbering), boolean(field(value, "htmlToc")),
+      definitions.get(`Verso.Genre.Manual.HtmlSplitMode.${split}`).tag, integer(priority),
+    ]));
+  };
+  const serverTiming = value => optional(value, v => timingCtor(integer(field(v, "snapshotWaitNanos")),
+    integer(field(v, "checkedWaitNanos")), integer(field(v, "evaluationNanos"))));
   const manualBlock = value => manualBlockCtor(name(field(value, "name")), id(field(value, "id")),
     json(field(value, "data")), properties(value));
   const inline = value => {
@@ -195,7 +290,10 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   const block = value => {
     object(value);
     // Preserve Verso Block.fromJson?'s constructor precedence (not single-key).
-    const kind = ["para", "code", "ul", "ol", "dl", "blockquote", "concat", "other"].find(key => Object.hasOwn(value, key));
+    const kind = Object.hasOwn(value, "para") ? "para" : Object.hasOwn(value, "code") ? "code" :
+      Object.hasOwn(value, "ul") ? "ul" : Object.hasOwn(value, "ol") ? "ol" :
+      Object.hasOwn(value, "dl") ? "dl" : Object.hasOwn(value, "blockquote") ? "blockquote" :
+      Object.hasOwn(value, "concat") ? "concat" : "other";
     const v = value[kind];
     switch (kind) {
       case "para": return blockCtors.para(sequence(v, inline));
@@ -211,13 +309,12 @@ export function createDirectPreviewDecoder(runtime, layouts, jsonBindings, { val
   const listItem = item => listCtor(sequence(field(item, "contents"), block));
   const descItem = item => descCtor(sequence(field(item, "term"), inline), sequence(field(item, "contents"), block));
   const part = value => partCtor(sequence(field(value, "title"), inline), string(field(value, "titleString")),
-    leaf("metadata", field(value, "metadata")), sequence(field(value, "content"), block),
+    metadata(field(value, "metadata")), sequence(field(value, "content"), block),
     sequence(field(value, "subParts"), part));
   const document = value => documentCtor(integer(field(value, "version")),
-    string(Object.hasOwn(value, "correlationId") ? value.correlationId : ""),
-    string(Object.hasOwn(value, "cursorToken") ? value.cursorToken : ""),
+    string(field(value, "correlationId")), string(field(value, "cursorToken")),
     optionString(Object.hasOwn(value, "focus") ? value.focus : null),
-    leaf("serverTiming", Object.hasOwn(value, "serverTiming") ? value.serverTiming : null),
+    serverTiming(Object.hasOwn(value, "serverTiming") ? value.serverTiming : null),
     part(field(value, "document")));
   return input => {
     if (runtime.disposed || runtime.disposing) fail("runtime disposed");

@@ -47,7 +47,19 @@ def name (input : Js String) : RuntimeM (JSL Name) := do
   | .error message => failure message
 
 @[vir_export]
-def properties (input : Js.Any) : RuntimeM (JSL (NameMap String)) := leaf input
+def properties (input : Js.Any) : RuntimeM (JSL (Verso.NameMap String)) := leaf input
+
+-- Map insertion preserves Verso's public-name policy without a JSON codec.
+@[vir_export]
+def propertiesNative (input : JSL (Array (String × String))) : RuntimeM (JSL (Verso.NameMap String)) := do
+  let entries ← LeanRef.fromJSL input
+  let mut result : Verso.NameMap String := {}
+  for (key, value) in entries do
+    let key := key.toName
+    if h : Verso.NameMap.isPublic key then
+      result := result.insert key value h
+    else failure s!"Invalid public property name: {key}"
+  LeanRef.toJSL result
 
 @[vir_export]
 def finish (input : JSL Preview) : RuntimeM (JSL (Except String Preview)) := do
@@ -74,7 +86,10 @@ run_elab do
       ``Lean.Doc.ListItem, ``Lean.Doc.DescItem, ``Lean.Doc.MathMode, ``Document, ``Preview,
       ``Verso.Genre.Manual.Inline, ``Verso.Genre.Manual.Block, ``Verso.Multi.InternalId,
       ``Lean.Json, ``Lean.JsonNumber, ``Std.TreeMap.Raw, ``Std.DTreeMap.Raw,
-      ``Std.DTreeMap.Internal.Impl, ``Option] do
+      ``Std.DTreeMap.Internal.Impl, ``Option, ``ServerTiming,
+      ``Verso.Genre.Manual.PartMetadata, ``Verso.Genre.Manual.Tag,
+      ``Verso.Genre.Manual.Numbering, ``Verso.Genre.Manual.HtmlSplitMode,
+      ``List, ``Prod] do
     let .inductInfo info ← getConstInfo name | throwError "expected inductive {name}"
     let trivial ← Lean.Compiler.LCNF.hasTrivialImpureStructure? name
     for ctor in info.ctors do

@@ -77,6 +77,7 @@ replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.string
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_DIRECT_TYPED": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_DIRECT_TYPED ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_UTF8_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_UTF8_SCRATCH ?? "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_POINTER_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_POINTER_SCRATCH ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_UPDATES": ${JSON.stringify(JSON.stringify(replayUpdates))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_STRING_INTERN": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_STRING_INTERN ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_STRING_INTERN_CONTROLS": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_STRING_INTERN_CONTROLS ?? "0"))}, `);
@@ -131,6 +132,7 @@ const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
   "tests/vir_preview/scoped_string_intern.mjs",
   "tests/vir_preview/direct_typed_decoder.mjs",
   "tests/vir_preview/utf8_scratch.mjs",
+  "tests/vir_preview/pointer_scratch.mjs",
   "tests/vir_preview/upstream-json-value-bindings.mjs",
   ...["Types", "Generated", "Codec", "Js"].map(name =>
     `tests/VersoBlueprintVirTests/NativeSession/UpstreamJson/${name}.lean`)];
@@ -158,6 +160,7 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   directTyped: process.env.VBP_REPLAY_DIRECT_TYPED === "1",
   directDecoderPath,
   utf8Scratch: process.env.VBP_REPLAY_UTF8_SCRATCH === "1",
+  pointerScratch: process.env.VBP_REPLAY_POINTER_SCRATCH === "1",
   typedPackage: process.env.VBP_REPLAY_TYPED_PACKAGE === "1",
   directLayoutsSha256: process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
     ? sha(await readFile(resolve(output, "direct-layouts.json"))) : null,

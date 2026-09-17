@@ -12,6 +12,7 @@ import { jsonValueContractCases } from "./json_value_contract_cases.mjs";
 import { withScopedStringIntern } from "./scoped_string_intern.mjs";
 import { createDirectPreviewDecoder } from "@vbp-direct-typed-decoder";
 import { withUtf8Scratch } from "./utf8_scratch.mjs";
+import { withPointerScratch } from "./pointer_scratch.mjs";
 
 const entry = process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
   ? "VersoBlueprintVirTests.NativeSession.DirectCodecProbe"
@@ -20,7 +21,8 @@ let decodeDirect;
 function decodeScoped(runtime, decode) {
   const intern = () => process.env.VBP_REPLAY_STRING_INTERN === "1"
     ? withScopedStringIntern(runtime, decode) : decode();
-  return process.env.VBP_REPLAY_UTF8_SCRATCH === "1" ? withUtf8Scratch(runtime, intern) : intern();
+  const utf8 = () => process.env.VBP_REPLAY_UTF8_SCRATCH === "1" ? withUtf8Scratch(runtime, intern) : intern();
+  return process.env.VBP_REPLAY_POINTER_SCRATCH === "1" ? withPointerScratch(runtime, utf8) : utf8();
 }
 const check = (value, message) => { if (!value) throw Error(message); };
 globalThis.decodeAcceptance = run().then(
@@ -76,6 +78,39 @@ async function run() {
           "direct typed rich constructor fixture differs");
         if (decodeDirect) check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(fixture)),
           decodeScoped(runtime, () => decodeDirect(fixture))), "fast direct typed fixture differs");
+      }
+      for (const tag of [null, { provided: { name: "tag" } }, { external: { name: "demo-slug" } },
+          { internal: { name: "internal" } }]) {
+        for (const assignedNumber of [null, 7, "A", "😀"]) {
+          const fixture = structuredClone(rich);
+          fixture.ready.document.serverTiming = { snapshotWaitNanos: 42, checkedWaitNanos: 2147483648, evaluationNanos: 7 };
+          fixture.ready.document.document.metadata = { tag, assignedNumber, authors: ["α", "β"],
+            shortTitle: "short", shortContextTitle: "context", authorshipNote: "note", date: "today",
+            file: "demo", id: 42, number: false, draft: true, htmlToc: false, htmlSplit: "never", searchPriority: 99 };
+          const converted = decodeDirect ? decodeScoped(runtime, () => decodeDirect(fixture)) : directControl(fixture);
+          check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(fixture)), converted),
+            "direct metadata/default/timing fixture differs");
+        }
+      }
+      const defaultMetadata = structuredClone(rich);
+      defaultMetadata.ready.document.document.metadata = { authors: [], number: true, draft: false,
+        htmlToc: true, htmlSplit: "default", searchPriority: 50 };
+      check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, JSON.stringify(defaultMetadata)),
+        decodeDirect ? decodeScoped(runtime, () => decodeDirect(defaultMetadata)) : directControl(defaultMetadata)),
+        "metadata defaults differ");
+      for (const change of [
+        part => { part.metadata = { ...defaultMetadata.ready.document.document.metadata, searchPriority: 100 }; },
+        part => { part.metadata = { ...defaultMetadata.ready.document.document.metadata, tag: { external: { name: "bad slug" } } }; },
+        part => { part.metadata = { ...defaultMetadata.ready.document.document.metadata, assignedNumber: "ab" }; },
+        part => { part.metadata = {}; },
+        part => { part.content[7].other.container.properties = { "": "invalid" }; },
+        part => { part.content[7].other.container.properties = { valid: true }; },
+      ]) {
+        const fixture = structuredClone(rich); change(fixture.ready.document.document);
+        let rejected = false;
+        try { decodeDirect ? decodeScoped(runtime, () => decodeDirect(fixture)) : directControl(fixture); }
+        catch { rejected = true; }
+        check(rejected, "invalid direct metadata/property accepted");
       }
       const control = directControl(JSON.parse(source));
       check(runtime.call(`${entry}.equivalent`, runtime.call(`${entry}.whole`, source), control), "direct typed document differs");
@@ -340,7 +375,7 @@ async function browserJsonExperiment(runtime, source, expectedVersion, setMarker
   const invalid = [];
   if (decodeDirect) return { sourceChars: source.length, expectedVersion, warmupUpdates: 2, rows,
     fullTypedEquality: true, malformedRecovery: true, growth: true,
-    boundary: "JSON.parse + specialized native document/extension construction; metadata/property maps retain existing codecs; excludes RPC/React/DOM",
+    boundary: "JSON.parse + specialized native document/extension construction and typed leaf helpers; excludes RPC/React/DOM",
     instrumentation: "coarse timers; no profiler or per-node counters" };
   for (const text of ['{}', '{"ready":{}}']) {
     const candidate = call(text);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createDirectPreviewDecoder } from "./direct_typed_decoder.mjs";
+import { withPointerScratch } from "./pointer_scratch.mjs";
 
 // Ownership controls only; real type/value equivalence is checked in Chromium.
 // Run the DirectCodecProbe build first to generate authoritative layouts.
@@ -59,6 +60,20 @@ function fakeRuntime() {
       const handle = runtime.makeLeanObjectHandleResource(ptr); dec(ptr); return handle;
     },
   };
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  runtime.exports.memory = memory;
+  runtime.allocByteLength = () => { memory.grow(0); return 32; };
+  runtime.freeBytes = () => {};
+  const native = (tag, ptr, count) => {
+    if (runtime.failTag === tag) throw runtime.sentinel;
+    const view = new DataView(memory.buffer);
+    const children = Array.from({ length: count }, (_, i) => view.getUint32(ptr + i * 4, true));
+    const result = allocate(tag, children);
+    memory.grow(0);
+    return result;
+  };
+  runtime.exports.vir_obj_ctor = native;
+  runtime.exports.vir_obj_array = (ptr, count) => native("array", ptr, count);
   return runtime;
 }
 
@@ -115,5 +130,36 @@ test("small integers bypass decimal conversion, large integers retain it", () =>
   const decode = createDirectPreviewDecoder(runtime, layouts, bindings);
   runtime.releaseLeanObjectHandleCell(decode(input));
   assert.deepEqual(decimals, [["vir_obj_int", "-1073741825"], ["vir_obj_int", "1073741824"]]);
+  assert.equal(runtime.heap.size, 0);
+});
+
+test("scratch constructors preserve ownership and refresh views after native growth", () => {
+  const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  const result = withPointerScratch(runtime, () => decode(fixture()));
+  runtime.releaseLeanObjectHandleCell(result);
+  assert.equal(runtime.heap.size, 0);
+  assert.equal(Object.hasOwn(runtime, "makeObjectCtorFromOwnedStack"), false);
+  const bad = fixture(); delete bad.ready.document.document.titleString;
+  assert.throws(() => withPointerScratch(runtime, () => decode(bad)), /missing field/);
+  assert.equal(runtime.heap.size, 0);
+  runtime.sentinel = {};
+  runtime.failTag = "array";
+  assert.throws(() => withPointerScratch(runtime, () => decode(fixture())), error => error === runtime.sentinel);
+  assert.equal(runtime.heap.size, 0);
+});
+
+test("native property failure releases the typed input and permits recovery", () => {
+  const runtime = fakeRuntime(), decode = createDirectPreviewDecoder(runtime, layouts, bindings);
+  const call = runtime.call;
+  const sentinel = {};
+  runtime.call = (name, input) => {
+    if (name.endsWith(".propertiesNative")) throw sentinel;
+    return call(name, input);
+  };
+  assert.throws(() => withPointerScratch(runtime, () => decode(fixture())), error => error === sentinel);
+  assert.equal(runtime.heap.size, 0);
+  runtime.call = call;
+  const result = withPointerScratch(runtime, () => decode(fixture()));
+  runtime.releaseLeanObjectHandleCell(result);
   assert.equal(runtime.heap.size, 0);
 });

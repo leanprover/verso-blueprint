@@ -1,5 +1,89 @@
 # Direct typed document decoding: first feasibility probe
 
+## Pointer scratch, lighter dispatch and direct leaves
+
+The subsequent local slice implements three further candidates; cross-update
+subtree reuse remains deferred.
+
+- Conversion-scoped pointer scratch replaces per-constructor/array temporary
+  Wasm buffers. Object-only constructor and array writers read the existing
+  ownership frontier directly, avoiding temporary JavaScript child-pointer
+  arrays. Native success transfers the roots; native failure leaves them for
+  cleanup. No cached memory views or Lean pointers survive the scope.
+- Inline tags use allocation-free own-key enumeration; block dispatch preserves
+  the original constructor precedence with direct checks. Common cache lookups
+  avoid per-access closures and prefixed key strings.
+- Metadata and server timing use compiler-generated constructor layouts,
+  including mixed scalar/object metadata fields and Unicode numbering chars.
+  Properties lower to typed `Array (String × String)` and a Lean map-insertion
+  helper, without `Lean.Json` or `FromJson`. Insertion still executes in the
+  interpreter; this does not mean every leaf operation is native code. Names
+  retain their existing small custom codec.
+
+The old probe accidentally resolved its property type to `Lean.NameMap`.
+Both the reference property export and new typed helper now explicitly use
+`Verso.NameMap`, preserving its public-name checks. Compiler-generated JSON
+decoders do not apply record-constructor defaults: missing optional fields
+become `none`, while required metadata fields must be present. The final
+candidate enforces this and also requires document correlation/cursor strings.
+
+### Correctness and build
+
+Lean Beam sync/save reports zero diagnostics. The public scoped-restoration
+`+VersoBlueprintVirTests.NativeSession.DirectCodecProbe:vir` build passes:
+70 members, 2,777 declarations (2,639 IR, 138 extern), 17 exports. This is a
+targeted facet build, not a clean repository-wide CI result. No SDK/source pin,
+live demo or FIR package was changed.
+
+Eight Node controls pass, including pointer-buffer growth/replacement, partial
+construction, native property failure identity/cleanup and recovery. Actual
+Chromium/Wasm compares all tag forms and numeric/Unicode letter numbering,
+nonempty author lists, all metadata fields, optional missing fields, large
+server timings and the full FLT typed result with the original Lean decoder.
+Invalid slug, number, priority, required fields and properties are rejected.
+`direct-pointer-render-02` passes retained React acceptance: 7,011 elements,
+unchanged DOM/text hashes, checkbox/paragraph retention and zero warnings.
+
+### Performance screening
+
+Same frozen response, SDK, generated layouts and new package on both paths;
+baseline JavaScript is frozen from `e5b3eb1e` as `direct-e5b3-decoder.mjs`.
+String interning and UTF-8 scratch enabled for both; pointer scratch enabled
+only for the candidate. C/B/B/C, two warmups and eight measured samples/batch,
+no profiler or per-node counters:
+
+| Batch | Previous decoder | Candidate |
+| --- | ---: | ---: |
+| First | 76.2 ms | 76.0 ms |
+| Second | 76.3 ms | 65.3 ms |
+| Pooled median, 16 samples/path | 76.2 ms | 69.0 ms |
+| Pooled typed construction only | 63.3 ms | 57.5 ms |
+
+The apparent 9.4% total reduction is inconclusive against candidate batch
+variation. Captures `direct-pointer-{c02,b01,b02,c03}` preserve selected sources,
+hashes and raw samples. These are preliminary allocation/leaf screening runs
+before the subsequent missing-required-field guard repair, not final-source
+performance acceptance. `direct-pointer-c01` is an earlier implementation;
+`direct-pointer-render` exposed the metadata default mismatch and is excluded.
+
+Final-source `direct-pointer-render-02` (four updates after two warmups) gives
+medians of 1,524.8 ms total, 61.0 ms parse/decode, 1,457.6 ms render-to-DOM
+observation. Phase medians do not add. This is a final-path screening/acceptance
+run, not paired proof of a rendering speedup. RPC/LSP, paint and passive effects
+remain excluded. Rendering still dominates.
+
+### Where JavaScript parsing happens
+
+The converter itself accepts a parsed JS object and does not call `JSON.parse`.
+Replay parses the frozen response text in `decode_browser_entry.mjs`, measuring
+that separately. The checked-JSON live demo calls `previewDemo.parse` in
+`demo_shell.mjs` because the RPC returns the String made by `Preview.encode`;
+this is an additional inner payload parse, distinct from the RPC framework's
+outer JSON decoding. A structured RPC reply could remove that inner parse.
+The default library String reply decoder instead uses `Lean.Json.parse`.
+Manifest/layout/input checks contain other untimed setup `JSON.parse` calls.
+
+
 ## Allocation and UTF-8 follow-up
 
 The next local candidate removes per-field closures and per-node layout
