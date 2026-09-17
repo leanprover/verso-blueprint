@@ -55,6 +55,20 @@ lean_lib FirJsonPreview where
   requiresModuleSystem := true
   needs := #[firJsonDemoBundle]
 
+input_file matchedVirDemoBundle where
+  path := ".lake/build/matched-vir-demo.js"
+  text := true
+
+input_file matchedFirDemoBundle where
+  path := ".lake/build/matched-fir-demo.js"
+  text := true
+
+lean_lib MatchedPreview where
+  srcDir := "tests"
+  roots := #[`MatchedPreview]
+  requiresModuleSystem := true
+  needs := #[matchedVirDemoBundle, matchedFirDemoBundle]
+
 lean_lib VersoBlueprintVirTests where
   srcDir := "tests"
   requiresModuleSystem := true
@@ -67,6 +81,7 @@ lean_lib VersoBlueprintVirTests where
     `VersoBlueprintVirTests.StringPreviewServer,
     `VersoBlueprintVirTests.EmbeddedPreview,
     `VersoBlueprintVirTests.EmbeddedPreviewServer,
+    `VersoBlueprintVirTests.MatchedPreviewServer,
     `VersoBlueprintVirTests.Source,
     `VersoBlueprintVirTests.Renderer
   ]

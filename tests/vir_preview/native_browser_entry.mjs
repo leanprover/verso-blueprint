@@ -105,7 +105,9 @@ async function run() {
     const a = sessionAt(config.a), b = sessionAt(config.b);
     check(a === sessionAt(config.a) && a !== b, "official position-session identity");
     if (VBP_EMBEDDED_PREVIEW) {
-      const { runEmbeddedAcceptance } = await import("./embedded_browser_acceptance.mjs");
+      const { runEmbeddedAcceptance } = VBP_MATCHED_PREVIEW
+        ? await import("./matched_browser_acceptance.mjs")
+        : await import("./embedded_browser_acceptance.mjs");
       return await runEmbeddedAcceptance({ config, a, b, sessionAt, editor, emit, requests, warnings,
         subscriptions: () => subscriptions, listeners: () => notificationHandlers.size });
     }

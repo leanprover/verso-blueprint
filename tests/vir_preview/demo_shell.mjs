@@ -7,18 +7,25 @@ function replaceOnce(source, site, replacement) {
   return source.replace(site, replacement);
 }
 
+// Reuse upstream RPC/editor/lifetime handling for either external native view.
+export function configureNativeComponentShell(source, { module, open, binding }) {
+  const site = "  runtimeOptions.defaultHostBindings = () =>";
+  source = `import { ${open} as openNativePreview } from ${JSON.stringify(module)};\n` + source;
+  source = replaceOnce(source, site, `  const nativePreview = await openNativePreview();
+  runtimeOptions.hostBindings = { ${JSON.stringify(binding)}: () => nativePreview.Component };
+${site}`);
+  source = replaceOnce(source, "    runtime: await createBundledVirRuntime(runtimeOptions),", `    nativePreview,
+    runtime: await createBundledVirRuntime(runtimeOptions).catch(error => { nativePreview.dispose(); throw error; }),`);
+  return replaceOnce(source, "    service.runtime.dispose?.();",
+    "    try { service.runtime.dispose?.(); } finally { service.nativePreview?.dispose(); }");
+}
+
 export function configureDemoShell(source, fir, { bridge, math, katex, mathCss }) {
   const bindingsSite = "  runtimeOptions.defaultHostBindings = () =>";
   if (fir) {
-    source = 'import { openFirDemo } from "@fir-demo";\n' + source;
-    source = replaceOnce(source, bindingsSite, `  const fir = await openFirDemo();
-  runtimeOptions.hostBindings = {};
-  runtimeOptions.hostBindings["previewDemo.componentFir"] = () => fir.Component;
-${bindingsSite}`);
-    source = replaceOnce(source, "    runtime: await createBundledVirRuntime(runtimeOptions),", `    fir,
-    runtime: await createBundledVirRuntime(runtimeOptions).catch(error => { fir.dispose(); throw error; }),`);
-    return replaceOnce(source, "    service.runtime.dispose?.();",
-      "    try { service.runtime.dispose?.(); } finally { service.fir?.dispose(); }");
+    return configureNativeComponentShell(source, {
+      module: "@fir-demo", open: "openFirDemo", binding: "previewDemo.componentFir",
+    });
   }
   const styleSite = "    loaded?.configurationKey === configurationKey";
   source = replaceOnce(source, styleSite,

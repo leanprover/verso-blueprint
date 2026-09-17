@@ -13,6 +13,7 @@ renderers, codecs, runtime policies or timing boundaries.
 | What changed in the renderer? | [Component-owned styles](STYLE_REUSE_20260917.md) | VIR-only source candidate; small provisional gain, not yet the FIR comparator |
 | What is the faster decoding prototype? | [Direct typed decoder](DIRECT_TYPED_DECODER_20260917.md) | VIR-specific constructor path, not a matched FIR result |
 | Which upstream base and SDK are used? | [VIR refresh](VIR_UPSTREAM_REFRESH_20260917.md) | Exact source/SDK identities and qualification |
+| Where is the refreshed live matched demo? | [Matched 4.34 demo](MATCHED_DEMO_V434.md) | New interpreter/SDK, frozen paired renderer; startup VIR/FIR toggle |
 
 Do not compare an inner content callback with an entire render-to-DOM interval.
 Do not compare FIR's checked Lean.Json/FromJson path with VIR's direct typed

@@ -13,6 +13,13 @@ const output = resolve(process.env.VBP_NATIVE_PREVIEW_REPORT);
 const encodedDocument = process.argv.includes("--encoded-document");
 const stringPreview = process.argv.includes("--string-preview") || encodedDocument;
 const embeddedPreview = process.argv.includes("--embedded-preview");
+const matchedBackend = process.env.VBP_NATIVE_MATCHED_BACKEND;
+if (matchedBackend) assert.ok(embeddedPreview && ["vir", "fir"].includes(matchedBackend));
+const embeddedFixture = matchedBackend ? "MatchedPreviewServer" : "EmbeddedPreviewServer";
+const embeddedSourcePath = resolve(process.env.VBP_NATIVE_MATCHED_SOURCE ??
+  resolve(root, `tests/VersoBlueprintVirTests/${embeddedFixture}.lean`));
+const matchedFlt = Boolean(process.env.VBP_NATIVE_MATCHED_SOURCE);
+assert.ok(!matchedFlt || matchedBackend, "external matched source requires a backend");
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
 const dependency = manifest.packages.find(p => p.name === "lean_vir");
 assert.equal(dependency?.type, "git");
@@ -39,7 +46,7 @@ harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) =>
 });
 const { runRpcBrowserAcceptance } = await import(`data:text/javascript;base64,${Buffer.from(harnessSource).toString("base64")}`);
 const { build } = await import(pathToFileURL(resolve(virRoot, "node_modules/esbuild/lib/main.js")));
-const shellPath = embeddedPreview ? resolve(root, ".lake/build/checked-json-demo.js")
+const shellPath = embeddedPreview ? resolve(root, matchedBackend ? `.lake/build/matched-${matchedBackend}-demo.js` : ".lake/build/checked-json-demo.js")
   : resolve(virRoot, "build/generated/infoview/vir-infoview-widget.js");
 const shellHash = embeddedPreview
   ? createHash("sha256").update(await readFile(shellPath)).digest("hex") : "";
@@ -77,13 +84,15 @@ const bundle = await build({
     VBP_STRING_PREVIEW: JSON.stringify(stringPreview),
     VBP_ENCODED_DOCUMENT: JSON.stringify(encodedDocument),
     VBP_EMBEDDED_PREVIEW: JSON.stringify(embeddedPreview),
+    VBP_MATCHED_PREVIEW: JSON.stringify(Boolean(matchedBackend)),
+    VBP_MATCHED_FLT_PREVIEW: JSON.stringify(matchedFlt),
     VBP_EMBEDDED_SHELL_SHA256: JSON.stringify(shellHash),
     VBP_WASM_SHA256: JSON.stringify(sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256),
   },
 });
 const assets = new Map([["/probe.js", ["text/javascript", bundle.outputFiles[0].contents]]]);
 if (embeddedPreview) assets.set("/blueprint-source", ["text/plain", await readFile(
-  resolve(root, "tests/VersoBlueprintVirTests/EmbeddedPreviewServer.lean"), "utf8")]);
+  embeddedSourcePath, "utf8")]);
 let packageMembers;
 if (!embeddedPreview) {
   const descriptorPath = resolve(root,
@@ -102,7 +111,7 @@ if (!embeddedPreview) {
 const acceptance = await runRpcBrowserAcceptance({
   assets,
   ...(stringPreview || embeddedPreview ? {
-    sourcePath: resolve(root, `tests/VersoBlueprintVirTests/${embeddedPreview ? "EmbeddedPreview" : "StringPreview"}Server.lean`),
+    sourcePath: embeddedPreview ? embeddedSourcePath : resolve(root, "tests/VersoBlueprintVirTests/StringPreviewServer.lean"),
   } : {}),
   label: embeddedPreview ? "VBP native embedded preview" : stringPreview ? "VBP string RPC preview" : "VBP native preview first slice",
 });
@@ -123,12 +132,15 @@ const report = {
   virCommit: dependency.rev, toolchain: sdk.leanToolchain,
   wasmSha256: sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256,
   packageMembers,
-  encodedDocument, embeddedPreview, sourceHashes,
+  encodedDocument, embeddedPreview, matchedBackend, sourceHashes,
+  ...(embeddedPreview ? { fixtureSourcePath: embeddedSourcePath,
+    fixtureSourceSha256: createHash("sha256").update(await readFile(embeddedSourcePath)).digest("hex") } : {}),
   sdkManifestSha256: createHash("sha256").update(await readFile(
     resolve(sdkRoot, "lean-vir-artifact.json"))).digest("hex"),
   versoParserSha256: createHash("sha256").update(await readFile(resolve(root,
     manifest.packagesDir, "verso/src/verso/Verso/Parser.lean"))).digest("hex"),
-  scope: embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT"
+  scope: matchedFlt ? "matched full FLT document through registered shell and real LSP in Chromium; not VS Code or a timing campaign"
+    : embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT"
     : encodedDocument ? "shared document-String RPC adapter and native document session; real server and Chromium, not FIR or FLT" : stringPreview
     ? "full VBP preview decoded from VBP-owned String RPC fixture; server cwd is VBP, not FLT"
     : "native Lean component with real VIR fixture RPC; not the FLT renderer",
