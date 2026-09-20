@@ -29,16 +29,20 @@ await mkdir(output, { recursive: false });
 // Explicit local producer handoff; never alter the producer or live widget pin.
 const firPackage = process.env.VBP_REPLAY_FIR_PACKAGE;
 const timedView = process.env.VBP_REPLAY_TIMED_VIEW === "1";
+const firDirect = process.env.VBP_REPLAY_FIR_DIRECT === "1";
+const firDirectPackage = firDirect || process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
+if (firDirectPackage) assert.ok(firPackage && timedView, "direct FIR package needs its timed view");
 if (timedView) assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "timed view needs DirectCodecProbe");
 let firIdentity;
 if (firPackage) {
   assert.equal(process.env.VBP_REPLAY_RENDER, "1");
-  assert.notEqual(process.env.VBP_REPLAY_DIRECT_TYPED, "1", "FIR uses its checked codec");
+  assert.notEqual(process.env.VBP_REPLAY_DIRECT_TYPED, "1", "VIR's direct decoder cannot be used with FIR");
   const packageRoot = resolve(output, "fir");
   await mkdir(packageRoot);
   const sums = await readFile(resolve(firPackage, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), timedView
-    ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
+  assert.equal(sha(sums), firDirectPackage
+    ? "2ce1adbdc8475f5a74b8a7465c539810cfc30346ff4f9fc06c5ff758b2e5541c"
+    : timedView ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
     : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
     const [, hash, file] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
@@ -49,8 +53,9 @@ if (firPackage) {
   }
   await copyFile(resolve(firPackage, "SHA256SUMS"), resolve(packageRoot, "SHA256SUMS"));
   const buildBytes = await readFile(resolve(packageRoot, "BUILD.json"));
-  assert.equal(sha(buildBytes), timedView
-    ? "b1d17d869f264f58ea6c8b8a3ec5a33fc31fb062c90cca780598090c145a2342"
+  assert.equal(sha(buildBytes), firDirectPackage
+    ? "d85b58116c5e2c5cb1305d020c2afb294c27d06381f2266c140fecf23f6db317"
+    : timedView ? "b1d17d869f264f58ea6c8b8a3ec5a33fc31fb062c90cca780598090c145a2342"
     : "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
   firIdentity = { packageRoot, buildSha256: sha(buildBytes), build: JSON.parse(buildBytes) };
 }
@@ -85,9 +90,11 @@ replace('resolve(root, "tests/vir_preview/session_browser_entry.mjs")', JSON.str
 if (firIdentity) {
   replace(JSON.stringify(fileURLToPath(new URL("./decode_browser_entry.mjs", import.meta.url))),
     JSON.stringify(fileURLToPath(new URL("./fir_decode_browser_entry.mjs", import.meta.url))));
-  replace('alias: {', `alias: {\n    "@fir-codec-bootstrap": ${JSON.stringify(resolve(firIdentity.packageRoot, "codec-session-bootstrap.mjs"))},\n    "@fir-codec-providers": ${JSON.stringify(resolve(firIdentity.packageRoot, "providers.mjs"))},`);
+  replace('alias: {', `alias: {\n    "@fir-codec-bootstrap": ${JSON.stringify(resolve(firIdentity.packageRoot,
+    firDirectPackage ? "direct-construction-session.mjs" : "codec-session-bootstrap.mjs"))},\n    "@fir-codec-providers": ${JSON.stringify(resolve(firIdentity.packageRoot, "providers.mjs"))},`);
   replace('const assets = new Map([', `const assets = new Map([\n${[
-    "component.wasm", "component.wasm.json", "host-boundary.json", "callback-boundary.json", "entry-boundary.json"
+    "component.wasm", "component.wasm.json", "host-boundary.json", "callback-boundary.json", "entry-boundary.json",
+    ...(firDirectPackage ? ["constructor-layouts.json"] : [])
   ].map(file => `  ["/${file}", [${JSON.stringify(file.endsWith("wasm") ? "application/wasm" : "application/json")}, await readFile(${JSON.stringify(resolve(firIdentity.packageRoot, file))})]],`).join("\n")}`);
   replace('packageMembers: descriptor.packages.length, acceptance', 'backend: "fir", packageMembers: 0, acceptance');
 }
@@ -115,6 +122,8 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TIMED_VIEW": ${JSON.stringify(JSON.stringify(timedView ? "1" : "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_FIR_DIRECT": ${JSON.stringify(JSON.stringify(firDirect ? "1" : "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE": ${JSON.stringify(JSON.stringify(firDirectPackage ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_DIRECT_TYPED": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_DIRECT_TYPED ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_UTF8_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_UTF8_SCRATCH ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_POINTER_SCRATCH": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_POINTER_SCRATCH ?? "0"))}, `);
@@ -214,6 +223,8 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   pointerScratch: process.env.VBP_REPLAY_POINTER_SCRATCH === "1",
   typedPackage: process.env.VBP_REPLAY_TYPED_PACKAGE === "1",
   timedView,
+  firDirect,
+  firDirectPackage,
   directLayoutsSha256: process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
     ? sha(await readFile(resolve(output, "direct-layouts.json"))) : null,
   scopedStringIntern: process.env.VBP_REPLAY_STRING_INTERN === "1",

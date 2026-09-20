@@ -83,6 +83,52 @@ measured sample, paired deltas, identity checks and exclusions. Replay uses
 with `VBP_REPLAY_UPDATES=6`, the current DirectCodecProbe package-set descriptor,
 and the delivered FIR package path only for FIR runs.
 
+### Direct-converter qualification
+
+FIR package `f98aef4a33788bb3158a24f3` implements the bounded private
+construction contract requested by `VBP-FIR-20260917-002`, using the same
+authenticated `6c7b96d8` source snapshot. It exposes opaque same-session
+tokens; native addresses and VIR object layouts do not cross the package
+boundary. The package Wasm SHA256 is
+`c5489e1f8cb521db4435daf97b511ce6882d3293c998db77dbc01cfdae7052b2`.
+
+VBP's production-React Chromium replay qualifies both `directParsed` and the
+package's checked `browserParsed` control on the same full-FLT payload. Both
+produce the same normalized 7,011-element DOM and text hashes, retain the
+follow-cursor control and an unchanged paragraph, and emit no React warnings.
+The browser harness unmounts React before disposing the retained FIR session.
+
+The diagnostics-off FIR comparison uses AB/BA session order, two warmups and
+six measured retained updates per session. Pooled means are:
+
+| Full-FLT browser phase | Checked FIR | Direct FIR | Change |
+| --- | ---: | ---: | ---: |
+| `JSON.parse` | 19.1 ms | 23.5 ms | noise-sized |
+| Typed document construction | 1,259.9 ms | 236.6 ms | -81.2% |
+| Decoded value to observed DOM update | 1,608.9 ms | 1,782.2 ms | noisy |
+| Parse through observed DOM update | 2,887.8 ms | 2,042.3 ms | -29.3% |
+
+The codec reduction is robust in both order pairs. Whole-update improvement is
+13.4% and 44.2% in the two order pairs because the much larger render phase is
+temperature/order sensitive; use 29.3% only as this campaign's pooled result,
+not a stable product-latency claim.
+
+A separate VIR/FIR direct AB/BA comparison uses the same input, renderer
+source, production React and six-update policy. VIR averages 65.0 ms for typed
+construction and 1,501.2 ms through the observed DOM update; FIR averages
+195.3 ms and 1,710.5 ms respectively. FIR is therefore about 3× slower in the
+isolated construction phase and 13.9% slower end to end in this run. Render
+variation remains larger than the backend delta, so this establishes the next
+FIR adapter target rather than a general backend ranking.
+
+Raw results and complete identities are under
+`_out/matched-demo-v434/{fir-direct-a1-20260920,fir-checked-b1-20260920,
+fir-checked-b2-20260920,fir-direct-a2-20260920,vir-direct-v1-20260920,
+fir-direct-f3-20260920,fir-direct-f4-20260920,vir-direct-v2-20260920}/`.
+RPC/LSP, server encoding, transport, startup, paint and passive-effect waiting
+are outside this replay boundary. The live demo remains on its accepted package
+until this diagnostic package is deliberately adopted.
+
 The isolated `feat/matched-demo-v434` checkpoint refreshes the shared upstream
 ProofWidgets shell and interpreter to VIR `cddcc35a46fd4683d2437369072d4ecc5a5a84be`.
 Lean remains `leanprover/lean4:v4.34.0-rc2`; the matching clean SDK manifest has

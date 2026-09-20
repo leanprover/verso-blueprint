@@ -1,13 +1,15 @@
-/* Frozen FIR checked codec, using the existing retained FLT replay boundary. */
+/* Frozen FIR codecs, using the existing retained FLT replay boundary. */
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { createConfiguredCodecSession, CODEC_SESSION_API } from "@fir-codec-bootstrap";
+import * as sessionApi from "@fir-codec-bootstrap";
 import * as providers from "@fir-codec-providers";
 import { describeError, withCleanup } from "@vir-test-support";
 import { createComponentPhaseProbe } from "./component_phase_probe.mjs";
 
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const sampled = process.env.VBP_REPLAY_PROFILE === "1";
+const direct = process.env.VBP_REPLAY_FIR_DIRECT === "1";
+const directPackage = process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
 globalThis.decodeAcceptance = run().then(value => ({ ok: true, value }),
   error => ({ ok: false, error: describeError(error) }));
 
@@ -21,10 +23,14 @@ async function run() {
   // The bootstrap creates the configured factory, then its separate default view.
   // Brackets are enabled only in the diagnostic/profile run, never headline timing.
   const probe = sampled ? createComponentPhaseProbe(bindings, () => performance.now(), 2) : undefined;
-  const session = await createConfiguredCodecSession({ apiVersion: CODEC_SESSION_API,
+  const createSession = sessionApi[directPackage
+    ? "createDirectConstructionSession" : "createConfiguredCodecSession"];
+  const apiVersion = sessionApi[directPackage ? "DIRECT_CONSTRUCTION_API" : "CODEC_SESSION_API"];
+  const session = await createSession({ apiVersion,
     module: await WebAssembly.compile(await (await fetch("/component.wasm")).arrayBuffer()),
     manifest: await json("component.wasm.json"), hostBoundary: await json("host-boundary.json"),
     callbackBoundary: await json("callback-boundary.json"), entryBoundary: await json("entry-boundary.json"),
+    ...(directPackage ? { constructorLayouts: await json("constructor-layouts.json") } : {}),
     bindings: probe?.bindings ?? bindings });
   probe?.finishFactory();
   const container = document.getElementById("app"), root = createRoot(container);
@@ -45,7 +51,7 @@ async function run() {
       observer.observe(container, { subtree: true, childList: true, attributes: true, characterData: true });
     });
     const start = performance.now(), parsed = JSON.parse(input), parsedAt = performance.now();
-    const token = session.browserParsed(parsed), decodedAt = performance.now();
+    const token = (direct ? session.directParsed : session.browserParsed)(parsed), decodedAt = performance.now();
     probe?.clear();
     root.render(process.env.VBP_REPLAY_TIMED_VIEW === "1"
       ? session.renderTimedDecoded(token, { decodedAt }) : session.renderDecoded(token));
@@ -97,7 +103,7 @@ async function run() {
     return { rows, warmupUpdates: 2, elementCount: container.querySelectorAll("*").length, renderedDom,
       renderedTextSha256: await digest(canonicalText), renderedDomSha256: await digest(JSON.stringify(renderedDom)),
       retainedCheckbox: true, retainedParagraph: true, warnings,
-      boundary: "parse + checked JSON/FromJson; render-to-DOM includes identity, elements and React commit; excludes RPC/server/startup/paint/passive-effect wait",
+      boundary: `parse + ${direct ? "direct typed FIR construction" : "checked JSON/FromJson"}; render-to-DOM includes identity, elements and React commit; excludes RPC/server/startup/paint/passive-effect wait`,
       instrumentation: sampled ? "CDP 1ms and two component-callback brackets" : "coarse phase timestamps only" };
   }, [["React", () => { flushSync(() => root.unmount()); console.error = originalError; }],
     ["FIR", () => session.dispose()]]);
