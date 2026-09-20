@@ -286,7 +286,7 @@ logical targets were:
 
 The same content callback performed 311,653 adapter allocations totaling
 11,397,872 bytes, created 133,531 resource wrappers, resolved 188,070 resource
-handles, and decoded 83,184 strings totaling about 6.14 MiB of UTF-8 per
+handles, and decoded 83,184 strings totaling about 5.86 MiB of UTF-8 per
 update. The two session passes were comparatively small: 388 host calls, 665
 allocations and 1,608 UTF-8 bytes per update.
 
@@ -296,11 +296,36 @@ attribution evidence, not headline latency. Call/allocation totals were
 identical across the two measured updates; UTF-8 volume differed by two bytes
 because the edit marker's version changed.
 
-This sharpens the next experiment: determine the reuse distribution of the
-83,184 already-decoded strings before proposing caching, then test whether a
-session-safe string representation can avoid repeated UTF-8 decoding and
-resource-wrapper allocation. A pointer-only cache is not acceptable because
-FIR may recycle heap addresses.
+A separate reuse census observed the decoded JavaScript values after the normal
+UTF-8 decode. It did not re-encode values or add per-call clocks. Timings from
+this more invasive `Map`-based diagnostic are intentionally discarded.
+
+| Strings in one content update | Count or bytes | Repeated share |
+| --- | ---: | ---: |
+| Decode calls | 83,184 | 85.2% (70,891 after the first equal value) |
+| Distinct values | 12,293 | — |
+| UTF-8 input | 6,144,862 bytes (5.86 MiB) | 91.0% (5,592,846 bytes) |
+| Distinct-value UTF-8 input | 552,016 bytes | — |
+
+The dominant repeated value is not ordinary document text. The 1,624-byte TeX
+prelude is decoded 2,960 times, accounting for 4,807,040 bytes, or 78.2% of all
+decoded UTF-8. Without that value, equal strings still account for 84.7% of
+decode calls but only 58.9% of bytes. Other frequent values are React property
+names and fixed renderer metadata such as `className` (7,549 calls), `key`
+(7,391), `style` (6,989), and the math attribute names and class values (about
+2,960 each).
+
+Both updates had the same 83,184 calls. Their distinct counts differed by one
+and their byte totals by two because the edit marker changed. DOM/text hashes,
+109,954 rendered elements, retained state and zero-warning checks remained
+identical to the accepted result.
+
+This points first to a structural fix: do not carry and decode the complete TeX
+prelude independently for every math node. Hoisting fixed property names and
+renderer metadata may then reduce call count. Generic value interning is only a
+fallback experiment; the repeated-byte figure is an upper bound on avoidable
+decode input, not a predicted elapsed-time saving. A pointer-keyed cache remains
+invalid because FIR may recycle heap addresses.
 
 ## Rebuild
 

@@ -11,13 +11,14 @@ import { PreviewMath } from "./matched_math_component.mjs";
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const sampled = process.env.VBP_REPLAY_PROFILE === "1";
 const censusEnabled = process.env.VBP_REPLAY_HOST_IMPORT_CENSUS === "1";
+const stringCensusEnabled = process.env.VBP_REPLAY_HOST_STRING_CENSUS === "1";
 const direct = process.env.VBP_REPLAY_FIR_DIRECT === "1";
 const directPackage = process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
 globalThis.decodeAcceptance = run().then(value => ({ ok: true, value }),
   error => ({ ok: false, error: describeError(error) }));
 
 async function run() {
-  const census = censusEnabled ? createHostImportCensus() : undefined;
+  const census = censusEnabled ? createHostImportCensus(128, stringCensusEnabled) : undefined;
   if (census) globalThis.__vbpFirHostImportCensus = census;
   const source = await (await fetch("/response.json")).text();
   const json = async file => (await fetch(`/${file}`)).json();

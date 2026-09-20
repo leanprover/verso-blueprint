@@ -105,6 +105,12 @@ same input and package. Call and byte totals explain sampled attribution; they
 are not elapsed-time estimates. Exact DOM/text, retention and warning checks
 remain mandatory.
 
+Add `VBP_REPLAY_HOST_STRING_CENSUS=1` for a separate, more invasive reuse pass.
+It observes each string only after the normal UTF-8 decode and records the
+decoder's existing byte length; it neither re-encodes strings nor times calls.
+The report retains aggregate reuse plus only the top repeated values. Do not use
+its elapsed timings as either headline data or host-counter overhead estimates.
+
 ## Boundaries
 
 The generic renderer lives in `packages/verso-react`; Blueprint/RPC/widget policy

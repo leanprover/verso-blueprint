@@ -18,6 +18,7 @@ assert.ok(Number.isInteger(replayUpdates) && replayUpdates >= 2,
 const codecBindingsPath = resolve(process.env.VBP_JSON_BINDINGS_FILE ??
   fileURLToPath(new URL("./upstream-json-value-bindings.mjs", import.meta.url)));
 const hostImportCensus = process.env.VBP_REPLAY_HOST_IMPORT_CENSUS === "1";
+const hostStringCensus = process.env.VBP_REPLAY_HOST_STRING_CENSUS === "1";
 const hostImportCensusPath = fileURLToPath(new URL("./host_import_census.mjs", import.meta.url));
 if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
   assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "direct decoder needs matched typed package");
@@ -40,6 +41,7 @@ if (hostImportCensus) {
   assert.notEqual(process.env.VBP_REPLAY_PROFILE, "1", "keep host-import census and CPU sampling separate");
   assert.notEqual(process.env.VBP_REPLAY_IDENTITY_PHASES, "1", "keep host-import and identity probes separate");
 }
+if (hostStringCensus) assert.ok(hostImportCensus, "string census requires host-import census");
 let firIdentity;
 if (firPackage) {
   assert.equal(process.env.VBP_REPLAY_RENDER, "1");
@@ -135,6 +137,7 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
   } }` : ""}],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_HOST_IMPORT_CENSUS": ${JSON.stringify(JSON.stringify(hostImportCensus ? "1" : "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_HOST_STRING_CENSUS": ${JSON.stringify(JSON.stringify(hostStringCensus ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TIMED_VIEW": ${JSON.stringify(JSON.stringify(timedView ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_FIR_DIRECT": ${JSON.stringify(JSON.stringify(firDirect ? "1" : "0"))}, `);
@@ -251,6 +254,7 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   codecBindingsPath, codecBindingsSha256: sha(await readFile(codecBindingsPath)),
   cpuSamplingIntervalUs: process.env.VBP_REPLAY_PROFILE === "1" ? 1000 : null,
   hostImportCensus,
+  hostStringCensus,
   identityPhaseInstrumentation: process.env.VBP_REPLAY_IDENTITY_PHASES === "1",
   compressionCheck: process.env.VBP_REPLAY_COMPRESSION_CHECK === "1",
   identityTest: process.env.VBP_REPLAY_IDENTITY_TEST ?? null,

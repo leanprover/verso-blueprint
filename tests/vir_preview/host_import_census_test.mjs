@@ -42,6 +42,7 @@ test("source instrumenter is fail-closed and inserts counter sites", () => {
   const readString = word => {
     const { p, kind, aux0, aux1: length, extent } = header(word);
     check(kind === 4);
+    return decoder.decode(new Uint8Array(memory.buffer, p + HEADER, length));
   };
   const string = value => {
     const bytes = encoder.encode(value), size = align(HEADER + bytes.length), p = allocate(size);
@@ -56,4 +57,21 @@ test("source instrumenter is fail-closed and inserts counter sites", () => {
     assert.ok(instrumented.includes(marker), marker);
   assert.throws(() => instrumentHostPrototypeSource(fixture.replace("  const importObject = {};", "")),
     /source drift/);
+});
+
+test("optional string census reports reuse without re-encoding", () => {
+  const census = createHostImportCensus(1, true);
+  census.register("physical.string", "js.string", "s_");
+  census.begin("content", 0);
+  census.recordString("same", 4);
+  census.recordString("same", 4);
+  census.recordString("λ", 2);
+  census.end("content", 0);
+  const strings = census.drain()[0].strings;
+  assert.deepEqual({ calls: strings.calls, unique: strings.unique,
+    repeatedCalls: strings.repeatedCalls, totalBytes: strings.totalBytes,
+    uniqueBytes: strings.uniqueBytes, repeatedBytes: strings.repeatedBytes },
+  { calls: 3, unique: 2, repeatedCalls: 1, totalBytes: 10, uniqueBytes: 6, repeatedBytes: 4 });
+  assert.deepEqual(strings.topByCalls[0],
+    { value: "same", calls: 2, bytes: 4, repeatedCalls: 1, repeatedBytes: 4 });
 });
