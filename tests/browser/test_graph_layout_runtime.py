@@ -243,6 +243,9 @@ class TestGraphLayoutRuntime:
                     manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
                     pageSchemaVersion: pageGraph.schemaVersion,
                     manifestSchemaVersion: manifestGraph ? manifestGraph.schemaVersion : 0,
+                    dataMatches: manifestGraph
+                        ? JSON.stringify(pageGraph) === JSON.stringify(manifestGraph)
+                        : false,
                     topologyMatches: manifestGraph
                         ? topologySnapshot(pageGraph) === topologySnapshot(manifestGraph)
                         : false,
@@ -272,6 +275,7 @@ class TestGraphLayoutRuntime:
         assert graph_data["pageSchemaVersion"] == 3
         assert graph_data["manifestSchemaVersion"] == 3
         assert graph_data["topologyMatches"]
+        assert graph_data["dataMatches"], "page and manifest graph data must agree, including preview availability"
         assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
         assert graph_data["sampleTitle"].startswith("Definition")
         assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"

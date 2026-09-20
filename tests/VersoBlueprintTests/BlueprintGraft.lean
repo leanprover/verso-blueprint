@@ -98,12 +98,12 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
   }
 
 private def facetRelated
-    (label : String) (axis : Informal.PreviewManifest.RelationAxis) :
+    (label : String) (axis : Informal.PreviewCache.Facet) :
     Informal.PreviewManifest.RelatedEntry :=
   {
     label := Lean.Name.mkSimple label
     title := label
-    axes := #[axis]
+    dependencies := #[{ facet := axis }]
   }
 
 private def facetProjectionEntry

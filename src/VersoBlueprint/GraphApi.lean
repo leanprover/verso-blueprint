@@ -14,8 +14,9 @@ Public graph-data helpers.
 
 `Informal.Graph` owns semantic `GraphModel`, immutable finished `GraphData`, and
 the environment builder. This module adds the traversal-state bridge: graph
-blocks cache model selection and render options, then page and manifest
-consumers call the same `finishData` operation after traversal completes.
+blocks cache model selection and render options. Manifest preparation and plain
+page rendering call `finishData` after traversal completes. Preview-enabled page
+rendering reuses the prepared graphs after resource references are finalized.
 -/
 
 namespace Informal.GraphApi
@@ -86,7 +87,8 @@ Finish one graph after traversal.
 This is the single traversal-aware semantic-to-public transition. It enriches
 and selects nodes from completed traversal state, then delegates to
 `GraphModel.finish` to materialize edges, group membership, and render variants
-together. Page JSON and manifest output both call this function.
+together. Manifest preparation and plain page rendering call this function;
+preview-enabled pages reuse the resource-finalized result from preparation.
 -/
 def finishData
     (state : TraverseState)

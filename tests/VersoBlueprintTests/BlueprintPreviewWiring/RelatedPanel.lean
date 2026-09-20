@@ -61,7 +61,7 @@ private def cachedStatement
       label := Lean.Name.mkSimple "target"
       title := "Target"
       previewKey := Informal.PreviewKey.ofString? "informal:target:statement"
-      axes := #[.statement, .proof]
+      dependencies := #[{ facet := .statement }, { facet := .proof }]
     }
     entry.badgeCodes == #["s", "p"]
 
@@ -103,19 +103,18 @@ private def cachedStatement
       match targetEntries with
       | some #[entry] =>
           let rawEntry := Lean.toJson entry |>.compress
-          match entry.origins, entry.intents with
-          | #[.automatic], #[.auxiliary] =>
+          match entry.dependencies with
+          | #[{ facet := .statement, origin := .automatic, intent := .auxiliary }] =>
               entry.sourceLabel == source &&
-                entry.inStatement && !entry.inProof &&
                 !hasSubstr rawEntry "\"count\"" &&
                 !hasSubstr rawEntry "\"statementUses\"" &&
                 sourceEntries.map Array.isEmpty == some true &&
                 emptyEntries.map Array.isEmpty == some true &&
                 groupMembers == some #[source] &&
                 targetManifestEntry.usedBy.map (·.label) == #[source] &&
-                targetManifestEntry.usedBy.map (·.axes) == #[#[.statement]] &&
+                targetManifestEntry.usedBy.map (fun entry => entry.dependencies.map (·.facet)) == #[#[.statement]] &&
                 cachedGroup?.map (fun relation => relation.entries.map (·.label)) == some #[source]
-          | _, _ => false
+          | _ => false
       | _ => false
 
 /-- info: true -/
@@ -125,12 +124,12 @@ private def cachedStatement
     let statementEntry : Informal.PreviewManifest.RelatedEntry := {
       label := Lean.Name.mkSimple "manifest.statement"
       title := "Manifest statement"
-      axes := #[.statement]
+      dependencies := #[{ facet := .statement }]
     }
     let proofEntry : Informal.PreviewManifest.RelatedEntry := {
       label := Lean.Name.mkSimple "manifest.proof"
       title := "Manifest proof"
-      axes := #[.proof]
+      dependencies := #[{ facet := .proof }]
     }
     let panelEntries := Informal.PreviewManifest.relatedPanelEntries
       #[statementEntry, proofEntry]
@@ -175,7 +174,8 @@ private def cachedStatement
   show Bool from
     let baseFields := [
       ("label", Lean.toJson (Lean.Name.mkSimple "target")),
-      ("title", Lean.Json.str "Target")
+      ("title", Lean.Json.str "Target"),
+      ("dependencies", Lean.toJson (#[] : Array Informal.Relation.Dependency))
     ]
     let decode (previewKey? : Option Lean.Json) :=
       let fields :=
@@ -220,11 +220,13 @@ private def cachedStatement
 #eval
   show Bool from
     let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
-    let inlineOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
+    let singleOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
     let panelOut :=
       (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
-    hasSubstr inlineOut "data-bp-preview-id=\"missing-preview\"" &&
-      !hasSubstr inlineOut "data-bp-preview-key=" &&
+    !hasSubstr singleOut "bp_inline_preview_ref" &&
+      hasSubstr singleOut "class=\"bp-relation-entries\"" &&
+      hasSubstr singleOut "Missing Preview" &&
+      !hasSubstr singleOut "data-bp-preview-key=" &&
       hasSubstr panelOut "class=\"bp-relation-entries\"" &&
       hasSubstr panelOut "Missing Preview" &&
       hasSubstr panelOut "preview-key" &&

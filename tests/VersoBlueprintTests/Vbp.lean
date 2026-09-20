@@ -8,7 +8,6 @@ open Informal.Graph
 
 abbrev ManifestFile := Informal.PreviewManifest.File
 abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
-abbrev PreviewDataModel := Informal.PreviewManifest.PreviewDataModel
 abbrev PersistedFiles := Informal.PreviewManifest.PersistedFiles
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 
@@ -30,7 +29,7 @@ private def related (value title key : String) : RelatedEntry :=
     label := label value
     title := title
     previewKey := Informal.PreviewKey.ofString? key
-    axes := #[.statement]
+    dependencies := #[{ facet := .statement }]
   }
 
 private def relatedWithoutPreview (value title : String) : RelatedEntry :=
@@ -38,7 +37,7 @@ private def relatedWithoutPreview (value title : String) : RelatedEntry :=
     label := label value
     title := title
     href := some s!"{value}/"
-    axes := #[.statement]
+    dependencies := #[{ facet := .statement }]
   }
 
 private def finishedGraph (key : String) (nodes : Array NodeData) : GraphData :=
@@ -633,12 +632,9 @@ private def graphNodePreviewKeys
 #guard_msgs in
 #eval
   show Bool from
-    let model : PreviewDataModel := {
-      manifest := sampleUnfinalizedReferenceManifest
-      htmlCache := sampleUnfinalizedReferenceCache
-    }
-    let finalizedFiles := model.finish
-    let finalized := finalizedFiles.manifest
+    let artifacts := persistedFiles sampleUnfinalizedReferenceManifest sampleUnfinalizedReferenceCache
+    let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles artifacts
+    let finalized := artifacts.manifest.finalizePreviewReferences index
     match finalized.findEntry? "informal:reference_source:statement",
         finalized.graphs.find? (fun graph => graph.key == "reference-finalization") with
     | some source, some graph =>
@@ -663,6 +659,40 @@ private def graphNodePreviewKeys
           variantKeys == #[(graphNodeSvgId (label "valid_target"),
             "informal:valid_target:statement")]
     | _, _ => false
+
+-- Serialized cache availability and audits agree with the browser's blank-body
+-- contract, including Unicode whitespace. Unreferenced invalid entries also fail.
+#eval show IO Unit from do
+  let target := "informal:valid_target:statement"
+  let whitespace := #[0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020, 0x00A0,
+    0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
+    0x2008, 0x2009, 0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF]
+  let blankBodies := #["", " \t\r\n"] ++ whitespace.map (fun code => String.singleton (Char.ofNat code))
+  for body in blankBodies do
+    let cache : HtmlCacheFile := { sampleUnfinalizedReferenceCache with
+      entries := sampleUnfinalizedReferenceCache.entries.map fun entry =>
+        if entry.key == target then { entry with html := body } else entry }
+    let artifacts := persistedFiles sampleUnfinalizedReferenceManifest cache
+    let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles artifacts
+    unless !index.resolves target do
+      throw <| IO.userError "Blank cache body remained available"
+    let errors := VersoBlueprint.Vbp.checkGeneratedData artifacts
+    unless errors.contains s!"empty HTML cache body for key {target}" do
+      throw <| IO.userError "Audit accepted a blank cache body"
+    let finalized := artifacts.manifest.finalizePreviewReferences index
+    let some source := finalized.findEntry? "informal:reference_source:statement"
+      | throw <| IO.userError "Reference filtering removed semantic source data"
+    unless source.uses.all (fun entry => entry.previewKey.map (·.value) != some target) do
+      throw <| IO.userError "Reference filtering retained a blank body's preview key"
+  let orphan := persistedFiles {} { entries := #[{ key := "orphan", html := " " }] }
+  unless (VersoBlueprint.Vbp.checkGeneratedData orphan).contains
+      "empty HTML cache body for key orphan" do
+    throw <| IO.userError "Audit ignored an unreferenced blank cache body"
+  for body in #["<span></span>", " body ", String.singleton (Char.ofNat 0x200B)] do
+    let artifacts := persistedFiles sampleUnfinalizedReferenceManifest
+      { entries := #[{ key := target, html := body }] }
+    unless (Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles artifacts).resolves target do
+      throw <| IO.userError "Blank-body check rejected a nonblank fragment"
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000
@@ -1075,10 +1105,15 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
           group with entries := group.entries.filter (·.label != label "group_member")
         }]
     }
-    let orphanMemberManifest := {
+    let bodylessMemberManifest := {
       sampleGroupManifest with
         previews := sampleGroupManifest.previews.filter (·.label != label "group_peer")
     }
+    let orphanMemberManifest := { bodylessMemberManifest with
+      groups := #[{ group with entries := group.entries.map fun member =>
+        if member.label == label "group_peer" then
+          { member with previewKey := Informal.PreviewKey.ofString? "informal:group_peer:statement" }
+        else member }] }
     let mismatchedParentManifest := {
       sampleGroupManifest with
         previews := sampleGroupManifest.previews.map fun entry =>
@@ -1144,6 +1179,10 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let duplicateMemberErrors := checkGroups duplicateMemberManifest
     let crossGroupMemberErrors := checkGroups crossGroupMemberManifest
     let missingMemberErrors := checkGroups missingMemberManifest
+    let bodylessCache : HtmlCacheFile := { sampleGroupCache with
+      entries := sampleGroupCache.entries.filter (·.key != "informal:group_peer:statement") }
+    let bodylessErrors := VersoBlueprint.Vbp.checkGeneratedData
+      (persistedFiles bodylessMemberManifest bodylessCache)
     let orphanMemberErrors := checkGroups orphanMemberManifest
     let mismatchedParentErrors := checkGroups mismatchedParentManifest
     let mismatchedTitleErrors := checkGroups mismatchedTitleManifest
@@ -1153,7 +1192,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let emptyMemberLabelErrors := checkGroups emptyMemberLabelManifest
     let emptyEntryLabelErrors := checkGroups emptyEntryLabelManifest
     let invalidParentErrors := checkGroups invalidParentManifest
-    orphanErrors.any (fun err =>
+    bodylessErrors.isEmpty && orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
         err == "duplicate manifest group label: sample_group") &&

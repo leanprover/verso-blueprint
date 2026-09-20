@@ -206,6 +206,14 @@ structure HeaderExtras where
   markup? : Option HeaderExtra := none
   custom : Array HeaderExtra := #[]
 
+/-- Choose the facet before constructing standard header extras. The uses control
+belongs to both facets; the statement builder is never evaluated for a proof.
+Callers may attach source/custom extras to the returned record explicitly. -/
+def HeaderExtras.forFacet (isProof : Bool) (uses : HeaderExtra)
+    (statementExtras : Unit → HeaderExtras) : HeaderExtras :=
+  if isProof then { uses? := some uses }
+  else { statementExtras () with uses? := some uses }
+
 private def HeaderExtra.asStandard (kind : HeaderExtraKind) (extra : HeaderExtra) : HeaderExtra :=
   { extra with kind, order := kind.defaultOrder }
 
