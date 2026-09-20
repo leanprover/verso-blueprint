@@ -287,8 +287,13 @@ The same flow can be read as four contracts:
    authoritative dependency intents are errors.
 
    Custom registration code should call `Informal.Environment.contribute` with
-   locally supplied fields instead of updating and re-exporting a whole node.
-   Its `Option Node` result makes acceptance explicit. `withDirective` scopes
+   a legacy payload that has no external references or priority, rather than
+   updating and re-exporting a whole node. Registrations that supply either
+   selected field must call `Informal.Environment.contributeSelected` with a
+   matching `Contributions.Record`: its label, references, and priority must
+   exactly match the `NodeContribution`, and its identity must be stable at the
+   producer site and slot. Each entry point returns `Option Node`, making
+   acceptance explicit. `withDirective` scopes
    the one optional active directive and restores Blueprint state on rejection,
    logged body errors, or exceptions, preserving other Lean state and diagnostics.
    The completed directive contributes its body, metadata, and inferred edges
