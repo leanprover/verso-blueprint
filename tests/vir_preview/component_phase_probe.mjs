@@ -8,7 +8,7 @@ const check = (ok, message) => { if (!ok) throw new Error(message); };
  * outer includes decode/identity/shell work and is NOT a pure identity timer.
  */
 export function createComponentPhaseProbe(bindings, now = () => performance.now(), factoryCount = 1,
-    deferred = false) {
+    deferred = false, lifecycle = undefined) {
   check(Number.isInteger(factoryCount) && factoryCount > 0, 'invalid expected factory count');
   const target = 'js.value.function.unary';
   check(typeof bindings[target] === 'function', 'missing generic unary function provider');
@@ -23,6 +23,7 @@ export function createComponentPhaseProbe(bindings, now = () => performance.now(
     check(index < factoryCount * 2, 'frozen factory created an unexpected unary function');
     const phase = index % 2 === 0 ? 'decoded-document-to-elements' : 'document-session';
     return function (...args) {
+      lifecycle?.begin(phase, Math.floor(index / 2));
       const startMs = now();
       let ok = false;
       try {
@@ -31,6 +32,7 @@ export function createComponentPhaseProbe(bindings, now = () => performance.now(
         return result;
       } finally {
         const endMs = now();
+        lifecycle?.end(phase, Math.floor(index / 2));
         records.push({ phase, factory: Math.floor(index / 2), startMs, endMs, durationMs: endMs - startMs, ok });
       }
     };

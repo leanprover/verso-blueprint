@@ -51,3 +51,23 @@ test("deferred probe ignores setup callbacks before the measured factory", () =>
   assert.deepEqual(probe.records.map(({ phase }) => phase),
     ["decoded-document-to-elements", "document-session"]);
 });
+
+test("optional lifecycle brackets the exact component callback", () => {
+  const events = [];
+  const lifecycle = {
+    begin: (phase, factory) => events.push(["begin", phase, factory]),
+    end: (phase, factory) => events.push(["end", phase, factory]),
+  };
+  const probe = createComponentPhaseProbe(bindings, () => 0, 1, false, lifecycle);
+  const content = probe.bindings[target](value => value);
+  const session = probe.bindings[target](value => value);
+  probe.finishFactory();
+  content("content");
+  session("session");
+  assert.deepEqual(events, [
+    ["begin", "decoded-document-to-elements", 0],
+    ["end", "decoded-document-to-elements", 0],
+    ["begin", "document-session", 0],
+    ["end", "document-session", 0],
+  ]);
+});

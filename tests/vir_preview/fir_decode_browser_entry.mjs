@@ -5,16 +5,20 @@ import * as sessionApi from "@fir-codec-bootstrap";
 import * as providers from "@fir-codec-providers";
 import { describeError, withCleanup } from "@vir-test-support";
 import { createComponentPhaseProbe } from "./component_phase_probe.mjs";
+import { createHostImportCensus } from "./host_import_census.mjs";
 import { PreviewMath } from "./matched_math_component.mjs";
 
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const sampled = process.env.VBP_REPLAY_PROFILE === "1";
+const censusEnabled = process.env.VBP_REPLAY_HOST_IMPORT_CENSUS === "1";
 const direct = process.env.VBP_REPLAY_FIR_DIRECT === "1";
 const directPackage = process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
 globalThis.decodeAcceptance = run().then(value => ({ ok: true, value }),
   error => ({ ok: false, error: describeError(error) }));
 
 async function run() {
+  const census = censusEnabled ? createHostImportCensus() : undefined;
+  if (census) globalThis.__vbpFirHostImportCensus = census;
   const source = await (await fetch("/response.json")).text();
   const json = async file => (await fetch(`/${file}`)).json();
   const bindings = { ...providers.createJsCollectionHostBindings(),
@@ -27,8 +31,8 @@ async function run() {
   // The direct bootstrap creates only its retained timed view.  The older
   // configured-codec bootstrap also creates a separate default view first.
   const measuredFactory = directPackage ? 0 : 1;
-  const probe = sampled ? createComponentPhaseProbe(bindings, () => performance.now(),
-    directPackage ? 1 : 2) : undefined;
+  const probe = sampled || census ? createComponentPhaseProbe(bindings, () => performance.now(),
+    directPackage ? 1 : 2, false, census) : undefined;
   const createSession = sessionApi[directPackage
     ? "createDirectConstructionSession" : "createConfiguredCodecSession"];
   const apiVersion = sessionApi[directPackage ? "DIRECT_CONSTRUCTION_API" : "CODEC_SESSION_API"];
@@ -67,6 +71,7 @@ async function run() {
     const start = performance.now(), parsed = JSON.parse(input), parsedAt = performance.now();
     const token = (direct ? session.directParsed : session.browserParsed)(parsed), decodedAt = performance.now();
     probe?.clear();
+    census?.clear();
     root.render(process.env.VBP_REPLAY_TIMED_VIEW === "1"
       ? session.renderTimedDecoded(token, { decodedAt }) : session.renderDecoded(token));
     const committedAt = await committed;
@@ -82,6 +87,7 @@ async function run() {
       decodeMs: decodedAt - start, codecMs: decodedAt - parsedAt,
       renderToDomMs: committedAt - decodedAt, raw: { start, parsedAt, decodedAt, committedAt }, version,
       ...(probe ? { componentEvents: [...probe.records] } : {}) };
+    if (census) sample.hostImportCensus = census.drain();
     // KaTeX renders in a passive effect.  Keep it outside the timing endpoint,
     // but let it settle before semantic DOM/text and retention checks.
     await settleMath();
@@ -123,5 +129,6 @@ async function run() {
       boundary: `parse + ${direct ? "direct typed FIR construction" : "checked JSON/FromJson"}; render-to-DOM includes identity, elements and React commit; excludes RPC/server/startup/paint/passive-effect wait`,
       instrumentation: sampled ? "CDP 1ms and two component-callback brackets" : "coarse phase timestamps only" };
   }, [["React", () => { flushSync(() => root.unmount()); console.error = originalError; }],
-    ["FIR", () => session.dispose()]]);
+    ["FIR", () => session.dispose()],
+    ["host-import census", () => { delete globalThis.__vbpFirHostImportCensus; }]]);
 }

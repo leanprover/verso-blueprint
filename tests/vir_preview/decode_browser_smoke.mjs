@@ -17,6 +17,8 @@ assert.ok(Number.isInteger(replayUpdates) && replayUpdates >= 2,
   "VBP_REPLAY_UPDATES must be an integer of at least two");
 const codecBindingsPath = resolve(process.env.VBP_JSON_BINDINGS_FILE ??
   fileURLToPath(new URL("./upstream-json-value-bindings.mjs", import.meta.url)));
+const hostImportCensus = process.env.VBP_REPLAY_HOST_IMPORT_CENSUS === "1";
+const hostImportCensusPath = fileURLToPath(new URL("./host_import_census.mjs", import.meta.url));
 if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
   assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "direct decoder needs matched typed package");
   if (process.env.VBP_REPLAY_PROFILE === "1")
@@ -33,6 +35,11 @@ const firDirect = process.env.VBP_REPLAY_FIR_DIRECT === "1";
 const firDirectPackage = firDirect || process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
 if (firDirectPackage) assert.ok(firPackage && timedView, "direct FIR package needs its timed view");
 if (timedView) assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "timed view needs DirectCodecProbe");
+if (hostImportCensus) {
+  assert.ok(firDirectPackage, "host-import census requires the direct FIR package");
+  assert.notEqual(process.env.VBP_REPLAY_PROFILE, "1", "keep host-import census and CPU sampling separate");
+  assert.notEqual(process.env.VBP_REPLAY_IDENTITY_PHASES, "1", "keep host-import and identity probes separate");
+}
 let firIdentity;
 if (firPackage) {
   assert.equal(process.env.VBP_REPLAY_RENDER, "1");
@@ -85,6 +92,8 @@ function replace(before, after) {
   driver = driver.replace(before, after);
 }
 replace('const root = fileURLToPath(new URL("../../", import.meta.url));', `const root = ${JSON.stringify(root)};`);
+if (hostImportCensus) replace('import assert from "node:assert/strict";',
+  `import { instrumentHostPrototypeSource } from ${JSON.stringify(pathToFileURL(hostImportCensusPath).href)};\nimport assert from "node:assert/strict";`);
 // Always use this driver's browser fixture, also for the old control root.
 replace('resolve(root, "tests/vir_preview/session_browser_entry.mjs")', JSON.stringify(fileURLToPath(new URL("./decode_browser_entry.mjs", import.meta.url))));
 if (firIdentity) {
@@ -118,8 +127,14 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
       assert.equal(path, ${JSON.stringify(objectValuesPath)});
       return { contents: (await readFile(path, "utf8")) + ${JSON.stringify(brandQuery)}, loader: "js" };
     });
-  } }],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
+  } }${hostImportCensus ? `, { name: "fir-host-import-census", setup(plugin) {
+    plugin.onLoad({ filter: /host-prototype\\.mjs$/ }, async ({ path }) => {
+      assert.equal(path, ${JSON.stringify(resolve(firIdentity.packageRoot, "host-prototype.mjs"))});
+      return { contents: instrumentHostPrototypeSource(await readFile(path, "utf8")), loader: "js", resolveDir: dirname(path) };
+    });
+  } }` : ""}],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
+replace('define: { ', `define: { "process.env.VBP_REPLAY_HOST_IMPORT_CENSUS": ${JSON.stringify(JSON.stringify(hostImportCensus ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TYPED_PACKAGE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_TYPED_PACKAGE ?? "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_TIMED_VIEW": ${JSON.stringify(JSON.stringify(timedView ? "1" : "0"))}, `);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_FIR_DIRECT": ${JSON.stringify(JSON.stringify(firDirect ? "1" : "0"))}, `);
@@ -190,6 +205,7 @@ const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
   "tests/vir_preview/pointer_scratch.mjs",
   "tests/vir_preview/matched_math_component.mjs",
   "tests/vir_preview/component_phase_probe.mjs",
+  "tests/vir_preview/host_import_census.mjs",
   "tests/vir_preview/upstream-json-value-bindings.mjs",
   ...["Types", "Generated", "Codec", "Js"].map(name =>
     `tests/VersoBlueprintVirTests/NativeSession/UpstreamJson/${name}.lean`)];
@@ -234,6 +250,7 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   validationOnly: process.env.VBP_REPLAY_VALIDATION_ONLY === "1",
   codecBindingsPath, codecBindingsSha256: sha(await readFile(codecBindingsPath)),
   cpuSamplingIntervalUs: process.env.VBP_REPLAY_PROFILE === "1" ? 1000 : null,
+  hostImportCensus,
   identityPhaseInstrumentation: process.env.VBP_REPLAY_IDENTITY_PHASES === "1",
   compressionCheck: process.env.VBP_REPLAY_COMPRESSION_CHECK === "1",
   identityTest: process.env.VBP_REPLAY_IDENTITY_TEST ?? null,

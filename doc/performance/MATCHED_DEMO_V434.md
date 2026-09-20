@@ -263,6 +263,45 @@ and 34.1% faster end to end, despite paying more for typed construction. The
 large result is sufficiently repeatable to motivate a later interleaved
 campaign, but it should not be generalized beyond this full-FLT workload yet.
 
+### FIR host-import census
+
+A diagnostic-only census at the existing FIR import dispatcher counted calls
+inside the two compiled React callbacks. It uses integer increments only, with
+no per-call clock or logging. The full-FLT output and retention checks remained
+identical across two updates.
+
+Content construction made 178,122 host-import calls per update. The leading
+logical targets were:
+
+| Host target | Calls per update | Share of calls |
+| --- | ---: | ---: |
+| `js.string` | 83,184 | 46.7% |
+| `js.object.set` | 27,497 | 15.4% |
+| `js.array.push` | 15,669 | 8.8% |
+| `js.array.empty` | 10,670 | 6.0% |
+| `js.construction.field` | 9,043 | 5.1% |
+| `js.object.empty` | 9,041 | 5.1% |
+| `react.node.createElement` | 7,003 | 3.9% |
+| `js.construction.element` | 5,089 | 2.9% |
+
+The same content callback performed 311,653 adapter allocations totaling
+11,397,872 bytes, created 133,531 resource wrappers, resolved 188,070 resource
+handles, and decoded 83,184 strings totaling about 6.14 MiB of UTF-8 per
+update. The two session passes were comparatively small: 388 host calls, 665
+allocations and 1,608 UTF-8 bytes per update.
+
+The census render interval averaged 387.6 ms versus 362.1 ms in the adjacent
+same-input control, about 7% instrumentation overhead. Its counts are therefore
+attribution evidence, not headline latency. Call/allocation totals were
+identical across the two measured updates; UTF-8 volume differed by two bytes
+because the edit marker's version changed.
+
+This sharpens the next experiment: determine the reuse distribution of the
+83,184 already-decoded strings before proposing caching, then test whether a
+session-safe string representation can avoid repeated UTF-8 decoding and
+resource-wrapper allocation. A pointer-only cache is not acceptable because
+FIR may recycle heap addresses.
+
 ## Rebuild
 
 The active direct bundles are generated without codec/version flags:

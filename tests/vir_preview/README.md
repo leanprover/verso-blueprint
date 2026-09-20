@@ -91,6 +91,20 @@ or closure-dispatch order as a map, or borrow VIR indices for FIR.
 The optional positional FLAMEGRAPH_PL argument generates aggregated flamegraphs
 from the recorded folded stacks; these are not chronological timelines.
 
+### FIR host-import census
+
+Set `VBP_REPLAY_HOST_IMPORT_CENSUS=1` only with the accepted direct FIR package.
+It patches the copied diagnostic `host-prototype.mjs`, never the producer package
+or live widget. Fixed numeric counters record physical/logical import calls plus
+allocation, resource and UTF-8 activity inside the existing component callback
+brackets. There are no per-call clocks or logs.
+
+The census and CPU sampler are mutually exclusive. Treat census timings as
+instrumented: compare them with an adjacent census-off control using the exact
+same input and package. Call and byte totals explain sampled attribution; they
+are not elapsed-time estimates. Exact DOM/text, retention and warning checks
+remain mandatory.
+
 ## Boundaries
 
 The generic renderer lives in `packages/verso-react`; Blueprint/RPC/widget policy
