@@ -41,7 +41,7 @@ if (firPackage) {
   await mkdir(packageRoot);
   const sums = await readFile(resolve(firPackage, "SHA256SUMS"), "utf8");
   assert.equal(sha(sums), firDirectPackage
-    ? "9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb"
+    ? "c5201068991185dfb7f9bd898d5357695dcac4094563da1f8e3accc5f6650672"
     : timedView ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
     : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
@@ -54,7 +54,7 @@ if (firPackage) {
   await copyFile(resolve(firPackage, "SHA256SUMS"), resolve(packageRoot, "SHA256SUMS"));
   const buildBytes = await readFile(resolve(packageRoot, "BUILD.json"));
   assert.equal(sha(buildBytes), firDirectPackage
-    ? "014214f33d7c2f7370145279b0166581d18ab823f8e51d58c11a213f4334fe20"
+    ? "a242881a6b4ae9ba8a41f2e2240e4aa5992cc833148a400abef5e3635ebc7385"
     : timedView ? "b1d17d869f264f58ea6c8b8a3ec5a33fc31fb062c90cca780598090c145a2342"
     : "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
   firIdentity = { packageRoot, buildSha256: sha(buildBytes), build: JSON.parse(buildBytes) };

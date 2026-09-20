@@ -28,12 +28,12 @@ UI because they are invariants, not user-selectable modes.
 
 The currently embedded bundles are direct, KaTeX-enabled and renderer-equivalent. Their
 shared component SHA256 is
-`4a0c855ed5d9bbe74cd17bf22885d8d65ae0cfb0846de50d3619075477468867`.
-FIR uses the sole accepted successor package `2c53e82bae00662f4222be39`;
+`ea333d53cc456fa52aead70d1e9de3a829518b72a3fee9af670dcb7a38d86394`.
+FIR uses the sole accepted successor package `c21b2fbf4ead6c7b8fb8facd`;
 its package-checksum SHA256 is
-`9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb`
+`c5201068991185dfb7f9bd898d5357695dcac4094563da1f8e3accc5f6650672`
 and its Wasm SHA256 is
-`ea321021839a3de18fc117eb934e718727a69c77732fcea85109526c771e0bc9`.
+`e765641d42bb12318b2fee13e446d3c1bac6bc3ac6cccf624c33df890b37ac21`.
 Registered-widget smoke passes for both backends: initial and edited document,
 retained control and formula identity/state, real KaTeX HTML/MathML, one
 subscription/listener, the complete timing bar, and no React warnings. Current
@@ -88,13 +88,20 @@ implementation and local KaTeX module. The shell embeds one KaTeX stylesheet
 with local fonts. The consumer builder rejects a FIR package without the exact
 math-component import, frozen source identity and package checksum.
 
-The successor input is:
+The symbolized baseline input was:
 
 - source identity: `c93f07625f9dde8d9bc8b4e4a16f5360a870f5258be68e2f6a544092fd351e8b`;
 - archive SHA256: `bb187ac26ff124d61425c941da41943a3f6063346887611df66ead7521bbba70`;
 - VBP commit: `f775b4f883fe6c6a10786cf9b08586f1c0a57b5e`;
 - Lean toolchain: `leanprover/lean4:v4.34.0-rc2`;
 - FIR package: `2c53e82bae00662f4222be39`.
+
+The active renderer-projection successor is frozen independently:
+
+- source identity: `5cb08cbcd2835e001485b2198beb90c0e337cf16eecb090bd0e90bfdb08f9ad1`;
+- archive SHA256: `eec9e3547a4b74bd7eb038ea9e141b08d6610faa19fbe66b6b270bca6a23cc6e`;
+- VBP commit: `79683f006b838670b5b45c9134549066df4d5877`;
+- FIR package: `c21b2fbf4ead6c7b8fb8facd`.
 
 Real-server Chromium acceptance passes on both the small fixture and the
 complete FLT document. It checks real KaTeX HTML/MathML, no valid-math errors,
@@ -202,9 +209,43 @@ A two-update sampled diagnostic supports the intended mechanism: the first
 session pass, which prepares identities, fell from 280.3 ms to 165.0 ms
 (-41.1%). The content callback changed from 934.3 ms to 906.7 ms, while the
 retry pass changed from 57.4 ms to 69.3 ms; those two-sample figures remain
-attribution evidence rather than headline latency. The next cross-backend
-check is a FIR package compiled from this exact renderer source, where the
-symbolized baseline attributed more of content construction to label decoding.
+attribution evidence rather than headline latency.
+
+FIR package `c21b2fbf4ead6c7b8fb8facd` compiles that exact projection source.
+Two independent diagnostics-off sessions again used two warmups and six
+retained updates each. They preserved the same text and normalized DOM hashes,
+retained state and zero-warning result as VIR and the FIR baseline.
+
+| Retained full-FLT phase | Prior FIR mean | Projected FIR mean | Change |
+| --- | ---: | ---: | ---: |
+| `JSON.parse` | 19.6 ms | 17.0 ms | noise-sized |
+| Typed document construction | 202.0 ms | 158.0 ms | -21.8% |
+| Decoded value to observed DOM update | 1,540.0 ms | 592.8 ms | -61.5% |
+| Parse through observed DOM update | 1,761.6 ms | 767.8 ms | -56.4% |
+
+The sampled FIR diagnostic moved the first identity/session pass from 334.2 ms
+to 46.7 ms (-86.0%), and document-element construction from 909.7 ms to
+526.8 ms (-42.1%). The retry pass was essentially unchanged at 10.7 ms versus
+13.3 ms. This is the expected direction if repeated full-record and
+`Lean.Name` decoding was the dominant avoidable work. The successor has no
+symbol companion yet, so these phase movements are mechanism evidence rather
+than an exact post-change symbol census.
+
+The following comparison uses the same frozen renderer source, document,
+protocol and output checks. Each backend is pooled from its own two sessions;
+the figures are matched but not an interleaved order-paired ranking.
+
+| Retained full-FLT phase | Projected VIR mean | Projected FIR mean |
+| --- | ---: | ---: |
+| `JSON.parse` | 18.7 ms | 17.0 ms |
+| Typed document construction | 74.3 ms | 158.0 ms |
+| Decoded value to observed DOM update | 1,071.4 ms | 592.8 ms |
+| Parse through observed DOM update | 1,164.4 ms | 767.8 ms |
+
+Here FIR's compiled renderer is about 44.7% faster for decoded-document to DOM
+and 34.1% faster end to end, despite paying more for typed construction. The
+large result is sufficiently repeatable to motivate a later interleaved
+campaign, but it should not be generalized beyond this full-FLT workload yet.
 
 ## Rebuild
 

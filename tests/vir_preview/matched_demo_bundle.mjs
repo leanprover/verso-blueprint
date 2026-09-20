@@ -73,7 +73,7 @@ export async function openMatchedDemo() {
   const copied = resolve(root, ".deps/matched-fir-direct-package");
   await mkdir(copied, { recursive: true });
   const sums = await readFile(resolve(input, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), "9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb");
+  assert.equal(sha(sums), "c5201068991185dfb7f9bd898d5357695dcac4094563da1f8e3accc5f6650672");
   for (const line of sums.trim().split("\n")) {
     const [, hash, name] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
     assert.ok(name);
@@ -87,7 +87,7 @@ export async function openMatchedDemo() {
   assert.equal(build.apiVersion, "fir.vbp.direct-construction-session/v1");
   assert.equal(build.noRawAddresses, true);
   assert.equal(build.frozenInputs.identity,
-    "c93f07625f9dde8d9bc8b4e4a16f5360a870f5258be68e2f6a544092fd351e8b");
+    "5cb08cbcd2835e001485b2198beb90c0e337cf16eecb090bd0e90bfdb08f9ad1");
   assert.equal(build.imports.filter(({ name }) => name.endsWith(".mathComponent")).length, 1,
     "matched FIR package must use the shared math component");
   // A new interpreter checkpoint does not silently retarget the compiled FIR
