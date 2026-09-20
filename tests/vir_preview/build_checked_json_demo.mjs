@@ -34,14 +34,14 @@ const bridge = resolve(root, "tests/vir_preview/upstream-json-value-bindings.mjs
 const math = resolve(root, "packages/verso-react/web/katex.mjs");
 const katex = resolve(root, ".lake/packages/verso/vendored-js/katex");
 // One stylesheet per shell, with matching local WOFF2 assets. No CDN/font fetch.
-let mathCss = firPackage || matchedDemo ? "" : await read(resolve(katex, "katex.min.css"));
+let mathCss = firPackage ? "" : await read(resolve(katex, "katex.min.css"));
 const assetHashes = {};
 for (const match of [...mathCss.matchAll(/src:url\((fonts\/[^)]+\.woff2)\)[^}]*/g)]) {
   const bytes = await readFile(resolve(katex, match[1]));
   assetHashes[match[1]] = sha(bytes);
   mathCss = mathCss.replace(match[0], `src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2")`);
 }
-assert.ok(firPackage || matchedDemo || (Object.keys(assetHashes).length > 0 && !mathCss.includes("url(fonts/")));
+assert.ok(firPackage || (Object.keys(assetHashes).length > 0 && !mathCss.includes("url(fonts/")));
 const liveOutput = resolve(root, ".lake/build/checked-json-demo.js");
 const output = resolve(process.env.VBP_DEMO_OUTPUT ?? liveOutput);
 const firDemo = firPackage ? await prepareFirDemo(firPackage, root) : null;
@@ -79,7 +79,8 @@ const result = await build({
     builder.onLoad({ filter: /vir-infoview-widget\.js$/ }, async ({ path }) => {
       assert.equal(path, shell);
       const contents = matchedDemo ? configureNativeComponentShell(await read(path), {
-        module: "@matched-demo", open: "openMatchedDemo", binding: "previewDemo.matchedComponent", clock: true,
+        module: "@matched-demo", open: "openMatchedDemo", binding: "previewDemo.matchedComponent",
+        clock: true, styleText: mathCss,
       }) : configureDemoShell(await read(path), Boolean(firDemo), {
         bridge, math, katex: resolve(katex, "katex.mjs"), mathCss,
       });
@@ -135,7 +136,7 @@ await writeFile(output + ".identity.json", JSON.stringify({
     sourcePath: resolve(hostOverridePath), sourceSha256: sha(hostOverride),
     baseSha256: sha(await readFile(resolve(sdkRoot, "js/runtime/host-state.js"))),
   },
-  math: firDemo || matchedDemo ? "source display; no native math component" : { componentSha256: sha(await readFile(math)),
+  math: firDemo ? "source display; no native math component" : { componentSha256: sha(await readFile(math)),
     katexSha256: sha(await readFile(resolve(katex, "katex.mjs"))),
     cssSha256: sha(mathCss), assetHashes },
 }, null, 2) + "\n");

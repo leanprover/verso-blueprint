@@ -79,10 +79,15 @@ def finish (input : JSL Preview) : RuntimeM (JSL (Except String Preview)) := do
 @[vir_js "previewDemo.now"]
 private opaque browserNow : RuntimeM (Js Float)
 
+@[vir_js "previewDemo.mathComponent"]
+private opaque mathComponent : RuntimeM
+  (Lean.Vir.React.FunctionComponent Lean.Vir.React.Props)
+
 @[vir_export]
 def createTimedView : RuntimeM (Lean.Vir.React.FunctionComponent
-    (Lean.Vir.React.Props.WithData Session.Input)) :=
-  createTimedComponent (do JsValue.toFloat (← browserNow))
+    (Lean.Vir.React.Props.WithData Session.Input)) := do
+  let math ← mathComponent
+  createTimedComponent (do JsValue.toFloat (← browserNow)) (some math)
 
 /-- Client timing is supplied separately; it is not encoded into the document. -/
 @[vir_export]

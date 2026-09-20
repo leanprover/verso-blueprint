@@ -3,14 +3,16 @@
 import { createElement, useMemo } from "react";
 
 const badgeStyle = {
-  position: "sticky", top: 0, height: 0, zIndex: 2,
+  position: "sticky", top: "4px", height: 0, zIndex: 20,
   display: "flex", justifyContent: "flex-end", pointerEvents: "none",
 };
 const labelStyle = {
-  color: "var(--vscode-descriptionForeground, #888)",
-  background: "var(--vscode-editor-background, transparent)",
-  fontSize: "10px", letterSpacing: ".08em", padding: "2px 5px",
-  borderRadius: "3px", alignSelf: "flex-start",
+  color: "var(--vscode-badge-foreground, #fff)",
+  background: "var(--vscode-badge-background, #4d4d4d)",
+  border: "1px solid var(--vscode-contrastBorder, transparent)",
+  fontSize: "11px", fontWeight: 600, lineHeight: 1.4,
+  letterSpacing: ".08em", padding: "2px 6px",
+  borderRadius: "4px", alignSelf: "flex-start",
 };
 
 export function createMatchedDocumentComponent(decode, render, backend) {

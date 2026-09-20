@@ -8,9 +8,14 @@ function replaceOnce(source, site, replacement) {
 }
 
 // Reuse upstream RPC/editor/lifetime handling for either external native view.
-export function configureNativeComponentShell(source, { module, open, binding, clock = false }) {
+export function configureNativeComponentShell(source, { module, open, binding, clock = false, styleText = "" }) {
   const site = "  runtimeOptions.defaultHostBindings = () =>";
   source = `import { ${open} as openNativePreview } from ${JSON.stringify(module)};\n` + source;
+  if (styleText) {
+    const styleSite = "    loaded?.configurationKey === configurationKey";
+    source = replaceOnce(source, styleSite,
+      `    e("style", { "data-verso-math-styles": true }, ${JSON.stringify(styleText)}),\n${styleSite}`);
+  }
   source = replaceOnce(source, site, `  const nativePreview = await openNativePreview();
   runtimeOptions.hostBindings = {
     ${JSON.stringify(binding)}: () => nativePreview.Component,
