@@ -259,7 +259,15 @@ The same flow can be read as four contracts:
    the include path does not infer chapters by sorting labels or reparsing Lean
    source.
 
-   Node exports contain only each module's local `NodeContribution` records,
+   Node exports contain each module's local `NodeContribution` records and the
+   original identified external-association/priority facts. The fact identity is
+   assigned at its producer site and is preserved across imports; import replay
+   first collects the complete fact set, then resolves it once per affected
+   label. Replays are idempotent, while changed facts under one identity and
+   conflicting priority values produce structured diagnostics rather than an
+   arrival-dependent accepted prefix. Body/kind/markup policy remains separate.
+
+   Node exports otherwise retain each module's local `NodeContribution` records,
    together with the module that originally introduced the label and the module
    supplying those contributions. `statementBody` and `proofBody` are separate
    from `statementUses` and `proofUses`: dependency-only additions cannot be
@@ -267,8 +275,9 @@ The same flow can be read as four contracts:
    over inferred Lean classifications. The field-by-field authoring contract is
    documented in [the manual's labels section](MANUAL.md#labels-and-node-identity).
 
-   `Node.applyContributions` is a pure checked reducer shared by local
-   registration and import replay. It returns either the accepted node or its
+   `NodeAssembly.assemble` is a pure checked reducer shared by local
+   registration and import replay. It combines the frozen selected-fact resolver
+   with the legacy body/kind/markup reducer, and returns either the accepted node or its
    conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
    its introducing module, and its contributing modules. Provenance cannot lose
    its corresponding node through separate map updates. The registered node,

@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint
 
 open Informal.Data
+open Informal.NodeAssembly
 
 -- Validate all permutations and every contiguous registration batching.
 #eval show IO Unit from do

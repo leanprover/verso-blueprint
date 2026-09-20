@@ -233,12 +233,25 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  let accepted ← Environment.contribute label {
+  let some position := ref.getPos?
+    | throwError "'[blueprint]' attributes require a stable source position"
+  let source ← Data.SourceLocation.ofSyntax? ref
+  let fact : Contributions.Record := {
+    id := {
+      moduleName := ← getMainModule
+      producer := `blueprint.attribute
+      subject := decl
+      site := position.byteIdx
+      slot := 0 }
+    label
+    references := #[extRef]
+    priority := none
+    source }
+  let accepted ← Environment.contributeSelected label {
     statementBody := docstring?.map Prod.fst
     statementUses := deps.statement
     proofUses := deps.proof
-    leanCode := #[.external #[extRef]]
-  }
+    leanCode := #[.external #[extRef]] } fact
   if accepted.isSome then
     Environment.registerBlueprintAttributeLabel label
 
