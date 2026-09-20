@@ -174,6 +174,38 @@ experiment should decode the renderer-owned extension view once per document
 update and reuse it for identity and presentation, while preserving the current
 document codec and exact renderer semantics.
 
+### Renderer-owned extension views
+
+The bounded follow-up showed that a document-wide cache was the wrong data
+shape. Indexing by the complete extension value merely replaced decoding with
+hashing and equality over large JSON payloads. Instead, the renderer now
+decodes two private projection types containing only fields it observes. Their
+labels remain serialized strings rather than becoming `Data.Label`/`Lean.Name`;
+external markup retains its typed markup and display mode. This is not a wire
+format or a second document model: the projections exist only at the two VBP
+extension callbacks.
+
+Two independent diagnostics-off VIR runs used two warmups and six retained
+full-FLT updates each. Output remained byte-for-byte equivalent at the checked
+boundary: both text and normalized 110,018-element DOM hashes match the prior
+campaign, controls and unchanged paragraphs remain retained, and React emitted
+no warnings.
+
+| Retained full-FLT phase | Prior pooled mean | Renderer projection mean | Change |
+| --- | ---: | ---: | ---: |
+| `JSON.parse` | 13.3 ms | 18.7 ms | noise-sized |
+| Typed document construction | 66.0 ms | 74.3 ms | noise-sized |
+| Decoded value to observed DOM update | 1,260.6 ms | 1,071.4 ms | -15.0% |
+| Parse through observed DOM update | 1,339.9 ms | 1,164.4 ms | -13.1% |
+
+A two-update sampled diagnostic supports the intended mechanism: the first
+session pass, which prepares identities, fell from 280.3 ms to 165.0 ms
+(-41.1%). The content callback changed from 934.3 ms to 906.7 ms, while the
+retry pass changed from 57.4 ms to 69.3 ms; those two-sample figures remain
+attribution evidence rather than headline latency. The next cross-backend
+check is a FIR package compiled from this exact renderer source, where the
+symbolized baseline attributed more of content construction to label decoding.
+
 ## Rebuild
 
 The active direct bundles are generated without codec/version flags:

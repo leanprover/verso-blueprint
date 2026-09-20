@@ -74,12 +74,26 @@ private def isInformalBlock (extension : Genre.Manual.Block) : Bool :=
 private def isExternalMarkupBlock (extension : Genre.Manual.Block) : Bool :=
   extension.name == `Informal.Block.externalMarkup
 
+/- These are deliberately renderer views, not copies of the source models.  In
+particular labels remain strings: decoding a `Data.Label` would parse a Lean
+name even though this preview only displays and keys its serialized spelling. -/
+private structure InformalBlockView where
+  label : String
+  isProof : Bool := false
+deriving Lean.FromJson
+
+private structure ExternalMarkupBlockView where
+  label : String
+  markup : Informal.Data.ExternalMarkup
+  display : Informal.ExternalMarkupDisplayMode := .hidden
+deriving Lean.FromJson
+
 private def blockIdentity? (extension : Genre.Manual.Block) : Option String :=
   if isInformalBlock extension then
-    (decodeExtension? extension.data).map fun (data : Informal.BlockOccurrence) =>
+    (decodeExtension? extension.data).map fun (data : InformalBlockView) =>
       s!"informal:{data.label}"
   else if isExternalMarkupBlock extension then
-    (decodeExtension? extension.data).map fun (data : Informal.ExternalMarkupBlockData) =>
+    (decodeExtension? extension.data).map fun (data : ExternalMarkupBlockView) =>
       s!"external-markup:{data.label}:{data.markup.language.key}:{data.markup.slot}"
   else none
 
@@ -120,7 +134,7 @@ private def renderBlock? (styles : Styles) (key : String)
     (children : Unit → ReactM (Array (Js Node))) : ReactM (Option (Js Node)) := do
   if isInformalBlock extension then
     let node ← match decodeExtension? extension.data with
-      | some (data : Informal.BlockOccurrence) => do
+      | some (data : InformalBlockView) => do
           -- Occurrences carry the facet, not the canonical node's mathematical
           -- kind. A Part-only preview must not invent a theorem/lemma title.
           let kindLabel := if data.isProof then "Proof" else "Statement"
@@ -129,7 +143,7 @@ private def renderBlock? (styles : Styles) (key : String)
           let kind ← <strong @props={kindProps}>{Node.text (← JsValue.ofString kindLabel)}</strong>
           let labelStyle := styles.informalLabel
           let labelProps ← js%{ "style" := labelStyle }
-          let label ← <code @props={labelProps}>{Node.text (← JsValue.ofString data.label.toString)}</code>
+          let label ← <code @props={labelProps}>{Node.text (← JsValue.ofString data.label)}</code>
           let headerStyle := styles.informalHeader
           let headerProps ← js%{ "style" := headerStyle }
           let header ← <header @props={headerProps}>{pure kind}{pure label}</header>
@@ -139,7 +153,7 @@ private def renderBlock? (styles : Styles) (key : String)
           let body ← <div @props={bodyProps}>{Js.Array.ofArray bodyChildren}</div>
           let props ← attributes "informal" (styles.informalBlock)
           Js.Object.set props (← js#"data-verso-informal-kind") (← JsValue.ofString kindLabel)
-          Js.Object.set props (← js#"data-verso-informal-label") (← JsValue.ofString data.label.toString)
+          Js.Object.set props (← js#"data-verso-informal-label") (← JsValue.ofString data.label)
           Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
           return ← <article @props={props}>{pure header}{pure body}</article>
       | none =>
@@ -148,13 +162,13 @@ private def renderBlock? (styles : Styles) (key : String)
     return some node
   else if isExternalMarkupBlock extension then
     let node ← match decodeExtension? extension.data with
-      | some (data : Informal.ExternalMarkupBlockData) => do
+      | some (data : ExternalMarkupBlockView) => do
           let markup := data.markup
           let summary := Informal.ExternalMarkupView.displaySummary markup
           let extensionProps (display : String) (style : Js Props) : ReactM (Js Props) := do
             let props ← attributes "external-markup" style
             Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
-            Js.Object.set props (← js#"data-verso-external-markup-label") (← JsValue.ofString data.label.toString)
+            Js.Object.set props (← js#"data-verso-external-markup-label") (← JsValue.ofString data.label)
             Js.Object.set props (← js#"data-verso-external-markup-language") (← JsValue.ofString markup.language.key)
             Js.Object.set props (← js#"data-verso-external-markup-slot") (← JsValue.ofString markup.slot)
             Js.Object.set props (← js#"data-verso-external-markup-display") (← JsValue.ofString display)
