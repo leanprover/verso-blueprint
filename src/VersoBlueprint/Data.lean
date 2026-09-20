@@ -449,6 +449,14 @@ instance [Quote ε] [Quote α] : Quote (Except ε α) where
 
 abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError Informal.ExternalDeclRenderedHtml
 
+instance : DecidableEq ExternalDeclRender
+  | .ok a, .ok b =>
+    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.ok.inj eq))
+  | .error a, .error b =>
+    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.error.inj eq))
+  | .ok _, .error _ => .isFalse (by intro h; cases h)
+  | .error _, .ok _ => .isFalse (by intro h; cases h)
+
 /--
 Reference to an external declaration mentioned by a blueprint node.
 {lit}`written` preserves the user spelling, while {lit}`canonical` is scope-erased for
@@ -485,7 +493,7 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
-deriving Repr, Inhabited, ToJson, FromJson, Quote
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
   { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
