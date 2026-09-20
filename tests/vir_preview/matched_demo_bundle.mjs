@@ -75,13 +75,18 @@ export async function openMatchedDemo() {
   }
   assert.notEqual(process.env.VBP_DEMO_DIRECT_TYPED, "1", "direct typed converter is VIR-only");
   const timedChecked = process.env.VBP_DEMO_TIMED_CHECKED === "1";
+  const firDirect = process.env.VBP_DEMO_FIR_DIRECT === "1";
+  assert.ok(!(timedChecked && firDirect), "choose checked or direct FIR decoding");
+  const timedView = timedChecked || firDirect;
   assert.ok(process.env.VBP_MATCHED_FIR_PACKAGE, "set VBP_MATCHED_FIR_PACKAGE to the immutable package");
   const input = resolve(process.env.VBP_MATCHED_FIR_PACKAGE);
-  const copied = resolve(root, timedChecked ? ".deps/matched-fir-timed-package" : ".deps/matched-fir-package");
+  const copied = resolve(root, firDirect ? ".deps/matched-fir-direct-package"
+    : timedChecked ? ".deps/matched-fir-timed-package" : ".deps/matched-fir-package");
   await mkdir(copied, { recursive: true });
   const sums = await readFile(resolve(input, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), timedChecked
-    ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
+  assert.equal(sha(sums), firDirect
+    ? "2ce1adbdc8475f5a74b8a7465c539810cfc30346ff4f9fc06c5ff758b2e5541c"
+    : timedChecked ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
     : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
     const [, hash, name] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
@@ -92,20 +97,26 @@ export async function openMatchedDemo() {
   }
   await writeFile(resolve(copied, "SHA256SUMS"), sums);
   const build = JSON.parse(await readFile(resolve(copied, "BUILD.json"), "utf8"));
-  if (timedChecked) {
+  if (firDirect) {
+    assert.equal(build.schemaVersion, "fir.vbp-direct-construction-package/v1");
+    assert.equal(build.apiVersion, "fir.vbp.direct-construction-session/v1");
+    assert.equal(build.noRawAddresses, true);
+    assert.equal(build.frozenInputs.identity,
+      "6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94");
+  } else if (timedChecked) {
     assert.equal(build.capability, "retained-timed-view/v1");
     assert.equal(build.frozenInputs.identity,
       "6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94");
   }
   // A new interpreter checkpoint does not silently retarget the compiled FIR
   // closure: its author-side provider modules must still be byte-identical.
-  for (const provider of build.externalProviders.sources) {
+  for (const provider of build.externalProviders?.sources ?? []) {
     assert.ok(provider.path.startsWith("source/"));
     const local = resolve(root, provider.path.slice("source/".length));
     assert.equal(sha(await readFile(local)), provider.sha256, provider.path);
   }
   const lock = JSON.parse(await readFile(resolve(root, ".lake/packages/lean_vir/package-lock.json"), "utf8"));
-  for (const provider of build.externalProviders.react) {
+  for (const provider of build.externalProviders?.react ?? []) {
     const installed = lock.packages[`node_modules/${provider.name}`];
     assert.equal(installed.version, provider.version);
     assert.equal(installed.integrity, provider.integrity);
@@ -113,23 +124,27 @@ export async function openMatchedDemo() {
   const wasm = await readFile(resolve(copied, "component.wasm"));
   const json = async name => JSON.parse(await readFile(resolve(copied, name), "utf8"));
   return { identity: { backend, packageChecksumsSha256: sha(sums), wasmSha256: sha(wasm),
-    frozenSourceIdentity: build.frozenInputs.identity, timedView: timedChecked, codec: "checked", providerSourcesVerified: true,
+    frozenSourceIdentity: build.frozenInputs.identity, timedView, codec: firDirect ? "experimental-direct-typed" : "checked",
+    providerSourcesVerified: !firDirect,
     commonSha256: sha(await readFile(common)) }, source: prefix + `
-import { createConfiguredCodecSession, CODEC_SESSION_API } from ${quote(resolve(copied, "codec-session-bootstrap.mjs"))};
+import { ${firDirect ? "createDirectConstructionSession as createSession, DIRECT_CONSTRUCTION_API as SESSION_API"
+    : "createConfiguredCodecSession as createSession, CODEC_SESSION_API as SESSION_API"} } from ${quote(resolve(copied,
+      firDirect ? "direct-construction-session.mjs" : "codec-session-bootstrap.mjs"))};
 import * as providers from ${quote(resolve(copied, "providers.mjs"))};
 let module;
 export async function openMatchedDemo() {
   module ??= WebAssembly.compile(Uint8Array.from(atob(${quote(wasm.toString("base64"))}), c => c.charCodeAt(0)));
-  const session = await createConfiguredCodecSession({ apiVersion: CODEC_SESSION_API, module: await module,
+  const session = await createSession({ apiVersion: SESSION_API, module: await module,
     manifest: ${quote(await json("component.wasm.json"))},
     hostBoundary: ${quote(await json("host-boundary.json"))},
     callbackBoundary: ${quote(await json("callback-boundary.json"))},
     entryBoundary: ${quote(await json("entry-boundary.json"))},
+    ${firDirect ? `constructorLayouts: ${quote(await json("constructor-layouts.json"))},` : ""}
     bindings: { ...providers.createJsCollectionHostBindings(), ...providers.createJsValueHostBindings(),
       ...providers.createBrowserEventHostBindings(), ...providers.createBrowserReactHostBindings(),
       ...providers.createJsonValueHostBindings(), "previewDemo.now": () => performance.now() } });
-  return { Component: createMatchedDocumentComponent(session.browserParsed,
-    ${timedChecked ? `(value, timing) => session.renderTimedDecoded(value, {
+  return { Component: createMatchedDocumentComponent(session.${firDirect ? "directParsed" : "browserParsed"},
+    ${timedView ? `(value, timing) => session.renderTimedDecoded(value, {
       requested: timing.requestedMs, received: timing.receivedMs,
       notified: timing.notifiedMs, decodedAt: timing.decodedMs })` : "session.renderDecoded"}, "fir"),
     dispose: session.dispose };
