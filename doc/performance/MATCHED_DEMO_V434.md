@@ -119,20 +119,60 @@ The two order pairs put FIR's total overhead at 44.4% and 12.4%; the pooled
 was 34.3% and 4.3% slower in the two pairs. The consistent remaining FIR cost
 is typed construction, while rendering is strongly temperature/order sensitive.
 
-A separate CDP-instrumented diagnostic run brackets actual component callbacks:
+A separate CDP-instrumented diagnostic run brackets actual component callbacks.
+The session component runs twice for a changed document: the guarded render-time
+state adjustment computes identities and asks React to retry, then the retry
+observes the new state and constructs the retained content element.
 
 | Diagnostic full-FLT phase | VIR mean | FIR mean |
 | --- | ---: | ---: |
-| Outer document/session callback | 57.4 ms | 13.3 ms |
+| First session pass and identity-state adjustment | 280.3 ms | 334.2 ms |
+| Retried session/shell callback | 57.4 ms | 13.3 ms |
 | Lean document → React elements | 934.3 ms | 909.7 ms |
-| Remaining React/DOM-observation interval | 295.5 ms | 365.3 ms |
+| Remaining React/DOM-observation interval | 15.2 ms | 31.2 ms |
 
 These diagnostic timings are two samples per backend under CPU sampling and are
-not headline latency. The outer callback includes shell/session preparation and
-is not a pure identity timer. The residual is computed within each sample after
-subtracting the two non-overlapping callback brackets; it is not isolated React
-internal commit time. The observed-DOM endpoint excludes paint and KaTeX passive
-effects. Semantic checks wait for every formula effect outside the timed region.
+not headline latency. The first callback also includes shell/session work and is
+not a pure identity timer. The residual is computed within each sample after
+subtracting all three non-overlapping callback brackets; it is not isolated
+React internal commit time. The observed-DOM endpoint excludes paint and KaTeX
+passive effects. Semantic checks wait for every formula effect outside the timed
+region.
+
+### Exact FIR symbol attribution
+
+FIR supplied a standard-name-section companion for the accepted math package.
+Its verifier covers all 3,346 import-first function rows and proves byte equality
+of every non-custom section with captured release Wasm
+`ea321021839a3de18fc117eb934e718727a69c77732fcea85109526c771e0bc9`.
+The VBP summarizer resolved all 2,892 sampled FIR Wasm frames; no sampled frame
+remained unresolved. The symbolized derived report is
+`_out/matched-demo-v434/math-profile-fir-symbolized-01/`.
+
+The dominant compiled path is repeated Blueprint extension decoding, not generic
+React host work. In the two non-overlapping session/content callback windows:
+
+| Sampled FIR attribution | Mean per update | Share of its window |
+| --- | ---: | ---: |
+| `prepareIdentities` within the session callbacks | 327.5 ms | 94.3% |
+| `Lean.Name.fromJson?` below identity preparation | 272.4 ms | 78.4% |
+| `Lean.Name.fromJson?` while constructing document elements | 427.0 ms | 46.9% |
+
+Together, the two non-overlapping `Lean.Name.fromJson?` chains account for about
+699.4 sampled ms per update, or 54.3% of the sampled parse-excluded FIR render
+window. This is inclusive sampled attribution, not an elapsed-time savings
+prediction.
+
+Exact stacks connect both chains to VBP's `decodeExtension?`: identity
+preparation calls `blockIdentity?`, while element construction calls both block
+identity selection and `renderBlock?`. The decoded `BlockOccurrence` and
+`ExternalMarkupBlockData` records contain `Data.Label`, which is a `Lean.Name`;
+`Lean.Name.fromJson?` reparses its dotted string through `Substring.Raw.toName`
+and `Lean.Syntax.splitNameLitAux`. Thus the same already-decoded extension JSON
+is interpreted repeatedly during one retained update. The next bounded
+experiment should decode the renderer-owned extension view once per document
+update and reuse it for identity and presentation, while preserving the current
+document codec and exact renderer semantics.
 
 ## Rebuild
 

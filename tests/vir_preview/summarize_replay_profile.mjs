@@ -222,7 +222,8 @@ if (fir) for (const row of report.acceptance.rows) {
     { phase: "fir:checked-codec", start: (parsedAt + clock.offsetMs) * 1000,
       end: (decodedAt + clock.offsetMs) * 1000 });
   for (const event of sample.componentEvents ?? []) {
-    assert.equal(event.factory, 1, "default view must own measured callbacks");
+    assert.equal(event.factory, identity.firDirectPackage ? 0 : 1,
+      "selected view must own measured callbacks");
     windows.push({ phase: "fir:" + event.phase, start: (event.startMs + clock.offsetMs) * 1000,
       end: (event.endMs + clock.offsetMs) * 1000 });
   }
