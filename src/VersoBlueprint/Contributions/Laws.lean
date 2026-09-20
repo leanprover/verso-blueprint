@@ -333,12 +333,14 @@ theorem view_congr {rs ts : List Record} (h : EvidenceEq rs ts) (label : Label)
 theorem resolve_valid {label : Label} {rs : List Record}
     (h : NoCollision rs label ∧ ¬ PriorityDisagreement rs label) :
     resolve label rs = .ok (view label rs) := by
-  exact ite_eq_left ((acceptance label rs).mpr h)
+  unfold resolve
+  simp only [if_pos ((acceptance label rs).mpr h)]
 
 theorem resolve_invalid {label : Label} {rs : List Record}
     (h : ¬ (NoCollision rs label ∧ ¬ PriorityDisagreement rs label)) :
     resolve label rs = .error (diagnostics label rs) := by
-  exact ite_eq_right (mt (acceptance label rs).mp h)
+  unfold resolve
+  simp only [if_neg (mt (acceptance label rs).mp h)]
 
 /-- Equivalent complete evidence gives equivalent success or complete diagnostics. -/
 theorem resolve_congr (label : Label) {rs ts : List Record} (h : EvidenceEq rs ts) :
