@@ -37,3 +37,17 @@ test("factory drift and callback errors remain visible", () => {
   assert.throws(() => failing(), caught => caught === error);
   assert.equal(probe.records[0].ok, false);
 });
+
+test("deferred probe ignores setup callbacks before the measured factory", () => {
+  const probe = createComponentPhaseProbe(bindings, undefined, 1, true);
+  const setup = probe.bindings["js.value.function.unary"](value => value);
+  assert.equal(setup("setup"), "setup");
+  probe.beginFactory();
+  const content = probe.bindings["js.value.function.unary"](value => value);
+  const session = probe.bindings["js.value.function.unary"](value => value);
+  probe.finishFactory();
+  assert.equal(content("content"), "content");
+  assert.equal(session("session"), "session");
+  assert.deepEqual(probe.records.map(({ phase }) => phase),
+    ["decoded-document-to-elements", "document-session"]);
+});

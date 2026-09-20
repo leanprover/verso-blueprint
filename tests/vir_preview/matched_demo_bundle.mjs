@@ -9,14 +9,11 @@ const MATCHED_CODEC = "direct-typed/v1";
 export async function prepareMatchedDemo(root, backend) {
   assert.ok(["vir", "fir"].includes(backend));
   const common = resolve(root, "tests/vir_preview/matched_document_component.mjs");
-  const math = resolve(root, "packages/verso-react/web/katex.mjs");
-  const katex = resolve(root, ".lake/packages/verso/vendored-js/katex/katex.mjs");
+  const math = resolve(root, "tests/vir_preview/matched_math_component.mjs");
   const vir = resolve(root, ".lake/packages/lean_vir/web/src");
   const sdk = resolve(root, ".lake/build/vir/sdk");
   const prefix = `import { createMatchedDocumentComponent } from ${quote(common)};
-import { createMathComponent } from ${quote(math)};
-import katex from ${quote(katex)};
-const PreviewMath = createMathComponent(katex);\n`;
+import { PreviewMath } from ${quote(math)};\n`;
   if (backend === "vir") {
     assert.ok(process.env.VBP_MATCHED_IR_SET, "set VBP_MATCHED_IR_SET to the direct codec package-set descriptor");
     const descriptorPath = resolve(process.env.VBP_MATCHED_IR_SET);
@@ -40,7 +37,8 @@ const PreviewMath = createMathComponent(katex);\n`;
       "VersoBlueprintVirTests.NativeSession.DirectCodecProbe");
     return { identity: { backend, descriptorSha256: sha(descriptorBytes), wasmSha256: sha(wasm),
       codec: MATCHED_CODEC, timedView: true, layoutsSha256: sha(layoutsBytes),
-      members: descriptor.packages.length, commonSha256: sha(await readFile(common)) }, source: prefix + `
+      members: descriptor.packages.length, commonSha256: sha(await readFile(common)),
+      mathSha256: sha(await readFile(math)) }, source: prefix + `
 import { createDirectPreviewDecoder } from ${quote(resolve(root, "tests/vir_preview/direct_typed_decoder.mjs"))};
 import { withScopedStringIntern } from ${quote(resolve(root, "tests/vir_preview/scoped_string_intern.mjs"))};
 import { withUtf8Scratch } from ${quote(resolve(root, "tests/vir_preview/utf8_scratch.mjs"))};
@@ -75,7 +73,7 @@ export async function openMatchedDemo() {
   const copied = resolve(root, ".deps/matched-fir-direct-package");
   await mkdir(copied, { recursive: true });
   const sums = await readFile(resolve(input, "SHA256SUMS"), "utf8");
-  assert.equal(sha(sums), "2ce1adbdc8475f5a74b8a7465c539810cfc30346ff4f9fc06c5ff758b2e5541c");
+  assert.equal(sha(sums), "9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb");
   for (const line of sums.trim().split("\n")) {
     const [, hash, name] = line.match(/^([a-f0-9]{64})  ([\w.-]+)$/) ?? [];
     assert.ok(name);
@@ -89,7 +87,7 @@ export async function openMatchedDemo() {
   assert.equal(build.apiVersion, "fir.vbp.direct-construction-session/v1");
   assert.equal(build.noRawAddresses, true);
   assert.equal(build.frozenInputs.identity,
-    "6c7b96d8afaed7798c9af86c72315f77a1f88a3ddcde4ea2ac11190044b40a94");
+    "c93f07625f9dde8d9bc8b4e4a16f5360a870f5258be68e2f6a544092fd351e8b");
   assert.equal(build.imports.filter(({ name }) => name.endsWith(".mathComponent")).length, 1,
     "matched FIR package must use the shared math component");
   // A new interpreter checkpoint does not silently retarget the compiled FIR
@@ -110,7 +108,7 @@ export async function openMatchedDemo() {
   return { identity: { backend, packageChecksumsSha256: sha(sums), wasmSha256: sha(wasm),
     frozenSourceIdentity: build.frozenInputs.identity, timedView: true, codec: MATCHED_CODEC,
     providerSourcesVerified: false,
-    commonSha256: sha(await readFile(common)) }, source: prefix + `
+    commonSha256: sha(await readFile(common)), mathSha256: sha(await readFile(math)) }, source: prefix + `
 import { createDirectConstructionSession as createSession, DIRECT_CONSTRUCTION_API as SESSION_API } from ${quote(resolve(copied,
       "direct-construction-session.mjs"))};
 import * as providers from ${quote(resolve(copied, "providers.mjs"))};

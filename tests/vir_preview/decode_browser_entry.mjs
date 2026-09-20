@@ -13,6 +13,8 @@ import { withScopedStringIntern } from "./scoped_string_intern.mjs";
 import { createDirectPreviewDecoder } from "@vbp-direct-typed-decoder";
 import { withUtf8Scratch } from "./utf8_scratch.mjs";
 import { withPointerScratch } from "./pointer_scratch.mjs";
+import { PreviewMath } from "./matched_math_component.mjs";
+import { createComponentPhaseProbe } from "./component_phase_probe.mjs";
 
 const entry = process.env.VBP_REPLAY_TYPED_PACKAGE === "1"
   ? "VersoBlueprintVirTests.NativeSession.DirectCodecProbe"
@@ -33,6 +35,7 @@ async function run() {
   let marker;
   let observeMarker = false;
   let identityProbe;
+  let componentProbe;
   let jsonBindings;
   return withCleanup(async () => {
     const source = await (await fetch("/response.json")).text();
@@ -44,11 +47,17 @@ async function run() {
         const bool = defaults["js.bool"];
         if (process.env.VBP_REPLAY_IDENTITY_PHASES === "1") identityProbe = createIdentityPhaseProbe(defaults);
         jsonBindings = createJsonValueHostBindings();
-        return { ...defaults, ...identityProbe?.bindings, ...jsonBindings,
-          "previewDemo.now": () => performance.now(), "js.bool": (...args) => {
+        let bindings = { ...defaults, ...identityProbe?.bindings, ...jsonBindings,
+          "previewDemo.now": () => performance.now(),
+          "previewDemo.mathComponent": () => PreviewMath, "js.bool": (...args) => {
           if (observeMarker) marker = performance.now();
           return bool(...args);
         } };
+        if (process.env.VBP_REPLAY_PROFILE === "1") {
+          componentProbe = createComponentPhaseProbe(bindings, () => performance.now(), 1, true);
+          bindings = componentProbe.bindings;
+        }
+        return bindings;
       },
     });
     const codecContract = jsonValueContractCases(jsonBindings, runtime.call(`${entry}.emptyIdentityState`));
@@ -191,7 +200,8 @@ async function run() {
     if (process.env.VBP_REPLAY_IDENTITY_TEST !== "") return identityBrowserCases(
       scenario => runtime.call(`${entry}.renderIdentityScenario`, scenario), process.env.VBP_REPLAY_IDENTITY_TEST);
     if (process.env.VBP_REPLAY_COMPRESSION_CHECK === "1") return compressionCheck(runtime, source);
-    if (process.env.VBP_REPLAY_RENDER === "1") return { ...await renderExperiment(runtime, source, identityProbe), codecContract };
+    if (process.env.VBP_REPLAY_RENDER === "1") return {
+      ...await renderExperiment(runtime, source, identityProbe, componentProbe), codecContract };
     return { ...await browserJsonExperiment(runtime, source, expectedVersion,
       active => { observeMarker = active; marker = undefined; }, () => marker), codecContract };
   }, [["runtime", () => runtime?.dispose()]]);
@@ -218,12 +228,14 @@ function compressionCheck(runtime, source) {
     wideArrayEntries: 5000, seed: "0x31415926", scope: "byte equivalence against Lean.Json.compress in the matched VIR runtime; not a timing run" };
 }
 
-async function renderExperiment(runtime, source, identityProbe) {
+async function renderExperiment(runtime, source, identityProbe, componentProbe) {
   const invoke = (name, ...args) => runtime.call(`${entry}.${name}`, ...args);
   check(invoke("validateSource", source), "unsafe producer number domain");
   check(invoke("jsonEquivalent", source, JSON.parse(source)), "full JSON differs");
   const timedView = process.env.VBP_REPLAY_TIMED_VIEW === "1";
+  componentProbe?.beginFactory();
   const component = invoke(timedView ? "createTimedView" : "createView");
+  componentProbe?.finishFactory();
   const container = document.getElementById("app");
   const root = createRoot(container);
   const byId = id => document.getElementById(`vir-verso-${id}`);
@@ -234,6 +246,14 @@ async function renderExperiment(runtime, source, identityProbe) {
   let nextVersion = 10;
   let checkbox, paragraph, canonicalText;
   const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  const settleMath = async () => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      await settle();
+      const formulas = [...container.querySelectorAll("[data-verso-math-mode]")];
+      if (formulas.length > 0 && formulas.every(node => node.querySelector(".katex, .katex-error"))) return;
+    }
+    throw Error("KaTeX passive effects did not settle");
+  };
   const one = async mode => {
     // Input construction and domain validation are not browser reply processing.
     const version = nextVersion++;
@@ -255,6 +275,7 @@ async function renderExperiment(runtime, source, identityProbe) {
     const decoded = decodeScoped(runtime, decode);
     const decodedAt = performance.now();
     identityProbe?.begin();
+    componentProbe?.clear();
     const node = timedView
       ? invoke("renderTimedDecoded", component, decoded, undefined, undefined, undefined, decodedAt)
       : invoke("renderDecoded", component, decoded);
@@ -265,6 +286,14 @@ async function renderExperiment(runtime, source, identityProbe) {
     const sample = { totalMs: committedAt - start, decodeMs: decodedAt - start,
       parseMs: parsedAt - start, codecMs: decodedAt - parsedAt,
       renderToDomMs: committedAt - decodedAt, raw: { start, parsedAt, decodedAt, committedAt }, version };
+    if (componentProbe) {
+      const content = componentProbe.records.filter(e => e.phase === "decoded-document-to-elements");
+      check(content.length === 1 && componentProbe.records.every(e => e.ok),
+        "expected one successful document construction");
+      check(componentProbe.records.every(e => e.startMs >= decodedAt && e.endMs <= committedAt),
+        "component bracket outside measured update");
+      sample.componentEvents = [...componentProbe.records];
+    }
     if (identityEvents) {
       check(identityEvents.filter(e => e.kind === "calibration").length === 1, "expected one instrumented render");
       check(identityEvents.filter(e => e.kind === "render").length === 1, "expected one renderer interval");
@@ -272,6 +301,7 @@ async function renderExperiment(runtime, source, identityProbe) {
       sample.identityEvents = identityEvents;
     }
     // Commit/DOM assertions and effect settling are deliberately outside timing.
+    await settleMath();
     check(invoke("describe", decoded) === `ready:${version}`, "wrong decoded version");
     check(byId("preview").textContent.includes(marker), "new FLT text did not commit");
     check(!byId("debug-panel") && !byId("highlight-changes").checked, "debug/highlighting enabled");
@@ -281,7 +311,6 @@ async function renderExperiment(runtime, source, identityProbe) {
     check(text === canonicalText, "decoder paths changed rendered document text");
     if (checkbox) check(checkbox === byId("follow-cursor") && !checkbox.checked, "control lost state/identity");
     if (paragraph) check(paragraph.isConnected, "unchanged document node was replaced");
-    await settle();
     return sample;
   };
   return withCleanup(async () => {

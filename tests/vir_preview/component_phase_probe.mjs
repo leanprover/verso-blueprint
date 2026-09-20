@@ -7,12 +7,14 @@ const check = (ok, message) => { if (!ok) throw new Error(message); };
  * content includes props access, VDOM construction and effect registration.
  * outer includes decode/identity/shell work and is NOT a pure identity timer.
  */
-export function createComponentPhaseProbe(bindings, now = () => performance.now(), factoryCount = 1) {
+export function createComponentPhaseProbe(bindings, now = () => performance.now(), factoryCount = 1,
+    deferred = false) {
   check(Number.isInteger(factoryCount) && factoryCount > 0, 'invalid expected factory count');
   const target = 'js.value.function.unary';
   check(typeof bindings[target] === 'function', 'missing generic unary function provider');
   const records = [];
-  let factoryOpen = true;
+  let factoryOpen = !deferred;
+  let factoryStarted = !deferred;
   let created = 0;
   const measuredBindings = { ...bindings, [target](callback) {
     const native = bindings[target](callback);
@@ -34,8 +36,13 @@ export function createComponentPhaseProbe(bindings, now = () => performance.now(
     };
   } };
   return { bindings: measuredBindings, records,
+    beginFactory() {
+      check(deferred && !factoryStarted, 'factory boundary already started');
+      factoryStarted = true;
+      factoryOpen = true;
+    },
     finishFactory() {
-      check(factoryOpen, 'factory boundary already closed');
+      check(factoryStarted && factoryOpen, 'factory boundary already closed');
       check(created === factoryCount * 2, 'frozen factories must create content then session');
       factoryOpen = false;
     },

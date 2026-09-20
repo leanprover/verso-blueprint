@@ -48,13 +48,24 @@ harnessSource = harnessSource.replace(rootSite,
   `const root = ${JSON.stringify(stringPreview || embeddedPreview ? serverRoot : virRoot)};`);
 // Select only the open-buffer backend; never rewrite the user's demo file.
 const sourceSite = 'const source = await readFile(sourcePath, "utf8");';
-const selectBackend = source => source.replace(/def useFir : Bool := (?:true|false)/,
-  `def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`);
+const selectBackend = source => {
+  const selected = source.replace(/def useFir : Bool := (?:true|false)/,
+    `def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`);
+  if (!matchedFlt) return selected;
+  assert.ok(!selected.includes("rpc-position-a") && selected.includes("#doc"),
+    "external matched source marker seam drift");
+  return selected.replace("#doc", "-- rpc-position-a\nexample : True := by\n  trivial\n\n" +
+    "-- rpc-position-b\nexample : True := by\n  trivial\n\n#doc");
+};
 if (matchedBackend) {
   assert.equal(harnessSource.split(sourceSite).length, 2, "pinned harness source seam drift");
+  const selected = matchedFlt
+    ? `.replace("#doc", "-- rpc-position-a\\nexample : True := by\\n  trivial\\n\\n" +
+      "-- rpc-position-b\\nexample : True := by\\n  trivial\\n\\n#doc")`
+    : "";
   harnessSource = harnessSource.replace(sourceSite,
     `const source = (await readFile(sourcePath, "utf8")).replace(/def useFir : Bool := (?:true|false)/,
-      ${JSON.stringify(`def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`)});`);
+      ${JSON.stringify(`def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`)})${selected};`);
 }
 const require = createRequire(resolve(virRoot, "package.json"));
 harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) => {

@@ -41,7 +41,7 @@ if (firPackage) {
   await mkdir(packageRoot);
   const sums = await readFile(resolve(firPackage, "SHA256SUMS"), "utf8");
   assert.equal(sha(sums), firDirectPackage
-    ? "2ce1adbdc8475f5a74b8a7465c539810cfc30346ff4f9fc06c5ff758b2e5541c"
+    ? "9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb"
     : timedView ? "1ce76db7a0d7b356e2bd5b90a4ef546cefbf8e0e72f842f19ea927215c0a1a18"
     : "d6d33302cca5bd9aeba5bcbb19866d7f3bbe6f6648ec62c699833fce2a5aa122");
   for (const line of sums.trim().split("\n")) {
@@ -54,7 +54,7 @@ if (firPackage) {
   await copyFile(resolve(firPackage, "SHA256SUMS"), resolve(packageRoot, "SHA256SUMS"));
   const buildBytes = await readFile(resolve(packageRoot, "BUILD.json"));
   assert.equal(sha(buildBytes), firDirectPackage
-    ? "d85b58116c5e2c5cb1305d020c2afb294c27d06381f2266c140fecf23f6db317"
+    ? "014214f33d7c2f7370145279b0166581d18ab823f8e51d58c11a213f4334fe20"
     : timedView ? "b1d17d869f264f58ea6c8b8a3ec5a33fc31fb062c90cca780598090c145a2342"
     : "7e1342ec1eb3d78cab666d32edf2e5fa43d70102e19bb2cc02f8d9f6e87e1434");
   firIdentity = { packageRoot, buildSha256: sha(buildBytes), build: JSON.parse(buildBytes) };
@@ -188,10 +188,12 @@ const sources = ["tests/VersoBlueprintVirTests/NativeSession/DecodeProbe.lean",
   "tests/vir_preview/direct_typed_decoder.mjs",
   "tests/vir_preview/utf8_scratch.mjs",
   "tests/vir_preview/pointer_scratch.mjs",
+  "tests/vir_preview/matched_math_component.mjs",
+  "tests/vir_preview/component_phase_probe.mjs",
   "tests/vir_preview/upstream-json-value-bindings.mjs",
   ...["Types", "Generated", "Codec", "Js"].map(name =>
     `tests/VersoBlueprintVirTests/NativeSession/UpstreamJson/${name}.lean`)];
-if (firIdentity) sources.push("tests/vir_preview/fir_decode_browser_entry.mjs", "tests/vir_preview/component_phase_probe.mjs");
+if (firIdentity) sources.push("tests/vir_preview/fir_decode_browser_entry.mjs");
 if (process.env.VBP_REPLAY_TYPED_PACKAGE === "1")
   sources.push("tests/VersoBlueprintVirTests/NativeSession/DirectCodecProbe.lean");
 const sourceHashes = {};

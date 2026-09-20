@@ -5,6 +5,7 @@ import * as sessionApi from "@fir-codec-bootstrap";
 import * as providers from "@fir-codec-providers";
 import { describeError, withCleanup } from "@vir-test-support";
 import { createComponentPhaseProbe } from "./component_phase_probe.mjs";
+import { PreviewMath } from "./matched_math_component.mjs";
 
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const sampled = process.env.VBP_REPLAY_PROFILE === "1";
@@ -19,10 +20,15 @@ async function run() {
   const bindings = { ...providers.createJsCollectionHostBindings(),
     ...providers.createJsValueHostBindings(), ...providers.createBrowserEventHostBindings(),
     ...providers.createBrowserReactHostBindings(), ...providers.createJsonValueHostBindings(),
-    "previewDemo.now": () => performance.now() };
+    "previewDemo.now": () => performance.now(),
+    "previewDemo.mathComponent": () => PreviewMath };
   // The bootstrap creates the configured factory, then its separate default view.
   // Brackets are enabled only in the diagnostic/profile run, never headline timing.
-  const probe = sampled ? createComponentPhaseProbe(bindings, () => performance.now(), 2) : undefined;
+  // The direct bootstrap creates only its retained timed view.  The older
+  // configured-codec bootstrap also creates a separate default view first.
+  const measuredFactory = directPackage ? 0 : 1;
+  const probe = sampled ? createComponentPhaseProbe(bindings, () => performance.now(),
+    directPackage ? 1 : 2) : undefined;
   const createSession = sessionApi[directPackage
     ? "createDirectConstructionSession" : "createConfiguredCodecSession"];
   const apiVersion = sessionApi[directPackage ? "DIRECT_CONSTRUCTION_API" : "CODEC_SESSION_API"];
@@ -36,6 +42,14 @@ async function run() {
   const container = document.getElementById("app"), root = createRoot(container);
   const byId = id => document.getElementById(`vir-verso-${id}`);
   const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  const settleMath = async () => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      await settle();
+      const formulas = [...container.querySelectorAll("[data-verso-math-mode]")];
+      if (formulas.length > 0 && formulas.every(node => node.querySelector(".katex, .katex-error"))) return;
+    }
+    throw Error("KaTeX passive effects did not settle");
+  };
   const warnings = [], originalError = console.error;
   console.error = (...args) => { warnings.push(args.map(String).join(" ")); originalError(...args); };
   let nextVersion = 10, checkbox, paragraph, canonicalText;
@@ -60,13 +74,17 @@ async function run() {
     if (probe) {
       check(probe.records.filter(e => e.phase === "decoded-document-to-elements").length === 1,
         "expected exactly one document construction");
-      check(probe.records.every(e => e.factory === 1 && e.ok && e.startMs >= decodedAt && e.endMs <= committedAt),
+      check(probe.records.every(e => e.factory === measuredFactory && e.ok &&
+        e.startMs >= decodedAt && e.endMs <= committedAt),
         "component bracket outside measured default-view update");
     }
     const sample = { totalMs: committedAt - start, parseMs: parsedAt - start,
       decodeMs: decodedAt - start, codecMs: decodedAt - parsedAt,
       renderToDomMs: committedAt - decodedAt, raw: { start, parsedAt, decodedAt, committedAt }, version,
       ...(probe ? { componentEvents: [...probe.records] } : {}) };
+    // KaTeX renders in a passive effect.  Keep it outside the timing endpoint,
+    // but let it settle before semantic DOM/text and retention checks.
+    await settleMath();
     check(byId("preview").textContent.includes(marker), "new text missing");
     check(!byId("debug-panel") && !byId("highlight-changes").checked, "debug/highlighting enabled");
     const text = container.querySelector("article").textContent.replace(marker, "Preview timing sample XX");
@@ -74,7 +92,6 @@ async function run() {
     check(text === canonicalText, "rendered text changed unexpectedly");
     if (checkbox) check(checkbox === byId("follow-cursor") && !checkbox.checked, "control lost state/identity");
     if (paragraph) check(paragraph.isConnected, "unchanged paragraph replaced");
-    await settle();
     sample.retention = session.stats();
     return sample;
   };

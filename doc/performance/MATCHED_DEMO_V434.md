@@ -26,21 +26,29 @@ The sticky top-right badge identifies only the execution backend (`VIR` or
 description text. Codec and renderer versions are deliberately absent from the
 UI because they are invariants, not user-selectable modes.
 
-The currently embedded bundles are direct and source-display-equivalent. Their
+The currently embedded bundles are direct, KaTeX-enabled and renderer-equivalent. Their
 shared component SHA256 is
 `4a0c855ed5d9bbe74cd17bf22885d8d65ae0cfb0846de50d3619075477468867`.
+FIR uses the sole accepted successor package `2c53e82bae00662f4222be39`;
+its package-checksum SHA256 is
+`9f402d9bad725a36565c24fadaa67b798803c23cf883080d7c68203eb4d512eb`
+and its Wasm SHA256 is
+`ea321021839a3de18fc117eb934e718727a69c77732fcea85109526c771e0bc9`.
 Registered-widget smoke passes for both backends: initial and edited document,
-retained control identity/state, one subscription/listener, the complete timing
-bar, and no React warnings. Current reports are:
+retained control and formula identity/state, real KaTeX HTML/MathML, one
+subscription/listener, the complete timing bar, and no React warnings. Current
+reports are:
 
 - `_out/matched-demo-v434/matched-vir-widget.json`
 - `_out/matched-demo-v434/matched-fir-widget.json`
+- `_out/matched-demo-v434/matched-flt-vir-widget.json`
+- `_out/matched-demo-v434/matched-flt-fir-widget.json`
 
 These exercise the real Lean server and Chromium shell, but not VS Code itself.
 
 ## Direct construction result
 
-FIR package `f98aef4a33788bb3158a24f3` was qualified against the same package's
+The retired predecessor package `f98aef4a33788bb3158a24f3` was qualified against its
 checked `browserParsed` control and matched VIR direct path. The full-FLT replay
 uses production React, two warmups and six retained updates per session, with
 diagnostics/highlighting/profiling disabled.
@@ -71,31 +79,60 @@ The replay excludes RPC/LSP, server encoding, transport, package loading,
 startup, paint and passive-effect waiting. The DOM endpoint is observed after a
 React mutation, not isolated React internal commit time or completed paint.
 
-## Shared math successor
+## Shared math successor and rendering profile
 
-The old compiled timed factory always passed `mathComponent? := none`, so source
-math was expected even though the shared renderer already supported a React
-math component. The shared `DirectCodecProbe.createTimedView` now obtains the
-downstream-owned `previewDemo.mathComponent` and passes it to the existing
-renderer. Both bundles use the same `createMathComponent` implementation, local
-KaTeX module and embedded KaTeX stylesheet/fonts.
+The shared `DirectCodecProbe.createTimedView` obtains the downstream-owned
+`previewDemo.mathComponent` and passes it to the existing renderer. VIR and FIR
+import one module-scope `PreviewMath`, built from the same `createMathComponent`
+implementation and local KaTeX module. The shell embeds one KaTeX stylesheet
+with local fonts. The consumer builder rejects a FIR package without the exact
+math-component import, frozen source identity and package checksum.
 
-VIR's new package builds successfully. FIR request `VBP-FIR-20260920-003` asks
-for the exact same frozen source and one replacement direct package. The
-consumer builder rejects FIR packages without the math-component import, so
-KaTeX will not be activated on VIR alone.
-
-Frozen successor input:
+The successor input is:
 
 - source identity: `c93f07625f9dde8d9bc8b4e4a16f5360a870f5258be68e2f6a544092fd351e8b`;
 - archive SHA256: `bb187ac26ff124d61425c941da41943a3f6063346887611df66ead7521bbba70`;
 - VBP commit: `f775b4f883fe6c6a10786cf9b08586f1c0a57b5e`;
-- Lean toolchain: `leanprover/lean4:v4.34.0-rc2`.
+- Lean toolchain: `leanprover/lean4:v4.34.0-rc2`;
+- FIR package: `2c53e82bae00662f4222be39`.
 
-After the FIR successor arrives, one matched Chromium campaign will check real
-KaTeX output, inline/display mode, TeX prelude, retained formula DOM, error
-rendering, ordinary document fidelity, controls, timing, and disposal. Only
-then will both active bundles move together.
+Real-server Chromium acceptance passes on both the small fixture and the
+complete FLT document. It checks real KaTeX HTML/MathML, no valid-math errors,
+retained formula and control nodes across an edit, matched renderer output,
+unmount-before-dispose and zero React warnings. The external FLT file is not
+modified: the harness injects its two cursor anchors only into the opened
+in-memory buffer.
+
+The diagnostics-off full-FLT campaign used production React, two warmups and
+six retained updates per session in VIR → FIR → FIR → VIR order. Both backends
+produced the same normalized text and 110,018-element post-KaTeX DOM hashes.
+
+| Retained full-FLT phase | VIR pooled mean | FIR pooled mean |
+| --- | ---: | ---: |
+| `JSON.parse` | 13.3 ms | 19.6 ms |
+| Typed document construction | 66.0 ms | 202.0 ms |
+| Decoded value to observed DOM update | 1,260.6 ms | 1,540.0 ms |
+| Parse through observed DOM update | 1,339.9 ms | 1,761.6 ms |
+
+The two order pairs put FIR's total overhead at 44.4% and 12.4%; the pooled
+31.5% is therefore descriptive, not a stable backend ranking. Rendering itself
+was 34.3% and 4.3% slower in the two pairs. The consistent remaining FIR cost
+is typed construction, while rendering is strongly temperature/order sensitive.
+
+A separate CDP-instrumented diagnostic run brackets actual component callbacks:
+
+| Diagnostic full-FLT phase | VIR mean | FIR mean |
+| --- | ---: | ---: |
+| Outer document/session callback | 57.4 ms | 13.3 ms |
+| Lean document → React elements | 934.3 ms | 909.7 ms |
+| Remaining React/DOM-observation interval | 295.5 ms | 365.3 ms |
+
+These diagnostic timings are two samples per backend under CPU sampling and are
+not headline latency. The outer callback includes shell/session preparation and
+is not a pure identity timer. The residual is computed within each sample after
+subtracting the two non-overlapping callback brackets; it is not isolated React
+internal commit time. The observed-DOM endpoint excludes paint and KaTeX passive
+effects. Semantic checks wait for every formula effect outside the timed region.
 
 ## Rebuild
 

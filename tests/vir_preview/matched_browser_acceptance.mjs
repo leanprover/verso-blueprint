@@ -42,7 +42,9 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     for (const text of VBP_MATCHED_FLT_PREVIEW ? ["Fermat's Last Theorem", "Diophantine"]
       : ["A live Blueprint document", "An informal statement with inline math", "This proof body remains visible"])
       check(panel().textContent.includes(text), `missing ${text}`);
-    check(!document.querySelector(".katex"), "matched source-display mode unexpectedly uses KaTeX");
+    const formula = document.querySelector(".katex");
+    check(formula && document.querySelector("math"), "matched preview did not render KaTeX HTML/MathML");
+    check(!document.querySelector(".katex-error"), "valid matched preview math produced a KaTeX error");
     const follow = document.getElementById("vir-verso-follow-cursor");
     if (VBP_NATIVE_DIRECT_TIMING) React.act(() => document.getElementById("vir-verso-debug").click());
     React.act(() => follow.click());
@@ -56,6 +58,8 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     React.act(() => emit("textDocument/didChange", edit.result));
     await wait(() => version() === edit.result.textDocument.version);
     check(panel().textContent.includes(`browser edit ${version()}`), "edited text missing");
+    check(document.querySelector(".katex") === formula,
+      "unchanged formula was re-typeset or remounted during the document edit");
     let measurement;
     if (VBP_NATIVE_DIRECT_TIMING) {
       await wait(() => document.getElementById("vir-verso-measurement")?.dataset.versoMeasurementVersion === String(version()));
