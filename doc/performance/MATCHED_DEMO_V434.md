@@ -227,9 +227,25 @@ The sampled FIR diagnostic moved the first identity/session pass from 334.2 ms
 to 46.7 ms (-86.0%), and document-element construction from 909.7 ms to
 526.8 ms (-42.1%). The retry pass was essentially unchanged at 10.7 ms versus
 13.3 ms. This is the expected direction if repeated full-record and
-`Lean.Name` decoding was the dominant avoidable work. The successor has no
-symbol companion yet, so these phase movements are mechanism evidence rather
-than an exact post-change symbol census.
+`Lean.Name` decoding was the dominant avoidable work.
+
+FIR's exact projection symbol companion covers all 3,202 import-first function
+indices and matches every non-custom section of release Wasm
+`e765641d42bb12318b2fee13e446d3c1bac6bc3ac6cccf624c33df890b37ac21`.
+A fresh two-update sampled capture resolved all 920 FIR Wasm frames. The old
+`Lean.Name.fromJson?` stacks are absent from both renderer windows:
+`document-session` and `decoded-document-to-elements`. The remaining call is a
+deliberate direct-construction leaf and accounts for 8.1 sampled ms across two
+updates, about 4.0 ms per update inclusive. This replaces the old renderer
+attribution of about 699.4 sampled ms per update.
+
+In the new sampled content window, named FIR Wasm accounts for 40.1%, the FIR
+JS adapter 38.3%, browser GC 8.2%, and host UTF-8 conversion 6.5%. Prominent
+self-time now lies in retained-resource lookup/allocation, UTF-8 decoding and
+fingerprint/identity work, rather than repeated extension-label decoding. The
+capture and derived symbol report are retained under
+`_out/matched-demo-v434/projection-symbol-profile-fir-03/` and
+`_out/matched-demo-v434/projection-symbolized-fir-01/` respectively.
 
 The following comparison uses the same frozen renderer source, document,
 protocol and output checks. Each backend is pooled from its own two sessions;
