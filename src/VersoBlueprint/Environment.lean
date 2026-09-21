@@ -170,18 +170,11 @@ private def addNodeLeanDeclLabels
     NameMap (Array Label) :=
   node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
-private def contributionReferences (contribution : NodeContribution) : Array ExternalRef :=
-  contribution.leanCode.foldl (init := #[]) fun refs code =>
-    match code with | .external more => refs ++ more | .literate _ => refs
-
-private def hasSelectedFields (contribution : NodeContribution) : Bool :=
-  contribution.priority.isSome || !(contributionReferences contribution).isEmpty
-
 private def claimsAuthoredNode (contribution : NodeContribution) : Bool :=
   contribution.kind.isSome || contribution.statementBody.any (·.hasBody) || contribution.proofBody.any (·.hasBody)
 
 private def storedContribution (contribution : NodeContribution) : NodeContribution :=
-  if hasSelectedFields contribution then NodeAssembly.withoutSelectedFacts contribution else contribution
+  if contribution.hasSelectedFields then NodeAssembly.withoutSelectedFacts contribution else contribution
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
@@ -370,7 +363,7 @@ def reportImportedConflicts : m Unit := do
 /-- Apply one complete registration, returning its accepted node or diagnosed failure. -/
 def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
   reportImportedConflicts
-  if hasSelectedFields contribution then
+  if contribution.hasSelectedFields then
     logError m!"Blueprint external references and priority require an identified contribution record"
     return none
   let mainModule ← getMainModule
@@ -396,7 +389,7 @@ def contributeSelected (label : Label) (contribution : NodeContribution) (fact :
   if fact.label != label then
     logError m!"Blueprint contribution identity for {fact.label} cannot be registered under {label}"
     return none
-  if contribution.priority != fact.priority || contributionReferences contribution != fact.references then
+  if contribution.priority != fact.priority || contribution.externalReferences != fact.references then
     logError m!"Selected fields for {label} must exactly match their identified contribution record"
     return none
   let mainModule ← getMainModule

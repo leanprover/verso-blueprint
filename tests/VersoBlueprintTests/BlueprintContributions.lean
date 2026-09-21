@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Contributions.Laws
+import VersoBlueprint.NodeAssembly.Laws
 
 open Lean Informal.Data Informal.Contributions
 namespace VersoBlueprintTests.BlueprintContributions
@@ -112,5 +112,60 @@ private def independentSnapshotA := { snapshotA with id := c.id }
 private def missingB := { b with references := #[{ (ExternalRef.ofName `declB) with present := false }] }
 #guard accepts `shared [a, missingB] [`declA] none [a, missingB]
 #guard rejects `shared [missingB, b] [(b.id, [missingB, b])] []
+
+-- The assembly capability follows every accepted support, rather than the
+-- snapshot retained for the declaration. This reproduces the former reversal.
+private def sameDeclDirective : Record := {
+  id := ⟨`Directive, `blueprint.directive, `declA, 40, 0⟩
+  label := `shared
+  references := #[ExternalRef.ofName `declA .directiveLean]
+  priority := none
+  source := none
+}
+
+private def hasAttributeCapability (records : List Record) : Bool :=
+  match Informal.NodeAssembly.assemble `shared #[] records with
+  | .ok assembled => assembled.node.blueprintAttributeAttachments
+  | .error _ => false
+
+#guard hasAttributeCapability [a, sameDeclDirective]
+#guard hasAttributeCapability [sameDeclDirective, a]
+#guard hasAttributeCapability (collector.batches [] [[a], [sameDeclDirective, a]])
+
+private def highA : Record := { a with priority := some "high" }
+#guard match Informal.NodeAssembly.assemble `shared #[] [highA] with
+  | .ok assembled => assembled.node.priority == some "high" &&
+      assembled.view.priority == some "high"
+  | .error _ => false
+
+-- The retained public reducer rejects the selected fields it cannot admit, but
+-- continues to accept the legacy body and dependency payloads it owns.
+#guard match ({} : Node).applyContributions `shared #[{ priority := some "high" }] with
+  | .error _ => true
+  | .ok _ => false
+#guard match ({} : Node).applyContributions `shared
+    #[{ leanCode := #[.external a.references] }] with
+  | .error _ => true
+  | .ok _ => false
+#guard match ({} : Node).applyContributions `shared #[{
+    statementBody := some { stx := .missing, elabStx := #[.missing] }
+    statementUses := #[{ label := `dependency }]
+    leanCode := #[.literate { stx := .missing }]
+  }] with
+  | .ok node => node.statement.any fun statement => statement.hasBody &&
+      statement.deps == #[{ label := `dependency }] && node.literateCodes.size == 1
+  | .error _ => false
+
+-- Supported legacy updates must preserve an already assembled capability.
+#guard match Informal.NodeAssembly.assemble `shared #[] [a] with
+  | .error _ => false
+  | .ok assembled => match assembled.node.applyContributions `shared #[{
+      statementBody := some { stx := .missing, elabStx := #[.missing] }
+      statementUses := #[{ label := `dependency }]
+    }] with
+    | .error _ => false
+    | .ok updated => updated.blueprintAttributeAttachments &&
+        updated.statement.any fun statement => statement.hasBody &&
+          statement.deps == #[{ label := `dependency }]
 
 end VersoBlueprintTests.BlueprintContributions
