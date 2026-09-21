@@ -46,6 +46,11 @@ Add `VBP_REPLAY_FIR_PACKAGE=/absolute/path/to/immutable/package` for FIR's check
 codec. The driver accepts the explicitly reviewed package checksums, copies it
 and uses its session-owned decoded token and default view. A new package requires
 explicit identity review and consumer qualification, not bypassing the checks.
+For a separately reviewed FIR direct-construction candidate, set both
+`VBP_REPLAY_FIR_SHA256SUMS` and `VBP_REPLAY_FIR_BUILD_SHA256` to the handoff's
+exact SHA-256 values. The driver verifies these and every file listed in
+`SHA256SUMS` before copying the package into the capture. This does not move a
+live demo pin.
 
 Keep `VBP_REPLAY_DIRECT_TYPED`, `VBP_REPLAY_TYPED_PACKAGE`,
 `VBP_REPLAY_STRING_INTERN`, `VBP_REPLAY_UTF8_SCRATCH` and
