@@ -23,7 +23,9 @@ export async function run({ wasmBytes, genericPackages, blueprintPackages }) {
   const generic = await withRuntime(genericPackages, runtime =>
     checkRenderer(scenario => runtime.call("VersoReactTests.render", scenario)));
   const preludeConversions = new Map();
+  let nestedRuntime, triggerNested = false, nestedRendered = false;
   const blueprint = await withRuntime(blueprintPackages, runtime => {
+    nestedRuntime = runtime;
     const html = renderToStaticMarkup(runtime.call("VersoBlueprintVirTests.Renderer.render"));
     assert.equal((html.match(/data-bp-tex-prelude=/g) ?? []).length, 4,
       "empty prelude must have no attribute");
@@ -44,12 +46,20 @@ export async function run({ wasmBytes, genericPackages, blueprintPackages }) {
     assert.equal(preludeConversions.get("\\newcommand{\\RR}{R}"), 2,
       "a retained runtime must create a fresh render-local table");
     assert.equal(preludeConversions.get("\\newcommand{\\AA}{A}"), 2);
+    triggerNested = true;
+    renderToStaticMarkup(runtime.call("VersoBlueprintVirTests.Renderer.render"));
+    assert.ok(nestedRendered, "nested render did not complete");
     return { mathPrelude: true, informalBody: true, externalMarkupModes: true,
       malformedFallbacks: true, escapedSource: true, sessionMetadata: true,
-      perRenderPreludeSharing: true };
+      perRenderPreludeSharing: true, nestedRender: true };
   }, value => {
     if (value === "\\newcommand{\\RR}{R}" || value === "\\newcommand{\\AA}{A}")
       preludeConversions.set(value, (preludeConversions.get(value) ?? 0) + 1);
+    if (triggerNested && value === "\\newcommand{\\RR}{R}") {
+      triggerNested = false;
+      renderToStaticMarkup(nestedRuntime.call("VersoBlueprintVirTests.Renderer.render"));
+      nestedRendered = true;
+    }
   });
   return { generic, blueprint, scope: "VIR-generated React elements and React SSR; not live editor acceptance" };
 }
