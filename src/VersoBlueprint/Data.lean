@@ -449,6 +449,14 @@ instance [Quote ε] [Quote α] : Quote (Except ε α) where
 
 abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError Informal.ExternalDeclRenderedHtml
 
+instance : DecidableEq ExternalDeclRender
+  | .ok a, .ok b =>
+    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.ok.inj eq))
+  | .error a, .error b =>
+    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.error.inj eq))
+  | .ok _, .error _ => .isFalse (by intro h; cases h)
+  | .error _, .ok _ => .isFalse (by intro h; cases h)
+
 /--
 Reference to an external declaration mentioned by a blueprint node.
 {lit}`written` preserves the user spelling, while {lit}`canonical` is scope-erased for
@@ -485,7 +493,7 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
-deriving Repr, Inhabited, ToJson, FromJson, Quote
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
   { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
@@ -570,6 +578,9 @@ structure Node where
   proof : Option InformalData := none -- Informal Object proof
   /-- External associations, unique by canonical declaration in registration order. -/
   externalRefs : Array ExternalRef := #[]
+  /-- Whether accepted selected evidence includes a Blueprint-attribute association.
+  This capability is independent of the snapshot retained for each declaration. -/
+  blueprintAttributeAttachments : Bool := false
   /-- Every associated literate block, in registration order. -/
   literateCodes : Array Code := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
@@ -604,6 +615,17 @@ structure NodeContribution where
   effort : Option String := none
   prUrl : Option String := none
 deriving Repr, Inhabited
+
+/-- External references carried by the selected association field. -/
+def NodeContribution.externalReferences (contribution : NodeContribution) : Array ExternalRef :=
+  contribution.leanCode.foldl (init := #[]) fun refs code =>
+    match code with
+    | .external more => refs ++ more
+    | .literate _ => refs
+
+/-- Selected fields require a producer-identified contribution record. -/
+def NodeContribution.hasSelectedFields (contribution : NodeContribution) : Bool :=
+  contribution.priority.isSome || !contribution.externalReferences.isEmpty
 
 /-- Stable canonical union; build an ephemeral index once for this incoming group. -/
 private def mergeExternalRefs (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
@@ -647,99 +669,5 @@ private def inferredNodeKind (external : Array ExternalRef) (literate : Array Co
   else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then
     .definition
   else .lemma
-
-private abbrev MergeM := StateM (Array String)
-
-private def conflict (message : String) : MergeM Unit :=
-  modify (·.push message)
-
-/-- Equal scalar metadata is idempotent; distinct values are always a conflict. -/
-private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String)
-    (current incoming : Option α) : MergeM (Option α) := do
-  match current, incoming with
-  | none, _ => return incoming
-  | _, none => return current
-  | some existing, some value =>
-    if existing != value then
-      conflict s!"Label {label} declares conflicting {field}: existing '{existing}', new '{value}'"
-    return current
-
-/-- Retain one declaration per authority, checking even metadata hidden by manual precedence. -/
-private def mergeUses (label : Label) (side : String)
-    (current incoming : Array UseRef) : MergeM (Array UseRef) := do
-  let mut uses := current
-  for ref in incoming do
-    if let some previous := uses.find? (fun previous =>
-        previous.label == ref.label && previous.origin == ref.origin) then
-      if previous.intent != ref.intent then
-        conflict s!"Label {label} declares conflicting {side} dependency intents for '{ref.label}' ({ref.origin}): existing '{previous.intent}', new '{ref.intent}'"
-    else
-      uses := uses.push ref
-  return uses
-
-private def mergePayload (label : Label) (side : String)
-    (current : Option InformalData) (body : Option InformalBody)
-    (incomingUses : Array UseRef) : MergeM (Option InformalData) := do
-  let useDeclarations ← mergeUses label side (current.map (·.useDeclarations) |>.getD #[]) incomingUses
-  let currentBody := current.map (·.toInformalBody)
-  if (currentBody.any (·.hasBody)) && (body.any (·.hasBody)) then
-    conflict s!"Label {label} already has a {side}"
-  let selected := if body.any (·.hasBody) then body else currentBody <|> body
-  match selected with
-  | some body => return some { toInformalBody := body, useDeclarations }
-  | none =>
-    return if useDeclarations.isEmpty then none else some { stx := .missing, useDeclarations }
-
-private def mergeContribution (label : Label) (node : Node)
-    (incoming : NodeContribution) : MergeM Node := do
-  let statement ← mergePayload label "statement" node.statement incoming.statementBody incoming.statementUses
-  let proof ← mergePayload label "proof" node.proof incoming.proofBody incoming.proofUses
-  let mut rustCode := node.rustCode
-  if let some code := incoming.rustCode then
-    if rustCode.isSome then
-      conflict s!"Label {label} already has associated Rust code"
-    else
-      rustCode := some code
-  let mut externalMarkup := node.externalMarkup
-  for markup in incoming.externalMarkup.toArray do
-    let key := markup.key
-    if externalMarkup.contains key then
-      conflict s!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
-    else
-      externalMarkup := externalMarkup.insert markup
-  let parent ← mergeMetadata label "parents" node.parent incoming.parent
-  let priority ← mergeMetadata label "priorities" node.priority incoming.priority
-  let owner ← mergeMetadata label "owners" node.owner incoming.owner
-  let effort ← mergeMetadata label "effort values" node.effort incoming.effort
-  let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
-  let mut externalRefs := node.externalRefs
-  let mut literateCodes := node.literateCodes
-  for code in incoming.leanCode do
-    match code with
-    | .external refs => externalRefs := mergeExternalRefs externalRefs refs
-    | .literate code => literateCodes := literateCodes.push code
-  let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
-  let kind ← match incoming.kind with
-    | some kind =>
-      if node.kindIsExplicit && node.kind != kind then
-        conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
-      pure kind
-    | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs literateCodes
-  return {
-    kind, kindIsExplicit
-    count := if node.count == 0 then incoming.count else node.count
-    statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl
-    externalRefs, literateCodes
-    tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
-  }
-
-/--
-Pure, atomic registration shared by local elaboration and import replay. Failed
-registrations expose diagnostics, never a partially updated node.
--/
-def Node.applyContributions (label : Label) (node : Node)
-    (contributions : Array NodeContribution) : Except (Array String) Node :=
-  let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
-  if errors.isEmpty then .ok node else .error errors
 
 end Informal.Data
