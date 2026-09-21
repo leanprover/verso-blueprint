@@ -62,7 +62,7 @@ private def slidesMainWithBlueprintRenderer
     (htmlCache? : Option Informal.PreviewManifest.HtmlCache.File)
     (doc : Verso.Doc.Part VersoSlides.Slides)
     (quiet : Bool := false) : IO UInt32 := do
-  let assetPlan ← collectSlideAssets config
+  config.validateFilenames
   let hasError ← IO.mkRef false
   let logError (msg : String) : IO Unit := do
     hasError.set true
@@ -105,7 +105,7 @@ private def slidesMainWithBlueprintRenderer
   IO.FS.writeFile indexPath ("<!doctype html>\n" ++ fullHtml.asString)
   IO.FS.writeFile (dir / "-verso-docs.json") (toString hoverState.dedup.docJson)
   VersoSlides.writeVendoredAssets dir config.theme
-  writeSlideAssets dir assetPlan
+  config.writeAssets dir
   writeSlideImages dir traverseState.imageFiles
   unless quiet do
     IO.println s!"Slides written to {indexPath}"
