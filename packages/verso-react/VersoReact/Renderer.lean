@@ -11,6 +11,7 @@ public import Vir.ProofWidgets.Jsx
 public import VersoManual.Basic
 public import VersoReact.RenderPath
 public import VersoReact.Fingerprint
+public import VersoReact.JsStrings
 public meta import VersoReact.RenderPath
 
 public section
@@ -58,6 +59,7 @@ end Style
 /-- Constant styles owned by one component factory. Treat these objects as read-only;
 node attributes remain fresh. CSS variables keep theme changes independent of React updates. -/
 structure Styles where
+  strings : JsStrings.Fixed
   document : Js Props
   part : Js Props
   heading : Js Props
@@ -76,6 +78,7 @@ structure Styles where
 
 def Styles.create : ReactM Styles := do
   return {
+    strings := ← JsStrings.Fixed.create
     document := ← Style.document, part := ← Style.part, heading := ← Style.heading
     paragraph := ← Style.paragraph, list := ← Style.list, listItem := ← Style.listItem
     blockquote := ← Style.blockquote, descriptionList := ← Style.descriptionList
@@ -123,6 +126,13 @@ private def IdentityOrigin.label : IdentityOrigin → String
   | .verso => "verso"
   | .fingerprint => "fingerprint"
   | .positional => "positional"
+
+private def IdentityOrigin.jsLabel (strings : JsStrings.Fixed) : IdentityOrigin → Js String
+  | .structural => strings.values.structural
+  | .explicit => strings.values.explicit
+  | .verso => strings.values.verso
+  | .fingerprint => strings.values.fingerprint
+  | .positional => strings.values.positional
 
 /--
 Identity sources are ordered from strongest to weakest. Ordinary Manual blocks
@@ -364,37 +374,41 @@ def changedBlockIds (previous current : Doc.Part Genre.Manual)
   (changedBlockIdsAndCount (some previous) current extensions).1
 
 private def blockProps
+    (styles : Styles)
     (identity : Identity)
     (kind : String)
     (style : Js Props)
     (changed focused : Bool) : ReactM (Js Props) := do
-  let props ← js%{ "style" := style }
+  let props ← Js.Object.empty
+  Js.Object.set props styles.strings.keys.style style
   let classes := if focused then
     if changed then "vir-verso-block vir-verso-block-changed vir-verso-block-focused"
     else "vir-verso-block vir-verso-block-focused"
   else if changed then "vir-verso-block vir-verso-block-changed" else "vir-verso-block"
-  Js.Object.set props (← js#"key") (← JsValue.ofString identity.reactKey)
-  Js.Object.set props (← js#"className") (← JsValue.ofString classes)
-  Js.Object.set props (← js#"data-verso-block") (← JsValue.ofString identity.debugPath)
-  Js.Object.set props (← js#"data-verso-render-id") (← JsValue.ofString identity.friendlyId)
-  Js.Object.set props (← js#"data-verso-identity-origin") (← JsValue.ofString identity.origin.label)
-  Js.Object.set props (← js#"data-verso-kind") (← JsValue.ofString kind)
-  Js.Object.set props (← js#"title") (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
-  if changed then Js.Object.set props (← js#"data-verso-change") (← js#"changed")
-  if focused then Js.Object.set props (← js#"data-verso-focus") (← js#"cursor")
+  Js.Object.set props styles.strings.keys.key (← JsValue.ofString identity.reactKey)
+  Js.Object.set props styles.strings.keys.className (← JsValue.ofString classes)
+  Js.Object.set props styles.strings.keys.dataVersoBlock (← JsValue.ofString identity.debugPath)
+  Js.Object.set props styles.strings.keys.dataVersoRenderId (← JsValue.ofString identity.friendlyId)
+  Js.Object.set props styles.strings.keys.dataVersoIdentityOrigin (identity.origin.jsLabel styles.strings)
+  Js.Object.set props styles.strings.keys.dataVersoKind (← JsValue.ofString kind)
+  Js.Object.set props styles.strings.keys.title (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
+  if changed then Js.Object.set props styles.strings.keys.dataVersoChange styles.strings.values.changed
+  if focused then Js.Object.set props styles.strings.keys.dataVersoFocus styles.strings.values.cursor
   pure props
 
 private def listItemProps
+    (styles : Styles)
     (key path kind : String)
     (style : Js Props)
     (focused : Bool) : ReactM (Js Props) := do
-  let props ← js%{ "style" := style }
-  Js.Object.set props (← js#"key") (← JsValue.ofString key)
-  Js.Object.set props (← js#"className") (← JsValue.ofString (if focused then "vir-verso-list-item vir-verso-block-focused" else "vir-verso-list-item"))
-  Js.Object.set props (← js#"data-verso-list-item") (← JsValue.ofString path)
-  Js.Object.set props (← js#"data-verso-kind") (← JsValue.ofString kind)
-  Js.Object.set props (← js#"title") (← JsValue.ofString s!"source list item: {path}")
-  if focused then Js.Object.set props (← js#"data-verso-focus") (← js#"cursor")
+  let props ← Js.Object.empty
+  Js.Object.set props styles.strings.keys.style style
+  Js.Object.set props styles.strings.keys.key (← JsValue.ofString key)
+  Js.Object.set props styles.strings.keys.className (← JsValue.ofString (if focused then "vir-verso-list-item vir-verso-block-focused" else "vir-verso-list-item"))
+  Js.Object.set props styles.strings.keys.dataVersoListItem (← JsValue.ofString path)
+  Js.Object.set props styles.strings.keys.dataVersoKind (← JsValue.ofString kind)
+  Js.Object.set props styles.strings.keys.title (← JsValue.ofString s!"source list item: {path}")
+  if focused then Js.Object.set props styles.strings.keys.dataVersoFocus styles.strings.values.cursor
   pure props
 
 /-- Source-preserving math node with a sibling-local React key;
@@ -406,24 +420,30 @@ def renderMath
     (source : String)
     (attributes : Option (Js Props) := none)
     (component? : Option (FunctionComponent Props) := none) : ReactM (Lean.Vir.Js Node) := do
-  let modeClass := match mode with
-    | Lean.Doc.MathMode.inline => "inline"
-    | Lean.Doc.MathMode.display => "display"
-  let style := match mode with
+  let modeValue : Js String := match mode with
+    | Lean.Doc.MathMode.inline => styles.strings.values.inline
+    | Lean.Doc.MathMode.display => styles.strings.values.display
+  let classValue : Js String := match mode with
+    | Lean.Doc.MathMode.inline => styles.strings.values.mathInlineClass
+    | Lean.Doc.MathMode.display => styles.strings.values.mathDisplayClass
+  let style : Js Props := match mode with
     | Lean.Doc.MathMode.inline => styles.mathInline
     | Lean.Doc.MathMode.display => styles.mathDisplay
   let props ← match attributes with
     | some attributes => do
-      Js.Object.set attributes (← js#"style") style
+      Js.Object.set attributes styles.strings.keys.style style
       pure attributes
-    | none => js%{ "style" := style }
-  Js.Object.set props (← js#"key") (← JsValue.ofString key)
-  let className ← Js.Object.get props (← js#"className")
+    | none => do
+      let props ← Js.Object.empty
+      Js.Object.set props styles.strings.keys.style style
+      pure props
+  Js.Object.set props styles.strings.keys.key (← JsValue.ofString key)
+  let className ← Js.Object.get props styles.strings.keys.className
   if ← JsValue.toBool (← Js.UndefinedOr.isUndefined (Js.UndefinedOr.ofJs className)) then
-    Js.Object.set props (← js#"className") (← JsValue.ofString s!"vir-verso-math {modeClass}")
-  Js.Object.set props (← js#"data-verso-math-mode") (← JsValue.ofString modeClass)
+    Js.Object.set props styles.strings.keys.className classValue
+  Js.Object.set props styles.strings.keys.dataVersoMathMode modeValue
   if let some component := component? then
-    Js.Object.set props (← js#"source") (← JsValue.ofString source)
+    Js.Object.set props styles.strings.keys.source (← JsValue.ofString source)
     return ← Node.functionComponent component props (← js#[])
   return ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString source)}</code>
 
@@ -432,8 +452,9 @@ private partial def renderInline (styles : Styles) (extensions : Extensions)
   | .text value | .linebreak value => do Node.text (← JsValue.ofString value)
   | .code value => do
       let style := styles.inlineCode
-      let props ← js%{ "style" := style }
-      Js.Object.set props (← js#"key") (← JsValue.ofString key)
+      let props ← Js.Object.empty
+      Js.Object.set props styles.strings.keys.style style
+      Js.Object.set props styles.strings.keys.key (← JsValue.ofString key)
       return ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString value)}</code>
   | .math mode value => renderMath styles key mode value none extensions.mathComponent?
   | .emph content => do
@@ -452,19 +473,22 @@ private partial def renderInline (styles : Styles) (extensions : Extensions)
       return ← <details key={← JsValue.ofString key} className="vir-verso-footnote">{pure summary}{Js.Array.ofArray children}</details>
   | .image alt destination => do return ← <img key={← JsValue.ofString key} src={← JsValue.ofString destination} alt={← JsValue.ofString alt}/>
   | .concat content => do
-      let props ← js%{ "key" := (← JsValue.ofString key) }
+      let props ← Js.Object.empty
+      Js.Object.set props styles.strings.keys.key (← JsValue.ofString key)
       Node.fragment props (← Js.Array.ofArray (← renderInlines styles extensions content))
   | .other extension content => do
       match ← extensions.renderInline? key extension with
       | some rendered => pure rendered
       | none =>
           let style := styles.inlineCode
-          let props ← js%{ "style" := style }
-          Js.Object.set props (← js#"key") (← js#"structural:extension")
-          Js.Object.set props (← js#"className") (← js#"vir-verso-extension-unsupported")
-          Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
+          let props ← Js.Object.empty
+          Js.Object.set props styles.strings.keys.style style
+          Js.Object.set props styles.strings.keys.key styles.strings.values.structuralExtension
+          Js.Object.set props styles.strings.keys.className styles.strings.values.unsupportedExtensionClass
+          Js.Object.set props styles.strings.keys.dataVersoExtension (← JsValue.ofString extension.name.toString)
           let marker ← <code @props={props}>{Lean.Vir.React.Node.text (← JsValue.ofString s!"[inline extension: {extension.name}]")}</code>
-          let fragmentProps ← js%{ "key" := (← JsValue.ofString key) }
+          let fragmentProps ← Js.Object.empty
+          Js.Object.set fragmentProps styles.strings.keys.key (← JsValue.ofString key)
           Node.fragment fragmentProps
             (← Js.Array.ofArray (#[marker] ++ (← renderInlines styles extensions content)))
 
@@ -483,7 +507,7 @@ private def headingNode
     (level : Nat)
     (content : Array (Lean.Vir.Js Node))
     (changed focused : Bool) : ReactM (Lean.Vir.Js Node) := do
-  let props ← blockProps identity "heading" (styles.heading) changed focused
+  let props ← blockProps styles identity "heading" (styles.heading) changed focused
   match level with
   | 1 => <h1 @props={props}>{Js.Array.ofArray content}</h1>
   | 2 => <h2 @props={props}>{Js.Array.ofArray content}</h2>
@@ -497,37 +521,39 @@ private partial def renderBlock (styles : Styles) (extensions : Extensions) (fin
     (focus : Option String)
     (identity : Identity) : _root_.Verso.Doc.Block Genre.Manual → ReactM (Lean.Vir.Js Node)
   | .para content => do
-      let props ← blockProps identity "paragraph" (styles.paragraph) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let props ← blockProps styles identity "paragraph" (styles.paragraph) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← renderInlines styles extensions content
       return ← <p @props={props}>{Js.Array.ofArray children}</p>
   | .code source => do
       let text ← Node.text (← JsValue.ofString source)
-      let codeProps ← js%{ "data-language" := (← js#"") }
+      let codeProps ← Js.Object.empty
+      Js.Object.set codeProps styles.strings.keys.dataLanguage styles.strings.values.empty
       let code ← <code @props={codeProps}>{pure text}</code>
-      let props ← blockProps identity "code" (styles.codeBlock) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let props ← blockProps styles identity "code" (styles.codeBlock) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       return ← <pre @props={props}>{pure code}</pre>
   | .ul items => do
-      let props ← blockProps identity "unordered-list" (styles.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let props ← blockProps styles identity "unordered-list" (styles.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← items.mapIdxM fun index item => renderListItem styles extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
       return ← <ul @props={props}>{Js.Array.ofArray children}</ul>
   | .ol start items => do
-      let props ← blockProps identity "ordered-list" (styles.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
-      Js.Object.set props (← js#"start") (← JsValue.ofString (toString (max start 0)))
+      let props ← blockProps styles identity "ordered-list" (styles.list) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      Js.Object.set props styles.strings.keys.start (← JsValue.ofString (toString (max start 0)))
       let children ← items.mapIdxM fun index item => renderListItem styles extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
       return ← <ol @props={props}>{Js.Array.ofArray children}</ol>
   | .dl items => do
       let children ← items.mapIdxM fun index item =>
         renderDescItem styles extensions fingerprint changedIds focus identity.semanticKey s!"item:{index}" s!"{identity.debugPath}-item-{index}" item
-      let props ← blockProps identity "description-list" (styles.descriptionList) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let props ← blockProps styles identity "description-list" (styles.descriptionList) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       return ← <dl @props={props}>{Js.Array.ofArray children.flatten}</dl>
   | .blockquote content => do
-      let props ← blockProps identity "blockquote" (styles.blockquote) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
+      let props ← blockProps styles identity "blockquote" (styles.blockquote) (changedIds.contains identity.debugPath) (focus == some identity.debugPath)
       let children ← renderBlocks styles extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
       return ← <blockquote @props={props}>{Js.Array.ofArray children}</blockquote>
   | .concat content => do
       -- Concatenations are React fragments, not DOM nodes. A source block may
       -- expand to several children; mark those children without adding a wrapper.
-      let props ← js%{ "key" := (← JsValue.ofString identity.reactKey) }
+      let props ← Js.Object.empty
+      Js.Object.set props styles.strings.keys.key (← JsValue.ofString identity.reactKey)
       Node.fragment props
         (← Js.Array.ofArray
           (← renderBlocks styles extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
@@ -535,17 +561,18 @@ private partial def renderBlock (styles : Styles) (extensions : Extensions) (fin
   | .other extension content => do
       let changed := changedIds.contains identity.debugPath
       let focused := focus == some identity.debugPath
-      let attributes := fun kind style => blockProps identity kind style changed focused
+      let attributes := fun kind style => blockProps styles identity kind style changed focused
       let children := fun _ : Unit =>
         renderBlocks styles extensions fingerprint changedIds focus identity.semanticKey identity.debugPath content
       match ← extensions.renderBlock? identity.reactKey attributes extension children with
       | some rendered => pure rendered
       | none =>
           let markerStyle := styles.inlineCode
-          let markerProps ← js%{ "style" := markerStyle }
+          let markerProps ← Js.Object.empty
+          Js.Object.set markerProps styles.strings.keys.style markerStyle
           let marker ← <code @props={markerProps}>{Lean.Vir.React.Node.text (← JsValue.ofString s!"[block extension: {extension.name}]")}</code>
           let props ← attributes "unsupported-extension" (styles.unsupported)
-          Js.Object.set props (← js#"data-verso-extension") (← JsValue.ofString extension.name.toString)
+          Js.Object.set props styles.strings.keys.dataVersoExtension (← JsValue.ofString extension.name.toString)
           let childNodes ← children ()
           return ← <div @props={props}>{pure marker}{Js.Array.ofArray childNodes}</div>
 
@@ -557,7 +584,7 @@ where
       (item : Lean.Doc.ListItem (_root_.Verso.Doc.Block Genre.Manual)) :
       ReactM (Lean.Vir.Js Node) := do
     let .mk content := item
-    let props ← listItemProps key path "list-item" (styles.listItem) (focus == some path)
+    let props ← listItemProps styles key path "list-item" (styles.listItem) (focus == some path)
     let children ← renderBlocks styles extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}" path content
     return ← <li @props={props}>{Js.Array.ofArray children}</li>
 
@@ -569,10 +596,10 @@ where
         (_root_.Verso.Doc.Inline Genre.Manual) (_root_.Verso.Doc.Block Genre.Manual)) :
       ReactM (Array (Lean.Vir.Js Node)) := do
     let .mk term description := item
-    let termProps ← listItemProps s!"{key}:term" s!"{path}-term" "description-term" (styles.descriptionTerm) (focus == some path)
+    let termProps ← listItemProps styles s!"{key}:term" s!"{path}-term" "description-term" (styles.descriptionTerm) (focus == some path)
     let termChildren ← renderInlines styles extensions term
     let termNode ← <dt @props={termProps}>{Js.Array.ofArray termChildren}</dt>
-    let descriptionProps ← listItemProps s!"{key}:description" s!"{path}-description" "description-value" (styles.descriptionValue) (focus == some path)
+    let descriptionProps ← listItemProps styles s!"{key}:description" s!"{path}-description" "description-value" (styles.descriptionValue) (focus == some path)
     let descriptionChildren ← renderBlocks styles extensions fingerprint changedIds focus s!"{parentSemanticKey}/{key}/description" s!"{path}-description" description
     let descriptionNode ← <dd @props={descriptionProps}>{Js.Array.ofArray descriptionChildren}</dd>
     pure #[termNode, descriptionNode]
@@ -607,13 +634,14 @@ private partial def renderPart (styles : Styles) (extensions : Extensions) (fing
   let subParts ← part.subParts.mapIdxM fun index child =>
     renderPart styles extensions fingerprint changedIds focus partIdentities[index]! (level + 1) child
   let style := styles.part
-  let props ← js%{ "style" := style }
-  Js.Object.set props (← js#"key") (← JsValue.ofString identity.reactKey)
-  Js.Object.set props (← js#"className") (← js#"vir-verso-part")
-  Js.Object.set props (← js#"data-verso-part") (← JsValue.ofString identity.debugPath)
-  Js.Object.set props (← js#"data-verso-render-id") (← JsValue.ofString identity.friendlyId)
-  Js.Object.set props (← js#"data-verso-identity-origin") (← JsValue.ofString identity.origin.label)
-  Js.Object.set props (← js#"title") (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
+  let props ← Js.Object.empty
+  Js.Object.set props styles.strings.keys.style style
+  Js.Object.set props styles.strings.keys.key (← JsValue.ofString identity.reactKey)
+  Js.Object.set props styles.strings.keys.className styles.strings.values.partClass
+  Js.Object.set props styles.strings.keys.dataVersoPart (← JsValue.ofString identity.debugPath)
+  Js.Object.set props styles.strings.keys.dataVersoRenderId (← JsValue.ofString identity.friendlyId)
+  Js.Object.set props styles.strings.keys.dataVersoIdentityOrigin (identity.origin.jsLabel styles.strings)
+  Js.Object.set props styles.strings.keys.title (← JsValue.ofString s!"render path: {identity.debugPath}\nidentity: {identity.friendlyId} ({identity.origin.label})")
   return ← <section @props={props}>{pure heading}{Js.Array.ofArray content}{Js.Array.ofArray subParts}</section>
 
 /-- Options computed by the stateful component before constructing the Verso VDOM. -/
@@ -633,11 +661,13 @@ def render (styles : Styles) (input : Doc.Part Genre.Manual) (options : Options 
     | some attributes => pure attributes
     | none => do
       let style := styles.document
-      js%{ "style" := style }
-  Js.Object.set props (← js#"id") (← js#"vir-verso-document")
-  Js.Object.set props (← js#"className") (← js#"vir-verso-document")
-  Js.Object.set props (← js#"data-verso-changed-block-count") (← JsValue.ofString (toString options.changedIds.size))
-  Js.Object.set props (← js#"data-verso-focus-block") (← JsValue.ofString (options.focus.getD ""))
+      let props ← Js.Object.empty
+      Js.Object.set props styles.strings.keys.style style
+      pure props
+  Js.Object.set props styles.strings.keys.id styles.strings.values.documentId
+  Js.Object.set props styles.strings.keys.className styles.strings.values.documentClass
+  Js.Object.set props styles.strings.keys.dataVersoChangedBlockCount (← JsValue.ofString (toString options.changedIds.size))
+  Js.Object.set props styles.strings.keys.dataVersoFocusBlock (← JsValue.ofString (options.focus.getD ""))
   return ← <article @props={props}>{pure rootPart}</article>
 
 #guard
