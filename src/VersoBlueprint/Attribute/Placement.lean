@@ -12,14 +12,14 @@ namespace Informal.Graft
 open Lean Verso Doc Elab
 
 /--
-One visible placement. An optional statement occurrence materializes attribute
+One visible placement. An optional facet occurrence materializes attribute
 contributions; it is not a second, invisible source block. The placement's id
 owns any emitted code destinations. Explicit folding options override the
 selected facet's defaults, without changing that facet or the node's number.
 -/
 structure Placement where
   config : BlueprintNodeConfig
-  statement : Option BlockOccurrence := none
+  occurrence : Option BlockOccurrence := none
   foldProofBlock : Option Bool := none
   foldCodeBlock : Option Bool := none
 deriving ToJson, FromJson, Quote
@@ -38,24 +38,30 @@ def decodePersistedManualBlock (jsonText : String) :
 /-- Validate at the consuming elaboration boundary, before constructing a body term. -/
 public meta def persistedManualBlockTermFromJson (jsonText : String) : DocElabM Term := do
   match decodePersistedManualBlock jsonText with
-  | .error err => throwError "Blueprint persisted statement block could not be decoded: {err}"
+  | .error err => throwError "Blueprint persisted Manual block could not be decoded: {err}"
   | .ok _ =>
     `((Informal.Graft.decodePersistedManualBlock $(quote jsonText)).toOption.get!)
 
 private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     DocElabM (Option (BlockOccurrence × Array Syntax)) := do
-  if cfg.toNode.facet != "statement" then return none
+  let facet := cfg.toNode.facet
+  if facet != "statement" && facet != "proof" then return none
   let label := LabelNameParsing.parse cfg.label
   let some node ← Environment.getNode? label | return none
   if !nodeHasBlueprintAttributeAttachments node then return none
-  let statementStxs ←
-    match node.statement with
+  let isProof := facet == "proof"
+  let body := if isProof then node.proof else node.statement
+  -- A statement may render its attached declaration without prose. A proof
+  -- requires authored prose: dependency metadata is not an informal proof.
+  if isProof && !body.any (·.hasBody) then return none
+  let bodyStxs ←
+    match body with
     | none => pure #[]
-    | some statement =>
-      if statement.previewBlocks.isEmpty then
-        pure statement.elabStx
+    | some body =>
+      if body.previewBlocks.isEmpty then
+        pure body.elabStx
       else
-        statement.previewBlocks.mapM fun block =>
+        body.previewBlocks.mapM fun block =>
           return (← persistedManualBlockTermFromJson (toJson block).compress).raw
   let opts ← getOptions
   let sourceLocation :=
@@ -63,7 +69,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     | some location => Data.SourceLocationResult.found location
     | none => Data.SourceLocationResult.unavailable s!"placement source location unavailable for {label}"
   let occurrence : BlockOccurrence := {
-    label, sourceLocation
+    label, sourceLocation, isProof
     foldProofBlock := verso.blueprint.foldProofBlocks.get opts
     foldCodeBlock := verso.blueprint.foldCodeBlocks.get opts
     count := 0
@@ -71,7 +77,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     subNumberingPrefix := Informal.subNumberingPrefix opts
     subNumberingCounter := Informal.subNumberingCounter opts
   }
-  return some (occurrence, statementStxs)
+  return some (occurrence, bodyStxs)
 
 public meta def elaboratePlacement (config : BlueprintNodeConfig) :
     DocElabM (Placement × Array Term) := do
@@ -79,7 +85,7 @@ public meta def elaboratePlacement (config : BlueprintNodeConfig) :
   let opts ← getOptions
   return ({
     config
-    statement := source.map (·.1)
+    occurrence := source.map (·.1)
     foldProofBlock := if opts.contains `verso.blueprint.foldProofBlocks then
       some (verso.blueprint.foldProofBlocks.get opts) else none
     foldCodeBlock := if opts.contains `verso.blueprint.foldCodeBlocks then
