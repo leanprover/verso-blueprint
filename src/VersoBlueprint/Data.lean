@@ -578,6 +578,9 @@ structure Node where
   proof : Option InformalData := none -- Informal Object proof
   /-- External associations, unique by canonical declaration in registration order. -/
   externalRefs : Array ExternalRef := #[]
+  /-- Whether accepted selected evidence includes a Blueprint-attribute association.
+  This capability is independent of the snapshot retained for each declaration. -/
+  blueprintAttributeAttachments : Bool := false
   /-- Every associated literate block, in registration order. -/
   literateCodes : Array Code := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
@@ -612,6 +615,17 @@ structure NodeContribution where
   effort : Option String := none
   prUrl : Option String := none
 deriving Repr, Inhabited
+
+/-- External references carried by the selected association field. -/
+def NodeContribution.externalReferences (contribution : NodeContribution) : Array ExternalRef :=
+  contribution.leanCode.foldl (init := #[]) fun refs code =>
+    match code with
+    | .external more => refs ++ more
+    | .literate _ => refs
+
+/-- Selected fields require a producer-identified contribution record. -/
+def NodeContribution.hasSelectedFields (contribution : NodeContribution) : Bool :=
+  contribution.priority.isSome || !contribution.externalReferences.isEmpty
 
 /-- Stable canonical union; build an ephemeral index once for this incoming group. -/
 private def mergeExternalRefs (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do

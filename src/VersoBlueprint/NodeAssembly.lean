@@ -100,11 +100,13 @@ private def mergeContribution (label : Label) (node : Node)
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
     statement, proof, rustCode, externalMarkup, parent, priority := node.priority, owner, effort, prUrl
-    externalRefs, literateCodes
+    externalRefs
+    blueprintAttributeAttachments := node.blueprintAttributeAttachments
+    literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
-/-- The legacy reducer is retained for body/kind/markup and non-migrated callers. -/
-def applyLegacy (label : Label) (node : Node)
+/-- Private legacy reducer for body, kind, markup, dependency, and literate payloads. -/
+private def applyLegacy (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
   let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
   if errors.isEmpty then .ok node else .error errors
@@ -114,13 +116,19 @@ end Informal.NodeAssembly
 namespace Informal.Data
 
 /--
-Pure checked legacy reducer. Its implementation lives in `NodeAssembly` so the
-environment can combine it with the selected-fact resolver without a Data ↔
-Contributions cycle.
+Apply body, kind, markup, dependency, and literate payloads to a node. This
+public legacy API rejects priority and external-reference fields because their
+admission requires an identified selected contribution record; producers should
+use `Environment.contributeSelected` for those fields. Its implementation lives
+in `NodeAssembly` so the environment can combine it with the selected-fact
+resolver without a Data ↔ Contributions cycle.
 -/
 def Node.applyContributions (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
-  Informal.NodeAssembly.applyLegacy label node contributions
+  if contributions.any NodeContribution.hasSelectedFields then
+    .error #["Blueprint external references and priority require an identified contribution record"]
+  else
+    Informal.NodeAssembly.applyLegacy label node contributions
 
 end Informal.Data
 
@@ -134,6 +142,10 @@ def withoutSelectedFacts (contribution : NodeContribution) : NodeContribution :=
     priority := none
     leanCode := contribution.leanCode.filter fun code =>
       match code with | .external _ => false | .literate _ => true }
+
+/-- Capability projection for consumers that need every accepted attribute association. -/
+def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
+  supports.any fun record => record.references.any fun ref => ref.origin == .blueprintAttr
 
 private def recordMessage (record : Record) : String :=
   let refs := String.intercalate ", " (record.references.toList.map fun ref => ref.canonical.toString)
@@ -161,19 +173,30 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
 Assemble one complete node atomically. Selected records are resolved exactly once;
 their accepted projection supplies external references and priority, while the
 legacy reducer retains body, kind, markup, dependency, and literate policies.
+On success, the node exposes the resolved priority and an attribute capability
+projected from every accepted support. It does not choose a general snapshot or
+claim confluence for unrelated legacy payloads.
 -/
 structure Assembly where
   node : Node
   view : View
 
+private def project (node : Node) (view : View) : Assembly :=
+  let externalRefs := view.supports.foldl (fun refs record => mergeExternalRefs refs record.references) #[]
+  let blueprintAttributeAttachments := supportsHaveBlueprintAttributeAttachments view.supports
+  let kind := if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs node.literateCodes
+  { node := { node with
+    externalRefs := externalRefs
+    blueprintAttributeAttachments := blueprintAttributeAttachments
+    priority := view.priority
+    kind := kind }, view }
+
 def assemble (label : Label) (legacy : Array NodeContribution) (records : List Record) :
-    Except (Array String) Assembly := do
-  let node ← Node.applyContributions label {} legacy
-  match resolve label records with
-  | .error result => throw (diagnosticMessages label result)
-  | .ok view =>
-    let externalRefs := view.supports.foldl (fun refs record => mergeExternalRefs refs record.references) #[]
-    let kind := if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs node.literateCodes
-    return { node := { node with externalRefs, priority := view.priority, kind }, view }
+    Except (Array String) Assembly :=
+  match Node.applyContributions label {} legacy with
+  | .error errors => .error errors
+  | .ok node => match resolve label records with
+    | .error result => .error (diagnosticMessages label result)
+    | .ok view => .ok (project node view)
 
 end Informal.NodeAssembly
