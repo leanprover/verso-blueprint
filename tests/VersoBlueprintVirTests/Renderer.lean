@@ -40,13 +40,19 @@ private def document (content : Array (Block Genre.Manual)) : Document := {
   document := .mk #[.text "Blueprint adapter"] "Blueprint adapter" none content #[]
 }
 
+private def math (source prelude : String) : Inline Genre.Manual :=
+  .other { name := `Informal.Math.Inline.bpMath, data := Lean.toJson ({
+    mode := .inline, source, texPrelude := prelude
+  } : Informal.Math.BpMathData) } #[]
+
 #guard Renderer.changedBlockIds (document #[informal "old"]) (document #[informal "new"]) ==
   #["part-root-block-0", "part-root-block-0-block-0"]
 
 private def rich := document #[
-  .para #[.other { name := `Informal.Math.Inline.bpMath, data := Lean.toJson ({
-    mode := .inline, source := "\\RR", texPrelude := "\\newcommand{\\RR}{R}"
-  } : Informal.Math.BpMathData) } #[]],
+  .para #[math "\\RR" "\\newcommand{\\RR}{R}",
+    math "\\RR + 1" "\\newcommand{\\RR}{R}",
+    math "a" "\\newcommand{\\AA}{A}", math "b" "\\newcommand{\\RR}{R}",
+    math "c" ""],
   informal "retained proof body",
   markup .hidden, markup .summary, markup .source,
   block `Informal.Block.informal .null #[.para #[.text "malformed child"]],

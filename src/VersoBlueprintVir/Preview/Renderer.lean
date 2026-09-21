@@ -13,6 +13,8 @@ public import VersoBlueprint.Informal.ExternalMarkupView
 public import VersoBlueprint.Math.Data
 public import VersoBlueprintVir.Preview.Model
 public import VersoBlueprintVir.Preview.JsStrings
+import Std.Data.HashMap
+import Std.Data.HashSet
 
 public section
 
@@ -43,7 +45,6 @@ end Style
 structure Styles where
   verso : VersoReact.Renderer.Styles
   strings : JsStrings.Fixed
-  texPrelude : RuntimeRef (Option (String × Js String))
   informalBlock : Js Props
   informalHeader : Js Props
   informalKind : Js Props
@@ -57,22 +58,12 @@ def Styles.create : ReactM Styles := do
   return {
     verso := ← VersoReact.Renderer.Styles.create
     strings := ← JsStrings.Fixed.create
-    texPrelude := ← RuntimeRef.new none
     informalBlock := ← Style.informalBlock, informalHeader := ← Style.informalHeader
     informalKind := ← Style.informalKind, informalLabel := ← Style.informalLabel
     informalBody := ← Style.informalBody, externalMarkup := ← Style.externalMarkup
     externalMarkupSummary := ← Style.externalMarkupSummary
     externalMarkupSource := ← Style.externalMarkupSource
   }
-
-private def Styles.cachedTexPrelude (styles : Styles) (prelude : String) : ReactM (Js String) := do
-  match ← styles.texPrelude.get with
-  | some (prior, value) =>
-      if prior == prelude then return value
-  | none => pure ()
-  let value ← JsValue.ofString prelude
-  styles.texPrelude.set (some (prelude, value))
-  pure value
 
 private def Styles.styleProps (styles : Styles) (style : Js Props) : ReactM (Js Props) := do
   let props ← Js.Object.empty
@@ -86,6 +77,53 @@ private def decodeExtension? [Lean.FromJson α] (data : Lean.Json) : Option α :
 
 private def isBlueprintMath (extension : Genre.Manual.Inline) : Bool :=
   extension.name == `Informal.Math.Inline.bpMath
+
+private partial def collectInlinePreludes (seen : Std.HashSet String) :
+    Verso.Doc.Inline Genre.Manual → Std.HashSet String
+  | .text .. | .code .. | .math .. | .linebreak .. | .image .. => seen
+  | .emph inlines | .bold inlines | .concat inlines =>
+      inlines.foldl collectInlinePreludes seen
+  | .link inlines _ | .footnote _ inlines =>
+      inlines.foldl collectInlinePreludes seen
+  | .other extension inlines =>
+      if isBlueprintMath extension then
+        match decodeExtension? extension.data with
+        | some (data : Informal.Math.BpMathData) =>
+            if data.texPrelude.isEmpty then seen else seen.insert data.texPrelude
+        | none => seen
+      else inlines.foldl collectInlinePreludes seen
+
+private partial def collectBlockPreludes (seen : Std.HashSet String) :
+    Verso.Doc.Block Genre.Manual → Std.HashSet String
+  | .para inlines => inlines.foldl collectInlinePreludes seen
+  | .code .. => seen
+  | .blockquote blocks | .concat blocks | .other _ blocks =>
+      blocks.foldl collectBlockPreludes seen
+  | .ul items | .ol _ items =>
+      items.foldl (init := seen) fun seen item =>
+        item.contents.foldl collectBlockPreludes seen
+  | .dl items =>
+      items.foldl (init := seen) fun seen item =>
+        let seen := item.term.foldl collectInlinePreludes seen
+        item.desc.foldl collectBlockPreludes seen
+
+private partial def collectPartPreludes (seen : Std.HashSet String)
+    (part : Verso.Doc.Part Genre.Manual) : Std.HashSet String :=
+  let seen := part.title.foldl collectInlinePreludes seen
+  let seen := part.content.foldl collectBlockPreludes seen
+  part.subParts.foldl collectPartPreludes seen
+
+/-- Native strings shared by all matching math nodes within one render only. -/
+private def createPreludeStrings (part : Verso.Doc.Part Genre.Manual) :
+    ReactM (Std.HashMap String (Js String)) := do
+  let mut values : Std.HashMap String (Js String) := {}
+  for prelude in (collectPartPreludes {} part).toArray do
+    values := values.insert prelude (← JsValue.ofString prelude)
+  return values
+
+private def missingPrelude : ReactM (Js String) := by
+  unfold ReactM Lean.Vir.RuntimeM
+  exact throw <| IO.userError "Blueprint math prelude missing from render-local table"
 
 private def isInformalBlock (extension : Genre.Manual.Block) : Bool :=
   extension.name == `Informal.Block.informal
@@ -116,7 +154,8 @@ private def blockIdentity? (extension : Genre.Manual.Block) : Option String :=
       s!"external-markup:{data.label}:{data.markup.language.key}:{data.markup.slot}"
   else none
 
-private def renderInline? (styles : Styles) (component? : Option (FunctionComponent Props))
+private def renderInline? (styles : Styles) (preludes : Std.HashMap String (Js String))
+    (component? : Option (FunctionComponent Props))
     (key : String) (extension : Genre.Manual.Inline) :
     ReactM (Option (Js Node)) := do
   if !isBlueprintMath extension then return none
@@ -128,8 +167,11 @@ private def renderInline? (styles : Styles) (component? : Option (FunctionCompon
         let attributes ← Js.Object.empty
         Js.Object.set attributes styles.verso.strings.keys.className className
         if !data.texPrelude.isEmpty then
+          let prelude ← match preludes[data.texPrelude]? with
+            | some value => pure value
+            | none => missingPrelude
           Js.Object.set attributes styles.strings.keys.dataBpTexPrelude
-            (← styles.cachedTexPrelude data.texPrelude)
+            prelude
         VersoReact.Renderer.renderMath styles.verso key data.mode data.source (some attributes) component?
     | none => do
         let style := styles.verso.inlineCode
@@ -241,6 +283,7 @@ def extensions : VersoReact.Renderer.Extensions := {
 def render (styles : Styles) (input : Document) (options : VersoReact.Renderer.Options := {})
     (mathComponent? : Option (FunctionComponent Props) := none) :
     ReactM (Js Node) := do
+  let preludes ← createPreludeStrings input.document
   let attributes ← match options.attributes with
     | some attributes => pure attributes
     | none => do
@@ -253,7 +296,7 @@ def render (styles : Styles) (input : Document) (options : VersoReact.Renderer.O
   Js.Object.set attributes styles.strings.keys.dataVersoCursorToken
     (← JsValue.ofString input.cursorToken)
   VersoReact.Renderer.render styles.verso input.document { options with attributes := some attributes }
-    { extensions with mathComponent?, renderInline? := renderInline? styles mathComponent?, renderBlock? := renderBlock? styles }
+    { extensions with mathComponent?, renderInline? := renderInline? styles preludes mathComponent?, renderBlock? := renderBlock? styles }
 
 def changedBlockIdsAndCount (previous : Option Document) (current : Document) :
     Array String × Nat :=
