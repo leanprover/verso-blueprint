@@ -12,6 +12,7 @@ import VersoBlueprintTests.BlueprintCodeRenderMatrix
 import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 import VersoBlueprintTests.BlueprintExternalHeadingStatus
+import VersoBlueprintTests.BlueprintForeignRefs
 import VersoBlueprintTests.BlueprintGraft
 import VersoBlueprintTests.BlueprintGraph
 import VersoBlueprintTests.BlueprintHeaderExtras
