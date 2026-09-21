@@ -17,6 +17,9 @@ namespace VersoBlueprint.Experimental.VirPreview.Server
 
 open Lean Server
 
+private meta initialize traceServerPhases : Bool ← do
+  return (← IO.getEnv "VBP_PREVIEW_SERVER_PHASES") == some "1"
+
 private meta unsafe def evalManualPartUnsafe (env : Environment) (options : Options)
     (name : Name) : Except String (Verso.Doc.Part Verso.Genre.Manual) := do
   let some declaration := env.find? name
@@ -39,7 +42,9 @@ This retains the existing full-document evaluation boundary: it waits for the
 end snapshot and checked environment, not just the block under the cursor.
 Four monotonic clock reads measure contiguous server preparation phases. No
 separate build, rendering traversal, per-node instrumentation, or document cache is added.
-The document phase includes cursor lookup in Verso's retained source syntax. -/
+The document phase includes cursor lookup in Verso's retained source syntax.
+Set `VBP_PREVIEW_SERVER_PHASES=1` on the Lean server for a diagnostic split of
+that phase and response encoding. This does not change the preview wire format. -/
 meta def previewDocumentWithEncoding (pos : Lsp.Position)
     (encode : Preview → Except String String) : RequestM (RequestTask String) := do
   let encodeReply := fun preview => match encode preview with
@@ -61,6 +66,7 @@ meta def previewDocumentWithEncoding (pos : Lsp.Position)
         let part ← match evalManualPart snap.env snap.cmdState.scopes.head!.opts name with
           | .ok part => pure part
           | .error message => throw ⟨.internalError, s!"Could not evaluate the Blueprint: {message}"⟩
+        let partReady ← if traceServerPhases then IO.monoNanosNow else pure checkedReady
         let source := Verso.Doc.Concrete.docEnvironmentExt.getState snap.env
         let finished := source.partState.partContext.toPartFrame.close
           editorDocument.meta.text.source.rawEndPos
@@ -68,7 +74,7 @@ meta def previewDocumentWithEncoding (pos : Lsp.Position)
         let evaluated ← IO.monoNanosNow
         RequestM.checkCancelled
         let cursorToken := s!"{pos.line}:{pos.character}"
-        encodeReply (Preview.ready {
+        let reply ← encodeReply (Preview.ready {
           version := editorDocument.meta.version
           correlationId := s!"{editorDocument.meta.version}:{cursorToken}"
           cursorToken
@@ -79,7 +85,14 @@ meta def previewDocumentWithEncoding (pos : Lsp.Position)
             evaluationNanos := evaluated - checkedReady
           }
           document := part
-        }))
+        })
+        if traceServerPhases then
+          let encoded ← IO.monoNanosNow
+          IO.eprintln s!"VBP preview server phases version={editorDocument.meta.version} \
+            snapshotWaitNanos={snapshotReady - started} checkedWaitNanos={checkedReady - snapshotReady} \
+            evaluateNanos={partReady - checkedReady} focusNanos={evaluated - partReady} \
+            encodeNanos={encoded - evaluated}"
+        pure reply)
 
 /-- Standard String endpoint, retaining the default Preview encoding. -/
 @[server_rpc_method]

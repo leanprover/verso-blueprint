@@ -46,6 +46,12 @@ const rootSite = 'const root = fileURLToPath(new URL("../../", import.meta.url))
 assert.equal(harnessSource.split(rootSite).length, 2, "pinned harness root drift");
 harnessSource = harnessSource.replace(rootSite,
   `const root = ${JSON.stringify(stringPreview || embeddedPreview ? serverRoot : virRoot)};`);
+if (process.env.VBP_NATIVE_SERVER_PHASES === "1") {
+  const returnSite = "    return result.value;";
+  assert.equal(harnessSource.split(returnSite).length, 2, "pinned harness result seam drift");
+  harnessSource = harnessSource.replace(returnSite,
+    '    return { ...result.value, serverTrace: stderr.split("\\n").filter(line => line.includes("VBP preview server phases")) };');
+}
 // Select only the open-buffer backend; never rewrite the user's demo file.
 const sourceSite = 'const source = await readFile(sourcePath, "utf8");';
 const selectBackend = source => {

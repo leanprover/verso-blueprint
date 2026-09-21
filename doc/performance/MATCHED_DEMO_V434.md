@@ -357,3 +357,24 @@ The debug bar records the last completed edit/version rather than cursor-only
 traffic. It partitions dispatch, server waits/evaluation, RPC remainder,
 decoding, identity preparation, element construction and commit observation.
 The demo clock is intentionally coarse and disabled from headline replay runs.
+
+For finer server diagnosis, start the Lean server with
+`VBP_PREVIEW_SERVER_PHASES=1`. This logs snapshot/check waits, document
+evaluation, focus lookup, and response encoding as nanoseconds per preview
+version. The flag is read at server startup; without it, the extra evaluation
+split clock and logging are disabled. The three-field `ServerTiming` wire value
+and FIR/VIR renderer packages remain unchanged. In the real-server Chromium
+acceptance harness, `VBP_NATIVE_SERVER_PHASES=1` includes these log lines in
+the report's `acceptance.serverTrace`.
+
+One full-FLT edit sample on 2026-09-21 illustrates why the bar's RPC remainder
+must not be called Blueprint evaluation:
+
+| Backend | Snapshot + checks | Evaluate document | Focus | Encode reply | RPC remainder |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| FIR | 0.28 ms | 12.83 ms | 0.01 ms | 184.96 ms | 387.18 ms |
+| VIR | 0.17 ms | 11.17 ms | 0.01 ms | 142.10 ms | 310.95 ms |
+
+Encoding is inside RPC remainder, not additive to it. The balance includes
+transport and scheduling; this probe does not isolate them. These are single
+diagnostic edits, not matched performance estimates, and VS Code may differ.
