@@ -307,9 +307,11 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let statement? ← statementFromDocstring? decl ref
   let deps ← resolveAutoDeps decl label info cfg
   let opts ← getOptions
+  -- FIXME: `extRef.range?` is always empty because attribute runs before declarationRanges
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
+  Data.NodeInfo.save ref label (.statement declKind) (decl? := some decl)
   Environment.modifyDataForLabel label fun data => do
     let data ← data.registerCodeRef label (.external #[extRef])
     let data :=

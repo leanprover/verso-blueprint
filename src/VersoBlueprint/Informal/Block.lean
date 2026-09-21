@@ -270,6 +270,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let contents ← parsedContents.body.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
+    Data.NodeInfo.save blockRef label resolved.envKind
     let (previewBlocks, retainedContents) ←
       liftM <| retainElaboratedBlocks contents
     Environment.setPreviewBlocks previewBlocks

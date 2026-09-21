@@ -1,4 +1,4 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
@@ -40,14 +40,6 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     category := "Preview"
     summary := "Bibliography-only inline hover coverage."
     tags := #["hover", "inline", "citation"]
-    kind := "curated_doc"
-  },
-  {
-    slug := "widget-preview"
-    title := "Blueprint Widget Preview"
-    category := "Preview"
-    summary := "Widget-side TeX prelude and preview rendering checks."
-    tags := #["preview", "widget", "tex"]
     kind := "curated_doc"
   },
   {

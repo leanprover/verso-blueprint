@@ -820,6 +820,22 @@ in a rendered graph block. See
 [`API.md#graph-data-apis`](./API.md#graph-data-apis) for the full graph API
 contract and examples.
 
+#### Editor Infoview graph
+
+Importing `VersoBlueprint` registers an Infoview panel that displays the
+Blueprint dependency graph while editing Lean source. Moving the cursor within
+an informal Blueprint block or a declaration marked with `@[blueprint]`
+centers the corresponding node. Nodes with generated source locations are
+clickable and reveal their source in the editor.
+
+The panel uses live elaboration data for the current module and its imports,
+then supplements it with generated data for the rest of the project. Run
+`lake exe vbp build` to refresh the standard `_out/site` output after changing
+the Blueprint. The generated site must contain exactly one `blueprint_graph`
+command. If the generated data is missing, unreadable, or contains zero or
+multiple dependency graphs, the panel retains the live graph and displays a
+warning instead of choosing a generated graph arbitrarily.
+
 The graph uses two orthogonal status tracks:
 
 - statement border:
