@@ -18,13 +18,14 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
       if (error) throw Error(error.textContent);
       if (predicate()) return;
     }
-    throw Error("matched preview timeout");
+    throw Error(`matched preview timeout: calls=${JSON.stringify(calls().map(call => ({
+      settled: call.settled, error: call.error,
+    })))}, panel=${panel()?.outerHTML.slice(0, 500)}`);
   };
   return withCleanup(async () => {
     const { widgets } = await a.call("Lean.Widget.getWidgets", config.a);
-    const registered = widgets.find(w => w.id === (VBP_MATCHED_FLT_PREVIEW
-      ? "FLTBlueprint.MatchedDemo.selectedWidget" : "MatchedPreview.Demo.selectedWidget"));
-    check(registered, "matched panel registration missing");
+    const registered = widgets.find(w => w.id === VBP_MATCHED_WIDGET_ID);
+    check(registered, `matched panel registration missing (${VBP_MATCHED_WIDGET_ID}); available: ${widgets.map(w => w.id).join(", ")}`);
     const { sourcetext } = await a.call("Lean.Widget.getWidgetSource", {
       hash: registered.javascriptHash, pos: config.a });
     const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sourcetext)))].map(x => x.toString(16).padStart(2, "0")).join("");
@@ -39,7 +40,7 @@ export async function runEmbeddedAcceptance({ config, a, b, editor, emit, reques
     const badge = document.querySelector("[data-preview-backend]");
     check(badge && badge.dataset.previewBackend === VBP_MATCHED_BACKEND,
       "renderer badge does not identify selected backend");
-    for (const text of VBP_MATCHED_FLT_PREVIEW ? ["Fermat's Last Theorem", "Diophantine"]
+    for (const text of VBP_MATCHED_EXPECTED_TEXT ? [VBP_MATCHED_EXPECTED_TEXT]
       : ["A live Blueprint document", "An informal statement with inline math", "This proof body remains visible"])
       check(panel().textContent.includes(text), `missing ${text}`);
     const formula = document.querySelector(".katex");

@@ -28,16 +28,17 @@ UI because they are invariants, not user-selectable modes.
 
 The currently embedded bundles are direct, KaTeX-enabled and renderer-equivalent. Their
 shared component SHA256 is
-`ea333d53cc456fa52aead70d1e9de3a829518b72a3fee9af670dcb7a38d86394`.
-FIR uses the sole accepted successor package `c21b2fbf4ead6c7b8fb8facd`;
-its package-checksum SHA256 is
-`c5201068991185dfb7f9bd898d5357695dcac4094563da1f8e3accc5f6650672`
+`4a0c855ed5d9bbe74cd17bf22885d8d65ae0cfb0846de50d3619075477468867`.
+The current local FIR candidate is the cached-prelude package built from frozen
+source identity `fbaa6efc8f44df0d94f902fd5b6aa43086231438ea8277efc0595a6e9b84c709`.
+Its package-checksum SHA256 is
+`dfa13acc5d0f3ea7a8fc7cfb8e0ed8c3b02862f9be8cc4e49d17606ece166615`
 and its Wasm SHA256 is
-`e765641d42bb12318b2fee13e446d3c1bac6bc3ac6cccf624c33df890b37ac21`.
+`b70d5b37c7954883a7e456821b7f6d4d31e0ef5903f77ff25c240a9b9f077d87`.
 Registered-widget smoke passes for both backends: initial and edited document,
 retained control and formula identity/state, real KaTeX HTML/MathML, one
-subscription/listener, the complete timing bar, and no React warnings. Current
-reports are:
+subscription/listener, the complete timing bar, and no React warnings. The
+earlier `matched-demo-v434` reports below remain historical controls:
 
 - `_out/matched-demo-v434/matched-vir-widget.json`
 - `_out/matched-demo-v434/matched-fir-widget.json`
@@ -45,6 +46,38 @@ reports are:
 - `_out/matched-demo-v434/matched-flt-fir-widget.json`
 
 These exercise the real Lean server and Chromium shell, but not VS Code itself.
+
+## Cached-prelude reference acceptance (2026-09-22)
+
+The FIR-default widget now runs in the main `FLTBlueprint.lean` and
+`Contents.lean` documents of the local FLT and Noperthedron 4.34 checkouts.
+Both projects passed Blueprint discovery, their Lean library build, and
+`lake exe vbp build`. Real Lean-server/Chromium acceptance then exercised an
+initial render, a valid document edit, and a cursor update: KaTeX HTML/MathML,
+the FIR badge, retained controls and formula, one subscription/listener, and
+zero React warnings in both cases. The browser reports are
+`.deps/fir-demo-consolidation-{flt,nop}-browser.json` in this worktree.
+Generated sites are under the repository root at
+`_out/fir-demo-consolidation/reference-blueprints/{verso-flt,noperthedron}/html-multi/`.
+
+| One edit sample | FLT | Noperthedron |
+| --- | ---: | ---: |
+| Notification to observed commit | 1.82 s | 1.64 s |
+| RPC remainder (includes encoding/transport) | 0.54 s | 0.26 s |
+| FIR document construction | 0.18 s | 0.43 s |
+| Element construction | 0.86 s | 0.66 s |
+| Commit observation | 0.17 s | 0.12 s |
+
+These are acceptance observations, not matched backend comparisons. The
+full nine-phase measurements, including server snapshot/check/evaluation, are
+in the reports. The FIR package remains provisional and local; it has not
+been published or made a default package dependency. The matched VIR SDK
+uses commit `cddcc35a46fd4683d2437369072d4ecc5a5a84be`; its WASM SHA256 is
+`9221300f378165396b94d036390e4cd0e6ebca1a5b4f4db6e36b64ce255922ef`.
+The pinned SDK download URL currently returns 404, so these checkouts reuse
+the verified SDK from the existing matched VBP build. The editor acceptance
+also needs `LAKE_RESTORE_ARTIFACTS=true` so Lean's module data files are
+available to `lake serve`.
 
 ## Direct construction result
 
@@ -338,7 +371,7 @@ VBP_DEMO_OUTPUT=.lake/build/matched-vir-demo.js \
 node tests/vir_preview/build_checked_json_demo.mjs
 
 VBP_DEMO_MATCHED_BACKEND=fir \
-VBP_MATCHED_FIR_PACKAGE=/absolute/path/to/the/accepted/direct/package \
+VBP_MATCHED_FIR_PACKAGE=/absolute/path/to/the/cached-prelude/package \
 VBP_DEMO_OUTPUT=.lake/build/matched-fir-demo.js \
 node tests/vir_preview/build_checked_json_demo.mjs
 
@@ -347,11 +380,12 @@ LAKE_RESTORE_ARTIFACTS=true scripts/lean-low-priority lake build \
 node --test tests/vir_preview/demo_shell.test.mjs
 ```
 
-`MatchedPreview` embeds both bundles through Lake `needs`. The FLT demo is
-`.worktrees/_reference-blueprints/edit/matched-demo-v434/verso-flt/
-FLTBlueprintMatchedDemo.lean`; its single `useFir` boolean selects the backend.
-Saving that choice and restarting the Lean server is required because the
-registered widget module changes.
+`MatchedPreview` embeds both bundles through Lake `needs`. The current FLT
+demo registers the widget in the main `FLTBlueprint.lean`; Noperthedron does
+the same in `Contents.lean`. Each file has one `useFir` boolean selecting the
+backend. Saving that choice and restarting the Lean server is required because
+the registered widget module changes. The earlier wrapper-based demos are
+preserved only in the experimental source archive, not in these active checkouts.
 
 The debug bar records the last completed edit/version rather than cursor-only
 traffic. It partitions dispatch, server waits/evaluation, RPC remainder,

@@ -19,9 +19,13 @@ if (process.env.VBP_NATIVE_DIRECT_TIMING === "1") assert.ok(matchedBackend);
 const embeddedFixture = matchedBackend ? "MatchedPreviewServer" : "EmbeddedPreviewServer";
 const embeddedSourcePath = resolve(process.env.VBP_NATIVE_MATCHED_SOURCE ??
   resolve(root, `tests/VersoBlueprintVirTests/${embeddedFixture}.lean`));
-const matchedFlt = Boolean(process.env.VBP_NATIVE_MATCHED_SOURCE);
-assert.ok(!matchedFlt || matchedBackend, "external matched source requires a backend");
-const serverRoot = matchedFlt ? dirname(embeddedSourcePath) : root;
+const externalMatched = Boolean(process.env.VBP_NATIVE_MATCHED_SOURCE);
+assert.ok(!externalMatched || matchedBackend, "external matched source requires a backend");
+assert.ok(!externalMatched || process.env.VBP_NATIVE_MATCHED_WIDGET_ID,
+  "external matched source requires its registered widget ID");
+assert.ok(!externalMatched || process.env.VBP_NATIVE_MATCHED_TEXT,
+  "external matched source requires expected document text");
+const serverRoot = externalMatched ? dirname(embeddedSourcePath) : root;
 const manifest = JSON.parse(await readFile(resolve(root, "lake-manifest.json"), "utf8"));
 const dependency = manifest.packages.find(p => p.name === "lean_vir");
 assert.equal(dependency?.type, "git");
@@ -31,7 +35,7 @@ const sdk = JSON.parse(await readFile(resolve(sdkRoot, "lean-vir-artifact.json")
 assert.equal(sdk.gitCommit, dependency.rev, "SDK must match the pinned Lean package");
 assert.equal(sdk.gitDirty, false, "acceptance requires a clean-source SDK");
 assert.equal(sdk.leanToolchain, (await readFile(resolve(root, "lean-toolchain"), "utf8")).trim());
-if (matchedFlt) {
+if (externalMatched) {
   assert.equal((await readFile(resolve(serverRoot, "lean-toolchain"), "utf8")).trim(), sdk.leanToolchain);
   const projectSdk = JSON.parse(await readFile(resolve(serverRoot, ".lake/build/vir/sdk/lean-vir-artifact.json"), "utf8"));
   assert.equal(projectSdk.gitCommit, sdk.gitCommit, "external project SDK differs from browser SDK");
@@ -57,7 +61,7 @@ const sourceSite = 'const source = await readFile(sourcePath, "utf8");';
 const selectBackend = source => {
   const selected = source.replace(/def useFir : Bool := (?:true|false)/,
     `def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`);
-  if (!matchedFlt) return selected;
+  if (!externalMatched) return selected;
   assert.ok(!selected.includes("rpc-position-a") && selected.includes("#doc"),
     "external matched source marker seam drift");
   return selected.replace("#doc", "-- rpc-position-a\nexample : True := by\n  trivial\n\n" +
@@ -65,13 +69,19 @@ const selectBackend = source => {
 };
 if (matchedBackend) {
   assert.equal(harnessSource.split(sourceSite).length, 2, "pinned harness source seam drift");
-  const selected = matchedFlt
+  const selected = externalMatched
     ? `.replace("#doc", "-- rpc-position-a\\nexample : True := by\\n  trivial\\n\\n" +
       "-- rpc-position-b\\nexample : True := by\\n  trivial\\n\\n#doc")`
     : "";
   harnessSource = harnessSource.replace(sourceSite,
     `const source = (await readFile(sourcePath, "utf8")).replace(/def useFir : Bool := (?:true|false)/,
       ${JSON.stringify(`def useFir : Bool := ${matchedBackend === "fir" ? "true" : "false"}`)})${selected};`);
+}
+if (externalMatched) {
+  const editSite = 'contentChanges: [{ text: `${source}\\n-- browser edit ${documentVersion}\\n` }],';
+  assert.equal(harnessSource.split(editSite).length, 2, "pinned external edit seam drift");
+  harnessSource = harnessSource.replace(editSite,
+    'contentChanges: [{ text: source.replace(/#doc[^\\n]*=>\\n\\n(?:%%%\\n[\\s\\S]*?\\n%%%\\n\\n)?/, match => match + "browser edit " + documentVersion + "\\n\\n") }],');
 }
 const require = createRequire(resolve(virRoot, "package.json"));
 harnessSource = harnessSource.replace(/from "([^"\n]+)"/g, (match, specifier) => {
@@ -122,7 +132,9 @@ const bundle = await build({
     VBP_MATCHED_PREVIEW: JSON.stringify(Boolean(matchedBackend)),
     VBP_MATCHED_BACKEND: JSON.stringify(matchedBackend ?? ""),
     VBP_NATIVE_DIRECT_TIMING: JSON.stringify(process.env.VBP_NATIVE_DIRECT_TIMING === "1"),
-    VBP_MATCHED_FLT_PREVIEW: JSON.stringify(matchedFlt),
+    VBP_MATCHED_WIDGET_ID: JSON.stringify(process.env.VBP_NATIVE_MATCHED_WIDGET_ID ??
+      "MatchedPreview.Demo.selectedWidget"),
+    VBP_MATCHED_EXPECTED_TEXT: JSON.stringify(process.env.VBP_NATIVE_MATCHED_TEXT ?? ""),
     VBP_EMBEDDED_SHELL_SHA256: JSON.stringify(shellHash),
     VBP_WASM_SHA256: JSON.stringify(sdk.files.find(f => f.path === "wasm/vir-upstream.wasm").sha256),
   },
@@ -181,7 +193,7 @@ const report = {
     resolve(sdkRoot, "lean-vir-artifact.json"))).digest("hex"),
   versoParserSha256: createHash("sha256").update(await readFile(resolve(root,
     manifest.packagesDir, "verso/src/verso/Verso/Parser.lean"))).digest("hex"),
-  scope: matchedFlt ? "matched full FLT document through registered shell and real LSP in Chromium; not VS Code or a timing campaign"
+  scope: externalMatched ? "matched external document through registered shell and real LSP in Chromium; not VS Code or a timing campaign"
     : embeddedPreview ? "registered native shell with live package/asset/preview RPC; not VS Code or FLT"
     : encodedDocument ? "shared document-String RPC adapter and native document session; real server and Chromium, not FIR or FLT" : stringPreview
     ? "full VBP preview decoded from VBP-owned String RPC fixture; server cwd is VBP, not FLT"

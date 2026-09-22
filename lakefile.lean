@@ -65,7 +65,7 @@ input_file matchedFirDemoBundle where
 
 lean_lib MatchedPreview where
   srcDir := "tests"
-  roots := #[`MatchedPreview]
+  roots := #[`MatchedPreview, `MatchedPreview.Server]
   requiresModuleSystem := true
   needs := #[matchedVirDemoBundle, matchedFirDemoBundle]
 
