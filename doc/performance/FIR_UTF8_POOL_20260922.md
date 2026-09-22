@@ -4,13 +4,70 @@ This report isolates one consumer-side FIR adapter cost on the retained full-FLT
 renderer workload. It is an experimental result, not a live demo pin or a FIR
 package release.
 
-## Result
+## Producer-package acceptance (2026-09-23)
 
-The package adapter currently converts every JavaScript string with
+FIR returned diagnostic package `b5b3a053e4135f913504a376` implementing the
+same mechanism in its generic adapter. Its Wasm is byte-identical to the
+accepted baseline; only the JavaScript adapter and package metadata differ.
+
+A fresh diagnostics-off A-B-B-A Chromium replay used the same frozen full-FLT
+response, production React, two warmups and eight measured retained updates per
+run. A is accepted package `1c3b87b3f270114a3a56eeb7`; B is the producer
+candidate.
+
+| Phase | Baseline mean | Producer candidate mean | Change |
+| --- | ---: | ---: | ---: |
+| JSON parse | 12.75 ms | 12.74 ms | unchanged |
+| FIR codec / typed construction | 124.2 ms | 75.6 ms | **-39.1%** |
+| Parse + typed construction | 136.9 ms | 88.4 ms | **-35.4%** |
+| Decoded value to observed DOM | 311.9 ms | 292.0 ms | -6.4% |
+| Total to observed DOM | 448.9 ms | 380.4 ms | **-15.2%** |
+
+The pooled total median was 406.3 ms for A and 373.3 ms for B; the pooled codec
+median was 123.4 ms and 71.3 ms respectively. Means are shown above because the
+phase means preserve the measured total decomposition; phase medians are not
+additive.
+
+Every run produced 109,954 elements, the same DOM and text hashes below, zero
+warnings, and retained checkbox and paragraph identities. FIR's producer gates
+also cover forced memory growth, nested allocator/provider reentry, conversion
+failure, independent retained sessions and disposal rejection.
+
+A separate 1 ms CDP diagnostic confirms the mechanism: the baseline sampled
+profile contains 128.9 ms of `TextEncoder.encode` self time in the checked-codec
+window; the producer candidate contains no sampled `encode` frame and 52.0 ms
+of `encodeInto`. Sampling perturbs the workload, so these durations are
+attribution evidence rather than headline timing. FIR internal frames remain
+unnamed for this release Wasm.
+
+Producer identities:
+
+- candidate `BUILD.json` SHA-256:
+  `2997668b91ee23d67bee4cafc156e247e222ff575842621758780d88d3258382`
+- candidate `SHA256SUMS` SHA-256:
+  `ff9a5b8507d85b37816b02e18dcb5943512faf8e54ec90c6e91f1ca46e62855e`
+- byte-identical baseline/candidate Wasm SHA-256:
+  `b70d5b37c7954883a7e456821b7f6d4d31e0ef5903f77ff25c240a9b9f077d87`
+- FIR handoff SHA-256:
+  `5d6694da8108ee890a1c4895d8ee1824fcf0f325ba38e9268aac8c130eebd392`
+- compressed VBP raw acceptance bundle:
+  `_out/native-jsx-qualification/fir-utf8-producer-acceptance-20260923.tar.gz`,
+  SHA-256
+  `33cf7e35548b4d5ed0c38d92f4ba9c33cc655f2972f7f647f911026e08b82fbc`
+
+Disposition: **accepted for producer integration**. This does not authorize a
+VBP live-pin move or publication. Once FIR ships the adapter in the official
+4.34 package, VBP should remove its consumer transformer and repeat the compact
+correctness gate rather than maintaining two implementations.
+
+## Initial VBP prototype result
+
+The original package adapter converts every JavaScript string with
 `TextEncoder.encode`, allocates the corresponding Lean string, and then copies
-the temporary byte array into Wasm memory. Replacing that path with
-`TextEncoder.encodeInto` and a depth-indexed reusable buffer pool reduced the
-coarse typed-construction interval by about **19%**.
+the temporary byte array into Wasm memory. The initial VBP transformer replaced
+that path with `TextEncoder.encodeInto` and a depth-indexed reusable buffer
+pool. It reduced the coarse typed-construction interval by about **19%**; the
+producer-package acceptance above supersedes this screening estimate.
 
 | Adapter | Runs × updates | Total to observed DOM, mean | Typed construction, mean | Render to observed DOM, mean |
 | --- | ---: | ---: | ---: | ---: |
@@ -106,4 +163,3 @@ source boundary. The durable form belongs in FIR's generic JavaScript adapter,
 with its allocator reentry, forced-memory-growth, malformed-input, retained
 callback, and disposal gates. VBP should then delete this source transformer and
 qualify the released adapter package on the same frozen input.
-
