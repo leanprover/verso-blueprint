@@ -10,7 +10,7 @@ theorem declaration : True := trivial
 
 run_cmd do
   let ref := Data.ExternalRef.ofName `CoherenceOriginFact.declaration
-  discard <| Environment.contributeSelected `coherent_origin { leanCode := #[.external #[ref]] }
+  discard <| Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "CoherenceOriginFact"
         producer := Name.mkSimple "test.synthetic"
@@ -20,8 +20,8 @@ run_cmd do
       label := `coherent_origin
       references := #[ref]
       priority := none
-      source := none }
-  discard <| Environment.contributeSelected `coherent_origin_conflict { leanCode := #[.external #[ref]] }
+      source := none } {}
+  discard <| Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "CoherenceOriginFact"
         producer := Name.mkSimple "test.synthetic"
@@ -31,6 +31,6 @@ run_cmd do
       label := `coherent_origin_conflict
       references := #[ref]
       priority := none
-      source := none }
+      source := none } {}
 
 end CoherenceOriginFact

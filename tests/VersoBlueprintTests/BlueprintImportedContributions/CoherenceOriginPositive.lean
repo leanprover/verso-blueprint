@@ -12,7 +12,7 @@ open Lean Informal
   let state := Environment.informalExt.getState (← getEnv)
   let some registered := state.data.get? `coherent_origin | return false
   let node := registered.toNode
-  return state.authoredOrigins.get? `coherent_origin ==
+  return (state.pendingNodes.getD `coherent_origin {}).authoredOrigin? ==
       some `VersoBlueprintTests.BlueprintImportedContributions.CoherenceOriginAuthor &&
     registered.origin == `VersoBlueprintTests.BlueprintImportedContributions.CoherenceOriginAuthor &&
     node.externalRefs.map (·.canonical) == #[`CoherenceOriginFact.declaration]

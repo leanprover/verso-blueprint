@@ -17,8 +17,7 @@ run_cmd do
     canonical := `CoherenceEqualB.declaration
     written := `CoherenceEqualB.declaration
     present := true }
-  discard <| Environment.contributeSelected `coherent_equal
-    { leanCode := #[.external #[ref]], priority := some "high" }
+  discard <| Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "CoherenceEqualB"
         producer := Name.mkSimple "test.synthetic"
@@ -28,6 +27,6 @@ run_cmd do
       label := `coherent_equal
       references := #[ref]
       priority := some "high"
-      source := none }
+      source := none } {}
 
 end CoherenceEqualB

@@ -11,7 +11,7 @@ open Lean Informal
 #eval show CoreM Bool from do
   let state := Environment.informalExt.getState (← getEnv)
   let conflicts ← Environment.importedConflicts
-  return state.authoredOriginConflicts.contains `coherent_origin_conflict &&
+  return (state.pendingNodes.getD `coherent_origin_conflict {}).authoredOriginConflict &&
     (← Environment.getNode? `coherent_origin_conflict).isNone &&
     conflicts.any (fun conflict => conflict.label == `coherent_origin_conflict &&
       conflict.reasons == #["Label coherent_origin_conflict was independently introduced by authored contributions"])

@@ -10,8 +10,7 @@ open Verso.Genre
 open Lean Informal
 
 run_cmd do
-  discard <| Informal.Environment.contributeSelected `key_theorem
-    { tags := #["proof"], priority := some "high" }
+  discard <| Informal.Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "CompetingProof"
         producer := Name.mkSimple "test.synthetic"
@@ -21,7 +20,7 @@ run_cmd do
       label := `key_theorem
       references := #[]
       priority := some "high"
-      source := none }
+      source := none } { tags := #["proof"] }
 
 #doc (Manual) "Proof chapter" =>
 
