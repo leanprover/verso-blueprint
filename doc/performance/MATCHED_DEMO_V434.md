@@ -74,10 +74,22 @@ in the reports. The FIR package remains provisional and local; it has not
 been published or made a default package dependency. The matched VIR SDK
 uses commit `cddcc35a46fd4683d2437369072d4ecc5a5a84be`; its WASM SHA256 is
 `9221300f378165396b94d036390e4cd0e6ebca1a5b4f4db6e36b64ce255922ef`.
-The pinned SDK download URL currently returns 404, so these checkouts reuse
-the verified SDK from the existing matched VBP build. The editor acceptance
-also needs `LAKE_RESTORE_ARTIFACTS=true` so Lean's module data files are
-available to `lake serve`.
+The pinned SDK download URL currently returns 404. A local archive of the
+verified SDK is at
+`.worktrees/_meta/fir-demo-preserve-20260922/lean-vir-sdk-cddcc35.tar.gz`
+(archive SHA256 `30730fcf6bb4fed2b89e13ce012d6e655a5da0e92b3c618d9d56757c2ed11fe7`).
+VIR's own installer accepted a clean extraction with `--expect-commit` set to
+the pinned revision; `VIR_SDK_ARCHIVE` selects this supported Lake input in
+fresh checkouts. Set `VIR_SDK_EXPECT_COMMIT` to the same revision and run
+`scripts/lean-low-priority lake build :virSdk`; this exact route was also
+verified here. The companion local FIR package archive is
+`.worktrees/_meta/fir-demo-preserve-20260922/fir-cached-prelude-fbaa6efc.tar.gz`
+(archive SHA256 `28763e61c7bc74acae1f1e5d1116de630d5d60f54fd85b01e24f0a424e0b557e`).
+Building from a clean extraction produced the identical FIR widget bundle
+(SHA256 `bbecd95a34b70bb8325916a6764077e561b71a6c3d22b2cf5033d94ad02f9ba2`).
+These archives are local handoff inputs, not published package dependencies.
+Editor acceptance also needs `LAKE_RESTORE_ARTIFACTS=true` so Lean's module
+data files are available to `lake serve`.
 
 ## Direct construction result
 
