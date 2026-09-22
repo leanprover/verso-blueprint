@@ -72,6 +72,12 @@ the requested 1 ms CDP profile, source map and clock calibration. FIR also brack
 its retained factory callbacks and checks that content constructs once per update.
 Those durations are not headline timing and do not replace whole-render bounds.
 
+`VBP_REPLAY_FIR_UTF8_POOL=1` is a consumer-only experiment for a reviewed direct
+FIR package. It fail-closed rewrites the package's known string-conversion
+boundary to use a reentrancy-safe, depth-indexed UTF-8 buffer pool. Keep it out
+of live demo pins and host-import census runs; the durable implementation belongs
+in FIR's adapter after producer-side lifecycle and memory-growth validation.
+
 ```sh
 node tests/vir_preview/summarize_replay_profile.mjs PROFILE_DIR --out=FRESH_DIR
 ```

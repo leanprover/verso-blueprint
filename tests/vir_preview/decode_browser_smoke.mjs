@@ -20,6 +20,8 @@ const codecBindingsPath = resolve(process.env.VBP_JSON_BINDINGS_FILE ??
 const hostImportCensus = process.env.VBP_REPLAY_HOST_IMPORT_CENSUS === "1";
 const hostStringCensus = process.env.VBP_REPLAY_HOST_STRING_CENSUS === "1";
 const hostImportCensusPath = fileURLToPath(new URL("./host_import_census.mjs", import.meta.url));
+const firUtf8Pool = process.env.VBP_REPLAY_FIR_UTF8_POOL === "1";
+const firUtf8PoolPath = fileURLToPath(new URL("./fir_utf8_pool.mjs", import.meta.url));
 if (process.env.VBP_REPLAY_DIRECT_TYPED === "1") {
   assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "direct decoder needs matched typed package");
   if (process.env.VBP_REPLAY_PROFILE === "1")
@@ -35,6 +37,9 @@ const timedView = process.env.VBP_REPLAY_TIMED_VIEW === "1";
 const firDirect = process.env.VBP_REPLAY_FIR_DIRECT === "1";
 const firDirectPackage = firDirect || process.env.VBP_REPLAY_FIR_DIRECT_PACKAGE === "1";
 if (firDirectPackage) assert.ok(firPackage && timedView, "direct FIR package needs its timed view");
+if (firUtf8Pool) assert.ok(firDirectPackage, "FIR UTF-8 pool requires the direct FIR package");
+assert.ok(!firUtf8Pool || !hostImportCensus,
+  "keep the FIR UTF-8 pool and host-import instrumentation separate");
 if (timedView) assert.equal(process.env.VBP_REPLAY_TYPED_PACKAGE, "1", "timed view needs DirectCodecProbe");
 if (hostImportCensus) {
   assert.ok(firDirectPackage, "host-import census requires the direct FIR package");
@@ -102,6 +107,8 @@ function replace(before, after) {
 replace('const root = fileURLToPath(new URL("../../", import.meta.url));', `const root = ${JSON.stringify(root)};`);
 if (hostImportCensus) replace('import assert from "node:assert/strict";',
   `import { instrumentHostPrototypeSource } from ${JSON.stringify(pathToFileURL(hostImportCensusPath).href)};\nimport assert from "node:assert/strict";`);
+if (firUtf8Pool) replace('import assert from "node:assert/strict";',
+  `import { installFirUtf8Pool } from ${JSON.stringify(pathToFileURL(firUtf8PoolPath).href)};\nimport assert from "node:assert/strict";`);
 // Always use this driver's browser fixture, also for the old control root.
 replace('resolve(root, "tests/vir_preview/session_browser_entry.mjs")', JSON.stringify(fileURLToPath(new URL("./decode_browser_entry.mjs", import.meta.url))));
 if (firIdentity) {
@@ -139,6 +146,11 @@ replace('define: {', `plugins: [{ name: "upstream-json-brand-query", setup(plugi
     plugin.onLoad({ filter: /host-prototype\\.mjs$/ }, async ({ path }) => {
       assert.equal(path, ${JSON.stringify(resolve(firIdentity.packageRoot, "host-prototype.mjs"))});
       return { contents: instrumentHostPrototypeSource(await readFile(path, "utf8")), loader: "js", resolveDir: dirname(path) };
+    });
+  } }` : firUtf8Pool ? `, { name: "fir-utf8-pool", setup(plugin) {
+    plugin.onLoad({ filter: /host-prototype\\.mjs$/ }, async ({ path }) => {
+      assert.equal(path, ${JSON.stringify(resolve(firIdentity.packageRoot, "host-prototype.mjs"))});
+      return { contents: installFirUtf8Pool(await readFile(path, "utf8")), loader: "js", resolveDir: dirname(path) };
     });
   } }` : ""}],\n  define: { "process.env.VBP_REPLAY_RENDER": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_RENDER ?? "0"))},`);
 replace('define: { ', `define: { "process.env.VBP_REPLAY_PROFILE": ${JSON.stringify(JSON.stringify(process.env.VBP_REPLAY_PROFILE ?? "0"))}, `);
@@ -261,6 +273,7 @@ await writeFile(resolve(output, "identity.json"), JSON.stringify({ sourceHashes,
   cpuSamplingIntervalUs: process.env.VBP_REPLAY_PROFILE === "1" ? 1000 : null,
   hostImportCensus,
   hostStringCensus,
+  firUtf8Pool,
   identityPhaseInstrumentation: process.env.VBP_REPLAY_IDENTITY_PHASES === "1",
   compressionCheck: process.env.VBP_REPLAY_COMPRESSION_CHECK === "1",
   identityTest: process.env.VBP_REPLAY_IDENTITY_TEST ?? null,
