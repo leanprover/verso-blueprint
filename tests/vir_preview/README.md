@@ -8,6 +8,37 @@ See the [evidence index](../../doc/performance/README.md) for current conclusion
 and exact artifact/source authority. Do not infer the benchmarked renderer from
 the current Lean source file when loading a retained IR module set.
 
+## Choose the question before comparing timings
+
+| Experiment | Change one axis | Hold fixed | Primary evidence |
+| --- | --- | --- | --- |
+| Shared rendering algorithm | Lean renderer traversal, identity policy, or retained React component boundaries | Input/edit, codec, display options, React mode, and each backend's runtime within its own before/after pair | Work skipped or reduced in the document-to-elements callback, exact output and retained state, then the full update on both VIR and FIR |
+| VIR/FIR execution cost during rendering | Interpreter, compiled Wasm, host adapter, or construction primitive | Lean renderer source and resolved entry, input/edit, codec, display options, and output | Time and sampled cost for the same renderer work; compare each backend with its own baseline |
+| Input construction | JSON parsing, typed codec, or JS-to-Lean object creation | Renderer source, input, options, and backend runtime | Parse/typed-construction interval plus full-update check |
+
+For an algorithm change, rebuild both backend artifacts from the changed Lean
+renderer and compare before/after **within each backend**. A focused screen may
+start on one backend; acceptance for a shared renderer needs both. Different
+VIR and FIR totals do not isolate the algorithm's effect. For a backend change,
+verify that the Lean renderer and its output are unchanged before calling the
+delta a runtime gain. Classify adapter work by the phase it serves: string
+conversion while constructing the input belongs to input construction; resource
+lookup while building elements belongs to renderer execution. Report codec and
+renderer phases separately even when both contribute to the user-visible total.
+Server elaboration, RPC transport, and browser startup need their own
+end-to-end boundary.
+
+Use a representative edit and record its location. The frozen full-FLT replay
+edits a small final section while a 104-section FLT subtree stays unchanged;
+that makes retained section rendering a meaningful algorithm experiment. Keep
+the same edit, response, package identities, options, production React mode,
+warmups, session age, and DOM observation endpoint across each pair. Run
+diagnostics-off AB/BA timing before collecting separate CPU samples or host
+counters. Preserve raw samples and exact DOM/text, math/extension, focus,
+control-retention, and warning checks. If a candidate changes both renderer
+source and backend runtime, qualify it as a combined checkpoint and do not
+attribute its timing delta to either lane alone.
+
 ## Small controls
 
 ```sh

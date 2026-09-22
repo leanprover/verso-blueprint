@@ -4,6 +4,11 @@ These are experimental evidence reports, not published package benchmarks.
 Start with the current comparison below; older captures may use different
 renderers, codecs, runtime policies or timing boundaries.
 
+The [widget benchmarking guide](../../tests/vir_preview/README.md#choose-the-question-before-comparing-timings)
+separates shared rendering-algorithm changes, VIR/FIR execution costs, and input
+construction. Each comparison changes one declared axis while retaining the
+same input, options and output checks.
+
 ## Current widget evidence
 
 | Question | Authoritative report | Scope |
@@ -29,17 +34,16 @@ Each report records its own input/source/package hashes and raw capture names.
 
 ## Consolidation and next steps
 
-1. Qualify and profile the FIR diagnostic artifact. The current release binary has no
-   surviving internal map; this does not mean FIR cannot be profiled. The producer
-   returned a symbol-bearing diagnostic in `W7-ROOT-20260917-017`, preserving
-   the existing source closure and packages. Its final executable sections differ
-   from release: names are **not valid for the saved release profile**. Root review
-   and a fresh diagnostic consumer capture are pending. Apply names to saved
-   captures only when all non-custom Wasm sections match.
-2. Use named attribution to choose the next renderer/adapter change. Preserve
-   unsampled headline runs separately from diagnostic captures.
-3. Qualify a future same-source package before making style reuse or a different
-   codec the shared VIR/FIR comparator. Do not silently advance the baseline.
+1. Test retained section rendering on the frozen edit, with the shared Lean
+   renderer and separate before/after pairs for VIR and FIR. The current FIR
+   content callback is the largest measured browser interval.
+2. Use final function-name provenance from the next official FIR 4.34
+   package. The accepted cached-prelude release has no recoverable internal
+   map; the historical named projection package has different executable
+   sections and cannot name the current capture. Keep sampled host attribution
+   and diagnostics-off timing separate while those names are unavailable.
+3. Qualify future same-source backend and codec packages before promoting them
+   to a shared comparator. Do not silently advance the baseline.
 
 No live pin move, package publication, new transport layer or competing producer
 campaign is part of this consolidation. Existing raw evidence and frozen source
