@@ -87,7 +87,7 @@ The merge rules are:
 | Dependencies without a body | Add edges without replacing the body or its authored kind |
 | Duplicate dependency metadata | Deduplicate; manual metadata takes precedence over automatic metadata |
 | Different intents at the same authority | Error, including automatic disagreements hidden by a manual override; neither import order nor spelling order selects the meaning |
-| Repeated scalar metadata (`parent`, `owner`, `priority`, `effort`, `pr_url`) | Accept equal values; reject unequal values |
+| Repeated scalar metadata (`parent`, `owner`, `priority`, `effort`, `pr_url`, `issue_url`) | Accept equal values; reject unequal values |
 | Tags | Unique union |
 | External Lean associations | Union by canonical declaration, preferring resolved information |
 | Literate Lean code | Keep every distinct block, its declarations, and its code preview |
@@ -886,7 +886,7 @@ the inferred dependency edges.
 | Add a separate informal proof | Supported with `:::proof "label"` once the node has a statement payload. For an undocumented, dependency-free attribute node, first add a matching statement directive. A proof body persisted in an imported provider module is not yet materialized by `{includeBlueprintModule}` or an initial `{blueprint_node}` placement. |
 | Show the formal declaration | Supported as a highlighted external-declaration panel with its signature, kind-specific structure information, docstring, proof/completeness status, and source link when available. |
 | Show the original definition body or `:= by ...` proof text | Not currently supported by the compiled-declaration renderer. The panel renders the declaration interface, not the original source body. Use the source link, or a labeled inline Lean block when the exact authored proof text must be embedded in the page. |
-| Put `parent`, `owner`, `tags`, `effort`, `priority`, or `pr_url` directly on `@[blueprint]` | Not currently supported. These remain Blueprint statement-block metadata. A separate attribute-side metadata surface needs an ownership and validation design before it is added. |
+| Put `parent`, `owner`, `tags`, `effort`, `priority`, `pr_url`, or `issue_url` directly on `@[blueprint]` | Not currently supported. These remain Blueprint statement-block metadata. A separate attribute-side metadata surface needs an ownership and validation design before it is added. |
 | Use an unplaced attribute node in global views | The persistent node can contribute semantic graph/summary facts, but it has no page destination or rendered preview until it is placed in a Manual document. |
 
 ### Existing Lean declarations
@@ -1315,9 +1315,22 @@ Statement-like directives can carry:
 - `(effort := "small" | "medium" | "large")`
 - `(priority := "high" | "medium" | "low")`
 - `(pr_url := "https://github.com/org/repo/pull/123")`
+- `(issue_url := "https://github.com/org/repo/issues/109")`
 
 These fields are primarily used by rendered overview pages and project triage
 views.
+
+`pr_url` and `issue_url` accept any `http://` or `https://` URL after trimming
+surrounding whitespace; on a statement block a blank value is treated as
+absent, while a proof block rejects either option whatever its value. The
+trimmed URL is published as written into the
+rendered pages and the generated manifest, so do not put credentials or other
+private data in it. The metadata panel captions the issue link with the
+trailing numeric path segment of the URL (`#109` for `…/issues/109`, also
+`…/-/issues/109#note`), or with `link` when the path does not end in a number.
+The manifest entry carries `issueUrl` as written and a derived `issueNumber`,
+which is `null` when no number can be read. Issue links do not count toward
+the summary's linked-PR statistics.
 
 ## Rendering Surface
 
