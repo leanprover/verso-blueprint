@@ -103,15 +103,21 @@ def main() -> int:
             cwd=fresh_root,
         )
         code_node = parse_json_output(code_node_output)
-        expected_code_keys = ["Informal.LeanCodePreview.Inline.multiplication_one_right"]
-        if code_node.get("leanCodePreviewKeys") != expected_code_keys:
+        # Keys identify producer sites, not labels. Assert the single attachment
+        # here; `vbp check` below verifies that its opaque key resolves.
+        code_keys = code_node.get("leanCodePreviewKeys")
+        if not (
+            isinstance(code_keys, list)
+            and len(code_keys) == 1
+            and isinstance(code_keys[0], str)
+            and code_keys[0]
+        ):
             raise SystemExit(
                 "[project-template-smoke] imported chapter lost its Lean code preview metadata",
             )
         code_data = code_node.get("codeData")
-        inline = code_data.get("inline") if isinstance(code_data, dict) else None
-        code = inline.get("code") if isinstance(inline, dict) else None
-        defined_theorems = code.get("definedTheorems") if isinstance(code, dict) else None
+        declarations = code_data.get("literateDeclarations") if isinstance(code_data, dict) else None
+        defined_theorems = declarations.get("definedTheorems") if isinstance(declarations, dict) else None
         expected_theorem = {"name": "multiplication_one_right", "provedStatus": "proved"}
         if not isinstance(defined_theorems, list) or not any(
             isinstance(theorem, dict)
