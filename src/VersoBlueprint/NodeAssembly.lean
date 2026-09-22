@@ -179,17 +179,18 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.references.map (·.canonical) != record.references.map (·.canonical) ||
       first.proofReferences.map (·.canonical) != record.proofReferences.map (·.canonical) then
     differences := differences.push "facet associations"
-  let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
-  let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
-  if origins != recordOrigins then
+  if first.allReferences.map (·.origin) != record.allReferences.map (·.origin) then
+    let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
+    let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
     differences := differences.push s!"origin ({origins} → {recordOrigins})"
-  let presence := referenceFieldMessage first.allReferences (fun ref => toString ref.present)
-  let recordPresence := referenceFieldMessage record.allReferences (fun ref => toString ref.present)
-  if presence != recordPresence then
+  if first.allReferences.map (·.present) != record.allReferences.map (·.present) then
+    let presence := referenceFieldMessage first.allReferences (fun ref => toString ref.present)
+    let recordPresence := referenceFieldMessage record.allReferences (fun ref => toString ref.present)
     differences := differences.push s!"presence ({presence} → {recordPresence})"
-  let sources := referenceFieldMessage first.allReferences externalSourceMessage
-  let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
-  if sources != recordSources then
+  if first.allReferences.map (fun ref => (ref.provenance, ref.sourceHref?)) !=
+      record.allReferences.map (fun ref => (ref.provenance, ref.sourceHref?)) then
+    let sources := referenceFieldMessage first.allReferences externalSourceMessage
+    let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
   if first.allReferences.map (·.provedStatus) != record.allReferences.map (·.provedStatus) then
     let statuses := referenceFieldMessage first.allReferences (provedStatusMessage ·.provedStatus)
