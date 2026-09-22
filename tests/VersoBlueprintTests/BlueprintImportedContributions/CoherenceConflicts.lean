@@ -31,13 +31,13 @@ open Lean Informal
 error: Conflicting imported blueprint contributions for label 'coherent_cross_a'
 Label coherent_cross_a has conflicting contribution identity CoherenceCross.«test.synthetic»:shared_identity at 9/0
 CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_a refs=[] priority=none
-CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_b refs=[] priority=none
+CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_b refs=[] priority=none; differs from first support in label (coherent_cross_a → coherent_cross_b)
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.CoherenceConflictA
 ---
 error: Conflicting imported blueprint contributions for label 'coherent_cross_b'
 Label coherent_cross_b has conflicting contribution identity CoherenceCross.«test.synthetic»:shared_identity at 9/0
 CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_a refs=[] priority=none
-CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_b refs=[] priority=none
+CoherenceCross.«test.synthetic»:shared_identity@9/0 label=coherent_cross_b refs=[] priority=none; differs from first support in label (coherent_cross_a → coherent_cross_b)
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.CoherenceConflictB
 ---
 error: Conflicting imported blueprint contributions for label 'coherent_three'

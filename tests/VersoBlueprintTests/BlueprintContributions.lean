@@ -109,6 +109,50 @@ private def snapshotA := { a with references := #[{
 private def independentSnapshotA := { snapshotA with id := c.id }
 #guard accepts `shared [a, independentSnapshotA] [`declA] none [a, independentSnapshotA]
 
+-- Collision diagnostics name only the changed snapshot fields, including a
+-- render-content difference without embedding the rendered HTML itself.
+private def diagnosticSnapshotA : Record := { a with
+  references := #[{ (ExternalRef.ofName `declA .directiveLean) with
+    present := false
+    provedStatus := .containsSorry #[{ location := .proof }]
+    provenance := .outWorkspace `Snapshot "snapshot.lean"
+    sourceHref? := some "https://example.invalid/snapshot"
+    render := .ok { html := "diagnostic HTML must stay out of the message", hoverPayloads := #[] } }]
+  source := some { path := "Snapshot.lean", range := default } }
+
+private def collisionMessagesFor (records : List Record) : Array String :=
+  match Informal.NodeAssembly.assemble `shared #[] records with
+  | .ok _ => #[]
+  | .error messages => messages
+
+#guard match Informal.NodeAssembly.assemble `shared #[] [a, diagnosticSnapshotA] with
+  | .ok _ => false
+  | .error messages =>
+    messages.size == 3 && messages[1]? != messages[2]? &&
+      messages.any (·.contains "origin (") &&
+      messages.any (·.contains "presence (") &&
+      messages.any (·.contains "registration source") &&
+      messages.any (·.contains "source metadata") &&
+      messages.any (·.contains "status (") &&
+      messages.any (·.contains "render differs (") &&
+      !messages.any (·.contains "diagnostic HTML must stay out of the message")
+#guard collisionMessagesFor [a, diagnosticSnapshotA] ==
+  collisionMessagesFor [diagnosticSnapshotA, a]
+
+-- Ordering uses complete evidence even when only equal-length rendered bodies differ.
+private def renderOnlySnapshotA : Record := { a with
+  references := #[{ (ExternalRef.ofName `declA .blueprintAttr) with
+    render := .ok { html := "same-length-A", hoverPayloads := #[] } }] }
+private def renderOnlySnapshotB : Record := { renderOnlySnapshotA with
+  references := #[{ (ExternalRef.ofName `declA .blueprintAttr) with
+    render := .ok { html := "same-length-B", hoverPayloads := #[] } }] }
+#guard collisionMessagesFor [renderOnlySnapshotA, renderOnlySnapshotB] ==
+  collisionMessagesFor [renderOnlySnapshotB, renderOnlySnapshotA]
+#guard let messages := collisionMessagesFor [renderOnlySnapshotA, renderOnlySnapshotB]
+  messages.any (·.contains "render differs (ok → ok)") &&
+    !messages.any (·.contains "same-length-A") &&
+    !messages.any (·.contains "same-length-B")
+
 private def missingB := { b with references := #[{ (ExternalRef.ofName `declB) with present := false }] }
 #guard accepts `shared [a, missingB] [`declA] none [a, missingB]
 #guard rejects `shared [missingB, b] [(b.id, [missingB, b])] []

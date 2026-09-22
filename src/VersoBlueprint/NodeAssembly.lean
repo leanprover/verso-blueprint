@@ -96,12 +96,10 @@ private def mergeContribution (label : Label) (node : Node)
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
     | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs literateCodes
-  return {
+  return { node with
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
-    statement, proof, rustCode, externalMarkup, parent, priority := node.priority, owner, effort, prUrl
-    externalRefs
-    blueprintAttributeAttachments := node.blueprintAttributeAttachments
+    statement, proof, rustCode, externalMarkup, parent, owner, effort, prUrl
     literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
@@ -151,6 +149,68 @@ private def recordMessage (record : Record) : String :=
   let refs := String.intercalate ", " (record.references.toList.map fun ref => ref.canonical.toString)
   s!"{record.id.moduleName}.{record.id.producer}:{record.id.subject}@{record.id.site}/{record.id.slot} label={record.label} refs=[{refs}] priority={record.priority}"
 
+private def externalOriginMessage : ExternalOrigin → String
+  | .directiveLean => "directive"
+  | .blueprintAttr => "attribute"
+
+private def provedStatusMessage : ProvedStatus → String
+  | .proved => "proved"
+  | .missing => "missing"
+  | .axiomLike => "axiom-like"
+  | .containsSorry locations => s!"contains-sorry({locations.size})"
+
+private def externalSourceMessage (ref : ExternalRef) : String :=
+  let provenance := match ref.provenance with
+    | .inWorkspace moduleName sourcePath => s!"workspace:{moduleName}:{sourcePath}"
+    | .outWorkspace moduleName sourcePath? =>
+      s!"external:{moduleName}:{sourcePath?.getD "-"}"
+    | .unknown => "unknown"
+  s!"{provenance}; href={ref.sourceHref?.getD "-"}"
+
+private def registrationSourceMessage : Option SourceLocation → String
+  | none => "-"
+  | some source =>
+    s!"{source.path}:{source.range.start.line}:{source.range.start.character}-{source.range.end.line}:{source.range.end.character}"
+
+private def renderStateMessage : ExternalDeclRender → String
+  | .ok _ => "ok"
+  | .error error => s!"error({error.message})"
+
+private def referenceFieldMessage (references : Array ExternalRef)
+    (field : ExternalRef → String) : String :=
+  String.intercalate ", " (references.toList.map field)
+
+private def collisionDifferenceMessage (first record : Record) : String := Id.run do
+  let mut differences := #[]
+  if first.label != record.label then
+    differences := differences.push s!"label ({first.label} → {record.label})"
+  if first.priority != record.priority then
+    differences := differences.push s!"priority ({first.priority} → {record.priority})"
+  if first.source != record.source then
+    differences := differences.push
+      s!"registration source ({registrationSourceMessage first.source} → {registrationSourceMessage record.source})"
+  let origins := referenceFieldMessage first.references (externalOriginMessage ·.origin)
+  let recordOrigins := referenceFieldMessage record.references (externalOriginMessage ·.origin)
+  if origins != recordOrigins then
+    differences := differences.push s!"origin ({origins} → {recordOrigins})"
+  let presence := referenceFieldMessage first.references (fun ref => toString ref.present)
+  let recordPresence := referenceFieldMessage record.references (fun ref => toString ref.present)
+  if presence != recordPresence then
+    differences := differences.push s!"presence ({presence} → {recordPresence})"
+  let sources := referenceFieldMessage first.references externalSourceMessage
+  let recordSources := referenceFieldMessage record.references externalSourceMessage
+  if sources != recordSources then
+    differences := differences.push s!"source metadata ({sources} → {recordSources})"
+  let statuses := referenceFieldMessage first.references (provedStatusMessage ·.provedStatus)
+  let recordStatuses := referenceFieldMessage record.references (provedStatusMessage ·.provedStatus)
+  if statuses != recordStatuses then
+    differences := differences.push s!"status ({statuses} → {recordStatuses})"
+  if first.references.map (·.render) != record.references.map (·.render) then
+    differences := differences.push s!"render differs ({referenceFieldMessage first.references (renderStateMessage ·.render)} → {referenceFieldMessage record.references (renderStateMessage ·.render)})"
+  if first.references != record.references && differences.isEmpty then
+    differences := differences.push "reference snapshot"
+  return s!"differs from first support in {String.intercalate "; " differences.toList}"
+
 private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Array String :=
   let idKey := fun id : ContributionId =>
     s!"{id.moduleName.toString}/{id.producer.toString}/{id.subject.toString}/{id.site}/{id.slot}"
@@ -161,9 +221,14 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
       String.intercalate "," (record.references.toList.map fun ref => ref.canonical.toString) ++
       s!"/{record.priority}"
   let supportOrder := fun (a b : Record) => decide <| supportKey a < supportKey b
+  let collisionOrder := fun (a b : Record) => decide <|
+    supportKey a < supportKey b || (supportKey a = supportKey b && reprStr a < reprStr b)
   let collisionMessages := collisions.flatMap fun (id, supports) =>
     #[s!"Label {label} has conflicting contribution identity {id.moduleName}.{id.producer}:{id.subject} at {id.site}/{id.slot}"] ++
-      ((supports.toArray.qsort supportOrder).map recordMessage)
+      match (supports.toArray.qsort collisionOrder).toList with
+      | [] => #[]
+      | first :: rest => #[recordMessage first] ++
+        rest.toArray.map fun record => s!"{recordMessage record}; {collisionDifferenceMessage first record}"
   let priorityMessages := priorities.flatMap fun (value, supports) =>
     #[s!"Label {label} declares conflicting priorities including '{value}'"] ++
       ((supports.toArray.qsort supportOrder).map recordMessage)

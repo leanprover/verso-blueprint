@@ -627,22 +627,6 @@ def NodeContribution.externalReferences (contribution : NodeContribution) : Arra
 def NodeContribution.hasSelectedFields (contribution : NodeContribution) : Bool :=
   contribution.priority.isSome || !contribution.externalReferences.isEmpty
 
-/-- Stable canonical union; build an ephemeral index once for this incoming group. -/
-private def mergeExternalRefs (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
-  let mut positions : NameMap Nat := {}
-  for i in [:current.size] do
-    positions := positions.insert current[i]!.canonical i
-  let mut refs := current
-  for ref in incoming do
-    let ref := { ref with canonical := ref.canonical.eraseMacroScopes }
-    match positions.get? ref.canonical with
-    | some i =>
-      if !refs[i]!.present && ref.present then refs := refs.set! i ref
-    | none =>
-      positions := positions.insert ref.canonical refs.size
-      refs := refs.push ref
-  return refs
-
 /-- External summary entries not already supplied by a compiled literate declaration. -/
 def Node.summaryExternalRefs (node : Node) : Array ExternalRef :=
   let names := node.literateCodes.foldl (init := ({} : NameSet)) fun names code =>
@@ -661,13 +645,5 @@ def Node.hasAssociatedCode (node : Node) : Bool :=
 def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
 
 def Node.hasProofBody (node : Node) : Bool := node.proof.any (·.hasBody)
-
-/-- Infer the fallback uniformly from all Lean associations, including literate blocks. -/
-private def inferredNodeKind (external : Array ExternalRef) (literate : Array Code) : NodeKind :=
-  if external.any (·.kind.isTheoremLike) || literate.any (! ·.definedTheorems.isEmpty) then
-    .theorem
-  else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then
-    .definition
-  else .lemma
 
 end Informal.Data

@@ -263,9 +263,13 @@ The same flow can be read as four contracts:
    original identified external-association/priority facts. The fact identity is
    assigned at its producer site and is preserved across imports; import replay
    first collects the complete fact set, then resolves it once per affected
-   label. Replays are idempotent, while changed facts under one identity and
-   conflicting priority values produce structured diagnostics rather than an
-   arrival-dependent accepted prefix. Body/kind/markup policy remains separate.
+   label. Replaying the same complete fact is idempotent. Replaying a changed
+   fact under one identity or combining conflicting priority values produces
+   structured diagnostics rather than an arrival-dependent accepted prefix.
+   Pending evidence, contributor provenance, and authored-origin metadata stay
+   available for those diagnostics, but rejected input creates no accepted
+   `RegisteredNode` or declaration-index entry. Body/kind/markup policy remains
+   separate.
 
    Node exports otherwise retain each module's local `NodeContribution` records,
    together with the module that originally introduced the label and the module
@@ -279,12 +283,13 @@ The same flow can be read as four contracts:
    registration and import replay. It combines the frozen selected-fact resolver
    with the legacy body/kind/markup reducer, and returns either the accepted node or its
    conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
-   its introducing module, and its contributing modules. Provenance cannot lose
-   its corresponding node through separate map updates. The registered node,
-   local exports, and declaration-to-label index are committed together after acceptance. Import
-   diagnostics retain the reasons and contributing module names. Equal scalar
-   metadata is idempotent; competing bodies, attachment slots, and equally
-   authoritative dependency intents are errors.
+   its introducing module, and its contributing modules. Pending provenance is
+   intentionally retained even when assembly rejects an input, so provenance is
+   not itself accepted node data. The registered node, local exports, and
+   declaration-to-label index are committed together only after successful
+   assembly. Import diagnostics retain the reasons and contributing module
+   names. Equal scalar metadata is idempotent; competing bodies, attachment
+   slots, and equally authoritative dependency intents are errors.
 
    Custom registration code should call `Informal.Environment.contribute` with
    a legacy payload that has no external references or priority, rather than
@@ -319,11 +324,26 @@ The same flow can be read as four contracts:
    Fallback node classification is derived from all merged Lean associations;
    contributors do not supply a separate inferred kind. See the
    [API migration notes](API.md) when updating custom registration code.
-   An attribute introducing a label can reuse its declaration's docstring as
-   the initial informal statement. Later attributes only contribute code and
-   dependencies, even when the shared node is bodyless. This keeps attachment
-   producers independent of accumulated body presence. Shared placeholders
-   acquire prose through explicit statement/proof directives.
+   A bodyless attribute association is an independent selected fact, not an
+   authored introduction. When no node has been accepted for a label, an
+   attribute may reuse its declaration's docstring as the initial informal
+   statement. Later attributes only contribute code and dependencies, even when
+   the shared node is bodyless. This keeps attachment producers independent of
+   accumulated body presence. Shared placeholders acquire prose through explicit
+   statement/proof directives; competing authored statement, proof, or
+   placeholder introductions are rejected.
+
+   The current proof boundary follows the production path. Collector laws cover
+   retention of complete records and replay of equal evidence; resolver laws
+   cover accepted support membership and priority agreement; and assembly laws
+   cover the accepted node's resolved priority, exact supports, and the
+   `blueprintAttributeAttachments` capability projected from every accepted
+   support. These guarantees are conditional on successful assembly. They do
+   not prove confluence for legacy body/kind/markup policies, choose among
+   conflicting status, provenance, or render snapshots, or make rejected
+   evidence accepted data. The legacy public reducer explicitly rejects
+   selected external-reference and priority fields; identified records enter
+   through `contributeSelected` instead.
 
    Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of
    the Manual genre. Blueprint registers docstring handlers for `uses` and
