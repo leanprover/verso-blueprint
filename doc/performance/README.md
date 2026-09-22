@@ -15,6 +15,7 @@ renderers, codecs, runtime policies or timing boundaries.
 | Which upstream base and SDK are used? | [VIR refresh](VIR_UPSTREAM_REFRESH_20260917.md) | Exact source/SDK identities and qualification |
 | Where is the refreshed live matched demo? | [Matched 4.34 demo](MATCHED_DEMO_V434.md) | New interpreter/SDK, frozen paired renderer; startup VIR/FIR toggle |
 | Can FIR string construction avoid per-string temporary arrays? | [FIR UTF-8 pool](FIR_UTF8_POOL_20260922.md) | Consumer prototype; retained full-FLT replay and separate sampled attribution |
+| Which browser renderer change should be tested next? | [Retained section rendering](RETAINED_RENDER_TARGET_20260923.md) | Accepted FIR package, current sampled cost, symbol limit and next experiment |
 
 Do not compare an inner content callback with an entire render-to-DOM interval.
 Do not compare FIR's checked Lean.Json/FromJson path with VIR's direct typed
