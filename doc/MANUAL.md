@@ -72,17 +72,19 @@ contributions into one node, preserving statement and proof dependencies
 separately. Include the relevant chapter modules in the top-level document to
 render their content.
 
-Two modules that independently introduce the same label are still duplicates.
-Likewise, two sibling modules that each supply a proof body for the same imported
-statement conflict, even if their proof text is identical. Re-exporting a shared
-module does not create a duplicate.
+Two modules that independently author a statement, proof, or explicit
+placeholder for the same label are still duplicates. Bodyless attribute
+associations are independent facts: several modules may associate declarations
+with one label and those facts compose. Likewise, two sibling modules that each
+supply a proof body for the same imported statement conflict, even if their
+proof text is identical. Re-exporting a shared module does not create a duplicate.
 
 The merge rules are:
 
 | Contributions | Result |
 | --- | --- |
 | Statement, proof, and attachments with a shared label origin | Combine into one node |
-| Independent introductions of the same label | Error |
+| Independent authored introductions of the same label | Error |
 | Two statement bodies or two proof bodies | Error, even when their text is identical |
 | Dependencies without a body | Add edges without replacing the body or its authored kind |
 | Duplicate dependency metadata | Deduplicate; manual metadata takes precedence over automatic metadata |
@@ -91,7 +93,7 @@ The merge rules are:
 | Tags | Unique union |
 | External Lean associations | Union by canonical declaration, preferring resolved information |
 | Literate Lean code | Keep every distinct block, its declarations, and its code preview |
-| Attribute docstrings | The declaration introducing a label may supply its initial statement; later attributes attach code and dependencies only |
+| Attribute docstrings | A first attribute may supply an initial statement from its declaration docstring; later attributes attach code and dependencies only |
 | Rust code | At most one attachment |
 | External markup | At most one attachment per language and slot |
 
@@ -449,12 +451,13 @@ theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
 This mode is useful when the formal declaration already exists as ordinary Lean
 code and you want to register it as a Blueprint node.
 
-When an attribute introduces a new label, Blueprint tries to reuse that
-declaration's docstring as the initial informal statement. Attributes targeting
-an existing label attach code and dependencies only: their docstrings neither
-replace a statement nor fill a bodyless placeholder. Use an explicit statement
-directive to fill a shared placeholder. This rule also applies when attachments
-come from sibling modules.
+When no node has been accepted for a label, an attribute may reuse its
+declaration's docstring as the initial informal statement. A bodyless attribute
+association alone is an independent fact, not an authored introduction.
+Attributes targeting an existing label attach code and dependencies only: their
+docstrings neither replace a statement nor fill a bodyless placeholder. Use an
+explicit statement directive to fill a shared placeholder. This rule also
+applies when attachments come from sibling modules.
 
 For example, after importing a chapter that declares `addition_right_identity`,
 this attribute attaches compiled code while preserving the chapter's prose:
@@ -874,7 +877,7 @@ the inferred dependency edges.
 | --- | --- |
 | Definitions, theorems, structures, and inductives | Supported. They become definition- or theorem-shaped Blueprint nodes. Constructors, recursors, axioms, and declarations introduced with `opaque` are not accepted as direct attribute targets. |
 | Omit an explicit Blueprint label | Supported with bare `@[blueprint]`; the label defaults to the declaration's qualified Lean name. Attribute options such as `uses`, `proofUses`, and `autoDeps` remain available. |
-| Direct and transitive imports | Supported. Attribute nodes, Lean associations, docstring bodies, and dependency metadata persist through imported `.olean` files. Duplicate imported Blueprint labels are diagnosed. |
+| Direct and transitive imports | Supported. Attribute nodes, Lean associations, docstring bodies, and dependency metadata persist through imported `.olean` files. Independent bodyless attribute facts for one label compose; conflicting authored introductions, groups, and authors are diagnosed. |
 | Include a regular Lean module as a Blueprint chapter | Supported in Manual documents with `{includeBlueprintModule 0 Some.Module}` after importing the module. Distinct directly owned labels are emitted in first attribute-application order; transitive modules must be named and included explicitly. |
 | Place a tagged declaration on a specific Manual page | Supported with `{blueprint_node "label"}` after importing its module. The placement participates in numbering, links, relations, previews, the manifest, and the rendered-fragment cache. |
 | Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |

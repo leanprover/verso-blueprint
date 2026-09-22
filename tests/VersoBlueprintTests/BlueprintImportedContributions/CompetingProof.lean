@@ -7,9 +7,21 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 open Verso.Genre
-open Informal
+open Lean Informal
 
-run_cmd discard <| Informal.Environment.contribute `key_theorem { tags := #["proof"], priority := some "high" }
+run_cmd do
+  discard <| Informal.Environment.contributeSelected `key_theorem
+    { tags := #["proof"], priority := some "high" }
+    { id := {
+        moduleName := Name.mkSimple "CompetingProof"
+        producer := Name.mkSimple "test.synthetic"
+        subject := `key_theorem
+        site := 1
+        slot := 0 }
+      label := `key_theorem
+      references := #[]
+      priority := some "high"
+      source := none }
 
 #doc (Manual) "Proof chapter" =>
 

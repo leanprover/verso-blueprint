@@ -28,7 +28,7 @@ def Placement.showsCode (placement : Placement) : Bool :=
   !placement.config.compact && placement.config.toNode.facet == "statement"
 
 def nodeHasBlueprintAttributeAttachments (node : Data.Node) : Bool :=
-  node.externalRefs.any fun ref => ref.origin == .blueprintAttr
+  node.blueprintAttributeAttachments
 
 /-- Decode the persisted Manual representation without disguising failure as prose. -/
 def decodePersistedManualBlock (jsonText : String) :
