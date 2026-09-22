@@ -944,6 +944,12 @@ structure Entry extends Informal.BlockMetadata where
   codeOnlyPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
+  /--
+  Issue number derived from `issueUrl` when its trailing path segment is numeric.
+  The manifest builder populates it; `issueUrl` stays authoritative, and an entry
+  built any other way may leave it `none` even when the URL carries a number.
+  -/
+  issueNumber : Option Nat := none
   /-- Whether the canonical proof shell is collapsed when this is a proof entry. -/
   foldProofBlock : Bool := false
   /-- Whether the associated Lean code panel is collapsed for this canonical traversal entry. -/
@@ -2102,6 +2108,7 @@ private def blockSemanticManifestEntry
     parentTitle := blockParentTitle? state blockData
     leanCodePreviewKeys := RenderingResolution.codePreviewKeys state resolved
     codeData
+    issueNumber := blockData.issueUrl.bind fun url => (Informal.issueNumberSegment? url).bind String.toNat?
     foldProofBlock := preview.foldProofBlock
     foldCodeBlock := preview.foldCodeBlock
     externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)

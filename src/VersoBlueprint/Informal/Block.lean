@@ -260,6 +260,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         label, kind := resolved.envKind, codeHint := resolved.codeHint
         parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
         tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
+        issueUrl := resolved.issueUrl
         deps := resolved.statementUses, proofUses := resolved.proofUses } : Environment.InProgress)
     let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
         let parsedContents ← parseDirectiveSourceMetadata cfg contents

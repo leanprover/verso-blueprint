@@ -580,6 +580,7 @@ structure Node where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
 deriving Repr, Inhabited
 
 /--
@@ -603,6 +604,7 @@ structure NodeContribution where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
 deriving Repr, Inhabited
 
 /-- Stable canonical union; build an ephemeral index once for this incoming group. -/
@@ -712,6 +714,7 @@ private def mergeContribution (label : Label) (node : Node)
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
+  let issueUrl ← mergeMetadata label "issue URLs" node.issueUrl incoming.issueUrl
   let mut externalRefs := node.externalRefs
   let mut literateCodes := node.literateCodes
   for code in incoming.leanCode do
@@ -728,7 +731,7 @@ private def mergeContribution (label : Label) (node : Node)
   return {
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
-    statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl
+    statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl, issueUrl
     externalRefs, literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
   }

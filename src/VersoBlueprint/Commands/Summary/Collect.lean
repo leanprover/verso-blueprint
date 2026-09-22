@@ -254,6 +254,7 @@ private def metadataEntryItem (state : Environment.State) (label : Name) (node :
     effort := node.effort
     priority := node.priority
     prUrl := node.prUrl
+    issueUrl := node.issueUrl
     tags := node.tags.toList
     leanObjects := nodeLeanObjects node
   }
@@ -280,6 +281,7 @@ private def mkActionableItem? (state : Environment.State) (external : Informal.G
         ownerDisplayName := ownerDisplayName state node
         effort := node.effort
         prUrl := node.prUrl
+        issueUrl := node.issueUrl
         tags := node.tags.toList
         statementStatus := Informal.Graph.StatementStatus.toText statementStatus
         proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""

@@ -35,6 +35,7 @@ run_cmd discard <| Environment.contribute `key_theorem { priority := some "high"
     count := before.nextCount + 100
     priority := some "low"
     tags := #["rejected"]
+    issueUrl := some "https://example.com/issues/1"
     proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
     leanCode := #[.external #[{ canonical := `rejectedDecl, written := `rejectedDecl, present := true }]]
   }
