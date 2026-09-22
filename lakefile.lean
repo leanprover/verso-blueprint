@@ -1,12 +1,11 @@
 import Lake
 open Lake DSL
 
--- Pin the matching post-RC2 Verso/SubVerso API and the split-page section
--- anchor fix until a release tag includes both.
-require verso from git "https://github.com/leanprover/verso"@"52c8c9557bcb5cc8c0edc0ee37e74311a3d53ee9"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.34.0-rc2"
-require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
-require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
+-- Lean 4.35.0-rc1 stack (prefer rc1 over rc2 while the shared box lockstep is rc1).
+require verso from git "https://github.com/leanprover/verso"@"v4.35.0-rc1"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0-rc1"
+require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0-rc1"
+require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.112"
 
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
