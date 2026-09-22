@@ -4,6 +4,10 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
+public section
+
 namespace Informal.Graft
 
 def css : String := r##"

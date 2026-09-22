@@ -4,16 +4,30 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean.Elab.InfoTree.Types
-import VersoManual
-import VersoBlueprint.Data
-import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.DirectiveArgParsing
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.ExternalCode
-import VersoBlueprint.Informal.LabelArg
-import VersoBlueprint.Informal.UseConfig
-import VersoBlueprint.LabelNameParsing
+module
+
+public import Lean.Elab.InfoTree.Types
+public import VersoManual
+public import VersoBlueprint.Data
+public import VersoBlueprint.DependencyAnalysis
+public import VersoBlueprint.DirectiveArgParsing
+public import VersoBlueprint.Environment
+public import VersoBlueprint.Informal.ExternalCode
+public import VersoBlueprint.Informal.LabelArg
+public import VersoBlueprint.Informal.UseConfig
+public import VersoBlueprint.LabelNameParsing
+public meta import Lean.Elab.InfoTree.Types
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.DependencyAnalysis
+public meta import VersoBlueprint.DirectiveArgParsing
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.ExternalCode
+public meta import VersoBlueprint.Informal.LabelArg
+public meta import VersoBlueprint.Informal.UseConfig
+public meta import VersoBlueprint.LabelNameParsing
+
+public meta section
 
 namespace Informal
 

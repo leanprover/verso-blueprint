@@ -51,6 +51,12 @@ A shared visited set must not accidentally erase that evidence.
 
 No helper code is evaluated or unfolded using a reducibility policy. Inspection
 uses the available compiled expressions, including theorem and opaque bodies.
+“Available” matters under Lean's module system: the walker uses the local
+non-exporting environment, but does not load private imported bodies. Ordinary
+imports can present unexposed definitions and theorems as axioms. Attribute
+registration captures local edges before this boundary, and its exported
+contributions survive independently of Lean body visibility. See the
+[module contract](MANUAL.md#module-boundaries-and-attributes).
 Unassociated axioms are terminal even if their types mention other declarations.
 The root's own type is always analyzed, including for an axiom root.
 
@@ -82,6 +88,15 @@ nested section/namespace scopes, command-local and document-local overrides,
 import isolation, independent inference activation, direct-only inductive roots,
 and manifest projections for default, disabled, and explicitly enabled expansion
 across the three authoring setups.
+
+`VersoBlueprintBoundaryTests.AutoDeps` adds strict module-system providers and
+consumers. It checks public attribute targets without exposed bodies, private
+attribute metadata, persisted definition/proof edges, exposed versus hidden
+imported helpers, `import all`, imported-attribute rejection, external and inline
+attachments, catalog/placement persistence through a public re-export, and its
+absence through a non-public transitive import. These tests must remain separate
+from the legacy non-module fixtures:
+the latter do not exercise Lean's body-hiding boundary.
 
 The end-user contract and migration guidance live in the
 [Manual](MANUAL.md#automatic-dependency-inference).

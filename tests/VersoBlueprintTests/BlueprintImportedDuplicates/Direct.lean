@@ -19,10 +19,6 @@ set_option doc.verso true
 namespace Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 
 /--
-error: Conflicting imported blueprint contributions for label '«dup.imported.node»'
-Label «dup.imported.node» was independently introduced in 'VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA' and 'VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB'
-Contributing modules: VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA, VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB
----
 error: Duplicate imported blueprint group label '«dup.imported.group»'
 ---
 error: Duplicate imported blueprint author id '«dup.imported.author»'
@@ -41,8 +37,25 @@ def directImportedDuplicateDocBlueprint : Informal.BlueprintDocument := .capture
   show CoreM Bool from do
     let conflicts ← Informal.Environment.importedConflicts
     pure <|
-      conflicts.any (fun conflict => conflict.kind == .node && conflict.label == Name.mkSimple "dup.imported.node") &&
+      !conflicts.any (fun conflict => conflict.kind == .node && conflict.label == Name.mkSimple "dup.imported.node") &&
       conflicts.contains { kind := .group, label := Name.mkSimple "dup.imported.group" } &&
       conflicts.contains { kind := .author, label := Name.mkSimple "dup.imported.author" }
+
+-- Independent bodyless attribute facts are assembled once from imported evidence.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let label := Name.mkSimple "dup.imported.node"
+    let some node ← Informal.Environment.getNode? label | return false
+    let labelsA ← Informal.Environment.labelsForLeanDecl
+      `Verso.VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA.importedNodeA
+    let labelsB ← Informal.Environment.labelsForLeanDecl
+      `Verso.VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB.importedNodeB
+    pure <| node.leanDecls.contains
+        `Verso.VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA.importedNodeA &&
+      node.leanDecls.contains
+        `Verso.VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB.importedNodeB &&
+      labelsA.contains label && labelsB.contains label
 
 end Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Direct

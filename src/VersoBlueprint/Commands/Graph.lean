@@ -4,15 +4,16 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Commands.SerializedExtension
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Commands.Graph.Data
+public import VersoBlueprint.Commands.SerializedExtension
 import VersoBlueprint.Environment
-import VersoBlueprint.Graph
 import VersoBlueprint.GraphApi
-import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
@@ -20,6 +21,15 @@ import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
 import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
+meta import Lean
+meta import Verso
+public meta import VersoManual
+meta import VersoBlueprint.Commands.Common
+public meta import VersoBlueprint.Commands.Graph.Data
+meta import VersoBlueprint.Commands.SerializedExtension
+meta import VersoBlueprint.Environment
+
+public section
 
 namespace Informal.Commands
 
@@ -27,49 +37,10 @@ open Lean Elab Command
 open Informal Data Environment
 open Informal.Graph
 
-register_option verso.blueprint.graph.defaultDirection : String := {
-  defValue := "TB"
-  descr := "Default direction for `blueprint_graph` when `(direction := ...)` is omitted (LR, RL, TB, BT)"
-}
-
-register_option verso.blueprint.graph.defaultPack : Bool := {
-  defValue := false
-  descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
-}
-
-register_option verso.blueprint.graph.defaultPreviewMode : String := {
-  defValue := "pinned"
-  descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned` or `hover`)"
-}
-
-register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
-  defValue := "docked"
-  descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked` or `anchored`)"
-}
-
-structure GraphBlockData where
-  graphModel : Option Informal.Graph.GraphModel := none
-  options : GraphOptions := {}
-  previewMode : Informal.HoverRender.PreviewMode := .pinned
-  previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
-deriving Inhabited, FromJson, ToJson
-
 /-- Custom graphs supply a model; project graphs use the initialized rendering registry. -/
 def GraphBlockData.resolveModel (data : GraphBlockData) (state : Verso.Genre.Manual.TraverseState) :
     Except String Informal.Graph.GraphModel :=
   Informal.GraphApi.resolveModel state data.graphModel
-
-def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
-  match s.trimAscii.toString.toLower with
-  | "hover" => some .hover
-  | "pinned" => some .pinned
-  | _ => none
-
-def parseGraphPreviewPlacement? (s : String) : Option Informal.HoverRender.PreviewPlacement :=
-  match s.trimAscii.toString.toLower with
-  | "docked" => some .docked
-  | "anchored" => some .anchored
-  | _ => none
 
 -- Keep this module rebuilt when the embedded graph assets change.
 -- This module owns the embedded graph CSS/JS boundary, so adjacent edits here
@@ -366,9 +337,31 @@ def withPreparedGraphs (impls : Verso.Genre.Manual.ExtensionImpls)
       ({} : Std.HashMap String GraphData)
     impls.insertBlock ``Block.graph { descriptor with toHtml := some (graphToHtml (some index)) }
 
+meta section
+
+register_option verso.blueprint.graph.defaultDirection : String := {
+  defValue := "TB"
+  descr := "Default direction for `blueprint_graph` when `(direction := ...)` is omitted (LR, RL, TB, BT)"
+}
+
+register_option verso.blueprint.graph.defaultPack : Bool := {
+  defValue := false
+  descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
+}
+
+register_option verso.blueprint.graph.defaultPreviewMode : String := {
+  defValue := "pinned"
+  descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned` or `hover`)"
+}
+
+register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
+  defValue := "docked"
+  descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked` or `anchored`)"
+}
+
 open Verso.ArgParse
 
-instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
+private instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
   fromArgVal := {
     description := doc!"graph direction (`LR`, `RL`, `TB`, or `BT`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -385,7 +378,7 @@ instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
         throwError "Expected a direction identifier or string, got {toMessageData other}"
   }
 
-instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM where
+private instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM where
   fromArgVal := {
     description := doc!"graph preview mode (`pinned` or `hover`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -402,7 +395,7 @@ instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM 
         throwError "Expected a preview mode identifier or string, got {toMessageData other}"
   }
 
-instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartElabM where
+private instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartElabM where
   fromArgVal := {
     description := doc!"graph preview placement (`docked` or `anchored`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -419,13 +412,13 @@ instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartE
         throwError "Expected a preview placement identifier or string, got {toMessageData other}"
   }
 
-structure BlueprintGraphConfig where
+private structure BlueprintGraphConfig where
   direction : Option GraphDirection := none
   pack : Option Bool := none
   preview : Option Informal.HoverRender.PreviewMode := none
   previewPlacement : Option Informal.HoverRender.PreviewPlacement := none
 
-instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
+private instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
   fromArgs :=
     BlueprintGraphConfig.mk <$>
       .named' `direction true <*>
@@ -433,7 +426,7 @@ instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
       .named' `preview true <*>
       .named' `previewPlacement true
 
-def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphDirection := do
+private def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphDirection := do
   match cfg.direction with
   | none =>
     let configured :=
@@ -447,7 +440,7 @@ def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM 
       pure .TB
   | some direction => pure direction
 
-def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphOptions := do
+private def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphOptions := do
   let direction ← parseGraphDirection cfg
   let pack :=
     cfg.pack.getD <|
@@ -456,7 +449,7 @@ def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Gr
         verso.blueprint.graph.defaultPack.defValue
   pure { direction, pack }
 
-def parseGraphPreviewMode
+private def parseGraphPreviewMode
     (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewMode := do
   match cfg.preview with
   | none =>
@@ -471,7 +464,7 @@ def parseGraphPreviewMode
       pure .pinned
   | some mode => pure mode
 
-def parseGraphPreviewPlacement
+private def parseGraphPreviewPlacement
     (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewPlacement := do
   match cfg.previewPlacement with
   | none =>
@@ -487,7 +480,7 @@ def parseGraphPreviewPlacement
   | some placement => pure placement
 
 open Verso Doc Elab Syntax in
-def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {})
+private def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {})
     (previewMode : Informal.HoverRender.PreviewMode := .pinned)
     (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
     PartElabM FinishedPart := do
@@ -503,6 +496,8 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
+
+end
 
 open Verso Doc Elab Syntax PartElabM in
 @[part_command Lean.Doc.Syntax.command]

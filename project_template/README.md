@@ -62,6 +62,32 @@ The important files are:
   that builds and deploys the generated HTML to GitHub Pages
 - `scripts/ci-pages.sh`: the local command that the Pages workflow runs
 
+Each Lean source starts with `module`. A chapter or top-level Blueprint that
+exports a `#doc` uses the authoring root in both phases:
+
+```lean
+module
+
+public import VersoBlueprint
+meta import VersoBlueprint
+
+public section
+```
+
+The `public import` lets another module include the exported document. The
+`meta import` loads Blueprint's directives, roles, and other authoring
+elaborators. The generator follows the same two-phase pattern with
+`VersoBlueprint.PreviewManifest` and meta-imports the top-level Blueprint so
+`%doc` can evaluate it. Declarations written in Blueprint Lean code blocks are
+public, so imported chapters retain their code panels and formalization status.
+
+The top-level Blueprint publicly imports its chapters and tagged formalization
+modules so their Blueprint metadata remains available to downstream consumers.
+Apply `@[blueprint ... (autoDeps := true)]` in the declaration's defining module
+when possible: saved edges survive imports, but fresh inference cannot inspect
+an imported hidden helper body. See the package manual's
+[module-boundary contract](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/doc/MANUAL.md#module-boundaries-and-attributes).
+
 ## What the template demonstrates
 
 - labels that identify Blueprint nodes
@@ -104,6 +130,10 @@ lake exe vbp build
 
 `vbp build` discovers the generator, then uses Lake to build its imports and
 execute it without requiring a separate generator executable target.
+
+The repository's fresh-template smoke test also edits one chapter, rebuilds,
+and checks that the changed text reaches the generated HTML without rebuilding
+the two unrelated chapters.
 
 To build a PDF locally, run:
 

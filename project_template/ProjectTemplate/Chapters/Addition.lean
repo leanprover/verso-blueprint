@@ -1,6 +1,9 @@
-import Verso
-import VersoManual
-import VersoBlueprint
+module
+
+public import VersoBlueprint
+meta import VersoBlueprint
+
+public section
 
 open Verso.Genre
 open Verso.Genre.Manual

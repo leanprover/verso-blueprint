@@ -11,6 +11,7 @@ If you are starting a first project, read
 ## Contents
 
 - [Mental Model](#mental-model)
+- [Lean Module Setup](#lean-module-setup)
 - [Labels and Node Identity](#labels-and-node-identity)
 - [Minimal Project Shape](#minimal-project-shape)
 - [The Blueprint Top-Level File](#the-blueprint-top-level-file)
@@ -40,6 +41,50 @@ A Blueprint project usually owns three things:
 The Blueprint top-level file is often called `Contents.lean` in existing
 projects, but the filename is not special. What matters is that one module
 assembles the chapters and chooses the rendered overview pages.
+
+## Lean Module Setup
+
+Verso Blueprint is a module-system package. New authoring files should begin
+with the module header and import both facets of the public authoring root:
+
+```lean
+module
+
+import VersoBlueprint
+meta import VersoBlueprint
+```
+
+`VersoBlueprint` already exposes the supported authoring surface, including
+the graph, summary, bibliography, and graft commands. Direct imports of those
+feature modules are only needed when code intentionally consumes their
+documented feature-specific API.
+
+Use the corresponding dedicated root for the other two public workflows:
+
+```lean
+module
+
+import VersoBlueprint.PreviewManifest
+meta import VersoBlueprint.PreviewManifest
+```
+
+for a site generator, and:
+
+```lean
+module
+
+import VersoBlueprint.Slides
+meta import VersoBlueprint.Slides
+```
+
+for Slides authoring or generation. Existing non-module projects still compile
+while migrating, but Lean will recommend adding a module header.
+
+Use `public` for Lean declarations that downstream modules should be able to
+name. Declaration visibility is separate from Blueprint metadata: attributes
+and inferred edges persist even for private declarations. See
+[module boundaries and attributes](#module-boundaries-and-attributes) before
+moving dependency inference into a separate importing chapter.
 
 ## Labels and Node Identity
 
@@ -416,7 +461,9 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
 ````
 
 This is the clearest way to connect a Blueprint entry to local formalization
-work in the same project.
+work in the same project. Declarations introduced by these blocks are public:
+their written names and Blueprint metadata remain available to modules that
+import the containing document.
 
 ### Compiled code tagged with `@[blueprint]`
 
@@ -777,6 +824,59 @@ imported node with `{blueprint_node}`, or including its module with
 `{includeBlueprintModule}` does not rerun inference for that attribute node.
 Adding an association later does not retroactively fill earlier inferred edges.
 
+##### Module boundaries and attributes
+
+`@[blueprint]` runs after compilation of the declaration in its defining
+module. It supports both private declarations and public declarations without
+`@[expose]`, including public theorems. Registration inspects the local body,
+captures declaration status and any inferred edges, and persists the resulting
+Blueprint contribution. It does **not** expose the Lean body to importers.
+
+Ordinary imports carry these contributions and the attribute-module catalog.
+This includes nodes attached to private declarations. However, a provider
+imported non-publicly by an intermediate module is not available transitively
+to that module's consumers: neither its nodes nor its attribute catalog are
+re-exported. Use `public import Provider` in an aggregator, or import `Provider`
+directly in the consuming chapter. Declaration privacy and import visibility
+are distinct: in particular,
+`private` is not a way to hide a tagged node from Blueprint output. Use explicit
+Blueprint labels for private declarations rather than relying on Lean's
+generated private names.
+
+Fresh inference in an importing module is different from reading saved edges:
+
+| What the new declaration references | Ordinary module import |
+| --- | --- |
+| A declaration already associated with a Blueprint label | Finds the label directly; no body is needed at the frontier. |
+| An unassociated public definition whose body is hidden | Cannot follow dependencies inside its body. |
+| An unassociated public `@[expose] def` | Can inspect its exposed body. |
+| An unassociated public theorem with a hidden proof | Cannot follow dependencies inside its proof. |
+| A node whose attribute already inferred edges in the provider | Keeps those saved edges; importing or placing the node does not rerun inference. |
+
+The same body-visibility limit applies when `(lean := "...")` requests new
+inference on an imported declaration. Its root type is still inspected, but a
+hidden root body contributes no proof edges. Helpers presented by Lean as
+axioms are terminal, including for helper-type traversal. Thus moving an
+untagged helper into another module can change inferred dependencies without
+changing the mathematics. There is currently no diagnostic that certifies
+inference was complete or warns that a hidden body truncated a walk.
+
+Prefer applying `@[blueprint ... (autoDeps := true)]` where the declaration is
+defined, and tag meaningful intermediate results to establish stable frontiers.
+Use explicit `uses`/`proofUses` when dependencies must cross hidden
+implementations. `@[expose]` is an API decision for definitions, not a general
+recommendation for dependency extraction. An intentional `import all Provider`
+can make that provider's private declarations and bodies available for fresh
+analysis, but couples the consumer to implementation details; it is not
+required to consume persisted Blueprint metadata. `meta import` supplies
+elaboration-time code and is not a substitute for `import all`.
+
+Attributes must be global and apply to declarations in the current module;
+`attribute [blueprint ...] Imported.declaration` remains an error, even with
+`import all`. For existing imported declarations, use a Blueprint statement
+with `(lean := "...")`, accounting for the visibility limits above, or add
+the attribute in the defining module.
+
 Lean associations are many-to-many. One Blueprint label may be associated with
 several Lean code items, and one Lean declaration may be associated with several
 Blueprint labels. Automatic dependency inference emits all associated labels and
@@ -874,7 +974,7 @@ the inferred dependency edges.
 | --- | --- |
 | Definitions, theorems, structures, and inductives | Supported. They become definition- or theorem-shaped Blueprint nodes. Constructors, recursors, axioms, and declarations introduced with `opaque` are not accepted as direct attribute targets. |
 | Omit an explicit Blueprint label | Supported with bare `@[blueprint]`; the label defaults to the declaration's qualified Lean name. Attribute options such as `uses`, `proofUses`, and `autoDeps` remain available. |
-| Direct and transitive imports | Supported. Attribute nodes, Lean associations, docstring bodies, and dependency metadata persist through imported `.olean` files. Duplicate imported Blueprint labels are diagnosed. |
+| Direct and transitive imports | Supported. Attribute nodes, Lean associations, docstring bodies, and dependency metadata persist through imported `.olean` files. Independent bodyless attribute associations for one label compose; conflicting authored bodies, groups, and authors are diagnosed. |
 | Include a regular Lean module as a Blueprint chapter | Supported in Manual documents with `{includeBlueprintModule 0 Some.Module}` after importing the module. Distinct directly owned labels are emitted in first attribute-application order; transitive modules must be named and included explicitly. |
 | Place a tagged declaration on a specific Manual page | Supported with `{blueprint_node "label"}` after importing its module. The placement participates in numbering, links, relations, previews, the manifest, and the rendered-fragment cache. |
 | Add chapter prose around the declaration | Supported with ordinary prose before and after the placement command. For an attribute node without a docstring, a matching statement directive can instead supply prose inside the node shell. |
@@ -1923,8 +2023,13 @@ prefixes with document-order block counts.
 
 The widget surface is experimental.
 
-To enable it, import `VersoBlueprint.Widget` explicitly in the project that
-wants to use it.
+Enable its meta-only interface explicitly in the project that uses it:
+
+```lean
+module
+
+meta import VersoBlueprint.Widget
+```
 
 ## Current Limits
 

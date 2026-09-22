@@ -4,16 +4,20 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Commands.Summary.Collect
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Commands.Summary.Order
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Lib.HoverRender
+
+public section
 
 /-!
 HTML primitives, row builders, and asset wiring used by the Blueprint summary renderer.

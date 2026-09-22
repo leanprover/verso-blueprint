@@ -4,14 +4,19 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.DocString.Extension
-import VersoManual
-import VersoBlueprint.DependencyAnalysis
-import VersoBlueprint.Docstring.Manual
-import VersoBlueprint.Environment
-import VersoBlueprint.ExternalRefSnapshot
-import VersoBlueprint.LabelNameParsing
+module
+
+public meta import Lean
+public meta import Lean.DocString.Extension
+public meta import VersoManual
+public meta import VersoBlueprint.DependencyAnalysis
+public meta import VersoBlueprint.Docstring.Manual
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.ExternalRefSnapshot
+public meta import VersoBlueprint.LabelNameParsing
+public meta import VersoBlueprint.Math
+
+public meta section
 
 namespace Informal
 
@@ -218,7 +223,9 @@ private def resolveAutoDeps
   let proof ← collectAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
-private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
+private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := withoutExporting do
+  -- Attributes inspect the completed local declaration, not the public axiom
+  -- view of a non-exposed definition/theorem. This does not expose its body.
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
@@ -233,12 +240,25 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  let accepted ← Environment.contribute label {
+  let some position := ref.getPos?
+    | throwError "'[blueprint]' attributes require a stable source position"
+  let source ← Data.SourceLocation.ofSyntax? ref
+  let fact : Contributions.Record := {
+    id := {
+      moduleName := ← getMainModule
+      producer := `blueprint.attribute
+      subject := decl
+      site := position.byteIdx
+      slot := 0 }
+    label
+    references := #[extRef]
+    priority := none
+    source }
+  let accepted ← Environment.contributeSelected label {
     statementBody := docstring?.map Prod.fst
     statementUses := deps.statement
     proofUses := deps.proof
-    leanCode := #[.external #[extRef]]
-  }
+    leanCode := #[.external #[extRef]] } fact
   if accepted.isSome then
     Environment.registerBlueprintAttributeLabel label
 

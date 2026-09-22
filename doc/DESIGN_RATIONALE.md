@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-07-25
+Last updated: 2026-09-03
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -18,6 +18,50 @@ Those responsibilities live in
 [`ROADMAP.md`](./ROADMAP.md).
 
 ## Architecture Snapshot
+
+### Lean Module Boundaries
+
+`VersoBlueprint` is a module-system library. Every production Lean source has a
+`module` header, the Lake library sets `requiresModuleSystem := true`, and the
+standard Lean test gate rejects a production source that falls back to the
+legacy import model.
+
+The public roots are organized by consumer rather than by one all-inclusive
+umbrella:
+
+- `VersoBlueprint` is the authoring root. It publicly exposes the Manual
+  authoring features—blocks, groups, authors, uses, code attachments,
+  citations, graph/summary/bibliography commands, math, source metadata, and
+  graft syntax—but does not make generator orchestration an implicit part of
+  that contract.
+- `VersoBlueprint.PreviewManifest` is the generator and generated-data root.
+  Blueprint project entry points and custom generators import it explicitly.
+- `VersoBlueprint.Slides` is the Slides integration root. It owns the
+  Blueprint-aware Slides configuration, assets, and generator wrapper.
+
+Module consumers import the normal and meta facets of the root they use. The
+normal facet carries data and runtime declarations; the meta facet carries
+directives, roles, attributes, and other elaborators. For example, an authoring
+module uses both `import VersoBlueprint` and `meta import VersoBlueprint`.
+Legacy non-module consumers still compile and are covered by the downstream
+validation catalog, but Lean emits its normal recommendation that they add a
+module header.
+
+Internal modules follow feature ownership first and phase responsibility
+second. Phase-neutral data used by elaboration and rendering has one owner,
+such as `Math.Data`, `Macros.Data`, `Informal.Code.Data`, or command-specific
+`Data` modules. Authoring facades import that owner at both phases when needed;
+renderers import only the normal facet. Runtime responsibilities use precise
+names such as `Render`, `Traversal`, `Store`, `Assets`, and `Cli`. This avoids
+duplicating phase-shared values and keeps renderer-only changes out of the
+authoring rebuild closure.
+
+Public imports are part of these root contracts. Implementation imports remain
+private, and there is no parallel API manifest: the source import graph is the
+source of truth. The strict `VersoBlueprintBoundaryTests` consumers verify the
+three supported workflow roots and the experimental Widget entry point without
+`allowNonModules`, including the public-surface regression where opening both
+`Lean` and `Verso` must not make `Doc.Block` ambiguous.
 
 ### Canonical Semantic Source
 
@@ -259,7 +303,15 @@ The same flow can be read as four contracts:
    the include path does not infer chapters by sorting labels or reparsing Lean
    source.
 
-   Node exports contain only each module's local `NodeContribution` records,
+   Node exports contain each module's local `NodeContribution` records and the
+   original identified external-association/priority facts. The fact identity is
+   assigned at its producer site and is preserved across imports; import replay
+   first collects the complete fact set, then resolves it once per affected
+   label. Replays are idempotent, while changed facts under one identity and
+   conflicting priority values produce structured diagnostics rather than an
+   arrival-dependent accepted prefix. Body/kind/markup policy remains separate.
+
+   Node exports otherwise retain each module's local `NodeContribution` records,
    together with the module that originally introduced the label and the module
    supplying those contributions. `statementBody` and `proofBody` are separate
    from `statementUses` and `proofUses`: dependency-only additions cannot be
@@ -267,8 +319,9 @@ The same flow can be read as four contracts:
    over inferred Lean classifications. The field-by-field authoring contract is
    documented in [the manual's labels section](MANUAL.md#labels-and-node-identity).
 
-   `Node.applyContributions` is a pure checked reducer shared by local
-   registration and import replay. It returns either the accepted node or its
+   `NodeAssembly.assemble` is a pure checked reducer shared by local
+   registration and import replay. It combines the frozen selected-fact resolver
+   with the legacy body/kind/markup reducer, and returns either the accepted node or its
    conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
    its introducing module, and its contributing modules. Provenance cannot lose
    its corresponding node through separate map updates. The registered node,
@@ -278,8 +331,13 @@ The same flow can be read as four contracts:
    authoritative dependency intents are errors.
 
    Custom registration code should call `Informal.Environment.contribute` with
-   locally supplied fields instead of updating and re-exporting a whole node.
-   Its `Option Node` result makes acceptance explicit. `withDirective` scopes
+   a legacy payload that has no external references or priority, rather than
+   updating and re-exporting a whole node. Registrations that supply either
+   selected field must call `Informal.Environment.contributeSelected` with a
+   matching `Contributions.Record`: its label, references, and priority must
+   exactly match the `NodeContribution`, and its identity must be stable at the
+   producer site and slot. Each entry point returns `Option Node`, making
+   acceptance explicit. `withDirective` scopes
    the one optional active directive and restores Blueprint state on rejection,
    logged body errors, or exceptions, preserving other Lean state and diagnostics.
    The completed directive contributes its body, metadata, and inferred edges
@@ -292,6 +350,29 @@ The same flow can be read as four contracts:
    The option uses ordinary Lean scoping, with no custom configuration representation;
    authoring adapters retain responsibility for axis and metadata precedence.
    See the [LeanArchitect comparison and adaptation decisions](HELPER_DEPENDENCY_INFERENCE.md).
+
+   Module visibility and metadata persistence are separate boundaries. Attribute
+   registration uses `withoutExporting` to inspect the completed local
+   declaration rather than its public axiom view; the dependency walker likewise
+   inspects the non-exporting environment already available to it. Neither
+   operation loads private data from an ordinary import or changes what Lean
+   exports. `informalExt.exportEntriesFnEx` uses `OLeanEntries.uniform`: accepted
+   contributions and attribute catalogs are exported at every visibility level,
+   including metadata for private declarations. This does not re-export
+   non-public imports: providers must remain in the consumer's import closure
+   through direct imports or public re-exports. Import assembly resolves these
+   saved contributions, not fresh scans of declaration bodies. Consequently,
+   hidden imported helpers can truncate new inference while previously captured
+   edges remain intact. The precise user contract is in the
+   [manual](MANUAL.md#module-boundaries-and-attributes).
+
+   This persistence policy belongs to Blueprint's environment extension; it is
+   not a general guarantee about every Lean attribute. Attribute implementations
+   and their registration initializers live in the meta authoring API, while
+   the tagged declarations can be ordinary runtime declarations. The paired
+   ordinary/meta imports provide those two phases. Declaration visibility,
+   body exposure, and an attribute extension's export policy must be reviewed
+   independently.
 
    Nodes store external declarations and literate blocks in separate arrays.
    External declarations are normalized by canonical name during registration,

@@ -4,14 +4,18 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Verso
-import VersoManual
-import VersoBlueprint.Graph
-import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.LeanCodePreviewKey
-import VersoBlueprint.Informal.LeanCodeLink
-import VersoBlueprint.Lib.HoverRender
+module
+
+public import Lean
+public import Verso
+public import VersoManual
+public import VersoBlueprint.Graph
+public import VersoBlueprint.Informal.Block.Common
+public import VersoBlueprint.Informal.LeanCodePreviewKey
+public import VersoBlueprint.Informal.LeanCodeLink
+public import VersoBlueprint.Lib.HoverRender
+
+public section
 
 namespace Informal
 namespace CodeSummary

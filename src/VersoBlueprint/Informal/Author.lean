@@ -4,12 +4,16 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
+module
 
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.Profiling
+public import VersoManual
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.LabelNameParsing
+public meta import VersoBlueprint.Profiling
+
+public meta section
 
 open Verso Doc Elab
 open Verso.Genre Manual

@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.IndependentB
 
 /--
 error: Conflicting imported blueprint contributions for label 'independent_label'
-Label independent_label was independently introduced in 'VersoBlueprintTests.BlueprintImportedContributions.IndependentA' and 'VersoBlueprintTests.BlueprintImportedContributions.IndependentB'
+Label independent_label was independently introduced by authored contributions
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.IndependentA, VersoBlueprintTests.BlueprintImportedContributions.IndependentB
 -/
 #guard_msgs in

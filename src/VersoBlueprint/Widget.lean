@@ -4,13 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import ProofWidgets.Component.Panel.Basic
-import ProofWidgets.Component.HtmlDisplay
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.Graph
-import VersoBlueprint.Lib.PreviewSource
+module
+
+public meta import Lean
+public meta import ProofWidgets.Component.Panel.Basic
+public meta import ProofWidgets.Component.HtmlDisplay
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Graph
+public meta import VersoBlueprint.Lib.PreviewSource
+
+public meta section
 
 open Lean Elab Command
 open ProofWidgets

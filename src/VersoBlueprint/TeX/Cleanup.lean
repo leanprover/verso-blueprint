@@ -4,10 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
 import Lean
 import Std.Data.HashSet
-import VersoManual
+public import VersoManual
 import VersoBlueprint.Math
+
+public section
 
 namespace Informal.TeX.Cleanup
 
