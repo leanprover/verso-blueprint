@@ -3,7 +3,13 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Contributions
+module
+
+public import VersoBlueprint.Contributions
+-- Laws inspect implementation bodies without exposing them to ordinary consumers.
+import all VersoBlueprint.Contributions
+
+public section
 
 open Lean Informal.Data
 namespace Informal.Contributions

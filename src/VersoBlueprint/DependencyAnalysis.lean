@@ -113,7 +113,7 @@ private def rootBodyConstants (info : ConstantInfo) : CoreM (Array Name) := do
   for ctor in info.ctors do
     if !(← Environment.labelsForLeanDecl ctor).isEmpty then
       constants := constants.push ctor
-    else if let some ctorInfo := (← getEnv).find? ctor then
+    else if let some ctorInfo := (← getEnv).setExporting false |>.find? ctor then
       constants := constants ++ ctorInfo.type.getUsedConstants
   return constants
 
@@ -127,7 +127,9 @@ cached frontiers. The root is reserved to prevent self references crossing axes.
 -/
 private def frontierLabels (root : Name) (seeds : Array Name)
     (expandHelpers : Bool) : CoreM (Array Data.Label) := do
-  let env ← getEnv
+  -- Inspect all bodies already available locally; do not depend on whether the
+  -- surrounding authoring command is public. This does not load private imports.
+  let env := (← getEnv).setExporting false
   let mut pending := seeds
   let mut visited : NameSet := ({} : NameSet).insert root.eraseMacroScopes
   let mut labels : NameSet := {}
@@ -160,7 +162,7 @@ def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
 
 def inferDecl? (decl : Name) : CoreM InferredDeps := do
   let decl := decl.eraseMacroScopes
-  match (← getEnv).find? decl with
+  match (← getEnv).setExporting false |>.find? decl with
   | some info => infer decl info
   | none => pure {}
 

@@ -351,6 +351,29 @@ The same flow can be read as four contracts:
    authoring adapters retain responsibility for axis and metadata precedence.
    See the [LeanArchitect comparison and adaptation decisions](HELPER_DEPENDENCY_INFERENCE.md).
 
+   Module visibility and metadata persistence are separate boundaries. Attribute
+   registration uses `withoutExporting` to inspect the completed local
+   declaration rather than its public axiom view; the dependency walker likewise
+   inspects the non-exporting environment already available to it. Neither
+   operation loads private data from an ordinary import or changes what Lean
+   exports. `informalExt.exportEntriesFnEx` uses `OLeanEntries.uniform`: accepted
+   contributions and attribute catalogs are exported at every visibility level,
+   including metadata for private declarations. This does not re-export
+   non-public imports: providers must remain in the consumer's import closure
+   through direct imports or public re-exports. Import assembly resolves these
+   saved contributions, not fresh scans of declaration bodies. Consequently,
+   hidden imported helpers can truncate new inference while previously captured
+   edges remain intact. The precise user contract is in the
+   [manual](MANUAL.md#module-boundaries-and-attributes).
+
+   This persistence policy belongs to Blueprint's environment extension; it is
+   not a general guarantee about every Lean attribute. Attribute implementations
+   and their registration initializers live in the meta authoring API, while
+   the tagged declarations can be ordinary runtime declarations. The paired
+   ordinary/meta imports provide those two phases. Declaration visibility,
+   body exposure, and an attribute extension's export policy must be reviewed
+   independently.
+
    Nodes store external declarations and literate blocks in separate arrays.
    External declarations are normalized by canonical name during registration,
    using an ephemeral index for each incoming group. Reads do not reconstruct

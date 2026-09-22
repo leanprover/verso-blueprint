@@ -4,8 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Contributions.Laws
-import VersoBlueprint.NodeAssembly
+module
+
+public import VersoBlueprint.Contributions.Laws
+public import VersoBlueprint.NodeAssembly
+-- Laws inspect implementation bodies without exposing them to ordinary consumers.
+import all VersoBlueprint.NodeAssembly
+
+public section
 
 /-! Laws for the production node assembler's selected association projection. -/
 

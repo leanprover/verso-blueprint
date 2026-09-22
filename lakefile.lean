@@ -4,7 +4,7 @@ open Lake DSL
 -- Pin the matching post-RC2 Verso/SubVerso API and the split-page section
 -- anchor fix until a release tag includes both.
 require verso from git "https://github.com/leanprover/verso"@"52c8c9557bcb5cc8c0edc0ee37e74311a3d53ee9"
-require «verso-slides» from git "https://github.com/ejgallego/verso-slides"@"37378dab6685314b6d21f5c6ce96db53d7392a8e"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"22bf688e991857e4d47ec2527356dca7cfea8845"
 require subverso from git "https://github.com/leanprover/subverso"@"fda188f7329fa18ce4b2e8cc96c9b0a8f0c78c46"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.110"
 
@@ -110,6 +110,12 @@ lean_lib VersoBlueprintBoundaryTests where
   roots := #[
     `VersoBlueprintBoundaryTests.AuthoringRoot,
     `VersoBlueprintBoundaryTests.AuthoringDocumentImport,
+    `VersoBlueprintBoundaryTests.AutoDeps.Provider,
+    `VersoBlueprintBoundaryTests.AutoDeps.Ordinary,
+    `VersoBlueprintBoundaryTests.AutoDeps.ImportAll,
+    `VersoBlueprintBoundaryTests.AutoDeps.Transitive,
+    `VersoBlueprintBoundaryTests.AutoDeps.Reexport,
+    `VersoBlueprintBoundaryTests.AutoDeps.PublicTransitive,
     `VersoBlueprintBoundaryTests.GeneratorRoot,
     `VersoBlueprintBoundaryTests.SlidesRoot,
     `VersoBlueprintBoundaryTests.WidgetRoot

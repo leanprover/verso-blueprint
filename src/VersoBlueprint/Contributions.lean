@@ -3,7 +3,11 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Data
+module
+
+public import VersoBlueprint.Data
+
+public section
 
 /-! Identified external-declaration and priority contributions. This pure core
 retains complete evidence; producer/import adoption is a separate integration.
@@ -35,17 +39,17 @@ structure Record where
 def Record.sourceOrder (r : Record) : Name × Nat × Nat :=
   (r.id.moduleName, r.id.site, r.id.slot)
 
-def Record.toNodeContribution (r : Record) : NodeContribution := {
+@[expose] def Record.toNodeContribution (r : Record) : NodeContribution := {
   leanCode := #[.external r.references]
   priority := r.priority
 }
 
 def EvidenceEq (xs ys : List Record) : Prop := ∀ r, r ∈ xs ↔ r ∈ ys
 
-def Collision (rs : List Record) (id : ContributionId) : Prop :=
+@[expose] def Collision (rs : List Record) (id : ContributionId) : Prop :=
   ∃ a ∈ rs, ∃ b ∈ rs, a.id = id ∧ b.id = id ∧ a ≠ b
 
-def RelevantCollision (rs : List Record) (label : Label) (id : ContributionId) : Prop :=
+@[expose] def RelevantCollision (rs : List Record) (label : Label) (id : ContributionId) : Prop :=
   Collision rs id ∧ ∃ r ∈ rs, r.id = id ∧ r.label = label
 
 def NoCollision (rs : List Record) (label : Label) : Prop :=

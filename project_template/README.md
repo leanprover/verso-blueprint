@@ -81,6 +81,13 @@ elaborators. The generator follows the same two-phase pattern with
 `%doc` can evaluate it. Declarations written in Blueprint Lean code blocks are
 public, so imported chapters retain their code panels and formalization status.
 
+The top-level Blueprint publicly imports its chapters and tagged formalization
+modules so their Blueprint metadata remains available to downstream consumers.
+Apply `@[blueprint ... (autoDeps := true)]` in the declaration's defining module
+when possible: saved edges survive imports, but fresh inference cannot inspect
+an imported hidden helper body. See the package manual's
+[module-boundary contract](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/doc/MANUAL.md#module-boundaries-and-attributes).
+
 ## What the template demonstrates
 
 - labels that identify Blueprint nodes

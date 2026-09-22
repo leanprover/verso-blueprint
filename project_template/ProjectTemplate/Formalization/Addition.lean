@@ -1,4 +1,9 @@
+module
+
 import VersoBlueprint
+meta import VersoBlueprint
+
+public section
 
 namespace ProjectTemplate.Formalization.Addition
 

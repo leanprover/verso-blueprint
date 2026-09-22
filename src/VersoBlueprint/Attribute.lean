@@ -223,7 +223,9 @@ private def resolveAutoDeps
   let proof ← collectAxisDeps decl label proofInferred cfg.proofUses
   return { statement, proof }
 
-private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
+private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := withoutExporting do
+  -- Attributes inspect the completed local declaration, not the public axiom
+  -- view of a non-exposed definition/theorem. This does not expose its body.
   let decl := decl.eraseMacroScopes
   let label := cfg.label.eraseMacroScopes
   let some info := (← getEnv).find? decl
