@@ -247,11 +247,10 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     references := #[extRef]
     priority := none
     source }
-  let accepted ← Environment.contributeSelected label {
+  let accepted ← Environment.contributeRecord fact {
     statementBody := docstring?.map Prod.fst
     statementUses := deps.statement
-    proofUses := deps.proof
-    leanCode := #[.external #[extRef]] } fact
+    proofUses := deps.proof }
   if accepted.isSome then
     Environment.registerBlueprintAttributeLabel label
 

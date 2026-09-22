@@ -169,8 +169,7 @@ theorem afterAssociation : lateHelper := True.intro
   -- Exercise a programmatically supplied constructor association. The standard
   -- authoring syntax does not currently accept constructor attachments.
   let ref := Data.ExternalRef.ofName ``HelperProvider.HiddenBox.mk
-  let some _ ← Environment.contributeSelected (label "auto.frontier.constructor") {
-      leanCode := #[.external #[ref]] }
+  let some _ ← Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "BlueprintAutoDeps.HelperFrontier"
         producer := Name.mkSimple "test.synthetic"
@@ -180,7 +179,7 @@ theorem afterAssociation : lateHelper := True.intro
       label := label "auto.frontier.constructor"
       references := #[ref]
       priority := none
-      source := none }
+      source := none } {}
     | throwError "Could not register the collector's constructor boundary"
   -- Inductive bodies walk constructor names, respecting their associations.
   let inductiveDeps ← DependencyAnalysis.inferDecl? ``HelperProvider.HiddenBox

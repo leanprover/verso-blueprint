@@ -8,10 +8,14 @@ import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 open Lean Informal Lean.Elab.Command
 
-private def contributeSelected (label : Name) (site : Nat) (contribution : Data.NodeContribution) : CoreM (Option Data.Node) :=
+private def contributeRecord (label : Name) (site : Nat) (contribution : Data.NodeContribution) : CoreM (Option Data.Node) :=
   let references := contribution.leanCode.foldl (init := #[]) fun refs code =>
     match code with | .external more => refs ++ more | .literate _ => refs
-  Environment.contributeSelected label contribution {
+  let legacy := { contribution with
+    priority := none
+    leanCode := contribution.leanCode.filter fun code =>
+      match code with | .external _ => false | .literate _ => true }
+  Environment.contributeRecord {
     id := {
       moduleName := Name.mkSimple "AtomicFailure"
       producer := Name.mkSimple "test.synthetic"
@@ -21,16 +25,16 @@ private def contributeSelected (label : Name) (site : Nat) (contribution : Data.
     label := label
     references := references
     priority := contribution.priority
-    source := none }
+    source := none } legacy
 
-run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 1 { priority := some "high" }
+run_cmd discard <| liftCoreM <| contributeRecord `key_theorem 1 { priority := some "high" }
 
--- An identified record cannot override independently supplied selected fields.
-/-- error: Selected fields for key_theorem must exactly match their identified contribution record -/
+-- Selected fields cannot be smuggled through the legacy payload.
+/-- error: Blueprint legacy payload cannot include external references or priority; supply them only in a contribution record -/
 #guard_msgs in
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
-  discard <| Environment.contributeSelected `key_theorem {} {
+  discard <| Environment.contributeRecord {
     id := {
       moduleName := Name.mkSimple "AtomicFailure"
       producer := Name.mkSimple "test.synthetic"
@@ -40,10 +44,10 @@ run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 1 { priority := 
     label := `key_theorem
     references := #[]
     priority := some "low"
-    source := none }
+    source := none } { priority := some "low" }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
-    throwError "Mismatched selected fields changed Blueprint state"
+    throwError "Selected legacy payload changed Blueprint state"
 
 -- A rejected new label must not reserve its requested number or export/index
 -- any of its otherwise valid data.
@@ -51,7 +55,7 @@ run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 1 { priority := 
 #guard_msgs in
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
-  discard <| contributeSelected `rejected_new_node 2 {
+  discard <| contributeRecord `rejected_new_node 2 {
     count := before.nextCount + 100
     proofUses := #[{ label := `dep }, { label := `dep, intent := .technical }]
     leanCode := #[.external #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]]
@@ -74,7 +78,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
 #guard_msgs in
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
-  discard <| contributeSelected `key_theorem 3 {
+  discard <| contributeRecord `key_theorem 3 {
     count := before.nextCount + 100
     priority := some "low"
     tags := #["rejected"]
@@ -87,7 +91,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
 
 -- Repeating equal single-valued metadata is idempotent and does not warn.
 #guard_msgs in
-run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 4 { priority := some "high" }
+run_cmd discard <| liftCoreM <| contributeRecord `key_theorem 4 { priority := some "high" }
 
 
 open Verso.Genre Lean.Elab.Command
@@ -115,11 +119,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4650/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4828/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5353/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5531/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic

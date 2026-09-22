@@ -10,8 +10,7 @@ open Lean
 
 -- A sibling extension that supplies metadata without another proof body.
 run_cmd do
-  discard <| Informal.Environment.contributeSelected `key_theorem
-    { priority := some "low" }
+  discard <| Informal.Environment.contributeRecord
     { id := {
         moduleName := Name.mkSimple "Metadata"
         producer := Name.mkSimple "test.synthetic"
@@ -21,4 +20,4 @@ run_cmd do
       label := `key_theorem
       references := #[]
       priority := some "low"
-      source := none }
+      source := none } {}
