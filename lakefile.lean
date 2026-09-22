@@ -129,6 +129,12 @@ lean_lib VersoBlueprintBoundaryTests where
   roots := #[
     `VersoBlueprintBoundaryTests.AuthoringRoot,
     `VersoBlueprintBoundaryTests.AuthoringDocumentImport,
+    `VersoBlueprintBoundaryTests.AutoDeps.Provider,
+    `VersoBlueprintBoundaryTests.AutoDeps.Ordinary,
+    `VersoBlueprintBoundaryTests.AutoDeps.ImportAll,
+    `VersoBlueprintBoundaryTests.AutoDeps.Transitive,
+    `VersoBlueprintBoundaryTests.AutoDeps.Reexport,
+    `VersoBlueprintBoundaryTests.AutoDeps.PublicTransitive,
     `VersoBlueprintBoundaryTests.GeneratorRoot,
     `VersoBlueprintBoundaryTests.SlidesRoot,
     `VersoBlueprintBoundaryTests.WidgetRoot

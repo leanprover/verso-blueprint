@@ -2,10 +2,10 @@ module
 
 public import VersoBlueprint
 meta import VersoBlueprint
-import ProjectTemplate.Chapters.Addition
-import ProjectTemplate.Chapters.Collatz
-import ProjectTemplate.Chapters.Multiplication
-import ProjectTemplate.Formalization.Addition
+public import ProjectTemplate.Chapters.Addition
+public import ProjectTemplate.Chapters.Collatz
+public import ProjectTemplate.Chapters.Multiplication
+public import ProjectTemplate.Formalization.Addition
 
 public section
 
