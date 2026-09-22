@@ -294,10 +294,10 @@ The same flow can be read as four contracts:
    Custom registration code should call `Informal.Environment.contribute` with
    a legacy payload that has no external references or priority, rather than
    updating and re-exporting a whole node. Registrations that supply either
-   selected field must call `Informal.Environment.contributeSelected` with a
-   matching `Contributions.Record`: its label, references, and priority must
-   exactly match the `NodeContribution`, and its identity must be stable at the
-   producer site and slot. Each entry point returns `Option Node`, making
+   selected field must call `Informal.Environment.contributeRecord` with a
+   `Contributions.Record`, which is the sole owner of its label, references,
+   and priority; the legacy payload rejects those fields. Its identity must be
+   stable at the producer site and slot. Each entry point returns `Option Node`, making
    acceptance explicit. `withDirective` scopes
    the one optional active directive and restores Blueprint state on rejection,
    logged body errors, or exceptions, preserving other Lean state and diagnostics.
@@ -343,7 +343,7 @@ The same flow can be read as four contracts:
    conflicting status, provenance, or render snapshots, or make rejected
    evidence accepted data. The legacy public reducer explicitly rejects
    selected external-reference and priority fields; identified records enter
-   through `contributeSelected` instead.
+   through `contributeRecord` instead.
 
    Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of
    the Manual genre. Blueprint registers docstring handlers for `uses` and

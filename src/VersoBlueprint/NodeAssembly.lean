@@ -117,7 +117,7 @@ namespace Informal.Data
 Apply body, kind, markup, dependency, and literate payloads to a node. This
 public legacy API rejects priority and external-reference fields because their
 admission requires an identified selected contribution record; producers should
-use `Environment.contributeSelected` for those fields. Its implementation lives
+use `Environment.contributeRecord` for those fields. Its implementation lives
 in `NodeAssembly` so the environment can combine it with the selected-fact
 resolver without a Data ↔ Contributions cycle.
 -/
@@ -133,13 +133,6 @@ end Informal.Data
 namespace Informal.NodeAssembly
 
 open Lean Informal.Data Informal.Contributions
-
-/-- Remove fields whose admission is owned by a selected contribution record. -/
-def withoutSelectedFacts (contribution : NodeContribution) : NodeContribution :=
-  { contribution with
-    priority := none
-    leanCode := contribution.leanCode.filter fun code =>
-      match code with | .external _ => false | .literate _ => true }
 
 /-- Capability projection for consumers that need every accepted attribute association. -/
 def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
@@ -201,9 +194,9 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   let recordSources := referenceFieldMessage record.references externalSourceMessage
   if sources != recordSources then
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
-  let statuses := referenceFieldMessage first.references (provedStatusMessage ·.provedStatus)
-  let recordStatuses := referenceFieldMessage record.references (provedStatusMessage ·.provedStatus)
-  if statuses != recordStatuses then
+  if first.references.map (·.provedStatus) != record.references.map (·.provedStatus) then
+    let statuses := referenceFieldMessage first.references (provedStatusMessage ·.provedStatus)
+    let recordStatuses := referenceFieldMessage record.references (provedStatusMessage ·.provedStatus)
     differences := differences.push s!"status ({statuses} → {recordStatuses})"
   if first.references.map (·.render) != record.references.map (·.render) then
     differences := differences.push s!"render differs ({referenceFieldMessage first.references (renderStateMessage ·.render)} → {referenceFieldMessage record.references (renderStateMessage ·.render)})"
@@ -220,18 +213,20 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
     s!"{idKey record.id}/{record.label.toString}/" ++
       String.intercalate "," (record.references.toList.map fun ref => ref.canonical.toString) ++
       s!"/{record.priority}"
-  let supportOrder := fun (a b : Record) => decide <| supportKey a < supportKey b
-  let collisionOrder := fun (a b : Record) => decide <|
-    supportKey a < supportKey b || (supportKey a = supportKey b && reprStr a < reprStr b)
+  let keyedSupports := fun (supports : List Record) => supports.toArray.map fun record =>
+    (supportKey record, reprStr record, record)
+  let supportOrder := fun (a b : String × String × Record) =>
+    a.1 < b.1 || (a.1 = b.1 && a.2.1 < b.2.1)
   let collisionMessages := collisions.flatMap fun (id, supports) =>
     #[s!"Label {label} has conflicting contribution identity {id.moduleName}.{id.producer}:{id.subject} at {id.site}/{id.slot}"] ++
-      match (supports.toArray.qsort collisionOrder).toList with
+      match (keyedSupports supports |>.qsort supportOrder).toList with
       | [] => #[]
-      | first :: rest => #[recordMessage first] ++
-        rest.toArray.map fun record => s!"{recordMessage record}; {collisionDifferenceMessage first record}"
+      | first :: rest => #[recordMessage first.2.2] ++
+        rest.toArray.map fun record =>
+          s!"{recordMessage record.2.2}; {collisionDifferenceMessage first.2.2 record.2.2}"
   let priorityMessages := priorities.flatMap fun (value, supports) =>
     #[s!"Label {label} declares conflicting priorities including '{value}'"] ++
-      ((supports.toArray.qsort supportOrder).map recordMessage)
+      ((keyedSupports supports |>.qsort supportOrder).map fun support => recordMessage support.2.2)
   collisionMessages ++ priorityMessages
 
 /--

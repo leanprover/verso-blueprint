@@ -24,7 +24,7 @@ private def importedNodeByName? (label : Name) : CoreM (Option Informal.Data.Nod
   pure <| (← importedState).data.get? label
 
 private def importedNodeHasLocalContributions (label : String) : CoreM Bool := do
-  pure <| (← importedState).localContributions.contains (Name.mkSimple label)
+  pure <| !((← importedState).pendingNodes.getD (Name.mkSimple label) {}).localLegacy.isEmpty
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
     (node : Informal.Data.Node) : Bool :=

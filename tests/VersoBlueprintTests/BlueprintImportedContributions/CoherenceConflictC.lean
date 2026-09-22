@@ -8,10 +8,10 @@ private def record (label : Name) (priority : Option String) (id : Contributions
     Contributions.Record := { id, label, references := #[], priority, source := none }
 
 run_cmd do
-  discard <| Environment.contributeSelected `coherent_three { priority := some "low" }
+  discard <| Environment.contributeRecord
     (record `coherent_three (some "low") {
       moduleName := Name.mkSimple "CoherenceConflictC"
       producer := Name.mkSimple "test.synthetic"
       subject := `coherent_three
       site := 1
-      slot := 0 })
+      slot := 0 }) {}

@@ -136,6 +136,14 @@ private def collisionMessagesFor (records : List Record) : Array String :=
       messages.any (·.contains "status (") &&
       messages.any (·.contains "render differs (") &&
       !messages.any (·.contains "diagnostic HTML must stay out of the message")
+
+-- Formatting says only how many sorry locations were observed, so the typed
+-- snapshot comparison must run before that lossy diagnostic projection.
+private def differentSorryLocationSnapshotA : Record := { snapshotA with
+  references := #[{ snapshotA.references[0]! with
+    provedStatus := .containsSorry #[{ location := .statement }] }] }
+#guard let messages := collisionMessagesFor [snapshotA, differentSorryLocationSnapshotA]
+  messages.any (·.contains "status (contains-sorry(1) → contains-sorry(1))")
 #guard collisionMessagesFor [a, diagnosticSnapshotA] ==
   collisionMessagesFor [diagnosticSnapshotA, a]
 

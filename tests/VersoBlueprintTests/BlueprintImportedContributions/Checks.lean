@@ -16,7 +16,7 @@ def completeNode (withAttachment : Bool) : CoreM Bool := do
   let some statement := node.statement | return false
   let some proof := node.proof | return false
   let labels ← Environment.labelsForLeanDecl `ImportedContributions.attachedTheorem
-  return state.importedConflicts.isEmpty && state.localContributions.isEmpty &&
+  return state.importedConflicts.isEmpty && state.pendingNodes.all (fun _ pending => pending.localLegacy.isEmpty) &&
     state.data.size == 3 && node.kind == .theorem && node.count == 3 &&
     statement.hasBody && proof.hasBody &&
     statement.deps == #[{ label := `statement_dep }] &&
