@@ -182,17 +182,18 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.source != record.source then
     differences := differences.push
       s!"registration source ({registrationSourceMessage first.source} → {registrationSourceMessage record.source})"
-  let origins := referenceFieldMessage first.references (externalOriginMessage ·.origin)
-  let recordOrigins := referenceFieldMessage record.references (externalOriginMessage ·.origin)
-  if origins != recordOrigins then
+  if first.references.map (·.origin) != record.references.map (·.origin) then
+    let origins := referenceFieldMessage first.references (externalOriginMessage ·.origin)
+    let recordOrigins := referenceFieldMessage record.references (externalOriginMessage ·.origin)
     differences := differences.push s!"origin ({origins} → {recordOrigins})"
-  let presence := referenceFieldMessage first.references (fun ref => toString ref.present)
-  let recordPresence := referenceFieldMessage record.references (fun ref => toString ref.present)
-  if presence != recordPresence then
+  if first.references.map (·.present) != record.references.map (·.present) then
+    let presence := referenceFieldMessage first.references (fun ref => toString ref.present)
+    let recordPresence := referenceFieldMessage record.references (fun ref => toString ref.present)
     differences := differences.push s!"presence ({presence} → {recordPresence})"
-  let sources := referenceFieldMessage first.references externalSourceMessage
-  let recordSources := referenceFieldMessage record.references externalSourceMessage
-  if sources != recordSources then
+  if first.references.map (fun ref => (ref.provenance, ref.sourceHref?)) !=
+      record.references.map (fun ref => (ref.provenance, ref.sourceHref?)) then
+    let sources := referenceFieldMessage first.references externalSourceMessage
+    let recordSources := referenceFieldMessage record.references externalSourceMessage
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
   if first.references.map (·.provedStatus) != record.references.map (·.provedStatus) then
     let statuses := referenceFieldMessage first.references (provedStatusMessage ·.provedStatus)

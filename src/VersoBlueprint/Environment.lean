@@ -193,9 +193,9 @@ private def claimsAuthoredNode (contribution : NodeContribution) : Bool :=
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array NodeContribution) (facts : List Record) (isLocal : Bool) : Except (Array String) State := do
+    (incoming : Array NodeContribution) (facts : List Record) : Except (Array String) State := do
   let authored := incoming.any claimsAuthoredNode
-  let pending := (state.pendingNodes.getD label {}).append origin contributor incoming isLocal authored
+  let pending := (state.pendingNodes.getD label {}).append origin contributor incoming true authored
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
   let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
@@ -212,9 +212,7 @@ private def State.addNode (state : State) (label origin contributor : Name)
     leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
     pendingNodes := state.pendingNodes.insert label pending
     factRecords := records
-    localFactRecords := if isLocal then
-      facts.foldl (fun records record => collector.insert record records) state.localFactRecords
-      else state.localFactRecords
+    localFactRecords := facts.foldl (fun records record => collector.insert record records) state.localFactRecords
     }
 
 /-- Resolve every imported label against the complete decoded evidence set. -/
@@ -241,8 +239,15 @@ private def State.reassembleImported (state : State) : State := Id.run do
         pending.contributors
   return { state with data, leanNameLabels, nextCount, importedConflicts := sortImportedConflicts conflicts }
 
-private def State.addImportedStaticEntry (state : State) : Entry → State
-  | .node .. => state
+/-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
+private def State.collectImportedEntry (state : State) : Entry → State
+  | .node label origin contributor contributions facts authored =>
+    let pending := (state.pendingNodes.getD label {}).append origin contributor contributions false authored
+    let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
+    { state with
+      pendingNodes := state.pendingNodes.insert label pending
+      factRecords := records
+      }
   | .blueprintAttributeLabel moduleName label =>
     { state with
       blueprintAttributeLabelsByModule :=
@@ -258,22 +263,10 @@ private def State.addImportedStaticEntry (state : State) : Entry → State
     else
       { state with authors := state.authors.insert label info }
 
-/-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
-private def State.collectImportedEntry (state : State) : Entry → State
-  | .node label origin contributor contributions facts authored =>
-    let pending := (state.pendingNodes.getD label {}).append origin contributor contributions false authored
-    let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
-    { state with
-      pendingNodes := state.pendingNodes.insert label pending
-      factRecords := records
-      }
-  | entry => state.addImportedStaticEntry entry
-
-initialize informalExt : PersistentEnvExtension Entry Entry State ←
+initialize informalExt : PersistentEnvExtension Entry Empty State ←
   registerPersistentEnvExtension {
     mkInitial := pure {}
-    -- Local registrations mutate checked state directly. Entries are import/export data only.
-    addEntryFn _ _ := panic! "Blueprint persistent entries cannot be admitted locally"
+    addEntryFn _ impossible := nomatch impossible
     addImportedFn entries := do
       let state := entries.foldl (init := ({} : State)) fun state entries =>
         entries.foldl (init := state) fun state entry => state.collectImportedEntry entry
@@ -344,13 +337,13 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
-/-- Apply one complete registration, returning its accepted node or diagnosed failure. -/
+/-- Commit one checked registration after its admission inputs have been validated. -/
 private def commitContribution (label : Label) (contribution : NodeContribution) (facts : List Record) :
     m (Option Node) := do
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
   let origin := (state.pendingNodes.getD label {}).authoredOrigin?.getD mainModule
-  match state.addNode label origin mainModule #[contribution] facts true with
+  match state.addNode label origin mainModule #[contribution] facts with
   | .ok state =>
     modifyEnv (informalExt.setState · state)
     return (state.data.get? label).map (·.toNode)
@@ -358,10 +351,7 @@ private def commitContribution (label : Label) (contribution : NodeContribution)
     for reason in reasons do logError reason
     return none
 
-/--
-Register a producer-identified external-association/priority fact alongside a
-legacy-only payload. The record is the sole owner of selected fields.
--/
+/-- Register a legacy-only payload under an explicit label. -/
 def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
   reportImportedConflicts
   if contribution.hasSelectedFields then
@@ -369,6 +359,10 @@ def contribute (label : Label) (contribution : NodeContribution) : m (Option Nod
     return none
   commitContribution label contribution []
 
+/--
+Register a producer-identified selected record with a legacy-only payload.
+The record is the sole owner of the selected label, external references, and priority.
+-/
 def contributeRecord (fact : Record) (contribution : NodeContribution) :
     m (Option Node) := do
   reportImportedConflicts
