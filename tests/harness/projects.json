@@ -37,8 +37,9 @@
       },
       "targets": [
         {
-          "release": "v4.33.0",
-          "ref": "ddc2e64d91e8f1dbcbd6e8684f7f7ee339252161",
+          "release": "v4.34.0",
+          "ref": "12d05506a283b1c9ac11711cd7a220d6c2e9bbea",
+          "reference_toolchain": "v4.34.0",
           "publish_reference": true
         }
       ],
@@ -63,8 +64,8 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "071a39d68f5c6bc220c6f0b072b8f13ef2c7aa4d",
-          "reference_toolchain": "v4.34.0-rc2",
+          "ref": "390a7b1ab36c57038e2ad766413a8f766403f486",
+          "reference_toolchain": "v4.34.0",
           "publish_reference": true
         }
       ],
@@ -89,7 +90,33 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "ff7e1e6e4d0122f5eb5fc2b5eed5d9dfd78dfb7c",
+          "ref": "bcf922a1379dec966b5acbafab1ac8434351a5f8",
+          "reference_toolchain": "v4.34.0-rc2",
+          "publish_reference": true
+        }
+      ],
+      "generate_command": [
+        "lake",
+        "exe",
+        "vbp",
+        "build",
+        "--output",
+        "{output_dir}"
+      ],
+      "site_subdir": "html-multi"
+    },
+    {
+      "id": "spherepackingblueprint",
+      "description": "External Sphere Packing blueprint integration layer with a Sphere Packing submodule checkout.",
+      "source": {
+        "kind": "git_checkout",
+        "repository": "https://github.com/ejgallego/verso-sphere-packing.git",
+        "project_root": "."
+      },
+      "targets": [
+        {
+          "release": "v4.34.0",
+          "ref": "3c9545f8152793f4df976aa5186771756aea43b8",
           "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
