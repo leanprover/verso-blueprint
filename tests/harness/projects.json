@@ -64,7 +64,7 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "447341551083be994e848d9f04eb47f495b3b06c",
+          "ref": "1d9334b3e6a62b81930d4ffa58ea0c5bbc0e65d2",
           "reference_toolchain": "v4.34.0",
           "publish_reference": true
         }
