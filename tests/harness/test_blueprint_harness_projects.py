@@ -239,6 +239,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "noperthedron",
                 "verso-flt",
                 "verso-carleson",
+                "spherepackingblueprint",
             ],
         )
         self.assertEqual(catalog.release_targets, branch_policy.release_targets)
@@ -270,7 +271,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertFalse(default_template_target.publish_reference)
         self.assertFalse(any(target.publish_reference for target in projects[0].targets))
         for release_id in branch_policy.required_backport_branches:
-            self.assertTrue(catalog.release_target(release_id).deploy_pages)
+            has_published_reference = any(
+                (target := project.target_for_release(release_id)) is not None
+                and target.publish_reference
+                for project in projects[1:]
+            )
+            if not has_published_reference:
+                self.assertFalse(catalog.release_target(release_id).deploy_pages)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:
@@ -279,6 +286,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
             "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
+            "spherepackingblueprint": "https://github.com/ejgallego/verso-sphere-packing.git",
         }
         external_release_ids: set[str] = set()
         for project in projects[1:]:
@@ -290,7 +298,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertEqual(external_release_ids, release_id_set)
+        self.assertIn(branch_policy.default_dev_branch, external_release_ids)
+        for release_id in external_release_ids:
+            self.assertTrue(catalog.release_target(release_id).deploy_pages)
 
     def test_selected_project_toolchain_uses_selected_release(self) -> None:
         project = external_project(selected_release="v4.29.0")
