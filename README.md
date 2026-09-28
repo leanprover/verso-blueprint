@@ -436,9 +436,9 @@ Each external Blueprint is published only for its intended current release.
 Noperthedron, FLT, Carleson, and the
 [Sphere Packing integration](https://github.com/ejgallego/verso-sphere-packing)
 currently target `v4.34.0`. The v4.33.0 branch remains a required backport line,
-but has no published external reference targets. The in-repo starter template
-is a CI fixture rather than a public reference entry; it continues to validate
-every maintained release line.
+but is not an active project-build or published-reference target. The in-repo
+starter template is a CI fixture rather than a public reference entry; it is
+validated only on the default-development line.
 
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/noperthedron/)
