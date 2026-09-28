@@ -35,7 +35,8 @@
         {
           "release": "v4.34.0",
           "ref": "07946239cd19e50d4ec0b278d817c92d81b7be69",
-          "publish_reference": true
+          "publish_reference": true,
+          "reference_toolchain": "v4.34.0"
         }
       ],
       "generate_command": [
@@ -60,7 +61,8 @@
         {
           "release": "v4.34.0",
           "ref": "caade807834fc7b93a1e9c8fc61bd0366a77e86e",
-          "publish_reference": true
+          "publish_reference": true,
+          "reference_toolchain": "v4.34.0"
         }
       ],
       "generate_command": [
