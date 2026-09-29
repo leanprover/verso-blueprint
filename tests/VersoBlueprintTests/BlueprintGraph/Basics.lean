@@ -20,6 +20,38 @@ theorem statusAdmittedHelper : True := by
 
 theorem statusConsumer : True := statusAdmittedHelper
 
+def statusGap : Type := by sorry
+
+structure StatusRecord where
+  payload : statusGap
+
+structure StatusCompleteRecord where
+  payload : Nat
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let env ← getEnv
+    let some record := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusRecord
+      | return false
+    let some complete := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusCompleteRecord
+      | return false
+    let recordAxioms ← collectAxioms record.name
+    let recordStatus ← ConstantInfo.blueprintProvedStatus record.name record
+    let completeStatus ← ConstantInfo.blueprintProvedStatus complete.name complete
+    let node : Data.Node := {
+      kind := .definition
+      literateCodes := #[{ stx := .missing, definedDefs :=
+        #[{ name := record.name, provedStatus := recordStatus }] }]
+    }
+    return recordAxioms.contains ``sorryAx &&
+      recordStatus.hasTypeGap && recordStatus.dependsOnSorry &&
+      !recordStatus.containsExplicitSorry && !nodeLocalStatementFormalized {} node &&
+      statementStatus {} {} `record node != .formalized &&
+      proofStatus {} {} `record node == .incomplete &&
+      completeStatus.isProved
+
 /-- info: true -/
 #guard_msgs in
 #eval
