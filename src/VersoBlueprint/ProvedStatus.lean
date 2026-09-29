@@ -347,6 +347,12 @@ def ConstantInfo.blueprintProvedStatus [Monad m] [MonadEnv m]
           acc.push { location := .proof,
                      origin := if proofDirect then .direct else .dependency }
         else acc)
-  return if info.isEmpty then .proved else .containsSorry info
+  -- Inductive footprints also include constructor fields, which are not in the
+  -- inductive's own type or value. Keep the known gap on the statement track
+  -- when those expressions cannot localize it.
+  return if info.isEmpty then
+    .containsSorry #[{ location := .statement, origin := .dependency }]
+  else
+    .containsSorry info
 
 end Informal.Data
