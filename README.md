@@ -431,6 +431,12 @@ This `v4.33.0` branch is retained for backports. Its Noperthedron
 publishes Pages. The `v4.34.0` release metadata remains on this maintenance
 branch; the canonical current catalog is maintained on the `v4.34.0` branch.
 
+The v4.34 reference sites currently selected by this maintenance catalog are
+published from that branch:
+
+- [FLT](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-flt/)
+- [Carleson](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
+
 The per-branch selection in `branch-policy.json` and
 `tests/harness/projects.json` remains the source of truth for validation.
 Maintainers can inspect the current checkout's selected projects with
