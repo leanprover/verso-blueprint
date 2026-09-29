@@ -58,6 +58,9 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
   let stmtGap := ProvedStatus.ofRefCounts 1 0
   let proofGap := ProvedStatus.ofRefCounts 0 1
   let bothGap := ProvedStatus.ofRefCounts 1 1
+  let bothEvidence : Array SorryInfo :=
+    #[{ location := .statement, refs? := some 1 },
+      { location := .proof, refs? := some 1 }]
   (!provedStatus.blocksStatementCompletion .definition) &&
   (!provedStatus.blocksStatementCompletion .proposition) &&
   (!provedStatus.blocksStatementCompletion .lemma) &&
@@ -78,6 +81,7 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
   bothGap.blocksStatementCompletion .lemma &&
   bothGap.blocksStatementCompletion .theorem &&
   bothGap.blocksStatementCompletion .corollary &&
+  bothGap == .containsSorry bothEvidence &&
   stmtGap.blocksProofCompletion &&
   proofGap.blocksProofCompletion
 
