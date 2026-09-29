@@ -74,7 +74,12 @@ def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=
 
 /-- True only when explicit `sorry` markers were observed. -/
 def ProvedStatus.containsExplicitSorry : ProvedStatus → Bool
-  | .containsSorry _ => true
+  | .containsSorry info => info.any (·.origin == .direct)
+  | _ => false
+
+/-- True when a declaration depends on a `sorry` in another declaration. -/
+def ProvedStatus.dependsOnSorry : ProvedStatus → Bool
+  | .containsSorry info => info.any (·.origin == .dependency)
   | _ => false
 
 /-- Human-readable location text used in summary/tooltip rendering. -/
@@ -98,7 +103,8 @@ def ProvedStatus.sorryLocationText : ProvedStatus → String
 def ProvedStatus.statusLabel : ProvedStatus → String
   | .missing => "missing"
   | .axiomLike => "axiom-like"
-  | .containsSorry _ => "contains sorry"
+  | .containsSorry info =>
+    if info.any (·.origin == .direct) then "contains sorry" else "depends on sorry"
   | .proved => "proved"
 
 /--
@@ -171,12 +177,13 @@ def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
         codeEntrySymbol := "A"
         statusMarkSymbol := "⚠"
       }
-    | .containsSorry _ =>
+    | .containsSorry info =>
       let locationText := status.sorryLocationText
+      let direct := info.any (·.origin == .direct)
       {
-        summaryText := s!"sorry {locationText}"
-        externalPanelText := s!"contains sorry {locationText}"
-        externalHeaderText := "contains sorry"
+        summaryText := s!"{if direct then "sorry" else "depends on sorry"} {locationText}"
+        externalPanelText := s!"{if direct then "contains sorry" else "depends on sorry"} {locationText}"
+        externalHeaderText := if direct then "contains sorry" else "depends on sorry"
         codeDeclClass := "bp_code_decl_status_warning"
         externalDeclClass := "bp_external_decl_sorry"
         codeEntryClassSuffix := "warning"
@@ -192,6 +199,14 @@ def ProvedStatus.sorryRefCounts : ProvedStatus → Nat × Nat
       | .statement => (typeRefs + item.refs?.getD 0, proofRefs)
       | .proof => (typeRefs, proofRefs + item.refs?.getD 0)
   | _ => (0, 0)
+
+/-- Supply source reference counts without inventing locations for inherited gaps. -/
+def ProvedStatus.withDirectRefCounts (status : ProvedStatus) (typeRefs proofRefs : Nat) : ProvedStatus :=
+  match status with
+  | .containsSorry info => .containsSorry <| info.map fun item =>
+      if item.origin == .dependency then item else
+        { item with refs? := some <| if item.location == .statement then typeRefs else proofRefs }
+  | other => other
 
 /-- True when any declaration in a collection is incomplete. -/
 def ProvedStatus.anyIncomplete (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
@@ -235,9 +250,17 @@ def ProvedStatus.mergeConservative (a b : ProvedStatus) : ProvedStatus :=
   else if a.isAxiomLike || b.isAxiomLike then
     .axiomLike
   else
-    ProvedStatus.ofSorryFlags
-      (a.hasTypeGap || b.hasTypeGap)
-      (a.hasProofGap || b.hasProofGap)
+    let evidence := fun (location : SorryWhere) =>
+      let matching := fun (status : ProvedStatus) => match status with
+        | .containsSorry info => info.filter fun (item : SorryInfo) => item.location == location
+        | _ => (#[] : Array SorryInfo)
+      let items : Array SorryInfo := matching a ++ matching b
+      if items.isEmpty then (#[] : Array SorryInfo) else
+        #[({ location,
+             origin := if items.any (fun (item : SorryInfo) => item.origin == .direct)
+                       then .direct else .dependency } : SorryInfo)]
+    let info := evidence .statement ++ evidence .proof
+    if info.isEmpty then .proved else .containsSorry info
 
 /-- Definition shorthand for statement/type-side incompleteness checks. -/
 def LiterateDef.hasTypeSorry (d : LiterateDef) : Bool :=
@@ -268,25 +291,62 @@ def ConstantInfo.blueprintIsAxiomLike (info : ConstantInfo) : Bool :=
   | .axiomInfo _ => true
   | _ => false
 
-/--
-Compute combined incompleteness status for blueprint checks.
+/-- Whether a declaration has an inspectable body, no body, or a body hidden by import. -/
+inductive BodyAccess where
+  | available (value : Expr)
+  | unavailable
+  | absent
 
-Type-side and proof-side gaps are extracted separately and encoded into one `ProvedStatus`.
--/
-def ConstantInfo.blueprintProvedStatus (info : ConstantInfo) (allowOpaque : Bool := false) : ProvedStatus :=
-  if ConstantInfo.blueprintIsAxiomLike info then
-    .axiomLike
-  else
-    let hasTypeSorry := info.type.hasSorry
-    let hasProofSorry := (info.value? (allowOpaque := allowOpaque)).map (·.hasSorry) |>.getD false
-    ProvedStatus.ofSorryFlags hasTypeSorry hasProofSorry
+/-- The imported public view represents hidden theorems as axioms. Their cached
+axiom footprint omits their own name; an actual axiom includes its own name. -/
+def ConstantInfo.blueprintBodyAccess (name : Name) (info : ConstantInfo)
+    (axioms : Array Name) : BodyAccess :=
+  match info.value? (allowOpaque := true) with
+  | some value => .available value
+  | none =>
+    match info with
+    | .axiomInfo _ => if axioms.contains name then .absent else .unavailable
+    | _ => .absent
 
-/-- Statement/type-side incompleteness projection for `ConstantInfo`. -/
-def ConstantInfo.blueprintHasTypeSorry (info : ConstantInfo) : Bool :=
-  (ConstantInfo.blueprintProvedStatus info).hasTypeGap
-
-/-- Proof/body-side incompleteness projection for `ConstantInfo`. -/
-def ConstantInfo.blueprintHasProofSorry (info : ConstantInfo) (allowOpaque : Bool := false) : Bool :=
-  (ConstantInfo.blueprintProvedStatus info (allowOpaque := allowOpaque)).hasProofGap
+/-- Analyze both visible `sorry` terms and transitive `sorryAx` dependencies.
+`collectAxioms` reads cached footprints across module boundaries. -/
+def ConstantInfo.blueprintProvedStatus [Monad m] [MonadEnv m]
+    (name : Name) (info : ConstantInfo) : m ProvedStatus := do
+  let axioms ← collectAxioms name
+  let body := ConstantInfo.blueprintBodyAccess name info axioms
+  if let .absent := body then
+    if ConstantInfo.blueprintIsAxiomLike info then return .axiomLike
+  if !axioms.contains ``sorryAx then return .proved
+  let typeDirect := info.type.hasSorry
+  let mut typeInherited := false
+  for dep in info.type.getUsedConstants do
+    if (← collectAxioms dep).contains ``sorryAx then
+      typeInherited := true
+      break
+  let proofDirect := match body with
+    | .available value => value.hasSorry
+    | _ => false
+  let mut proofInherited := false
+  match body with
+  | .available value =>
+    for dep in value.getUsedConstants do
+      if (← collectAxioms dep).contains ``sorryAx then
+        proofInherited := true
+        break
+  | .unavailable =>
+    -- The proof is hidden, but the cached footprint still records `sorryAx`.
+    proofInherited := axioms.contains ``sorryAx
+  | .absent => pure ()
+  let info : Array SorryInfo :=
+    (#[]
+      |> fun acc => if typeDirect || typeInherited then
+          acc.push { location := .statement,
+                     origin := if typeDirect then .direct else .dependency }
+        else acc
+      |> fun acc => if proofDirect || proofInherited then
+          acc.push { location := .proof,
+                     origin := if proofDirect then .direct else .dependency }
+        else acc)
+  return if info.isEmpty then .proved else .containsSorry info
 
 end Informal.Data
