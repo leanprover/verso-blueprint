@@ -224,10 +224,11 @@ def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → 
 /-- Build a status from per-axis incompleteness flags and optional ref counts. -/
 def ProvedStatus.ofSorryFlags (hasType hasProof : Bool)
     (typeRefs? : Option Nat := none) (proofRefs? : Option Nat := none) : ProvedStatus :=
-  let info : Array SorryInfo :=
-    (#[]
-      |> fun acc => if hasType then acc.push { location := .statement, refs? := typeRefs? } else acc
-      |> fun acc => if hasProof then acc.push { location := .proof, refs? := proofRefs? } else acc)
+  let statementInfo : Array SorryInfo :=
+    if hasType then #[{ location := .statement, refs? := typeRefs? }] else #[]
+  let proofInfo : Array SorryInfo :=
+    if hasProof then #[{ location := .proof, refs? := proofRefs? }] else #[]
+  let info := statementInfo ++ proofInfo
   if info.isEmpty then .proved else .containsSorry info
 
 /-- Build a status from per-axis reference counts. -/
@@ -337,22 +338,23 @@ def ConstantInfo.blueprintProvedStatus [Monad m] [MonadEnv m]
     -- The proof is hidden, but the cached footprint still records `sorryAx`.
     proofInherited := axioms.contains ``sorryAx
   | .absent => pure ()
-  let info : Array SorryInfo :=
-    (#[]
-      |> fun acc => if typeDirect || typeInherited then
-          acc.push { location := .statement,
-                     origin := if typeDirect then .direct else .dependency }
-        else acc
-      |> fun acc => if proofDirect || proofInherited then
-          acc.push { location := .proof,
-                     origin := if proofDirect then .direct else .dependency }
-        else acc)
+  let mut evidence : Array SorryInfo := #[]
+  if typeDirect || typeInherited then
+    evidence := evidence.push {
+      location := .statement
+      origin := if typeDirect then .direct else .dependency
+    }
+  if proofDirect || proofInherited then
+    evidence := evidence.push {
+      location := .proof
+      origin := if proofDirect then .direct else .dependency
+    }
   -- Inductive footprints also include constructor fields, which are not in the
   -- inductive's own type or value. Keep the known gap on the statement track
   -- when those expressions cannot localize it.
-  return if info.isEmpty then
+  return if evidence.isEmpty then
     .containsSorry #[{ location := .statement, origin := .dependency }]
   else
-    .containsSorry info
+    .containsSorry evidence
 
 end Informal.Data

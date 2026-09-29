@@ -20,6 +20,29 @@ theorem statusAdmittedHelper : True := by
 
 theorem statusConsumer : True := statusAdmittedHelper
 
+def statusSpec : Prop := by sorry
+
+theorem statusAdmitted (_h : statusSpec) : True := by sorry
+
+theorem statusComposed (h : statusSpec) : True := statusAdmitted h
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let env ← getEnv
+    let some admitted := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusAdmitted
+      | return false
+    let some composed := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusComposed
+      | return false
+    let admittedStatus ← ConstantInfo.blueprintProvedStatus admitted.name admitted
+    let composedStatus ← ConstantInfo.blueprintProvedStatus composed.name composed
+    let statementDependency : SorryInfo := { location := .statement, origin := .dependency }
+    let proofDirect : SorryInfo := { location := .proof, origin := .direct }
+    let proofDependency : SorryInfo := { location := .proof, origin := .dependency }
+    return admittedStatus == .containsSorry #[statementDependency, proofDirect] &&
+      composedStatus == .containsSorry #[statementDependency, proofDependency]
+
 def statusGap : Type := by sorry
 
 structure StatusRecord where
