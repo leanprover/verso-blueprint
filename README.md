@@ -422,29 +422,25 @@ you want to enable it.
 ## Reference Blueprints
 
 Reference blueprints are known Blueprint projects that this repository builds
-and publishes as release validation examples. They are useful for checking that
-the renderer still works on real projects and for inspecting representative
-generated output; they are not the starter template contract for new projects.
+as release-validation examples. The canonical published catalog is maintained
+on the default development branch,
+[\`v4.34.0\`](https://github.com/leanprover/verso-blueprint/tree/v4.34.0).
 
-The current published catalog is selected from `branch-policy.json` and
-`tests/harness/projects.json`; those files are the source of truth for which
-reference projects publish on each Lean release line. Maintainers can inspect
-the current checkout's selected projects with
-`python3 -m scripts.blueprint_reference_harness projects`.
+This \`v4.33.0\` branch is retained for backports. It continues to run
+compatibility validation, but Pages deployment is disabled for all release
+targets on this branch. The Noperthedron \`v4.33.0\` reference target is
+retired, so this branch will not publish a v4.33 reference page.
 
-Each external Blueprint is published only for its intended current release.
-Noperthedron currently targets `v4.33.0`; FLT and Carleson target `v4.34.0`.
-[Sphere Packing](https://github.com/ejgallego/verso-sphere-packing) remains on
-the retired `v4.32.0` line and is temporarily absent from the active catalog
-until it catches up. The in-repo starter template is a CI fixture rather than a
-public reference entry; it continues to validate every maintained release line.
+The per-branch selection in \`branch-policy.json\` and
+\`tests/harness/projects.json\` remains the source of truth for validation.
+Maintainers can inspect the current checkout's selected projects with
+\`python3 -m scripts.blueprint_reference_harness projects\`. For the current
+published project list and rendered-site links, see the
+[reference-blueprint section on the v4.34.0 branch](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/README.md#reference-blueprints).
 
-- [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
-  [rendered site for v4.33.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.33.0/noperthedron/)
-- [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-flt/)
-- [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
-  [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
+The in-repo starter template is a CI fixture rather than a public reference
+entry; it continues to validate each release target listed in this branch's
+catalog.
 
 ## Rendered Test Blueprints
 
