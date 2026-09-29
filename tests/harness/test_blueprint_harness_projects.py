@@ -218,7 +218,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if publish_reference is not None:
             self.assertEqual(project.targets[0].publish_reference, publish_reference)
 
-    def test_default_manifest_contains_release_projects(self) -> None:
+    def test_default_manifest_on_maintenance_branch_has_only_template(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
         manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
         self.assertNotIn("release_targets", manifest_data)
@@ -231,8 +231,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [project.project_id for project in projects],
             [
                 "project-template",
-                "verso-flt",
-                "verso-carleson",
             ],
         )
         self.assertEqual(catalog.release_targets, branch_policy.release_targets)
@@ -264,10 +262,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
-        expected_external_repositories = {
-            "verso-flt": "https://github.com/ejgallego/verso-flt.git",
-            "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
-        }
+        expected_external_repositories: dict[str, str] = {}
         external_release_ids: set[str] = set()
         for project in projects[1:]:
             self.assertTrue(project.git_checkout)
@@ -278,7 +273,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertEqual(external_release_ids, {branch_policy.default_dev_branch})
+        self.assertEqual(external_release_ids, set())
 
     def test_selected_project_toolchain_uses_selected_release(self) -> None:
         project = external_project(selected_release="v4.29.0")
