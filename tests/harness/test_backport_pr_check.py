@@ -350,6 +350,26 @@ Backport v4.24.0: release-line retirement
             0,
         )
 
+    def test_run_accepts_bootstrap_with_point_release_toolchains(self) -> None:
+        self.assertEqual(
+            run_release_transition(
+                body=backport_line("v4.32.0", backport_mod.RELEASE_LINE_BOOTSTRAP_STATUS),
+                base_default="v4.32.0",
+                base_backports=(),
+                head_default="v4.33.0",
+                head_backports=("v4.32.0",),
+                changed_files=("branch-policy.json", "lean-toolchain"),
+                base_toolchain="v4.32.2",
+                head_toolchain="v4.33.1",
+                base_targets=[release_target("v4.32.0", toolchain="v4.32.2")],
+                head_targets=[
+                    release_target("v4.32.0", toolchain="v4.32.2"),
+                    release_target("v4.33.0", toolchain="v4.33.1"),
+                ],
+            ),
+            0,
+        )
+
     def test_run_rejects_backward_release_line_bootstrap(self) -> None:
         with self.assertRaisesRegex(backport_mod.BackportCheckError, "newer default development release line"):
             run_release_transition(
@@ -422,6 +442,26 @@ Backport v4.24.0: release-line retirement
                 changed_files=("branch-policy.json", "tests/harness/projects.json"),
                 base_targets=base_targets,
                 head_targets=head_targets,
+            ),
+            0,
+        )
+
+    def test_run_accepts_retirement_with_point_release_toolchain(self) -> None:
+        self.assertEqual(
+            run_release_transition(
+                body=backport_line("v4.33.0", backport_mod.RELEASE_LINE_RETIREMENT_STATUS),
+                base_default="v4.34.0",
+                base_backports=("v4.33.0",),
+                head_default="v4.34.0",
+                head_backports=(),
+                changed_files=("branch-policy.json",),
+                base_toolchain="v4.34.1",
+                head_toolchain="v4.34.1",
+                base_targets=[
+                    release_target("v4.33.0", toolchain="v4.33.1"),
+                    release_target("v4.34.0", toolchain="v4.34.1"),
+                ],
+                head_targets=[release_target("v4.34.0", toolchain="v4.34.1")],
             ),
             0,
         )
