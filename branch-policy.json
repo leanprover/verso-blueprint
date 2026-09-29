@@ -15,7 +15,7 @@
       "toolchain": "v4.34.1",
       "verso_ref": "v4.34.0",
       "branch": "v4.34.0",
-      "deploy_pages": false
+      "deploy_pages": true
     }
   ]
 }
