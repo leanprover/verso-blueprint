@@ -421,32 +421,22 @@ you want to enable it.
 
 ## Reference Blueprints
 
-Reference blueprints are known Blueprint projects that this repository builds
-as release-validation examples. The canonical published catalog is maintained
-on the default development branch,
+The canonical external reference-blueprint catalog and its Pages publication are
+maintained on the default development branch,
 [`v4.34.0`](https://github.com/leanprover/verso-blueprint/tree/v4.34.0).
 
-This `v4.33.0` branch is retained for backports. Its Noperthedron
-`v4.33.0` reference target is retired and the release target no longer
-publishes Pages. The `v4.34.0` release metadata remains on this maintenance
-branch; the canonical current catalog is maintained on the `v4.34.0` branch.
+This `v4.33.0` branch is retained for backports only. Its catalog contains the
+in-repository `project-template` CI fixture, but no external reference
+blueprints. All release targets on this maintenance branch have Pages
+deployment disabled. This keeps the v4.34 external reference set and its
+published pages owned by the default branch, rather than maintaining a second
+stale copy here.
 
-The v4.34 reference sites currently selected by this maintenance catalog are
-published from that branch:
-
-- [FLT](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-flt/)
-- [Carleson](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
-
-The per-branch selection in `branch-policy.json` and
-`tests/harness/projects.json` remains the source of truth for validation.
-Maintainers can inspect the current checkout's selected projects with
-`python3 -m scripts.blueprint_reference_harness projects`. For the current
-published project list and rendered-site links, see the
+For the current project list and rendered-site links, see the
 [reference-blueprint section on the v4.34.0 branch](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/README.md#reference-blueprints).
 
 The in-repo starter template is a CI fixture rather than a public reference
-entry; it continues to validate each release target listed in this branch's
-catalog.
+entry; it continues to validate the maintained release targets in this branch.
 
 ## Rendered Test Blueprints
 
