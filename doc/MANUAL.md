@@ -1441,6 +1441,31 @@ Read the proof fill states as:
 - `Locally formalized + dependencies complete`: both the node and its full
   dependency closure are complete
 
+Lean completion also checks the transitive `sorryAx` footprint of every
+associated declaration. A theorem that invokes an unassociated helper with
+`sorry` is incomplete even when its own proof text has no `sorry` and the
+Blueprint dependency graph has no edge for that helper. The declaration details
+distinguish a directly written `sorry` from a dependency on one; inherited
+gaps have no source reference count in the consuming declaration.
+An inherited gap blocks completion but does not by itself identify a local
+proof-writing task; frontier advice for that case is tracked in
+[#476](https://github.com/leanprover/verso-blueprint/issues/476).
+
+Here, completion means that the declaration has no known `sorryAx` dependency
+and is not a declared axiom-like placeholder. An imported theorem may be
+complete even when its body is hidden in the current module. Completion does
+not certify freedom from other axioms or that the theorem statement expresses
+the intended mathematics.
+Ordinary theorem hypotheses remain hypotheses, not missing proofs.
+
+When Lean's module system hides an imported proof, Blueprint uses Lean's cached
+axiom footprint to check it. A hidden theorem is not treated as a declared
+axiom merely because Lean presents it as an axiom in the public import view.
+This footprint establishes declaration-level dependence on `sorryAx`; it does
+not reveal whether the hidden body has a direct hole or which hidden helper
+introduced the gap. The proof-side status is conservative when the body is
+unavailable.
+
 Warning markers are reserved for structural or resolution issues such as:
 
 - unresolved Blueprint references

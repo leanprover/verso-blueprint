@@ -341,7 +341,7 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
 
 private def axisCompletionText : Nat → String
   | 0 => "completed"
-  | _ + 1 => "with sorries"
+  | _ + 1 => "blocked by sorry"
 
 private def completionAxisText (statementSorryCount proofSorryCount : Nat) : String :=
   s!"Statement: {axisCompletionText statementSorryCount}; Proof: {axisCompletionText proofSorryCount}"
@@ -349,23 +349,41 @@ private def completionAxisText (statementSorryCount proofSorryCount : Nat) : Str
 /--
 Build completion status from declaration-level axis counts.
 
-Counts are only used as presence signals (non-zero means "with sorries" on that axis);
+Counts are only used as presence signals (non-zero means a sorry gap on that axis);
 they are not interpreted as precise sorry-reference totals.
 -/
-private def completionStatusFromCounts (statementSorryCount proofSorryCount : Nat) : Data.ProvedStatus :=
-  Data.ProvedStatus.ofSorryFlags (statementSorryCount > 0) (proofSorryCount > 0)
+private def completionStatusFromHealth (health : Informal.Graph.CodeHealth) : Data.ProvedStatus :=
+  let statementItem : Data.SorryInfo := {
+    location := .statement
+    origin := if health.statementDependencySorryCount == health.statementAxisCount
+              then .dependency else .direct
+  }
+  let proofItem : Data.SorryInfo := {
+    location := .proof
+    origin := if health.proofDependencySorryCount == health.proofAxisCount
+              then .dependency else .direct
+  }
+  let statement := if health.statementAxisCount > 0 then
+    #[statementItem]
+    else #[]
+  let proof := if health.proofAxisCount > 0 then
+    #[proofItem]
+    else #[]
+  let info := statement ++ proof
+  if info.isEmpty then .proved else .containsSorry info
 
-private def completionStatusMark (statementSorryCount proofSorryCount : Nat) : BlockStatusMark :=
-  let status := completionStatusFromCounts statementSorryCount proofSorryCount
+private def completionStatusMark (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
+  let status := completionStatusFromHealth health
+  let title := completionAxisText health.statementAxisCount health.proofAxisCount
   if status.isProved then
     {
       status
-      title := completionAxisText statementSorryCount proofSorryCount
+      title
     }
   else
     {
       status
-      title := completionAxisText statementSorryCount proofSorryCount
+      title
       symbolOverride? := some "⚠"
     }
 
@@ -382,7 +400,7 @@ private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockSta
         title := "Lean declarations include at least one axiom-like constant (no body)"
       }
     else
-      completionStatusMark health.statementAxisCount health.proofAxisCount
+      completionStatusMark health
 
 /-- Aggregate status across all associations; missing declarations dominate. -/
 private def statusMarkFromCodeSource (source? : Option BlockCodeData) : BlockStatusMark :=

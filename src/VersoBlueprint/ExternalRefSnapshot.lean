@@ -256,6 +256,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       render := .error (.moduleUnavailable canonical)
     }
   | some cinfo =>
+    let provedStatus ← Informal.Data.ConstantInfo.blueprintProvedStatus canonical cinfo
     let nodeKind ←
       match Informal.Data.ConstantInfo.blueprintNodeKind? cinfo with
       | some nodeKind => pure nodeKind
@@ -269,7 +270,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       ref with
       canonical
       present := true
-      provedStatus := Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true)
+      provedStatus
       kind := nodeKind
     }
     let ranges? ← findDeclarationRanges? canonical

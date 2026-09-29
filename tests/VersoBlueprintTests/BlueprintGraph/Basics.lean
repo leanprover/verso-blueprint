@@ -15,6 +15,101 @@ open Informal.Environment
 open Informal.Graph
 open Verso.VersoBlueprintTests.BlueprintGraph.Shared
 
+theorem statusAdmittedHelper : True := by
+  sorry
+
+theorem statusConsumer : True := statusAdmittedHelper
+
+def statusSpec : Prop := by sorry
+
+theorem statusAdmitted (_h : statusSpec) : True := by sorry
+
+theorem statusComposed (h : statusSpec) : True := statusAdmitted h
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let env ← getEnv
+    let some admitted := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusAdmitted
+      | return false
+    let some composed := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusComposed
+      | return false
+    let admittedStatus ← ConstantInfo.blueprintProvedStatus admitted.name admitted
+    let composedStatus ← ConstantInfo.blueprintProvedStatus composed.name composed
+    let statementDependency : SorryInfo := { location := .statement, origin := .dependency }
+    let proofDirect : SorryInfo := { location := .proof, origin := .direct }
+    let proofDependency : SorryInfo := { location := .proof, origin := .dependency }
+    return admittedStatus == .containsSorry #[statementDependency, proofDirect] &&
+      composedStatus == .containsSorry #[statementDependency, proofDependency]
+
+def statusGap : Type := by sorry
+
+structure StatusRecord where
+  payload : statusGap
+
+structure StatusCompleteRecord where
+  payload : Nat
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let env ← getEnv
+    let some record := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusRecord
+      | return false
+    let some complete := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusCompleteRecord
+      | return false
+    let recordAxioms ← collectAxioms record.name
+    let recordStatus ← ConstantInfo.blueprintProvedStatus record.name record
+    let completeStatus ← ConstantInfo.blueprintProvedStatus complete.name complete
+    let node : Data.Node := {
+      kind := .definition
+      literateCodes := #[{ stx := .missing, definedDefs :=
+        #[{ name := record.name, provedStatus := recordStatus }] }]
+    }
+    return recordAxioms.contains ``sorryAx &&
+      recordStatus.hasTypeGap && recordStatus.dependsOnSorry &&
+      !recordStatus.containsExplicitSorry && !nodeLocalStatementFormalized {} node &&
+      statementStatus {} {} `record node != .formalized &&
+      proofStatus {} {} `record node == .incomplete &&
+      completeStatus.isProved
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let env ← getEnv
+    let some helper := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusAdmittedHelper
+      | return false
+    let some consumer := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusConsumer
+      | return false
+    let helperStatus ← ConstantInfo.blueprintProvedStatus helper.name helper
+    let consumerStatus ← ConstantInfo.blueprintProvedStatus consumer.name consumer
+    let some axiomInfo := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_axiom_decl
+      | return false
+    let axiomFootprint ← collectAxioms axiomInfo.name
+    let accessCases :=
+      (match ConstantInfo.blueprintBodyAccess consumer.name consumer #[] with
+        | .available _ => true
+        | _ => false) &&
+      (match ConstantInfo.blueprintBodyAccess axiomInfo.name axiomInfo axiomFootprint with
+        | .absent => true
+        | _ => false) &&
+      (match ConstantInfo.blueprintBodyAccess axiomInfo.name axiomInfo #[] with
+        | .unavailable => true
+        | _ => false)
+    let node : Data.Node := {
+      kind := .theorem
+      literateCodes := #[{ stx := .missing, definedTheorems :=
+        #[{ name := consumer.name, provedStatus := consumerStatus }] }]
+    }
+    return accessCases && helperStatus.containsExplicitSorry &&
+      consumerStatus.dependsOnSorry &&
+      !consumerStatus.containsExplicitSorry &&
+      consumerStatus.sorryRefCounts == (0, 0) &&
+      !nodeLocalProofFormalized {} node
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -24,8 +119,8 @@ open Verso.VersoBlueprintTests.BlueprintGraph.Shared
       | return false
     let some defInfo := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_def_decl
       | return false
-    let axiomStatus := ConstantInfo.blueprintProvedStatus axiomInfo (allowOpaque := true)
-    let defStatus := ConstantInfo.blueprintProvedStatus defInfo (allowOpaque := true)
+    let axiomStatus ← ConstantInfo.blueprintProvedStatus axiomInfo.name axiomInfo
+    let defStatus ← ConstantInfo.blueprintProvedStatus defInfo.name defInfo
     pure (
       axiomStatus == .axiomLike &&
       defStatus == .proved
@@ -41,17 +136,25 @@ open Verso.VersoBlueprintTests.BlueprintGraph.Shared
   Data.NodeKind.theorem.isTheoremLike &&
   status.sorryLocationText = "in statement and proof" &&
   status.statusLabel = "contains sorry" &&
-  status.sorryRefCounts = (2, 3)
+  status.sorryRefCounts = (2, 3) &&
+  status.mergeConservative .proved == status &&
+  Data.ProvedStatus.mergeConservative .proved status == status
 
 /-- info: true -/
 #guard_msgs in
 #eval
   let sorryStatus : Data.ProvedStatus :=
     .containsSorry #[{ location := .proof, refs? := some 1 }]
+  let inheritedStatus : Data.ProvedStatus :=
+    .containsSorry #[{ location := .proof, origin := .dependency }]
   let sorryView := sorryStatus.presentation
+  let inheritedView := inheritedStatus.presentation
   let missingView := Data.ProvedStatus.proved.presentation (present := false)
   let axiomView := Data.ProvedStatus.axiomLike.presentation
   sorryView.summaryText == "sorry in proof" &&
+    inheritedStatus.statusLabel == "depends on sorry" &&
+    inheritedView.summaryText == "depends on sorry in proof" &&
+    inheritedView.externalHeaderText == "depends on sorry" &&
     sorryView.externalPanelText == "contains sorry in proof" &&
     sorryView.externalHeaderText == "contains sorry" &&
     sorryView.codeDeclClass == "bp_code_decl_status_warning" &&

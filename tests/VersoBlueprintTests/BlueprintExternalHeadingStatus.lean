@@ -59,7 +59,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       info.any (·.location == Data.SorryWhere.proof) &&
       !info.any (·.location == Data.SorryWhere.statement) &&
       hasSubstr mark.title "Statement: completed" &&
-      hasSubstr mark.title "Proof: with sorries"
+      hasSubstr mark.title "Proof: blocked by sorry"
     | _ => false
   | none => false
 
@@ -87,7 +87,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       info.any (·.location == Data.SorryWhere.proof) &&
       !info.any (·.location == Data.SorryWhere.statement) &&
       hasSubstr mark.title "Statement: completed" &&
-      hasSubstr mark.title "Proof: with sorries"
+      hasSubstr mark.title "Proof: blocked by sorry"
     | _ => false
   | none => false
 
