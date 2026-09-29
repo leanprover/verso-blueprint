@@ -136,7 +136,9 @@ structure StatusCompleteRecord where
   Data.NodeKind.theorem.isTheoremLike &&
   status.sorryLocationText = "in statement and proof" &&
   status.statusLabel = "contains sorry" &&
-  status.sorryRefCounts = (2, 3)
+  status.sorryRefCounts = (2, 3) &&
+  status.mergeConservative .proved == status &&
+  Data.ProvedStatus.mergeConservative .proved status == status
 
 /-- info: true -/
 #guard_msgs in

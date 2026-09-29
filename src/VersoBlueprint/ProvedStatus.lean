@@ -243,6 +243,7 @@ def ProvedStatus.ofRefCounts (typeRefs proofRefs : Nat) : ProvedStatus :=
 Conservative merge for duplicated status snapshots:
 - `missing` dominates,
 - `axiomLike` dominates,
+- `proved` is neutral, retaining the other snapshot's evidence and ref counts,
 - otherwise preserve any observed axis incompleteness.
 -/
 def ProvedStatus.mergeConservative (a b : ProvedStatus) : ProvedStatus :=
@@ -250,6 +251,10 @@ def ProvedStatus.mergeConservative (a b : ProvedStatus) : ProvedStatus :=
     .missing
   else if a.isAxiomLike || b.isAxiomLike then
     .axiomLike
+  else if a.isProved then
+    b
+  else if b.isProved then
+    a
   else
     let evidence := fun (location : SorryWhere) =>
       let matching := fun (status : ProvedStatus) => match status with
