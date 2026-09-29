@@ -424,17 +424,17 @@ you want to enable it.
 Reference blueprints are known Blueprint projects that this repository builds
 as release-validation examples. The canonical published catalog is maintained
 on the default development branch,
-[\`v4.34.0\`](https://github.com/leanprover/verso-blueprint/tree/v4.34.0).
+[`v4.34.0`](https://github.com/leanprover/verso-blueprint/tree/v4.34.0).
 
-This \`v4.33.0\` branch is retained for backports. It continues to run
+This `v4.33.0` branch is retained for backports. It continues to run
 compatibility validation, but Pages deployment is disabled for all release
-targets on this branch. The Noperthedron \`v4.33.0\` reference target is
+targets on this branch. The Noperthedron `v4.33.0` reference target is
 retired, so this branch will not publish a v4.33 reference page.
 
-The per-branch selection in \`branch-policy.json\` and
-\`tests/harness/projects.json\` remains the source of truth for validation.
+The per-branch selection in `branch-policy.json` and
+`tests/harness/projects.json` remains the source of truth for validation.
 Maintainers can inspect the current checkout's selected projects with
-\`python3 -m scripts.blueprint_reference_harness projects\`. For the current
+`python3 -m scripts.blueprint_reference_harness projects`. For the current
 published project list and rendered-site links, see the
 [reference-blueprint section on the v4.34.0 branch](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/README.md#reference-blueprints).
 
