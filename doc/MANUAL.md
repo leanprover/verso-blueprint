@@ -1472,6 +1472,19 @@ Read the proof fill states as:
 - `Locally formalized + dependencies complete`: both the node and its full
   dependency closure are complete
 
+Lean completion also checks the transitive `sorryAx` footprint of every
+associated declaration. A theorem that invokes an unassociated helper with
+`sorry` is incomplete even when its own proof text has no `sorry` and the
+Blueprint dependency graph has no edge for that helper. The declaration details
+distinguish a directly written `sorry` from a dependency on one; inherited
+gaps have no source reference count in the consuming declaration.
+
+When Lean's module system hides an imported proof, Blueprint uses Lean's cached
+axiom footprint to check it. A hidden theorem is not treated as a declared
+axiom merely because Lean presents it as an axiom in the public import view.
+This check reports whether the proof depends on `sorryAx`; it does not identify
+which hidden helper introduced the gap.
+
 Warning markers are reserved for structural or resolution issues such as:
 
 - unresolved Blueprint references

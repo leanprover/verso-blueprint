@@ -232,6 +232,11 @@ inductive SorryWhere where
   | proof
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
+inductive SorryOrigin where
+  | direct
+  | dependency
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
 /--
 Structured metadata for one incomplete location in a declaration.
 {lit}`refs?` stores the number of references when known.
@@ -239,6 +244,7 @@ Structured metadata for one incomplete location in a declaration.
 structure SorryInfo where
   location : SorryWhere
   refs? : Option Nat := none
+  origin : SorryOrigin := .direct
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
