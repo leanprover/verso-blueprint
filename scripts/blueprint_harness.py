@@ -10,6 +10,7 @@ from pathlib import Path
 
 from scripts.blueprint_harness_backports import (
     RELEASE_LINE_BOOTSTRAP_STATUS,
+    RELEASE_LINE_RETIREMENT_STATUS,
     backport_exemption_violations,
 )
 from scripts.blueprint_harness_branches import (
@@ -85,6 +86,7 @@ PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
     r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
 )
 PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE = re.compile(r"^Backport\s+[^\s:]+\s*:\s*.+$")
+PULL_REQUEST_TEMPLATE_BACKPORT_MARKER = "<!-- Backport lines are managed by the release harness. -->"
 
 
 def sync_root_worktree_lake(layout) -> None:
@@ -574,25 +576,113 @@ def update_release_line_project_manifest(
         write_json(manifest_path, raw)
 
 
+def pull_request_template_with_backports(original: str, required_backports: tuple[str, ...]) -> str:
+    lines = original.splitlines()
+    backport_indices = [
+        index for index, line in enumerate(lines) if PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE.fullmatch(line)
+    ]
+    marker_indices = [index for index, line in enumerate(lines) if line == PULL_REQUEST_TEMPLATE_BACKPORT_MARKER]
+    if len(marker_indices) > 1 or (not marker_indices and not backport_indices):
+        raise SystemExit(
+            "[blueprint-harness] pull request template needs one managed backport marker "
+            "or existing `Backport ...` lines"
+        )
+    insertion_index = marker_indices[0] + 1 if marker_indices else backport_indices[0]
+    backport_index_set = set(backport_indices)
+    retained = [line for index, line in enumerate(lines) if index not in backport_index_set]
+    insertion_index -= sum(index < insertion_index for index in backport_indices)
+    retained[insertion_index:insertion_index] = [f"Backport {branch}: pending" for branch in required_backports]
+    return "\n".join(retained) + ("\n" if original.endswith("\n") else "")
+
+
 def update_pull_request_template_backports(package_root: Path, required_backports: tuple[str, ...]) -> Path:
     template_path = package_root / ".github" / "PULL_REQUEST_TEMPLATE.md"
     if not template_path.exists():
         raise SystemExit(f"[blueprint-harness] missing pull request template: {template_path}")
     original = template_path.read_text(encoding="utf-8")
-    lines = original.splitlines()
-    backport_indices = [
-        index for index, line in enumerate(lines) if PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE.fullmatch(line)
-    ]
-    if not backport_indices:
-        raise SystemExit(
-            f"[blueprint-harness] pull request template `{template_path}` has no managed `Backport ...` lines"
-        )
-    insertion_index = backport_indices[0]
-    backport_index_set = set(backport_indices)
-    retained = [line for index, line in enumerate(lines) if index not in backport_index_set]
-    retained[insertion_index:insertion_index] = [f"Backport {branch}: pending" for branch in required_backports]
-    template_path.write_text("\n".join(retained) + ("\n" if original.endswith("\n") else ""), encoding="utf-8")
+    updated = pull_request_template_with_backports(original, required_backports)
+    if updated != original:
+        template_path.write_text(updated, encoding="utf-8")
     return template_path
+
+
+def command_retire_release_line(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    require_checkout_role(layout.package_root, required_role="default_dev", operation="retire-release-line")
+    old_policy = load_branch_policy(layout.package_root)
+    release_id = release_branch_from_lean_ref(args.release)
+    if not old_policy.required_backport_branches or release_id != old_policy.required_backport_branches[-1]:
+        raise SystemExit(
+            f"[blueprint-harness] `{release_id}` is not the oldest required maintenance line"
+        )
+    if old_policy.version < 2:
+        raise SystemExit("[blueprint-harness] retire-release-line requires version 2 branch policy")
+    matching_targets = [target for target in old_policy.release_targets if target.release_id == release_id]
+    if len(matching_targets) != 1:
+        raise SystemExit(f"[blueprint-harness] expected one release target for `{release_id}`")
+
+    manifest_path = resolve_manifest_path(None, layout.package_root)
+    catalog = load_project_catalog_manifest(manifest_path)
+    unmigrated = sorted(
+        project.project_id
+        for project in catalog.projects
+        if project.git_checkout and project.target_for_release(release_id) is not None
+    )
+    if unmigrated:
+        raise SystemExit(
+            f"[blueprint-harness] migrate reference projects off `{release_id}` first: "
+            + ", ".join(unmigrated)
+        )
+    try:
+        manifest = load_json_object(manifest_path)
+    except ValueError as err:
+        raise SystemExit(f"[blueprint-harness] invalid project manifest: {err}") from err
+    manifest_changed = False
+    for project in manifest["projects"]:
+        if project["source"]["kind"] == "in_repo_project":
+            retained_targets = [
+                target for target in project["targets"] if target["release"] != release_id
+            ]
+            if not retained_targets:
+                raise SystemExit(
+                    f"[blueprint-harness] project `{project['id']}` has no target after retiring `{release_id}`"
+                )
+            if retained_targets != project["targets"]:
+                project["targets"] = retained_targets
+                manifest_changed = True
+
+    remaining_backports = old_policy.required_backport_branches[:-1]
+    template_path = layout.package_root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    if not template_path.exists():
+        raise SystemExit(f"[blueprint-harness] missing pull request template: {template_path}")
+    original_template = template_path.read_text(encoding="utf-8")
+    updated_template = pull_request_template_with_backports(original_template, remaining_backports)
+
+    new_policy = write_branch_policy(
+        layout.package_root,
+        default_dev_branch=old_policy.default_dev_branch,
+        required_backport_branches=remaining_backports,
+        release_targets=tuple(
+            target for target in old_policy.release_targets if target.release_id != release_id
+        ),
+        version=old_policy.version,
+    )
+    if updated_template != original_template:
+        template_path.write_text(updated_template, encoding="utf-8")
+    if manifest_changed:
+        write_json(manifest_path, manifest)
+
+    print(f"branch_policy={new_policy.source_path}")
+    print(f"project_manifest={manifest_path}")
+    print(f"pull_request_template={template_path}")
+    print(f"retired_release={release_id}")
+    print(f"default_dev_branch={new_policy.default_dev_branch}")
+    print(f"required_backports={','.join(new_policy.required_backport_branches)}")
+    print(
+        "[blueprint-harness] next: python3 -m scripts.blueprint_harness prepare-pr "
+        f"--release-line-retirement {release_id}"
+    )
+    return 0
 
 
 def upsert_release_target(
@@ -890,7 +980,9 @@ def print_public_pr_message_scaffold(
     changes: list[str] | None,
 ) -> None:
     paired_backports_required = any(
-        ": exempt:" not in line and not line.endswith(f": {RELEASE_LINE_BOOTSTRAP_STATUS}")
+        ": exempt:" not in line
+        and not line.endswith(f": {RELEASE_LINE_BOOTSTRAP_STATUS}")
+        and not line.endswith(f": {RELEASE_LINE_RETIREMENT_STATUS}")
         for line in backport_lines
     )
     print(f"repository={PUBLIC_REPOSITORY}")
@@ -919,6 +1011,8 @@ def print_public_pr_message_scaffold(
         print("- Use backport exemptions only for documentation and repository metadata changes; CI checks the PR file list.")
     if any(line.endswith(f": {RELEASE_LINE_BOOTSTRAP_STATUS}") for line in backport_lines):
         print("- CI verifies this is a real release-line bootstrap by comparing the base and head release policy.")
+    if any(line.endswith(f": {RELEASE_LINE_RETIREMENT_STATUS}") for line in backport_lines):
+        print("- CI verifies the retired line and unchanged default release against the base policy.")
     print()
     print("## PR Title")
     print(title)
@@ -1081,8 +1175,21 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
     policy = load_branch_policy(layout.package_root)
     exemptions = parse_prepare_backports_exemptions(args.exempt)
     release_line_bootstrap = bool(getattr(args, "release_line_bootstrap", False))
+    retired_release = getattr(args, "release_line_retirement", None)
     if release_line_bootstrap and exemptions:
         raise SystemExit("[blueprint-harness] `--release-line-bootstrap` cannot be combined with `--exempt`")
+    if retired_release is not None:
+        retired_release = release_branch_from_lean_ref(retired_release)
+        if release_line_bootstrap or exemptions:
+            raise SystemExit(
+                "[blueprint-harness] `--release-line-retirement` cannot be combined with "
+                "`--release-line-bootstrap` or `--exempt`"
+            )
+        if retired_release in policy.required_backport_branches:
+            raise SystemExit(
+                f"[blueprint-harness] `{retired_release}` is still a required backport; "
+                "run `retire-release-line` first"
+            )
     unknown = sorted(branch for branch in exemptions if branch not in policy.required_backport_branches)
     if unknown:
         raise SystemExit(
@@ -1114,6 +1221,8 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
                 "[blueprint-harness] release-line bootstrap PRs must change both release identity files; missing: "
                 + ", ".join(missing)
             )
+    if retired_release is not None and "branch-policy.json" not in source_changed_files(layout.package_root, source_branch):
+        raise SystemExit("[blueprint-harness] release-line retirement PRs must change branch-policy.json")
 
     title = validate_public_pr_title(args.title or current_commit_subject(layout.package_root))
     pull_request_base = (
@@ -1125,10 +1234,14 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
         base_branch=pull_request_base,
         source_branch=source_branch,
         title=title,
-        backport_lines=backport_plan_lines(
-            policy.required_backport_branches,
-            exemptions,
-            release_line_bootstrap=release_line_bootstrap,
+        backport_lines=(
+            [f"Backport {retired_release}: {RELEASE_LINE_RETIREMENT_STATUS}"]
+            if retired_release is not None
+            else backport_plan_lines(
+                policy.required_backport_branches,
+                exemptions,
+                release_line_bootstrap=release_line_bootstrap,
+            )
         ),
         summary=args.summary,
         changes=args.change,
@@ -1572,6 +1685,17 @@ def add_release_management_commands(subparsers) -> None:
     )
     start_release_line.set_defaults(func=command_start_release_line)
 
+    retire_release_line = subparsers.add_parser(
+        "retire-release-line",
+        help="Retire the oldest maintenance line after its external references have migrated.",
+    )
+    retire_release_line.add_argument(
+        "release",
+        metavar="RELEASE",
+        help="Oldest required maintenance release, such as `v4.33.0`.",
+    )
+    retire_release_line.set_defaults(func=command_retire_release_line)
+
     set_default_dev_branch = subparsers.add_parser(
         "set-default-dev-branch",
         help="Update `branch-policy.json` for a new default-development release branch.",
@@ -1643,6 +1767,11 @@ def add_pr_preparation_commands(subparsers) -> None:
         "--release-line-bootstrap",
         action="store_true",
         help="Mark every backport entry as a machine-checked new-release-line bootstrap.",
+    )
+    prepare_pr.add_argument(
+        "--release-line-retirement",
+        metavar="RELEASE",
+        help="Mark a removed maintenance release with the machine-checked retirement status.",
     )
     prepare_pr.set_defaults(func=command_prepare_pr)
 

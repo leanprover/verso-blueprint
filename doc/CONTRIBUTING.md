@@ -103,7 +103,8 @@ Do those upstream write actions only when they are explicitly requested.
   public reviewers to understand local worktree bookkeeping.
 - Draft PRs targeting the default-development branch must declare one backport
   plan line for each required backport release branch listed in
-  `branch-policy.json`.
+  `branch-policy.json`. With no required maintenance line, ordinary PRs need no
+  backport plan line.
 - Non-draft PRs targeting the default-development branch must replace each
   `pending` entry with a paired backport PR number or an explicit exemption
   reason. New-release branch-start PRs instead use the machine-checked
@@ -124,7 +125,10 @@ Do those upstream write actions only when they are explicitly requested.
 - `release-line retirement` is likewise machine-checked rather than exempt.
   CI accepts it only when the default Lean line stays fixed, the oldest
   contiguous suffix of required backports is removed, and every remaining
-  release target is unchanged.
+  release target is unchanged. Run
+  `python3 -m scripts.blueprint_harness retire-release-line <release>` to
+  update the managed policy, catalog, and PR template together, then use
+  `prepare-pr --release-line-retirement <release>` for the retirement PR.
 - Backported default-development PRs should normally be landed with a merge
   commit rather than squash or rebase, so the source commits recorded by
   `git cherry-pick -x` remain present in default-dev history.
@@ -149,7 +153,8 @@ Do those upstream write actions only when they are explicitly requested.
     `Backport ...: pending` lines with `Backport ...: release-line retirement`
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
-  - once it is ready for review, open the paired backport PRs
+  - when required, open paired backport PRs before the default-development PR
+    is ready for review
   - use `python3 -m scripts.blueprint_harness prepare-backport-pr <release> --main-pr <pr>`
     to scaffold one paired backport PR branch name, title, and body
   - apply the scaffolded release label, `backport-<release>`, to the

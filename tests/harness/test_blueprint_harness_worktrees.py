@@ -5,8 +5,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
+import scripts.blueprint_harness_worktrees as worktrees_mod
 from scripts.blueprint_harness_worktrees import (
+    GitWorktree,
     METADATA_DIRNAME,
     ROOT_WORKTREE_NAME,
     WorktreeRecord,
@@ -19,6 +22,31 @@ from scripts.blueprint_harness_worktrees import (
 
 
 class BlueprintHarnessWorktreesTests(unittest.TestCase):
+    def test_collect_worktree_facts_uses_root_release_for_nightly_worktree(self) -> None:
+        root = Path("/tmp/repo")
+        nightly = root / ".worktrees" / "nightly"
+        git_worktree = GitWorktree(
+            name="nightly", path=nightly, head="abc", branch="feat/nightly", root_checkout=False
+        )
+
+        def release_ref(path: Path) -> str:
+            if path == nightly:
+                raise SystemExit("expected a numeric Lean release branch, got `nightly-2026-09-21`")
+            return "origin/v4.34.0"
+
+        with (
+            patch.object(worktrees_mod, "preferred_release_ref", side_effect=release_ref),
+            patch.object(worktrees_mod, "worktree_status_counts", return_value=(False, 0, 0)),
+            patch.object(worktrees_mod, "rev_list_counts", return_value=(0, 1)),
+            patch.object(worktrees_mod, "ref_merged_into_base", return_value=False),
+            patch.object(worktrees_mod, "branch_upstream", return_value=None),
+            patch.object(worktrees_mod, "worktree_last_commit", return_value=("abc", "2026-09-21", "nightly")),
+        ):
+            facts = collect_worktree_facts(root, git_worktree)
+
+        self.assertEqual(facts["base_ref"], "origin/v4.34.0")
+        self.assertEqual(facts["main_behind"], 1)
+
     def test_parse_git_worktree_porcelain(self) -> None:
         repo_root = Path("/tmp/repo")
         text = """

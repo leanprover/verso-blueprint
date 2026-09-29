@@ -21,8 +21,8 @@ from tests.harness.release_fixtures import (
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 BRANCH_POLICY = load_branch_policy(PACKAGE_ROOT)
-DEFAULT_DEV_RELEASE = BRANCH_POLICY.default_dev_branch
-REQUIRED_BACKPORT_RELEASES = BRANCH_POLICY.required_backport_branches
+DEFAULT_DEV_RELEASE = SAMPLE_DEFAULT_RELEASE
+REQUIRED_BACKPORT_RELEASES = (SAMPLE_PREVIOUS_RELEASE,)
 
 
 class FakeGitHubApi:
@@ -125,6 +125,28 @@ def run_release_transition(
 
 
 class BackportPrCheckTests(unittest.TestCase):
+    def setUp(self) -> None:
+        policy_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(policy_dir.cleanup)
+        root = Path(policy_dir.name)
+        (root / "branch-policy.json").write_text(
+            branch_policy_json(
+                default_dev=DEFAULT_DEV_RELEASE,
+                required_backports=REQUIRED_BACKPORT_RELEASES,
+                release_targets=[
+                    release_target(SAMPLE_PREVIOUS_RELEASE),
+                    release_target(DEFAULT_DEV_RELEASE),
+                ],
+            ),
+            encoding="utf-8",
+        )
+        (root / "lean-toolchain").write_text(
+            f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n", encoding="utf-8"
+        )
+        root_patch = patch.object(backport_mod, "PACKAGE_ROOT", root)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+
     def test_github_api_decodes_repository_file_contents(self) -> None:
         api = backport_mod.GitHubApi("leanprover/verso-blueprint", "token")
         encoded = base64.b64encode(b"release policy\n").decode("ascii")
@@ -135,8 +157,8 @@ class BackportPrCheckTests(unittest.TestCase):
         template = Path(__file__).resolve().parents[2] / ".github" / "PULL_REQUEST_TEMPLATE.md"
         entries = backport_mod.parse_backport_entries(template.read_text(encoding="utf-8"))
 
-        self.assertEqual(set(entries), set(REQUIRED_BACKPORT_RELEASES))
-        for branch in REQUIRED_BACKPORT_RELEASES:
+        self.assertEqual(set(entries), set(BRANCH_POLICY.required_backport_branches))
+        for branch in BRANCH_POLICY.required_backport_branches:
             self.assertTrue(entries[branch].pending)
 
     def test_parse_backport_entries_accepts_pr_pending_and_exemption(self) -> None:
