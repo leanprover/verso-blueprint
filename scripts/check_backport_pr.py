@@ -27,7 +27,7 @@ from scripts.blueprint_harness_backports import (
     RELEASE_LINE_RETIREMENT_STATUS,
     backport_exemption_violations,
 )
-from scripts.blueprint_harness_releases import release_branch_from_lean_ref, release_branch_version
+from scripts.blueprint_harness_releases import lean_release_family, release_branch_version
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -259,17 +259,19 @@ def load_release_transition_head_policy(
             api.file_text("branch-policy.json", head_sha),
             source_path=Path(f"github-head-{head_sha[:12]}-branch-policy.json"),
         )
-        base_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", base_sha).strip())
-        head_toolchain_release = release_branch_from_lean_ref(api.file_text("lean-toolchain", head_sha).strip())
+        base_toolchain_family = lean_release_family(api.file_text("lean-toolchain", base_sha).strip())
+        head_toolchain_family = lean_release_family(api.file_text("lean-toolchain", head_sha).strip())
+        base_branch_family = lean_release_family(base_policy.default_dev_branch)
+        head_branch_family = lean_release_family(head_policy.default_dev_branch)
     except SystemExit as err:
         raise BackportCheckError(str(err)) from err
 
-    if base_toolchain_release != base_policy.default_dev_branch:
+    if base_toolchain_family != base_branch_family:
         raise BackportCheckError(
             f"{transition_name} base is internally inconsistent: "
             "its Lean toolchain does not match its default branch"
         )
-    if head_toolchain_release != head_policy.default_dev_branch:
+    if head_toolchain_family != head_branch_family:
         raise BackportCheckError(
             f"{transition_name} head is internally inconsistent: "
             "its Lean toolchain does not match its default branch"
@@ -331,8 +333,8 @@ def verify_release_line_bootstrap(
             )
         new_target = new_targets[0]
         if (
-            release_branch_from_lean_ref(new_target.release_toolchain) != head_policy.default_dev_branch
-            or release_branch_from_lean_ref(new_target.release_verso_ref) != head_policy.default_dev_branch
+            lean_release_family(new_target.release_toolchain) != lean_release_family(head_policy.default_dev_branch)
+            or lean_release_family(new_target.release_verso_ref) != lean_release_family(head_policy.default_dev_branch)
             or new_target.branch != head_policy.default_dev_branch
         ):
             raise BackportCheckError(
