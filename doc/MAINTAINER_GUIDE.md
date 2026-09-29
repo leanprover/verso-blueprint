@@ -955,6 +955,11 @@ selected generator command only for the default-development release target, so
 the current published catalog includes PDFs while archived release targets stay
 HTML-only unless their deploy policy is deliberately expanded.
 
+A release branch can remain a required backport target without publishing a
+reference site. Set `deploy_pages` to `false` when that release has no published
+reference targets; every release with `deploy_pages: true` must have at least
+one published target in the default-development catalog.
+
 All runs of the deploy workflow share one repository-wide concurrency group
 because every run replaces the same combined Pages site. A deploy matrix entry
 first computes an exact generated-site identity from the release id, project

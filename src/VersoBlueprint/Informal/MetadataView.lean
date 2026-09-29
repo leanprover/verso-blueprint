@@ -23,12 +23,19 @@ structure MetadataPresentation where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
   tags : Array String := #[]
 deriving Repr, Inhabited
 
 def MetadataPresentation.hasAny (metadata : MetadataPresentation) : Bool :=
   metadata.ownerText.isSome || metadata.effort.isSome || metadata.priority.isSome ||
-    metadata.prUrl.isSome || !metadata.tags.isEmpty
+    metadata.prUrl.isSome || metadata.issueUrl.isSome || !metadata.tags.isEmpty
+
+/-- Link text for a tracking-issue URL: `#109` when the URL ends in a number, else `link`. -/
+def issueLinkText (url : String) : String :=
+  match issueNumberSegment? url with
+  | some segment => s!"#{segment}"
+  | none => "link"
 
 def MetadataPresentation.summaryBadgeSpecs (metadata : MetadataPresentation) : Array MetadataBadgeSpec :=
   let ownerBadges :=
@@ -48,15 +55,22 @@ def MetadataPresentation.summaryBadgeSpecs (metadata : MetadataPresentation) : A
   ownerBadges ++ effortBadges ++ priorityBadges ++ tagBadges
 
 def MetadataPresentation.summaryActionLinks (metadata : MetadataPresentation) : Array MetadataActionLink :=
-  match metadata.prUrl with
-  | some href => #[{ label := "PR", href }]
-  | none => #[]
+  let prLinks :=
+    match metadata.prUrl with
+    | some href => #[{ label := "PR", href }]
+    | none => #[]
+  let issueLinks :=
+    match metadata.issueUrl with
+    | some href => #[{ label := "Issue", href }]
+    | none => #[]
+  prLinks ++ issueLinks
 
 def BlockData.metadataPresentation (data : BlockData) : MetadataPresentation := {
   ownerText := data.ownerDisplayName <|> data.owner.map toString
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  issueUrl := data.issueUrl
   tags := data.tags
 }
 

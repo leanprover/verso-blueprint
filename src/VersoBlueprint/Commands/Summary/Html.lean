@@ -34,6 +34,7 @@ private def metadataPresentationOfPriorityItem (item : PriorityItem) : MetadataP
   effort := item.effort
   priority := item.priority
   prUrl := item.prUrl
+  issueUrl := item.issueUrl
   tags := item.tags.toArray
 }
 
@@ -42,6 +43,7 @@ private def metadataPresentationOfMetadataEntryItem (item : MetadataEntryItem) :
   effort := item.effort
   priority := item.priority
   prUrl := item.prUrl
+  issueUrl := item.issueUrl
   tags := item.tags.toArray
 }
 

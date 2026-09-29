@@ -64,6 +64,7 @@ structure PriorityItem where
   ownerDisplayName : Option String := none
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
   tags : List String := []
   statementStatus : String
   proofStatus : String := ""
@@ -146,6 +147,7 @@ structure MetadataEntryItem where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
   tags : List String := []
   leanObjects : List Name := []
 deriving Inhabited, FromJson, ToJson

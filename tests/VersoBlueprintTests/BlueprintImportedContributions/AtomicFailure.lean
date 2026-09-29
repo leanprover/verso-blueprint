@@ -78,6 +78,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     count := before.nextCount + 100
     priority := some "low"
     tags := #["rejected"]
+    issueUrl := some "https://example.com/issues/1"
     proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
     leanCode := #[.external #[{ canonical := `rejectedDecl, written := `rejectedDecl, present := true }]]
   }
@@ -115,11 +116,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4650/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4702/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5353/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5405/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic

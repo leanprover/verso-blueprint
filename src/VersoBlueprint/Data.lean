@@ -591,6 +591,7 @@ structure Node where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
 deriving Repr, Inhabited
 
 /--
@@ -614,6 +615,7 @@ structure NodeContribution where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  issueUrl : Option String := none
 deriving Repr, Inhabited
 
 /-- External references carried by the selected association field. -/
