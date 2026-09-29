@@ -231,7 +231,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [project.project_id for project in projects],
             [
                 "project-template",
-                "noperthedron",
                 "verso-flt",
                 "verso-carleson",
             ],
@@ -266,7 +265,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_repositories = {
-            "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
             "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
         }
@@ -280,7 +278,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertEqual(external_release_ids, release_id_set)
+        self.assertEqual(external_release_ids, {branch_policy.default_dev_branch})
 
     def test_selected_project_toolchain_uses_selected_release(self) -> None:
         project = external_project(selected_release="v4.29.0")
