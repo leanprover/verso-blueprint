@@ -7,11 +7,11 @@
   or discussions are not a substitute for the summary.
 - Put questions, local notes, and extra review coordination in comments rather
   than the PR description.
-- Keep the required `Backport ...` lines below. Draft PRs may use `pending`;
-  ready PRs must use `#<pr>` or `exempt: <reason>` for each line. New-release
-  branch-start PRs use `release-line bootstrap` for every resulting line and
-  may retire the oldest maintained suffix in that transition. PRs that retire
-  old lines without starting a new one use `release-line retirement`.
+- When the release policy requires backports, keep the generated `Backport ...`
+  lines below. Draft PRs may use `pending`; ordinary ready PRs use `#<pr>` or
+  `exempt: <reason>` for each line. New-release branch-start PRs use
+  `release-line bootstrap` for every resulting line. PRs that retire old lines
+  without starting a new one use `release-line retirement`.
 - If the PR requires paired backports, prefer a merge commit when landing so
   cherry-pick source commits remain in default-dev history. Squash is fine for
   PRs with all backports exempt.
@@ -25,4 +25,4 @@ This PR <short summary of the problem solved and useful outcome>.
 <Optional: one short paragraph or a few bullets with the main behavior or
 maintainer-visible changes. Avoid module-by-module implementation inventory.>
 
-Backport v4.33.0: pending
+<!-- Backport lines are managed by the release harness. -->

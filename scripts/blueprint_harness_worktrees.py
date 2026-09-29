@@ -302,7 +302,14 @@ def worktree_last_commit(path: Path) -> tuple[str | None, str | None, str | None
 def collect_worktree_facts(repo_root: Path, git_wt: GitWorktree) -> dict[str, object]:
     ref = git_wt.branch or git_wt.head
     dirty, tracked_changes, untracked_changes = worktree_status_counts(git_wt.path)
-    base_ref = preferred_release_ref(git_wt.path)
+    try:
+        base_ref = preferred_release_ref(git_wt.path)
+    except SystemExit as err:
+        if "expected a numeric Lean release branch" not in str(err):
+            raise
+        # Experimental worktrees may use a nightly toolchain. Compare them to
+        # the root release line instead of aborting the entire registry sync.
+        base_ref = preferred_release_ref(repo_root)
     main_ahead, main_behind = rev_list_counts(repo_root, ref, base_ref)
     upstream = branch_upstream(repo_root, git_wt.branch) if git_wt.branch is not None else None
     upstream_ahead, upstream_behind = (

@@ -323,6 +323,17 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.deploy_pages)
         self.assertTrue(args.skip_validation)
 
+    def test_retire_release_line_and_pr_status_parse(self) -> None:
+        parser = build_parser()
+        self.assertEqual(
+            parser.parse_args(["retire-release-line", "v4.28.0"]).release,
+            "v4.28.0",
+        )
+        self.assertEqual(
+            parser.parse_args(["prepare-pr", "--release-line-retirement", "v4.28.0"]).release_line_retirement,
+            "v4.28.0",
+        )
+
     def test_set_default_dev_branch_parses_lean_ref(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["set-default-dev-branch", "v4.30.0"])
@@ -785,6 +796,36 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("Backport v4.28.0: release-line bootstrap", output)
         self.assertIn("recommended_merge_method=squash", output)
         self.assertIn("CI verifies this is a real release-line bootstrap", output)
+
+    def test_prepare_pr_emits_machine_checked_final_retirement_status(self) -> None:
+        args = argparse.Namespace(
+            title="chore: retire Lean 4.28 support",
+            summary="This PR retires the final maintenance line.",
+            change=None,
+            source_branch="chore/retire-v428-support",
+            exempt=None,
+            release_line_retirement="v4.28.0",
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        out = io.StringIO()
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.29.0",
+                required_backport_branches=(),
+            ),
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            source_changed_files=lambda _repo_root, _source_branch: ["branch-policy.json"],
+        ):
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
+
+        output = out.getvalue()
+        self.assertIn("base=v4.29.0", output)
+        self.assertIn("Backport v4.28.0: release-line retirement", output)
+        self.assertIn("recommended_merge_method=squash", output)
+        self.assertNotIn("Use a merge commit when landing", output)
 
     def test_prepare_pr_rejects_release_line_bootstrap_without_previous_default(self) -> None:
         args = argparse.Namespace(
@@ -1681,6 +1722,100 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 harness_mod.command_start_release_line(args)
 
         self.assertFalse(called)
+
+    def test_retire_release_line_requires_migrated_references_and_updates_managed_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+            policy_path = root / "branch-policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "default_dev_branch": "v4.29.0",
+                        "required_backport_branches": ["v4.28.0"],
+                        "release_targets": [
+                            {
+                                "id": release,
+                                "toolchain": release,
+                                "verso_ref": release,
+                                "branch": release,
+                                "deploy_pages": True,
+                            }
+                            for release in ("v4.28.0", "v4.29.0")
+                        ],
+                    }
+                ) + "\n",
+                encoding="utf-8",
+            )
+            manifest_path = root / "tests" / "harness" / "projects.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest = {
+                "version": 2,
+                "projects": [
+                    {
+                        "id": "project-template",
+                        "source": {"kind": "in_repo_project", "project_root": "project_template"},
+                        "targets": [{"release": "v4.28.0"}, {"release": "v4.29.0"}],
+                        "generate_command": ["lake", "exe", "vbp", "build"],
+                    },
+                    {
+                        "id": "external",
+                        "source": {
+                            "kind": "git_checkout",
+                            "repository": "https://github.com/example/external.git",
+                            "project_root": ".",
+                        },
+                        "targets": [{"release": "v4.28.0", "ref": "abc"}],
+                        "generate_command": ["lake", "exe", "vbp", "build"],
+                    },
+                ],
+            }
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            template_path = root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+            template_path.parent.mkdir()
+            template_path.write_text(
+                "This PR <summary>.\n\n"
+                "<!-- Backport lines are managed by the release harness. -->\n"
+                "Backport v4.28.0: pending\n",
+                encoding="utf-8",
+            )
+            original_policy = policy_path.read_text(encoding="utf-8")
+            original_template = template_path.read_text(encoding="utf-8")
+            layout = SimpleNamespace(package_root=root)
+            with patched_attrs(
+                harness_mod,
+                detect_harness_layout=lambda _start=None: layout,
+                require_checkout_role=lambda *_args, **_kwargs: None,
+            ):
+                with self.assertRaisesRegex(SystemExit, "not the oldest required maintenance line"):
+                    harness_mod.command_retire_release_line(argparse.Namespace(release="v4.27.0"))
+                with self.assertRaisesRegex(SystemExit, "migrate reference projects.*external"):
+                    harness_mod.command_retire_release_line(argparse.Namespace(release="v4.28.0"))
+                self.assertEqual(policy_path.read_text(encoding="utf-8"), original_policy)
+                self.assertEqual(template_path.read_text(encoding="utf-8"), original_template)
+
+                manifest["projects"][1]["targets"] = [{"release": "v4.29.0", "ref": "abc"}]
+                manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        harness_mod.command_retire_release_line(argparse.Namespace(release="v4.28.0")), 0
+                    )
+
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+            self.assertEqual(policy["default_dev_branch"], "v4.29.0")
+            self.assertEqual(policy["required_backport_branches"], [])
+            self.assertEqual([target["id"] for target in policy["release_targets"]], ["v4.29.0"])
+            updated_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated_manifest["projects"][0]["targets"], [{"release": "v4.29.0"}])
+            self.assertEqual(updated_manifest["projects"][1]["targets"], [{"release": "v4.29.0", "ref": "abc"}])
+            template = template_path.read_text(encoding="utf-8")
+            self.assertNotIn("Backport v4.28.0", template)
+            self.assertIn("<!-- Backport lines are managed by the release harness. -->", template)
+            self.assertIn(
+                "Backport v4.29.0: pending",
+                harness_mod.pull_request_template_with_backports(template, ("v4.29.0",)),
+            )
 
     def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
         args = argparse.Namespace(

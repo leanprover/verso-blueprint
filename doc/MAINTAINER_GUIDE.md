@@ -70,8 +70,8 @@ export LAKE_RESTORE_ARTIFACTS=false
 ```
 
 Cache-in-place artifacts are supported by `lake lean` and `lake exe vbp build`
-on the maintained v4.33 and v4.34 release lines. The `lean-beam`
-language-server workflow has also been validated on v4.33. Explicit
+on the maintained v4.34 release line. The `lean-beam` language-server workflow
+was also validated on the former v4.33 line. Explicit
 `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values
 take precedence. Use
 `scripts/with-blueprint-lake-cache --print-config` to inspect the effective
@@ -434,7 +434,7 @@ Use the harness to generate public PR/backport scaffolds:
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr <maintenance-release> --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
@@ -443,9 +443,9 @@ check can verify recorded source SHAs, commit count, and commit order. The
 check intentionally does not require patch-id equality, because release-line
 conflict resolution often changes the exact diff while preserving provenance.
 
-Each paired backport PR should carry the scaffolded release label, such as
-`backport-v4.32.0`, so release-specific queues remain visible when several
-maintenance lines are active.
+Each paired backport PR should carry its scaffolded
+`backport-<maintenance-release>` label, so release-specific queues remain
+visible when several maintenance lines are active.
 
 A change limited to `tests/harness/projects.json` updates release-specific
 catalog metadata and may use an explicit backport exemption; do not recreate
@@ -578,6 +578,20 @@ and all remaining release targets are byte-for-byte equivalent in policy.
 This makes the policy transition self-validating without constructing obsolete
 backport projects solely to satisfy the policy being removed.
 
+Run the retirement from a default-development worktree after every external
+reference Blueprint has moved off the oldest maintenance line:
+
+```bash
+python3 -m scripts.blueprint_harness retire-release-line <oldest-maintenance-release>
+python3 -m scripts.blueprint_harness prepare-pr --release-line-retirement <oldest-maintenance-release>
+```
+
+The first command checks the ordering and reference catalog before changing
+`branch-policy.json`, `tests/harness/projects.json`, and the PR template. The
+second emits the machine-checked retirement line even when no maintenance
+branches remain afterward. A later `start-release-line` repopulates the PR
+template through its managed backport marker.
+
 To remove stale harness-managed reference caches and orphaned local clones:
 
 ```bash
@@ -709,12 +723,13 @@ an exemption is acceptable.
 To create one paired backport scaffold, run:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr <maintenance-release> --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.32.0] ...`, a `backport-v4.32.0` release label, and a PR body
-that points back to the primary default-development review. By default the
+`[backport <maintenance-release>] ...`, a matching
+`backport-<maintenance-release>` release label, and a PR body that points back
+to the primary default-development review. By default the
 title after the backport prefix is read from the GitHub title of `--main-pr`,
 which keeps multi-commit backports from inheriting the last local commit
 subject. The source branch and exact commit series also come from `--main-pr`,
@@ -748,7 +763,7 @@ python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
 `land-release` refuses to proceed unless the root checkout is on a clean,
-in-sync local release branch such as `v4.32.0`, and it only accepts
+in-sync local release branch such as `v4.34.0`, and it only accepts
 fast-forward source refs. With `--cleanup`, it also removes the source worktree
 and deletes the source branch when that can be done safely.
 
@@ -897,7 +912,7 @@ The repository includes these GitHub Actions workflows:
 - `.github/workflows/reference-blueprints-deploy.yml`
 
 `ci.yml` is the main verification workflow. It keeps the always-on checks for
-pull requests and pushes to release branches named like `v4.32.0`:
+pull requests and pushes to release branches named like `v4.34.0`:
 
 - `Blueprint Build`
 - `Blueprint Tests`
@@ -914,7 +929,7 @@ the in-repo template as a fresh standalone repository and smoke-tests the
 template-owned CI path.
 
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
-pushes to release branches named like `v4.32.0`, and manual dispatch, it:
+pushes to release branches named like `v4.34.0`, and manual dispatch, it:
 
 - resolves the triggering branch's release target from `branch-policy.json`
 - uses the triggering checkout's catalog on the default-development line, but
@@ -938,7 +953,7 @@ pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.32.0`, checks out the repository default-development branch as the source
+`v4.34.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with
 `deploy_pages: true`, selects project targets marked `publish_reference: true`,
 rebuilds those selected blueprints in isolation, and assembles one combined
@@ -1069,9 +1084,9 @@ The compatibility rule is monotonic within one Lean release family. If VBP's
 subversion is older than the reference project's subversion, validation fails
 and the VBP maintainers must bump VBP. If VBP is equal or newer, the reference
 project's exact toolchain remains the effective compiler. For example, a
-`v4.33.0` VBP release may build an external project with
-`"reference_toolchain": "v4.33.0-rc1"`; VBP/Verso stay on `v4.33.0`, while the
-wrapper, formalization, Mathlib artifacts, and build all stay on `v4.33.0-rc1`.
+`v4.34.1` VBP release may build an external project with
+`"reference_toolchain": "v4.34.0-rc2"`; VBP/Verso stay on `v4.34.0`, while the
+wrapper, formalization, Mathlib artifacts, and build all stay on `v4.34.0-rc2`.
 Cross-family combinations such as VBP `v4.34.0` with a `v4.33.0` reference are
 always rejected.
 
@@ -1089,7 +1104,7 @@ Minimal external catalog entry shape:
       },
       "targets": [
         {
-          "release": "v4.32.0",
+          "release": "v4.34.0",
           "ref": "0123456789abcdef0123456789abcdef01234567",
           "publish_reference": true
         }
