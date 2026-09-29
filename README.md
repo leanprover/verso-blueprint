@@ -426,10 +426,10 @@ as release-validation examples. The canonical published catalog is maintained
 on the default development branch,
 [`v4.34.0`](https://github.com/leanprover/verso-blueprint/tree/v4.34.0).
 
-This `v4.33.0` branch is retained for backports. It continues to run
-compatibility validation, but Pages deployment is disabled for all release
-targets on this branch. The Noperthedron `v4.33.0` reference target is
-retired, so this branch will not publish a v4.33 reference page.
+This `v4.33.0` branch is retained for backports. Its Noperthedron
+`v4.33.0` reference target is retired and the release target no longer
+publishes Pages. The `v4.34.0` release metadata remains on this maintenance
+branch; the canonical current catalog is maintained on the `v4.34.0` branch.
 
 The per-branch selection in `branch-policy.json` and
 `tests/harness/projects.json` remains the source of truth for validation.
