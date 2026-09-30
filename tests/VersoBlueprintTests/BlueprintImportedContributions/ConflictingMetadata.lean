@@ -9,7 +9,10 @@ import VersoBlueprintTests.BlueprintImportedContributions.Proof
 
 /--
 error: Conflicting imported blueprint contributions for label 'key_theorem'
-Label key_theorem declares conflicting priorities: existing 'low', new 'high'
+Label key_theorem declares conflicting priorities including 'high'
+Proof.«test.synthetic»:key_theorem@1/0 label=key_theorem refs=[] priority=(some high)
+Label key_theorem declares conflicting priorities including 'low'
+Metadata.«test.synthetic»:key_theorem@1/0 label=key_theorem refs=[] priority=(some low)
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.Metadata, VersoBlueprintTests.BlueprintImportedContributions.Proof, VersoBlueprintTests.BlueprintImportedContributions.Statement
 -/
 #guard_msgs in

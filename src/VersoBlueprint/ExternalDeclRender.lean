@@ -20,7 +20,7 @@ abbrev ExternalDeclHtml := Verso.Output.Html
 inductive ExternalDeclRenderError where
   | moduleUnavailable (decl : Name)
   | exception (decl : Name) (message : String)
-  deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
+  deriving Repr, Inhabited, DecidableEq, Lean.ToJson, Lean.FromJson, Lean.Quote
 
 def ExternalDeclRenderError.message : ExternalDeclRenderError → String
   | .moduleUnavailable decl => s!"module unavailable for {decl}"
@@ -37,7 +37,7 @@ the page renderer can later deduplicate against all other page hovers.
 structure ExternalDeclHoverPayload where
   localId : Nat
   html : String
-deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
+deriving Repr, Inhabited, DecidableEq, Lean.ToJson, Lean.FromJson, Lean.Quote
 
 /--
 Rendered external declaration HTML in both forms needed by Blueprint.
@@ -57,7 +57,7 @@ The page renderer must therefore translate them before emitting normal
 structure ExternalDeclRenderedHtml where
   html : String
   hoverPayloads : Array ExternalDeclHoverPayload
-deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
+deriving Repr, Inhabited, DecidableEq, Lean.ToJson, Lean.FromJson, Lean.Quote
 
 def externalDeclHoverLocalAttrName : String := "data-bp-external-hover-local"
 

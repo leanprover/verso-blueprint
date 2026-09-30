@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintAttribute.Reexport
 import VersoBlueprintTests.BlueprintAttribute.HybridProvider
 import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
+import VersoBlueprintTests.BlueprintAttribute.ProjectionGraft
 
 open Lean
 open Informal
