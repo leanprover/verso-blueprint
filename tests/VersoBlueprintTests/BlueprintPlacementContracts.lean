@@ -264,7 +264,7 @@ open Verso.Doc.Elab in
 meta def malformedPersistedBody : BlockCommandOf Graft.BlueprintNodeConfig
   | _ => Graft.persistedManualBlockTermFromJson "null"
 
-/-- error: Blueprint persisted statement block could not be decoded: object expected -/
+/-- error: Blueprint persisted Manual block could not be decoded: object expected -/
 #guard_msgs in
 #docs (Genre.Manual) rejectedPersistedBody "Rejected persisted body" :=
 :::::::

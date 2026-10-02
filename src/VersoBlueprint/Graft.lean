@@ -170,7 +170,7 @@ block_extension Block.blueprintGraftNode (placement : Informal.Graft.Placement) 
         (α := Informal.Graft.Placement) data
         (fun err => s!"Malformed Blueprint placement ({err}): {data}")
       | pure none
-    if let some occurrence := placement.statement then
+    if let some occurrence := placement.occurrence then
       Informal.registerTraversedBlock id occurrence contents
         (showsCode := placement.showsCode)
     if placement.showsCode then
