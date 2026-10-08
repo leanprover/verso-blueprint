@@ -448,7 +448,7 @@ on both maintained lines.
 - [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
-  [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/spherepackingblueprint/)
+  [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.35.0/spherepackingblueprint/)
 
 ## Rendered Test Blueprints
 
