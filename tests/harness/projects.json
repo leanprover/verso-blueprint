@@ -34,7 +34,7 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "b6177de7e60dfc9519ff51004aaa661f6f181081",
+          "ref": "093b649198f301db06f4912366439c9b1fd3ab61",
           "publish_reference": true,
           "reference_toolchain": "v4.34.0"
         }
@@ -60,7 +60,7 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "e9244f5488eacc53ef681fcdf998f183aae26196",
+          "ref": "5ed9763365819517aacc8457ed92f52a23e7eda5",
           "publish_reference": true,
           "reference_toolchain": "v4.34.0"
         }
@@ -86,7 +86,7 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "daa38408fd22bfffa82809269660760f70c62be4",
+          "ref": "7438df5efef58753f50f3a9aca7511db4df18219",
           "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
@@ -112,7 +112,7 @@
       "targets": [
         {
           "release": "v4.34.0",
-          "ref": "1977628bf8cf16d31b88f38d8d2446e768e75d2f",
+          "ref": "1de404671f30ee9a4ddaf3f11bd1f1ebc71065fe",
           "reference_toolchain": "v4.34.0-rc2",
           "publish_reference": true
         }
