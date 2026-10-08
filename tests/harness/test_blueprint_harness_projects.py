@@ -255,14 +255,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].project_root, "project_template")
         self.assertIsNone(projects[0].build_command)
         self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        expected_template_targets = [branch_policy.default_dev_branch]
+        expected_template_targets = release_ids
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
-        for release_id in branch_policy.required_backport_branches:
-            for project in projects:
-                self.assertIsNone(
-                    project.target_for_release(release_id),
-                    f"{project.project_id} must not build on backport-only release {release_id}",
-                )
         default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
         self.assertIsNotNone(default_template_target)
         self.assertEqual(
@@ -299,7 +293,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             external_release_ids.update(target.release for target in project.targets)
             self.assertIsNone(project.build_command)
             self.assertEqual(project.generate_command, VBP_BUILD_OUTPUT_COMMAND)
-        self.assertIn(branch_policy.default_dev_branch, external_release_ids)
+        self.assertEqual(
+            external_release_ids,
+            {target.release_id for target in catalog.release_targets if target.deploy_pages},
+        )
         for release_id in external_release_ids:
             self.assertTrue(catalog.release_target(release_id).deploy_pages)
 

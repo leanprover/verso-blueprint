@@ -50,6 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The consumer smoke fetches this checkout as a Git dependency.
+          # Lake must be able to fetch its commit without shallow-root rejection.
+          fetch-depth: 0
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y

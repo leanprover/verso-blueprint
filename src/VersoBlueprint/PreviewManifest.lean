@@ -683,7 +683,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 9
+def manifestInternalSchemaVersion : Nat := 10
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1734,10 +1734,6 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Informal.PreviewKey _ =>
       pure <| Json.mkObj [("type", Json.str "string"), ("minLength", Json.num 1)]
-  | .const ``Lean.Position _ =>
-      -- Lean's custom instance encodes source positions as [line, column].
-      schemaForType (mkApp2 (mkConst ``Prod [.zero, .zero])
-        (mkConst ``Nat) (mkConst ``Nat))
   | .const ``Bool _ =>
       pure <| Json.mkObj [("type", Json.str "boolean")]
   | .const ``Nat _ =>
