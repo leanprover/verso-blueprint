@@ -157,6 +157,13 @@ and may change whenever VBP needs a new internal reader boundary. Public
 clients should use the semantic entries, graph records, source documents, and
 generated browser APIs described here rather than depending on those markers.
 
+On the Lean 4.35 line, declaration `range` and `selectionRange` source positions
+use Lean's object encoding: `pos` and `endPos` contain `{ "line": ..., "column": ... }`
+instead of the former `[line, column]` arrays. Update consumers to read those
+named fields and regenerate sites with `lake exe vbp build`; the internal
+manifest schema marker advances to 10. LSP ranges still use `line` and
+`character`.
+
 In practice:
 
 - use the manifest when you need to count nodes, inspect statuses, follow

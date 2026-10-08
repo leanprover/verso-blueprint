@@ -26,3 +26,4 @@ This PR <short summary of the problem solved and useful outcome>.
 maintainer-visible changes. Avoid module-by-module implementation inventory.>
 
 <!-- Backport lines are managed by the release harness. -->
+Backport v4.34.0: pending

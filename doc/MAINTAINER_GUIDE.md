@@ -70,8 +70,8 @@ export LAKE_RESTORE_ARTIFACTS=false
 ```
 
 Cache-in-place artifacts are supported by `lake lean` and `lake exe vbp build`
-on the maintained v4.34 release line. The `lean-beam` language-server workflow
-was also validated on the former v4.33 line. Explicit
+on the maintained v4.35 and v4.34 release lines. The `lean-beam` language-server
+workflow was also validated on the former v4.33 line. Explicit
 `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values
 take precedence. Use
 `scripts/with-blueprint-lake-cache --print-config` to inspect the effective

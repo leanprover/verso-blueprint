@@ -90,7 +90,7 @@ private def outputMessage (shouldHighlight : Bool) (msg : Message) : DocElabM Hi
     let contents ← liftM <| msg.data.toString
     pure <| .ofSeverityString msg.severity (head ++ contents)
 
-def reconstructHighlight (docReconst : DocReconstruction) (key : Export.Key) :=
+def reconstructHighlight {genre : Genre} (docReconst : DocReconstruction genre) (key : Export.Key) :=
   match docReconst.highlightDeduplication.toHighlighted key with
   | .error msg => panic! s!"Unable to export key {key}: {msg}"
   | .ok v => v

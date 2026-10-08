@@ -95,9 +95,20 @@ def main() -> int:
     invalid = deepcopy(manifest)
     invalid["previews"][primary_index]["codeData"]["externalDecls"][0]["provedStatus"] = "unknown"
     reject("unknown formalization status", invalid)
+
+    def position(data):
+        return data["previews"][primary_index]["codeData"]["externalDecls"][0]["range"]["pos"]
+
+    for field in ("line", "column"):
+        invalid = deepcopy(manifest)
+        del position(invalid)[field]
+        reject(f"missing Lean position {field}", invalid)
+        invalid = deepcopy(manifest)
+        position(invalid)[field] = "invalid"
+        reject(f"non-numeric Lean position {field}", invalid)
     invalid = deepcopy(manifest)
-    invalid["previews"][primary_index]["codeData"]["externalDecls"][0]["range"]["pos"] = [1]
-    reject("incomplete Lean position tuple", invalid)
+    invalid["previews"][primary_index]["codeData"]["externalDecls"][0]["range"]["pos"] = [1, 0]
+    reject("obsolete Lean position tuple", invalid)
     print(f"Source schema: {len(cases)} serialized manifests and {rejection_count} rejection cases passed")
     return 0
 
