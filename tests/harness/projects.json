@@ -63,10 +63,10 @@
       },
       "targets": [
         {
-          "release": "v4.34.0",
-          "ref": "5d51d005b7ecea6d681a6d64d8e4008ff235e162",
+          "release": "v4.35.0",
+          "ref": "1ed6ba57291d68087ac85388be83902bbff5b9d1",
           "publish_reference": true,
-          "reference_toolchain": "v4.34.0"
+          "reference_toolchain": "v4.35.0-rc3"
         }
       ],
       "generate_command": [
@@ -116,7 +116,7 @@
       "targets": [
         {
           "release": "v4.35.0",
-          "ref": "1004eea5444857bd8fe09cb43eba4a1c8568441e",
+          "ref": "73806edd481df9fb8f97464afef5bf4cba000f9e",
           "reference_toolchain": "v4.35.0-rc4",
           "publish_reference": true
         }
