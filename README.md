@@ -433,17 +433,19 @@ the current checkout's selected projects with
 `python3 -m scripts.blueprint_reference_harness projects`.
 
 Each external Blueprint is published only for its intended current release.
-Noperthedron, FLT, and Carleson target the retained `v4.34.0` maintenance line.
-The [Sphere Packing integration](https://github.com/ejgallego/verso-sphere-packing)
-targets Lean `v4.35.0-rc4` on the `v4.35.0` development line. Further reference
-updates follow their upstream toolchains and validation. The in-repo starter
+Noperthedron and Carleson target the retained `v4.34.0` maintenance line.
+[FLT](https://github.com/ejgallego/verso-flt) uses Lean `v4.35.0-rc3`, and
+[Sphere Packing](https://github.com/ejgallego/verso-sphere-packing) uses
+`v4.35.0-rc4`, both on the `v4.35.0` development line. Their upstream Mathlib
+configurations determine each reference's exact toolchain and dependency pins.
+Further reference updates follow their upstream toolchains and validation. The in-repo starter
 template is a CI fixture rather than a public reference entry; it is validated
 on both maintained lines.
 
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-flt/)
+  [rendered site for v4.35.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.35.0/verso-flt/)
 - [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
   [rendered site for v4.34.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.34.0/verso-carleson/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
