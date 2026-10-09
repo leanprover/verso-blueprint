@@ -164,8 +164,12 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
     let some info := after.find? name
       | continue
     let baseStatus ← Data.ConstantInfo.blueprintProvedStatus name info
-    let hasTypeGap := info.type.hasSorry
-    let hasProofGap := (info.value? (allowOpaque := true)).map (·.hasSorry) |>.getD false
+    let hasDirectAt (location : Data.SorryWhere) : Bool := match baseStatus with
+      | .containsSorry evidence => evidence.any fun item =>
+        item.location == location && item.origin == .direct
+      | _ => false
+    let hasTypeGap := hasDirectAt .statement
+    let hasProofGap := hasDirectAt .proof
     let hasGap := baseStatus.isIncomplete
     let cmdInfo? ← findDeclCommand? fileMap cmdAnalyses name
     let refs := cmdInfo?.map (·.refs) |>.getD {}

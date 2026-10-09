@@ -11,6 +11,15 @@ def main (args : List String) : IO Unit := do
   let cases ← sourceCases.mapM fun (name, source) => do
     let snapshot ← render source
     pure <| Json.mkObj [("name", toJson name), ("manifest", toJson snapshot.files.manifest)]
+  let statuses : Array Data.ProvedStatus := #[
+    .containsSorry #[{ location := .unknown, origin := .unknown }],
+    .containsSorry #[{ location := .proof, origin := .unknown }],
+    .containsSorry #[{ location := .statement, origin := .dependency },
+                    { location := .unknown, origin := .unknown }],
+    .containsSorry #[{ location := .statement, refs? := some 1 },
+                    { location := .proof, origin := .dependency }]
+  ]
   IO.FS.writeFile output <| (Json.mkObj [
-    ("schema", PreviewManifest.schemaJson), ("cases", toJson cases)
+    ("schema", PreviewManifest.schemaJson), ("cases", toJson cases),
+    ("statusCases", toJson statuses)
   ]).compress

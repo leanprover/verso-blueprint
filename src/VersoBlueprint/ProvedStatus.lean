@@ -57,6 +57,11 @@ def ProvedStatus.hasProofGap : ProvedStatus → Bool
   | .axiomLike => true
   | .containsSorry info => info.any (·.location == .proof)
 
+/-- A sorry footprint is known, but its axis is not fully localized. -/
+def ProvedStatus.hasUnlocalizedSorry : ProvedStatus → Bool
+  | .containsSorry info => info.isEmpty || info.any (·.location == .unknown)
+  | _ => false
+
 /--
 Whether this status blocks statement-track completion for a node kind.
 
@@ -64,13 +69,13 @@ Definitions are blocked by either statement or proof gaps.
 Theorem-like statements are blocked only by statement gaps.
 -/
 def ProvedStatus.blocksStatementCompletion (status : ProvedStatus) (kind : NodeKind) : Bool :=
-  match kind with
+  status.hasUnlocalizedSorry || match kind with
   | .definition => status.hasTypeGap || status.hasProofGap
   | .proposition | .lemma | .theorem | .corollary => status.hasTypeGap
 
 /-- Conservative proof-track blocker predicate. -/
 def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=
-  status.hasTypeGap || status.hasProofGap
+  status.isIncomplete
 
 /-- True only when explicit `sorry` markers were observed. -/
 def ProvedStatus.containsExplicitSorry : ProvedStatus → Bool
@@ -89,7 +94,7 @@ def ProvedStatus.sorryLocationText : ProvedStatus → String
   | .containsSorry info =>
     let hasType := info.any (·.location == .statement)
     let hasProof := info.any (·.location == .proof)
-    if hasType && hasProof then
+    let known := if hasType && hasProof then
       "in statement and proof"
     else if hasType then
       "in statement"
@@ -97,6 +102,9 @@ def ProvedStatus.sorryLocationText : ProvedStatus → String
       "in proof"
     else
       "location unknown"
+    if (hasType || hasProof) && info.any (·.location == .unknown) then
+      known ++ "; other locations unknown"
+    else known
   | .proved => "location unknown"
 
 /-- Compact label used in textual reports. -/
@@ -104,7 +112,9 @@ def ProvedStatus.statusLabel : ProvedStatus → String
   | .missing => "missing"
   | .axiomLike => "axiom-like"
   | .containsSorry info =>
-    if info.any (·.origin == .direct) then "contains sorry" else "depends on sorry"
+    if info.any (·.origin == .direct) then "contains sorry"
+    else if info.any (·.origin == .dependency) then "depends on sorry"
+    else "sorry detected"
   | .proved => "proved"
 
 /--
@@ -180,10 +190,12 @@ def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
     | .containsSorry info =>
       let locationText := status.sorryLocationText
       let direct := info.any (·.origin == .direct)
+      let dependency := info.any (·.origin == .dependency)
+      let compact := if direct then "sorry" else status.statusLabel
       {
-        summaryText := s!"{if direct then "sorry" else "depends on sorry"} {locationText}"
-        externalPanelText := s!"{if direct then "contains sorry" else "depends on sorry"} {locationText}"
-        externalHeaderText := if direct then "contains sorry" else "depends on sorry"
+        summaryText := s!"{compact} {locationText}"
+        externalPanelText := s!"{status.statusLabel} {locationText}"
+        externalHeaderText := if direct then "contains sorry" else if dependency then "depends on sorry" else "sorry detected"
         codeDeclClass := "bp_code_decl_status_warning"
         externalDeclClass := "bp_external_decl_sorry"
         codeEntryClassSuffix := "warning"
@@ -198,14 +210,18 @@ def ProvedStatus.sorryRefCounts : ProvedStatus → Nat × Nat
       match item.location with
       | .statement => (typeRefs + item.refs?.getD 0, proofRefs)
       | .proof => (typeRefs, proofRefs + item.refs?.getD 0)
+      | .unknown => (typeRefs, proofRefs)
   | _ => (0, 0)
 
 /-- Supply source reference counts without inventing locations for inherited gaps. -/
 def ProvedStatus.withDirectRefCounts (status : ProvedStatus) (typeRefs proofRefs : Nat) : ProvedStatus :=
   match status with
   | .containsSorry info => .containsSorry <| info.map fun item =>
-      if item.origin == .dependency then item else
-        { item with refs? := some <| if item.location == .statement then typeRefs else proofRefs }
+      if item.origin != .direct then item else
+        match item.location with
+        | .statement => { item with refs? := some typeRefs }
+        | .proof => { item with refs? := some proofRefs }
+        | .unknown => item
   | other => other
 
 /-- True when any declaration in a collection is incomplete. -/
@@ -239,34 +255,53 @@ def ProvedStatus.ofRefCounts (typeRefs proofRefs : Nat) : ProvedStatus :=
     (if typeRefs > 0 then some typeRefs else none)
     (if proofRefs > 0 then some proofRefs else none)
 
+/-- Merge duplicate observations by axis *and* origin. Counts are lower bounds
+from overlapping snapshots, so take their maximum instead of adding them. -/
+def SorryInfo.mergeEvidence (items : Array SorryInfo) : Array SorryInfo :=
+  items.foldl (init := #[]) fun acc item =>
+    match acc.findIdx? (fun old => old.location == item.location && old.origin == item.origin) with
+    | none => acc.push item
+    | some index => acc.modify index fun old =>
+      { old with refs? := max old.refs? item.refs? }
+
+/-- An empty sorry payload still observes incompleteness with no attribution. -/
+def SorryInfo.withUnlocalizedFallback (items : Array SorryInfo) : Array SorryInfo :=
+  if items.isEmpty then #[{ location := .unknown, origin := .unknown }] else items
+
 /--
-Conservative merge for duplicated status snapshots:
-- `missing` dominates,
-- `axiomLike` dominates,
-- `proved` is neutral, retaining the other snapshot's evidence and ref counts,
-- otherwise preserve any observed axis incompleteness.
+Conservative merge for duplicated snapshots of the same declaration/revision.
+`missing` and then `axiomLike` dominate; `proved` is neutral. Sorry snapshots
+retain every observed axis/origin and the maximum known reference count.
+An empty sorry payload remains incomplete rather than becoming `proved`.
 -/
-def ProvedStatus.mergeConservative (a b : ProvedStatus) : ProvedStatus :=
-  if a.isMissing || b.isMissing then
-    .missing
-  else if a.isAxiomLike || b.isAxiomLike then
-    .axiomLike
-  else if a.isProved then
-    b
-  else if b.isProved then
-    a
-  else
-    let evidence := fun (location : SorryWhere) =>
-      let matching := fun (status : ProvedStatus) => match status with
-        | .containsSorry info => info.filter fun (item : SorryInfo) => item.location == location
-        | _ => (#[] : Array SorryInfo)
-      let items : Array SorryInfo := matching a ++ matching b
-      if items.isEmpty then (#[] : Array SorryInfo) else
-        #[({ location,
-             origin := if items.any (fun (item : SorryInfo) => item.origin == .direct)
-                       then .direct else .dependency } : SorryInfo)]
-    let info := evidence .statement ++ evidence .proof
-    if info.isEmpty then .proved else .containsSorry info
+def ProvedStatus.mergeConservative : ProvedStatus → ProvedStatus → ProvedStatus
+  | .missing, _ | _, .missing => .missing
+  | .axiomLike, _ | _, .axiomLike => .axiomLike
+  | .proved, b => b
+  | a, .proved => a
+  | .containsSorry a, .containsSorry b => .containsSorry <| SorryInfo.mergeEvidence
+      (SorryInfo.withUnlocalizedFallback a ++ SorryInfo.withUnlocalizedFallback b)
+
+@[simp] theorem ProvedStatus.mergeConservative_proved_left (status : ProvedStatus) :
+    ProvedStatus.mergeConservative .proved status = status := by
+  cases status <;> rfl
+
+@[simp] theorem ProvedStatus.mergeConservative_proved_right (status : ProvedStatus) :
+    ProvedStatus.mergeConservative status .proved = status := by
+  cases status <;> rfl
+
+/-- Pure boundary between observed sorry evidence and the declaration status.
+A known footprint with no localized evidence keeps both axis and origin unknown.
+Visible evidence is retained even if the combined footprint was incomplete. -/
+def ProvedStatus.ofSorryEvidence (knownSorry : Bool) (evidence : Array SorryInfo) : ProvedStatus :=
+  if evidence.isEmpty then
+    if knownSorry then .containsSorry (SorryInfo.withUnlocalizedFallback evidence) else .proved
+  else .containsSorry evidence
+
+theorem ProvedStatus.ofSorryEvidence_known_incomplete (evidence : Array SorryInfo) :
+    (ProvedStatus.ofSorryEvidence true evidence).isIncomplete = true := by
+  simp only [ofSorryEvidence]
+  split <;> rfl
 
 /-- Definition shorthand for statement/type-side incompleteness checks. -/
 def LiterateDef.hasTypeSorry (d : LiterateDef) : Bool :=
@@ -314,52 +349,88 @@ def ConstantInfo.blueprintBodyAccess (name : Name) (info : ConstantInfo)
     | .axiomInfo _ => if axioms.contains name then .absent else .unavailable
     | _ => .absent
 
-/-- Analyze both visible `sorry` terms and transitive `sorryAx` dependencies.
-`collectAxioms` reads cached footprints across module boundaries. -/
+/-- Remove outer body binder types already observed in the declaration telescope. -/
+private def proofBody (type value : Expr) : Expr :=
+  match type, value with
+  | .forallE _ domain typeBody _, .lam _ valueDomain valueBody _ =>
+    -- The declaration telescope is already statement evidence. Remove only
+    -- syntactically identical outer binder types, not arbitrary annotations or
+    -- constants shared by the statement and proof.
+    if domain == valueDomain then proofBody typeBody valueBody else value
+  | _, _ => value
+
+/-- Read cached sorry footprints and visible inductive/constructor types.
+Cached aggregates can omit nested constructor gaps. The visited worklist follows
+only those type/constructor links, never arbitrary definition or proof bodies. -/
+partial def declarationHasSorryFootprint [Monad m] [MonadEnv m] (name : Name) : m Bool :=
+  visit [name] {}
+where
+  visit (pending : List Name) (visited : NameSet) : m Bool := do
+    match pending with
+    | [] => return false
+    | name :: pending =>
+      if visited.contains name then return ← visit pending visited
+      let visited := visited.insert name
+      if (← collectAxioms name).contains ``sorryAx then return true
+      let mut pending := pending
+      match (← getEnv).find? name with
+      | some (.inductInfo info) =>
+        if info.type.hasSorry then return true
+        pending := info.ctors ++ info.type.getUsedConstants.toList ++ pending
+      | some (.ctorInfo info) =>
+        if info.type.hasSorry then return true
+        pending := info.type.getUsedConstants.toList ++ pending
+      | _ => pure ()
+      visit pending visited
+
+/-- Classify observed expressions and the combined cached sorry footprint. -/
 def ConstantInfo.blueprintProvedStatus [Monad m] [MonadEnv m]
     (name : Name) (info : ConstantInfo) : m ProvedStatus := do
   let axioms ← collectAxioms name
+  let knownSorry ← declarationHasSorryFootprint name
   let body := ConstantInfo.blueprintBodyAccess name info axioms
   if let .absent := body then
     if ConstantInfo.blueprintIsAxiomLike info then return .axiomLike
-  if !axioms.contains ``sorryAx then return .proved
-  let typeDirect := info.type.hasSorry
+  let mut typeDirect := info.type.hasSorry
   let mut typeInherited := false
   for dep in info.type.getUsedConstants do
-    if (← collectAxioms dep).contains ``sorryAx then
+    if dep != name && dep != ``sorryAx && (← declarationHasSorryFootprint dep) then
       typeInherited := true
       break
   let proofDirect := match body with
-    | .available value => value.hasSorry
+    | .available value => (proofBody info.type value).hasSorry
     | _ => false
   let mut proofInherited := false
   match body with
   | .available value =>
-    for dep in value.getUsedConstants do
-      if (← collectAxioms dep).contains ``sorryAx then
+    for dep in (proofBody info.type value).getUsedConstants do
+      if dep != name && dep != ``sorryAx && (← declarationHasSorryFootprint dep) then
         proofInherited := true
         break
-  | .unavailable =>
-    -- The proof is hidden, but the cached footprint still records `sorryAx`.
-    proofInherited := axioms.contains ``sorryAx
-  | .absent => pure ()
+  | _ => pure ()
+  -- The inductive's own type omits its fields. Constructor types are statement
+  -- evidence, not a reason to invent an axis for an otherwise unlocalized gap.
+  if let .inductInfo induct := info then
+    for ctor in induct.ctors do
+      if let some ctorInfo := (← getEnv).find? ctor then
+        if ctorInfo.type.hasSorry then typeDirect := true
+        for dep in ctorInfo.type.getUsedConstants do
+          if dep != name && dep != ctor && dep != ``sorryAx && (← declarationHasSorryFootprint dep) then
+            typeInherited := true
   let mut evidence : Array SorryInfo := #[]
-  if typeDirect || typeInherited then
-    evidence := evidence.push {
-      location := .statement
-      origin := if typeDirect then .direct else .dependency
-    }
-  if proofDirect || proofInherited then
-    evidence := evidence.push {
-      location := .proof
-      origin := if proofDirect then .direct else .dependency
-    }
-  -- Inductive footprints also include constructor fields, which are not in the
-  -- inductive's own type or value. Keep the known gap on the statement track
-  -- when those expressions cannot localize it.
-  return if evidence.isEmpty then
-    .containsSorry #[{ location := .statement, origin := .dependency }]
-  else
-    .containsSorry evidence
+  if typeDirect then evidence := evidence.push { location := .statement }
+  if typeInherited then evidence := evidence.push { location := .statement, origin := .dependency }
+  if proofDirect then evidence := evidence.push { location := .proof }
+  if proofInherited then evidence := evidence.push { location := .proof, origin := .dependency }
+  if let .unavailable := body then
+    if knownSorry || typeDirect || typeInherited then
+      -- A clean visible type localizes the remaining footprint to the body,
+      -- but does not reveal whether it has a direct hole or admitted helper.
+      -- When the type already explains the footprint, the body may be complete.
+      evidence := evidence.push {
+        location := if typeDirect || typeInherited then .unknown else .proof
+        origin := .unknown
+      }
+  return ProvedStatus.ofSorryEvidence knownSorry evidence
 
 end Informal.Data

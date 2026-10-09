@@ -230,16 +230,21 @@ deriving Inhabited, Repr, ToJson, FromJson, Quote
 inductive SorryWhere where
   | statement
   | proof
+  /-- A combined footprint proves a gap but cannot attribute it to an axis. -/
+  | unknown
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 inductive SorryOrigin where
   | direct
   | dependency
+  /-- The available evidence does not distinguish a local hole from a dependency. -/
+  | unknown
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
-Structured metadata for one incomplete location in a declaration.
-{lit}`refs?` stores the number of references when known.
+One observed axis/origin of incompleteness. Unknowns are evidence limits,
+not assertions that either axis contains a direct hole.
+{lit}`refs?` stores the number of local source references when known.
 -/
 structure SorryInfo where
   location : SorryWhere

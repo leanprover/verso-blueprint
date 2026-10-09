@@ -377,7 +377,9 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     | .axiomLike => pure "Axiom-like declaration: "
     | .containsSorry _ =>
       pure <| if item.status.containsExplicitSorry then
-        "Declaration with sorry: " else "Declaration depending on sorry: "
+        "Declaration with sorry: "
+      else if item.status.dependsOnSorry then "Declaration depending on sorry: "
+      else "Declaration with detected sorry: "
     | .proved =>
       Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
       pure "Declaration: "
@@ -387,7 +389,7 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
       let (typeSorryRefs, proofSorryRefs) := item.status.sorryRefCounts
       let sorryRefs := typeSorryRefs + proofSorryRefs
       if sorryRefs > 0 then toString sorryRefs
-      else if item.status.dependsOnSorry then "n/a"
+      else if !item.status.containsExplicitSorry && item.status.dependsOnSorry then "n/a"
       else "unknown"
     | .proved => "0"
     | _ => "n/a"

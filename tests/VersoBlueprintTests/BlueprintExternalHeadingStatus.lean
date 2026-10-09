@@ -181,4 +181,35 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     hasSubstr panelParts.summaryTitle "render failed for 1 declaration"
   | none => false
 
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let status : ProvedStatus := .containsSorry #[
+    { location := .statement, origin := .dependency },
+    { location := .unknown, origin := .unknown }]
+  let ref : ExternalRef := { (ExternalRef.ofName `Hidden.typeOnly) with provedStatus := status }
+  let data : BlockData := {
+    kind := .theorem, label := `hidden.typeOnly, count := 1, codeData := some { externalDecls := #[ref] } }
+  match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
+  | some mark => mark.status == status &&
+      !mark.status.hasProofGap && !mark.status.containsExplicitSorry &&
+      hasSubstr mark.title "Statement: blocked by sorry" &&
+      hasSubstr mark.title "Proof: unknown (sorry location unavailable)"
+  | none => false
+
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let direct : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 2 }]
+  let inherited : ProvedStatus := .containsSorry #[{ location := .proof, origin := .dependency }]
+  let refs := #[
+    { (ExternalRef.ofName `Direct) with provedStatus := direct },
+    { (ExternalRef.ofName `Inherited) with provedStatus := inherited }]
+  let data : BlockData := {
+    kind := .theorem, label := `mixed.origins, count := 1, codeData := some { externalDecls := refs } }
+  match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
+  | some mark => mark.status.containsExplicitSorry && mark.status.dependsOnSorry &&
+      mark.status.sorryRefCounts == (0, 2)
+  | none => false
+
 end Verso.VersoBlueprintTests.BlueprintExternalHeadingStatus

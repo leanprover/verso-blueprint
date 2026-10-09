@@ -57,6 +57,13 @@ def main() -> int:
         if entry["key"] == "source_identity_primary--statement"
     )
 
+    # These payloads are produced by Lean's current status serializer. Unknown
+    # axes/origins and mixed evidence must remain valid in generated manifests.
+    for status in fixture["statusCases"]:
+        with_status = deepcopy(manifest)
+        with_status["previews"][primary_index]["codeData"]["externalDecls"][0]["provedStatus"] = status
+        validator.validate(with_status)
+
     rejection_count = 0
 
     def reject(name, invalid):
@@ -109,7 +116,8 @@ def main() -> int:
     invalid = deepcopy(manifest)
     invalid["previews"][primary_index]["codeData"]["externalDecls"][0]["range"]["pos"] = [1, 0]
     reject("obsolete Lean position tuple", invalid)
-    print(f"Source schema: {len(cases)} serialized manifests and {rejection_count} rejection cases passed")
+    print(f"Source schema: {len(cases)} serialized manifests, "
+          f"{len(fixture['statusCases'])} status payloads and {rejection_count} rejection cases passed")
     return 0
 
 

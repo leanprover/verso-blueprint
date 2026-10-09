@@ -581,8 +581,8 @@ structure CodeHealth where
   missingDecls : Nat := 0
   statementAxisCount : Nat := 0
   proofAxisCount : Nat := 0
-  statementDependencySorryCount : Nat := 0
-  proofDependencySorryCount : Nat := 0
+  /-- Aggregate observed evidence for presentation; counts alone cannot recover origins. -/
+  provedStatus : Data.ProvedStatus := .proved
   statementBlockCount : Nat := 0
   proofBlockCount : Nat := 0
   anyGapCount : Nat := 0
@@ -590,27 +590,19 @@ structure CodeHealth where
 deriving Inhabited, Repr
 
 private def statusGapIncrements (status : Data.ProvedStatus) : Nat × Nat × Nat :=
-  match status.hasTypeGap, status.hasProofGap with
-  | false, false => (0, 0, 0)
-  | true, false => (1, 0, 1)
-  | false, true => (0, 1, 1)
-  | true, true => (1, 1, 1)
+  (if status.hasTypeGap then 1 else 0,
+   if status.hasProofGap then 1 else 0,
+   if status.isIncomplete then 1 else 0)
 
 private def CodeHealth.bump (health : CodeHealth) (kind : Data.NodeKind) (status : Data.ProvedStatus) : CodeHealth :=
   let (statementAxisInc, proofAxisInc, anyInc) := statusGapIncrements status
-  let dependencyAxisCount (location : Data.SorryWhere) :=
-    match status with
-    | .containsSorry info =>
-      if info.any (fun item => item.location == location && item.origin == .dependency) then 1 else 0
-    | _ => 0
   let statementBlockInc := if status.blocksStatementCompletion kind then 1 else 0
   let proofBlockInc := if status.blocksProofCompletion then 1 else 0
   {
     health with
       statementAxisCount := health.statementAxisCount + statementAxisInc
       proofAxisCount := health.proofAxisCount + proofAxisInc
-      statementDependencySorryCount := health.statementDependencySorryCount + dependencyAxisCount .statement
-      proofDependencySorryCount := health.proofDependencySorryCount + dependencyAxisCount .proof
+      provedStatus := health.provedStatus.mergeConservative status
       statementBlockCount := health.statementBlockCount + statementBlockInc
       proofBlockCount := health.proofBlockCount + proofBlockInc
       anyGapCount := health.anyGapCount + anyInc
@@ -625,8 +617,7 @@ private def CodeHealth.merge (left right : CodeHealth) : CodeHealth :=
     missingDecls := left.missingDecls + right.missingDecls
     statementAxisCount := left.statementAxisCount + right.statementAxisCount
     proofAxisCount := left.proofAxisCount + right.proofAxisCount
-    statementDependencySorryCount := left.statementDependencySorryCount + right.statementDependencySorryCount
-    proofDependencySorryCount := left.proofDependencySorryCount + right.proofDependencySorryCount
+    provedStatus := left.provedStatus.mergeConservative right.provedStatus
     statementBlockCount := left.statementBlockCount + right.statementBlockCount
     proofBlockCount := left.proofBlockCount + right.proofBlockCount
     anyGapCount := left.anyGapCount + right.anyGapCount

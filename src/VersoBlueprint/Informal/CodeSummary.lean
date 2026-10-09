@@ -343,38 +343,23 @@ private def axisCompletionText : Nat → String
   | 0 => "completed"
   | _ + 1 => "blocked by sorry"
 
-private def completionAxisText (statementSorryCount proofSorryCount : Nat) : String :=
-  s!"Statement: {axisCompletionText statementSorryCount}; Proof: {axisCompletionText proofSorryCount}"
+private def completionAxisText (health : Informal.Graph.CodeHealth) : String :=
+  let axisText (count : Nat) :=
+    if count > 0 then axisCompletionText count
+    else if health.provedStatus.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
+    else axisCompletionText count
+  s!"Statement: {axisText health.statementAxisCount}; Proof: {axisText health.proofAxisCount}"
 
 /--
-Build completion status from declaration-level axis counts.
-
-Counts are only used as presence signals (non-zero means a sorry gap on that axis);
-they are not interpreted as precise sorry-reference totals.
+Use the observed declaration evidence for the completion mark. Axis counts
+cannot distinguish inherited, direct, or unknown origins.
 -/
 private def completionStatusFromHealth (health : Informal.Graph.CodeHealth) : Data.ProvedStatus :=
-  let statementItem : Data.SorryInfo := {
-    location := .statement
-    origin := if health.statementDependencySorryCount == health.statementAxisCount
-              then .dependency else .direct
-  }
-  let proofItem : Data.SorryInfo := {
-    location := .proof
-    origin := if health.proofDependencySorryCount == health.proofAxisCount
-              then .dependency else .direct
-  }
-  let statement := if health.statementAxisCount > 0 then
-    #[statementItem]
-    else #[]
-  let proof := if health.proofAxisCount > 0 then
-    #[proofItem]
-    else #[]
-  let info := statement ++ proof
-  if info.isEmpty then .proved else .containsSorry info
+  health.provedStatus
 
 private def completionStatusMark (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
   let status := completionStatusFromHealth health
-  let title := completionAxisText health.statementAxisCount health.proofAxisCount
+  let title := completionAxisText health
   if status.isProved then
     {
       status

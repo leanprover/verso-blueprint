@@ -51,6 +51,23 @@ structure StatusRecord where
 structure StatusCompleteRecord where
   payload : Nat
 
+structure StatusDirectRecord where
+  payload : (by sorry : Type)
+
+theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let some info := (← getEnv).find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusDirectRecord
+      | return false
+    let status ← ConstantInfo.blueprintProvedStatus info.name info
+    let some theoremInfo := (← getEnv).find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusDirectTypeOnly
+      | return false
+    let typeOnly ← ConstantInfo.blueprintProvedStatus theoremInfo.name theoremInfo
+    return status == .containsSorry #[{ location := .statement }] && typeOnly == status
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -166,5 +183,79 @@ structure StatusCompleteRecord where
     axiomView.summaryText == "axiom-like (no body)" &&
     axiomView.codeEntryClassSuffix == "axiom" &&
     axiomView.statusMarkSymbol == "⚠"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let statementDirect : SorryInfo := { location := .statement, refs? := some 2 }
+  let statementInherited : SorryInfo := { location := .statement, origin := .dependency }
+  let proofDirect : SorryInfo := { location := .proof, refs? := some 3 }
+  let proofInherited : SorryInfo := { location := .proof, origin := .dependency }
+  let unknown : SorryInfo := { location := .unknown, origin := .unknown }
+  let a : ProvedStatus := .containsSorry #[statementDirect, proofInherited, unknown]
+  let b : ProvedStatus := .containsSorry #[statementInherited, proofDirect]
+  let merged := a.mergeConservative b
+  let emptyMerged := (ProvedStatus.containsSorry #[]).mergeConservative
+    (.containsSorry #[proofInherited])
+  let expected := #[statementDirect, proofInherited, unknown, statementInherited, proofDirect]
+  merged == .containsSorry expected &&
+    merged.hasTypeGap && merged.hasProofGap && merged.hasUnlocalizedSorry &&
+    merged.containsExplicitSorry && merged.dependsOnSorry &&
+    merged.sorryRefCounts == (2, 3) &&
+    merged.mergeConservative a == merged && merged.mergeConservative b == merged &&
+    merged.mergeConservative merged == merged &&
+    ((ProvedStatus.containsSorry #[]).mergeConservative (.containsSorry #[])).isIncomplete &&
+    emptyMerged.hasUnlocalizedSorry && emptyMerged.dependsOnSorry && emptyMerged.hasProofGap &&
+    emptyMerged.blocksStatementCompletion .theorem
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let unknown : ProvedStatus := .containsSorry #[{ location := .unknown, origin := .unknown }]
+  let node : Node := { kind := .theorem, externalRefs :=
+    #[{ (ExternalRef.ofName `hidden) with provedStatus := unknown }] }
+  let health := nodeCodeHealth {} node
+  unknown.isIncomplete && !unknown.hasTypeGap && !unknown.hasProofGap &&
+    !unknown.containsExplicitSorry && !unknown.dependsOnSorry &&
+    unknown.statusLabel == "sorry detected" &&
+    unknown.presentation.summaryText == "sorry detected location unknown" &&
+    unknown.withDirectRefCounts 2 3 == unknown &&
+    unknown.blocksStatementCompletion .theorem && unknown.blocksProofCompletion &&
+    health.statementAxisCount == 0 && health.proofAxisCount == 0 && health.anyGapCount == 1 &&
+    !health.localProofFormalized && !health.localStatementFormalized &&
+    (match fromJson? (α := ProvedStatus) (toJson unknown) with
+     | .ok roundTrip => roundTrip == unknown
+     | .error _ => false)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let rejects (location origin : String) :=
+    match fromJson? (α := SorryInfo) (Json.mkObj [
+      ("location", Json.str location), ("origin", Json.str origin)]) with
+    | .error _ => true
+    | .ok _ => false
+  rejects "invalid" "unknown" && rejects "unknown" "invalid"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let status : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 2 }]
+  let newer : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 4 }]
+  let inherited : ProvedStatus := .containsSorry #[{ location := .proof, origin := .dependency }]
+  (status.mergeConservative newer).sorryRefCounts == (0, 4) &&
+    ((status.mergeConservative inherited).withDirectRefCounts 0 5).sorryRefCounts == (0, 5)
+
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms ProvedStatus.mergeConservative_proved_left
+
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_right' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms ProvedStatus.mergeConservative_proved_right
+
+/-- info: 'Informal.Data.ProvedStatus.ofSorryEvidence_known_incomplete' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms ProvedStatus.ofSorryEvidence_known_incomplete
 
 end Verso.VersoBlueprintTests.BlueprintGraph.Basics

@@ -23,4 +23,41 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       !hasSubstr out "Incomplete details ("
     )
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let status : Informal.Data.ProvedStatus := .containsSorry
+      #[{ location := .proof, origin := .unknown }]
+    let model := summaryBlockersDocBlueprint.model
+    let model := { model with summary := { model.summary with sorryDetails := [{
+      label := Lean.Name.mkSimple "def:blocker.sorry"
+      kind := "theorem"
+      decl := `Hidden.proof
+      isTheorem := true
+      status
+    }] } }
+    let out ← renderManualDocHtmlString manualImpls summaryBlockersDoc (model := model)
+    return hasSubstr out "Declaration with detected sorry:" &&
+      hasSubstr out "sorry detected; in proof; refs: unknown" &&
+      !hasSubstr out "Declaration depending on sorry:"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let status : Informal.Data.ProvedStatus := .containsSorry #[
+      { location := .proof }, { location := .proof, origin := .dependency }]
+    let model := summaryBlockersDocBlueprint.model
+    let model := { model with summary := { model.summary with sorryDetails := [{
+      label := Lean.Name.mkSimple "def:blocker.sorry"
+      kind := "theorem"
+      decl := `Mixed.proof
+      isTheorem := true
+      status
+    }] } }
+    let out ← renderManualDocHtmlString manualImpls summaryBlockersDoc (model := model)
+    return hasSubstr out "Declaration with sorry:" &&
+      hasSubstr out "contains sorry; in proof; refs: unknown"
+
 end Verso.VersoBlueprintTests.BlueprintSummaryLinks.Blockers

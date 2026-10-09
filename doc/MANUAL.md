@@ -1476,8 +1476,9 @@ Lean completion also checks the transitive `sorryAx` footprint of every
 associated declaration. A theorem that invokes an unassociated helper with
 `sorry` is incomplete even when its own proof text has no `sorry` and the
 Blueprint dependency graph has no edge for that helper. The declaration details
-distinguish a directly written `sorry` from a dependency on one; inherited
-gaps have no source reference count in the consuming declaration.
+distinguish a directly observed `sorry` term from a dependency on one. Both
+origins can occur on the same axis; inherited gaps have no source reference
+count in the consuming declaration.
 An inherited gap blocks completion but does not by itself identify a local
 proof-writing task; frontier advice for that case is tracked in
 [#476](https://github.com/leanprover/verso-blueprint/issues/476).
@@ -1494,8 +1495,41 @@ axiom footprint to check it. A hidden theorem is not treated as a declared
 axiom merely because Lean presents it as an axiom in the public import view.
 This footprint establishes declaration-level dependence on `sorryAx`; it does
 not reveal whether the hidden body has a direct hole or which hidden helper
-introduced the gap. The proof-side status is conservative when the body is
-unavailable.
+introduced the gap. If the visible type has no gap, the footprint localizes the
+gap to the hidden body, with its origin unknown. If the statement already
+explains the footprint, the proof could be complete: Blueprint retains the
+statement evidence and an unknown-location observation, rather than claiming a
+proof-side dependency. Unknown locations block completion conservatively and
+are displayed as unknown, without adding a known statement/proof gap or a local
+proof-writing task.
+
+For visible bodies, Blueprint examines the elaborated type and body separately.
+Identical outer lambda binder types that repeat the declaration's telescope
+belong to statement evidence; other annotations inside the body remain body
+evidence. Inductive constructor fields belong to statement evidence even when
+the inductive's own type does not mention them. Direct terms are observed from
+expressions; dependencies are identified using Lean's transitive axiom lookup.
+Inductive and constructor types are also checked through a visited worklist,
+including nested fields, when an inductive is a dependency. This follows type
+and constructor links rather than traversing arbitrary declaration bodies.
+Observed evidence is kept even if a combined cached footprint omits it. These
+checks assume that the remaining hidden cached footprints accurately
+describe their source revision; they do not independently recheck hidden bodies.
+
+`SorryWhere` and `SorryOrigin` each include `unknown`. Code consuming status JSON
+or these Lean enums must handle those cases. `hasTypeGap` and `hasProofGap`
+report known axes; completion predicates additionally handle unlocalized sorry
+evidence. Summary headings use the stored evidence instead of reconstructing
+origins from axis counts. Duplicate snapshots from the same source revision
+retain each axis/origin pair and the maximum known source-reference count;
+`proved` is neutral, while missing declarations and axiom-like placeholders
+retain their existing dominance. An empty `containsSorry` payload stays
+incomplete and is treated as unlocalized.
+
+Lean callers now classify with `ConstantInfo.blueprintProvedStatus name info`
+in an environment monad, then project `hasTypeGap` or `hasProofGap` from the
+returned status. This replaces the former pure classifier and its
+`blueprintHasTypeSorry`/`blueprintHasProofSorry` wrappers.
 
 Warning markers are reserved for structural or resolution issues such as:
 
