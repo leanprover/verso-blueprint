@@ -9,7 +9,6 @@ module
 public import Lean
 public import Lean.Data.Json
 public import Lean.Data.Lsp
-public import SubVerso.Examples.Env
 public import VersoManual
 public import VersoBlueprint.ExternalDeclRender.Data
 meta import Verso.Instances.Deriving -- shake: keep

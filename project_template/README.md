@@ -86,7 +86,7 @@ modules so their Blueprint metadata remains available to downstream consumers.
 Apply `@[blueprint ... (autoDeps := true)]` in the declaration's defining module
 when possible: saved edges survive imports, but fresh inference cannot inspect
 an imported hidden helper body. See the package manual's
-[module-boundary contract](https://github.com/leanprover/verso-blueprint/blob/v4.34.0/doc/MANUAL.md#module-boundaries-and-attributes).
+[module-boundary contract](https://github.com/leanprover/verso-blueprint/blob/v4.35.0/doc/MANUAL.md#module-boundaries-and-attributes).
 
 ## What the template demonstrates
 

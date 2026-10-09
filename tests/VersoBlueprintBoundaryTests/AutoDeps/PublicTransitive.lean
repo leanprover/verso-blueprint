@@ -15,7 +15,7 @@ run_meta do
   let some node ← Environment.getNode? (Name.mkSimple "module.auto.private")
     | throwError "Public re-export lost private declaration's attribute metadata"
   let deps := (node.proof.map (·.deps)).getD #[] |>.map (·.label)
-  unless deps == #[Name.mkSimple "module.auto.source"] && node.blueprintAttributeAttachments do
+  unless deps == #[Name.mkSimple "module.auto.source"] && Graft.nodeHasBlueprintAttributeAttachments node do
     throwError "Imported contribution lost its dependencies or attachment capability"
   let catalog ← Environment.blueprintAttributeLabelsForModule
     `VersoBlueprintBoundaryTests.AutoDeps.Provider

@@ -43,7 +43,7 @@ run_meta do
       ("module.auto.persisted_proof", #[], #["module.auto.proof"])] do
     let some node ← Environment.getNode? (Name.mkSimple label)
       | throwError "Missing imported attribute node {label}"
-    unless node.blueprintAttributeAttachments && node.externalRefs.all (·.provedStatus == .proved) do
+    unless Graft.nodeHasBlueprintAttributeAttachments node && node.externalRefs.all (·.provedStatus == .proved) do
       throwError "{label}: lost local declaration status or attribute capability"
     let actualStatement := (node.statement.map (·.deps)).getD #[] |>.map (·.label)
     let actualProof := (node.proof.map (·.deps)).getD #[] |>.map (·.label)
