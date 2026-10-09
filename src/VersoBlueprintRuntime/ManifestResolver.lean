@@ -49,7 +49,8 @@ deriving Inhabited, Repr, BEq, ToJson, FromJson
 structure Request where
   id : String
   kind : RequestKind
-  value : String
+  /-- A string key, or (for source metadata) a direct entry/render result. -/
+  value : Json
   facet : Option String := none
 deriving Inhabited, ToJson, FromJson
 
@@ -104,6 +105,11 @@ deriving Inhabited, ToJson, FromJson
 private def trim (value : String) : String :=
   Informal.BrowserString.trim value
 
+private def requestString (request : Request) : String :=
+  match request.value with
+  | .str value => trim value
+  | _ => ""
+
 private def isObject : Json → Bool
   | .obj _ => true
   | _ => false
@@ -144,7 +150,6 @@ private structure Entry where
   facet : String
   href : String
   sourceLocation : Json
-  sources : Array Json := #[]
 deriving Inhabited
 
 private structure Group where
@@ -199,7 +204,6 @@ private def decodeEntry (raw : Json) (index : Nat) : Except String Entry := do
     facet := stringField raw "facet"
     href := stringField raw "href"
     sourceLocation
-    sources := arrayField raw "sources"
   }
 
 private def decodeEntries (manifest : Json) : Except String (Array Entry × Std.HashMap String Entry) := do
@@ -389,7 +393,7 @@ private def entryResult
 }
 
 private def resolveLabel (index : Index) (request : Request) : Result :=
-  let label := trim request.value
+  let label := requestString request
   let requestedFacet := request.facet.map trim |>.filter (!·.isEmpty)
   let facet := requestedFacet.getD "statement"
   let key := previewKey label facet
@@ -409,7 +413,7 @@ private def resolveLabel (index : Index) (request : Request) : Result :=
             | _ => facet))
 
 private def resolveDeclaration (index : Index) (request : Request) : Result :=
-  let declaration := trim request.value
+  let declaration := requestString request
   let key := declarationPreviewKey declaration
   if declaration.isEmpty then
     missingResult request "" "missing-declaration" "declaration missing"
@@ -426,7 +430,7 @@ private def resolveDeclaration (index : Index) (request : Request) : Result :=
             | _ => declaration))
 
 private def resolvePreview (index : Index) (request : Request) : Result :=
-  let key := trim request.value
+  let key := requestString request
   if key.isEmpty then
     missingResult request "" "missing-key" "preview key missing"
   else
@@ -435,7 +439,7 @@ private def resolvePreview (index : Index) (request : Request) : Result :=
     | some entry => { entryResult request entry with key }
 
 private def resolveGroup (index : Index) (request : Request) : Result :=
-  let label := trim request.value
+  let label := requestString request
   if label.isEmpty then
     missingResult request "" "missing-group" "group label missing" (label := some "")
   else
@@ -454,7 +458,7 @@ private def resolveGroup (index : Index) (request : Request) : Result :=
       }
 
 private def resolveSourceDocument (index : Index) (request : Request) : Result :=
-  let id := trim request.value
+  let id := requestString request
   if id.isEmpty then
     missingResult request "" "missing-source-document" "source document id missing"
   else
@@ -471,7 +475,10 @@ private def resolveSourceDocument (index : Index) (request : Request) : Result :
       }
 
 private def resolvedSource (index : Index) (rawRef : Json) : ResolvedSource :=
-  let sourceRef := if isObject rawRef then rawRef else Json.mkObj []
+  -- The browser retains any non-null object reference, including JSON arrays.
+  let sourceRef := match rawRef with
+    | .obj _ | .arr _ => rawRef
+    | _ => Json.mkObj []
   let documentId := trim (stringField sourceRef "document")
   let document :=
     if documentId.isEmpty then none
@@ -483,27 +490,47 @@ private def resolvedSource (index : Index) (rawRef : Json) : ResolvedSource :=
     spans := arrayField sourceRef "spans"
   }
 
+private def isSourceMetadataEntry (raw : Json) : Bool :=
+  let stringMarker := #["authoredLabel", "targetKind", "facet"].any fun name =>
+    (field? raw name).any fun value => match value with
+      | .str _ => true
+      | _ => false
+  let arrayMarker := #["sources", "externalMarkup", "leanCodePreviewKeys"].any fun name =>
+    (field? raw name).any fun value => match value with
+      | .arr _ => true
+      | _ => false
+  isObject raw && !(trim (stringField raw "key")).isEmpty && (stringMarker || arrayMarker)
+
+private def sourceMetadataEntry? (source : Json) : Option Json :=
+  (field? source "manifestEntry" |>.filter isSourceMetadataEntry) <|>
+    (if isSourceMetadataEntry source then some source else none)
+
 private def resolveSourceMetadata (index : Index) (request : Request) : Result :=
-  let key := trim request.value
+  let source := request.value
+  let directEntry? := sourceMetadataEntry? source
+  let key := trim <| match directEntry? with
+    | some entry => stringField entry "key"
+    | none => match source with
+        | .str value => value
+        | _ => stringField source "key"
   if key.isEmpty then
     missingResult request "" "missing-key" "source metadata key missing"
   else
-    match index.entriesByKey.get? key with
+    match directEntry? <|> (index.entriesByKey.get? key |>.map (·.raw)) with
     | none => missingResult request key "manifest-entry-missing" "manifest entry missing"
     | some entry =>
-        if entry.sources.isEmpty then
-          { entryResult request entry with
-            key
-            ok := false
-            reason := "source-missing"
-            href := ""
-          }
-        else
-          { entryResult request entry with
-            key
-            href := ""
-            sources := entry.sources.map (resolvedSource index)
-          }
+        let sources := arrayField entry "sources"
+        {
+          requestId := request.id
+          kind := request.kind
+          key
+          ok := !sources.isEmpty
+          reason := if sources.isEmpty then "source-missing" else ""
+          manifestEntry := some entry
+          sourceLocation := (field? entry "sourceLocation").getD
+            (unavailableSourceLocation "source location unavailable")
+          sources := sources.map (resolvedSource index)
+        }
 
 private def Index.resolve (index : Index) (request : Request) : Result :=
   match request.kind with

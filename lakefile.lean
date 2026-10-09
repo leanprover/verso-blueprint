@@ -33,15 +33,22 @@ input_file externalMarkupSelectionCases where
   path := "tests/external_markup_selection_cases.json"
   text := true
 
--- Isolated resolver correctness experiment; ordinary browser code is unchanged.
-lean_lib VersoBlueprintRuntime where
-  srcDir := "src"
-  roots := #[`VersoBlueprintRuntime.ManifestResolver]
-  requiresModuleSystem := true
-
 lean_exe «manifest-resolver-oracle» where
   srcDir := "tests"
   root := `ManifestResolverOracle
+
+lean_lib VersoBlueprintRuntimeClientTests where
+  srcDir := "tests"
+  roots := #[`VersoBlueprintRuntimeClientTests.Program]
+
+lean_lib VersoBlueprintRuntimeClientResources where
+  srcDir := "tests"
+  roots := #[`VersoBlueprintRuntimeClientTests.Resources]
+  needs := #[`+VersoBlueprintRuntimeClientTests.Program:virResourcePack]
+
+lean_exe «manifest-resolver-client» where
+  srcDir := "tests"
+  root := `ManifestResolverClientMain
 
 -- Public VIR API and the document-independent client program.
 lean_lib VersoBlueprintVir where
@@ -56,7 +63,7 @@ lean_lib VersoBlueprintVirResources where
 
 lean_lib VersoBlueprintVirClientTests where
   srcDir := "tests"
-  roots := #[`VersoBlueprintVirClientTests.Program]
+  roots := #[`VersoBlueprintVirClientTests.Program, `VersoBlueprintVirClientTests.Site]
 
 lean_lib VersoBlueprintVirClientResources where
   srcDir := "tests"
@@ -81,6 +88,12 @@ lean_lib VersoBlueprint where
 lean_lib VersoBlueprintHtmlId where
   srcDir := "src"
   roots := #[`VersoBlueprint.Lib.HtmlId]
+
+-- Declare after the core library so the resolver's whitespace leaf does not
+-- inherit the generator's precompiled shared-library dependency.
+lean_lib VersoBlueprintRuntime where
+  srcDir := "src"
+  roots := #[`VersoBlueprintRuntime.ManifestResolver, `VersoBlueprint.Lib.BrowserString]
 
 @[default_target]
 lean_exe «vbp» where

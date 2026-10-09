@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 import Lean.Data.Json
 import VersoBlueprintVirClientTests.Program
 import VersoBlueprintVirClientTests.Resources
+import VersoBlueprintVirClientTests.Site
 import VersoBlueprint.PreviewManifest
 
 private def sampleEntry : Informal.PreviewManifest.Entry := {
@@ -46,14 +47,6 @@ def main (args : List String) : IO Unit := do
   let [output] := args
     | throw <| IO.userError "usage: vir-client-example OUTPUT"
   let directory := System.FilePath.mk output
-  let site ← IO.ofExcept <|
-    (VersoBlueprintVirClientTests.resources.forSite "lib/vir").mapError reprStr
-  unless site.programManifests.size == 1 do
-    throw <| IO.userError "the client example requires exactly one program"
-  for file in site.files do
-    let path := directory / file.path
-    IO.FS.createDirAll (path.parent.getD directory)
-    IO.FS.writeBinFile path file.bytes
   let inputs := #["", "FLT", "Fermat’s Last Theorem", "Προεπισκόπηση 🦀"]
   let cases := inputs.map fun input => Lean.Json.mkObj [
     ("input", Lean.toJson input),
@@ -65,15 +58,11 @@ def main (args : List String) : IO Unit := do
   let htmlIdCases := htmlIdInputs.map fun input => Lean.Json.mkObj [
     ("input", Lean.toJson input),
     ("expected", Lean.toJson (VersoBlueprint.HtmlId.encode input))]
-  let client := Lean.Json.mkObj [
-    ("runtimeModule", Lean.toJson site.runtimeModule),
-    ("runtimeManifest", Lean.toJson site.runtimeManifest),
-    ("programManifest", Lean.toJson site.programManifests[0]!),
-    ("entry", Lean.toJson (``VersoBlueprintVirClientTests.Program.title).toString),
+  VersoBlueprintVirClientTests.publishSite VersoBlueprintVirClientTests.resources
+    (``VersoBlueprintVirClientTests.Program.title).toString directory [
     ("cases", Lean.Json.arr cases),
     ("selectionCases", selectionCases),
     ("htmlIdCases", Lean.Json.arr htmlIdCases)]
-  IO.FS.writeFile (directory / "client.json") client.compress
   -- Use the existing generated-site asset writer, not a second JS bundler.
   Informal.PreviewManifest.writeBlueprintRuntimeModules (directory / "-verso-data")
   IO.FS.writeFile (directory / "example.json") <| (Lean.Json.mkObj [

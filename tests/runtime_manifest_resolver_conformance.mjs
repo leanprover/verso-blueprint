@@ -63,7 +63,7 @@ async function resolveRequest(data, request) {
       };
     }
     case "sourceMetadata":
-      return data.resolveSourceMetadata(value);
+      return data.resolveSourceMetadata(request.value);
     default:
       throw new Error(`unsupported fixture request kind: ${request.kind}`);
   }
@@ -159,6 +159,60 @@ for (const testCase of fixture.parityCases) {
   nativeCases.push({ ...testCase, expected, domain });
 }
 
+// Source lookup also accepts entries and render results, not just preview keys.
+// Use detached entries to prove that direct input wins over a manifest lookup.
+const sourceRef = { document: " paper ", spans: [{ page: "42" }], extra: { keep: true } };
+const detachedEntry = { key: " detached--statement ", facet: "statement", sources: [sourceRef] };
+const sourceCases = [
+  ["direct-entry", detachedEntry, { ok: true, key: "detached--statement", sourceDocumentIds: ["paper"] }],
+  ["nested-entry", { key: "unsourced--statement", manifestEntry: detachedEntry },
+    { ok: true, key: "detached--statement" }],
+  ["outer-entry-fallback", { ...detachedEntry, manifestEntry: { key: "ignored" } },
+    { ok: true, key: "detached--statement" }],
+  ["render-result", { ok: false, key: " alpha--statement " }, { ok: true, key: "alpha--statement" }],
+  ["invalid-nested-entry", { key: "alpha--statement", manifestEntry: [] }, { ok: true }],
+  ["key-only", { key: "alpha--statement" }, { ok: true }],
+  ["key-only-missing", { key: "unknown" }, { ok: false, reason: "manifest-entry-missing" }],
+  ["string", " alpha--statement ", { ok: true, key: "alpha--statement" }],
+  ...[null, false, 17, [], {}, "", { key: "\u00a0" }].map((source, i) =>
+    [`missing-key-${i}`, source, { ok: false, key: "", reason: "missing-key" }]),
+  ...["authoredLabel", "targetKind", "facet"].map(field =>
+    [`entry-marker-${field}`, { key: "detached", [field]: "" },
+      { ok: false, key: "detached", reason: "source-missing" }]),
+  ...["sources", "externalMarkup", "leanCodePreviewKeys"].map(field =>
+    [`entry-marker-${field}`, { key: "detached", [field]: [] },
+      { ok: false, key: "detached", reason: "source-missing" }]),
+  ["wrong-marker-types", { key: "alpha--statement", authoredLabel: 1, targetKind: false,
+    facet: [], sources: {}, externalMarkup: {}, leanCodePreviewKeys: "wrong" }, { ok: true }],
+  ["non-array-sources", { key: "detached", facet: "statement", sources: {} },
+    { ok: false, reason: "source-missing" }],
+  ["mixed-source-refs", { key: "detached", sources: [sourceRef,
+    { document: "unknown", spans: null }, { document: 17, spans: ["opaque"] },
+    null, [], "invalid", { document: "paper", spans: [] }] },
+    { ok: true, sourceDocumentIds: ["paper", "unknown", "", "", "", "", "paper"] }],
+];
+for (const [id, source, fields] of sourceCases) {
+  const caseData = createData(fixture.manifest);
+  const request = { id, kind: "sourceMetadata", value: source };
+  const before = JSON.stringify(source);
+  const result = await resolveRequest(caseData, request);
+  const expected = snapshot(request, result);
+  for (const [field, value] of Object.entries(fields)) {
+    assert.deepEqual(expected[field], value, `${id}: ${field}`);
+  }
+  assert.equal(JSON.stringify(source), before, `${id}: input mutation`);
+  // The host must retain original entry/reference/span objects through migration.
+  if (source?.manifestEntry === detachedEntry || source === detachedEntry || id === "outer-entry-fallback") {
+    const direct = source?.manifestEntry === detachedEntry ? detachedEntry : source;
+    assert.equal(result.manifestEntry, direct, `${id}: entry identity`);
+    assert.equal(result.sources[0].sourceRef, direct.sources[0], `${id}: source-ref identity`);
+    assert.equal(result.sources[0].spans, direct.sources[0].spans, `${id}: spans identity`);
+    assert.equal(result.sources[0].document, await caseData.loadSourceDocument("paper"),
+      `${id}: document identity`);
+  }
+  nativeCases.push({ id, manifest: fixture.manifest, requests: [request], expected: [expected], domain: [result] });
+}
+
 // Cover the complete ECMAScript trim set, plus characters trim must preserve.
 const whitespace = [9, 10, 11, 12, 13, 32, 160, 5760,
   ...Array.from({ length: 11 }, (_, i) => 8192 + i), 8232, 8233, 8239, 8287, 12288, 65279];
@@ -170,14 +224,17 @@ for (const code of [...whitespace, 0, 133, 6158, 8203, 128512]) {
   nativeCases.push({ id: `trim-${code}`, manifest: fixture.manifest, requests, expected });
 }
 
-const [nativeBinary, ...extra] = process.argv.slice(2);
-assert.equal(extra.length, 0, "expected at most one native oracle path");
+const [nativeBinary, campaignFlag, ...extra] = process.argv.slice(2);
+assert.equal(extra.length, 0, "unexpected arguments");
+assert.ok(campaignFlag === undefined || campaignFlag === "--emit-campaign", "unexpected campaign flag");
+assert.ok(!campaignFlag || nativeBinary, "campaign requires the native oracle");
+let campaign;
 if (nativeBinary) {
   const inputs = nativeCases.map(testCase => JSON.stringify({
     abiVersion: fixture.abiVersion, manifest: testCase.manifest, requests: testCase.requests || []
   }));
   inputs.push("not json", JSON.stringify({ abiVersion: fixture.abiVersion + 1,
-    manifest: fixture.manifest }));
+    manifest: fixture.manifest, requests: [] }));
   const input = inputs.join("\n") + "\n";
   const run = spawnSync(nativeBinary, [], {
     input, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000
@@ -213,5 +270,11 @@ if (nativeBinary) {
     assert.ok(output.error.length > 0);
     assert.deepEqual(output.results, []);
   }
+  assert.equal(outputs.at(-1).error, `unsupported manifest resolver ABI version ${fixture.abiVersion + 1}`);
+  campaign = inputs.map((input, i) => ({
+    id: nativeCases[i]?.id || `invalid-envelope-${i - nativeCases.length}`,
+    input, expected: outputs[i]
+  }));
 }
-console.log(`runtime manifest resolver ${nativeBinary ? "native/JavaScript" : "JavaScript"} conformance ok (${nativeCases.length} cases)`);
+console.log(campaignFlag ? JSON.stringify(campaign) :
+  `runtime manifest resolver ${nativeBinary ? "native/JavaScript" : "JavaScript"} conformance ok (${nativeCases.length} cases)`);
