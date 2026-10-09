@@ -193,6 +193,29 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
+The production gate intentionally requests only the public library and CLI.
+Use the standalone CLI target when that is the scope being checked, or both
+production targets for the complete production gate:
+
+```bash
+scripts/lean-low-priority lake build vbp
+scripts/lean-low-priority lake build VersoBlueprint vbp
+```
+
+The law modules import the production contribution and assembly definitions;
+the production targets do not import the proof layer. CI verifies the laws
+explicitly in the test job before the ordinary Lean test driver:
+
+```bash
+scripts/lean-low-priority lake build \
+  +VersoBlueprint.Contributions.Laws:olean \
+  +VersoBlueprint.NodeAssembly.Laws:olean
+./scripts/run-lean-tests.sh
+```
+
+Bare `lake build` continues to build all configured default targets, including
+the test driver, and is useful when that broader local check is intended.
+
 The full `./scripts/run-lean-tests.sh` suite also runs Python integration checks,
 including validation of Lean-serialized provenance fixtures against the generated
 JSON Schema. Install `tests/integration/requirements.txt` in your Python
@@ -918,9 +941,11 @@ pull requests and pushes to release branches named like `v4.34.0`:
 - `Blueprint Tests`
 - `Harness Tests`
 
-`Harness Tests` is intentionally Python-only: ordinary `unittest` discovery
-must not invoke Lean or Lake. `Blueprint Tests` owns explicit Lean execution
-smokes, while the Lean-backed curated-document registry is exercised and
+`Blueprint Build` explicitly builds `VersoBlueprint` and `vbp`; it does not
+request the contribution/assembly law modules. `Blueprint Tests` explicitly
+verifies those law modules before it runs the existing Lean and integration
+test driver. `Harness Tests` is intentionally Python-only: ordinary `unittest`
+discovery must not invoke Lean or Lake. The Lean-backed curated-document registry is exercised and
 checked against the shared test-blueprint category/tag vocabulary by `Build
 Test Blueprints` before it generates the artifact catalog.
 

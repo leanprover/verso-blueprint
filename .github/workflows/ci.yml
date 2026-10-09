@@ -43,7 +43,7 @@ jobs:
           lake --version
           python3 --version
       - name: Build package
-        run: ./scripts/lean-low-priority lake build
+        run: ./scripts/lean-low-priority lake build VersoBlueprint vbp
 
   blueprint-tests:
     name: Blueprint Tests
@@ -74,6 +74,11 @@ jobs:
             ${{ runner.os }}-lake-deps-
       - name: Install integration test dependencies
         run: python3 -m pip install -r tests/integration/requirements.txt
+      - name: Verify contribution and assembly laws
+        run: >
+          ./scripts/lean-low-priority lake build
+          +VersoBlueprint.Contributions.Laws:olean
+          +VersoBlueprint.NodeAssembly.Laws:olean
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
       - name: Run consumer math lint smoke
