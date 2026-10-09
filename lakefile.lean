@@ -24,10 +24,19 @@ input_file mathLintWorkerJs where
   path := "static-web/katex-lint.mjs"
   text := true
 
+input_dir externalMarkupExampleAssets where
+  path := "examples/external-markup"
+  text := true
+  filter := .extension <| .mem #["html", "mjs"]
+
+input_file externalMarkupSelectionCases where
+  path := "tests/external_markup_selection_cases.json"
+  text := true
+
 -- Optional VIR resource API; neither the core library nor generator imports it.
 lean_lib VersoBlueprintVir where
   srcDir := "src"
-  roots := #[`VersoBlueprintVir]
+  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup]
 
 lean_lib VersoBlueprintVirClientTests where
   srcDir := "tests"
@@ -41,6 +50,7 @@ lean_lib VersoBlueprintVirClientResources where
 lean_exe «vir-client-example» where
   srcDir := "tests"
   root := `VirClientExampleMain
+  needs := #[externalMarkupExampleAssets, externalMarkupSelectionCases]
 
 -- Blueprint core library.
 @[default_target]
