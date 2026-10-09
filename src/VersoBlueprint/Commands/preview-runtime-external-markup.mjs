@@ -82,8 +82,9 @@ export async function selectExternalMarkup(entry, preferences) {
   if (disposed) throw new Error("External markup selector is disposed");
   if (!selectorPromise) {
     selectorPromise = (async () => {
-      const { default: config } = await import("./external-markup-vir.mjs");
-      const { createProgram } = await import(new URL(config.runtimeModule, import.meta.url));
+      const configUrl = new URL("./external-markup-vir.mjs", import.meta.url);
+      const { default: config } = await import(configUrl.href);
+      const { createProgram } = await import(new URL(config.runtimeModule, import.meta.url).href);
       const opened = await createProgram({
         runtimeManifestUrl: new URL(config.runtimeManifest, import.meta.url),
         programManifestUrl: new URL(config.programManifest, import.meta.url),
