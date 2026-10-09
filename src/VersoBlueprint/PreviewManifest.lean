@@ -5,7 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprintVir.Program
+import VersoBlueprintVir.ExternalMarkup
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprintVir.Resources
 import Lean.Elab.Command
 import Std.Data.HashMap
@@ -787,6 +788,8 @@ private def externalMarkupModuleMjs : String := include_str "Commands/preview-ru
 
 private def virClientModuleMjs : String := include_str "Commands/blueprint-vir-client.mjs"
 
+private def manifestResolverModuleMjs : String := include_str "Commands/manifest-resolver.mjs"
+
 private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
@@ -798,7 +801,8 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeTemplateModuleFilename, previewRuntimeTemplateModuleMjs),
   (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs),
   ("preview-runtime-external-markup.mjs", externalMarkupModuleMjs),
-  ("blueprint-vir-client.mjs", virClientModuleMjs)
+  ("blueprint-vir-client.mjs", virClientModuleMjs),
+  ("manifest-resolver.mjs", manifestResolverModuleMjs)
 ]
 
 private def pageRuntimeModules : Array (String × String) := #[
@@ -864,8 +868,11 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
     ("runtimeManifest", toJson ("../" ++ site.runtimeManifest)),
     ("programManifest", toJson ("../" ++ site.programManifests[0]!)),
     ("entries", Json.mkObj [
-      ("externalMarkup", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString),
-      ("htmlId", toJson (``VersoBlueprint.HtmlId.encode).toString)])]
+      ("externalMarkup", toJson (`VersoBlueprint.ExternalMarkup.selectMarkup).toString),
+      ("htmlId", toJson (`VersoBlueprint.HtmlId.encode).toString),
+      -- Browser-only bindings must not enter the native generator's imports.
+      ("manifestPrepare", toJson "VersoBlueprint.Manifest.prepare"),
+      ("manifestLookup", toJson "VersoBlueprint.Manifest.lookup")])]
   writeDataFile dataDir "Commands/blueprint-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs

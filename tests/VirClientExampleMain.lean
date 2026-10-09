@@ -36,7 +36,7 @@ private def selectionCases : IO Lean.Json := do
   for caseEntry in (← IO.ofExcept cases.getArr?) do
     let input ← IO.ofExcept <| caseEntry.getObjVal? "input"
     let expected ← IO.ofExcept <| caseEntry.getObjValAs? VersoBlueprint.ExternalMarkup.Selection "expected"
-    let actual ← IO.ofExcept <| Lean.Json.parse (VersoBlueprint.ExternalMarkup.selectMarkup input.compress)
+    let actual ← IO.ofExcept <| Lean.Json.parse (VersoBlueprint.ExternalMarkup.selectJson input.compress)
       >>= Lean.fromJson? (α := VersoBlueprint.ExternalMarkup.Selection)
     unless actual == expected do
       throw <| IO.userError s!"native external markup selection mismatch: {caseEntry.compress}"
@@ -57,7 +57,7 @@ def main (args : List String) : IO Unit := do
     String.singleton (Char.ofNat 0x10FFFF)]
   let htmlIdCases := htmlIdInputs.map fun input => Lean.Json.mkObj [
     ("input", Lean.toJson input),
-    ("expected", Lean.toJson (VersoBlueprint.HtmlId.encode input))]
+    ("expected", Lean.toJson (Informal.HtmlId.key input))]
   VersoBlueprintVirClientTests.publishSite VersoBlueprintVirClientTests.resources
     (``VersoBlueprintVirClientTests.Program.title).toString directory [
     ("cases", Lean.Json.arr cases),

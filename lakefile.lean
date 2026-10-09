@@ -53,8 +53,13 @@ lean_exe «manifest-resolver-client» where
 -- Public VIR API and the document-independent client program.
 lean_lib VersoBlueprintVir where
   srcDir := "src"
-  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup,
-    `VersoBlueprintVir.Program]
+  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup]
+
+-- Browser host bindings must never be C-compiled into the native generator.
+-- Declare after the facade library so this overlapping root has its own owner.
+lean_lib VersoBlueprintVirProgram where
+  srcDir := "src"
+  roots := #[`VersoBlueprintVir.Program]
 
 lean_lib VersoBlueprintVirResources where
   srcDir := "src"

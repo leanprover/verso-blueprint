@@ -57,7 +57,7 @@ The [VIR client guide](https://github.com/ejgallego/lean-vir/blob/aa465b873387a0
 describes the upstream API. This example is a repository fixture, not a document
 generator or a replacement for `lake exe vbp build`.
 
-## Manifest resolver preparation
+## Manifest resolver
 
 `VersoBlueprintRuntime.ManifestResolver` is a pure, document-independent resolver
 for generated manifest entries, groups, declarations and source provenance. It
@@ -67,15 +67,26 @@ a direct entry, or a render result carrying an entry/key. Direct entries take
 precedence; fetching, load status, retries and browser object identity remain
 host responsibilities.
 
-This is not yet the generated site's data API. The String-based VIR exports are
-conformance fixtures, not the chosen production transport. Production migration
-must first qualify efficient value transfer; the upstream explicit
-value-conversion work is the planned route. It must not reparse a complete
-manifest on each lookup or serialize complete entries just to recover values
-already retained by the browser. The JSON campaign covers generated-data values,
-not arbitrary cyclic objects or callbacks supplied by a JavaScript application.
+`createPreviewData().resolveLabel` and `.resolveDeclaration` use this policy
+through the site's shared VIR program. A data API prepares its manifest lazily,
+once per cache revision. The current transfer is explicit JSON text plus a
+runtime-owned opaque prepared-index carrier; efficient upstream value conversion
+remains a follow-up. Queries do not reparse the complete manifest. Returned
+entries and source locations are reattached to the original browser objects,
+not exposed as JSON clones. Treat loaded manifests as immutable; use the existing
+reset/setter methods to replace them.
 
-The shared native/JavaScript campaign and real-browser lifetime gate are:
+The current path still parses the complete input in Lean and serializes full
+query results, so it is a deduplication step, not a speedup. Fetching, manifest
+and group decoding, status/retry behavior and source-metadata adaptation remain
+JavaScript for this slice. Raw manifest/cache loading and native rendering do
+not start VIR; label/declaration resolution requires the matching generated-site
+runtime served over HTTP. Direct Node file loading does not provide that browser
+resource environment. The JSON campaign covers generated-data values, not
+arbitrary cyclic objects or callbacks supplied by a JavaScript application.
+
+The fixture expectations, native reference campaign and real-browser consumer
+and lifetime gates are:
 
 ```sh
 lake build manifest-resolver-oracle
@@ -85,7 +96,9 @@ uv run --project tests/browser --extra test python -m pytest tests/browser/test_
 
 The browser gate uses public VIR resources and runtime-owned opaque carriers;
 it checks same-runtime recovery, immutable retained lookup, foreign/stale carrier
-rejection and disposal. No private codec, alternate loader or renderer is added.
+rejection and disposal, original object identity, concurrent preparation and
+cache invalidation. There is no JavaScript selection fallback, private codec,
+alternate loader or renderer.
 
 ## Generated-site external-markup selection
 

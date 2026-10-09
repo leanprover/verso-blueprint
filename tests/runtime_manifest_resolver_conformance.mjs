@@ -6,6 +6,22 @@ import { createBlueprintDataApi, decodeBlueprintManifestFile } from "../src/Vers
 
 const fixtureUrl = new URL("./fixtures/runtime-manifest-resolver.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixtureUrl, "utf8"));
+const [nativeBinary, campaignFlag, ...extra] = process.argv.slice(2);
+assert.ok(nativeBinary, "the campaign requires the native oracle path");
+assert.equal(extra.length, 0, "unexpected arguments");
+assert.ok(campaignFlag === undefined || campaignFlag === "--emit-campaign", "unexpected campaign flag");
+
+function nativeLookup(manifest, request) {
+  const run = spawnSync(nativeBinary, [], {
+    input: JSON.stringify({ abiVersion: fixture.abiVersion, manifest, requests: [request] }) + "\n",
+    encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000,
+  });
+  assert.ifError(run.error);
+  assert.equal(run.status, 0, run.stderr);
+  const output = JSON.parse(run.stdout);
+  assert.equal(output.ok, true, output.error);
+  return output.results[0];
+}
 
 const createData = manifest => createBlueprintDataApi({
   fetchJson(url) {
@@ -20,7 +36,7 @@ function unavailableSourceLocation(message) {
   return { ok: false, location: null, error: message };
 }
 
-async function resolveRequest(data, request) {
+async function resolveRequest(data, request, manifest = fixture.manifest) {
   const value = typeof request.value === "string" ? request.value.trim() : "";
   switch (request.kind) {
     case "preview": {
@@ -36,9 +52,10 @@ async function resolveRequest(data, request) {
       };
     }
     case "label":
-      return data.resolveLabel(value, request.facet ? { facet: request.facet } : undefined);
     case "declaration":
-      return data.resolveDeclaration(value);
+      // These policies now have one Lean authority. Static fixture expectations
+      // guard semantics; Chromium compares the actual browser API to this oracle.
+      return nativeLookup(manifest, request);
     case "group": {
       const group = value ? await data.loadGroup(value) : null;
       return {
@@ -146,7 +163,7 @@ for (const testCase of fixture.parityCases) {
   const expected = [];
   const domain = [];
   for (const request of testCase.requests) {
-    const result = await resolveRequest(caseData, request);
+    const result = await resolveRequest(caseData, request, testCase.manifest);
     domain.push(result);
     expected.push(snapshot(request, result));
   }
@@ -224,10 +241,6 @@ for (const code of [...whitespace, 0, 133, 6158, 8203, 128512]) {
   nativeCases.push({ id: `trim-${code}`, manifest: fixture.manifest, requests, expected });
 }
 
-const [nativeBinary, campaignFlag, ...extra] = process.argv.slice(2);
-assert.equal(extra.length, 0, "unexpected arguments");
-assert.ok(campaignFlag === undefined || campaignFlag === "--emit-campaign", "unexpected campaign flag");
-assert.ok(!campaignFlag || nativeBinary, "campaign requires the native oracle");
 let campaign;
 if (nativeBinary) {
   const inputs = nativeCases.map(testCase => JSON.stringify({
@@ -277,4 +290,4 @@ if (nativeBinary) {
   }));
 }
 console.log(campaignFlag ? JSON.stringify(campaign) :
-  `runtime manifest resolver ${nativeBinary ? "native/JavaScript" : "JavaScript"} conformance ok (${nativeCases.length} cases)`);
+  `manifest resolver reference campaign verified (${nativeCases.length} cases)`);
