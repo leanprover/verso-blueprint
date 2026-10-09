@@ -70,7 +70,7 @@ export LAKE_RESTORE_ARTIFACTS=false
 ```
 
 Cache-in-place artifacts are supported by `lake lean` and `lake exe vbp build`
-on the maintained v4.35 and v4.34 release lines. The `lean-beam` language-server
+on the maintained v4.35 release line. The `lean-beam` language-server
 workflow was also validated on the former v4.33 line. Explicit
 `LAKE_CACHE_DIR`, `LAKE_ARTIFACT_CACHE`, and `LAKE_RESTORE_ARTIFACTS` values
 take precedence. Use
@@ -579,7 +579,8 @@ This makes the policy transition self-validating without constructing obsolete
 backport projects solely to satisfy the policy being removed.
 
 Run the retirement from a default-development worktree after every external
-reference Blueprint has moved off the oldest maintenance line:
+reference Blueprint has moved off the oldest maintenance line or has been
+removed from the maintained catalog:
 
 ```bash
 python3 -m scripts.blueprint_harness retire-release-line <oldest-maintenance-release>

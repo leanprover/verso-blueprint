@@ -231,9 +231,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [project.project_id for project in projects],
             [
                 "project-template",
-                "noperthedron",
                 "verso-flt",
-                "verso-carleson",
                 "spherepackingblueprint",
             ],
         )
@@ -278,9 +276,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if current_release.deploy_pages:
             self.assertTrue(resolve_projects_for_release(catalog, current_release.release_id, None))
         expected_external_repositories = {
-            "noperthedron": "https://github.com/ejgallego/verso-noperthedron.git",
             "verso-flt": "https://github.com/ejgallego/verso-flt.git",
-            "verso-carleson": "https://github.com/ejgallego/verso-carleson.git",
             "spherepackingblueprint": "https://github.com/ejgallego/verso-sphere-packing.git",
         }
         external_release_ids: set[str] = set()
