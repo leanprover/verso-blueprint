@@ -33,9 +33,7 @@ private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id :
   shouldWritePreviewDataByIds ((existing?.map (·.ids.toArray)).getD #[]) id
 
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
-  match blockData.isProof, blockData.codeData with
-  | false, some codeData => codeData.externalDecls
-  | _, _ => #[]
+  blockData.codeData.map (·.externalDecls) |>.getD #[]
 
 /-- Select a facet occurrence, preferring its filled body over earlier placeholders. -/
 def registerBlockPreviewData

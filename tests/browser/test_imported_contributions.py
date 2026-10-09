@@ -103,10 +103,12 @@ def test_filled_facets_reach_generated_previews(named_site, page: Page):
         assert [span["page"] for source in entry["sources"] for span in source["spans"]] == [source_page]
         assert [source["document"] for source in entry["sources"]] == [source_document]
         assert source_module in entry["sourceLocation"]["location"]["path"]
-        assert len(entry["leanCodePreviewKeys"]) == 2
+        assert len(entry["leanCodePreviewKeys"]) == (2 if entry["facet"] == "statement" else 1)
         code = entries[entry["leanCodePreviewKeys"][0]]
         assert {source["document"] for source in code["sources"]} == {"facet-paper", "facet-proof-paper"}
         page.goto(urljoin(f"{server}/", entry["href"]))
+        if entry["facet"] == "proof":
+            expect(page.get_by_text("Lean references used in this proof", exact=True)).to_be_visible()
         source_slot = page.locator(":target .bp_extra_slot_source")
         source_slot.locator(".bp_source_ref_chip").hover()
         source_preview = source_slot.locator(".bp_source_ref_preview_body")

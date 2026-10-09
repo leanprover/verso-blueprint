@@ -161,7 +161,7 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
     !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
     !hasSubstr proof "bp_code_panel_wrapper"
 
-/- Both facets retain shared code metadata; only the statement renders its panel. -/
+/- An unattached proof does not borrow the statement's code metadata or panels. -/
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -189,8 +189,7 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
     pure <|
       !statementEntry.leanCodePreviewKeys.isEmpty &&
       statementEntry.codeData.isSome &&
-      proofEntry.leanCodePreviewKeys == statementEntry.leanCodePreviewKeys &&
-      Lean.toJson proofEntry.codeData == Lean.toJson statementEntry.codeData &&
+      proofEntry.codeData.isNone && proofEntry.leanCodePreviewKeys.isEmpty &&
       hasSubstr statementHtml.asString "graftFacetCodeWitness" &&
       hasSubstr statementHtml.asString "bp_code_panel_wrapper" &&
       !hasSubstr proofHtml.asString "graftFacetCodeWitness" &&

@@ -73,6 +73,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintGraph,
     `VersoBlueprintTests.BlueprintHeaderExtras,
     `VersoBlueprintTests.BlueprintInformal,
+    `VersoBlueprintTests.BlueprintProofLeanRefs,
     `VersoBlueprintTests.BlueprintInlinePrecision,
     `VersoBlueprintTests.BlueprintLinkHover,
     `VersoBlueprintTests.BlueprintMainWrapper,

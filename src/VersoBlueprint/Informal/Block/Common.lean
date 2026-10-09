@@ -111,6 +111,11 @@ def fallbackCodePanelHeaderFor (languageName : String) : CodePanelHeader := {
 def codePanelHeader (display : NodeDisplay) : CodePanelHeader :=
   codePanelHeaderFor "Lean" display
 
+/-- Proof attachments are supporting references, rather than implementations of the node. -/
+def proofReferencesPanelHeader : CodePanelHeader := {
+  caption := "Lean references used in this proof"
+}
+
 def fallbackCodePanelHeader : CodePanelHeader :=
   fallbackCodePanelHeaderFor "Lean"
 

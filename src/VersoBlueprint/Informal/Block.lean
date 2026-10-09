@@ -87,10 +87,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | some (selectedMarkup, _) => Informal.ExternalMarkupRender.sourceBackedAttrs selectedMarkup
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
-        let codeHint? :=
-          match data.isProof with
-          | true => none
-          | false => data.codeData
+        let codeHint? := data.codeData
         let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
@@ -104,26 +101,24 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
               inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
             } getDeclHref
           | true => none
-        let externalPanel : Output.Html ←
-          match data.isProof with
-          | false =>
-            if externalDecls.isEmpty then
-              pure .empty
-            else
-              let externalCdata : CodeSummary.ComputedData := {
-                source := some { externalDecls := externalDecls }
-              }
-              let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
-              let panelHeader := codePanelHeader (data.display s)
-              ExternalCode.renderPanelWithPageHovers
-                panelHeader
-                externalSummary.summaryTitle
-                externalSummary.indicator
-                externalDecls
-                getDeclHref
-                getDeclAnchorAttrs
-                (folded := data.foldCodeBlock)
-          | true => pure .empty
+        let externalPanel : Output.Html ← do
+          if externalDecls.isEmpty then
+            pure .empty
+          else
+            let externalCdata : CodeSummary.ComputedData := {
+              source := some { externalDecls := externalDecls }
+            }
+            let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
+            let panelHeader := if data.isProof then proofReferencesPanelHeader else
+              codePanelHeader (data.display s)
+            ExternalCode.renderPanelWithPageHovers
+              panelHeader
+              externalSummary.summaryTitle
+              externalSummary.indicator
+              externalDecls
+              getDeclHref
+              getDeclAnchorAttrs
+              (folded := data.foldCodeBlock)
         let content ←
           match selectedMarkupAndContent? with
           | some (_, selectedContent) => pure selectedContent

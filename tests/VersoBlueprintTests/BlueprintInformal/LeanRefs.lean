@@ -73,20 +73,6 @@ Simple body.
 :::
 :::::::
 
-/--
-error: Label «proof.external.forbidden» cannot use '(lean := ...)' in a proof block
--/
-#guard_msgs in
-#docs (Manual) proofLeanForbidden "Proof Lean Forbidden" :=
-:::::::
-:::lemma_ "proof.external.forbidden"
-Statement body.
-:::
-:::proof "proof.external.forbidden" (lean := "Nat.add")
-Proof body.
-:::
-:::::::
-
 #docs (Manual) conflictExternalThenInline "Conflict External Then Inline" :=
 :::::::
 :::definition "conflict.ext.inline" (lean := "Nat.add")

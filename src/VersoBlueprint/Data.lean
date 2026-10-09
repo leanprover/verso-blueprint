@@ -570,6 +570,8 @@ structure Node where
   proof : Option InformalData := none -- Informal Object proof
   /-- External associations, unique by canonical declaration in registration order. -/
   externalRefs : Array ExternalRef := #[]
+  /-- Supporting declarations attached to the informal proof, not implementations of this node. -/
+  proofExternalRefs : Array ExternalRef := #[]
   /-- Every associated literate block, in registration order. -/
   literateCodes : Array Code := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
@@ -596,6 +598,7 @@ structure NodeContribution where
   statementUses : Array UseRef := #[]
   proofUses : Array UseRef := #[]
   leanCode : Array CodeRef := #[]
+  proofExternalRefs : Array ExternalRef := #[]
   rustCode : Option RustInlineCode := none
   externalMarkup : ExternalMarkupSet := {}
   parent : Option Parent := none
@@ -733,6 +736,7 @@ private def mergeContribution (label : Label) (node : Node)
     count := if node.count == 0 then incoming.count else node.count
     statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl, issueUrl
     externalRefs, literateCodes
+    proofExternalRefs := mergeExternalRefs node.proofExternalRefs incoming.proofExternalRefs
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
   }
 
