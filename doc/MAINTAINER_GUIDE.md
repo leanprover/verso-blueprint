@@ -1,6 +1,6 @@
 # Blueprint Maintainer Guide
 
-Last updated: 2026-08-20
+Last updated: 2026-09-03
 
 This document is the repository-level workflow guide for maintaining Blueprint
 support in `verso-blueprint`, its in-repo validation projects, and its
@@ -184,6 +184,14 @@ For the full pre-merge check, run:
 That command runs Lean tests, Python harness tests, reference blueprint
 generation, test-blueprint generation, and configured panel/browser
 regressions.
+
+The production library is module-system-only. `scripts/run-lean-tests.sh`
+runs `scripts/check-module-boundaries.py` and builds the strict
+`VersoBlueprintBoundaryTests` consumers for the three supported workflow roots
+and the experimental Widget entry point before the behavioral suite. Do not
+repair a boundary failure with `allowNonModules` or
+`backward.privateInPublic`. Add a focused strict consumer only when introducing
+or changing a documented entry point. New fixtures should use `module`.
 
 For rendering-specific changes, use a cheaper progression first:
 

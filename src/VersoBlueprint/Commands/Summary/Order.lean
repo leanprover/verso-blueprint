@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
 import Lean
-import VersoBlueprint.Commands.Summary.Data
+public import VersoBlueprint.Commands.Summary.Data
+
+public section
 
 /-!
 Shared ordering helpers for Blueprint summary collection and rendering.

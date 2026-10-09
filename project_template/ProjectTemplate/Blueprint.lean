@@ -1,12 +1,13 @@
-import Verso
-import VersoManual
-import VersoBlueprint
-import VersoBlueprint.Commands.Graph
-import VersoBlueprint.Commands.Summary
-import ProjectTemplate.Chapters.Addition
-import ProjectTemplate.Chapters.Collatz
-import ProjectTemplate.Chapters.Multiplication
-import ProjectTemplate.Formalization.Addition
+module
+
+public import VersoBlueprint
+meta import VersoBlueprint
+public import ProjectTemplate.Chapters.Addition
+public import ProjectTemplate.Chapters.Collatz
+public import ProjectTemplate.Chapters.Multiplication
+public import ProjectTemplate.Formalization.Addition
+
+public section
 
 open Verso.Genre
 open Verso.Genre.Manual

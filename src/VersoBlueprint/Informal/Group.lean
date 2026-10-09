@@ -4,16 +4,29 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
+module
 
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.GroupData
-import VersoBlueprint.LabelNameParsing
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Profiling
-import VersoBlueprint.Resolve
-import VersoBlueprint.TraversalIndex
+public import VersoManual
+
+public import VersoBlueprint.Data
+public import VersoBlueprint.Environment
+public import VersoBlueprint.Informal.GroupData
+public import VersoBlueprint.LabelNameParsing
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Profiling
+public import VersoBlueprint.Resolve
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.GroupData
+public meta import VersoBlueprint.LabelNameParsing
+public meta import VersoBlueprint.Lib.ExtensionDecode
+public meta import VersoBlueprint.Profiling
+public meta import VersoBlueprint.Resolve
+public meta import VersoBlueprint.TraversalIndex
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -22,6 +35,8 @@ open Lean.Doc.Syntax
 open Lean Elab
 
 namespace Informal
+
+meta section
 
 structure GroupConfig where
   label : Data.Label
@@ -40,6 +55,8 @@ def GroupConfig.parse : ArgParse m GroupConfig :=
 
 instance : FromArgs GroupConfig m where
   fromArgs := GroupConfig.parse
+
+end
 
 end
 
@@ -62,6 +79,8 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
           (fun _ => "Malformed data in Block.groupMetadata.toHtml")
         | pure .empty
       pure .empty
+
+meta section
 
 private def collapseWhitespace (s : String) : String :=
   let s := s.replace "\n" " "
@@ -105,5 +124,7 @@ private def groupExpanderImpl : DirectiveExpanderOf GroupConfig
   | cfg, contents => do
     Profile.withDocElab "directive" "group" <|
       groupExpanderImpl cfg contents
+
+end
 
 end Informal

@@ -4,12 +4,16 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoSlides
+module
+
+public import VersoSlides
 import Verso.Doc.Elab
 import VersoBlueprint.PreviewManifest
-import VersoBlueprint.Slides.Assets
+public import VersoBlueprint.Slides.Assets
 import VersoBlueprint.Slides.Node
 import VersoBlueprint.Slides.Render
+
+public section
 
 namespace Informal.Slides
 

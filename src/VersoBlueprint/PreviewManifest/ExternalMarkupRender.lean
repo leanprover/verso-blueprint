@@ -4,11 +4,15 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
 import VersoManual
-import VersoBlueprint.Data
-import VersoBlueprint.Informal.Block.Model
+public import VersoBlueprint.Data
+public import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Render
-import VersoBlueprint.Informal.ExternalMarkupRender
+public import VersoBlueprint.Informal.ExternalMarkupRender
+
+public section
 
 namespace Informal.PreviewManifest
 

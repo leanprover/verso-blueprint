@@ -4,23 +4,33 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoManual
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Data
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block
-import VersoBlueprint.Informal.LabelArg
-import VersoBlueprint.Informal.UseConfig
-import VersoBlueprint.Lib.ExtensionDecode
-import VersoBlueprint.Lib.HoverRender
-import VersoBlueprint.RenderingResolution
-import VersoBlueprint.Profiling
-import VersoBlueprint.TeX
-import VersoBlueprint.TraversalIndex
+module
+
+public import VersoManual
+public import VersoBlueprint.Commands.Common
+public import VersoBlueprint.Data
+public import VersoBlueprint.Informal.Block
+public import VersoBlueprint.Informal.Block.Store
+public import VersoBlueprint.Lib.ExtensionDecode
+public import VersoBlueprint.Lib.HoverRender
+public import VersoBlueprint.Lib.PreviewSource
+public import VersoBlueprint.PreviewCache
+public import VersoBlueprint.TeX
+public import VersoBlueprint.TraversalIndex
+public meta import VersoManual
+public meta import VersoBlueprint.Data
+public meta import VersoBlueprint.Environment
+public meta import VersoBlueprint.Informal.Block
+public meta import VersoBlueprint.Informal.Uses.Config
+public meta import VersoBlueprint.Informal.UseConfig
+public meta import VersoBlueprint.Profiling
+
+public import VersoBlueprint.RenderingResolution
+
+public section
 
 open Verso Doc Elab
 open Verso.Genre Manual
-open Verso.ArgParse
 open Lean Lean.Elab
 open Lean.Doc.Syntax
 
@@ -29,83 +39,12 @@ namespace Informal
 def usesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.inlinePreviewAssetBundle
 
-/--
-Arguments accepted by the inline `{uses ...}` role.
-
-This role renders a reference and registers a dependency edge from the enclosing
-block. Its `origin` and `intent` options share the same metadata semantics as
-block-level `(uses_origin := ...)` and `(uses_intent := ...)`.
--/
-structure UsesConfig where
-  label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
-  origin : Data.UseOrigin := .manual
-  invalidOrigin : Option String := none
-  intent : Data.UseIntent := .regular
-  invalidIntent : Option String := none
-
-/--
-Arguments accepted by the inline `{bpref ...}` role.
-
-`bpref` renders the same kind of hoverable Blueprint reference as `{uses ...}`,
-but deliberately does not accept dependency metadata or register a use edge.
--/
-structure BprefConfig where
-  label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
-
-section
-variable [Monad m] [MonadError m]
-
-def UsesConfig.ofArgs (labelArg : Verso.ArgParse.WithSyntax String)
-    (origin intent : Option String) : UsesConfig :=
-  let parsedLabel := LabelArg.parse labelArg
-  let metadata := UseConfig.parseMetadata origin intent
-  {
-    label := parsedLabel.label
-    labelSyntax := parsedLabel.labelSyntax
-    origin := metadata.origin
-    invalidOrigin := metadata.invalidOrigin
-    intent := metadata.intent
-    invalidIntent := metadata.invalidIntent
-  }
-
-def UsesConfig.parse : ArgParse m UsesConfig :=
-  UsesConfig.ofArgs <$> .positional `label (.withSyntax .string)
-        <*> .named `origin .string true <*> .named `intent .string true
-
-instance : FromArgs UsesConfig m where
-  fromArgs := UsesConfig.parse
-
-def BprefConfig.parse : ArgParse m BprefConfig :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) =>
-    let parsedLabel := LabelArg.parse labelArg
-    {
-      label := parsedLabel.label
-      labelSyntax := parsedLabel.labelSyntax
-    }) <$> .positional `label (.withSyntax .string)
-
-instance : FromArgs BprefConfig m where
-  fromArgs := BprefConfig.parse
-
-end
-
-def UsesConfig.useRef? (cfg : UsesConfig) : Option Data.UseRef :=
-  if cfg.invalidOrigin.isNone && cfg.invalidIntent.isNone then
-    some { label := cfg.label, origin := cfg.origin, intent := cfg.intent }
-  else none
-
-def UsesConfig.validate [Monad m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
-    (cfg : UsesConfig) : m (Option Data.UseRef) := do
-  if let some raw := cfg.invalidOrigin then
-    logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
-  if let some raw := cfg.invalidIntent then
-    logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
-  return cfg.useRef?
-
 structure InlineData where
   label : Data.Label
-deriving FromJson, ToJson, Quote
+deriving FromJson, ToJson
+
+meta instance : Quote InlineData where
+  quote data := Syntax.mkCApp ``InlineData.mk #[quote data.label]
 
 private def RenderingResolution.Reference.withPreview
     (reference : RenderingResolution.Reference) (node : Verso.Output.Html) :
@@ -180,6 +119,8 @@ def Inline.withPreviewAvailability (impls : ExtensionImpls)
     (available : PreviewKey → Bool) : ExtensionImpls :=
   Inline.withPreviewRendering impls (PreviewResources.immediate available)
 
+meta section
+
 def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
     let data : InlineData := { label }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
@@ -201,5 +142,7 @@ def bpref : RoleExpanderOf BprefConfig
   | cfg, contents => do
     Profile.withDocElab "role" "bpref" <|
       nodeReferenceTerm cfg.label (← contents.mapM elabInline)
+
+end
 
 end Informal

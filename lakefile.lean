@@ -49,6 +49,7 @@ lean_lib VersoBlueprint where
   roots := #[`VersoBlueprint]
   precompileModules := true
   needs := #[embeddedBlueprintAssets, blueprintMathJs, mathLintWorkerJs]
+  requiresModuleSystem := true
 
 @[default_target]
 lean_exe «vbp» where
@@ -121,6 +122,24 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.TestBlueprintRegistryCoverage,
     `VersoBlueprintTests.Vbp
   ]
+
+@[default_target]
+lean_lib VersoBlueprintBoundaryTests where
+  srcDir := "tests"
+  roots := #[
+    `VersoBlueprintBoundaryTests.AuthoringRoot,
+    `VersoBlueprintBoundaryTests.AuthoringDocumentImport,
+    `VersoBlueprintBoundaryTests.AutoDeps.Provider,
+    `VersoBlueprintBoundaryTests.AutoDeps.Ordinary,
+    `VersoBlueprintBoundaryTests.AutoDeps.ImportAll,
+    `VersoBlueprintBoundaryTests.AutoDeps.Transitive,
+    `VersoBlueprintBoundaryTests.AutoDeps.Reexport,
+    `VersoBlueprintBoundaryTests.AutoDeps.PublicTransitive,
+    `VersoBlueprintBoundaryTests.GeneratorRoot,
+    `VersoBlueprintBoundaryTests.SlidesRoot,
+    `VersoBlueprintBoundaryTests.WidgetRoot
+  ]
+  requiresModuleSystem := true
 
 lean_lib VersoBlueprintTestDocs where
   srcDir := "tests"

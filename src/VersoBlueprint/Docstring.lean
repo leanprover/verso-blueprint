@@ -4,8 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean.DocString.Extension
-import VersoManual
+module
+
+public meta import Lean.DocString.Extension
+public meta import VersoManual
+
+public meta section
 
 namespace Informal.Docstring
 
@@ -20,7 +24,8 @@ private def mathAttrs (mode : Lean.Doc.MathMode) (texPrelude : String) :
   else
     #[("class", classes), ("data-bp-tex-prelude", texPrelude)]
 
-private def elaboratedDocstringGenre : Verso.Doc.Genre where
+/-- Structural genre used to render elaborated Lean docstrings. -/
+@[expose] def elaboratedDocstringGenre : Verso.Doc.Genre where
   PartMetadata := Empty
   Block := Lean.ElabBlock
   Inline := Lean.ElabInline

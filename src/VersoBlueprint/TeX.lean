@@ -4,7 +4,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Verso.Output.TeX
+module
+
+public import Verso.Output.TeX
+
+public section
 
 namespace Informal.TeX
 

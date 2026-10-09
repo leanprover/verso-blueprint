@@ -4,23 +4,27 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean.Elab.Command
-import Lean.Elab.InfoTree
+module
 
-import SubVerso.Highlighting
+public import Lean.Elab.Command
+public import Lean.Elab.InfoTree
 
-import Verso
+public import SubVerso.Highlighting
 
-import VersoManual.Basic
-import VersoManual.HighlightedCode
-import VersoManual.InlineLean.Block
-import VersoManual.InlineLean.LongLines
-import VersoManual.InlineLean.Outputs
-import VersoManual.InlineLean.Scopes
+public import Verso
 
-import VersoBlueprint.Data
-import VersoBlueprint.ProvedStatus
-import VersoBlueprint.Profiling
+public import VersoManual.Basic
+public import VersoManual.HighlightedCode
+public import VersoManual.InlineLean.Block
+public import VersoManual.InlineLean.LongLines
+public import VersoManual.InlineLean.Outputs
+public import VersoManual.InlineLean.Scopes
+
+public import VersoBlueprint.Data
+public import VersoBlueprint.ProvedStatus
+public import VersoBlueprint.Profiling
+
+public section
 
 open Verso Doc Elab Genre.Manual
 open Lean Elab
@@ -305,7 +309,10 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
     let envBefore ← getEnv
     let col? := (← getRef).getPos? |>.map (← getFileMap).utf8PosToLspPos |>.map (·.character)
     let origScopes := (← getScopes).modifyHead fun sc =>
-      { sc with opts := pp.tagAppFns.set (Elab.async.set sc.opts false) true }
+      let opts := pp.tagAppFns.set (Elab.async.set sc.opts false) true
+      -- Documented declarations must keep their written names and remain
+      -- available to modules that import the containing Blueprint document.
+      { sc with opts, isPublic := true }
 
     let altStr ← parserInputString str
     let ictx := Parser.mkInputContext altStr (← getFileName)
