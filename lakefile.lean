@@ -24,10 +24,25 @@ input_file mathLintWorkerJs where
   path := "static-web/katex-lint.mjs"
   text := true
 
--- Optional VIR resource API; neither the core library nor generator imports it.
+input_dir externalMarkupExampleAssets where
+  path := "examples/external-markup"
+  text := true
+  filter := .extension <| .mem #["html", "mjs"]
+
+input_file externalMarkupSelectionCases where
+  path := "tests/external_markup_selection_cases.json"
+  text := true
+
+-- Public VIR API and the document-independent client program.
 lean_lib VersoBlueprintVir where
   srcDir := "src"
-  roots := #[`VersoBlueprintVir]
+  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup,
+    `VersoBlueprintVir.Program]
+
+lean_lib VersoBlueprintVirResources where
+  srcDir := "src"
+  roots := #[`VersoBlueprintVir.Resources]
+  needs := #[`+VersoBlueprintVir.Program:virResourcePack]
 
 lean_lib VersoBlueprintVirClientTests where
   srcDir := "tests"
@@ -41,6 +56,7 @@ lean_lib VersoBlueprintVirClientResources where
 lean_exe «vir-client-example» where
   srcDir := "tests"
   root := `VirClientExampleMain
+  needs := #[externalMarkupExampleAssets, externalMarkupSelectionCases]
 
 -- Blueprint core library.
 @[default_target]
@@ -49,6 +65,12 @@ lean_lib VersoBlueprint where
   roots := #[`VersoBlueprint]
   precompileModules := true
   needs := #[embeddedBlueprintAssets, blueprintMathJs, mathLintWorkerJs]
+
+-- Lake resolves overlapping module roots in reverse declaration order. Keep
+-- this pure owner after the main library so VIR never imports its shared binary.
+lean_lib VersoBlueprintHtmlId where
+  srcDir := "src"
+  roots := #[`VersoBlueprint.Lib.HtmlId]
 
 @[default_target]
 lean_exe «vbp» where
