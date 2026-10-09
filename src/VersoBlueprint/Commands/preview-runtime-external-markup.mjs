@@ -1,5 +1,7 @@
 // Browser-owned normalization, callback availability and object identities.
 // Matching and failure precedence are implemented only by the Lean program.
+import { getBlueprintProgram } from "./blueprint-vir-client.mjs";
+
 const isObject = value => value !== null && typeof value === "object";
 
 export function normalizeExternalMarkupPreferences(value) {
@@ -72,46 +74,8 @@ export function createExternalMarkupSelector(program, entryName) {
   };
 }
 
-let selectorPromise;
-let program;
-let disposed = false;
-
-// One lazily opened program per generated-site module, shared across API
-// instances and concurrent requests. Native previews never enter this path.
+// The common client owns the program; this bridge only owns its value boundary.
 export async function selectExternalMarkup(entry, preferences) {
-  if (disposed) throw new Error("External markup selector is disposed");
-  if (!selectorPromise) {
-    selectorPromise = (async () => {
-      const configUrl = new URL("./external-markup-vir.mjs", import.meta.url);
-      const { default: config } = await import(configUrl.href);
-      const { createProgram } = await import(new URL(config.runtimeModule, import.meta.url).href);
-      const opened = await createProgram({
-        runtimeManifestUrl: new URL(config.runtimeManifest, import.meta.url),
-        programManifestUrl: new URL(config.programManifest, import.meta.url),
-      });
-      if (disposed) {
-        opened.dispose();
-        throw new Error("External markup selector is disposed");
-      }
-      program = opened;
-      return createExternalMarkupSelector(program, config.entry);
-    })();
-  }
-  const select = await selectorPromise;
-  if (disposed) throw new Error("External markup selector is disposed");
-  return select(entry, preferences);
-}
-
-export function disposeExternalMarkupSelector() {
-  disposed = true;
-  program?.dispose();
-  program = undefined;
-  selectorPromise = undefined;
-}
-
-if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", event => {
-    // Retain the program when the browser retains the page in its bfcache.
-    if (!event.persisted) disposeExternalMarkupSelector();
-  });
+  const {program, entries} = await getBlueprintProgram();
+  return createExternalMarkupSelector(program, entries.externalMarkup)(entry, preferences);
 }

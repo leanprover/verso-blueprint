@@ -783,6 +783,8 @@ private def previewRuntimeApiModuleMjs : String := include_str "Commands/preview
 
 private def externalMarkupModuleMjs : String := include_str "Commands/preview-runtime-external-markup.mjs"
 
+private def virClientModuleMjs : String := include_str "Commands/blueprint-vir-client.mjs"
+
 private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
@@ -793,7 +795,8 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
   (previewRuntimeTemplateModuleFilename, previewRuntimeTemplateModuleMjs),
   (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs),
-  ("preview-runtime-external-markup.mjs", externalMarkupModuleMjs)
+  ("preview-runtime-external-markup.mjs", externalMarkupModuleMjs),
+  ("blueprint-vir-client.mjs", virClientModuleMjs)
 ]
 
 private def pageRuntimeModules : Array (String × String) := #[
@@ -857,8 +860,9 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
     ("runtimeModule", toJson ("../" ++ site.runtimeModule)),
     ("runtimeManifest", toJson ("../" ++ site.runtimeManifest)),
     ("programManifest", toJson ("../" ++ site.programManifests[0]!)),
-    ("entry", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString)]
-  writeDataFile dataDir "Commands/external-markup-vir.mjs" ("export default " ++ config.compress ++ ";\n")
+    ("entries", Json.mkObj [
+      ("externalMarkup", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString)])]
+  writeDataFile dataDir "Commands/blueprint-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
   IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs

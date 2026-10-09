@@ -66,8 +66,11 @@ or example asset is needed by a production site. Builds prepare the program
 through the resource library's `needs` declaration for
 `+VersoBlueprintVir.ExternalMarkupProgram:virResourcePack`.
 
-The browser opens one program lazily, shared by concurrent calls and separate
-preview API instances on the same site. It retains the program across bfcache
+`Commands/blueprint-vir-client.mjs` owns the single lazy program and its disposal.
+Application bridges own argument encoding, result checks and JS object identity;
+they use VIR's existing `program.call`, not a separate invocation framework.
+The program is shared by concurrent calls and separate preview API instances on
+the same site. It retains the program across bfcache
 navigation and disposes it on non-retained `pagehide`, including when opening
 is still pending. Asset-loading or execution failures return
 `external-markup-selection-failed` diagnostics; there is no JS policy fallback.
