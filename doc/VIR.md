@@ -78,12 +78,21 @@ reset/setter methods to replace them.
 
 The current path still parses the complete input in Lean and serializes full
 query results, so it is a deduplication step, not a speedup. Fetching, manifest
-and group decoding, status/retry behavior and source-metadata adaptation remain
-JavaScript for this slice. Raw manifest/cache loading and native rendering do
-not start VIR; label/declaration resolution requires the matching generated-site
+and group decoding and status/retry behavior remain JavaScript for this slice.
+Raw manifest/cache loading and native rendering do
+not start VIR; label/declaration and source-metadata resolution require the matching generated-site
 runtime served over HTTP. Direct Node file loading does not provide that browser
 resource environment. The JSON campaign covers generated-data values, not
 arbitrary cyclic objects or callbacks supplied by a JavaScript application.
+
+Source-provenance policy also runs in Lean. It inspects only the requested input,
+then may ask the host to fetch its manifest entry by key. An explicit optional
+origin flag identifies the original direct/nested entry; the browser does not
+repeat the classification policy. Lean normalizes source-document IDs and the
+host fetches each distinct document once, preserving original reference and span
+arrays. Direct entries without document IDs require no manifest fetch. This path
+does not construct a full manifest index in VIR. Group/document loading remains
+ordinary host-map access, not a second runtime or transport layer.
 
 The fixture expectations, native reference campaign and real-browser consumer
 and lifetime gates are:
@@ -96,8 +105,8 @@ uv run --project tests/browser --extra test python -m pytest tests/browser/test_
 
 The browser gate uses public VIR resources and runtime-owned opaque carriers;
 it checks same-runtime recovery, immutable retained lookup, foreign/stale carrier
-rejection and disposal, original object identity, concurrent preparation and
-cache invalidation. There is no JavaScript selection fallback, private codec,
+rejection and disposal, original object identity, source references, document
+fetch retries, concurrent preparation and cache invalidation. There is no JavaScript selection fallback, private codec,
 alternate loader or renderer.
 
 ## Generated-site external-markup selection

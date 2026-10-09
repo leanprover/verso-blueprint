@@ -222,6 +222,95 @@ def test_data_api_uses_shared_lean_lookups_and_original_objects(page, vir_client
         assert result[field]
 
 
+def test_source_metadata_uses_lean_policy_and_original_references(page, vir_client_site, vir_manifest_resolver_site):
+    _, campaign = vir_manifest_resolver_site
+    page.goto(f"{vir_client_site}/client.json")
+    result = page.evaluate("""async campaign => {
+        const {createBlueprintDataApi} = await import('./-verso-data/Commands/preview-runtime-data.mjs');
+        const shared = await import('./-verso-data/Commands/blueprint-vir-client.mjs');
+        const ready = await shared.getBlueprintProgram();
+        const originalProgram = ready.program;
+        let fullManifestPrepares = 0;
+        ready.program = {call(entry, ...args) {
+            if (entry === ready.entries.manifestPrepare) fullManifestPrepares++;
+            return originalProgram.call(entry, ...args);
+        }};
+        const actual = [];
+        let identity = true, noUnnecessaryFetch = true;
+        try {
+            for (const testCase of campaign) {
+                if (!testCase.expected.ok) continue;
+                const input = JSON.parse(testCase.input);
+                const requests = input.requests.filter(request => request.kind === 'sourceMetadata');
+                if (!requests.length) continue;
+                let fetches = 0;
+                const data = createBlueprintDataApi({fetchJson: async () => {fetches++; return input.manifest;}});
+                const outputs = [];
+                for (const request of requests) {
+                    const expected = testCase.expected.results.find(result => result.requestId === request.id);
+                    const before = fetches;
+                    const output = await data.resolveSourceMetadata(request.value);
+                    const entry = expected.inputEntryIsNested === true ? request.value.manifestEntry :
+                        expected.inputEntryIsNested === false ? request.value :
+                        input.manifest.previews.find(entry => entry.key.trim() === output.key) || null;
+                    identity &&= output.manifestEntry === entry;
+                    output.sources.forEach((resolved, index) => {
+                        const ref = entry.sources[index];
+                        if (ref && typeof ref === 'object') identity &&= resolved.sourceRef === ref;
+                        if (Array.isArray(ref?.spans)) identity &&= resolved.spans === ref.spans;
+                        const document = (input.manifest.sourceDocuments || []).find(document =>
+                            document.id.trim() === resolved.documentId) || null;
+                        identity &&= resolved.document === document;
+                    });
+                    // Missing inputs and direct inputs without document IDs do not fetch the manifest.
+                    if (output.reason === 'missing-key' || (expected.inputEntryIsNested !== null &&
+                        output.sources.every(ref => !ref.documentId))) {
+                        noUnnecessaryFetch &&= fetches === before;
+                    }
+                    outputs.push(output);
+                }
+                actual.push({id: testCase.id, outputs});
+            }
+            const manifest = JSON.parse(campaign[0].input).manifest;
+            const direct = {key: 'detached', sources: [{document: 'paper', spans: []},
+                {document: ' paper ', spans: []}]};
+            let attempts = 0;
+            const retrying = createBlueprintDataApi({fetchJson: async () => {
+                if (++attempts === 1) throw Error('offline source fixture');
+                return manifest;
+            }});
+            const failed = await retrying.resolveSourceMetadata(direct);
+            const recovered = await retrying.resolveSourceMetadata(direct);
+            const retryWorks = failed.ok && failed.sources.every(ref => ref.document === null) &&
+                recovered.sources.every(ref => ref.document === manifest.sourceDocuments[0]) && attempts === 2;
+            const cache = createBlueprintDataApi({fetchJson: async () => manifest});
+            await cache.loadManifest();
+            ready.program = originalProgram;
+            shared.disposeBlueprintProgram();
+            let disposed = false;
+            try { await cache.resolveSourceMetadata(direct); } catch (error) {disposed = /disposed/.test(error.message);}
+            return {actual, identity, noUnnecessaryFetch, fullManifestPrepares, retryWorks, disposed};
+        } finally {
+            ready.program = originalProgram;
+            shared.disposeBlueprintProgram();
+        }
+    }""", campaign)
+    expected = []
+    for case in campaign:
+        if not case["expected"]["ok"]:
+            continue
+        outputs = [
+            {key: output[key] for key in ("ok", "key", "reason", "manifestEntry", "sources")}
+            for output in case["expected"]["results"] if output["kind"] == "sourceMetadata"
+        ]
+        if outputs:
+            expected.append({"id": case["id"], "outputs": outputs})
+    assert result["actual"] == expected
+    for field in ("identity", "noUnnecessaryFetch", "retryWorks", "disposed"):
+        assert result[field]
+    assert result["fullManifestPrepares"] == 0
+
+
 @pytest.mark.skipif(not os.environ.get("VBP_RESOLVER_BENCH_INPUT"), reason="opt-in full manifest measurement")
 def test_data_api_full_manifest_costs(page, browser, vir_client_site):
     input_path = os.environ["VBP_RESOLVER_BENCH_INPUT"]

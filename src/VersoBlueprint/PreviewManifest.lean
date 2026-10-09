@@ -872,7 +872,8 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
       ("htmlId", toJson (`VersoBlueprint.HtmlId.encode).toString),
       -- Browser-only bindings must not enter the native generator's imports.
       ("manifestPrepare", toJson "VersoBlueprint.Manifest.prepare"),
-      ("manifestLookup", toJson "VersoBlueprint.Manifest.lookup")])]
+      ("manifestLookup", toJson "VersoBlueprint.Manifest.lookup"),
+      ("manifestInspectSource", toJson "VersoBlueprint.Manifest.inspectSource")])]
   writeDataFile dataDir "Commands/blueprint-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs

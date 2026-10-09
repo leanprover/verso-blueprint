@@ -36,3 +36,8 @@ public def VersoBlueprint.Manifest.lookup
     (requests : String) : Lean.Vir.RuntimeM String := do
   return VersoBlueprint.Runtime.ManifestResolver.resolvePreparedJson
     (← Lean.Vir.LeanRef.fromJSL prepared) requests
+
+/-- Resolve source selection/reference policy; documents and object identity stay in the host. -/
+@[vir_export]
+public def VersoBlueprint.Manifest.inspectSource (source resolvedEntry : String) : String :=
+  VersoBlueprint.Runtime.ManifestResolver.inspectSourceMetadataJson source resolvedEntry

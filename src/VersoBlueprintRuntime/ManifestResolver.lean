@@ -89,6 +89,8 @@ structure Result where
   facet : Option String := none
   declaration : Option String := none
   manifestEntry : Option Json := none
+  /-- `some true`: source.manifestEntry; `some false`: source; `none`: indexed entry. -/
+  inputEntryIsNested : Option Bool := none
   value : Option Json := none
   href : String := ""
   sourceLocation : Json
@@ -501,36 +503,41 @@ private def isSourceMetadataEntry (raw : Json) : Bool :=
       | _ => false
   isObject raw && !(trim (stringField raw "key")).isEmpty && (stringMarker || arrayMarker)
 
-private def sourceMetadataEntry? (source : Json) : Option Json :=
-  (field? source "manifestEntry" |>.filter isSourceMetadataEntry) <|>
-    (if isSourceMetadataEntry source then some source else none)
+private def sourceMetadataEntry? (source : Json) : Option (Json × Bool) :=
+  ((field? source "manifestEntry" |>.filter isSourceMetadataEntry).map (·, true)) <|>
+    (if isSourceMetadataEntry source then some (source, false) else none)
+
+private def sourceMetadataResult (index : Index) (request : Request) (key : String)
+    (entry : Json) (inputEntryIsNested : Option Bool) : Result :=
+  let sources := arrayField entry "sources"
+  {
+    requestId := request.id
+    kind := request.kind
+    key
+    ok := !sources.isEmpty
+    reason := if sources.isEmpty then "source-missing" else ""
+    manifestEntry := some entry
+    inputEntryIsNested
+    sourceLocation := (field? entry "sourceLocation").getD
+      (unavailableSourceLocation "source location unavailable")
+    sources := sources.map (resolvedSource index)
+  }
 
 private def resolveSourceMetadata (index : Index) (request : Request) : Result :=
   let source := request.value
   let directEntry? := sourceMetadataEntry? source
   let key := trim <| match directEntry? with
-    | some entry => stringField entry "key"
+    | some (entry, _) => stringField entry "key"
     | none => match source with
         | .str value => value
         | _ => stringField source "key"
   if key.isEmpty then
     missingResult request "" "missing-key" "source metadata key missing"
   else
-    match directEntry? <|> (index.entriesByKey.get? key |>.map (·.raw)) with
+    match (directEntry?.map (·.1)) <|> (index.entriesByKey.get? key |>.map (·.raw)) with
     | none => missingResult request key "manifest-entry-missing" "manifest entry missing"
     | some entry =>
-        let sources := arrayField entry "sources"
-        {
-          requestId := request.id
-          kind := request.kind
-          key
-          ok := !sources.isEmpty
-          reason := if sources.isEmpty then "source-missing" else ""
-          manifestEntry := some entry
-          sourceLocation := (field? entry "sourceLocation").getD
-            (unavailableSourceLocation "source location unavailable")
-          sources := sources.map (resolvedSource index)
-        }
+        sourceMetadataResult index request key entry (directEntry?.map (·.2))
 
 private def Index.resolve (index : Index) (request : Request) : Result :=
   match request.kind with
@@ -568,6 +575,25 @@ private def batchOutputJson (output : Except String BatchOutput) : String :=
     | .error error => { ok := false, error }
     | .ok output => output
   toJson output |>.compress
+
+/--
+Inspect one source input without parsing the complete manifest. The host may
+supply the entry fetched by the returned key; source-document fetching remains
+host-owned. Both stages use the same selection/reference policy as indexed lookup.
+-/
+def inspectSourceMetadataJson (sourceJson resolvedEntryJson : String) : String :=
+  batchOutputJson do
+    let source ← Json.parse sourceJson
+    let resolvedEntry ← Json.parse resolvedEntryJson
+    let request : Request := { id := "source", kind := .sourceMetadata, value := source }
+    let initial := resolveSourceMetadata {} request
+    let result ←
+      if initial.reason == "manifest-entry-missing" && resolvedEntry != .null then do
+        if !isObject resolvedEntry then throw "resolved source entry must be an object"
+        pure (sourceMetadataResult {} request initial.key resolvedEntry none)
+      else
+        pure initial
+    pure { results := #[result] }
 
 /-- Decode and resolve a request-only JSON batch against a prepared manifest. -/
 def resolvePreparedJson (prepared : PreparedManifest) (inputJson : String) : String :=

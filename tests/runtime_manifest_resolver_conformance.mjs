@@ -80,7 +80,7 @@ async function resolveRequest(data, request, manifest = fixture.manifest) {
       };
     }
     case "sourceMetadata":
-      return data.resolveSourceMetadata(request.value);
+      return nativeLookup(manifest, request);
     default:
       throw new Error(`unsupported fixture request kind: ${request.kind}`);
   }
@@ -184,6 +184,9 @@ const sourceCases = [
   ["direct-entry", detachedEntry, { ok: true, key: "detached--statement", sourceDocumentIds: ["paper"] }],
   ["nested-entry", { key: "unsourced--statement", manifestEntry: detachedEntry },
     { ok: true, key: "detached--statement" }],
+  ["same-key-nested-entry", { key: "same", facet: "statement", sources: [],
+    manifestEntry: { key: "same", facet: "proof", sources: [sourceRef] } },
+    { ok: true, key: "same", sourceDocumentIds: ["paper"] }],
   ["outer-entry-fallback", { ...detachedEntry, manifestEntry: { key: "ignored" } },
     { ok: true, key: "detached--statement" }],
   ["render-result", { ok: false, key: " alpha--statement " }, { ok: true, key: "alpha--statement" }],
@@ -218,17 +221,28 @@ for (const [id, source, fields] of sourceCases) {
     assert.deepEqual(expected[field], value, `${id}: ${field}`);
   }
   assert.equal(JSON.stringify(source), before, `${id}: input mutation`);
-  // The host must retain original entry/reference/span objects through migration.
+  // Native values must retain their complete content. Browser gates check identity.
   if (source?.manifestEntry === detachedEntry || source === detachedEntry || id === "outer-entry-fallback") {
     const direct = source?.manifestEntry === detachedEntry ? detachedEntry : source;
-    assert.equal(result.manifestEntry, direct, `${id}: entry identity`);
-    assert.equal(result.sources[0].sourceRef, direct.sources[0], `${id}: source-ref identity`);
-    assert.equal(result.sources[0].spans, direct.sources[0].spans, `${id}: spans identity`);
-    assert.equal(result.sources[0].document, await caseData.loadSourceDocument("paper"),
-      `${id}: document identity`);
+    assert.deepEqual(result.manifestEntry, direct, `${id}: entry content`);
+    assert.deepEqual(result.sources[0].sourceRef, direct.sources[0], `${id}: source-ref content`);
+    assert.deepEqual(result.sources[0].spans, direct.sources[0].spans, `${id}: spans content`);
+    assert.deepEqual(result.sources[0].document, await caseData.loadSourceDocument("paper"),
+      `${id}: document content`);
   }
   nativeCases.push({ id, manifest: fixture.manifest, requests: [request], expected: [expected], domain: [result] });
 }
+
+// An indexed entry's arbitrary nested metadata must not be selected again as input.
+const nestedMetadataManifest = structuredClone(fixture.manifest);
+nestedMetadataManifest.previews[0].manifestEntry = { key: "nested", sources: [] };
+const nestedRequest = { id: "indexed-nested-metadata", kind: "sourceMetadata", value: "alpha--statement" };
+const nestedResult = nativeLookup(nestedMetadataManifest, nestedRequest);
+assert.equal(nestedResult.ok, true);
+assert.equal(nestedResult.inputEntryIsNested, null);
+assert.deepEqual(nestedResult.manifestEntry, nestedMetadataManifest.previews[0]);
+nativeCases.push({ id: nestedRequest.id, manifest: nestedMetadataManifest, requests: [nestedRequest],
+  expected: [snapshot(nestedRequest, nestedResult)], domain: [nestedResult] });
 
 // Cover the complete ECMAScript trim set, plus characters trim must preserve.
 const whitespace = [9, 10, 11, 12, 13, 32, 160, 5760,
