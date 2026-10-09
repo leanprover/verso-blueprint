@@ -28,14 +28,15 @@ private unsafe def withProvider (importAll : Bool) (action : CoreM Bool) : CoreM
   withEnv env action
 
 private def statusOf (name : Name) : CoreM ProvedStatus := do
-  let some info := (← getEnv).find? name | throwError "missing declaration {name}"
-  ConstantInfo.blueprintProvedStatus name info
+  analyzeDeclaration name
 
-private def checkStatuses (cases : Array (Name × ProvedStatus)) : CoreM Bool := do
+/-- Evidence attribution is independent of coverage; completion controls below
+check verification explicitly for each visibility boundary. -/
+private def checkSorryEvidence (cases : Array (Name × Array SorryInfo)) : CoreM Bool := do
   for (name, expected) in cases do
     let actual ← statusOf name
-    unless actual == expected do
-      throwError "Unexpected status for {name}: {repr actual}; expected {repr expected}"
+    unless actual.sorryEvidence == expected do
+      throwError "Unexpected evidence for {name}: {repr actual}; expected {repr expected}"
   return true
 
 private def statementDependency : SorryInfo := { location := .statement, origin := .dependency }
@@ -52,7 +53,7 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 #eval
   withProvider false do
     let status ← statusOf `sorryImportTypeOnly
-    return status == .containsSorry #[statementDependency, unlocalized] &&
+    return status.sorryEvidence == #[statementDependency, unlocalized] && status.hasUnverifiedCoverage &&
       status.isIncomplete && status.hasTypeGap && !status.hasProofGap &&
       !status.containsExplicitSorry && status.hasUnlocalizedSorry
 
@@ -61,31 +62,31 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 /-- info: true -/
 #guard_msgs in
 #eval
-  withProvider false <| checkStatuses #[
-    (`sorryImportComplete, .proved),
-    (`sorryImportCompleteDef, .proved),
-    (`sorryImportAdmitted, .containsSorry #[proofUnknown]),
-    (`sorryImportNumber, .containsSorry #[proofUnknown]),
-    (`sorryImportComposed, .containsSorry #[proofUnknown]),
-    (`sorryImportComposedDef, .containsSorry #[proofUnknown]),
-    (`sorryImportBoth, .containsSorry #[statementDependency, unlocalized]),
-    (`sorryImportHypothesis, .containsSorry #[statementDependency, unlocalized]),
-    (`sorryImportAxiom, .axiomLike),
-    (`sorryImportOpaqueComplete, .proved),
-    (`sorryImportOpaqueAdmitted, .containsSorry #[proofUnknown]),
-    (`sorryImportExposed, .containsSorry #[proofDependency]),
-    (`sorryImportExposedComplete, .proved),
-    (`sorryImportStandardAxioms, .proved),
-    (`SorryImportRecord, .containsSorry #[statementDependency]),
-    (`SorryImportRecord.mk, .containsSorry #[statementDependency]),
-    (`sorryImportRecordHypothesis, .containsSorry #[statementDependency, unlocalized]),
-    (`SorryImportNestedRecord, .containsSorry #[statementDependency]),
-    (`sorryImportNestedHypothesis, .containsSorry #[statementDependency, unlocalized]),
-    (`SorryImportNestedCompleteRecord, .proved),
-    (`sorryImportNestedCompleteHypothesis, .proved),
-    (`SorryImportCompleteRecord, .proved),
-    (`SorryImportCompleteRecord.mk, .proved),
-    (``Quot, .proved)
+  withProvider false <| checkSorryEvidence #[
+    (`sorryImportComplete, #[]),
+    (`sorryImportCompleteDef, #[]),
+    (`sorryImportAdmitted, #[proofUnknown]),
+    (`sorryImportNumber, #[proofUnknown]),
+    (`sorryImportComposed, #[proofUnknown]),
+    (`sorryImportComposedDef, #[proofUnknown]),
+    (`sorryImportBoth, #[statementDependency, unlocalized]),
+    (`sorryImportHypothesis, #[statementDependency, unlocalized]),
+    (`sorryImportAxiom, #[]),
+    (`sorryImportOpaqueComplete, #[]),
+    (`sorryImportOpaqueAdmitted, #[proofUnknown]),
+    (`sorryImportExposed, #[proofDependency]),
+    (`sorryImportExposedComplete, #[]),
+    (`sorryImportStandardAxioms, #[]),
+    (`SorryImportRecord, #[statementDependency]),
+    (`SorryImportRecord.mk, #[statementDependency]),
+    (`sorryImportRecordHypothesis, #[statementDependency]),
+    (`SorryImportNestedRecord, #[statementDependency]),
+    (`sorryImportNestedHypothesis, #[statementDependency]),
+    (`SorryImportNestedCompleteRecord, #[]),
+    (`sorryImportNestedCompleteHypothesis, #[]),
+    (`SorryImportCompleteRecord, #[]),
+    (`SorryImportCompleteRecord.mk, #[]),
+    (``Quot, #[])
   ]
 
 -- Import-all exposes evidence that an ordinary import cannot justify. In
@@ -93,26 +94,67 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 /-- info: true -/
 #guard_msgs in
 #eval
-  withProvider true <| checkStatuses #[
-    (`sorryImportComplete, .proved),
-    (`sorryImportCompleteDef, .proved),
-    (`sorryImportAdmitted, .containsSorry #[proofDirect]),
-    (`sorryImportNumber, .containsSorry #[proofDirect]),
-    (`sorryImportComposed, .containsSorry #[proofDependency]),
-    (`sorryImportComposedDef, .containsSorry #[proofDependency]),
-    (`sorryImportTypeOnly, .containsSorry #[statementDependency]),
-    (`sorryImportHypothesis, .containsSorry #[statementDependency]),
-    (`sorryImportBoth, .containsSorry #[statementDependency, proofDirect, proofDependency]),
-    (`sorryImportAxiom, .axiomLike),
-    (`sorryImportOpaqueComplete, .proved),
-    (`sorryImportOpaqueAdmitted, .containsSorry #[proofDirect]),
-    (`SorryImportRecord, .containsSorry #[statementDependency]),
-    (`sorryImportRecordHypothesis, .containsSorry #[statementDependency]),
-    (`sorryImportNestedHypothesis, .containsSorry #[statementDependency]),
-    (`SorryImportNestedCompleteRecord, .proved),
-    (`sorryImportNestedCompleteHypothesis, .proved),
-    (`SorryImportCompleteRecord, .proved)
+  withProvider true <| checkSorryEvidence #[
+    (`sorryImportComplete, #[]),
+    (`sorryImportCompleteDef, #[]),
+    (`sorryImportAdmitted, #[proofDirect]),
+    (`sorryImportNumber, #[proofDirect]),
+    (`sorryImportComposed, #[proofDependency]),
+    (`sorryImportComposedDef, #[proofDependency]),
+    (`sorryImportTypeOnly, #[statementDependency]),
+    (`sorryImportHypothesis, #[statementDependency]),
+    (`sorryImportBoth, #[statementDependency, proofDirect, proofDependency]),
+    (`sorryImportAxiom, #[]),
+    (`sorryImportOpaqueComplete, #[]),
+    (`sorryImportOpaqueAdmitted, #[proofDirect]),
+    (`SorryImportRecord, #[statementDependency]),
+    (`sorryImportRecordHypothesis, #[statementDependency]),
+    (`sorryImportNestedHypothesis, #[statementDependency]),
+    (`SorryImportNestedCompleteRecord, #[]),
+    (`sorryImportNestedCompleteHypothesis, #[]),
+    (`SorryImportCompleteRecord, #[])
   ]
+
+-- Cached absence cannot authorize completion of hidden declarations, whether
+-- the hidden proof is actually complete or hides an omitted constructor hole.
+/-- info: true -/
+#guard_msgs in
+#eval
+  withProvider false do
+    for name in #[`sorryImportComplete, `sorryImportCompleteDef,
+        `sorryImportOpaqueComplete, `sorryImportNestedCompleteHypothesis,
+        `sorryImportHiddenHelper] do
+      let status ← statusOf name
+      unless status.isIncomplete && status.hasUnverifiedCoverage &&
+          !status.containsExplicitSorry do return false
+    let helper ← statusOf `sorryImportExposedHiddenHelper
+    unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
+    for name in #[`sorryImportExposedComplete, `SorryImportCompleteRecord,
+        `SorryImportCompleteRecord.mk, `SorryImportNestedCompleteRecord, ``Quot] do
+      unless (← statusOf name).isProved do
+        throwError "Visible complete control remained unverified: {name}"
+    let cached ← collectAxioms `sorryImportHiddenHelper
+    let exposedCached ← collectAxioms `sorryImportExposedHiddenHelper
+    return cached.isEmpty && exposedCached.isEmpty &&
+      !helper.isProved && helper.hasUnverifiedCoverage
+
+-- Independently inspecting actual bodies resolves both clean and omitted-hole
+-- cases. Import-all must verify complete controls, not merely lack evidence.
+/-- info: true -/
+#guard_msgs in
+#eval
+  withProvider true do
+    unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
+    for name in #[`sorryImportComplete, `sorryImportCompleteDef,
+        `sorryImportOpaqueComplete, `sorryImportStandardAxioms,
+        `SorryImportCompleteRecord, `SorryImportNestedCompleteRecord,
+        `sorryImportNestedCompleteHypothesis] do
+      unless (← statusOf name).isProved do
+        throwError "Complete control remained unverified: {name}"
+    let helper ← statusOf `sorryImportHiddenHelper
+    let exposed ← statusOf `sorryImportExposedHiddenHelper
+    return helper.dependsOnSorry && helper.hasProofGap && !helper.isProved &&
+      exposed.dependsOnSorry && !exposed.isProved
 
 /-- info: true -/
 #guard_msgs in
@@ -139,13 +181,13 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
           !html.html.contains "depends on sorry" && !html.html.contains "contains sorry"
       | _ => false
     return ref.present && renderHasUnknown && proofRenderHasUnknown &&
-      ref.provedStatus == .containsSorry #[statementDependency, unlocalized] &&
+      ref.provedStatus.sorryEvidence == #[statementDependency, unlocalized] && ref.provedStatus.hasUnverifiedCoverage &&
       health.statementAxisCount == 1 && health.proofAxisCount == 0 && health.anyGapCount == 1 &&
       !Graph.nodeLocalProofFormalized {} node &&
       Graph.proofStatus {} {} `typeOnly node == .incomplete &&
       Graph.nodeLocalStatementFormalized {} proofNode && !Graph.nodeLocalProofFormalized {} proofNode &&
-      Graph.nodeLocalProofFormalized {} completeNode &&
-      nestedRef.provedStatus == .containsSorry #[statementDependency, unlocalized] &&
+      !Graph.nodeLocalProofFormalized {} completeNode && completeRef.provedStatus.isUnverified &&
+      nestedRef.provedStatus.sorryEvidence == #[statementDependency] && nestedRef.provedStatus.hasUnverifiedCoverage &&
       !missingRef.present && missingRef.provedStatus == .missing
 
 end Verso.VersoBlueprintTests.SorryImport.Classification

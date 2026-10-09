@@ -495,7 +495,7 @@ private def exportInBothModes (state : TraverseState) :
   let mut keys := #[]
   for (blockId, decl, body) in #[(`firstPanel, `firstPanelDecl, true),
       (`secondPanel, `secondPanelDecl, true), (`emptyPanel, `emptyPanelDecl, false)] do
-    let metadata : InlineCodeData := { blockId, label, definedDefs := #[{ name := decl }] }
+    let metadata : InlineCodeData := { blockId, label, definedDefs := #[{ name := decl, provedStatus := .proved }] }
     state := TraversalIndex.InlineCode.saveData state metadata
     let key := TraversalIndex.LeanCodePreviews.lookupInlineKey blockId
     keys := keys.push key

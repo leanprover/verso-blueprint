@@ -27,10 +27,9 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
 #guard_msgs in
 #eval
   show IO Bool from do
-    let status : Informal.Data.ProvedStatus := .containsSorry
-      #[{ location := .proof, origin := .unknown }]
+    let status : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .unknown }] }
     let model := summaryBlockersDocBlueprint.model
-    let model := { model with summary := { model.summary with sorryDetails := [{
+    let model := { model with summary := { model.summary with incompleteDetails := [{
       label := Lean.Name.mkSimple "def:blocker.sorry"
       kind := "theorem"
       decl := `Hidden.proof
@@ -46,10 +45,10 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
 #guard_msgs in
 #eval
   show IO Bool from do
-    let status : Informal.Data.ProvedStatus := .containsSorry #[
-      { location := .proof }, { location := .proof, origin := .dependency }]
+    let status : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[
+      { location := .proof }, { location := .proof, origin := .dependency }] }
     let model := summaryBlockersDocBlueprint.model
-    let model := { model with summary := { model.summary with sorryDetails := [{
+    let model := { model with summary := { model.summary with incompleteDetails := [{
       label := Lean.Name.mkSimple "def:blocker.sorry"
       kind := "theorem"
       decl := `Mixed.proof

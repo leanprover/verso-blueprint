@@ -1776,3 +1776,49 @@ or, from a linked worktree,
 `_out/<worktree>/test-blueprints/preview_runtime_showcase/html-multi/Custom-Render-Client/`.
 That fixture is exercised by the browser regression tests, so it is a better
 starting point than copying code from a test body.
+
+
+## Lean completeness evidence
+
+`Informal.Data.analyzeDeclaration name` analyzes the current checked Lean
+environment. Its `ProvedStatus` is `proved`, `missing`, `axiomLike`, or
+`incomplete { knownSorry, unverified }`. `isProved` is true only after independently
+inspecting a closed transitive declaration graph with no reachable `sorryAx`
+and no coverage gap. Negative cached axiom footprints and zero source-reference
+counts never establish completion. See the [semantics matrix](MANUAL.md#dependency-graph)
+and `ProvedStatus.ofInspection_not_reachable` for the precise trusted boundary.
+
+Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
+and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
+`status.reportJson` exposes `verdict`, `complete`, `knownSorry`, and `unverified`.
+Verdicts are `complete`, `incomplete` (known hole), `unverified` (no known hole,
+coverage incomplete), `missing`, and `axiom-like`. Incomplete results can contain
+both known holes and verification gaps. Each gap includes its `location`,
+`declaration`, and `reason`. Direct/inherited/unknown origins and optional source
+counts stay in the known-sorry evidence.
+
+`lake exe vbp query status <label>` reads all statement and proof facet
+associations, including external and inline declarations. It returns that
+per-declaration evidence with facet provenance, aggregate `verdict` and
+`complete`, and separate `statementComplete` and `proofComplete` booleans.
+No declarations yields `unassociated` with all completion booleans false.
+`asOf: "generated-snapshot"` means the answer describes the last generation;
+query does not recheck sources. Build current sources before treating the result
+as current truth. `vbp check` validates persisted artifact consistency and does
+not certify freshness or a hole-free proof. Graph colors and work queues are
+planning projections; use declaration evidence for a completeness claim.
+
+Generated data clients can use `resolveLabel(label, { facet: "statement" })`
+and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
+to read each entry's `codeData`. External associations carry `provedStatus` in
+`externalDecls`; inline facts carry it in
+`literateDeclarations.definedDefs` and `definedTheorems`. Missing external
+references (`present: false`) block completion. A declaration-keyed preview or
+a missing facet is not an aggregate completeness certificate. `readManifestStatus`
+and `readHtmlCacheStatus` report loading state, not Lean proof status.
+
+The status payload migrated from `containsSorry: [...]` to
+`incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
+The internal manifest marker is now 11; the CLI rejects older generations.
+Regenerate persisted artifacts and handle both evidence arrays. The generated
+manifest schema validates the nested axes, origins, and verification reasons.

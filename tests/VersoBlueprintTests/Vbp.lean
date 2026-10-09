@@ -482,6 +482,51 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
 private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool :=
   values.any (fun json => jsonNullField json field)
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  let check (statement proof : Informal.Data.ProvedStatus) (verdict : String)
+      (statementComplete proofComplete : Bool) : Bool :=
+    let manifest : ManifestFile := { previews := #[
+      { key := "informal:truth:statement", targetKind := .block, label := label "truth",
+        facet := .statement, kind := some .theorem, title := "Truth",
+        codeData := some { externalDecls := #[{
+          (Informal.Data.ExternalRef.ofName `truthDecl) with kind := .theorem, provedStatus := statement }] } },
+      { key := "informal:truth:proof", targetKind := .block, label := label "truth",
+        facet := .proof, kind := some .theorem, title := "Proof",
+        codeData := some { literateDeclarations := { definedTheorems := #[{
+          name := `truthDecl, provedStatus := proof }] } } }
+    ] }
+    match executeQuery manifest ["status", "truth"] with
+    | .error _ => false
+    | .ok json =>
+      jsonStringField? json "verdict" == some verdict &&
+      jsonStringField? json "asOf" == some "generated-snapshot" &&
+      jsonBoolField? json "statementComplete" == some statementComplete &&
+      jsonBoolField? json "proofComplete" == some proofComplete &&
+      jsonBoolField? json "complete" == some proofComplete &&
+      (match jsonArrayField? json "declarations" with
+       | some rows => rows.size == 2 && jsonArrayHasStringField rows "facet" "statement" &&
+           jsonArrayHasStringField rows "facet" "proof" &&
+           rows.all (fun row => (jsonField? row "status").isSome)
+       | none => false)
+  let hidden : Informal.Data.ProvedStatus := .incomplete { unverified := #[{
+    location := .proof, declaration := `hiddenHelper, reason := .bodyUnavailable }] }
+  let gap : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[{
+    location := .proof, origin := .dependency }] }
+  check .proved .proved "complete" true true &&
+    check .proved hidden "unverified" true false &&
+    check hidden .proved "unverified" true false &&
+    check .proved (.incomplete {}) "unverified" false false &&
+    check hidden gap "incomplete" true false &&
+    check .proved .missing "missing" false false &&
+    check .proved .axiomLike "axiom-like" false false &&
+    (match executeQuery sampleManifest ["status", "addition_assoc"] with
+     | .ok json => jsonStringField? json "verdict" == some "unassociated" &&
+         jsonBoolField? json "complete" == some false &&
+         jsonBoolField? json "statementComplete" == some false
+     | .error _ => false)
+
 private def previewKeyValue? (key? : Option Informal.PreviewKey) : Option String :=
   key?.map (·.value)
 
@@ -722,6 +767,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   ("selectors", ["selectors"], false),
   ("labels", ["labels"], false),
   ("node <label>", ["node", "addition_assoc"], false),
+  ("status <label>", ["status", "addition_assoc"], false),
   ("uses <label>", ["uses", "addition_assoc"], false),
   ("used-by <label>", ["used-by", "addition_assoc"], false),
   ("group <label>", ["group", "addition_assoc"], false),

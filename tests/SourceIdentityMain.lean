@@ -12,12 +12,14 @@ def main (args : List String) : IO Unit := do
     let snapshot ← render source
     pure <| Json.mkObj [("name", toJson name), ("manifest", toJson snapshot.files.manifest)]
   let statuses : Array Data.ProvedStatus := #[
-    .containsSorry #[{ location := .unknown, origin := .unknown }],
-    .containsSorry #[{ location := .proof, origin := .unknown }],
-    .containsSorry #[{ location := .statement, origin := .dependency },
-                    { location := .unknown, origin := .unknown }],
-    .containsSorry #[{ location := .statement, refs? := some 1 },
-                    { location := .proof, origin := .dependency }]
+    .incomplete {},
+    .incomplete { unverified := #[{ location := .proof, declaration := `hidden, reason := .bodyUnavailable }] },
+    .incomplete { knownSorry := #[{ location := .unknown, origin := .unknown }] },
+    .incomplete { knownSorry := #[{ location := .proof, origin := .unknown }] },
+    .incomplete { knownSorry := #[{ location := .statement, origin := .dependency },
+                    { location := .unknown, origin := .unknown }] },
+    .incomplete { knownSorry := #[{ location := .statement, refs? := some 1 },
+                    { location := .proof, origin := .dependency }] }
   ]
   IO.FS.writeFile output <| (Json.mkObj [
     ("schema", PreviewManifest.schemaJson), ("cases", toJson cases),

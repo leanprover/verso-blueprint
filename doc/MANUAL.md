@@ -1472,64 +1472,84 @@ Read the proof fill states as:
 - `Locally formalized + dependencies complete`: both the node and its full
   dependency closure are complete
 
-Lean completion also checks the transitive `sorryAx` footprint of every
-associated declaration. A theorem that invokes an unassociated helper with
-`sorry` is incomplete even when its own proof text has no `sorry` and the
-Blueprint dependency graph has no edge for that helper. The declaration details
-distinguish a directly observed `sorry` term from a dependency on one. Both
-origins can occur on the same axis; inherited gaps have no source reference
-count in the consuming declaration.
-An inherited gap blocks completion but does not by itself identify a local
-proof-writing task; frontier advice for that case is tracked in
+Lean completion independently inspects the full transitive dependency closure of
+associated checked declarations: their types, available values (including opaque
+values), inductive constructor types, and recursor reduction rules and links.
+A theorem using an unassociated admitted helper is incomplete even when its own
+source has no `sorry` and the Blueprint graph has no edge for that helper.
+
+The guarantee is conservative: **complete implies no reachable `sorryAx` in the
+checked declaration closure**. Completion requires a closed inspection with
+neither observed holes nor missing, hidden, or unchecked information. Lean's
+cached positive axiom footprints remain useful observations. Cached absence
+never certifies completion: recursive constructor traversal can leave an empty
+cached footprint even when a transitive hole exists.
+
+This assumes ordinary kernel-checked Lean artifacts and faithful checked
+constant views, rather than deliberate kernel/environment manipulation.
+Completion means absence of admitted `sorryAx` holes, not freedom from other
+axioms, nor correctness of the intended mathematical statement. Genuine axioms
+are allowed as dependencies; directly associated axiom declarations retain the
+separate `axiomLike` blocking policy. Ordinary hypotheses are hypotheses.
+
+Known holes and verification gaps are separate facts and may coexist. Hidden
+proofs remain unverified even if their cached footprint is empty. A positive
+footprint proves that some hole exists, but does not reveal its origin. It can
+be localized to the proof only after independently verifying the visible
+statement closure; otherwise its location remains unknown. Unknown locations
+block both completion tracks. Verification gaps identify the declaration, axis,
+and reason (`bodyUnavailable`, `declarationUnavailable`, or
+`uncheckedExpression`); they never assert that a hole was observed.
+
+For visible bodies, identical outer lambda binder types repeating the
+statement telescope belong to statement evidence. Other annotations in the body
+remain proof evidence. Constructor fields belong to statement evidence. Direct
+terms and inherited dependency observations retain distinct origins and both
+can occur on an axis; inherited holes carry no local source-reference count.
+An inherited hole or a verification failure blocks completion without proving a
+local proof-writing task. Frontier advice remains tracked in
 [#476](https://github.com/leanprover/verso-blueprint/issues/476).
 
-Here, completion means that the declaration has no known `sorryAx` dependency
-and is not a declared axiom-like placeholder. An imported theorem may be
-complete even when its body is hidden in the current module. Completion does
-not certify freedom from other axioms or that the theorem statement expresses
-the intended mathematics.
-Ordinary theorem hypotheses remain hypotheses, not missing proofs.
+| Inspected declaration | Known evidence | Verification | Completion |
+| --- | --- | --- | --- |
+| Visible clean type/body and closed clean dependencies | None | Verified | Complete |
+| Visible direct `sorry` | Direct, on its observed axis | Verified or partial | Incomplete |
+| Clean local body using admitted helper | Dependency, on consuming axis | Verified or partial | Incomplete |
+| Constructor or nested field depending on admitted type | Statement dependency | Verified or partial | Incomplete |
+| Hidden body with empty cached footprint | None unless visible evidence exists | Body unverified | Blocked |
+| Hidden body with positive footprint, verified clean statement | Proof, unknown origin | Body unverified | Incomplete |
+| Hidden body whose statement already explains positive footprint | Statement plus unknown-location evidence | Body unverified | Incomplete |
+| Exposed body using a hidden helper with empty cache | None unless other evidence exists | Helper unverified | Blocked |
+| Missing checked declaration or open dependency boundary | None unless other evidence exists | Unverified | Blocked |
+| Directly associated genuine axiom | Axiom-like policy | Body intentionally absent | Blocked |
+| No associated declarations | None | No declaration certificate | Blocked |
 
-When Lean's module system hides an imported proof, Blueprint uses Lean's cached
-axiom footprint to check it. A hidden theorem is not treated as a declared
-axiom merely because Lean presents it as an axiom in the public import view.
-This footprint establishes declaration-level dependence on `sorryAx`; it does
-not reveal whether the hidden body has a direct hole or which hidden helper
-introduced the gap. If the visible type has no gap, the footprint localizes the
-gap to the hidden body, with its origin unknown. If the statement already
-explains the footprint, the proof could be complete: Blueprint retains the
-statement evidence and an unknown-location observation, rather than claiming a
-proof-side dependency. Unknown locations block completion conservatively and
-are displayed as unknown, without adding a known statement/proof gap or a local
-proof-writing task.
+The statement track for theorem-like nodes requires verified statement coverage
+and no statement or unlocalized hole. A proof-only verification gap can leave
+that statement track complete; the proof track remains blocked. Definitions
+require both axes for statement completion. Whole-declaration `isProved` and
+agent `complete` always require the entire closure.
 
-For visible bodies, Blueprint examines the elaborated type and body separately.
-Identical outer lambda binder types that repeat the declaration's telescope
-belong to statement evidence; other annotations inside the body remain body
-evidence. Inductive constructor fields belong to statement evidence even when
-the inductive's own type does not mention them. Direct terms are observed from
-expressions; dependencies are identified using Lean's transitive axiom lookup.
-Inductive and constructor types are also checked through a visited worklist,
-including nested fields, when an inductive is a dependency. This follows type
-and constructor links rather than traversing arbitrary declaration bodies.
-Observed evidence is kept even if a combined cached footprint omits it. These
-checks assume that the remaining hidden cached footprints accurately
-describe their source revision; they do not independently recheck hidden bodies.
+`ProvedStatus.incomplete` carries `IncompletenessInfo` with `knownSorry` and
+`unverified` arrays. Empty incomplete payloads and default declaration statuses
+are unverified, never complete and never invented sorry evidence. `SorryWhere`
+and `SorryOrigin` both include `unknown`. `hasTypeGap`/`hasProofGap` describe
+observed axis blockers; `hasUnverifiedType`/`hasUnverifiedProof` describe coverage.
+Use completion predicates for decisions instead of testing zero source counts.
 
-`SorryWhere` and `SorryOrigin` each include `unknown`. Code consuming status JSON
-or these Lean enums must handle those cases. `hasTypeGap` and `hasProofGap`
-report known axes; completion predicates additionally handle unlocalized sorry
-evidence. Summary headings use the stored evidence instead of reconstructing
-origins from axis counts. Duplicate snapshots from the same source revision
-retain each axis/origin pair and the maximum known source-reference count;
-`proved` is neutral, while missing declarations and axiom-like placeholders
-retain their existing dominance. An empty `containsSorry` payload stays
-incomplete and is treated as unlocalized.
+Duplicate snapshots retain each axis/origin pair and the maximum known source
+count, plus every verification gap. `proved` remains a neutral merge element;
+missing and axiom-like declarations retain their blocking dominance. Summary
+headings use stored evidence. Summary API fields are `incompleteDecls`,
+`incompleteDetails`, and `withIncompleteCode`, since blockers include uncertainty.
 
-Lean callers now classify with `ConstantInfo.blueprintProvedStatus name info`
-in an environment monad, then project `hasTypeGap` or `hasProofGap` from the
-returned status. This replaces the former pure classifier and its
-`blueprintHasTypeSorry`/`blueprintHasProofSorry` wrappers.
+Lean callers use `Informal.Data.analyzeDeclaration name` in the environment
+monad; the classifier fetches the canonical checked declaration itself.
+`ProvedStatus.ofInspection_not_reachable` connects the production completion
+constructor to the closure certificate theorem. The expression extraction and
+checked-environment API form the trusted boundary of that theorem.
+For agents, use `lake exe vbp query status <label>` after building the current
+sources; see [API](API.md#lean-completeness-evidence).
 
 Warning markers are reserved for structural or resolution issues such as:
 

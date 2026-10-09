@@ -252,6 +252,26 @@ structure SorryInfo where
   origin : SorryOrigin := .direct
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
+/-- Why absence of holes could not be verified from the checked environment. -/
+inductive VerificationReason where
+  | bodyUnavailable
+  | declarationUnavailable
+  | uncheckedExpression
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Missing verification information, distinct from an observed sorry term. -/
+structure VerificationGap where
+  location : SorryWhere := .unknown
+  declaration : Name := .anonymous
+  reason : VerificationReason := .declarationUnavailable
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Known holes and missing verification can coexist on independent axes. -/
+structure IncompletenessInfo where
+  knownSorry : Array SorryInfo := #[]
+  unverified : Array VerificationGap := #[]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
 /--
 Formalization/proof status for a declaration.
 -/
@@ -260,8 +280,42 @@ inductive ProvedStatus where
   /-- Declaration reference could not be resolved/present at snapshot time. -/
   | missing
   | axiomLike
-  | containsSorry (info : Array SorryInfo)
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+  /-- A known gap or insufficient coverage to certify absence of gaps. -/
+  | incomplete : IncompletenessInfo → ProvedStatus
+deriving Repr, DecidableEq, ToJson, FromJson, Quote
+
+instance : Inhabited ProvedStatus := ⟨.incomplete {}⟩
+
+/-- Merge duplicate observations by axis *and* origin. Counts are lower bounds
+from overlapping snapshots, so take their maximum instead of adding them. -/
+def SorryInfo.mergeEvidence (items : Array SorryInfo) : Array SorryInfo :=
+  items.foldl (init := #[]) fun acc item =>
+    match acc.findIdx? (fun old => old.location == item.location && old.origin == item.origin) with
+    | none => acc.push item
+    | some index => acc.modify index fun old =>
+      { old with refs? := max old.refs? item.refs? }
+
+/-- Preserve unknown coverage before combining incomplete snapshots. -/
+def IncompletenessInfo.withCoverageFallback (info : IncompletenessInfo) : IncompletenessInfo :=
+  if info.knownSorry.isEmpty && info.unverified.isEmpty then { info with unverified := #[{}] }
+  else info
+
+/-- Conservative union. Verified snapshots are neutral; known evidence and
+verification gaps survive merging, including an empty incomplete payload. -/
+def ProvedStatus.mergeConservative : ProvedStatus → ProvedStatus → ProvedStatus
+  | .missing, _ | _, .missing => .missing
+  | .axiomLike, _ | _, .axiomLike => .axiomLike
+  | .proved, b => b
+  | a, .proved => a
+  | .incomplete a, .incomplete b =>
+    let a := a.withCoverageFallback
+    let b := b.withCoverageFallback
+    .incomplete {
+      knownSorry := SorryInfo.mergeEvidence (a.knownSorry ++ b.knownSorry),
+      unverified := (a.unverified ++ b.unverified).foldl (fun acc gap =>
+        if acc.contains gap then acc else acc.push gap) #[] }
+
+
 
 /-- Information about a code block, including Lean-level analysis -/
 structure LiterateDef where
@@ -269,7 +323,7 @@ structure LiterateDef where
   commandStx : Syntax := .missing
   commandIndex : Nat := 0
   commandLines : Nat := 1
-  provedStatus : ProvedStatus := .proved
+  provedStatus : ProvedStatus := .incomplete {}
   typeSorryRefs : Array Syntax := #[]
 deriving Repr, Inhabited
 
@@ -477,7 +531,7 @@ structure ExternalRef where
   /--
   Snapshot of proof/completeness status at registration time.
   -/
-  provedStatus : ProvedStatus := .proved
+  provedStatus : ProvedStatus := .incomplete {}
   /--
   Snapshot of declaration provenance metadata.
   -/

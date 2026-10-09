@@ -14,7 +14,7 @@ open Informal.Data
 open Verso.VersoBlueprintTests.Blueprint.Support
 
 private def inlineProofGapStatus : Data.ProvedStatus :=
-  .containsSorry #[{ location := .proof, refs? := some 1 }]
+  .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
 
 private def missingExternalRef (name : Lean.Name) : Data.ExternalRef :=
   {
@@ -28,7 +28,7 @@ private def proofGapExternalRef (name : Lean.Name) : Data.ExternalRef :=
     (Data.ExternalRef.ofName name) with
       present := true
       kind := .theorem
-      provedStatus := .containsSorry #[{ location := .proof, refs? := some 1 }]
+      provedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
   }
 
 private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
@@ -36,6 +36,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     (Data.ExternalRef.ofName name) with
       present := true
       kind := .theorem
+      provedStatus := .proved
       render := .error (.exception name "synthetic render failure")
   }
 
@@ -54,7 +55,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   match (CodeSummary.renderParts data cdata (fun _ => none)).statusMark with
   | some mark =>
     match mark.status with
-    | .containsSorry info =>
+    | .incomplete details =>
+      let info := details.knownSorry
       !info.isEmpty &&
       info.any (·.location == Data.SorryWhere.proof) &&
       !info.any (·.location == Data.SorryWhere.statement) &&
@@ -82,7 +84,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   match (CodeSummary.renderParts data cdata (fun _ => none)).statusMark with
   | some mark =>
     match mark.status with
-    | .containsSorry info =>
+    | .incomplete details =>
+      let info := details.knownSorry
       !info.isEmpty &&
       info.any (·.location == Data.SorryWhere.proof) &&
       !info.any (·.location == Data.SorryWhere.statement) &&
@@ -184,9 +187,9 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let status : ProvedStatus := .containsSorry #[
+  let status : ProvedStatus := .incomplete { knownSorry := #[
     { location := .statement, origin := .dependency },
-    { location := .unknown, origin := .unknown }]
+    { location := .unknown, origin := .unknown }] }
   let ref : ExternalRef := { (ExternalRef.ofName `Hidden.typeOnly) with provedStatus := status }
   let data : BlockData := {
     kind := .theorem, label := `hidden.typeOnly, count := 1, codeData := some { externalDecls := #[ref] } }
@@ -200,8 +203,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let direct : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 2 }]
-  let inherited : ProvedStatus := .containsSorry #[{ location := .proof, origin := .dependency }]
+  let direct : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 2 }] }
+  let inherited : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
   let refs := #[
     { (ExternalRef.ofName `Direct) with provedStatus := direct },
     { (ExternalRef.ofName `Inherited) with provedStatus := inherited }]

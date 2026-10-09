@@ -163,9 +163,9 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
       continue
     let some info := after.find? name
       | continue
-    let baseStatus ← Data.ConstantInfo.blueprintProvedStatus name info
+    let baseStatus ← Data.analyzeDeclaration name
     let hasDirectAt (location : Data.SorryWhere) : Bool := match baseStatus with
-      | .containsSorry evidence => evidence.any fun item =>
+      | .incomplete evidence => evidence.knownSorry.any fun item =>
         item.location == location && item.origin == .direct
       | _ => false
     let hasTypeGap := hasDirectAt .statement

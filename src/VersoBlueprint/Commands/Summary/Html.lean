@@ -27,7 +27,7 @@ open Informal Data Environment
 private def triageVisibleLimit : Nat := 10
 
 def statusCountsText (counts : EntryStatusCounts) : String :=
-  s!"completed: {counts.completed}; deps incomplete: {counts.completedDepsNo}; sorries: {counts.withSorries}; no proof: {counts.noProof}"
+  s!"completed: {counts.completed}; deps incomplete: {counts.completedDepsNo}; incomplete code: {counts.withIncompleteCode}; no proof: {counts.noProof}"
 
 private def metadataPresentationOfPriorityItem (item : PriorityItem) : MetadataPresentation := {
   ownerText := item.ownerDisplayName
@@ -50,7 +50,7 @@ private def metadataPresentationOfMetadataEntryItem (item : MetadataEntryItem) :
 def Summary.previewLabels (data : Summary) : Array Name :=
   let allLabels : List Name :=
     data.pendingInformalEntries.map (·.label) ++
-    data.sorryDetails.map (·.label) ++
+    data.incompleteDetails.map (·.label) ++
     data.missingLeanDecls.map (·.label) ++
     data.renderFailures.map (·.label) ++
     data.definitionIndex.map (·.label) ++
@@ -363,7 +363,7 @@ private def SummaryHtmlContext.leanRows (ctx : SummaryHtmlContext) (items : List
     Array Output.Html :=
   items.toArray.map fun item => ctx.leanRow item.label item.kind item.leanObjects
 
-private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : SorryItem) :
+private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : IncompleteItem) :
     SummaryHtmlM Output.Html := do
   let entryRef := ctx.entryRef item.label
   let declLink :=
@@ -375,8 +375,9 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     match item.status with
     | .missing => pure "Missing declaration: "
     | .axiomLike => pure "Axiom-like declaration: "
-    | .containsSorry _ =>
-      pure <| if item.status.containsExplicitSorry then
+    | .incomplete _ =>
+      pure <| if item.status.isUnverified then "Unverified declaration: "
+      else if item.status.containsExplicitSorry then
         "Declaration with sorry: "
       else if item.status.dependsOnSorry then "Declaration depending on sorry: "
       else "Declaration with detected sorry: "
@@ -385,7 +386,7 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
       pure "Declaration: "
   let refsTxt :=
     match item.status with
-    | .containsSorry _ =>
+    | .incomplete _ =>
       let (typeSorryRefs, proofSorryRefs) := item.status.sorryRefCounts
       let sorryRefs := typeSorryRefs + proofSorryRefs
       if sorryRefs > 0 then toString sorryRefs
@@ -620,11 +621,11 @@ private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
 private def SummaryRows.withOverviewRows
     (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
-  let sorryRows ← data.sorryDetails.toArray.mapM ctx.sorryRow
+  let sorryRows ← data.incompleteDetails.toArray.mapM ctx.sorryRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
   let actionablePriorityRows := data.actionablePriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
-  let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
+  let blockerCount := data.missingLeanDecls.length + data.incompleteDetails.length
   let blockerRows := missingRows ++ sorryRows
   pure {
     rows with

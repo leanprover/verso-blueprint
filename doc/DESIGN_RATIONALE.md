@@ -1132,7 +1132,7 @@ This is the path for an informal block that points at a Lean-owned declaration:
 This path deliberately separates:
 
 - semantic status:
-  declaration present / missing / sorry-backed / axiom-like
+  verified complete / missing / known sorry evidence / unverified coverage / axiom-like
 - render health:
   whether the direct external declaration HTML render succeeded
 

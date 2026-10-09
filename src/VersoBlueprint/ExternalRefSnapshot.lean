@@ -256,7 +256,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       render := .error (.moduleUnavailable canonical)
     }
   | some cinfo =>
-    let provedStatus ← Informal.Data.ConstantInfo.blueprintProvedStatus canonical cinfo
+    let provedStatus ← Informal.Data.analyzeDeclaration canonical
     let nodeKind ←
       match Informal.Data.ConstantInfo.blueprintNodeKind? cinfo with
       | some nodeKind => pure nodeKind

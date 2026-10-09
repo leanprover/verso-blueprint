@@ -672,10 +672,10 @@ def CodeHealth.hasAnyGaps (health : CodeHealth) : Bool :=
   health.anyGapCount > 0
 
 def CodeHealth.localStatementFormalized (health : CodeHealth) : Bool :=
-  health.hasAssociatedCode && !health.hasMissingExternalDecls && !health.hasStatementGaps
+  health.hasAssociatedCode && health.totalDecls > 0 && !health.hasMissingExternalDecls && !health.hasStatementGaps
 
 def CodeHealth.localProofFormalized (health : CodeHealth) : Bool :=
-  health.hasAssociatedCode && !health.hasMissingExternalDecls && !health.hasAnyGaps
+  health.hasAssociatedCode && health.totalDecls > 0 && !health.hasMissingExternalDecls && !health.hasAnyGaps
 
 def CodeHealth.incompleteAssociatedCode (health : CodeHealth) : Bool :=
   health.hasAssociatedCode && !health.hasMissingExternalDecls && health.hasAnyGaps
@@ -703,13 +703,13 @@ def externalDeclProvedStatus (external : ExternalCodeStatus) (decl : Data.Extern
 def nodeHasMissingExternalDecls (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
   (nodeCodeHealth external node).hasMissingExternalDecls
 
-def nodeHasStatementSorries (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
+def nodeHasStatementBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
   (nodeCodeHealth external node).hasStatementGaps
 
-def nodeHasProofSorries (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
+def nodeHasProofBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
   (nodeCodeHealth external node).hasProofGaps
 
-def nodeHasSorries (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
+def nodeHasIncompleteCode (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
   (nodeCodeHealth external node).hasAnyGaps
 
 def nodeLocalStatementFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=

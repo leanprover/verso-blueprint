@@ -75,6 +75,28 @@ def main() -> int:
             return
         raise AssertionError(f"Schema accepted {name}")
 
+    def status_payload(data):
+        target = data["previews"][primary_index]["codeData"]["externalDecls"][0]
+        target["provedStatus"] = deepcopy(fixture["statusCases"][1])
+        return target["provedStatus"]["incomplete"]
+
+    for field in ("location", "reason"):
+        invalid = deepcopy(manifest)
+        status_payload(invalid)["unverified"][0][field] = "invalid"
+        reject(f"invalid verification {field}", invalid)
+    invalid = deepcopy(manifest)
+    payload = status_payload(invalid)
+    payload["knownSorry"] = [{"location": "invalid", "origin": "unknown"}]
+    reject("invalid sorry location", invalid)
+    invalid = deepcopy(manifest)
+    payload = status_payload(invalid)
+    payload["knownSorry"] = [{"location": "unknown", "origin": "invalid"}]
+    reject("invalid sorry origin", invalid)
+    invalid = deepcopy(manifest)
+    target = invalid["previews"][primary_index]["codeData"]["externalDecls"][0]
+    target["provedStatus"] = {"containsSorry": []}
+    reject("obsolete sorry payload", invalid)
+
     def span(data):
         return data["previews"][primary_index]["sources"][0]["spans"][0]
 

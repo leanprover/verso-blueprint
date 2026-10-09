@@ -60,3 +60,13 @@ public structure SorryImportNestedCompleteRecord where
 public theorem sorryImportNestedHypothesis (_h : SorryImportNestedRecord) : True := True.intro
 public theorem sorryImportNestedCompleteHypothesis (_h : SorryImportNestedCompleteRecord) : True :=
   True.intro
+
+-- The body uses an admitted constructor closure while its public type is clean.
+-- Shared collectAxioms export traversal can cache this closure as empty.
+public theorem sorryImportHiddenHelper : True :=
+  let _helper : SorryImportNestedRecord → True := sorryImportNestedHypothesis
+  True.intro
+
+@[expose] public def sorryImportExposedHiddenHelper : Bool :=
+  let _proof := sorryImportHiddenHelper
+  true

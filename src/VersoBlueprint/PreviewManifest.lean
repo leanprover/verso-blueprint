@@ -683,7 +683,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 10
+def manifestInternalSchemaVersion : Nat := 11
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1819,7 +1819,16 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
               ("type", Json.str "string"),
               ("enum", Json.arr enumVals)
             ]
-            let payloadSchema := Json.mkObj [
+            let payloadSchema ← if name == ``Data.ProvedStatus then do
+              -- Match the actual one-field constructor serializer and recursively
+              -- validate both observed evidence and verification-gap enums.
+              let infoSchema ← schemaForType (mkConst ``Data.IncompletenessInfo)
+              pure <| Json.mkObj [
+                ("type", Json.str "object"),
+                ("properties", Json.mkObj [("incomplete", infoSchema)]),
+                ("required", toJson (#["incomplete"] : Array String)),
+                ("additionalProperties", Json.bool false)]
+            else pure <| Json.mkObj [
               ("type", Json.str "object"),
               ("description", Json.str s!"Derived JSON representation for '{name}'.")
             ]

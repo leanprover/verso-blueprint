@@ -35,13 +35,13 @@ theorem statusComposed (h : statusSpec) : True := statusAdmitted h
       | return false
     let some composed := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusComposed
       | return false
-    let admittedStatus ← ConstantInfo.blueprintProvedStatus admitted.name admitted
-    let composedStatus ← ConstantInfo.blueprintProvedStatus composed.name composed
+    let admittedStatus ← analyzeDeclaration admitted.name
+    let composedStatus ← analyzeDeclaration composed.name
     let statementDependency : SorryInfo := { location := .statement, origin := .dependency }
     let proofDirect : SorryInfo := { location := .proof, origin := .direct }
     let proofDependency : SorryInfo := { location := .proof, origin := .dependency }
-    return admittedStatus == .containsSorry #[statementDependency, proofDirect] &&
-      composedStatus == .containsSorry #[statementDependency, proofDependency]
+    return admittedStatus == .incomplete { knownSorry := #[statementDependency, proofDirect] } &&
+      composedStatus == .incomplete { knownSorry := #[statementDependency, proofDependency] }
 
 def statusGap : Type := by sorry
 
@@ -62,11 +62,11 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   show CoreM Bool from do
     let some info := (← getEnv).find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusDirectRecord
       | return false
-    let status ← ConstantInfo.blueprintProvedStatus info.name info
+    let status ← analyzeDeclaration info.name
     let some theoremInfo := (← getEnv).find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusDirectTypeOnly
       | return false
-    let typeOnly ← ConstantInfo.blueprintProvedStatus theoremInfo.name theoremInfo
-    return status == .containsSorry #[{ location := .statement }] && typeOnly == status
+    let typeOnly ← analyzeDeclaration theoremInfo.name
+    return status == .incomplete { knownSorry := #[{ location := .statement }] } && typeOnly == status
 
 /-- info: true -/
 #guard_msgs in
@@ -78,8 +78,8 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     let some complete := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusCompleteRecord
       | return false
     let recordAxioms ← collectAxioms record.name
-    let recordStatus ← ConstantInfo.blueprintProvedStatus record.name record
-    let completeStatus ← ConstantInfo.blueprintProvedStatus complete.name complete
+    let recordStatus ← analyzeDeclaration record.name
+    let completeStatus ← analyzeDeclaration complete.name
     let node : Data.Node := {
       kind := .definition
       literateCodes := #[{ stx := .missing, definedDefs :=
@@ -101,8 +101,8 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       | return false
     let some consumer := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusConsumer
       | return false
-    let helperStatus ← ConstantInfo.blueprintProvedStatus helper.name helper
-    let consumerStatus ← ConstantInfo.blueprintProvedStatus consumer.name consumer
+    let helperStatus ← analyzeDeclaration helper.name
+    let consumerStatus ← analyzeDeclaration consumer.name
     let some axiomInfo := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_axiom_decl
       | return false
     let axiomFootprint ← collectAxioms axiomInfo.name
@@ -136,8 +136,8 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       | return false
     let some defInfo := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_def_decl
       | return false
-    let axiomStatus ← ConstantInfo.blueprintProvedStatus axiomInfo.name axiomInfo
-    let defStatus ← ConstantInfo.blueprintProvedStatus defInfo.name defInfo
+    let axiomStatus ← analyzeDeclaration axiomInfo.name
+    let defStatus ← analyzeDeclaration defInfo.name
     pure (
       axiomStatus == .axiomLike &&
       defStatus == .proved
@@ -147,7 +147,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
 #guard_msgs in
 #eval
   let status : Data.ProvedStatus :=
-    .containsSorry #[{ location := .statement, refs? := some 2 }, { location := .proof, refs? := some 3 }]
+    .incomplete { knownSorry := #[{ location := .statement, refs? := some 2 }, { location := .proof, refs? := some 3 }] }
   Data.NodeKind.definition.isTheoremLike = false &&
   Data.NodeKind.proposition.isTheoremLike &&
   Data.NodeKind.theorem.isTheoremLike &&
@@ -161,9 +161,9 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
 #guard_msgs in
 #eval
   let sorryStatus : Data.ProvedStatus :=
-    .containsSorry #[{ location := .proof, refs? := some 1 }]
+    .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
   let inheritedStatus : Data.ProvedStatus :=
-    .containsSorry #[{ location := .proof, origin := .dependency }]
+    .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
   let sorryView := sorryStatus.presentation
   let inheritedView := inheritedStatus.presentation
   let missingView := Data.ProvedStatus.proved.presentation (present := false)
@@ -192,26 +192,26 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   let proofDirect : SorryInfo := { location := .proof, refs? := some 3 }
   let proofInherited : SorryInfo := { location := .proof, origin := .dependency }
   let unknown : SorryInfo := { location := .unknown, origin := .unknown }
-  let a : ProvedStatus := .containsSorry #[statementDirect, proofInherited, unknown]
-  let b : ProvedStatus := .containsSorry #[statementInherited, proofDirect]
+  let a : ProvedStatus := .incomplete { knownSorry := #[statementDirect, proofInherited, unknown] }
+  let b : ProvedStatus := .incomplete { knownSorry := #[statementInherited, proofDirect] }
   let merged := a.mergeConservative b
-  let emptyMerged := (ProvedStatus.containsSorry #[]).mergeConservative
-    (.containsSorry #[proofInherited])
+  let emptyMerged := (ProvedStatus.incomplete { knownSorry := #[] }).mergeConservative
+    (.incomplete { knownSorry := #[proofInherited] })
   let expected := #[statementDirect, proofInherited, unknown, statementInherited, proofDirect]
-  merged == .containsSorry expected &&
+  merged == .incomplete { knownSorry := expected } &&
     merged.hasTypeGap && merged.hasProofGap && merged.hasUnlocalizedSorry &&
     merged.containsExplicitSorry && merged.dependsOnSorry &&
     merged.sorryRefCounts == (2, 3) &&
     merged.mergeConservative a == merged && merged.mergeConservative b == merged &&
     merged.mergeConservative merged == merged &&
-    ((ProvedStatus.containsSorry #[]).mergeConservative (.containsSorry #[])).isIncomplete &&
-    emptyMerged.hasUnlocalizedSorry && emptyMerged.dependsOnSorry && emptyMerged.hasProofGap &&
+    ((ProvedStatus.incomplete { knownSorry := #[] }).mergeConservative (.incomplete { knownSorry := #[] })).isIncomplete &&
+    emptyMerged.hasUnverifiedCoverage && emptyMerged.dependsOnSorry && emptyMerged.hasProofGap &&
     emptyMerged.blocksStatementCompletion .theorem
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  let unknown : ProvedStatus := .containsSorry #[{ location := .unknown, origin := .unknown }]
+  let unknown : ProvedStatus := .incomplete { knownSorry := #[{ location := .unknown, origin := .unknown }] }
   let node : Node := { kind := .theorem, externalRefs :=
     #[{ (ExternalRef.ofName `hidden) with provedStatus := unknown }] }
   let health := nodeCodeHealth {} node
@@ -240,22 +240,58 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
 /-- info: true -/
 #guard_msgs in
 #eval
-  let status : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 2 }]
-  let newer : ProvedStatus := .containsSorry #[{ location := .proof, refs? := some 4 }]
-  let inherited : ProvedStatus := .containsSorry #[{ location := .proof, origin := .dependency }]
+  let status : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 2 }] }
+  let newer : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 4 }] }
+  let inherited : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
   (status.mergeConservative newer).sorryRefCounts == (0, 4) &&
     ((status.mergeConservative inherited).withDirectRefCounts 0 5).sorryRefCounts == (0, 5)
 
-/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext] -/
+-- Closed cycles are legitimate. Open boundaries, hidden bodies, missing roots,
+-- and holes anywhere in a cycle must all prevent production completion.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let a : InspectedDeclaration := { dependencies := #[`b] }
+  let b : InspectedDeclaration := { dependencies := #[`a] }
+  let closed : InspectedDeclarations := ({} : InspectedDeclarations).insert `a a |>.insert `b b
+  let inspect (graph : InspectedDeclarations) : SorryInspection := { roots := #[`a], declarations := graph }
+  let hole := closed.insert `b { b with dependencies := #[`a, ``sorryAx] }
+    |>.insert ``sorryAx {}
+  let hidden := closed.insert `b { b with unverified := some .bodyUnavailable }
+  let unchecked := closed.insert `b { b with unverified := some .uncheckedExpression }
+  let openGraph := closed.erase `b
+  let absent : SorryInspection := { roots := #[`absent], declarations := closed }
+  (ProvedStatus.ofInspection (inspect closed) {}).isProved &&
+    #[inspect hole, inspect hidden, inspect unchecked, inspect openGraph, absent].all
+      (fun inspection => !(ProvedStatus.ofInspection inspection {}).isProved) &&
+    !(ProvedStatus.ofInspection (inspect closed) { knownSorry := #[{ location := .unknown }] }).isProved &&
+    !(ProvedStatus.ofInspection (inspect closed) { unverified := #[{}] }).isProved
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let defaultStatus : ProvedStatus := default
+  let empty : ProvedStatus := .incomplete {}
+  let inherited : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
+  let mixed := empty.mergeConservative inherited
+  let emptyCode : Node := { kind := .theorem, literateCodes := #[{ stx := .missing }] }
+  defaultStatus.isUnverified && !defaultStatus.hasKnownSorry &&
+    (ProvedStatus.ofRefCounts 0 0).isUnverified &&
+    empty.blocksStatementCompletion .theorem && empty.blocksProofCompletion &&
+    mixed.hasKnownSorry && mixed.hasUnverifiedCoverage &&
+    mixed.mergeConservative .proved == mixed &&
+    !Graph.nodeLocalStatementFormalized {} emptyCode && !Graph.nodeLocalProofFormalized {} emptyCode
+
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms ProvedStatus.mergeConservative_proved_left
 
-/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_right' depends on axioms: [propext] -/
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_right' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms ProvedStatus.mergeConservative_proved_right
 
-/-- info: 'Informal.Data.ProvedStatus.ofSorryEvidence_known_incomplete' depends on axioms: [propext] -/
+/-- info: 'Informal.Data.ProvedStatus.ofInspection_not_reachable' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms ProvedStatus.ofSorryEvidence_known_incomplete
+#print axioms ProvedStatus.ofInspection_not_reachable
 
 end Verso.VersoBlueprintTests.BlueprintGraph.Basics

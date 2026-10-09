@@ -154,6 +154,41 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
     ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
   ]
 
+/-- Declaration truth over every semantic association, retaining facet provenance.
+This reads the persisted generation snapshot; it does not recheck Lean sources. -/
+private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := Id.run do
+  let facets := manifest.findBlockEntriesByLabel entry.authoredLabel
+  let mut declarations : Array Json := #[]
+  let mut aggregate : Informal.Data.ProvedStatus := .proved
+  let mut statementBlocked := false
+  let kind := entry.kind.getD .theorem
+  for facet in facets do
+    let code := facet.codeData.getD {}
+    for decl in code.externalDecls do
+      let status := if decl.present then decl.provedStatus else .missing
+      aggregate := aggregate.mergeConservative status
+      statementBlocked := statementBlocked || status.blocksStatementCompletion kind
+      declarations := declarations.push <| Json.mkObj [
+        ("name", nameJson decl.canonical), ("facet", toJson facet.facet),
+        ("association", Json.str "external"), ("kind", toJson decl.kind),
+        ("status", status.reportJson)]
+    for decl in code.literateDeclarations.declarations do
+      aggregate := aggregate.mergeConservative decl.provedStatus
+      statementBlocked := statementBlocked || decl.provedStatus.blocksStatementCompletion kind
+      declarations := declarations.push <| Json.mkObj [
+        ("name", nameJson decl.name), ("facet", toJson facet.facet),
+        ("association", Json.str "inline"),
+        ("status", decl.provedStatus.reportJson)]
+  let associated := !declarations.isEmpty
+  return responseJson [
+    ("label", nameJson entry.label),
+    ("asOf", Json.str "generated-snapshot"),
+    ("verdict", Json.str (if associated then aggregate.verdict else "unassociated")),
+    ("complete", toJson (associated && aggregate.isProved)),
+    ("statementComplete", toJson (associated && !statementBlocked)),
+    ("proofComplete", toJson (associated && aggregate.isProved)),
+    ("declarations", Json.arr declarations)]
+
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)
     | [] =>
@@ -248,6 +283,8 @@ private def querySelectors : List QuerySelector := [
     ],
   QuerySelector.oneArg "node" "label" false fun label manifest =>
     withPrimaryEntry manifest label (entryResponseJson manifest),
+  QuerySelector.oneArg "status" "label" false fun label manifest =>
+    withPrimaryEntry manifest label (entryStatusJson manifest),
   QuerySelector.oneArg "uses" "label" false fun label manifest =>
     withPrimaryEntry manifest label fun entry =>
       responseJson [

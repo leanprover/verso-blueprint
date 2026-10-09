@@ -27,5 +27,5 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
       !Graph.nodeLocalProofFormalized {} node &&
-      statusCaptureBlueprint.model.summary.sorryDetails.any (fun item =>
+      statusCaptureBlueprint.model.summary.incompleteDetails.any (fun item =>
         item.label == label && item.status == status)

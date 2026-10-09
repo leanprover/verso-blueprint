@@ -84,7 +84,7 @@ structure DeclSummaryItem where
   previewLookupKey? : Option String := none
   href : Option String := none
   kind : DeclSummaryKind := .definition
-  status : Data.ProvedStatus := .proved
+  status : Data.ProvedStatus := .incomplete {}
   present : Bool := true
 deriving Inhabited, Repr
 
@@ -428,7 +428,7 @@ private def codeSummaryText (label : Data.Label)
         "none"
       else
         String.intercalate ", " (sorries.toList.map fun item => s!"{item.displayName} [{declSummaryStatusText item}]")
-    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nSorries: {sorriesTxt}"
+    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nIncomplete declarations: {sorriesTxt}"
 
 private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
     (node previewBody : Output.Html) : Output.Html :=

@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintGraph.Shared
 import VersoBlueprint.Graph
 
 namespace Verso.VersoBlueprintTests.BlueprintSummaryStatus
@@ -19,13 +20,13 @@ private def mkInformal (deps : Array Name := #[]) : InformalData :=
 private def mkDefDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateDef :=
   {
     name
-    provedStatus := ProvedStatus.ofRefCounts typeRefs proofRefs
+    provedStatus := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus typeRefs proofRefs
   }
 
 private def mkThmDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateThm :=
   {
     name
-    provedStatus := ProvedStatus.ofRefCounts typeRefs proofRefs
+    provedStatus := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus typeRefs proofRefs
   }
 
 private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : Array LiterateThm)
@@ -55,9 +56,9 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
 #guard_msgs in
 #eval
   let provedStatus := ProvedStatus.proved
-  let stmtGap := ProvedStatus.ofRefCounts 1 0
-  let proofGap := ProvedStatus.ofRefCounts 0 1
-  let bothGap := ProvedStatus.ofRefCounts 1 1
+  let stmtGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 1 0
+  let proofGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 0 1
+  let bothGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 1 1
   let bothEvidence : Array SorryInfo :=
     #[{ location := .statement, refs? := some 1 },
       { location := .proof, refs? := some 1 }]
@@ -81,14 +82,14 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
   bothGap.blocksStatementCompletion .lemma &&
   bothGap.blocksStatementCompletion .theorem &&
   bothGap.blocksStatementCompletion .corollary &&
-  bothGap == .containsSorry bothEvidence &&
+  bothGap == .incomplete { knownSorry := bothEvidence } &&
   stmtGap.blocksProofCompletion &&
   proofGap.blocksProofCompletion
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  let statuses : Array ProvedStatus := #[.proved, ProvedStatus.ofRefCounts 0 1]
+  let statuses : Array ProvedStatus := #[.proved, Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 0 1]
   ProvedStatus.anyBlocksStatementCompletion .definition statuses (fun s => s) &&
   (!ProvedStatus.anyBlocksStatementCompletion .proposition statuses (fun s => s)) &&
   (!ProvedStatus.anyBlocksStatementCompletion .theorem statuses (fun s => s)) &&
@@ -105,8 +106,8 @@ def definitionWithProofGap : Node :=
 #guard_msgs in
 #eval
   let external : ExternalCodeStatus := {}
-  nodeHasStatementSorries external definitionWithProofGap &&
-  nodeHasProofSorries external definitionWithProofGap &&
+  nodeHasStatementBlockers external definitionWithProofGap &&
+  nodeHasProofBlockers external definitionWithProofGap &&
   (!nodeLocalStatementFormalized external definitionWithProofGap) &&
   (!nodeLocalFormalized external definitionWithProofGap)
 
@@ -124,7 +125,7 @@ def theoremWithHelperDefProofGap : Node :=
 #eval
   let external : ExternalCodeStatus := {}
   nodeLocalStatementFormalized external theoremWithHelperDefProofGap &&
-  nodeHasProofSorries external theoremWithHelperDefProofGap &&
+  nodeHasProofBlockers external theoremWithHelperDefProofGap &&
   (!nodeLocalProofFormalized external theoremWithHelperDefProofGap) &&
   (!nodeLocalFormalized external theoremWithHelperDefProofGap)
 

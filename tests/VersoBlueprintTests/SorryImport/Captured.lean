@@ -61,9 +61,9 @@ private def capturedStatus? (label : String) : Option ProvedStatus := do
   let statement : SorryInfo := { location := .statement, origin := .dependency }
   let proof : SorryInfo := { location := .proof }
   let inheritedProof : SorryInfo := { location := .proof, origin := .dependency }
-  capturedStatus? "sorry.capture.type-only" == some (.containsSorry #[statement]) &&
-    capturedStatus? "sorry.capture.both" == some (.containsSorry #[statement, proof, inheritedProof]) &&
-    capturedStatus? "sorry.capture.proof-only" == some (.containsSorry #[inheritedProof]) &&
+  capturedStatus? "sorry.capture.type-only" == some (.incomplete { knownSorry := #[statement] }) &&
+    capturedStatus? "sorry.capture.both" == some (.incomplete { knownSorry := #[statement, proof, inheritedProof] }) &&
+    capturedStatus? "sorry.capture.proof-only" == some (.incomplete { knownSorry := #[inheritedProof] }) &&
     capturedStatus? "sorry.capture.complete" == some .proved &&
     capturedStatus? "sorry.capture.external" == capturedStatus? "sorry.capture.both"
 
@@ -74,7 +74,7 @@ private def capturedStatus? (label : String) : Option ProvedStatus := do
   let graphStatus (label : String) :=
     model.graph.nodes.find? (·.label == Name.mkSimple label) |>.map (·.proofStatus)
   let summaryStatus (label : String) :=
-    model.summary.sorryDetails.find? (·.label == Name.mkSimple label) |>.map (·.status)
+    model.summary.incompleteDetails.find? (·.label == Name.mkSimple label) |>.map (·.status)
   graphStatus "sorry.capture.type-only" == some .incomplete &&
     graphStatus "sorry.capture.both" == some .incomplete &&
     graphStatus "sorry.capture.proof-only" == some .incomplete &&
@@ -87,7 +87,7 @@ private def capturedStatus? (label : String) : Option ProvedStatus := do
     (summaryStatus "sorry.capture.complete").isNone &&
     (summaryStatus "sorry.capture.inline-record").any (fun status =>
       status.hasTypeGap && status.containsExplicitSorry && status.sorryRefCounts.1 > 0) &&
-    model.summary.sorries > 5
+    model.summary.incompleteDecls > 5
 
 -- Captured producer evidence survives duplicate snapshot merging, including a
 -- later consumer whose neutral lookup contributes no additional evidence.
