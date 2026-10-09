@@ -51,6 +51,6 @@ recovery and disposal. It uses the repository's existing Playwright dependencies
 and a Chromium browser; no widget, React or npm dependencies are involved.
 
 Applications own their published resources and call `dispose()` when finished.
-The [VIR client guide](https://github.com/ejgallego/lean-vir/blob/3e7dbcf0615305c83bdcb9aa1892ac8b22087d8e/docs/guides/EMBEDDED_RESOURCES.md)
+The [VIR client guide](https://github.com/ejgallego/lean-vir/blob/aa465b873387a0bf46669031da1af99f59b0f3b9/docs/guides/EMBEDDED_RESOURCES.md)
 describes the upstream API. This example is a repository fixture, not a document
 generator or a replacement for `lake exe vbp build`.

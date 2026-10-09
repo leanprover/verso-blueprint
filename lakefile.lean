@@ -6,7 +6,7 @@ require verso from git "https://github.com/leanprover/verso"@"v4.35.0-rc4"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0-rc4"
 require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0-rc4"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.115"
-require lean_vir from git "https://github.com/ejgallego/lean-vir"@"3e7dbcf0615305c83bdcb9aa1892ac8b22087d8e"
+require lean_vir from git "https://github.com/ejgallego/lean-vir"@"aa465b873387a0bf46669031da1af99f59b0f3b9"
 
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
