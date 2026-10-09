@@ -6,6 +6,7 @@ require verso from git "https://github.com/leanprover/verso"@"v4.35.0-rc4"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0-rc4"
 require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0-rc4"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.115"
+require lean_vir from git "https://github.com/ejgallego/lean-vir"@"aa465b873387a0bf46669031da1af99f59b0f3b9"
 
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
@@ -22,6 +23,24 @@ input_file blueprintMathJs where
 input_file mathLintWorkerJs where
   path := "static-web/katex-lint.mjs"
   text := true
+
+-- Optional VIR resource API; neither the core library nor generator imports it.
+lean_lib VersoBlueprintVir where
+  srcDir := "src"
+  roots := #[`VersoBlueprintVir]
+
+lean_lib VersoBlueprintVirClientTests where
+  srcDir := "tests"
+  roots := #[`VersoBlueprintVirClientTests.Program]
+
+lean_lib VersoBlueprintVirClientResources where
+  srcDir := "tests"
+  roots := #[`VersoBlueprintVirClientTests.Resources]
+  needs := #[`+VersoBlueprintVirClientTests.Program:virResourcePack]
+
+lean_exe «vir-client-example» where
+  srcDir := "tests"
+  root := `VirClientExampleMain
 
 -- Blueprint core library.
 @[default_target]

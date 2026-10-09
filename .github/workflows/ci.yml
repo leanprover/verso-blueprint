@@ -83,6 +83,22 @@ jobs:
       - name: Run consumer math lint smoke
         run: python3 ./scripts/check_math_lint_fresh_repo.py
 
+  vir-client:
+    name: VIR Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Install browser test dependencies
+        run: |
+          python3 -m pip install uv
+          uv run --project tests/browser --extra test playwright install --with-deps chromium
+      - name: Compare VIR and native execution
+        run: uv run --project tests/browser --extra test python -m pytest tests/browser/test_vir_client.py -q --browser chromium
+
   harness-tests:
     name: Harness Tests
     runs-on: ubuntu-latest
