@@ -224,7 +224,7 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
 private def summaryPreviewItems (cdata : ComputedData)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   let source := cdata.source.getD {}
-  let declarations := source.literateDeclarations
+  let declarations := source.summaryLiterateDeclarations
   let previewKeys := cdata.inlineBlocks.foldl (init := ({} : Lean.NameMap String)) fun keys block =>
     let key := Informal.LeanCodePreviewKey.inlineLookupKey block.blockId
     block.declarations.foldl (fun keys decl => keys.insert decl.name key) keys

@@ -672,8 +672,7 @@ def nodeWarnings (external : ExternalCodeStatus) (_state : Environment.State) (_
   {
     unknownRef := false
     leanOnlyNoStatement := health.hasAssociatedCode && node.statement.isNone
-    missingExternalDecl := (health.hasAssociatedCode && health.hasMissingExternalDecls) ||
-      node.proofExternalRefs.any (! ·.present)
+    missingExternalDecl := health.hasAssociatedCode && health.hasMissingExternalDecls
   }
 
 def statementStatusBorderColor : StatementStatus → String

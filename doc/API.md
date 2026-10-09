@@ -370,8 +370,19 @@ and atomic Blueprint-state updates. The unscoped push/pop API and attachment hel
 removed. Standalone code and markup expanders must emit no semantic occurrence
 when registration fails. Required source identities must be checked before
 committing a contribution.
-`Node.externalRefs` and `Node.literateCodes` store normalized associations;
-`NodeContribution.leanCode` still accepts external groups or literate blocks.
+`Node.externalRefs` and `Node.proofExternalRefs` retain the statement and proof
+facet snapshots; both contribute to the node. `Node.leanDecls` and accepted
+declaration indexing include both facets and literate declarations.
+`Node.associatedExternalRefs` and `Node.summaryExternalRefs` in
+`VersoBlueprint.Data` deduplicate canonical declarations and merge their status
+evidence conservatively. The same merge preserves evidence when repeated
+contributions occur on one facet. Rendering uses the original facet snapshots
+to retain the location of each annotation.
+`Node.summaryLiterateCodes` and `BlockCodeData.summaryLiterateDeclarations`
+prefer one inline display entry while retaining status evidence from every
+association of that canonical declaration, including external proof annotations.
+`NodeContribution.leanCode` accepts statement external groups or literate
+blocks; `NodeContribution.proofExternalRefs` contributes proof associations.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal

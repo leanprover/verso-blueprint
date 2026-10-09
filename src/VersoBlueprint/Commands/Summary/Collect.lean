@@ -127,7 +127,7 @@ private def mkIndexItem (label : Name) (kind : Data.NodeKind) (leanObjects : Lis
 
 private def nodeLeanObjects (node : Data.Node) : List Name :=
   let externalNames :=
-    node.externalRefs.foldl (init := #[]) fun acc decl =>
+    node.associatedExternalRefs.foldl (init := #[]) fun acc decl =>
       pushUniqueName acc decl.canonical
   let allNames :=
     node.literateCodes.foldl (init := externalNames) fun acc code =>
@@ -207,7 +207,7 @@ private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary 
           message := failure.message
         }
     let (inlineDecls, inlineSorries, inlineSorryDetails) :=
-      node.literateCodes.foldl
+      node.summaryLiterateCodes.foldl
         (init := (0, 0, ([] : List IncompleteItem)))
         fun (decls, sorryCount, details) code =>
           (
@@ -235,7 +235,7 @@ private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeS
         acc
       else
         acc + (if decl.provedStatus.isIncomplete then 1 else 0)
-  externalCount + node.literateCodes.foldl (init := 0) fun acc code =>
+  externalCount + node.summaryLiterateCodes.foldl (init := 0) fun acc code =>
     acc + codeSorryCount code
 
 private def ownerDisplayName (state : Environment.State) (node : Data.Node) : Option String :=

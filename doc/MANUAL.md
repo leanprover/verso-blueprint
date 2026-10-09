@@ -903,26 +903,35 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
-Proof blocks can attach supporting declarations separately:
+Proof blocks can attach Lean declarations to the same Blueprint node:
 
 ```md
 :::proof "addition_assoc" (lean := "Nat.add_comm, Nat.add_left_comm")
-The argument uses the referenced lemmas.
+The proof is associated with the referenced Lean declarations.
 :::
 ```
 
-These declarations appear in a **Lean references used in this proof** panel,
+These declarations appear in a **Lean declarations attached to this proof** panel,
 with their own signatures, status, source links, and hover previews. The proof
 facet retains them in generated data; `lake exe vbp query node addition_assoc`
 returns that facet under `proof`.
 
-Proof attachments record supporting references. They do not associate those
-declarations with the statement's implementation, change node or proof
-completion, or infer dependency edges, even when automatic dependency inference
-is enabled. Preserve mathematical dependencies with proof-side `uses`.
-Attach the declaration implementing the result to its statement or a labeled
-inline Lean block. A proof with no attachments does not borrow its statement's
-declarations or code panels.
+Statement and proof attachments both contribute to the node's associated
+declarations, declaration lookup, summaries, and progress. A declaration mentioned
+on both facets is counted once; its observed status evidence is merged
+conservatively. An incomplete or missing proof attachment cannot be ignored
+when computing the node's formalization status.
+
+With `autoDeps := true`, dependencies inferred from declarations attached to a
+proof contribute to the proof-side dependency track. Authored dependencies can
+also be supplied with proof-side `uses`. `lake exe vbp query code <decl>` finds
+nodes associated through either facet.
+
+Each facet retains its own declaration panels and source provenance. A proof
+with no attachments does not borrow its statement's declarations or code panels.
+An association is the author's asserted correspondence with the informal node;
+the status check does not prove that its Lean type captures the intended
+mathematics.
 
 If the same Blueprint label also has a labeled inline Lean block, Blueprint
 keeps both Lean associations. External declaration references render with the
