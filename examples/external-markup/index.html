@@ -4,12 +4,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blueprint external markup · VIR</title>
 <style>
+  * { box-sizing: border-box; }
   body { max-width: 68rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui; }
   form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr); gap: 1rem; padding: 1rem; background: #f3f6fa; }
-  fieldset { display: grid; gap: .7rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+  fieldset { display: grid; align-content: start; gap: .7rem; min-width: 0; margin: 0; padding: 0; border: 0; }
   legend { margin-bottom: .5rem; font-weight: 600; }
-  label { display: grid; gap: .3rem; }
-  input, select, button { font: inherit; padding: .35rem; }
+  label { display: grid; min-width: 0; gap: .3rem; }
+  input, select, button { max-width: 100%; min-width: 0; font: inherit; padding: .35rem; }
   #node { width: 100%; font: .85rem/1.5 ui-monospace, monospace; }
   #node-count, #node-info { margin: 0; overflow-wrap: anywhere; }
   #preview { margin-top: 1rem; padding: 1rem; border: 1px solid #ccd4df; }

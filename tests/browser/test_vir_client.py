@@ -243,6 +243,8 @@ def test_vir_external_markup_name_navigation(page, vir_client_site):
     expect(page.locator("#preview")).to_be_empty()
     page.get_by_role("button", name="Preview", exact=True).click()
     expect(page.locator("#status")).to_have_text("VIR selected markdown · statement")
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
 def test_vir_external_markup_generated_manifest(page, vir_client_site, external_markup_manifest):
