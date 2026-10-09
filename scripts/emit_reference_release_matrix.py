@@ -12,6 +12,7 @@ if __package__ in {None, ""}:
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
     load_project_catalog,
+    load_project_catalog_data,
     reference_release_payload,
     resolve_manifest_path,
 )
@@ -27,6 +28,11 @@ def parse_args() -> argparse.Namespace:
         help="Project manifest path. Defaults to tests/harness/projects.json in the current checkout.",
     )
     parser.add_argument(
+        "--controller-policy",
+        default=None,
+        help="Release policy fetched with a controller catalog, rather than the checkout's policy.",
+    )
+    parser.add_argument(
         "--release",
         default=None,
         help="Release target id. Defaults to the current checkout release line.",
@@ -39,10 +45,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def load_catalog(manifest_path: Path, controller_policy: Path | None = None):
+    if controller_policy is None:
+        return load_project_catalog(manifest_path)
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    policy = json.loads(controller_policy.read_text(encoding="utf-8"))
+    # A fetched catalog must be interpreted with its own release definitions.
+    # Keep the local package root for in-repo fixtures and build paths.
+    raw["release_targets"] = policy["release_targets"]
+    return load_project_catalog_data(raw, manifest_path)
+
+
 def payload(args: argparse.Namespace) -> dict[str, object]:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
+    policy = Path(args.controller_policy).resolve() if args.controller_policy else None
+    catalog = load_catalog(manifest_path, policy)
     return reference_release_payload(manifest_path, catalog, args.release, layout.package_root)
 
 
