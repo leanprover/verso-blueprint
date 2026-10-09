@@ -322,7 +322,8 @@ private def querySelectors : List QuerySelector := [
     responseJson [
       ("query", Json.str decl),
       ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
-        (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
+        (fun entry => entry.matchesCode decl || (manifest.findBlockEntriesByLabel entry.authoredLabel).any
+          (·.matchesCode decl)) |>.map entrySummaryJson))
     ],
   QuerySelector.noArg "stats" false statsJson
 ]

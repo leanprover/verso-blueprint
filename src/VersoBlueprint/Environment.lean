@@ -152,12 +152,10 @@ private def addLeanDeclLabel
   let labels := leanNameLabels.getD decl #[]
   leanNameLabels.insert decl (Label.pushUnique labels label)
 
-private def addContributionLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (label : Name) (contributions : Array NodeContribution) :
+private def addNodeLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
     NameMap (Array Label) :=
-  contributions.foldl (init := leanNameLabels) fun acc contribution =>
-    contribution.leanCode.foldl (init := acc) fun acc code =>
-      code.leanDecls.foldl (init := acc) fun acc decl => addLeanDeclLabel acc decl label
+  node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
@@ -174,7 +172,7 @@ private def State.addNode (state : State) (label origin contributor : Name)
   return { state with
     data := state.data.insert label registered
     nextCount := max state.nextCount (node.count + 1)
-    leanNameLabels := addContributionLeanDeclLabels state.leanNameLabels label contributions
+    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
     localContributions := if isLocal then
       state.localContributions.insert label
         (state.localContributions.getD label #[] ++ contributions)

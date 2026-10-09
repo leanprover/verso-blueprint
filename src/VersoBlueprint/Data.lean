@@ -637,9 +637,9 @@ structure Node where
   count : Nat := 0
   statement : Option InformalData := none -- Informal Object statement
   proof : Option InformalData := none -- Informal Object proof
-  /-- External associations, unique by canonical declaration in registration order. -/
+  /-- Statement-facet external associations, in registration order. -/
   externalRefs : Array ExternalRef := #[]
-  /-- Supporting declarations attached to the informal proof, not implementations of this node. -/
+  /-- Proof-facet external associations, in registration order. They also contribute to the node. -/
   proofExternalRefs : Array ExternalRef := #[]
   /-- Every associated literate block, in registration order. -/
   literateCodes : Array Code := #[]
@@ -680,35 +680,74 @@ structure NodeContribution where
 deriving Repr, Inhabited
 
 /-- Stable canonical union; build an ephemeral index once for this incoming group. -/
-private def mergeExternalRefs (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
+def ExternalRef.mergeSnapshots (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
   let mut positions : NameMap Nat := {}
-  for i in [:current.size] do
-    positions := positions.insert current[i]!.canonical i
-  let mut refs := current
-  for ref in incoming do
+  let mut refs := #[]
+  for ref in current ++ incoming do
     let ref := { ref with canonical := ref.canonical.eraseMacroScopes }
     match positions.get? ref.canonical with
     | some i =>
-      if !refs[i]!.present && ref.present then refs := refs.set! i ref
+      let previous := refs[i]!
+      let selected := if !previous.present && ref.present then ref else previous
+      refs := refs.set! i { selected with
+        provedStatus := ProvedStatus.mergeConservative previous.provedStatus ref.provedStatus }
     | none =>
       positions := positions.insert ref.canonical refs.size
       refs := refs.push ref
   return refs
 
+/-- All captured external associations. Facet snapshots remain separate;
+declaration membership and status projections consume both facets. -/
+def Node.externalAssociationSnapshots (node : Node) : Array ExternalRef :=
+  node.externalRefs ++ node.proofExternalRefs
+
+/-- Canonical node associations from both facets. Rendering keeps each facet's
+snapshot; node-level projections retain every observed status conservatively. -/
+def Node.associatedExternalRefs (node : Node) : Array ExternalRef :=
+  ExternalRef.mergeSnapshots #[] node.externalAssociationSnapshots
+
 /-- External summary entries not already supplied by a compiled literate declaration. -/
 def Node.summaryExternalRefs (node : Node) : Array ExternalRef :=
   let names := node.literateCodes.foldl (init := ({} : NameSet)) fun names code =>
     code.definedDeclNames.foldl (fun names name => names.insert name) names
-  node.externalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
+  node.associatedExternalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
+
+/-- Prefer each inline declaration once for summaries, preserving status evidence
+from every external and inline association of the same canonical declaration.
+The authored code blocks remain unchanged for rendering and provenance. -/
+def Node.summaryLiterateCodes (node : Node) : Array Code := Id.run do
+  let observations := node.associatedExternalRefs.map
+      (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
+    node.literateCodes.flatMap fun code =>
+      code.definedDefs.map (fun decl => (decl.name, decl.provedStatus)) ++
+      code.definedTheorems.map (fun decl => (decl.name, decl.provedStatus))
+  let statuses := ProvedStatus.indexByName observations
+  let mut seen : NameSet := {}
+  let mut codes := #[]
+  for code in node.literateCodes do
+    let mut definitions := #[]
+    let mut theorems := #[]
+    for decl in code.definedDefs do
+      let name := decl.name.eraseMacroScopes
+      unless seen.contains name do
+        seen := seen.insert name
+        definitions := definitions.push { decl with provedStatus := statuses.getD name decl.provedStatus }
+    for decl in code.definedTheorems do
+      let name := decl.name.eraseMacroScopes
+      unless seen.contains name do
+        seen := seen.insert name
+        theorems := theorems.push { decl with provedStatus := statuses.getD name decl.provedStatus }
+    codes := codes.push { code with definedDefs := definitions, definedTheorems := theorems }
+  return codes
 
 def Node.leanDecls (node : Node) : Array Name :=
-  let external := node.externalRefs.foldl (init := #[]) fun acc ref =>
+  let external := node.externalAssociationSnapshots.foldl (init := #[]) fun acc ref =>
     if ref.present then pushNameUnique acc ref.canonical else acc
   node.literateCodes.foldl (init := external) fun acc code =>
     code.definedDeclNames.foldl pushNameUnique acc
 
 def Node.hasAssociatedCode (node : Node) : Bool :=
-  !node.externalRefs.isEmpty || !node.literateCodes.isEmpty
+  !node.externalRefs.isEmpty || !node.proofExternalRefs.isEmpty || !node.literateCodes.isEmpty
 
 def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
 
@@ -791,21 +830,23 @@ private def mergeContribution (label : Label) (node : Node)
   let mut literateCodes := node.literateCodes
   for code in incoming.leanCode do
     match code with
-    | .external refs => externalRefs := mergeExternalRefs externalRefs refs
+    | .external refs => externalRefs := ExternalRef.mergeSnapshots externalRefs refs
     | .literate code => literateCodes := literateCodes.push code
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
+  let proofExternalRefs := ExternalRef.mergeSnapshots node.proofExternalRefs incoming.proofExternalRefs
   let kind ← match incoming.kind with
     | some kind =>
       if node.kindIsExplicit && node.kind != kind then
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
-    | none => pure <| if node.kindIsExplicit then node.kind else inferredNodeKind externalRefs literateCodes
+    | none => pure <| if node.kindIsExplicit then node.kind else
+        inferredNodeKind (ExternalRef.mergeSnapshots externalRefs proofExternalRefs) literateCodes
   return {
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
     statement, proof, rustCode, externalMarkup, parent, priority, owner, effort, prUrl, issueUrl
     externalRefs, literateCodes
-    proofExternalRefs := mergeExternalRefs node.proofExternalRefs incoming.proofExternalRefs
+    proofExternalRefs
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags
   }
 

@@ -81,7 +81,7 @@ def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatu
 
 def nodeCodeHealth (external : ExternalCodeStatus) (node : Data.Node) : CodeHealth :=
   codeHealthOfBlockSource node.kind external <| some {
-    externalDecls := node.externalRefs
+    externalDecls := node.externalAssociationSnapshots
     literateDeclarations := Informal.LiterateDeclarations.ofCodes node.literateCodes }
 
 def CodeHealth.hasMissingExternalDecls (health : CodeHealth) : Bool :=
