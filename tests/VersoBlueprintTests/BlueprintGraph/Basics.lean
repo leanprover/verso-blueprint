@@ -246,6 +246,20 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   (status.mergeConservative newer).sorryRefCounts == (0, 4) &&
     ((status.mergeConservative inherited).withDirectRefCounts 0 5).sorryRefCounts == (0, 5)
 
+-- A fast positive witness is a partial inspection, never an absence certificate.
+-- A clean search still closes its full graph before it can complete.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let blocked := `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusConsumer
+    let (early, _) ← (inspectSorryDependencies #[blocked] (stopAtBlocker := true)).run {}
+    let (full, _) ← (inspectSorryDependencies #[blocked]).run {}
+    let clean := `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusCompleteRecord
+    let (verified, _) ← (inspectSorryDependencies #[clean] (stopAtBlocker := true)).run {}
+    return early.hasSorry && !early.isComplete && full.hasSorry && !full.isComplete &&
+      early.declarations.size < full.declarations.size && verified.isComplete
+
 -- Closed cycles are legitimate. Open boundaries, hidden bodies, missing roots,
 -- and holes anywhere in a cycle must all prevent production completion.
 /-- info: true -/
@@ -276,7 +290,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   let mixed := empty.mergeConservative inherited
   let emptyCode : Node := { kind := .theorem, literateCodes := #[{ stx := .missing }] }
   defaultStatus.isUnverified && !defaultStatus.hasKnownSorry &&
-    (ProvedStatus.ofRefCounts 0 0).isUnverified &&
+    empty.sorryRefCounts == (0, 0) && !empty.isProved &&
     empty.blocksStatementCompletion .theorem && empty.blocksProofCompletion &&
     mixed.hasKnownSorry && mixed.hasUnverifiedCoverage &&
     mixed.mergeConservative .proved == mixed &&

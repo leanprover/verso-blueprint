@@ -215,4 +215,30 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       mark.status.sorryRefCounts == (0, 2)
   | none => false
 
+-- No observed sorry on an axis does not establish that its coverage is verified.
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let check (status : ProvedStatus) (statement proof : String) :=
+    let ref : ExternalRef := { (ExternalRef.ofName `Hidden.clean) with provedStatus := status }
+    let data : BlockData := {
+      kind := .theorem, label := `hidden.clean, count := 1,
+      codeData := some { externalDecls := #[ref] } }
+    match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
+    | some mark => mark.status == status &&
+        mark.title == s!"Statement: {statement}; Proof: {proof}"
+    | none => false
+  let hidden : ProvedStatus := .incomplete { unverified := #[{
+    location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] }
+  check hidden "completed" "unverified" &&
+    check (.incomplete {}) "unverified" "unverified" &&
+    check .missing "missing declaration" "missing declaration" &&
+    check (.incomplete {
+      knownSorry := #[{ location := .statement, origin := .dependency }],
+      unverified := #[{ location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] })
+      "blocked by sorry" "unverified" &&
+    hidden.presentation.summaryText == "unverified" &&
+    hidden.presentation.externalPanelText == "unverified" &&
+    !hidden.hasKnownSorry
+
 end Verso.VersoBlueprintTests.BlueprintExternalHeadingStatus

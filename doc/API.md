@@ -1791,6 +1791,8 @@ and `ProvedStatus.ofInspection_not_reachable` for the precise trusted boundary.
 Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
 and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
 `status.reportJson` exposes `verdict`, `complete`, `knownSorry`, and `unverified`.
+Blocked queries may stop at the first checked witness on an axis; evidence
+arrays are not exhaustive. Clean results still require closed full inspection.
 Verdicts are `complete`, `incomplete` (known hole), `unverified` (no known hole,
 coverage incomplete), `missing`, and `axiom-like`. Incomplete results can contain
 both known holes and verification gaps. Each gap includes its `location`,
@@ -1816,6 +1818,9 @@ to read each entry's `codeData`. External associations carry `provedStatus` in
 references (`present: false`) block completion. A declaration-keyed preview or
 a missing facet is not an aggregate completeness certificate. `readManifestStatus`
 and `readHtmlCacheStatus` report loading state, not Lean proof status.
+
+Source counts are obtained only after semantic analysis using
+`withDirectRefCounts`; the obsolete count-only status constructors were removed.
 
 The status payload migrated from `containsSorry: [...]` to
 `incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.

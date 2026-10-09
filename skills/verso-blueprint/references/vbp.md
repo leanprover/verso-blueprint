@@ -116,6 +116,11 @@ verification even when Lean's cached footprint is empty. More visible checked
 bodies, for example through a producer capture or a full import, can supply
 verification evidence; rebuild the producer and Blueprint to refresh it.
 
+Blocked inspections can stop at the first checked witness on each axis. The
+arrays record observed evidence, not every hole or verification failure. Empty
+arrays alone never certify absence; use `complete`. Clean results still require
+full closed coverage, even when a blocked result was cheap to obtain.
+
 Completion concerns admitted `sorryAx`, not other legitimate axioms or the
 intended mathematical meaning. Follow whole-declaration `complete` for truth
 claims and inspect both facets. Use work queues for planning: an inherited hole

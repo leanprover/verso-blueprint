@@ -21,7 +21,7 @@ The API is organized into:
   `presentation`),
 - collection helpers (`any*`),
 - constructors/merging (`of*`, `mergeConservative`),
-- Lean environment bridge (`ConstantInfo.blueprint*`).
+- Lean environment bridge (`analyzeDeclaration`).
 -/
 
 /-- True only when the declaration is fully proved. -/
@@ -51,7 +51,7 @@ def ProvedStatus.sorryEvidence : ProvedStatus → Array SorryInfo
 /-- An empty incomplete payload represents unknown coverage, never a known hole. -/
 def ProvedStatus.verificationGaps : ProvedStatus → Array VerificationGap
   | .incomplete info =>
-    if info.knownSorry.isEmpty && info.unverified.isEmpty then #[{}] else info.unverified
+    info.withCoverageFallback.unverified
   | _ => #[]
 
 def ProvedStatus.hasKnownSorry (status : ProvedStatus) : Bool :=
@@ -214,8 +214,8 @@ def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
       let dependency := status.dependsOnSorry
       let compact := if direct then "sorry" else status.statusLabel
       {
-        summaryText := s!"{compact} {locationText}"
-        externalPanelText := s!"{status.statusLabel} {locationText}"
+        summaryText := if status.isUnverified then "unverified" else s!"{compact} {locationText}"
+        externalPanelText := if status.isUnverified then "unverified" else s!"{status.statusLabel} {locationText}"
         externalHeaderText := if direct then "contains sorry" else if dependency then "depends on sorry" else status.statusLabel
         codeDeclClass := "bp_code_decl_status_warning"
         externalDeclClass := "bp_external_decl_sorry"
@@ -255,20 +255,6 @@ def ProvedStatus.anyBlocksStatementCompletion (kind : NodeKind) (decls : Array �
 def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
   decls.any fun decl => (statusOf decl).blocksProofCompletion
 
-/-- Observing no direct markers supplies no dependency coverage. -/
-def ProvedStatus.ofSorryFlags (hasType hasProof : Bool)
-    (typeRefs? : Option Nat := none) (proofRefs? : Option Nat := none) : ProvedStatus :=
-  .incomplete {
-    knownSorry :=
-      (if hasType then #[{ location := .statement, refs? := typeRefs? }] else #[]) ++
-      (if hasProof then #[{ location := .proof, refs? := proofRefs? }] else #[]),
-    unverified := #[{}] }
-
-def ProvedStatus.ofRefCounts (typeRefs proofRefs : Nat) : ProvedStatus :=
-  ProvedStatus.ofSorryFlags (typeRefs > 0) (proofRefs > 0)
-    (if typeRefs > 0 then some typeRefs else none)
-    (if proofRefs > 0 then some proofRefs else none)
-
 @[simp] theorem ProvedStatus.mergeConservative_proved_left (status : ProvedStatus) :
     ProvedStatus.mergeConservative .proved status = status := by
   cases status <;> rfl
@@ -299,32 +285,6 @@ theorem ProvedStatus.ofInspection_not_reachable (inspection : SorryInspection) (
   certifiedNoSorry_not_reachable inspection.roots inspection.declarations
     (ofInspection_complete inspection info h) root hroot
 
-/--
-Blueprint incompleteness treats axioms like synthetic sorries because they
-lack executable/provable bodies.
--/
-def ConstantInfo.blueprintIsAxiomLike (info : ConstantInfo) : Bool :=
-  match info with
-  | .axiomInfo _ => true
-  | _ => false
-
-/-- Whether a declaration has an inspectable body, no body, or a body hidden by import. -/
-inductive BodyAccess where
-  | available (value : Expr)
-  | unavailable
-  | absent
-
-/-- The imported public view represents hidden theorems as axioms. Their cached
-axiom footprint omits their own name; an actual axiom includes its own name. -/
-def ConstantInfo.blueprintBodyAccess (name : Name) (info : ConstantInfo)
-    (axioms : Array Name) : BodyAccess :=
-  match info.value? (allowOpaque := true) with
-  | some value => .available value
-  | none =>
-    match info with
-    | .axiomInfo _ => if axioms.contains name then .absent else .unavailable
-    | _ => .absent
-
 /-- Remove outer body binder types already observed in the declaration telescope. -/
 private def proofBody (type value : Expr) : Expr :=
   match type, value with
@@ -351,22 +311,24 @@ def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := 
     | .axiomInfo _ => collectAxioms name
     | _ => pure #[]
   let body := ConstantInfo.blueprintBodyAccess name info axioms
-  if let .absent := body then
-    if ConstantInfo.blueprintIsAxiomLike info then return .axiomLike
+  if let .axiomInfo _ := info then
+    if let .absent := body then return .axiomLike
   let computation : SorryInspectionM m ProvedStatus := do
-    let whole ← inspectSorryDependencies #[name]
+    let whole ← inspectSorryDependencies #[name] (stopAtBlocker := true)
+    let completion := ProvedStatus.ofInspection whole {}
+    if completion.isProved then return completion
     let mut statements := #[info.type]
     if let .inductInfo induct := info then
       for ctor in induct.ctors do
         if let some ctorInfo := (← getEnv).checked.get.find? ctor then
           statements := statements.push ctorInfo.type
-    let statement ← inspectSorryDependencies (axisRoots name statements)
+    let statement ← inspectSorryDependencies (axisRoots name statements) (stopAtBlocker := true)
     let proofs := match body with
       | .available value => #[(proofBody info.type value)]
       | _ => match info with
         | .recInfo rec => rec.rules.toArray.map (·.rhs)
         | _ => #[]
-    let proof ← inspectSorryDependencies (axisRoots name proofs)
+    let proof ← inspectSorryDependencies (axisRoots name proofs) (stopAtBlocker := true)
     let mut evidence : Array SorryInfo := #[]
     if statements.any (·.hasSorry) then evidence := evidence.push { location := .statement }
     if statement.hasSorry then evidence := evidence.push { location := .statement, origin := .dependency }
@@ -377,12 +339,20 @@ def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := 
         evidence := evidence.push {
           location := if statement.isComplete && !statements.any (·.hasSorry) then .proof else .unknown
           origin := .unknown }
+    let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
+    if let .unavailable := body then
+      gaps := gaps.push { location := .proof, declaration := name, reason := .bodyUnavailable }
+    -- A witnessed blocker is enough for an incomplete verdict. Each clean axis
+    -- still underwent closed inspection; only completion needs the whole graph.
+    if !evidence.isEmpty || !gaps.isEmpty then
+      return .incomplete { knownSorry := evidence, unverified := gaps }
     if evidence.isEmpty && whole.hasSorry then
       evidence := evidence.push { location := .unknown, origin := .unknown }
-    let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
     for gap in whole.verificationGaps .unknown do
       if !gaps.any (fun known => known.declaration == gap.declaration) then
-        gaps := gaps.push { gap with location := if gap.declaration == name then .proof else .unknown }
+        let location := if gap.declaration == name && gap.reason == .bodyUnavailable then
+          .proof else .unknown
+        gaps := gaps.push { gap with location }
     return ProvedStatus.ofInspection whole { knownSorry := evidence, unverified := gaps }
   return (← computation.run {}).1
 

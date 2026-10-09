@@ -94,8 +94,6 @@ structure SummaryHtmlContext where
 
 structure SummaryRows where
   pendingInformalRows : Array Output.Html := #[]
-  sorryRows : Array Output.Html := #[]
-  missingRows : Array Output.Html := #[]
   renderFailureRows : Array Output.Html := #[]
   actionablePriorityRows : Array Output.Html := #[]
   quickWinRows : Array Output.Html := #[]
@@ -118,7 +116,6 @@ structure SummaryRows where
   theoremLikeRows : Array Output.Html := #[]
   axiomRows : Array Output.Html := #[]
   theoremLikeByParentRows : Array Output.Html := #[]
-  blockerCount : Nat := 0
   blockerRows : Array Output.Html := #[]
 
 private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
@@ -363,7 +360,7 @@ private def SummaryHtmlContext.leanRows (ctx : SummaryHtmlContext) (items : List
     Array Output.Html :=
   items.toArray.map fun item => ctx.leanRow item.label item.kind item.leanObjects
 
-private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : IncompleteItem) :
+private def SummaryHtmlContext.incompleteRow (ctx : SummaryHtmlContext) (item : IncompleteItem) :
     SummaryHtmlM Output.Html := do
   let entryRef := ctx.entryRef item.label
   let declLink :=
@@ -382,7 +379,7 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Incom
       else if item.status.dependsOnSorry then "Declaration depending on sorry: "
       else "Declaration with detected sorry: "
     | .proved =>
-      Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
+      Verso.reportError s!"Unexpected proved status in summary incomplete details for {item.decl}"
       pure "Declaration: "
   let refsTxt :=
     match item.status with
@@ -621,20 +618,16 @@ private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
 private def SummaryRows.withOverviewRows
     (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
-  let sorryRows ← data.incompleteDetails.toArray.mapM ctx.sorryRow
+  let incompleteRows ← data.incompleteDetails.toArray.mapM ctx.incompleteRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
   let actionablePriorityRows := data.actionablePriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
-  let blockerCount := data.missingLeanDecls.length + data.incompleteDetails.length
-  let blockerRows := missingRows ++ sorryRows
+  let blockerRows := missingRows ++ incompleteRows
   pure {
     rows with
     pendingInformalRows
-    sorryRows
-    missingRows
     actionablePriorityRows
     quickWinRows
-    blockerCount
     blockerRows
   }
 

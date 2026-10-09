@@ -1485,6 +1485,13 @@ cached positive axiom footprints remain useful observations. Cached absence
 never certifies completion: recursive constructor traversal can leave an empty
 cached footprint even when a transitive hole exists.
 
+Blocked analysis stops after an observed witness on each axis rather than
+exhaustively enumerating every reachable blocker. Breadth-first search finds
+nearby admitted helpers without first unfolding large unrelated proof closures.
+An axis with no observed blocker must still close its inspected graph; whole
+completion always requires the full declaration certificate. Reported evidence
+and verification gaps are observations, not an exhaustive hole inventory.
+
 This assumes ordinary kernel-checked Lean artifacts and faithful checked
 constant views, rather than deliberate kernel/environment manipulation.
 Completion means absence of admitted `sorryAx` holes, not freedom from other

@@ -339,16 +339,21 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
     (focusable := href.isNone)
     (ariaLabel? := if href.isNone then some title else none)
 
-private def axisCompletionText : Nat → String
-  | 0 => "completed"
-  | _ + 1 => "blocked by sorry"
-
+/-- Axis wording follows the same semantic evidence as the completion mark.
+Zero observed reference counts cannot establish verified coverage. -/
 private def completionAxisText (health : Informal.Graph.CodeHealth) : String :=
-  let axisText (count : Nat) :=
-    if count > 0 then axisCompletionText count
-    else if health.provedStatus.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
-    else axisCompletionText count
-  s!"Statement: {axisText health.statementAxisCount}; Proof: {axisText health.proofAxisCount}"
+  let status := health.provedStatus
+  let axisText (hasGap unverified : Bool) :=
+    if status.isMissing then "missing declaration"
+    else if status.isAxiomLike then "axiom-like (no body)"
+    else if hasGap then "blocked by sorry"
+    else if status.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
+    else if unverified then "unverified"
+    else if health.totalDecls == 0 then "unassociated"
+    else "completed"
+  let statement := axisText status.hasTypeGap status.hasUnverifiedType
+  let proof := axisText status.hasProofGap status.hasUnverifiedProof
+  s!"Statement: {statement}; Proof: {proof}"
 
 /--
 Use the observed declaration evidence for the completion mark. Axis counts

@@ -11,6 +11,25 @@ namespace Informal.Data
 
 open Lean
 
+/-- Whether a declaration has an inspectable body, no body, or a body hidden by import. -/
+inductive BodyAccess where
+  | available (value : Expr)
+  | unavailable
+  | absent
+
+/-- The positive own-name convention comes from `Lean.Util.CollectAxioms`:
+a genuine checked axiom inserts its own name, while a hidden theorem's public
+axiom view retains a precomputed footprint of dependencies. Without positive
+kind evidence its body remains unavailable; cached absence grants no coverage. -/
+def ConstantInfo.blueprintBodyAccess (name : Name) (info : ConstantInfo)
+    (axioms : Array Name) : BodyAccess :=
+  match info.value? (allowOpaque := true) with
+  | some value => .available value
+  | none =>
+    match info with
+    | .axiomInfo _ => if axioms.contains name then .absent else .unavailable
+    | _ => .absent
+
 /-- Actual dependencies read from a checked declaration, with explicit coverage.
 Cached positive footprints are observations; cached absence never grants coverage. -/
 structure InspectedDeclaration where
@@ -117,6 +136,7 @@ def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclara
   let expressions := declarationExpressions info
   let mut dependencies := expressions.foldl (fun deps expression =>
     deps ++ expression.getUsedConstants) #[]
+  let directSorry := dependencies.contains ``sorryAx
   if let .inductInfo induct := info then
     dependencies := dependencies ++ induct.ctors.toArray
   if let .recInfo rec := info then
@@ -124,12 +144,12 @@ def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclara
   let unverified :=
     if expressions.any (fun expression => expression.hasMVar || expression.hasFVar) then
       some .uncheckedExpression
-    else match info with
-      | .axiomInfo _ => if axioms.contains name then none else some .bodyUnavailable
+    else match ConstantInfo.blueprintBodyAccess name info axioms with
+      | .unavailable => some .bodyUnavailable
       | _ => none
   return {
     dependencies
-    directSorry := expressions.any (·.hasSorry)
+    directSorry
     cachedSorry := axioms.contains ``sorryAx
     unverified
   }
@@ -138,18 +158,20 @@ def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclara
 It stores graph nodes, not premature empty closure results for recursive names. -/
 abbrev SorryInspectionM (m : Type → Type) := StateT InspectedDeclarations m
 
-/-- A global visited worklist collects the full relevant closure. Cycles skip
-already inspected nodes; completion is decided only after the closure closes. -/
-partial def inspectSorryDependencies [Monad m] [MonadEnv m] (roots : Array Name) :
-    SorryInspectionM m SorryInspection := do
-  let declarations ← visit roots.toList {}
+/-- Breadth-first inspection of actual checked dependencies. In blocker-search
+mode, stop at the first observed hole or verification failure. Partial graphs
+never certify absence: `isComplete` still requires closed coverage of every edge.
+Full mode collects the entire closure, including cycles, before certification. -/
+partial def inspectSorryDependencies [Monad m] [MonadEnv m] (roots : Array Name)
+    (stopAtBlocker : Bool := false) : SorryInspectionM m SorryInspection := do
+  let declarations ← visit { dList := roots.toList } {}
   return { roots, declarations }
 where
-  visit (pending : List Name) (declarations : InspectedDeclarations) :
+  visit (pending : Std.Queue Name) (declarations : InspectedDeclarations) :
       SorryInspectionM m InspectedDeclarations := do
-    match pending with
-    | [] => return declarations
-    | name :: pending =>
+    match pending.dequeue? with
+    | none => return declarations
+    | some (name, pending) =>
       if declarations.contains name then return ← visit pending declarations
       let cache ← get
       let info ← match cache[name]? with
@@ -158,6 +180,11 @@ where
           let info ← inspectDeclaration name
           modify (·.insert name info)
           pure info
-      visit (info.dependencies.toList ++ pending) (declarations.insert name info)
+      let declarations := declarations.insert name info
+      if stopAtBlocker && (name == ``sorryAx || info.directSorry ||
+          info.cachedSorry || info.unverified.isSome) then
+        return declarations
+      let pending := info.dependencies.foldl (fun queue dep => queue.enqueue dep) pending
+      visit pending declarations
 
 end Informal.Data
