@@ -20,6 +20,16 @@ private def sampleEntry : Informal.PreviewManifest.Entry := {
     { language := .markdown, slot := "proof", raw := "By the defining equation of addition." }]
 }
 
+private def sampleEntries : Array Informal.PreviewManifest.Entry := #[
+  sampleEntry,
+  { sampleEntry with
+    key := "external_markup_example--proof", facet := .proof
+    externalMarkup := #[sampleEntry.externalMarkup[2]!] },
+  { sampleEntry with
+    label := `native_only_example, authoredLabel := "native_only_example"
+    key := "native_only_example--statement", targetKind := .block
+    title := "Native-only example", externalMarkup := #[] }]
+
 private def selectionCases : IO Lean.Json := do
   let cases ← IO.ofExcept <| Lean.Json.parse (include_str "external_markup_selection_cases.json")
   for caseEntry in (← IO.ofExcept cases.getArr?) do
@@ -61,7 +71,7 @@ def main (args : List String) : IO Unit := do
   -- Use the existing generated-site asset writer, not a second JS bundler.
   Informal.PreviewManifest.writeBlueprintRuntimeModules (directory / "-verso-data")
   IO.FS.writeFile (directory / "example.json") <| (Lean.Json.mkObj [
-    ("previews", Lean.toJson #[sampleEntry])]).compress
+    ("previews", Lean.toJson sampleEntries)]).compress
   IO.FS.writeFile (directory / "index.html") (include_str "../examples/external-markup/index.html")
   IO.FS.writeFile (directory / "client.mjs") (include_str "../examples/external-markup/client.mjs")
   IO.FS.writeFile (directory / "selector.mjs") (include_str "../examples/external-markup/selector.mjs")

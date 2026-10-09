@@ -4,31 +4,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blueprint external markup · VIR</title>
 <style>
-  body { max-width: 56rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui; }
-  form { display: flex; flex-wrap: wrap; gap: 1rem; padding: 1rem; background: #f3f6fa; }
+  body { max-width: 68rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui; }
+  form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr); gap: 1rem; padding: 1rem; background: #f3f6fa; }
+  fieldset { display: grid; gap: .7rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+  legend { margin-bottom: .5rem; font-weight: 600; }
   label { display: grid; gap: .3rem; }
   input, select, button { font: inherit; padding: .35rem; }
+  #node { width: 100%; font: .85rem/1.5 ui-monospace, monospace; }
+  #node-count, #node-info { margin: 0; overflow-wrap: anywhere; }
   #preview { margin-top: 1rem; padding: 1rem; border: 1px solid #ccd4df; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   #status { min-height: 1.5em; }
+  @media (max-width: 45rem) { form { grid-template-columns: 1fr; } }
 </style>
 <h1>Blueprint external markup</h1>
 <p>Lean running in VIR chooses an attachment. JavaScript keeps its source,
 renderer callback and DOM. Load a generated <code>blueprint-manifest.json</code>
 to inspect your own Blueprint, or try the included sample.</p>
 <form id="controls">
+  <fieldset disabled>
+  <legend>Blueprint names</legend>
   <label>Blueprint manifest <input id="manifest" type="file" accept=".json,application/json"></label>
-  <label>Node <select id="node"></select></label>
+  <label>Filter names <input id="filter" type="search" placeholder="Name, title or manifest key"></label>
+  <label>Node <select id="node" size="8" aria-describedby="node-count node-info"></select></label>
+  <p id="node-count" aria-live="polite"></p>
+  <p id="node-info"></p>
+  </fieldset>
+  <fieldset disabled>
+  <legend>Preview options</legend>
   <label>Preferred language <select id="language">
     <option value="markdown">Markdown</option><option value="tex">TeX</option>
     <option value="">Any language</option><option value="missing">Unavailable language</option>
   </select></label>
-  <label>Slot <input id="slot" placeholder="Any slot"></label>
+  <label>Slot <input id="slot" list="slots" placeholder="Any slot"></label>
+  <datalist id="slots"></datalist>
   <label>Display <select id="display">
     <option value="source">Source</option><option value="callback">Simple JS callback</option>
     <option value="none">No renderer</option>
   </select></label>
-  <button type="submit">Preview</button>
+  <button id="render" type="submit">Preview</button>
+  </fieldset>
 </form>
 <p id="status" role="status">Loading VIR…</p>
 <section id="preview" aria-label="Selected attachment"></section>

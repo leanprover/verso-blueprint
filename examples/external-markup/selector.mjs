@@ -28,6 +28,9 @@ export function createExternalMarkupSelector(program, entryName) {
   return (entry, preferences) => {
     const markups = Array.isArray(entry?.externalMarkup) ? entry.externalMarkup : [];
     const result = JSON.parse(program.call(entryName, JSON.stringify(selectionInput(entry, preferences))));
+    if (!isObject(result) || Array.isArray(result)) {
+      throw new Error("VIR returned an invalid external markup selection");
+    }
     if (typeof result.error === "string") throw new Error(result.error);
     const at = (values, index) => {
       if (index === null) return null;
@@ -44,6 +47,11 @@ export function createExternalMarkupSelector(program, entryName) {
       markup: at(markups, result.markupIndex),
       preference: at(preferences, result.preferenceIndex),
     };
+    const isMatch = selected.markup !== null && selected.preference !== null;
+    const valid = result.ok ? isMatch && result.reason === "" :
+      (result.reason === "external-markup-renderer-missing" ? isMatch :
+        result.reason === "external-markup-missing" && selected.markup === null);
+    if (!valid) throw new Error("VIR returned an invalid external markup selection");
     return result.ok ? selected : { ...selected, reason: result.reason };
   };
 }

@@ -4,7 +4,7 @@ import json
 import pytest
 from playwright.sync_api import expect
 
-from conftest import serve_site
+from conftest import build_test_blueprint_site, serve_site
 from support import PACKAGE_ROOT
 from scripts.blueprint_harness_paths import detect_harness_layout
 
@@ -20,6 +20,12 @@ def vir_client_site():
     )
     with serve_site(output) as url:
         yield url
+
+
+@pytest.fixture(scope="session")
+def external_markup_manifest():
+    site = build_test_blueprint_site("preview_runtime_showcase")
+    return site / "-verso-data" / "blueprint-manifest.json"
 
 
 def test_vir_client_matches_native_and_disposes(page, vir_client_site):
@@ -84,7 +90,7 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
             return summary;
         };
         const results = [];
-        let malformed, callbackIdentity, descriptorSize, disposed;
+        let malformed, callbackIdentity, descriptorSize, disposed, badResults, providerIdentity;
         try {
             for (const test of client.selectionCases) {
                 const entry = {externalMarkup: test.input.markups.map((markup, i) => ({
@@ -126,12 +132,26 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
                     [{language: 'σ', display: 'source'}]);
             malformed = ['{', '{}', '{"markups":[],"preferences":17}'].every(input =>
                 typeof JSON.parse(program.call(client.selectionEntry, input)).error === 'string');
+            const invalid = [null, [],
+                {ok: true, reason: '', markupIndex: null, preferenceIndex: null},
+                {ok: true, reason: '', markupIndex: 99, preferenceIndex: 2},
+                {ok: false, reason: 'external-markup-missing', markupIndex: 1, preferenceIndex: 2},
+                {ok: false, reason: 'external-markup-renderer-missing', markupIndex: null, preferenceIndex: null},
+                {ok: false, reason: 'unknown', markupIndex: null, preferenceIndex: null}];
+            badResults = invalid.every(output => {
+                const invalidSelect = createExternalMarkupSelector({call: () => JSON.stringify(output)}, 'test');
+                try { invalidSelect(entry, preferences); return false; } catch { return true; }
+            });
+            const providerError = new Error('provider identity');
+            try {
+                createExternalMarkupSelector({call: () => {throw providerError;}}, 'test')(entry, preferences);
+            } catch (error) { providerIdentity = error === providerError; }
             // Errors must not poison the retained program.
             compare(entry, preferences);
         } finally { program.dispose(); }
         try { select({externalMarkup: []}, []); disposed = false; }
         catch { disposed = true; }
-        return {results, malformed, callbackIdentity, descriptorSize, disposed};
+        return {results, malformed, callbackIdentity, descriptorSize, disposed, badResults, providerIdentity};
     }""")
     assert len(result["results"]) == 18
     for case in result["results"]:
@@ -140,6 +160,8 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
     assert result["callbackIdentity"]
     assert result["descriptorSize"] < 1000
     assert result["disposed"]
+    assert result["badResults"]
+    assert result["providerIdentity"]
 
 
 def test_vir_external_markup_live_example(page, vir_client_site):
@@ -178,3 +200,66 @@ def test_vir_external_markup_live_example(page, vir_client_site):
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted: true}))")
     page.get_by_role("button", name="Preview", exact=True).click()
     expect(page.locator("#status")).to_have_text("VIR selected markdown · proof")
+
+
+def test_vir_external_markup_name_navigation(page, vir_client_site):
+    page.goto(vir_client_site)
+    expect(page.locator("#status")).to_have_text("VIR selected markdown · statement")
+    expect(page.locator("#node")).to_have_attribute("size", "8")
+    expect(page.locator("#node option")).to_have_count(3)
+    expect(page.locator("#node option").nth(0)).to_contain_text("external_markup_example [statement]")
+    expect(page.locator("#node option").nth(1)).to_contain_text("external_markup_example [proof]")
+    expect(page.locator("#node option").nth(2)).to_contain_text("native_only_example [statement]")
+    expect(page.locator("#node-count")).to_have_text("3 of 3 entries")
+    expect(page.locator("#node-info")).to_contain_text("markdown / proof")
+    expect(page.locator("#slots option")).to_have_count(2)
+
+    page.select_option("#node", "1")
+    expect(page.locator("#status")).to_have_text("VIR selected markdown · proof")
+    expect(page.locator("#preview code")).to_contain_text("By the defining equation")
+    page.get_by_label("Filter names", exact=True).fill("EXTERNAL_MARKUP")
+    expect(page.locator("#node-count")).to_have_text("2 of 3 entries")
+    # Filtering that retains the selected entry must preserve the selection.
+    expect(page.locator("#node")).to_have_value("1")
+    page.get_by_label("Filter names", exact=True).fill("native_only")
+    expect(page.locator("#node-count")).to_have_text("1 of 3 entries")
+    expect(page.locator("#node")).to_have_value("2")
+    expect(page.locator("#status")).to_contain_text("No external markup attached to native_only_example")
+    expect(page.locator("#preview")).to_be_empty()
+    page.get_by_label("Filter names", exact=True).fill("not-a-name")
+    expect(page.locator("#status")).to_have_text("No matching names")
+    expect(page.get_by_role("button", name="Preview", exact=True)).to_be_disabled()
+    expect(page.locator("#node-info")).to_be_empty()
+    page.get_by_label("Filter names", exact=True).fill("")
+    expect(page.locator("#status")).to_have_text("VIR selected markdown · statement")
+    expect(page.get_by_role("button", name="Preview", exact=True)).to_be_enabled()
+
+    # Bad uploads do not replace the last usable manifest or poison the runtime.
+    page.set_input_files("#manifest", {
+        "name": "bad.json", "mimeType": "application/json", "buffer": b'{"other":[]}',
+    })
+    expect(page.locator("#status")).to_have_text("Expected a Blueprint manifest previews array")
+    expect(page.locator("#node option")).to_have_count(3)
+    expect(page.locator("#preview")).to_be_empty()
+    page.get_by_role("button", name="Preview", exact=True).click()
+    expect(page.locator("#status")).to_have_text("VIR selected markdown · statement")
+
+
+def test_vir_external_markup_generated_manifest(page, vir_client_site, external_markup_manifest):
+    manifest = json.loads(external_markup_manifest.read_text())
+    entries = manifest["previews"]
+    selected = next(entry for entry in entries if any(
+        markup["language"] == "markdown" for markup in entry["externalMarkup"]
+    ))
+    page.goto(vir_client_site)
+    expect(page.locator("#status")).to_have_text("VIR selected markdown · statement")
+    page.set_input_files("#manifest", str(external_markup_manifest))
+    expect(page.locator("#node option")).to_have_count(len(entries))
+    page.get_by_label("Filter names", exact=True).fill(selected["authoredLabel"])
+    page.select_option("#node", str(entries.index(selected)))
+    page.get_by_role("button", name="Preview", exact=True).click()
+    expect(page.locator("#status")).to_contain_text("VIR selected markdown")
+    expected_source = next(markup["raw"] for markup in selected["externalMarkup"]
+                           if markup["language"] == "markdown" and markup["raw"])
+    expect(page.locator("#preview code")).to_have_text(expected_source)
+    expect(page.locator("#node-info")).to_contain_text(selected["key"])

@@ -60,8 +60,10 @@ generator or a replacement for `lake exe vbp build`.
 
 The published `index.html` is an interactive external-markup preview. It uses
 the included sample or a generated `blueprint-manifest.json` selected from your
-filesystem. Choose a node, language, source slot and display method to inspect
-the selected attachment. Serve the output directory over HTTP, rather than
+filesystem. The visible, searchable list includes authored names, facets,
+titles and attachment counts, including nodes with no external markup. Select
+a name to see its available language/slot pairs, then choose a language, source
+slot and display method. Serve the output directory over HTTP, rather than
 opening it as a `file:` URL.
 
 The policy is `VersoBlueprint.ExternalMarkup.select`, available through
