@@ -287,6 +287,7 @@ Traversal supplies the canonical occurrence; semantic metadata is captured once.
 structure RenderNode extends BlockMetadata where
   kind : Data.NodeKind := .lemma
   externalRefs : Array Data.ExternalRef := #[]
+  proofExternalRefs : Array Data.ExternalRef := #[]
   literateDeclarations : LiterateDeclarations := {}
   initialCount : Nat := 0
   occurrence : Option BlockOccurrence := none
@@ -306,6 +307,7 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
   kind := node.kind
   initialCount := node.count
   externalRefs := node.externalRefs
+  proofExternalRefs := node.proofExternalRefs
   literateDeclarations := .ofCodes node.literateCodes
   parent := node.parent
   statementUses := node.statement.map (·.deps) |>.getD #[]
@@ -332,8 +334,8 @@ def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : Bloc
   kind := node.kind
   isProof := occurrence.isProof
   codeData := ({
-    externalDecls := node.externalRefs
-    literateDeclarations := node.literateDeclarations
+    externalDecls := if occurrence.isProof then node.proofExternalRefs else node.externalRefs
+    literateDeclarations := if occurrence.isProof then {} else node.literateDeclarations
   } : BlockCodeData).nonempty?
   toBlockPresentation := occurrence.toBlockPresentation
 }
@@ -349,8 +351,9 @@ def BlockData.foldInformalShell (data : BlockData) : Bool :=
 def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   toBlockMetadata := data.toBlockMetadata
   kind := data.kind
-  externalRefs := data.codeData.map (·.externalDecls) |>.getD #[]
-  literateDeclarations := data.codeData.map (·.literateDeclarations) |>.getD {}
+  externalRefs := if data.isProof then #[] else data.codeData.map (·.externalDecls) |>.getD #[]
+  proofExternalRefs := if data.isProof then data.codeData.map (·.externalDecls) |>.getD #[] else #[]
+  literateDeclarations := if data.isProof then {} else data.codeData.map (·.literateDeclarations) |>.getD {}
   initialCount := data.count
   occurrence := some data.toOccurrence
 }

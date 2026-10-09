@@ -39,7 +39,10 @@ its source, target and folding defaults belong to the selected occurrence. -/
 def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
   unless PreviewCache.key preview.label preview.facet == key do
     throw s!"Mismatched Blueprint preview identity for '{key}'"
-  return { preview, data := ← canonical state preview.label }
+  let node ← TraversalIndex.Nodes.required state preview.label
+  let canonicalData ← canonical state preview.label
+  let data := node.resolve { canonicalData.toOccurrence with isProof := preview.facet == .proof }
+  return { preview, data }
 
 /-- Resolve an explicit stored facet. Absence is optional; malformed content,
 mismatched identity, and missing node semantics are errors. No other facet is borrowed. -/
@@ -55,7 +58,9 @@ def codePreviewKeys (state : TraverseState) (resolved : Facet) : Array String :=
   let externalKeys := (resolved.data.codeData.toArray.flatMap (·.externalDecls)).filterMap fun decl =>
     let key := TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
     if (TraversalIndex.LeanCodePreviews.object? state key).isSome then some key else none
-  let inlineKeys := (TraversalIndex.InlineCode.blockIds state resolved.preview.label).filterMap fun blockId =>
+  let inlineIds := if resolved.preview.facet == .proof then #[] else
+    TraversalIndex.InlineCode.blockIds state resolved.preview.label
+  let inlineKeys := inlineIds.filterMap fun blockId =>
     let key := TraversalIndex.LeanCodePreviews.lookupInlineKey blockId
     -- Keep broken required panels discoverable for checked resolution. Only a
     -- known declaration-free block without a preview has no panel to resolve.

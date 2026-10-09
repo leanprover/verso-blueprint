@@ -903,6 +903,27 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
+Proof blocks can attach supporting declarations separately:
+
+```md
+:::proof "addition_assoc" (lean := "Nat.add_comm, Nat.add_left_comm")
+The argument uses the referenced lemmas.
+:::
+```
+
+These declarations appear in a **Lean references used in this proof** panel,
+with their own signatures, status, source links, and hover previews. The proof
+facet retains them in generated data; `lake exe vbp query node addition_assoc`
+returns that facet under `proof`.
+
+Proof attachments record supporting references. They do not associate those
+declarations with the statement's implementation, change node or proof
+completion, or infer dependency edges, even when automatic dependency inference
+is enabled. Preserve mathematical dependencies with proof-side `uses`.
+Attach the declaration implementing the result to its statement or a labeled
+inline Lean block. A proof with no attachments does not borrow its statement's
+declarations or code panels.
+
 If the same Blueprint label also has a labeled inline Lean block, Blueprint
 keeps both Lean associations. External declaration references render with the
 informal statement block, while inline Lean blocks render at their source

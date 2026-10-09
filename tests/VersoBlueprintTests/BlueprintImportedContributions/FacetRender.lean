@@ -53,7 +53,9 @@ def facetBlueprint : BlueprintDocument := .capture
       let .ok occurrence := RenderingResolution.occurrence state requested
         | throw <| IO.userError "Could not resolve a page occurrence"
       unless toJson occurrence.toBlockMetadata == toJson canonical.toBlockMetadata &&
-          toJson occurrence.codeData == toJson canonical.codeData &&
+          occurrence.codeData.any (fun code =>
+            code.externalDecls.map (·.canonical) == #[`facetExternal] &&
+              code.literateDeclarations.isEmpty) &&
           occurrence.sourceRef.isNone && !occurrence.sourceLocation.ok &&
           occurrence.foldProofBlock && occurrence.foldCodeBlock == requested.foldCodeBlock &&
           occurrence.isProof && (occurrence.display state).number? == (canonical.display state).number? do
@@ -113,14 +115,15 @@ def facetBlueprint : BlueprintDocument := .capture
           throw <| IO.userError "Reference, resolved metadata, and manifest views disagree"
         let sourceDocument := if facet == .statement then "facet-paper" else "facet-proof-paper"
         unless entry.sources.map (·.document) == #[sourceDocument] &&
-            entry.leanCodePreviewKeys.size == 2 do
+            entry.leanCodePreviewKeys.size == (if facet == .statement then 2 else 1) do
           throw <| IO.userError "A facet lost its source document or shared code preview"
         for codeKey in entry.leanCodePreviewKeys do
           let some code := files.manifest.findEntry? codeKey
             | throw <| IO.userError "Missing shared Lean code preview"
-          unless (code.sources.map (·.document) |>.qsort (· < ·)) ==
-              #["facet-paper", "facet-proof-paper"] do
-            throw <| IO.userError "Shared Lean code lost one facet's source provenance"
+          let sourceDocuments := if code.codeData.any (! ·.externalDecls.isEmpty) then
+              #["facet-paper", "facet-proof-paper"] else #["facet-paper"]
+          unless (code.sources.map (·.document) |>.qsort (· < ·)) == sourceDocuments do
+            throw <| IO.userError "Lean code acquired source provenance from an unattached facet"
         if facet == .statement then
           unless TraversalIndex.Nodes.href? state `filled_facet == entry.href do
             throw <| IO.userError "The node link still targeted the placeholder"
