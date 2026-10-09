@@ -9,10 +9,10 @@ public import Vir.Resources
 public meta import Vir.Attributes
 
 /-!
-Optional VIR support for Blueprint clients.
+VIR support for Blueprint clients.
 
 This entry exposes upstream resource values and export markers without loading
 the browser runtime, React, or infoview. Runtime acquisition and application
-programs remain explicit upstream VIR operations. The normal `VersoBlueprint`
-import and generator do not import this module.
+programs remain explicit upstream VIR operations. The generated preview runtime
+uses a separate, Lake-prepared program for external-markup selection.
 -/

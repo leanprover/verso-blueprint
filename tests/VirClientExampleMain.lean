@@ -35,7 +35,7 @@ private def selectionCases : IO Lean.Json := do
   for caseEntry in (← IO.ofExcept cases.getArr?) do
     let input ← IO.ofExcept <| caseEntry.getObjVal? "input"
     let expected ← IO.ofExcept <| caseEntry.getObjValAs? VersoBlueprint.ExternalMarkup.Selection "expected"
-    let actual ← IO.ofExcept <| Lean.Json.parse (VersoBlueprintVirClientTests.Program.selectMarkup input.compress)
+    let actual ← IO.ofExcept <| Lean.Json.parse (VersoBlueprint.ExternalMarkup.selectMarkup input.compress)
       >>= Lean.fromJson? (α := VersoBlueprint.ExternalMarkup.Selection)
     unless actual == expected do
       throw <| IO.userError s!"native external markup selection mismatch: {caseEntry.compress}"
@@ -65,7 +65,6 @@ def main (args : List String) : IO Unit := do
     ("programManifest", Lean.toJson site.programManifests[0]!),
     ("entry", Lean.toJson (``VersoBlueprintVirClientTests.Program.title).toString),
     ("cases", Lean.Json.arr cases),
-    ("selectionEntry", Lean.toJson (``VersoBlueprintVirClientTests.Program.selectMarkup).toString),
     ("selectionCases", selectionCases)]
   IO.FS.writeFile (directory / "client.json") client.compress
   -- Use the existing generated-site asset writer, not a second JS bundler.
@@ -74,4 +73,3 @@ def main (args : List String) : IO Unit := do
     ("previews", Lean.toJson sampleEntries)]).compress
   IO.FS.writeFile (directory / "index.html") (include_str "../examples/external-markup/index.html")
   IO.FS.writeFile (directory / "client.mjs") (include_str "../examples/external-markup/client.mjs")
-  IO.FS.writeFile (directory / "selector.mjs") (include_str "../examples/external-markup/selector.mjs")

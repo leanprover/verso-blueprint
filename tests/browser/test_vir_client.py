@@ -59,32 +59,142 @@ def test_vir_client_matches_native_and_disposes(page, vir_client_site):
     assert result["disposed"]
 
 
-def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
+def test_production_selector_is_lazy_shared_and_disposed(page, vir_client_site):
+    requests = []
+    page.on("request", lambda request: requests.append(request.url))
+    # No example script: exercise the normal renderer without eager startup.
+    page.goto(f"{vir_client_site}/client.json")
+    native = page.evaluate("""async () => {
+        const { renderBlueprintNodeInto } = await import('./-verso-data/Commands/preview-runtime-render.mjs');
+        const host = document.createElement('section');
+        const native = {key: 'native--statement', targetKind: 'block'};
+        window.renderNative = () => renderBlueprintNodeInto(host, {label: 'native'}, {
+            dataApi: {loadManifestEntry: async () => native,
+                loadHtmlCacheEntry: async () => ({html: '<p>Native body</p>'})},
+            canonicalPreviewHtmlByKey: new Map([[native.key, {html: '<p>Native shell</p>', href: ''}]]),
+            hydrate: false,
+        });
+        return (await window.renderNative()).renderMode;
+    }""")
+    assert native == "native"
+    assert not [url for url in requests if "/vir/" in url]
+    result = page.evaluate("""async () => {
+        const selector = await import('./-verso-data/Commands/preview-runtime-external-markup.mjs');
+        const entry = {externalMarkup: [{language: 'markdown', slot: 'original', raw: 'Source'}]};
+        const preference = {display: 'source'};
+        const inputs = await Promise.all(Array.from({length: 8}, () =>
+            selector.selectExternalMarkup(entry, [preference])));
+        const identities = inputs.every(result => result.ok && result.markup === entry.externalMarkup[0] &&
+            result.preference === preference);
+        window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted: true}));
+        const retained = (await selector.selectExternalMarkup(entry, [preference])).ok;
+        // Explicit disposal and non-retained pagehide are both idempotent.
+        selector.disposeExternalMarkupSelector();
+        window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted: false}));
+        let disposed = false;
+        try { await selector.selectExternalMarkup(entry, [preference]); }
+        catch (error) { disposed = error.message.includes('disposed'); }
+        const {renderBlueprintNodeInto} = await import('./-verso-data/Commands/preview-runtime-render.mjs');
+        const host = document.createElement('section');
+        const failed = await renderBlueprintNodeInto(host, {label: 'external', externalMarkup: preference}, {
+            dataApi: {loadManifestEntry: async () => entry, loadHtmlCacheEntry: async () => null,
+                htmlCacheDiagnosticHtml: () => 'No native body'}, hydrate: false,
+        });
+        const diagnostic = host.textContent;
+        const quiet = await renderBlueprintNodeInto(host, {label: 'external', externalMarkup: preference}, {
+            dataApi: {loadManifestEntry: async () => entry, loadHtmlCacheEntry: async () => null,
+                htmlCacheDiagnosticHtml: () => 'No native body'}, hydrate: false, diagnostics: false,
+        });
+        return {identities, retained, disposed, reason: failed.reason, diagnostic,
+            quiet: quiet.reason === failed.reason && host.childNodes.length === 0,
+            nativeAfterDisposal: (await window.renderNative()).renderMode};
+    }""")
+    assert result["identities"] and result["retained"] and result["disposed"]
+    assert result["reason"] == "external-markup-selection-failed"
+    assert "External markup selection failed" in result["diagnostic"]
+    assert result["quiet"]
+    assert result["nativeAfterDisposal"] == "native"
+    # Concurrent first requests open one program and one runtime, not eight.
+    manifests = [url for url in requests if "/vir/" in url and url.endswith("/bundle.json")]
+    assert len(manifests) == len(set(manifests)) == 2
+    assert len([url for url in requests if "/vir/" in url and url.endswith(".wasm")]) == 1
+
+
+def test_production_selector_disposes_a_pending_open(page, vir_client_site):
+    page.route("**/Commands/external-markup-vir.mjs", lambda route: route.fulfill(
+        content_type="text/javascript", body="""export default {
+            runtimeModule: './pending-runtime.mjs', runtimeManifest: './runtime.json',
+            programManifest: './program.json', entry: 'select'};"""))
+    page.route("**/Commands/pending-runtime.mjs", lambda route: route.fulfill(
+        content_type="text/javascript", body="""export async function createProgram() {
+            window.openCount = (window.openCount || 0) + 1;
+            await new Promise(resolve => {window.finishOpen = resolve;});
+            return {call() {throw new Error('must not call a disposed program');},
+                dispose() {window.disposeCount = (window.disposeCount || 0) + 1;}};
+        }"""))
+    page.goto(f"{vir_client_site}/client.json")
+    page.evaluate("""async () => {
+        const selector = await import('./-verso-data/Commands/preview-runtime-external-markup.mjs');
+        window.pendingSelection = Promise.all(Array.from({length: 3}, () =>
+            selector.selectExternalMarkup({}, []).then(() => false, error => error.message.includes('disposed'))));
+    }""")
+    page.wait_for_function("typeof window.finishOpen === 'function'")
+    result = page.evaluate("""async () => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted: false}));
+        window.finishOpen();
+        return {rejected: await window.pendingSelection, opens: window.openCount, disposals: window.disposeCount};
+    }""")
+    assert result == {"rejected": [True, True, True], "opens": 1, "disposals": 1}
+
+
+def test_production_selector_reports_missing_assets(page, vir_client_site):
+    page.route("**/Commands/external-markup-vir.mjs", lambda route: route.abort())
+    page.goto(f"{vir_client_site}/client.json")
+    result = page.evaluate("""async () => {
+        const {renderBlueprintNodeInto} = await import('./-verso-data/Commands/preview-runtime-render.mjs');
+        const host = document.createElement('section');
+        const entry = {externalMarkup: [{language: 'markdown', slot: '', raw: 'Do not bypass Lean'}]};
+        const result = await renderBlueprintNodeInto(host, {label: 'external', externalMarkup: {display: 'source'}}, {
+            dataApi: {loadManifestEntry: async () => entry, loadHtmlCacheEntry: async () => null,
+                htmlCacheDiagnosticHtml: () => 'No native body'}, hydrate: false,
+        });
+        return {reason: result.reason, text: host.textContent};
+    }""")
+    assert result["reason"] == "external-markup-selection-failed"
+    assert "External markup selection failed" in result["text"]
+    assert "Do not bypass Lean" not in result["text"]
+
+
+def test_vir_external_markup_matches_native_and_expected(page, vir_client_site):
     page.goto(vir_client_site)
     result = page.evaluate("""async () => {
         const client = await (await fetch('client.json')).json();
-        const { createProgram } = await import(new URL(client.runtimeModule, location.href));
-        const { createExternalMarkupSelector, selectionInput } = await import('./selector.mjs');
-        const { selectExternalMarkup, renderExternalMarkupSelectionInto } =
+        const moduleUrl = new URL('./-verso-data/Commands/preview-runtime-external-markup.mjs', location.href);
+        const { default: config } = await import('./-verso-data/Commands/external-markup-vir.mjs');
+        const { createProgram } = await import(new URL(config.runtimeModule, moduleUrl));
+        const { createExternalMarkupSelector, selectionInput } = await import(moduleUrl);
+        const { renderExternalMarkupSelectionInto } =
             await import('./-verso-data/Commands/preview-runtime-render.mjs');
         const program = await createProgram({
-            runtimeManifestUrl: new URL(client.runtimeManifest, location.href),
-            programManifestUrl: new URL(client.programManifest, location.href),
+            runtimeManifestUrl: new URL(config.runtimeManifest, moduleUrl),
+            programManifestUrl: new URL(config.programManifest, moduleUrl),
         });
-        const select = createExternalMarkupSelector(program, client.selectionEntry);
+        const select = createExternalMarkupSelector(program, config.entry);
         const summarize = (result, entry, preferences) => ({
             ok: result.ok, reason: result.reason || '',
             markupIndex: result.markup === null ? null : entry.externalMarkup.indexOf(result.markup),
             preferenceIndex: result.preference === null ? null : preferences.indexOf(result.preference),
         });
-        const compare = (entry, preferences) => {
+        const compare = (entry, preferences, expected) => {
             const actual = select(entry, preferences);
-            const reference = selectExternalMarkup(entry, preferences);
             const summary = summarize(actual, entry, preferences);
-            if (JSON.stringify(summary) !== JSON.stringify(summarize(reference, entry, preferences))) {
-                throw new Error('VIR/JS selection differs: ' + JSON.stringify(summary));
+            for (const key of Object.keys(expected)) {
+                if (summary[key] !== expected[key]) {
+                    throw new Error('VIR/expected selection differs: ' + JSON.stringify(summary));
+                }
             }
-            if (actual.markup !== reference.markup || actual.preference !== reference.preference) {
+            if (actual.markup !== (expected.markupIndex === null ? null : entry.externalMarkup[expected.markupIndex]) ||
+                actual.preference !== (expected.preferenceIndex === null ? null : preferences[expected.preferenceIndex])) {
                 throw new Error('Selection did not preserve object/callback identity');
             }
             return summary;
@@ -101,8 +211,8 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
                     language: preference.language, slot: preference.slot,
                     ...(preference.canRender ? {display: 'source'} : {}),
                 } : null);
-                results.push({name: test.name, actual: compare(entry, preferences), expected: test.expected});
-                const direct = JSON.parse(program.call(client.selectionEntry, JSON.stringify(test.input)));
+                results.push({name: test.name, actual: compare(entry, preferences, test.expected), expected: test.expected});
+                const direct = JSON.parse(program.call(config.entry, JSON.stringify(test.input)));
                 if (JSON.stringify(direct) !== JSON.stringify(test.expected)) {
                     // JSON object order is not part of the wire contract.
                     for (const key of Object.keys(test.expected)) {
@@ -120,18 +230,27 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
             const preferences = [17, null, {
                 language: ' markdown ', slot: 'δοκιμή 🦀', render: callback,
             }];
-            const chosen = compare(entry, preferences);
+            const expected = {ok: true, reason: '', markupIndex: 1, preferenceIndex: 2};
+            compare(entry, preferences, expected);
             descriptorSize = JSON.stringify(selectionInput(entry, preferences)).length;
             const selection = select(entry, preferences);
             try {
                 await renderExternalMarkupSelectionInto(document.createElement('div'), selection, {});
             } catch (error) { callbackIdentity = error === callbackError; }
             compare({externalMarkup: [{language: 'markdown', slot: 7, raw: ' '}]},
-                    [{language: 'Markdown', slot: '7', display: ' SOURCE '}]);
+                    [{language: 'Markdown', slot: '7', display: ' SOURCE '}],
+                    {ok: true, reason: '', markupIndex: 0, preferenceIndex: 0});
             compare({externalMarkup: [{language: 'Σ', slot: '', raw: 'x'}]},
-                    [{language: 'σ', display: 'source'}]);
+                    [{language: 'σ', display: 'source'}],
+                    {ok: true, reason: '', markupIndex: 0, preferenceIndex: 0});
+            const sparseMarkups = [];
+            sparseMarkups[2] = {language: 'markdown', slot: '', raw: 'Body'};
+            const sparsePreferences = [];
+            sparsePreferences[3] = {display: 'source'};
+            compare({externalMarkup: sparseMarkups}, sparsePreferences,
+                    {ok: true, reason: '', markupIndex: 2, preferenceIndex: 3});
             malformed = ['{', '{}', '{"markups":[],"preferences":17}'].every(input =>
-                typeof JSON.parse(program.call(client.selectionEntry, input)).error === 'string');
+                typeof JSON.parse(program.call(config.entry, input)).error === 'string');
             const invalid = [null, [],
                 {ok: true, reason: '', markupIndex: null, preferenceIndex: null},
                 {ok: true, reason: '', markupIndex: 99, preferenceIndex: 2},
@@ -147,7 +266,7 @@ def test_vir_external_markup_matches_native_and_js(page, vir_client_site):
                 createExternalMarkupSelector({call: () => {throw providerError;}}, 'test')(entry, preferences);
             } catch (error) { providerIdentity = error === providerError; }
             // Errors must not poison the retained program.
-            compare(entry, preferences);
+            compare(entry, preferences, expected);
         } finally { program.dispose(); }
         try { select({externalMarkup: []}, []); disposed = false; }
         catch { disposed = true; }

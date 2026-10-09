@@ -1462,6 +1462,12 @@ async function renderTexSource(markup, target) {
 }
 ```
 
+External-markup selection runs in Lean through the generated site's lazily
+loaded VIR program. Native previews do not initialize it. Serve all generated
+assets; a loading or execution failure returns
+`reason: "external-markup-selection-failed"`, with diagnostics unless disabled.
+There is no JavaScript selection fallback. See [VIR support](./VIR.md).
+
 The renderer receives
 `{ raw, language, slot, location, node, manifestEntry, label, facet, nativePreview, externalMarkup }`
 plus the node-body target element as its second argument. `node` and

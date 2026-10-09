@@ -5,6 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import VersoBlueprintVir.ExternalMarkupProgram
+import VersoBlueprintVir.ExternalMarkupResources
 import Lean.Elab.Command
 import Std.Data.HashMap
 import Std.Data.HashSet
@@ -779,6 +781,8 @@ private def previewRuntimeTemplateModuleMjs : String := include_str "Commands/pr
 
 private def previewRuntimeApiModuleMjs : String := include_str "Commands/preview-runtime-api.mjs"
 
+private def externalMarkupModuleMjs : String := include_str "Commands/preview-runtime-external-markup.mjs"
+
 private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
@@ -788,7 +792,8 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeLifecycleModuleFilename, previewRuntimeLifecycleModuleMjs),
   (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
   (previewRuntimeTemplateModuleFilename, previewRuntimeTemplateModuleMjs),
-  (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs)
+  (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs),
+  ("preview-runtime-external-markup.mjs", externalMarkupModuleMjs)
 ]
 
 private def pageRuntimeModules : Array (String × String) := #[
@@ -840,6 +845,20 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
   IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
   writePageRuntimeModules dataDir
   writePreviewRuntimeModules dataDir
+  let site ← IO.ofExcept <|
+    (VersoBlueprint.ExternalMarkup.resources.forSite "vir").mapError reprStr
+  unless site.programManifests.size == 1 do
+    throw <| IO.userError "external-markup selection requires exactly one VIR program"
+  for file in site.files do
+    let path := dataDir / file.path
+    IO.FS.createDirAll (path.parent.getD dataDir)
+    IO.FS.writeBinFile path file.bytes
+  let config := Json.mkObj [
+    ("runtimeModule", toJson ("../" ++ site.runtimeModule)),
+    ("runtimeManifest", toJson ("../" ++ site.runtimeManifest)),
+    ("programManifest", toJson ("../" ++ site.programManifests[0]!)),
+    ("entry", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString)]
+  writeDataFile dataDir "Commands/external-markup-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
   IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs

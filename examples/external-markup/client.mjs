@@ -1,4 +1,4 @@
-import { createExternalMarkupSelector } from "./selector.mjs";
+import { selectExternalMarkup } from "./-verso-data/Commands/preview-runtime-external-markup.mjs";
 import {
   externalMarkupRendererPayload,
   renderExternalMarkupSelectionInto,
@@ -9,8 +9,8 @@ const preview = document.querySelector("#preview");
 const nodes = document.querySelector("#node");
 const filter = document.querySelector("#filter");
 let entries = [];
-let program;
 let manifestRead = 0;
+let previewRevision = 0;
 
 const attachments = entry => Array.isArray(entry?.externalMarkup) ? entry.externalMarkup : [];
 const nodeName = entry => entry.authoredLabel || entry.label || entry.key || "(unnamed entry)";
@@ -63,14 +63,8 @@ function setManifest(manifest) {
 }
 
 try {
-  const client = await (await fetch("client.json")).json();
-  const { createProgram } = await import(new URL(client.runtimeModule, location.href));
-  program = await createProgram({
-    runtimeManifestUrl: new URL(client.runtimeManifest, location.href),
-    programManifestUrl: new URL(client.programManifest, location.href),
-  });
-  const select = createExternalMarkupSelector(program, client.selectionEntry);
   const show = async () => {
+    const revision = ++previewRevision;
     try {
       const entry = selectedEntry();
       preview.replaceChildren();
@@ -96,13 +90,16 @@ try {
           target.replaceChildren(title, body);
         } } : {}),
       };
-      const selection = select(entry, [preference]);
+      const selection = await selectExternalMarkup(entry, [preference]);
+      if (revision !== previewRevision) return;
       if (!selection.ok) { status.textContent = selection.reason; return; }
       const request = { label: entry.authoredLabel || entry.label, facet: entry.facet };
       await renderExternalMarkupSelectionInto(preview, selection,
         externalMarkupRendererPayload(request, entry, selection, null));
+      if (revision !== previewRevision) return;
       status.textContent = `VIR selected ${selection.markup.language} · ${selection.markup.slot}`;
     } catch (error) {
+      if (revision !== previewRevision) return;
       preview.replaceChildren();
       status.textContent = String(error.message || error);
     }
@@ -134,11 +131,5 @@ try {
   document.querySelectorAll("fieldset").forEach(fieldset => { fieldset.disabled = false; });
   await show();
 } catch (error) {
-  program?.dispose();
   status.textContent = String(error.message || error);
 }
-
-window.addEventListener("pagehide", event => {
-  // A bfcache page is retained and can resume using the same program.
-  if (!event.persisted) program?.dispose();
-});

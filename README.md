@@ -499,7 +499,7 @@ Read these in order:
 10. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
 11. [doc/roadmap/README.md](./doc/roadmap/README.md): scoped maintainer planning
    cards, upstream follow-up index, and card template
-12. [doc/VIR.md](./doc/VIR.md): optional VIR resource API, client regression and
+12. [doc/VIR.md](./doc/VIR.md): VIR resource API, generated-site selection and
    external-markup selection example
 
 ### Agent Helper Skill

@@ -33,10 +33,16 @@ input_file externalMarkupSelectionCases where
   path := "tests/external_markup_selection_cases.json"
   text := true
 
--- Optional VIR resource API; neither the core library nor generator imports it.
+-- Public VIR API and the document-independent external-markup policy.
 lean_lib VersoBlueprintVir where
   srcDir := "src"
-  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup]
+  roots := #[`VersoBlueprintVir, `VersoBlueprintVir.ExternalMarkup,
+    `VersoBlueprintVir.ExternalMarkupProgram]
+
+lean_lib VersoBlueprintVirResources where
+  srcDir := "src"
+  roots := #[`VersoBlueprintVir.ExternalMarkupResources]
+  needs := #[`+VersoBlueprintVir.ExternalMarkupProgram:virResourcePack]
 
 lean_lib VersoBlueprintVirClientTests where
   srcDir := "tests"
