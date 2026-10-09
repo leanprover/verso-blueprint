@@ -33,6 +33,16 @@ input_file externalMarkupSelectionCases where
   path := "tests/external_markup_selection_cases.json"
   text := true
 
+-- Isolated resolver correctness experiment; ordinary browser code is unchanged.
+lean_lib VersoBlueprintRuntime where
+  srcDir := "src"
+  roots := #[`VersoBlueprintRuntime.ManifestResolver]
+  requiresModuleSystem := true
+
+lean_exe «manifest-resolver-oracle» where
+  srcDir := "tests"
+  root := `ManifestResolverOracle
+
 -- Public VIR API and the document-independent client program.
 lean_lib VersoBlueprintVir where
   srcDir := "src"

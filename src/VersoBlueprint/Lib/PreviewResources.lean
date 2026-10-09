@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Verso.Output.Html
 import VersoBlueprint.Lib.PreviewKey
+import VersoBlueprint.Lib.BrowserString
 
 namespace Informal.PreviewResources
 
@@ -30,11 +31,7 @@ def deferred : Render := fun key present absent =>
 /-- Blank text under the browser cache's `String.trim()` contract. Includes
 ECMAScript whitespace and line terminators, including nonbreaking space and BOM. -/
 def textIsBlank (text : String) : Bool :=
-  text.all fun char =>
-    let code := char.toNat
-    (0x0009 ≤ code && code ≤ 0x000D) ||
-    (0x2000 ≤ code && code ≤ 0x200A) ||
-    #[0x0020, 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF].contains code
+  BrowserString.isBlank text
 
 /-- Recognize blank fragments structurally, without serializing choices.
 Finalization rejects choices whose branches disagree about body presence. -/
