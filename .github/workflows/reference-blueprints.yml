@@ -37,6 +37,7 @@ jobs:
           BP_BEFORE_SHA: ${{ github.event.before }}
         run: |
           manifest_path=tests/harness/projects.json
+          controller_policy=branch-policy.json
           use_local_catalog=false
           if [ "$BP_RELEASE_ID" = "$BP_DEFAULT_DEV_BRANCH" ]; then
             use_local_catalog=true
@@ -55,14 +56,20 @@ jobs:
             manifest_path=_out/controller-projects.json
             mkdir -p "$(dirname "$manifest_path")"
             git show "origin/$BP_DEFAULT_DEV_BRANCH:tests/harness/projects.json" > "$manifest_path"
+            controller_policy=_out/controller-branch-policy.json
+            git show "origin/$BP_DEFAULT_DEV_BRANCH:branch-policy.json" > "$controller_policy"
           fi
-          echo "manifest_path=$manifest_path" >> "$GITHUB_OUTPUT"
-          echo "release_id=$BP_RELEASE_ID" >> "$GITHUB_OUTPUT"
+          {
+            echo "manifest_path=$manifest_path"
+            echo "controller_policy=$controller_policy"
+            echo "release_id=$BP_RELEASE_ID"
+          } >> "$GITHUB_OUTPUT"
       - name: Resolve release metadata
         id: resolve
         run: |
           python3 ./scripts/emit_reference_release_matrix.py \
             --manifest "${{ steps.controller.outputs.manifest_path }}" \
+            --controller-policy "${{ steps.controller.outputs.controller_policy }}" \
             --release "${{ steps.controller.outputs.release_id }}" \
             --github-output >> "$GITHUB_OUTPUT"
 

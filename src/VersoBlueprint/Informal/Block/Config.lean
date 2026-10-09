@@ -248,8 +248,6 @@ def Config.resolveForDirective {m}
     logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '(uses_origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
   if let some raw := cfg.invalidMetadataUseIntent then
     logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '(uses_intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
-  if isProof && hasExternalRaw then
-    logErrorAt cfg.labelSyntax m!"Label {cfg.label} cannot use '(lean := ...)' in a proof block"
   let priority ← resolvePriority? cfg isProof
   let owner ← resolveOwner? cfg isProof
   let effort ← resolveEffort? cfg isProof
@@ -264,9 +262,7 @@ def Config.resolveForDirective {m}
       pure {}
   let inferredUseRefs := inferredDeps.toUseRefs cfg.metadataUses (some cfg.label)
   let codeHint : Option Data.CodeRef :=
-    if isProof then
-      none
-    else if hasExternal then
+    if hasExternalRaw then
       some (.external resolvedExternalCode)
     else
       none

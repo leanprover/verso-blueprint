@@ -148,7 +148,11 @@ private def entryDetailFields
   ]
 
 private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
+  let proof? := (manifest.findBlockEntriesByLabel entry.authoredLabel).find?
+    (·.facet == .proof)
+  responseJson <| entryDetailFields entry (manifest.groupForEntry? entry) ++ [
+    ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
+  ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)

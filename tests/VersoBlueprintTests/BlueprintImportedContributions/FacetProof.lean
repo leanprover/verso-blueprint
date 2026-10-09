@@ -9,7 +9,7 @@ open Verso.Genre Informal
 
 #doc (Manual) "Proof source chapter" =>
 
-:::proof "filled_facet"
+:::proof "filled_facet" (lean := "facetExternal")
 %%%
 source := {
   document := "facet-proof-paper"

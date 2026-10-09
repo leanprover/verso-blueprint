@@ -338,7 +338,12 @@ private def InProgress.toContribution (current : InProgress) (count : Nat) (ref 
   proofUses := match current.kind with
     | .statement _ => current.proofUses
     | .proof => current.deps ++ current.proofUses
-  leanCode := current.codeHint.toArray
+  leanCode := match current.kind with
+    | .statement _ => current.codeHint.toArray
+    | .proof => #[]
+  proofExternalRefs := match current.kind, current.codeHint with
+    | .proof, some (.external refs) => refs
+    | _, _ => #[]
   parent := current.parent
   priority := current.priority
   owner := current.owner

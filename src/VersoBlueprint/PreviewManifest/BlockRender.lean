@@ -153,8 +153,10 @@ private def renderCodePanel
       (fun _ => none)
     let codeHtml := .seq content.codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
-    Informal.mkCodePanel
+    let header := if entry.facet == .proof then Informal.proofReferencesPanelHeader else
       { caption := s!"Lean code for {title.caption}", number? := some title.label }
+    Informal.mkCodePanel
+      header
       panelSummary.summaryTitle
       panelSummary.indicator
       body
@@ -171,7 +173,8 @@ def renderWithRenderedContent
     let blockData := entry.blockData
     let title := entry.heading opts.displayLabelOverride?
     let codePanel :=
-      if opts.compact || entry.facet == .proof then
+      if opts.compact || (entry.facet == .proof &&
+          !entry.codeData.any (! ·.externalDecls.isEmpty)) then
         .empty
       else
         renderCodePanel cfg title entry content
