@@ -59,13 +59,20 @@ def main (args : List String) : IO Unit := do
     ("input", Lean.toJson input),
     ("expected", Lean.toJson (VersoBlueprintVirClientTests.Program.title input))]
   let selectionCases ← selectionCases
+  let htmlIdInputs := #["", "Alpha09", "a-b--c", "a.b:c d/_", "Προεπισκόπηση 🦀", "é", "\n\t",
+    String.singleton (Char.ofNat 0), String.singleton (Char.ofNat 0xFFFF),
+    String.singleton (Char.ofNat 0x10FFFF)]
+  let htmlIdCases := htmlIdInputs.map fun input => Lean.Json.mkObj [
+    ("input", Lean.toJson input),
+    ("expected", Lean.toJson (VersoBlueprint.HtmlId.encode input))]
   let client := Lean.Json.mkObj [
     ("runtimeModule", Lean.toJson site.runtimeModule),
     ("runtimeManifest", Lean.toJson site.runtimeManifest),
     ("programManifest", Lean.toJson site.programManifests[0]!),
     ("entry", Lean.toJson (``VersoBlueprintVirClientTests.Program.title).toString),
     ("cases", Lean.Json.arr cases),
-    ("selectionCases", selectionCases)]
+    ("selectionCases", selectionCases),
+    ("htmlIdCases", Lean.Json.arr htmlIdCases)]
   IO.FS.writeFile (directory / "client.json") client.compress
   -- Use the existing generated-site asset writer, not a second JS bundler.
   Informal.PreviewManifest.writeBlueprintRuntimeModules (directory / "-verso-data")

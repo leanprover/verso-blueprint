@@ -125,6 +125,71 @@ def test_production_selector_is_lazy_shared_and_disposed(page, vir_client_site):
     assert len([url for url in requests if "/vir/" in url and url.endswith(".wasm")]) == 1
 
 
+def test_shared_program_encodes_graph_keys_and_creates_controls(page, vir_client_site):
+    requests = []
+    page.on("request", lambda request: requests.append(request.url))
+    page.goto(f"{vir_client_site}/client.json")
+    result = page.evaluate("""async () => {
+        const client = await (await fetch('./client.json')).json();
+        const {encodeGraphKey} = await import('./-verso-data/Commands/graph-runtime-id.mjs');
+        const {createGraphBlock} = await import('./-verso-data/Commands/graph.mjs');
+        const {getBlueprintProgram, disposeBlueprintProgram} = await import('./-verso-data/Commands/blueprint-vir-client.mjs');
+        const {selectExternalMarkup} = await import('./-verso-data/Commands/preview-runtime-external-markup.mjs');
+        const graph = {schemaVersion: 3, key: 'graph:α-🦀', nodes: [], edges: [], groups: [],
+            variants: [{key: 'full', label: 'Full graph', dot: 'digraph {}', selectOnNodeId: [],
+                hoverOnNodeId: [], previewKeyByNodeId: [], options: {direction: 'TB', pack: false}}]};
+        const invalid = await createGraphBlock({...graph, key: ''});
+        const before = performance.getEntriesByType('resource').filter(entry => entry.name.includes('/vir/')).length;
+        const cases = [];
+        for (const {input, expected} of client.htmlIdCases) cases.push({input, expected, actual: await encodeGraphKey(input)});
+        const ready = await getBlueprintProgram();
+        // Count actual entry calls outside a timing run: one per graph, not per control.
+        const originalProgram = ready.program;
+        let idCalls = 0;
+        ready.program = {call(entry, ...args) {
+            if (entry === ready.entries.htmlId) idCalls++;
+            return originalProgram.call(entry, ...args);
+        }};
+        const encoded = originalProgram.call(ready.entries.htmlId, graph.key);
+        const [first, second] = await Promise.all([createGraphBlock(graph), createGraphBlock(graph)]);
+        const ids = [...first.querySelectorAll('[id]'), ...second.querySelectorAll('[id]')].map(node => node.id);
+        const associations = [first, second].every(block => [...block.querySelectorAll('[for], [aria-controls]')].every(node => {
+            const id = node.getAttribute('for') || node.getAttribute('aria-controls');
+            return [...block.querySelectorAll('[id]')].some(target => target.id === id);
+        }));
+        const scalarPrefixes = ids.every(id => id.startsWith('bp-runtime-graph-' + encoded + '--'));
+        ready.program = originalProgram;
+        const selection = await selectExternalMarkup({externalMarkup: [{language: 'markdown', slot: '', raw: 'Body'}]}, [{display: 'source'}]);
+        const same = ready === await getBlueprintProgram();
+        const malformed = [];
+        for (const key of [17, '\\ud800', '\\udc00', 'a\\ud800b']) {
+            try { await encodeGraphKey(key); malformed.push(false); }
+            catch (error) { malformed.push(error.message.includes('Unicode scalar')); }
+        }
+        const recovered = await encodeGraphKey('a-b.c');
+        disposeBlueprintProgram();
+        let disposed = false;
+        try { await encodeGraphKey('after-disposal'); }
+        catch (error) { disposed = error.message.includes('disposed'); }
+        return {cases, invalid: invalid === null, before, ids, associations, scalarPrefixes, idCalls,
+            selection: selection.ok, same, malformed, recovered, disposed};
+    }""")
+    assert result["invalid"] and result["before"] == 0
+    assert len(result["cases"]) == 10
+    for case in result["cases"]:
+        assert case["actual"] == case["expected"], case
+    assert len(result["ids"]) == len(set(result["ids"])) == 14
+    assert result["associations"] and result["scalarPrefixes"]
+    assert result["idCalls"] == 2
+    assert result["selection"] and result["same"]
+    assert all(result["malformed"])
+    assert result["recovered"] == "a--b-002Ec"
+    assert result["disposed"]
+    manifests = [url for url in requests if "/vir/" in url and url.endswith("/bundle.json")]
+    assert len(manifests) == len(set(manifests)) == 2
+    assert len([url for url in requests if "/vir/" in url and url.endswith(".wasm")]) == 1
+
+
 def test_production_selector_disposes_a_pending_open(page, vir_client_site):
     page.route("**/Commands/blueprint-vir.mjs", lambda route: route.fulfill(
         content_type="text/javascript", body="""export default {

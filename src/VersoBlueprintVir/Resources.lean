@@ -8,6 +8,6 @@ module
 public import Vir.Resources.Assets
 public import Vir.Resources.Site
 
-/-- Lake-prepared selection program and its exact matching runtime. -/
-public def VersoBlueprint.ExternalMarkup.resources : Vir.Resources.ResourceSet :=
-  include_vir_assets (modules := #[VersoBlueprintVir.ExternalMarkupProgram])
+/-- The shared Blueprint client program and its exact matching runtime. -/
+public def VersoBlueprintVir.resources : Vir.Resources.ResourceSet :=
+  include_vir_assets (modules := #[VersoBlueprintVir.Program])

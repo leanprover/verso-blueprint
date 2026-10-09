@@ -2,7 +2,7 @@
 
 `import VersoBlueprintVir` exposes VIR's resource values and export markers.
 It does not acquire or initialize a browser runtime. Generated Blueprint sites
-also publish a separate, Lake-prepared external-markup selection program and its
+also publish a Lake-prepared Blueprint client program and its
 matching runtime. Browser loading remains lazy: native previews do not start VIR.
 
 The Lean integration consists of pure functions called from JavaScript.
@@ -64,7 +64,7 @@ unavailable and the request supplies external-markup preferences. The generator
 publishes the matching resources through `ResourceSet.forSite`; no test module
 or example asset is needed by a production site. Builds prepare the program
 through the resource library's `needs` declaration for
-`+VersoBlueprintVir.ExternalMarkupProgram:virResourcePack`.
+`+VersoBlueprintVir.Program:virResourcePack`.
 
 `Commands/blueprint-vir-client.mjs` owns the single lazy program and its disposal.
 Application bridges own argument encoding, result checks and JS object identity;
@@ -79,6 +79,23 @@ Reload the page after repairing a failed asset load.
 This changes resource publication and the external-fallback execution path,
 not the native-preview path. Serve the complete generated output over HTTP.
 It is an integration and deduplication change, not a performance claim.
+
+## Runtime graph IDs
+
+Creating a graph from runtime data uses the same program to call
+`VersoBlueprint.HtmlId.encode : String → String`, which delegates to the existing
+native `Informal.HtmlId.key`. The browser encodes the graph key once, then composes
+its seven control IDs with browser-owned monotonic counters. No JSON encoding or
+per-character/per-control VIR calls are needed for this export. Graphviz, DOT
+options, DOM construction and layout remain in JavaScript.
+
+The public graph APIs remain asynchronous. Pre-generated page graphs already
+carry their native IDs and do not initialize VIR just to bind their controls.
+Runtime graph keys must contain valid Unicode scalar values: a JS string with a
+lone UTF-16 surrogate is rejected before the call rather than silently replaced
+by the UTF-8 boundary. Ordinary Unicode, astral characters and empty strings are
+covered by native/browser encoder tests; empty graph-data keys remain invalid
+under the graph schema.
 
 ## External-markup application example
 

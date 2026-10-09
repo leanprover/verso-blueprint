@@ -5,8 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprintVir.ExternalMarkupProgram
-import VersoBlueprintVir.ExternalMarkupResources
+import VersoBlueprintVir.Program
+import VersoBlueprintVir.Resources
 import Lean.Elab.Command
 import Std.Data.HashMap
 import Std.Data.HashSet
@@ -743,6 +743,8 @@ private def graphRuntimeCoreModuleMjs : String := include_str "Commands/graph-ru
 
 private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
+private def graphRuntimeIdModuleMjs : String := include_str "Commands/graph-runtime-id.mjs"
+
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
@@ -805,6 +807,7 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("Commands/graph-runtime-id.mjs", graphRuntimeIdModuleMjs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
 ]
 
@@ -849,9 +852,9 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
   writePageRuntimeModules dataDir
   writePreviewRuntimeModules dataDir
   let site ← IO.ofExcept <|
-    (VersoBlueprint.ExternalMarkup.resources.forSite "vir").mapError reprStr
+    (VersoBlueprintVir.resources.forSite "vir").mapError reprStr
   unless site.programManifests.size == 1 do
-    throw <| IO.userError "external-markup selection requires exactly one VIR program"
+    throw <| IO.userError "Blueprint clients require exactly one VIR program"
   for file in site.files do
     let path := dataDir / file.path
     IO.FS.createDirAll (path.parent.getD dataDir)
@@ -861,7 +864,8 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
     ("runtimeManifest", toJson ("../" ++ site.runtimeManifest)),
     ("programManifest", toJson ("../" ++ site.programManifests[0]!)),
     ("entries", Json.mkObj [
-      ("externalMarkup", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString)])]
+      ("externalMarkup", toJson (``VersoBlueprint.ExternalMarkup.selectMarkup).toString),
+      ("htmlId", toJson (``VersoBlueprint.HtmlId.encode).toString)])]
   writeDataFile dataDir "Commands/blueprint-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
