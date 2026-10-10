@@ -123,7 +123,7 @@ theorem omittedMixedSorry : True := by sorry
           graphNode.proofStatus == .incomplete &&
           hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
           hasSubstr html.asString declaration.toString &&
-          model.summary.sorryDetails.any (·.decl == declaration) do
+          model.summary.incompleteDetails.any (·.decl == declaration) do
         throw <| IO.userError s!"Heading, summary, and graph disagree about omitted declaration {declaration}"
       let some entry := files.manifest.findEntry? (PreviewCache.key label .statement)
         | throw <| IO.userError "Missing statement manifest entry"

@@ -370,8 +370,19 @@ and atomic Blueprint-state updates. The unscoped push/pop API and attachment hel
 removed. Standalone code and markup expanders must emit no semantic occurrence
 when registration fails. Required source identities must be checked before
 committing a contribution.
-`Node.externalRefs` and `Node.literateCodes` store normalized associations;
-`NodeContribution.leanCode` still accepts external groups or literate blocks.
+`Node.externalRefs` and `Node.proofExternalRefs` retain the statement and proof
+facet snapshots; both contribute to the node. `Node.leanDecls` and accepted
+declaration indexing include both facets and literate declarations.
+`Node.associatedExternalRefs` and `Node.summaryExternalRefs` in
+`VersoBlueprint.Data` deduplicate canonical declarations and merge their status
+evidence conservatively. The same merge preserves evidence when repeated
+contributions occur on one facet. Rendering uses the original facet snapshots
+to retain the location of each annotation.
+`Node.summaryLiterateCodes` and `BlockCodeData.summaryLiterateDeclarations`
+prefer one inline display entry while retaining status evidence from every
+association of that canonical declaration, including external proof annotations.
+`NodeContribution.leanCode` accepts statement external groups or literate
+blocks; `NodeContribution.proofExternalRefs` contributes proof associations.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
@@ -1776,3 +1787,71 @@ or, from a linked worktree,
 `_out/<worktree>/test-blueprints/preview_runtime_showcase/html-multi/Custom-Render-Client/`.
 That fixture is exercised by the browser regression tests, so it is a better
 starting point than copying code from a test body.
+
+
+## Lean completeness evidence
+
+`Informal.Data.analyzeDeclaration name` analyzes the current checked Lean
+environment. Its `ProvedStatus` is `proved`, `missing`, `axiomLike`, or
+`incomplete { knownSorry, unverified }`. `isProved` is true only after independently
+inspecting a closed transitive declaration graph with no reachable `sorryAx`
+and no coverage gap. Negative cached axiom footprints and zero source-reference
+counts never establish completion. See the [semantics matrix](MANUAL.md#dependency-graph)
+and `ProvedStatus.ofInspection_not_reachable` for the precise trusted boundary.
+
+`analyzeDeclarations names` certifies related roots together when their whole
+checked union is clean; blocked batches retain individual evidence and policy.
+This shares no negative cache across environments. External directive snapshots
+use this batch entrypoint, and snapshots preserve authored expected kinds when
+import visibility hides the original declaration kind.
+
+`VersoBlueprint.CodeHealth` provides the common `Informal.Graph.CodeHealth`
+projection used by graph status, heading UI, and CLI completeness. Its builder
+merges captured observations by canonical declaration name before counting;
+selecting an inline display cannot erase an external blocker. Facet rows retain
+their separate provenance. `codeHealthOfBlockSources` combines selected facets;
+`localStatementFormalized`, `localProofFormalized`, and `verdict` are the shared
+completion policy. An empty projection is unassociated and blocks both tracks.
+`presentDecls` and `hasAssociatedCode` are derived. Lean callers of the old axis
+and proof counters should use semantic completion/evidence predicates instead;
+`statementBlocked` and `anyGapCount` describe policy and present incompleteness.
+
+Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
+and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
+`status.reportJson` exposes `verdict`, `complete`, `knownSorry`, and `unverified`.
+Blocked queries may stop at the first checked witness on an axis; evidence
+arrays are not exhaustive. Clean results still require closed full inspection.
+Verdicts are `complete`, `incomplete` (known hole), `unverified` (no known hole,
+coverage incomplete), `missing`, and `axiom-like`. Incomplete results can contain
+both known holes and verification gaps. Each gap includes its `location`,
+`declaration`, and `reason`. Direct/inherited/unknown origins and optional source
+counts stay in the known-sorry evidence.
+
+`lake exe vbp query status <label>` reads all statement and proof facet
+associations, including external and inline declarations. It returns that
+per-declaration evidence with facet provenance, aggregate `verdict` and
+`complete`, and separate `statementComplete` and `proofComplete` booleans.
+No declarations yields `unassociated` with all completion booleans false.
+`asOf: "generated-snapshot"` means the answer describes the last generation;
+query does not recheck sources. Build current sources before treating the result
+as current truth. `vbp check` validates persisted artifact consistency and does
+not certify freshness or a hole-free proof. Graph colors and work queues are
+planning projections; use declaration evidence for a completeness claim.
+
+Generated data clients can use `resolveLabel(label, { facet: "statement" })`
+and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
+to read each entry's `codeData`. External associations carry `provedStatus` in
+`externalDecls`; inline facts carry it in
+`literateDeclarations.definedDefs` and `definedTheorems`. Missing external
+references (`present: false`) block completion. A declaration-keyed preview or
+a missing facet is not an aggregate completeness certificate. `readManifestStatus`
+and `readHtmlCacheStatus` report loading state, not Lean proof status.
+
+Source counts are obtained only after semantic analysis using
+`withDirectRefCounts`; the obsolete count-only status constructors were removed.
+
+The status payload migrated from `containsSorry: [...]` to
+`incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
+The internal manifest marker is now 11; the CLI rejects older generations.
+Regenerate persisted artifacts and handle both evidence arrays. The generated
+manifest schema validates the nested axes, origins, and verification reasons.

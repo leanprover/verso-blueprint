@@ -37,7 +37,7 @@ structure Config where
   label : Data.Label
   /-- Syntax node of the original label argument. -/
   labelSyntax : Syntax := Syntax.missing
-  /-- Optional Lean/external-code references associated with statement blocks. -/
+  /-- Optional Lean/external-code references associated with either facet. -/
   lean : Option String := none
   /-- Optional local override for automatic dependency inference. -/
   autoDeps : Option Bool := none
@@ -254,9 +254,8 @@ def Config.resolveForDirective {m}
   let tags ← resolveTags cfg isProof
   let prUrl ← resolveHttpUrlOption? cfg isProof "pr_url" cfg.prUrl
   let issueUrl ← resolveHttpUrlOption? cfg isProof "issue_url" cfg.issueUrl
-  let hasExternal := hasExternalRaw && !isProof
   let inferredDeps ←
-    if hasExternal && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+    if hasExternalRaw && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
       liftM <| DependencyAnalysis.inferExternalRefs resolvedExternalCode
     else
       pure {}

@@ -903,26 +903,35 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
-Proof blocks can attach supporting declarations separately:
+Proof blocks can attach Lean declarations to the same Blueprint node:
 
 ```md
 :::proof "addition_assoc" (lean := "Nat.add_comm, Nat.add_left_comm")
-The argument uses the referenced lemmas.
+The proof is associated with the referenced Lean declarations.
 :::
 ```
 
-These declarations appear in a **Lean references used in this proof** panel,
+These declarations appear in a **Lean declarations attached to this proof** panel,
 with their own signatures, status, source links, and hover previews. The proof
 facet retains them in generated data; `lake exe vbp query node addition_assoc`
 returns that facet under `proof`.
 
-Proof attachments record supporting references. They do not associate those
-declarations with the statement's implementation, change node or proof
-completion, or infer dependency edges, even when automatic dependency inference
-is enabled. Preserve mathematical dependencies with proof-side `uses`.
-Attach the declaration implementing the result to its statement or a labeled
-inline Lean block. A proof with no attachments does not borrow its statement's
-declarations or code panels.
+Statement and proof attachments both contribute to the node's associated
+declarations, declaration lookup, summaries, and progress. A declaration mentioned
+on both facets is counted once; its observed status evidence is merged
+conservatively. An incomplete or missing proof attachment cannot be ignored
+when computing the node's formalization status.
+
+With `autoDeps := true`, dependencies inferred from declarations attached to a
+proof contribute to the proof-side dependency track. Authored dependencies can
+also be supplied with proof-side `uses`. `lake exe vbp query code <decl>` finds
+nodes associated through either facet.
+
+Each facet retains its own declaration panels and source provenance. A proof
+with no attachments does not borrow its statement's declarations or code panels.
+An association is the author's asserted correspondence with the informal node;
+the status check does not prove that its Lean type captures the intended
+mathematics.
 
 If the same Blueprint label also has a labeled inline Lean block, Blueprint
 keeps both Lean associations. External declaration references render with the
@@ -1471,6 +1480,92 @@ Read the proof fill states as:
   dependency upstream is still not complete
 - `Locally formalized + dependencies complete`: both the node and its full
   dependency closure are complete
+
+Lean completion independently inspects the full transitive dependency closure of
+associated checked declarations: their types, available values (including opaque
+values), inductive constructor types, and recursor reduction rules and links.
+A theorem using an unassociated admitted helper is incomplete even when its own
+source has no `sorry` and the Blueprint graph has no edge for that helper.
+
+The guarantee is conservative: **complete implies no reachable `sorryAx` in the
+checked declaration closure**. Completion requires a closed inspection with
+neither observed holes nor missing, hidden, or unchecked information. Lean's
+cached positive axiom footprints remain useful observations. Cached absence
+never certifies completion: recursive constructor traversal can leave an empty
+cached footprint even when a transitive hole exists.
+
+Blocked analysis stops after an observed witness on each axis rather than
+exhaustively enumerating every reachable blocker. Breadth-first search finds
+nearby admitted helpers without first unfolding large unrelated proof closures.
+An axis with no observed blocker must still close its inspected graph; whole
+completion always requires the full declaration certificate. Reported evidence
+and verification gaps are observations, not an exhaustive hole inventory.
+
+This assumes ordinary kernel-checked Lean artifacts and faithful checked
+constant views, rather than deliberate kernel/environment manipulation.
+Completion means absence of admitted `sorryAx` holes, not freedom from other
+axioms, nor correctness of the intended mathematical statement. Genuine axioms
+are allowed as dependencies; directly associated axiom declarations retain the
+separate `axiomLike` blocking policy. Ordinary hypotheses are hypotheses.
+
+Known holes and verification gaps are separate facts and may coexist. Hidden
+proofs remain unverified even if their cached footprint is empty. A positive
+footprint proves that some hole exists, but does not reveal its origin. It can
+be localized to the proof only after independently verifying the visible
+statement closure; otherwise its location remains unknown. Unknown locations
+block both completion tracks. Verification gaps identify the declaration, axis,
+and reason (`bodyUnavailable`, `declarationUnavailable`, or
+`uncheckedExpression`); they never assert that a hole was observed.
+
+For visible bodies, identical outer lambda binder types repeating the
+statement telescope belong to statement evidence. Other annotations in the body
+remain proof evidence. Constructor fields belong to statement evidence. Direct
+terms and inherited dependency observations retain distinct origins and both
+can occur on an axis; inherited holes carry no local source-reference count.
+An inherited hole or a verification failure blocks completion without proving a
+local proof-writing task. Frontier advice remains tracked in
+[#476](https://github.com/leanprover/verso-blueprint/issues/476).
+
+| Inspected declaration | Known evidence | Verification | Completion |
+| --- | --- | --- | --- |
+| Visible clean type/body and closed clean dependencies | None | Verified | Complete |
+| Visible direct `sorry` | Direct, on its observed axis | Verified or partial | Incomplete |
+| Clean local body using admitted helper | Dependency, on consuming axis | Verified or partial | Incomplete |
+| Constructor or nested field depending on admitted type | Statement dependency | Verified or partial | Incomplete |
+| Hidden body with empty cached footprint | None unless visible evidence exists | Body unverified | Blocked |
+| Hidden body with positive footprint, verified clean statement | Proof, unknown origin | Body unverified | Incomplete |
+| Hidden body whose statement already explains positive footprint | Statement plus unknown-location evidence | Body unverified | Incomplete |
+| Exposed body using a hidden helper with empty cache | None unless other evidence exists | Helper unverified | Blocked |
+| Missing checked declaration or open dependency boundary | None unless other evidence exists | Unverified | Blocked |
+| Directly associated genuine axiom | Axiom-like policy | Body intentionally absent | Blocked |
+| No associated declarations | None | No declaration certificate | Blocked |
+
+The statement track for theorem-like nodes requires verified statement coverage
+and no statement or unlocalized hole. A proof-only verification gap can leave
+that statement track complete; the proof track remains blocked. Definitions
+require both axes for statement completion. Whole-declaration `isProved` and
+agent `complete` always require the entire closure.
+
+`ProvedStatus.incomplete` carries `IncompletenessInfo` with `knownSorry` and
+`unverified` arrays. Empty incomplete payloads and default declaration statuses
+are unverified, never complete and never invented sorry evidence. `SorryWhere`
+and `SorryOrigin` both include `unknown`. `hasTypeGap`/`hasProofGap` describe
+observed axis blockers; `hasUnverifiedType`/`hasUnverifiedProof` describe coverage.
+Use completion predicates for decisions instead of testing zero source counts.
+
+Duplicate snapshots retain each axis/origin pair and the maximum known source
+count, plus every verification gap. `proved` remains a neutral merge element;
+missing and axiom-like declarations retain their blocking dominance. Summary
+headings use stored evidence. Summary API fields are `incompleteDecls`,
+`incompleteDetails`, and `withIncompleteCode`, since blockers include uncertainty.
+
+Lean callers use `Informal.Data.analyzeDeclaration name` in the environment
+monad; the classifier fetches the canonical checked declaration itself.
+`ProvedStatus.ofInspection_not_reachable` connects the production completion
+constructor to the closure certificate theorem. The expression extraction and
+checked-environment API form the trusted boundary of that theorem.
+For agents, use `lake exe vbp query status <label>` after building the current
+sources; see [API](API.md#lean-completeness-evidence).
 
 Warning markers are reserved for structural or resolution issues such as:
 

@@ -24,9 +24,23 @@ Read `references/authoring-patterns.md` before editing Blueprint source, adding 
 1. Run `lake exe vbp discover` first to identify the package, generator, top-level Blueprint module, output paths, and chapter candidates.
 2. Build with `lake exe vbp build` before querying unless generated output already exists and the user only asks to inspect it.
 3. Query with `lake exe vbp query ...`; do not ask users to inspect manifest/cache files directly for normal tasks.
-4. Use `lake exe vbp query node <label>` when you need the complete record for one Blueprint node.
+4. Use `lake exe vbp query node <label>` for the full node record and `lake exe vbp query status <label>` for Lean completeness evidence from both facets.
 5. Edit source conservatively when requested. Preserve stable labels, use existing chapter/module patterns, and keep dependency intent clear.
 6. Rebuild after source edits. Use `lake exe vbp check` when auditing persisted, copied, or externally supplied generated output. Report changed labels, changed dependency edges, and remaining diagnostics.
+
+## Completeness claims
+
+Build the current sources before claiming that a declaration is complete, even
+when an older generated site exists. `status <label>` answers as of generation;
+`check` audits persisted consistency and does not establish source freshness.
+Only `complete: true` certifies no admitted `sorryAx` in the inspected checked
+closure. Treat `unverified`, `missing`, `axiom-like`, and `unassociated` as
+blocking, and inspect both `knownSorry` and `unverified` when verdict is
+`incomplete`. Unknown axis/origin is not a local sorry location. Neither zero
+reference counts nor clean graph colors establish declaration completeness.
+Read `references/vbp.md` for verification-gap reasons and the statement/proof
+track distinction. Report unverified information explicitly; do not infer an
+observed hole or a local proof-writing task from missing coverage.
 
 ## Guardrails
 

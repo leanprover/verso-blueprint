@@ -84,7 +84,7 @@ structure CodeDeclData where
   name : Name
   commandIndex : Nat := 0
   weight : Nat := 1
-  provedStatus : Data.ProvedStatus := .proved
+  provedStatus : Data.ProvedStatus := .incomplete {}
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable"
 deriving Repr, Inhabited, FromJson, ToJson, Quote
@@ -183,11 +183,34 @@ def BlockCodeData.append (left right : BlockCodeData) : BlockCodeData := {
 def BlockCodeData.nonempty? (code : BlockCodeData) : Option BlockCodeData :=
   if code.isEmpty then none else some code
 
-/-- Prefer literate declaration facts when an external association names the same constant. -/
+/-- Prefer the inline display source when an external association names the same constant. -/
 def BlockCodeData.summaryExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
   let names := code.literateDeclarations.declarations.foldl
     (fun (names : NameSet) decl => names.insert decl.name.eraseMacroScopes) {}
-  code.externalDecls.filter fun decl => !names.contains decl.canonical.eraseMacroScopes
+  (Data.ExternalRef.mergeSnapshots #[] code.externalDecls).filter fun decl =>
+    !names.contains decl.canonical.eraseMacroScopes
+
+/-- Canonical inline summary entries retain external and repeated inline status
+observations even when the corresponding external display entry is omitted. -/
+def BlockCodeData.summaryLiterateDeclarations (code : BlockCodeData) : LiterateDeclarations := Id.run do
+  let observations := code.externalDecls.map
+      (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
+    code.literateDeclarations.declarations.map (fun decl => (decl.name, decl.provedStatus))
+  let statuses := Data.ProvedStatus.indexByName observations
+  let mut seen : NameSet := {}
+  let mut definitions := #[]
+  let mut theorems := #[]
+  for decl in code.literateDeclarations.definedDefs do
+    let name := decl.name.eraseMacroScopes
+    unless seen.contains name do
+      seen := seen.insert name
+      definitions := definitions.push { decl with provedStatus := statuses.getD name decl.provedStatus }
+  for decl in code.literateDeclarations.definedTheorems do
+    let name := decl.name.eraseMacroScopes
+    unless seen.contains name do
+      seen := seen.insert name
+      theorems := theorems.push { decl with provedStatus := statuses.getD name decl.provedStatus }
+  return { definedDefs := definitions, definedTheorems := theorems }
 
 /-- Shared semantic metadata; occurrence numbering, sources, and folding live separately. -/
 structure BlockMetadata where

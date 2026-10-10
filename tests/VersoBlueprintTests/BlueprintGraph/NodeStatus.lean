@@ -213,7 +213,7 @@ def stateExternalCode : Environment.State := mkState [
       externalRefs := #[
         { (Data.ExternalRef.ofName `Ext.bad) with
           present := true
-          provedStatus := .containsSorry #[{ location := .statement }, { location := .proof }]
+          provedStatus := .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
         }
       ]
     }),
@@ -234,7 +234,7 @@ def externalStatus : ExternalCodeStatus := {
   isMissing := fun n => n == `Ext.missing
   provedStatus := fun n =>
     if n == `Ext.bad then
-      .containsSorry #[{ location := .statement }, { location := .proof }]
+      .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
     else
       .proved
 }
@@ -243,7 +243,7 @@ def externalStatusOverride : ExternalCodeStatus := {
   isMissing := fun n => n == `Ext.missing || n == `Ext.override_missing
   provedStatus := fun n =>
     if n == `Ext.bad || n == `Ext.override_bad then
-      .containsSorry #[{ location := .statement }, { location := .proof }]
+      .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
     else
       .proved
 }

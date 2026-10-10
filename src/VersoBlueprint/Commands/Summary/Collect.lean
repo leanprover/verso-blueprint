@@ -29,7 +29,7 @@ register_option verso.blueprint.summary.debugDiagnostics : Bool := {
 structure EntryStatusFlags where
   completed : Bool := false
   completedDepsNo : Bool := false
-  withSorries : Bool := false
+  withIncompleteCode : Bool := false
   noProof : Bool := false
   hasAxiomLike : Bool := false
 deriving Inhabited
@@ -82,7 +82,7 @@ private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags)
   {
     completed := acc.completed + (if flags.completed then 1 else 0)
     completedDepsNo := acc.completedDepsNo + (if flags.completedDepsNo then 1 else 0)
-    withSorries := acc.withSorries + (if flags.withSorries then 1 else 0)
+    withIncompleteCode := acc.withIncompleteCode + (if flags.withIncompleteCode then 1 else 0)
     noProof := acc.noProof + (if flags.noProof then 1 else 0)
   }
 
@@ -91,12 +91,12 @@ private def entryStatusFlags (state : Environment.State)
   let health := Informal.Graph.nodeCodeHealth external node
   let localFormalized := health.localFormalized node.kind
   let ancestorsFormalized := Informal.Graph.nodeAncestorsFormalized external state node
-  let withSorries := health.hasAssociatedCode && health.hasAnyGaps
+  let withIncompleteCode := health.hasAssociatedCode && health.hasAnyGaps
   let noProof := node.kind.isTheoremLike && !health.hasAssociatedCode
   {
     completed := localFormalized && ancestorsFormalized
     completedDepsNo := localFormalized && !ancestorsFormalized
-    withSorries
+    withIncompleteCode
     noProof
     hasAxiomLike := health.hasAxiomLike
   }
@@ -108,7 +108,7 @@ private def countSorries (decls : Array α) (statusOf : α → Data.ProvedStatus
 
 private def collectSorries (label : Name) (kind : String) (decls : Array α)
     (nameOf : α → Name) (statusOf : α → Data.ProvedStatus) (isTheorem : α → Bool) :
-    List SorryItem :=
+    List IncompleteItem :=
   decls.foldl (init := []) fun acc decl =>
     let status := statusOf decl
     if status.isIncomplete then
@@ -127,7 +127,7 @@ private def mkIndexItem (label : Name) (kind : Data.NodeKind) (leanObjects : Lis
 
 private def nodeLeanObjects (node : Data.Node) : List Name :=
   let externalNames :=
-    node.externalRefs.foldl (init := #[]) fun acc decl =>
+    node.associatedExternalRefs.foldl (init := #[]) fun acc decl =>
       pushUniqueName acc decl.canonical
   let allNames :=
     node.literateCodes.foldl (init := externalNames) fun acc code =>
@@ -141,7 +141,7 @@ private def codeSorryCount (code : Data.Code) : Nat :=
   countSorries code.definedDefs (fun (d : Data.LiterateDef) => d.provedStatus) +
   countSorries code.definedTheorems (fun (d : Data.LiterateThm) => d.provedStatus)
 
-private def codeSorryDetails (label : Name) (kind : String) (code : Data.Code) : List SorryItem :=
+private def codeSorryDetails (label : Name) (kind : String) (code : Data.Code) : List IncompleteItem :=
   collectSorries label kind code.definedDefs
     (fun (d : Data.LiterateDef) => d.name)
     (fun (d : Data.LiterateDef) => d.provedStatus)
@@ -153,9 +153,9 @@ private def codeSorryDetails (label : Name) (kind : String) (code : Data.Code) :
 
 private structure NodeLeanSummary where
   leanDecls : Nat := 0
-  sorries : Nat := 0
+  incompleteDecls : Nat := 0
   leanObjects : List Name := []
-  sorryDetails : List SorryItem := []
+  incompleteDetails : List IncompleteItem := []
   missingLeanDecls : List MissingLeanDeclItem := []
   renderFailures : List RenderFailureItem := []
 deriving Inhabited
@@ -207,8 +207,8 @@ private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary 
           message := failure.message
         }
     let (inlineDecls, inlineSorries, inlineSorryDetails) :=
-      node.literateCodes.foldl
-        (init := (0, 0, ([] : List SorryItem)))
+      node.summaryLiterateCodes.foldl
+        (init := (0, 0, ([] : List IncompleteItem)))
         fun (decls, sorryCount, details) code =>
           (
             decls + codeDeclCount code,
@@ -217,9 +217,9 @@ private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary 
           )
     {
       leanDecls := externalDecls.size + inlineDecls
-      sorries := incompleteExternalDecls.size + inlineSorries
+      incompleteDecls := incompleteExternalDecls.size + inlineSorries
       leanObjects := nodeLeanObjects node
-      sorryDetails := externalSorryDetails ++ inlineSorryDetails
+      incompleteDetails := externalSorryDetails ++ inlineSorryDetails
       missingLeanDecls
       renderFailures
     }
@@ -235,7 +235,7 @@ private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeS
         acc
       else
         acc + (if decl.provedStatus.isIncomplete then 1 else 0)
-  externalCount + node.literateCodes.foldl (init := 0) fun acc code =>
+  externalCount + node.summaryLiterateCodes.foldl (init := 0) fun acc code =>
     acc + codeSorryCount code
 
 private def ownerDisplayName (state : Environment.State) (node : Data.Node) : Option String :=
@@ -458,8 +458,8 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
       totalStatus := bumpEntryStatus acc.totalStatus statusFlags
       pendingInformalEntries
       leanDecls := acc.leanDecls + leanSummary.leanDecls
-      sorries := acc.sorries + leanSummary.sorries
-      sorryDetails := leanSummary.sorryDetails ++ acc.sorryDetails
+      incompleteDecls := acc.incompleteDecls + leanSummary.incompleteDecls
+      incompleteDetails := leanSummary.incompleteDetails ++ acc.incompleteDetails
       missingLeanDecls := leanSummary.missingLeanDecls ++ acc.missingLeanDecls
       renderFailures := leanSummary.renderFailures ++ acc.renderFailures
       definitionIndex
@@ -536,7 +536,7 @@ private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
   let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
   let incompleteLeanNow :=
     Informal.Graph.nodeHasAssociatedCode node &&
-      (Informal.Graph.nodeHasSorries ctx.external node ||
+      (Informal.Graph.nodeHasIncompleteCode ctx.external node ||
         Informal.Graph.nodeHasMissingExternalDecls ctx.external node)
   {
     totalEntries := counts.totalEntries + 1

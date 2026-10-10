@@ -482,6 +482,72 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
 private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool :=
   values.any (fun json => jsonNullField json field)
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  let check (statement proof : Informal.Data.ProvedStatus) (verdict : String)
+      (statementComplete proofComplete : Bool) (kind : Informal.Data.NodeKind := .theorem) : Bool :=
+    let statementSource : Informal.BlockCodeData := { externalDecls := #[{
+      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := statement }] }
+    let proofSource : Informal.BlockCodeData := { literateDeclarations := { definedTheorems := #[{
+      name := `truthDecl, provedStatus := proof }] } }
+    let source := statementSource.append proofSource
+    let node : Informal.Data.Node := {
+      kind, externalRefs := statementSource.externalDecls,
+      literateCodes := #[{ stx := .missing, definedTheorems := #[{
+        name := `truthDecl, provedStatus := proof }] }] }
+    let health := nodeCodeHealth {} node
+    let heading := Informal.CodeSummary.renderParts {
+      kind, label := label "truth", count := 1, codeData := some source }
+      { source := some source } (fun _ => none)
+    let manifest : ManifestFile := { previews := #[
+      { key := "informal:truth:statement", targetKind := .block, label := label "truth",
+        facet := .statement, kind := some kind, title := "Truth", codeData := some statementSource },
+      { key := "informal:truth:proof", targetKind := .block, label := label "truth",
+        facet := .proof, kind := some kind, title := "Proof", codeData := some proofSource }
+    ] }
+    match executeQuery manifest ["status", "truth"] with
+    | .error _ => false
+    | .ok json =>
+      jsonStringField? json "verdict" == some verdict &&
+      jsonStringField? json "asOf" == some "generated-snapshot" &&
+      jsonBoolField? json "statementComplete" == some statementComplete &&
+      jsonBoolField? json "proofComplete" == some proofComplete &&
+      jsonBoolField? json "complete" == some proofComplete &&
+      health.totalDecls == 1 && health.verdict == verdict &&
+      health.localStatementFormalized == statementComplete &&
+      health.localProofFormalized == proofComplete &&
+      (match heading.statusMark with
+       | some mark => mark.status == health.provedStatus &&
+           mark.title.contains "Statement: completed" == statementComplete &&
+           mark.title.contains "Proof: completed" == proofComplete
+       | none => false) &&
+      (match jsonArrayField? json "declarations" with
+       | some rows => rows.size == 2 && jsonArrayHasStringField rows "facet" "statement" &&
+           jsonArrayHasStringField rows "facet" "proof" &&
+           rows.all (fun row => (jsonField? row "status").isSome)
+       | none => false)
+  let hidden : Informal.Data.ProvedStatus := .incomplete { unverified := #[{
+    location := .proof, declaration := `hiddenHelper, reason := .bodyUnavailable }] }
+  let gap : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[{
+    location := .proof, origin := .dependency }] }
+  check .proved .proved "complete" true true &&
+    check .proved hidden "unverified" true false &&
+    check hidden .proved "unverified" true false &&
+    check .proved (.incomplete {}) "unverified" false false &&
+    check hidden gap "incomplete" true false &&
+    check .proved .missing "missing" false false &&
+    check .proved .axiomLike "axiom-like" false false &&
+    check .proved gap "incomplete" false false .definition &&
+    check .proved hidden "unverified" false false .definition &&
+    check (.incomplete { knownSorry := #[{ location := .statement }] }) .proved
+      "incomplete" false false &&
+    (match executeQuery sampleManifest ["status", "addition_assoc"] with
+     | .ok json => jsonStringField? json "verdict" == some "unassociated" &&
+         jsonBoolField? json "complete" == some false &&
+         jsonBoolField? json "statementComplete" == some false
+     | .error _ => false)
+
 private def previewKeyValue? (key? : Option Informal.PreviewKey) : Option String :=
   key?.map (·.value)
 
@@ -722,6 +788,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   ("selectors", ["selectors"], false),
   ("labels", ["labels"], false),
   ("node <label>", ["node", "addition_assoc"], false),
+  ("status <label>", ["status", "addition_assoc"], false),
   ("uses <label>", ["uses", "addition_assoc"], false),
   ("used-by <label>", ["used-by", "addition_assoc"], false),
   ("group <label>", ["group", "addition_assoc"], false),

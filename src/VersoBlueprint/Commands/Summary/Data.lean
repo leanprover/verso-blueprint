@@ -12,12 +12,12 @@ namespace Informal.Commands
 
 open Lean
 
-structure SorryItem where
+structure IncompleteItem where
   label : Name
   kind : String
   decl : Name
   isTheorem : Bool := false
-  status : Data.ProvedStatus := .proved
+  status : Data.ProvedStatus := .incomplete {}
 deriving Inhabited, FromJson, ToJson
 
 structure MissingLeanDeclItem where
@@ -52,7 +52,7 @@ deriving Inhabited, FromJson, ToJson
 structure EntryStatusCounts where
   completed : Nat := 0
   completedDepsNo : Nat := 0
-  withSorries : Nat := 0
+  withIncompleteCode : Nat := 0
   noProof : Nat := 0
 deriving Inhabited, FromJson, ToJson
 
@@ -172,8 +172,8 @@ structure Summary where
   axiomStatus : EntryStatusCounts := {}
   pendingInformalEntries : List PendingInformalItem := []
   leanDecls : Nat := 0
-  sorries : Nat := 0
-  sorryDetails : List SorryItem := []
+  incompleteDecls : Nat := 0
+  incompleteDetails : List IncompleteItem := []
   missingLeanDecls : List MissingLeanDeclItem := []
   renderFailures : List RenderFailureItem := []
   definitionIndex : List IndexItem := []

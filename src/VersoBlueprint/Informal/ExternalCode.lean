@@ -60,15 +60,10 @@ private def parsedExternalRef (ref : Data.ExternalRef) : Data.ExternalRef :=
   { ref with canonical := ref.written.eraseMacroScopes }
 
 private def resolvedExternalRef (ref : Data.ExternalRef) (resolved : Name) : Data.ExternalRef :=
-  { written := ref.written, canonical := resolved.eraseMacroScopes, origin := ref.origin }
+  { ref with canonical := resolved.eraseMacroScopes }
 
 section
 variable {m : Type → Type} [Monad m]
-
-private def markExternalRefSnapshot [MonadOptions m] [MonadLiftT CoreM m]
-    (ref : Data.ExternalRef) : m Data.ExternalRef := do
-  let opts ← getOptions
-  liftM <| externalRefSnapshotAtCurrentDir opts ref
 
 private def resolveExternalNameCandidates [MonadResolveName m] [MonadOptions m] [MonadEnv m]
     [MonadLog m] [AddMessageContext m]
@@ -104,7 +99,7 @@ def resolveExternalCodeList [MonadResolveName m] [MonadOptions m] [MonadLiftT Co
     (← getOptions).get
       verso.blueprint.externalCode.strictResolve.name
       verso.blueprint.externalCode.strictResolve.defValue
-  refs.foldlM (init := #[]) fun acc ref => do
+  let resolvedRefs ← refs.foldlM (init := #[]) fun acc ref => do
     let ref := { ref with kind := expectedKind }
     let candidates ← resolveExternalNameCandidates ref.written
     match candidates.toList with
@@ -114,10 +109,10 @@ def resolveExternalCodeList [MonadResolveName m] [MonadOptions m] [MonadLiftT Co
         throwErrorAt labelSyntax msg
       else
         logWarningAt labelSyntax m!"{msg}; keeping parsed name"
-        let ref ← markExternalRefSnapshot (parsedExternalRef ref)
+        let ref := parsedExternalRef ref
         pushExternalRefUnique label labelSyntax acc ref
     | [resolved] =>
-      let ref ← markExternalRefSnapshot (resolvedExternalRef ref resolved)
+      let ref := resolvedExternalRef ref resolved
       pushExternalRefUnique label labelSyntax acc ref
     | many =>
       let msg := m!"Label {label}: external Lean name '{ref.written}' is ambiguous ({String.intercalate ", " (many.map toString)})"
@@ -125,8 +120,9 @@ def resolveExternalCodeList [MonadResolveName m] [MonadOptions m] [MonadLiftT Co
         throwErrorAt labelSyntax msg
       else
         logWarningAt labelSyntax m!"{msg}; keeping parsed name"
-        let ref ← markExternalRefSnapshot (parsedExternalRef ref)
+        let ref := parsedExternalRef ref
         pushExternalRefUnique label labelSyntax acc ref
+  liftM <| externalRefSnapshotsAtCurrentDir (← getOptions) resolvedRefs
 
 end
 

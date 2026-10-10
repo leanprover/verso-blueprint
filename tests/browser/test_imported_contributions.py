@@ -108,7 +108,7 @@ def test_filled_facets_reach_generated_previews(named_site, page: Page):
         assert {source["document"] for source in code["sources"]} == {"facet-paper", "facet-proof-paper"}
         page.goto(urljoin(f"{server}/", entry["href"]))
         if entry["facet"] == "proof":
-            expect(page.get_by_text("Lean references used in this proof", exact=True)).to_be_visible()
+            expect(page.get_by_text("Lean declarations attached to this proof", exact=True)).to_be_visible()
         source_slot = page.locator(":target .bp_extra_slot_source")
         source_slot.locator(".bp_source_ref_chip").hover()
         source_preview = source_slot.locator(".bp_source_ref_preview_body")

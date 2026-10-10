@@ -31,7 +31,7 @@ private def actionableEntryDescription : String :=
   "Entries with an actionable next formalization step."
 
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
-  let showBlockers := rows.blockerCount > 0
+  let showBlockers := !rows.blockerRows.isEmpty
   let showPendingInformal := !rows.pendingInformalRows.isEmpty
   let showQuickWins := !rows.quickWinRows.isEmpty
   summarySection "Overview" {{
@@ -52,7 +52,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
         {{summaryOptionalWarnCard
             showBlockers
             "Current blockers"
-            (toString rows.blockerCount)
+            (toString rows.blockerRows.size)
             (Option.some "Missing external or incomplete Lean declarations.")}}
         {{summaryOptionalCard
             showPendingInformal
@@ -77,7 +77,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
           true}}
       {{summaryOptionalDetailsList
           showBlockers
-          s!"Current blockers ({rows.blockerCount})"
+          s!"Current blockers ({rows.blockerRows.size})"
           rows.blockerRows
           "bp_summary_subsection bp_summary_subsection_warn"
           true}}

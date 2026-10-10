@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Data
+import VersoBlueprint.SorryAnalysis
 
 namespace Informal.Data
 
@@ -21,7 +21,7 @@ The API is organized into:
   `presentation`),
 - collection helpers (`any*`),
 - constructors/merging (`of*`, `mergeConservative`),
-- Lean environment bridge (`ConstantInfo.blueprint*`).
+- Lean environment bridge (`analyzeDeclaration`).
 -/
 
 /-- True only when the declaration is fully proved. -/
@@ -43,63 +43,100 @@ def ProvedStatus.isMissing : ProvedStatus → Bool
 def ProvedStatus.isIncomplete (status : ProvedStatus) : Bool :=
   !status.isProved
 
-/-- True when the declaration has statement/type-side incompleteness. -/
-def ProvedStatus.hasTypeGap : ProvedStatus → Bool
-  | .proved => false
-  | .missing => true
-  | .axiomLike => true
-  | .containsSorry info => info.any (·.location == .statement)
+/-- Observed sorry evidence, independent of verification coverage. -/
+def ProvedStatus.sorryEvidence : ProvedStatus → Array SorryInfo
+  | .incomplete info => info.knownSorry
+  | _ => #[]
 
-/-- True when the declaration has proof/body-side incompleteness. -/
-def ProvedStatus.hasProofGap : ProvedStatus → Bool
-  | .proved => false
-  | .missing => true
-  | .axiomLike => true
-  | .containsSorry info => info.any (·.location == .proof)
+/-- An empty incomplete payload represents unknown coverage, never a known hole. -/
+def ProvedStatus.verificationGaps : ProvedStatus → Array VerificationGap
+  | .incomplete info =>
+    info.withCoverageFallback.unverified
+  | _ => #[]
 
-/--
-Whether this status blocks statement-track completion for a node kind.
+def ProvedStatus.hasKnownSorry (status : ProvedStatus) : Bool :=
+  !status.sorryEvidence.isEmpty
 
-Definitions are blocked by either statement or proof gaps.
-Theorem-like statements are blocked only by statement gaps.
--/
+def ProvedStatus.hasUnverifiedCoverage (status : ProvedStatus) : Bool :=
+  !status.verificationGaps.isEmpty
+
+/-- Coverage failure without an observed hole. -/
+def ProvedStatus.isUnverified (status : ProvedStatus) : Bool :=
+  status.hasUnverifiedCoverage && !status.hasKnownSorry
+
+/-- Statement/type-side blockers whose existence is observed. -/
+def ProvedStatus.hasTypeGap (status : ProvedStatus) : Bool :=
+  status.isMissing || status.isAxiomLike || status.sorryEvidence.any (·.location == .statement)
+
+/-- Proof/body-side blockers whose existence is observed. -/
+def ProvedStatus.hasProofGap (status : ProvedStatus) : Bool :=
+  status.isMissing || status.isAxiomLike || status.sorryEvidence.any (·.location == .proof)
+
+def ProvedStatus.hasUnlocalizedSorry (status : ProvedStatus) : Bool :=
+  status.sorryEvidence.any (·.location == .unknown)
+
+def ProvedStatus.hasUnverifiedType (status : ProvedStatus) : Bool :=
+  status.verificationGaps.any fun gap => gap.location == .statement || gap.location == .unknown
+
+def ProvedStatus.hasUnverifiedProof (status : ProvedStatus) : Bool :=
+  status.verificationGaps.any fun gap => gap.location == .proof || gap.location == .unknown
+
+/-- Theorem statements require a verified statement closure. Definitions also
+require a verified body closure. Unlocalized holes block both tracks. -/
 def ProvedStatus.blocksStatementCompletion (status : ProvedStatus) (kind : NodeKind) : Bool :=
-  match kind with
-  | .definition => status.hasTypeGap || status.hasProofGap
-  | .proposition | .lemma | .theorem | .corollary => status.hasTypeGap
+  status.hasUnlocalizedSorry || status.hasTypeGap || status.hasUnverifiedType ||
+    (kind == .definition && (status.hasProofGap || status.hasUnverifiedProof))
 
-/-- Conservative proof-track blocker predicate. -/
 def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=
-  status.hasTypeGap || status.hasProofGap
+  status.isIncomplete
 
-/-- True only when explicit `sorry` markers were observed. -/
-def ProvedStatus.containsExplicitSorry : ProvedStatus → Bool
-  | .containsSorry _ => true
-  | _ => false
+def ProvedStatus.containsExplicitSorry (status : ProvedStatus) : Bool :=
+  status.sorryEvidence.any (·.origin == .direct)
 
-/-- Human-readable location text used in summary/tooltip rendering. -/
-def ProvedStatus.sorryLocationText : ProvedStatus → String
-  | .missing => "missing declaration"
-  | .axiomLike => "axiom-like (no body)"
-  | .containsSorry info =>
-    let hasType := info.any (·.location == .statement)
-    let hasProof := info.any (·.location == .proof)
-    if hasType && hasProof then
-      "in statement and proof"
-    else if hasType then
-      "in statement"
-    else if hasProof then
-      "in proof"
-    else
-      "location unknown"
-  | .proved => "location unknown"
+def ProvedStatus.dependsOnSorry (status : ProvedStatus) : Bool :=
+  status.sorryEvidence.any (·.origin == .dependency)
 
-/-- Compact label used in textual reports. -/
-def ProvedStatus.statusLabel : ProvedStatus → String
-  | .missing => "missing"
-  | .axiomLike => "axiom-like"
-  | .containsSorry _ => "contains sorry"
-  | .proved => "proved"
+/-- Human-readable evidence location; uncertainty is reported separately. -/
+def ProvedStatus.sorryLocationText (status : ProvedStatus) : String :=
+  if status.isMissing then "missing declaration"
+  else if status.isAxiomLike then "axiom-like (no body)"
+  else if !status.hasKnownSorry then
+    if status.hasUnverifiedCoverage then "coverage unverified" else "location unknown"
+  else
+    let hasType := status.sorryEvidence.any (·.location == .statement)
+    let hasProof := status.sorryEvidence.any (·.location == .proof)
+    let known := if hasType && hasProof then "in statement and proof"
+      else if hasType then "in statement"
+      else if hasProof then "in proof" else "location unknown"
+    let known := if (hasType || hasProof) && status.hasUnlocalizedSorry then
+      known ++ "; other locations unknown" else known
+    if status.hasUnverifiedCoverage then known ++ "; coverage unverified" else known
+
+def ProvedStatus.statusLabel (status : ProvedStatus) : String :=
+  if status.isProved then "proved"
+  else if status.isMissing then "missing"
+  else if status.isAxiomLike then "axiom-like"
+  else if status.containsExplicitSorry then "contains sorry"
+  else if status.dependsOnSorry then "depends on sorry"
+  else if status.hasKnownSorry then "sorry detected"
+  else "unverified"
+
+/-- Machine verdict derived from the semantic status, without presentation parsing. -/
+def ProvedStatus.verdict (status : ProvedStatus) : String :=
+  if status.isProved then "complete"
+  else if status.isMissing then "missing"
+  else if status.isAxiomLike then "axiom-like"
+  else if status.hasKnownSorry then "incomplete" else "unverified"
+
+/-- Agent-facing evidence report. Verification gaps and known holes may coexist.
+Source reference counts are observations, not completion certificates. -/
+def ProvedStatus.reportJson (status : ProvedStatus) : Json :=
+  Json.mkObj [
+    ("verdict", toJson status.verdict),
+    ("complete", toJson status.isProved),
+    ("knownSorry", toJson status.sorryEvidence),
+    ("unverified", toJson status.verificationGaps)
+  ]
 
 /--
 Presentation data shared by the renderers that show declaration-level Lean
@@ -171,12 +208,15 @@ def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
         codeEntrySymbol := "A"
         statusMarkSymbol := "⚠"
       }
-    | .containsSorry _ =>
+    | .incomplete _ =>
       let locationText := status.sorryLocationText
+      let direct := status.containsExplicitSorry
+      let dependency := status.dependsOnSorry
+      let compact := if direct then "sorry" else status.statusLabel
       {
-        summaryText := s!"sorry {locationText}"
-        externalPanelText := s!"contains sorry {locationText}"
-        externalHeaderText := "contains sorry"
+        summaryText := if status.isUnverified then "unverified" else s!"{compact} {locationText}"
+        externalPanelText := if status.isUnverified then "unverified" else s!"{status.statusLabel} {locationText}"
+        externalHeaderText := if direct then "contains sorry" else if dependency then "depends on sorry" else status.statusLabel
         codeDeclClass := "bp_code_decl_status_warning"
         externalDeclClass := "bp_external_decl_sorry"
         codeEntryClassSuffix := "warning"
@@ -184,14 +224,23 @@ def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
         statusMarkSymbol := "✗"
       }
 
-/-- Aggregate per-axis sorry reference counts `(statementRefs, proofRefs)`. -/
-def ProvedStatus.sorryRefCounts : ProvedStatus → Nat × Nat
-  | .containsSorry info =>
-    info.foldl (init := (0, 0)) fun (typeRefs, proofRefs) item =>
-      match item.location with
-      | .statement => (typeRefs + item.refs?.getD 0, proofRefs)
-      | .proof => (typeRefs, proofRefs + item.refs?.getD 0)
-  | _ => (0, 0)
+/-- Aggregate observed per-axis source counts. Zero alone never certifies absence. -/
+def ProvedStatus.sorryRefCounts (status : ProvedStatus) : Nat × Nat :=
+  status.sorryEvidence.foldl (init := (0, 0)) fun (typeRefs, proofRefs) item =>
+    match item.location with
+    | .statement => (typeRefs + item.refs?.getD 0, proofRefs)
+    | .proof => (typeRefs, proofRefs + item.refs?.getD 0)
+    | .unknown => (typeRefs, proofRefs)
+
+def ProvedStatus.withDirectRefCounts (status : ProvedStatus) (typeRefs proofRefs : Nat) : ProvedStatus :=
+  match status with
+  | .incomplete info => .incomplete { info with knownSorry := info.knownSorry.map fun item =>
+      if item.origin != .direct then item else
+        match item.location with
+        | .statement => { item with refs? := some typeRefs }
+        | .proof => { item with refs? := some proofRefs }
+        | .unknown => item }
+  | other => other
 
 /-- True when any declaration in a collection is incomplete. -/
 def ProvedStatus.anyIncomplete (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
@@ -206,87 +255,124 @@ def ProvedStatus.anyBlocksStatementCompletion (kind : NodeKind) (decls : Array �
 def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
   decls.any fun decl => (statusOf decl).blocksProofCompletion
 
-/-- Build a status from per-axis incompleteness flags and optional ref counts. -/
-def ProvedStatus.ofSorryFlags (hasType hasProof : Bool)
-    (typeRefs? : Option Nat := none) (proofRefs? : Option Nat := none) : ProvedStatus :=
-  let info : Array SorryInfo :=
-    (#[]
-      |> fun acc => if hasType then acc.push { location := .statement, refs? := typeRefs? } else acc
-      |> fun acc => if hasProof then acc.push { location := .proof, refs? := proofRefs? } else acc)
-  if info.isEmpty then .proved else .containsSorry info
+@[simp] theorem ProvedStatus.mergeConservative_proved_left (status : ProvedStatus) :
+    ProvedStatus.mergeConservative .proved status = status := by
+  cases status <;> rfl
 
-/-- Build a status from per-axis reference counts. -/
-def ProvedStatus.ofRefCounts (typeRefs proofRefs : Nat) : ProvedStatus :=
-  ProvedStatus.ofSorryFlags
-    (typeRefs > 0)
-    (proofRefs > 0)
-    (if typeRefs > 0 then some typeRefs else none)
-    (if proofRefs > 0 then some proofRefs else none)
+@[simp] theorem ProvedStatus.mergeConservative_proved_right (status : ProvedStatus) :
+    ProvedStatus.mergeConservative status .proved = status := by
+  cases status <;> rfl
 
-/--
-Conservative merge for duplicated status snapshots:
-- `missing` dominates,
-- `axiomLike` dominates,
-- otherwise preserve any observed axis incompleteness.
--/
-def ProvedStatus.mergeConservative (a b : ProvedStatus) : ProvedStatus :=
-  if a.isMissing || b.isMissing then
-    .missing
-  else if a.isAxiomLike || b.isAxiomLike then
-    .axiomLike
-  else
-    ProvedStatus.ofSorryFlags
-      (a.hasTypeGap || b.hasTypeGap)
-      (a.hasProofGap || b.hasProofGap)
+/-- Canonical status unions cannot turn a blocking observation into completion. -/
+theorem ProvedStatus.mergeConservative_isProved (a b : ProvedStatus) :
+    (a.mergeConservative b).isProved = (a.isProved && b.isProved) := by
+  cases a <;> cases b <;> rfl
 
-/-- Definition shorthand for statement/type-side incompleteness checks. -/
-def LiterateDef.hasTypeSorry (d : LiterateDef) : Bool :=
-  d.provedStatus.hasTypeGap
+/-- The only production completion boundary: actual closed inspection, no
+conflicting observed hole, and no remaining axis coverage gaps. -/
+def ProvedStatus.ofInspection (inspection : SorryInspection) (info : IncompletenessInfo) : ProvedStatus :=
+  if inspection.isComplete && info.knownSorry.isEmpty && info.unverified.isEmpty then .proved
+  else .incomplete info
 
-/-- Definition shorthand for any incompleteness checks. -/
-def LiterateDef.hasSorry (d : LiterateDef) : Bool :=
-  d.provedStatus.isIncomplete
+theorem ProvedStatus.ofInspection_complete (inspection : SorryInspection) (info : IncompletenessInfo)
+    (h : (ofInspection inspection info).isProved = true) : inspection.isComplete = true := by
+  unfold ofInspection at h
+  split at h
+  · rename_i hcert
+    exact (Bool.and_eq_true_iff.mp (Bool.and_eq_true_iff.mp hcert).1).1
+  · contradiction
 
-/-- Theorem shorthand for statement/type-side incompleteness checks. -/
-def LiterateThm.hasTypeSorry (d : LiterateThm) : Bool :=
-  d.provedStatus.hasTypeGap
+/-- Production completion cannot reach a sorryAx in its inspected closure. -/
+theorem ProvedStatus.ofInspection_not_reachable (inspection : SorryInspection) (info : IncompletenessInfo)
+    (h : (ofInspection inspection info).isProved = true) (root : Name)
+    (hroot : root ∈ inspection.roots.toList) :
+    ¬inspection.declarations.reachable root ``sorryAx :=
+  certifiedNoSorry_not_reachable inspection.roots inspection.declarations
+    (ofInspection_complete inspection info h) root hroot
 
-/-- Theorem shorthand for proof/body-side incompleteness checks. -/
-def LiterateThm.hasProofSorry (d : LiterateThm) : Bool :=
-  d.provedStatus.hasProofGap
+/-- Remove outer body binder types already observed in the declaration telescope. -/
+private def proofBody (type value : Expr) : Expr :=
+  match type, value with
+  | .forallE _ domain typeBody _, .lam _ valueDomain valueBody _ =>
+    -- The declaration telescope is already statement evidence. Remove only
+    -- syntactically identical outer binder types, not arbitrary annotations or
+    -- constants shared by the statement and proof.
+    if domain == valueDomain then proofBody typeBody valueBody else value
+  | _, _ => value
 
-/-- Theorem shorthand for any incompleteness checks. -/
-def LiterateThm.hasSorry (d : LiterateThm) : Bool :=
-  d.provedStatus.isIncomplete
+/-- Axis roots are actual expression references. Remove the declaration itself
+from axis attribution, while the whole-declaration certificate still covers it. -/
+private def axisRoots (name : Name) (expressions : Array Expr) : Array Name :=
+  (expressions.foldl (fun deps expr => deps ++ expr.getUsedConstants) #[]).filter
+    fun dep => dep != name && dep != ``sorryAx
 
-/--
-Blueprint incompleteness treats axioms like synthetic sorries because they
-lack executable/provable bodies.
--/
-def ConstantInfo.blueprintIsAxiomLike (info : ConstantInfo) : Bool :=
-  match info with
-  | .axiomInfo _ => true
-  | _ => false
+/-- Analyze a canonical checked declaration with full transitive inspection.
+Ordinary hidden imports remain unverified even when cached footprints are empty.
+`collectAxioms` is used only for positive evidence and genuine-axiom kind evidence. -/
+def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := do
+  let some info := (← getEnv).checked.get.find? name
+    | return .incomplete { unverified := #[{ declaration := name }] }
+  let axioms ← match info with
+    | .axiomInfo _ => collectAxioms name
+    | _ => pure #[]
+  let body := ConstantInfo.blueprintBodyAccess name info axioms
+  if let .axiomInfo _ := info then
+    if let .absent := body then return .axiomLike
+  let computation : SorryInspectionM m ProvedStatus := do
+    let whole ← inspectSorryDependencies #[name] (stopAtBlocker := true)
+    let completion := ProvedStatus.ofInspection whole {}
+    if completion.isProved then return completion
+    let mut statements := #[info.type]
+    if let .inductInfo induct := info then
+      for ctor in induct.ctors do
+        if let some ctorInfo := (← getEnv).checked.get.find? ctor then
+          statements := statements.push ctorInfo.type
+    let statement ← inspectSorryDependencies (axisRoots name statements) (stopAtBlocker := true)
+    let proofs := match body with
+      | .available value => #[(proofBody info.type value)]
+      | _ => match info with
+        | .recInfo rec => rec.rules.toArray.map (·.rhs)
+        | _ => #[]
+    let proof ← inspectSorryDependencies (axisRoots name proofs) (stopAtBlocker := true)
+    let mut evidence : Array SorryInfo := #[]
+    if statements.any (·.hasSorry) then evidence := evidence.push { location := .statement }
+    if statement.hasSorry then evidence := evidence.push { location := .statement, origin := .dependency }
+    if proofs.any (·.hasSorry) then evidence := evidence.push { location := .proof }
+    if proof.hasSorry then evidence := evidence.push { location := .proof, origin := .dependency }
+    if axioms.contains ``sorryAx then
+      if let .unavailable := body then
+        evidence := evidence.push {
+          location := if statement.isComplete && !statements.any (·.hasSorry) then .proof else .unknown
+          origin := .unknown }
+    let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
+    if let .unavailable := body then
+      gaps := gaps.push { location := .proof, declaration := name, reason := .bodyUnavailable }
+    -- Keep whole-inspection coverage failures even when an axis already found
+    -- a hole. Metadata dependencies need not appear in the axis expressions.
+    if evidence.isEmpty && whole.hasSorry then
+      evidence := evidence.push { location := .unknown, origin := .unknown }
+    for gap in whole.verificationGaps .unknown do
+      if !gaps.any (fun known => known.declaration == gap.declaration) then
+        let location := if gap.declaration == name && gap.reason == .bodyUnavailable then
+          .proof else .unknown
+        gaps := gaps.push { gap with location }
+    return ProvedStatus.ofInspection whole { knownSorry := evidence, unverified := gaps }
+  return (← computation.run {}).1
 
-/--
-Compute combined incompleteness status for blueprint checks.
-
-Type-side and proof-side gaps are extracted separately and encoded into one `ProvedStatus`.
--/
-def ConstantInfo.blueprintProvedStatus (info : ConstantInfo) (allowOpaque : Bool := false) : ProvedStatus :=
-  if ConstantInfo.blueprintIsAxiomLike info then
-    .axiomLike
-  else
-    let hasTypeSorry := info.type.hasSorry
-    let hasProofSorry := (info.value? (allowOpaque := allowOpaque)).map (·.hasSorry) |>.getD false
-    ProvedStatus.ofSorryFlags hasTypeSorry hasProofSorry
-
-/-- Statement/type-side incompleteness projection for `ConstantInfo`. -/
-def ConstantInfo.blueprintHasTypeSorry (info : ConstantInfo) : Bool :=
-  (ConstantInfo.blueprintProvedStatus info).hasTypeGap
-
-/-- Proof/body-side incompleteness projection for `ConstantInfo`. -/
-def ConstantInfo.blueprintHasProofSorry (info : ConstantInfo) (allowOpaque : Bool := false) : Bool :=
-  (ConstantInfo.blueprintProvedStatus info (allowOpaque := allowOpaque)).hasProofGap
+/-- Analyze related roots in one stable checked environment. A clean union's
+single closed certificate covers every requested root. A blocked union does not
+attribute its blocker to unrelated roots: those use individual analysis. No
+negative imported footprint or cross-environment cache authorizes completion. -/
+def analyzeDeclarations [Monad m] [MonadEnv m] (names : Array Name) : m (Array ProvedStatus) := do
+  if names.isEmpty then return #[]
+  let (inspection, _) ← (inspectSorryDependencies names (stopAtBlocker := true)).run {}
+  let completion := ProvedStatus.ofInspection inspection {}
+  if completion.isProved then
+    let env ← getEnv
+    return names.map fun name =>
+      match env.checked.get.find? name with
+      | some (.axiomInfo _) => .axiomLike
+      | _ => completion
+  names.mapM analyzeDeclaration
 
 end Informal.Data
