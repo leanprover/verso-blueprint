@@ -84,7 +84,7 @@ structure DeclSummaryItem where
   previewLookupKey? : Option String := none
   href : Option String := none
   kind : DeclSummaryKind := .definition
-  status : Data.ProvedStatus := .proved
+  status : Data.ProvedStatus := .incomplete {}
   present : Bool := true
 deriving Inhabited, Repr
 
@@ -339,33 +339,42 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
     (focusable := href.isNone)
     (ariaLabel? := if href.isNone then some title else none)
 
-private def axisCompletionText : Nat → String
-  | 0 => "completed"
-  | _ + 1 => "with sorries"
-
-private def completionAxisText (statementSorryCount proofSorryCount : Nat) : String :=
-  s!"Statement: {axisCompletionText statementSorryCount}; Proof: {axisCompletionText proofSorryCount}"
+/-- Axis wording follows the same semantic evidence as the completion mark.
+Zero observed reference counts cannot establish verified coverage. -/
+private def completionAxisText (health : Informal.Graph.CodeHealth) : String :=
+  let status := health.provedStatus
+  let axisText (complete hasGap unverified : Bool) (otherAxisBlocker : String) :=
+    if !health.hasAssociatedCode then "unassociated"
+    else if status.isMissing then "missing declaration"
+    else if status.isAxiomLike then "axiom-like (no body)"
+    else if complete then "completed"
+    else if hasGap then "blocked by sorry"
+    else if status.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
+    else if unverified then "unverified"
+    else if status.hasKnownSorry then otherAxisBlocker
+    else "unverified"
+  let statement := axisText health.localStatementFormalized status.hasTypeGap status.hasUnverifiedType
+    "blocked by sorry in body"
+  let proof := axisText health.localProofFormalized status.hasProofGap status.hasUnverifiedProof
+    "blocked by sorry in statement"
+  s!"Statement: {statement}; Proof: {proof}"
 
 /--
-Build completion status from declaration-level axis counts.
-
-Counts are only used as presence signals (non-zero means "with sorries" on that axis);
-they are not interpreted as precise sorry-reference totals.
+Use the observed declaration evidence for the completion mark. Axis counts
+cannot distinguish inherited, direct, or unknown origins.
 -/
-private def completionStatusFromCounts (statementSorryCount proofSorryCount : Nat) : Data.ProvedStatus :=
-  Data.ProvedStatus.ofSorryFlags (statementSorryCount > 0) (proofSorryCount > 0)
-
-private def completionStatusMark (statementSorryCount proofSorryCount : Nat) : BlockStatusMark :=
-  let status := completionStatusFromCounts statementSorryCount proofSorryCount
+private def completionStatusMark (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
+  let status := health.provedStatus
+  let title := completionAxisText health
   if status.isProved then
     {
       status
-      title := completionAxisText statementSorryCount proofSorryCount
+      title
     }
   else
     {
       status
-      title := completionAxisText statementSorryCount proofSorryCount
+      title
       symbolOverride? := some "⚠"
     }
 
@@ -373,20 +382,16 @@ private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockSta
   if health.hasMissingExternalDecls then
     {
       status := .missing
-      title := s!"External Lean names: {health.presentDecls} present, {health.missingDecls} missing (statement/proof completion unknown)"
+      title := s!"{completionAxisText health}; Lean declarations: {health.presentDecls} present, {health.missingDecls} missing"
     }
   else
     if health.hasAxiomLike then
       {
         status := .axiomLike
-        title := "Lean declarations include at least one axiom-like constant (no body)"
+        title := completionAxisText health
       }
     else
-      completionStatusMark health.statementAxisCount health.proofAxisCount
-
-/-- Aggregate status across all associations; missing declarations dominate. -/
-private def statusMarkFromCodeSource (source? : Option BlockCodeData) : BlockStatusMark :=
-  statusMarkFromHealth (Informal.Graph.codeHealthOfBlockSource .definition {} source?)
+      completionStatusMark health
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
   decls.qsort (fun a b =>
@@ -425,7 +430,7 @@ private def codeSummaryText (label : Data.Label)
         "none"
       else
         String.intercalate ", " (sorries.toList.map fun item => s!"{item.displayName} [{declSummaryStatusText item}]")
-    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nSorries: {sorriesTxt}"
+    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nIncomplete declarations: {sorriesTxt}"
 
 private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
     (node previewBody : Output.Html) : Output.Html :=
@@ -602,7 +607,7 @@ def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Opt
   let source := cdata.source.getD {}
   let health := Informal.Graph.codeHealthOfBlockSource data.kind {} cdata.source
   let renderHealth := externalRenderHealth source.externalDecls
-  let statusMark := statusMarkFromCodeSource cdata.source
+  let statusMark := statusMarkFromHealth health
   let title := if source.isEmpty then "No associated Lean declarations" else
     appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)

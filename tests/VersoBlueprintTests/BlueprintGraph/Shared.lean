@@ -15,20 +15,27 @@ open Informal.Data
 open Informal.Environment
 open Informal.Graph
 
+/-- A fully specified synthetic fixture status; never used for real declarations. -/
+def fixtureStatus (typeRefs proofRefs : Nat) : Data.ProvedStatus :=
+  if typeRefs == 0 && proofRefs == 0 then .proved else
+    .incomplete { knownSorry :=
+      (if typeRefs > 0 then #[{ location := .statement, refs? := some typeRefs }] else #[]) ++
+      (if proofRefs > 0 then #[{ location := .proof, refs? := some proofRefs }] else #[]) }
+
 def mkInformal (deps : Array Name := #[]) : InformalData :=
   { stx := .missing, useDeclarations := deps.map (fun label => { label }), elabStx := #[] }
 
 def mkDefDecl (name : Name) (typeSorry : Bool := false) : LiterateDef :=
   {
     name
-    provedStatus := Data.ProvedStatus.ofRefCounts (if typeSorry then 1 else 0) 0
+    provedStatus := fixtureStatus (if typeSorry then 1 else 0) 0
     typeSorryRefs := if typeSorry then #[.missing] else #[]
   }
 
 def mkThmDecl (name : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : LiterateThm :=
   {
     name
-    provedStatus := Data.ProvedStatus.ofRefCounts (if typeSorry then 1 else 0) (if proofSorry then 1 else 0)
+    provedStatus := fixtureStatus (if typeSorry then 1 else 0) (if proofSorry then 1 else 0)
     typeSorryRefs := if typeSorry then #[.missing] else #[]
     proofSorryRefs := if proofSorry then #[.missing] else #[]
   }

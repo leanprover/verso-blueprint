@@ -57,6 +57,13 @@ def main() -> int:
         if entry["key"] == "source_identity_primary--statement"
     )
 
+    # These payloads are produced by Lean's current status serializer. Unknown
+    # axes/origins and mixed evidence must remain valid in generated manifests.
+    for status in fixture["statusCases"]:
+        with_status = deepcopy(manifest)
+        with_status["previews"][primary_index]["codeData"]["externalDecls"][0]["provedStatus"] = status
+        validator.validate(with_status)
+
     rejection_count = 0
 
     def reject(name, invalid):
@@ -67,6 +74,28 @@ def main() -> int:
             rejection_count += 1
             return
         raise AssertionError(f"Schema accepted {name}")
+
+    def status_payload(data):
+        target = data["previews"][primary_index]["codeData"]["externalDecls"][0]
+        target["provedStatus"] = deepcopy(fixture["statusCases"][1])
+        return target["provedStatus"]["incomplete"]
+
+    for field in ("location", "reason"):
+        invalid = deepcopy(manifest)
+        status_payload(invalid)["unverified"][0][field] = "invalid"
+        reject(f"invalid verification {field}", invalid)
+    invalid = deepcopy(manifest)
+    payload = status_payload(invalid)
+    payload["knownSorry"] = [{"location": "invalid", "origin": "unknown"}]
+    reject("invalid sorry location", invalid)
+    invalid = deepcopy(manifest)
+    payload = status_payload(invalid)
+    payload["knownSorry"] = [{"location": "unknown", "origin": "invalid"}]
+    reject("invalid sorry origin", invalid)
+    invalid = deepcopy(manifest)
+    target = invalid["previews"][primary_index]["codeData"]["externalDecls"][0]
+    target["provedStatus"] = {"containsSorry": []}
+    reject("obsolete sorry payload", invalid)
 
     def span(data):
         return data["previews"][primary_index]["sources"][0]["spans"][0]
@@ -109,7 +138,8 @@ def main() -> int:
     invalid = deepcopy(manifest)
     invalid["previews"][primary_index]["codeData"]["externalDecls"][0]["range"]["pos"] = [1, 0]
     reject("obsolete Lean position tuple", invalid)
-    print(f"Source schema: {len(cases)} serialized manifests and {rejection_count} rejection cases passed")
+    print(f"Source schema: {len(cases)} serialized manifests, "
+          f"{len(fixture['statusCases'])} status payloads and {rejection_count} rejection cases passed")
     return 0
 
 

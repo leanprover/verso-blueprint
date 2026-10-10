@@ -163,9 +163,13 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
       continue
     let some info := after.find? name
       | continue
-    let baseStatus := Data.ConstantInfo.blueprintProvedStatus info (allowOpaque := true)
-    let hasTypeGap := baseStatus.hasTypeGap
-    let hasProofGap := baseStatus.hasProofGap
+    let baseStatus ← Data.analyzeDeclaration name
+    let hasDirectAt (location : Data.SorryWhere) : Bool := match baseStatus with
+      | .incomplete evidence => evidence.knownSorry.any fun item =>
+        item.location == location && item.origin == .direct
+      | _ => false
+    let hasTypeGap := hasDirectAt .statement
+    let hasProofGap := hasDirectAt .proof
     let hasGap := baseStatus.isIncomplete
     let cmdInfo? ← findDeclCommand? fileMap cmdAnalyses name
     let refs := cmdInfo?.map (·.refs) |>.getD {}
@@ -188,15 +192,7 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
       if hasGap then typeRefs else #[]
     let proofSorryRefs :=
       if hasGap then proofRefs else #[]
-    let provedStatus : Data.ProvedStatus :=
-      if baseStatus.isAxiomLike then
-        .axiomLike
-      else
-        Data.ProvedStatus.ofSorryFlags
-          hasTypeGap
-          hasProofGap
-          (if hasTypeGap then some typeSorryRefs.size else none)
-          (if hasProofGap then some proofSorryRefs.size else none)
+    let provedStatus := baseStatus.withDirectRefCounts typeSorryRefs.size proofSorryRefs.size
     match info with
     | .thmInfo _ =>
       theorems := theorems.push ({

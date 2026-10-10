@@ -19,6 +19,7 @@ Query selectors:
 selectors
 labels
 node <label>
+status <label>
 uses <label>
 used-by <label>
 group <label>
@@ -74,6 +75,7 @@ All query commands print compact JSON for agent consumption. The JSON shape is f
 - `selectors`: query selector forms supported by this `vbp` binary. This selector does not require generated Blueprint data.
 - `labels`: statement-level Blueprint block summaries.
 - `node <label>`: one complete block entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys.
+- `status <label>`: declaration completeness over both statement/proof facets, retaining association and facet provenance. Returns `asOf: "generated-snapshot"`, `verdict`, `complete`, `statementComplete`, `proofComplete`, and `declarations` with structured status evidence.
 - `uses <label>`: statement/proof dependencies and resolved related entries for one label.
 - `used-by <label>`: reverse dependencies for one label.
 - `group <label>`: group metadata and sibling entries for one label, when present.
@@ -88,6 +90,42 @@ All query commands print compact JSON for agent consumption. The JSON shape is f
 - `stats`: counts of statement-level entries by kind, owner, and tag.
 
 If generated data is missing, run `lake exe vbp build` first. If a label is unknown, `query` returns JSON with `"error":"unknown-label"`.
+
+## Completeness evidence
+
+For a current completeness claim, run `lake exe vbp build` then
+`lake exe vbp query status <label>`. An existing site is suitable for historical
+inspection; say that its evidence describes the last generation. Query is
+read-only and does not recheck changed sources. `check` audits artifact
+consistency and cannot establish freshness.
+
+Every declaration row's `status` contains `verdict`, `complete`, `knownSorry`,
+and `unverified`. Only `complete: true` certifies a closed inspected checked
+Lean dependency graph without reachable `sorryAx`. `incomplete` records known
+holes, `unverified` means coverage failed without an observed hole, and `missing`
+and `axiom-like` also block completion. Known holes and verification gaps may
+coexist. `unassociated` means no declarations, with completion false.
+`statementComplete` can be true for a theorem with a verified clean statement
+and unverified proof; whole-declaration and proof completion remain false.
+
+Known-sorry entries record `location` (`statement`, `proof`, `unknown`),
+`origin` (`direct`, `dependency`, `unknown`), and optional `refs` source counts.
+Verification gaps record location, declaration, and reason (`bodyUnavailable`,
+`declarationUnavailable`, `uncheckedExpression`). Hidden imported bodies block
+verification even when Lean's cached footprint is empty. More visible checked
+bodies, for example through a producer capture or a full import, can supply
+verification evidence; rebuild the producer and Blueprint to refresh it.
+
+Blocked inspections can stop at the first checked witness on each axis. The
+arrays record observed evidence, not every hole or verification failure. Empty
+arrays alone never certify absence; use `complete`. Clean results still require
+full closed coverage, even when a blocked result was cheap to obtain.
+
+Completion concerns admitted `sorryAx`, not other legitimate axioms or the
+intended mathematical meaning. Follow whole-declaration `complete` for truth
+claims and inspect both facets. Use work queues for planning: an inherited hole
+or verification failure does not identify a local proof-writing task. Do not
+infer completeness from absent warnings, preview text, or zero sorry counts.
 
 ## Check
 

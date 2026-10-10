@@ -51,7 +51,7 @@ def appendExternalRenderFailureSummary (title : String) (count : Nat) : String :
     s!"{title}; {externalRenderFailureSummaryText count}"
 
 structure BlockStatusMark where
-  status : Data.ProvedStatus := .proved
+  status : Data.ProvedStatus := .incomplete {}
   title : String
   symbolOverride? : Option String := none
 deriving Repr, Inhabited

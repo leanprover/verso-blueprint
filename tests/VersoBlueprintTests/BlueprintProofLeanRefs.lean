@@ -62,7 +62,7 @@ A proof with no attached references.
       Graph.proofStatus {} state (Name.mkSimple "proof.references") withoutHelpers do
     throwError "Supporting references changed existing proof progress"
   for status in #[Data.ProvedStatus.proved, .axiomLike, .missing,
-      .containsSorry #[{ location := .proof }]] do
+      .incomplete { knownSorry := #[{ location := .proof }] }] do
     let refs := node.proofExternalRefs.map fun ref =>
       { ref with provedStatus := status, present := status != .missing }
     let changed := { node.toNode with proofExternalRefs := refs }

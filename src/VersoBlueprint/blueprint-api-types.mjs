@@ -275,10 +275,41 @@
  */
 
 /**
+ * Checked-declaration absence/evidence status as of Blueprint generation.
+ * Only "proved" certifies absence of reachable sorryAx. Empty incomplete
+ * payloads are unverified; zero source counts do not establish completeness.
+ * @typedef {"proved"|"missing"|"axiomLike"|{incomplete: {knownSorry: BlueprintSorryEvidence[], unverified: BlueprintVerificationGap[]}}} BlueprintProvedStatus
+ */
+
+/**
+ * Observed admitted-hole evidence; unknown attribution is kept explicit.
+ * @typedef {Object} BlueprintSorryEvidence
+ * @property {"statement"|"proof"|"unknown"} location
+ * @property {"direct"|"dependency"|"unknown"} origin
+ * @property {number} [refs] Observed source-reference count, not an absence certificate.
+ */
+
+/**
+ * A failure to inspect the full checked dependency closure, not an observed hole.
+ * @typedef {Object} BlueprintVerificationGap
+ * @property {"statement"|"proof"|"unknown"} location
+ * @property {string} declaration
+ * @property {"bodyUnavailable"|"declarationUnavailable"|"uncheckedExpression"} reason
+ */
+
+/**
+ * Semantic declaration facts retained even without a visible code panel.
+ * @typedef {Object} BlueprintCodeData
+ * @property {{definedDefs: Array<{name: string, provedStatus: BlueprintProvedStatus}>, definedTheorems: Array<{name: string, provedStatus: BlueprintProvedStatus}>}} literateDeclarations
+ * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus}>} externalDecls
+ */
+
+/**
  * Semantic manifest entry emitted for a rendered Blueprint preview or a
  * source-backed external-markup node.
  *
  * @typedef {Object} BlueprintManifestEntry
+ * @property {BlueprintCodeData|null} codeData Declaration status facts for this facet as of generation.
  * @property {string} key Canonical manifest key.
  * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
  * @property {string} [label] Canonical Blueprint node label when available.

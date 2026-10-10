@@ -16,6 +16,7 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 private def provedExternalRef (name : Lean.Name) (kind : Data.NodeKind := .definition) : Data.ExternalRef :=
   {
     (Data.ExternalRef.ofName name) with
+      provedStatus := .proved
       present := true
       kind
   }
@@ -25,7 +26,7 @@ private def sorryExternalRef (name : Lean.Name) (kind : Data.NodeKind := .theore
     (Data.ExternalRef.ofName name) with
       present := true
       kind
-      provedStatus := .containsSorry #[{ location := .proof, refs? := some 1 }]
+      provedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
   }
 
 private def axiomExternalRef (name : Lean.Name) (kind : Data.NodeKind := .theorem) : Data.ExternalRef :=
@@ -48,6 +49,7 @@ private def renderFailedExternalRef (name : Lean.Name) (kind : Data.NodeKind := 
     (Data.ExternalRef.ofName name) with
       present := true
       kind
+      provedStatus := .proved
       render := .error (.exception name "synthetic render failure")
   }
 
@@ -77,7 +79,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 #guard_msgs in
 #eval!
   let inlineProvedHtml := codeEntryHtml `inline.proved .definition (some { literateDeclarations := (inlineCode .proved).literateDeclarations })
-  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some { literateDeclarations := (inlineCode (.containsSorry #[{ location := .proof, refs? := some 1 }])).literateDeclarations })
+  let inlineSorryHtml := codeEntryHtml `inline.sorry .definition (some { literateDeclarations := (inlineCode (.incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] })).literateDeclarations })
   let inlineAxiomHtml := codeEntryHtml `inline.axiom .definition (some { literateDeclarations := (inlineCode .axiomLike).literateDeclarations })
   hasSubstr inlineProvedHtml "bp_code_link_status_proved" &&
     hasSubstr inlineSorryHtml "bp_code_link_status_warning" &&
@@ -132,7 +134,8 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
       source.literateDeclarations.declarations.all (fun decl => hasSubstr html decl.name.toString) do
     throw <| IO.userError "Mixed associations lost a declaration or hid its incomplete status"
 
--- The same canonical declaration is counted once, using its literate definition.
+-- Display prefers the inline definition, but a missing external snapshot must
+-- survive canonical status merging and block both projections.
 #eval show IO Unit from do
   let blocks := inlineCode .proved
   let declaration := blocks.declarations[0]!
@@ -144,7 +147,8 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
     literateCodes := #[{ stx := .missing, definedDefs := #[{ name := declaration.name }] }] }
   let nodeHealth := Graph.nodeCodeHealth {} node
   unless headingHealth.totalDecls == 1 && nodeHealth.totalDecls == 1 &&
-      headingHealth.missingDecls == 0 && nodeHealth.missingDecls == 0 do
+      headingHealth.missingDecls == 1 && nodeHealth.missingDecls == 1 &&
+      !headingHealth.localProofFormalized && !nodeHealth.localProofFormalized do
     throw <| IO.userError "Associated declarations disagreed between heading and graph status"
 
 end Verso.VersoBlueprintTests.BlueprintCodeRenderMatrix

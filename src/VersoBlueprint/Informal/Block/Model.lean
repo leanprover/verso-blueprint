@@ -84,7 +84,7 @@ structure CodeDeclData where
   name : Name
   commandIndex : Nat := 0
   weight : Nat := 1
-  provedStatus : Data.ProvedStatus := .proved
+  provedStatus : Data.ProvedStatus := .incomplete {}
   sourceLocation : Data.SourceLocationResult :=
     Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable"
 deriving Repr, Inhabited, FromJson, ToJson, Quote

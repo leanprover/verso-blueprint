@@ -230,15 +230,46 @@ deriving Inhabited, Repr, ToJson, FromJson, Quote
 inductive SorryWhere where
   | statement
   | proof
+  /-- A combined footprint proves a gap but cannot attribute it to an axis. -/
+  | unknown
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+inductive SorryOrigin where
+  | direct
+  | dependency
+  /-- The available evidence does not distinguish a local hole from a dependency. -/
+  | unknown
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
-Structured metadata for one incomplete location in a declaration.
-{lit}`refs?` stores the number of references when known.
+One observed axis/origin of incompleteness. Unknowns are evidence limits,
+not assertions that either axis contains a direct hole.
+{lit}`refs?` stores the number of local source references when known.
 -/
 structure SorryInfo where
   location : SorryWhere
   refs? : Option Nat := none
+  origin : SorryOrigin := .direct
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Why absence of holes could not be verified from the checked environment. -/
+inductive VerificationReason where
+  | bodyUnavailable
+  | declarationUnavailable
+  | uncheckedExpression
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Missing verification information, distinct from an observed sorry term. -/
+structure VerificationGap where
+  location : SorryWhere := .unknown
+  declaration : Name := .anonymous
+  reason : VerificationReason := .declarationUnavailable
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Known holes and missing verification can coexist on independent axes. -/
+structure IncompletenessInfo where
+  knownSorry : Array SorryInfo := #[]
+  unverified : Array VerificationGap := #[]
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
@@ -249,8 +280,46 @@ inductive ProvedStatus where
   /-- Declaration reference could not be resolved/present at snapshot time. -/
   | missing
   | axiomLike
-  | containsSorry (info : Array SorryInfo)
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+  /-- A known gap or insufficient coverage to certify absence of gaps. -/
+  | incomplete : IncompletenessInfo → ProvedStatus
+deriving Repr, DecidableEq, ToJson, FromJson, Quote
+
+instance : Inhabited ProvedStatus := ⟨.incomplete {}⟩
+
+/-- Merge duplicate observations by axis *and* origin. Counts are lower bounds
+from overlapping snapshots, so take their maximum instead of adding them. -/
+def SorryInfo.mergeEvidence (items : Array SorryInfo) : Array SorryInfo :=
+  items.foldl (init := #[]) fun acc item =>
+    match acc.findIdx? (fun old => old.location == item.location && old.origin == item.origin) with
+    | none => acc.push item
+    | some index => acc.modify index fun old =>
+      { old with refs? := max old.refs? item.refs? }
+
+/-- Preserve unknown coverage before combining incomplete snapshots. -/
+def IncompletenessInfo.withCoverageFallback (info : IncompletenessInfo) : IncompletenessInfo :=
+  if info.knownSorry.isEmpty && info.unverified.isEmpty then { info with unverified := #[{}] }
+  else info
+
+/-- Conservative union. Verified snapshots are neutral; known evidence and
+verification gaps survive merging, including an empty incomplete payload. -/
+def ProvedStatus.mergeConservative : ProvedStatus → ProvedStatus → ProvedStatus
+  | .missing, _ | _, .missing => .missing
+  | .axiomLike, _ | _, .axiomLike => .axiomLike
+  | .proved, b => b
+  | a, .proved => a
+  | .incomplete a, .incomplete b =>
+    let a := a.withCoverageFallback
+    let b := b.withCoverageFallback
+    .incomplete {
+      knownSorry := SorryInfo.mergeEvidence (a.knownSorry ++ b.knownSorry),
+      unverified := (a.unverified ++ b.unverified).foldl (fun acc gap =>
+        if acc.contains gap then acc else acc.push gap) #[] }
+
+/-- Canonical declaration status union, independent of the selected display source. -/
+def ProvedStatus.indexByName (observations : Array (Name × ProvedStatus)) : NameMap ProvedStatus :=
+  observations.foldl (init := {}) fun statuses (name, status) =>
+    let name := name.eraseMacroScopes
+    statuses.insert name ((statuses.getD name .proved).mergeConservative status)
 
 /-- Information about a code block, including Lean-level analysis -/
 structure LiterateDef where
@@ -258,7 +327,7 @@ structure LiterateDef where
   commandStx : Syntax := .missing
   commandIndex : Nat := 0
   commandLines : Nat := 1
-  provedStatus : ProvedStatus := .proved
+  provedStatus : ProvedStatus := .incomplete {}
   typeSorryRefs : Array Syntax := #[]
 deriving Repr, Inhabited
 
@@ -466,7 +535,7 @@ structure ExternalRef where
   /--
   Snapshot of proof/completeness status at registration time.
   -/
-  provedStatus : ProvedStatus := .proved
+  provedStatus : ProvedStatus := .incomplete {}
   /--
   Snapshot of declaration provenance metadata.
   -/

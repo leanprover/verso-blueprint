@@ -346,7 +346,11 @@ as pinned or hover panels with docked or anchored placement.
 Progress is computed automatically from the status of the associated Lean code
 and declarations, so the HTML summary and graph views stay aligned with the
 formal side. In particular, incomplete Lean declarations such as `sorry`
-contribute automatically to the reported progress state.
+contribute automatically to the reported progress state. Hidden or missing
+verification information also blocks completion. For declaration-level truth,
+rebuild current sources and use `lake exe vbp query status <label>`; the response
+separates known holes from unverified coverage and includes both facets. See
+[the completeness semantics](doc/API.md#lean-completeness-evidence).
 
 ### Metadata export
 
