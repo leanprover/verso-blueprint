@@ -138,6 +138,23 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
     return cached.isEmpty && exposedCached.isEmpty &&
       !helper.isProved && helper.hasUnverifiedCoverage
 
+-- Batching retains independent evidence, hidden-body coverage, and authored
+-- theorem kind when ordinary import visibility presents a public axiom view.
+/-- info: true -/
+#guard_msgs in
+#eval
+  withProvider false do
+    let names := #[`sorryImportExposedComplete, `sorryImportComplete,
+      `sorryImportAdmitted, `sorryImportAxiom]
+    let statuses ← analyzeDeclarations names
+    let individual ← names.mapM statusOf
+    let refs ← externalRefSnapshotsAtCurrentDir {} <| names.map fun name =>
+      { (ExternalRef.ofName name) with kind := .theorem }
+    return statuses == individual && statuses[0]!.isProved &&
+      statuses[1]!.isUnverified && statuses[2]!.hasKnownSorry &&
+      statuses[3]!.isAxiomLike && refs.map (·.provedStatus) == statuses &&
+      refs[1]!.kind == .theorem && refs[2]!.kind == .theorem
+
 -- Independently inspecting actual bodies resolves both clean and omitted-hole
 -- cases. Import-all must verify complete controls, not merely lack evidence.
 /-- info: true -/
@@ -145,6 +162,10 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 #eval
   withProvider true do
     unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
+    let batch ← analyzeDeclarations #[`sorryImportComplete, `sorryImportCompleteDef,
+      `sorryImportAxiom]
+    unless batch.size == 3 && batch[0]!.isProved && batch[1]!.isProved &&
+        batch[2]!.isAxiomLike do return false
     for name in #[`sorryImportComplete, `sorryImportCompleteDef,
         `sorryImportOpaqueComplete, `sorryImportStandardAxioms,
         `SorryImportCompleteRecord, `SorryImportNestedCompleteRecord,

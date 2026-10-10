@@ -1788,6 +1788,12 @@ and no coverage gap. Negative cached axiom footprints and zero source-reference
 counts never establish completion. See the [semantics matrix](MANUAL.md#dependency-graph)
 and `ProvedStatus.ofInspection_not_reachable` for the precise trusted boundary.
 
+`analyzeDeclarations names` certifies related roots together when their whole
+checked union is clean; blocked batches retain individual evidence and policy.
+This shares no negative cache across environments. External directive snapshots
+use this batch entrypoint, and snapshots preserve authored expected kinds when
+import visibility hides the original declaration kind.
+
 Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
 and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
 `status.reportJson` exposes `verdict`, `complete`, `knownSorry`, and `unverified`.

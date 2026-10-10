@@ -260,6 +260,24 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     return early.hasSorry && !early.isComplete && full.hasSorry && !full.isComplete &&
       early.declarations.size < full.declarations.size && verified.isComplete
 
+-- Batch certification covers each root, while mixed batches keep distinct
+-- evidence and policy. A blocker in one root must not contaminate a clean root.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let clean := `Verso.VersoBlueprintTests.BlueprintGraph.Basics.StatusCompleteRecord
+    let blocked := `Verso.VersoBlueprintTests.BlueprintGraph.Basics.statusConsumer
+    let axiomName := `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_axiom_decl
+    let cleanResults ← analyzeDeclarations #[clean, ``True.intro]
+    let axiomResults ← analyzeDeclarations #[clean, axiomName]
+    let mixed ← analyzeDeclarations #[clean, blocked, axiomName, `unknownBatchRoot]
+    return cleanResults.size == 2 && cleanResults.all (·.isProved) &&
+      axiomResults.size == 2 && axiomResults[0]!.isProved && axiomResults[1]!.isAxiomLike &&
+      mixed.size == 4 && mixed[0]!.isProved && mixed[1]!.dependsOnSorry &&
+      mixed[2]!.isAxiomLike && mixed[3]!.isUnverified &&
+      (← analyzeDeclarations #[]).isEmpty
+
 -- Closed cycles are legitimate. Open boundaries, hidden bodies, missing roots,
 -- and holes anywhere in a cycle must all prevent production completion.
 /-- info: true -/

@@ -242,8 +242,8 @@ private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclH
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
 -/
-def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
+private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (ref : Data.ExternalRef) (provedStatus : Data.ProvedStatus) : Lean.CoreM Data.ExternalRef := do
   let env ← getEnv
   let canonical := ref.canonical.eraseMacroScopes
   match env.find? canonical with
@@ -256,7 +256,6 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       render := .error (.moduleUnavailable canonical)
     }
   | some cinfo =>
-    let provedStatus ← Informal.Data.analyzeDeclaration canonical
     let nodeKind ←
       match Informal.Data.ConstantInfo.blueprintNodeKind? cinfo with
       | some nodeKind => pure nodeKind
@@ -301,6 +300,12 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       render
     }
 
+/-- Capture a checked external declaration and its current semantic status. -/
+def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
+  let status ← Data.analyzeDeclaration ref.canonical.eraseMacroScopes
+  externalRefSnapshotWithStatus opts workspaceRoot ref status
+
 def workspaceRoot : Lean.CoreM System.FilePath := do
   let cwd ← liftM <| IO.currentDir
   liftM <| IO.FS.realPath cwd
@@ -308,5 +313,13 @@ def workspaceRoot : Lean.CoreM System.FilePath := do
 def externalRefSnapshotAtCurrentDir (opts : Lean.Options)
     (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
   externalRefSnapshot opts (← workspaceRoot) ref
+
+/-- Related associations share one checked union certificate when clean.
+Rendering and provenance remain per declaration; status is never caller-supplied. -/
+def externalRefSnapshotsAtCurrentDir (opts : Lean.Options)
+    (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
+  let root ← workspaceRoot
+  let statuses ← Data.analyzeDeclarations (refs.map (·.canonical.eraseMacroScopes))
+  (refs.zip statuses).mapM fun (ref, status) => externalRefSnapshotWithStatus opts root ref status
 
 end Informal

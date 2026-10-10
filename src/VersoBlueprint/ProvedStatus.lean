@@ -342,10 +342,8 @@ def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := 
     let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
     if let .unavailable := body then
       gaps := gaps.push { location := .proof, declaration := name, reason := .bodyUnavailable }
-    -- A witnessed blocker is enough for an incomplete verdict. Each clean axis
-    -- still underwent closed inspection; only completion needs the whole graph.
-    if !evidence.isEmpty || !gaps.isEmpty then
-      return .incomplete { knownSorry := evidence, unverified := gaps }
+    -- Keep whole-inspection coverage failures even when an axis already found
+    -- a hole. Metadata dependencies need not appear in the axis expressions.
     if evidence.isEmpty && whole.hasSorry then
       evidence := evidence.push { location := .unknown, origin := .unknown }
     for gap in whole.verificationGaps .unknown do
@@ -355,5 +353,21 @@ def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := 
         gaps := gaps.push { gap with location }
     return ProvedStatus.ofInspection whole { knownSorry := evidence, unverified := gaps }
   return (← computation.run {}).1
+
+/-- Analyze related roots in one stable checked environment. A clean union's
+single closed certificate covers every requested root. A blocked union does not
+attribute its blocker to unrelated roots: those use individual analysis. No
+negative imported footprint or cross-environment cache authorizes completion. -/
+def analyzeDeclarations [Monad m] [MonadEnv m] (names : Array Name) : m (Array ProvedStatus) := do
+  if names.isEmpty then return #[]
+  let (inspection, _) ← (inspectSorryDependencies names (stopAtBlocker := true)).run {}
+  let completion := ProvedStatus.ofInspection inspection {}
+  if completion.isProved then
+    let env ← getEnv
+    return names.map fun name =>
+      match env.checked.get.find? name with
+      | some (.axiomInfo _) => .axiomLike
+      | _ => completion
+  names.mapM analyzeDeclaration
 
 end Informal.Data
