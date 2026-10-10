@@ -1,4 +1,5 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
+import { encodeGraphKey } from "./graph-runtime-id.mjs";
 import {
   getGraphData,
   decodeGraphData
@@ -51,25 +52,6 @@ function dotForVariantOptions(variant, options) {
 // Runtime graph-data rendering consumes Lean-computed variants from public GraphData,
 // then feeds the generated block into the same initializer used by page graphs.
 let runtimeGraphIdCounter = 0;
-
-function htmlIdKey(value) {
-  let out = "";
-  for (const char of String(value || "")) {
-    if (/^[A-Za-z0-9]$/.test(char)) {
-      out += char;
-    } else if (char === "-") {
-      out += "--";
-    } else {
-      out += "-" + char.codePointAt(0).toString(16).toUpperCase().padStart(4, "0");
-    }
-  }
-  return out;
-}
-
-function prefixedHtmlId(prefix, value) {
-  const body = htmlIdKey(value);
-  return body ? prefix + "-" + body : prefix;
-}
 
 function graphOptionsFromRenderOptions(options, variants) {
   const opts = options && typeof options === "object" ? options : {};
@@ -132,27 +114,29 @@ function createPreviewPanel(doc, classes, headerClass, titleClass, closeClass, b
   return panel;
 }
 
-function graphControlId(data, suffix) {
+function graphControlId(encodedKey, suffix) {
   runtimeGraphIdCounter += 1;
-  return prefixedHtmlId("bp-runtime-graph", (data && data.key ? data.key : "graph") + "-" + runtimeGraphIdCounter) + suffix;
+  // ASCII digits and the doubled hyphen compose with the encoded graph key.
+  return "bp-runtime-graph-" + encodedKey + "--" + runtimeGraphIdCounter + suffix;
 }
 
-export function createGraphBlock(graphData, options) {
+export async function createGraphBlock(graphData, options) {
   const opts = options && typeof options === "object" ? options : {};
   const data = decodeGraphData(graphData);
   if (!data) return null;
+  const encodedKey = await encodeGraphKey(data.key);
   const doc = opts.document && typeof opts.document.createElement === "function" ? opts.document : document;
   const variants = data.variants;
   const graphOptions = graphOptionsFromRenderOptions(opts, variants);
   const block = createEl(doc, "div", { class: "bp_graph_fullwidth", "data-bp-graph-source": "runtime" });
   if (opts.layout) block.setAttribute("data-bp-graph-layout", graphLayoutMode(block, opts));
-  const graphViewSelectId = graphControlId(data, "--view");
-  const graphDirectionSelectId = graphControlId(data, "--direction");
-  const graphPackInputId = graphControlId(data, "--pack");
-  const graphPreviewModeSelectId = graphControlId(data, "--preview-mode");
-  const graphPreviewPlacementSelectId = graphControlId(data, "--preview-placement");
-  const graphLegendPanelId = graphControlId(data, "--legend");
-  const graphOptionsPanelId = graphControlId(data, "--options");
+  const graphViewSelectId = graphControlId(encodedKey, "--view");
+  const graphDirectionSelectId = graphControlId(encodedKey, "--direction");
+  const graphPackInputId = graphControlId(encodedKey, "--pack");
+  const graphPreviewModeSelectId = graphControlId(encodedKey, "--preview-mode");
+  const graphPreviewPlacementSelectId = graphControlId(encodedKey, "--preview-placement");
+  const graphLegendPanelId = graphControlId(encodedKey, "--legend");
+  const graphOptionsPanelId = graphControlId(encodedKey, "--options");
   const previewMode = String(opts.previewMode || "pinned");
   const previewPlacement = String(opts.previewPlacement || "docked");
 
@@ -1216,7 +1200,7 @@ export async function renderGraphs(root, options) {
 export async function renderGraphData(host, graphData, options) {
   const opts = options && typeof options === "object" ? options : {};
   if (!(host instanceof Element)) return null;
-  const block = createGraphBlock(graphData, Object.assign({}, opts, { document: host.ownerDocument || document }));
+  const block = await createGraphBlock(graphData, Object.assign({}, opts, { document: host.ownerDocument || document }));
   if (!block) return null;
   if (opts.replace === false) {
     host.appendChild(block);

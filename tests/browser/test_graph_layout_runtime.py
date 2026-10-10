@@ -1,60 +1,23 @@
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from scripts.blueprint_harness_paths import canonical_test_blueprint_output_dir
-from scripts.blueprint_harness_utils import lean_low_priority_command
-from support import PACKAGE_ROOT, blueprint_render_api_script, find_free_port, wait_for_server
+from conftest import build_test_blueprint_site, serve_site
+from support import blueprint_render_api_script
 
 
 @pytest.fixture(scope="session")
 def preview_runtime_showcase_output_dir() -> Path:
-    output_dir = canonical_test_blueprint_output_dir("preview_runtime_showcase", Path(__file__))
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    project_dir = PACKAGE_ROOT / "tests" / "test_blueprints" / "preview_runtime_showcase"
-    subprocess.run(
-        lean_low_priority_command(PACKAGE_ROOT, "lake", "build", "PreviewRuntimeShowcase"),
-        cwd=project_dir,
-        check=True,
-    )
-    subprocess.run(
-        lean_low_priority_command(
-            PACKAGE_ROOT,
-            "lake",
-            "lean",
-            "PreviewRuntimeShowcaseMain.lean",
-            "--",
-            "--run",
-            "PreviewRuntimeShowcaseMain.lean",
-            "--output",
-            str(output_dir),
-            "--with-html-single",
-            "--without-html-multi",
-        ),
-        cwd=project_dir,
-        check=True,
-    )
-    return output_dir
+    # The normal fixture recipe publishes both modes and refreshes dependencies.
+    return build_test_blueprint_site("preview_runtime_showcase").parent
 
 
 @pytest.fixture(scope="session")
 def preview_runtime_showcase_root_server(preview_runtime_showcase_output_dir: Path):
-    port = find_free_port()
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
-        cwd=preview_runtime_showcase_output_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    server_url = f"http://127.0.0.1:{port}"
-    wait_for_server(server_url, proc)
-    yield server_url
-    proc.terminate()
-    proc.wait()
+    with serve_site(preview_runtime_showcase_output_dir) as url:
+        yield url
 
 
 def wait_for_graph(page: Page):
@@ -116,13 +79,27 @@ def assert_graph_has_zoom_handlers(page: Page):
 def assert_graph_can_be_dragged(page: Page):
     before = graph_transform(page)
     assert before is not None
-    canvas_box = page.locator(".bp_graph_canvas").first.bounding_box()
-    assert canvas_box is not None
-    center_x = canvas_box["x"] + canvas_box["width"] / 2
-    center_y = canvas_box["y"] + canvas_box["height"] / 2
-    page.mouse.move(center_x, center_y)
+    svg = page.locator(".bp_graph_canvas svg").first
+    svg.scroll_into_view_if_needed()
+    box = svg.bounding_box()
+    assert box is not None
+    point = None
+    # Graph labels consume their own pointer gestures. Exercise panning on the
+    # SVG/background, not an incidental node at the center of a compact variant.
+    for fraction_x, fraction_y in [(0.05, 0.9), (0.9, 0.9), (0.05, 0.1), (0.9, 0.1)]:
+        candidate = {"x": box["x"] + box["width"] * fraction_x,
+                     "y": box["y"] + box["height"] * fraction_y}
+        if page.evaluate("""point => {
+            const svg = document.querySelector('.bp_graph_canvas svg');
+            const hit = document.elementFromPoint(point.x, point.y);
+            return !!hit && (hit === svg || (svg.contains(hit) && hit.matches('g.graph > polygon')));
+        }""", candidate):
+            point = candidate
+            break
+    assert point is not None, "No graph background available for the pan gesture"
+    page.mouse.move(point["x"], point["y"])
     page.mouse.down()
-    page.mouse.move(center_x + 90, center_y + 36, steps=6)
+    page.mouse.move(point["x"] + 90, point["y"] + 36, steps=6)
     page.mouse.up()
     page.wait_for_function(
         """(previousTransform) => {
@@ -602,8 +579,15 @@ class TestGraphLayoutRuntime:
         expect(graph_card).to_have_attribute("data-bp-graph-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
+        node_count = page.evaluate(blueprint_render_api_script("""
+            const graphModule = await import(api.graphApiModuleUrl());
+            const graphs = await graphModule.loadGraphs();
+            if (graphs.length !== 1) throw new Error('Expected one published graph');
+            return graphs[0].nodes.length;
+        """))
+        assert node_count > 0
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 58"
+            f"Nodes {node_count}"
         )
 
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
