@@ -263,6 +263,11 @@ def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → 
     ProvedStatus.mergeConservative status .proved = status := by
   cases status <;> rfl
 
+/-- Canonical status unions cannot turn a blocking observation into completion. -/
+theorem ProvedStatus.mergeConservative_isProved (a b : ProvedStatus) :
+    (a.mergeConservative b).isProved = (a.isProved && b.isProved) := by
+  cases a <;> cases b <;> rfl
+
 /-- The only production completion boundary: actual closed inspection, no
 conflicting observed hole, and no remaining axis coverage gaps. -/
 def ProvedStatus.ofInspection (inspection : SorryInspection) (info : IncompletenessInfo) : ProvedStatus :=

@@ -89,7 +89,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       !info.isEmpty &&
       info.any (·.location == Data.SorryWhere.proof) &&
       !info.any (·.location == Data.SorryWhere.statement) &&
-      hasSubstr mark.title "Statement: completed" &&
+      hasSubstr mark.title "Statement: blocked by sorry in body" &&
       hasSubstr mark.title "Proof: blocked by sorry"
     | _ => false
   | none => false
@@ -226,7 +226,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       codeData := some { externalDecls := #[ref] } }
     match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
     | some mark => mark.status == status &&
-        mark.title == s!"Statement: {statement}; Proof: {proof}"
+        mark.title.startsWith s!"Statement: {statement}; Proof: {proof}"
     | none => false
   let hidden : ProvedStatus := .incomplete { unverified := #[{
     location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] }

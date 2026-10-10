@@ -221,7 +221,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     unknown.presentation.summaryText == "sorry detected location unknown" &&
     unknown.withDirectRefCounts 2 3 == unknown &&
     unknown.blocksStatementCompletion .theorem && unknown.blocksProofCompletion &&
-    health.statementAxisCount == 0 && health.proofAxisCount == 0 && health.anyGapCount == 1 &&
+    health.provedStatus == unknown && health.hasStatementGaps && health.anyGapCount == 1 &&
     !health.localProofFormalized && !health.localStatementFormalized &&
     (match fromJson? (α := ProvedStatus) (toJson unknown) with
      | .ok roundTrip => roundTrip == unknown
@@ -313,6 +313,33 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     mixed.hasKnownSorry && mixed.hasUnverifiedCoverage &&
     mixed.mergeConservative .proved == mixed &&
     !Graph.nodeLocalStatementFormalized {} emptyCode && !Graph.nodeLocalProofFormalized {} emptyCode
+
+-- Canonical counting preserves every captured blocker and live external
+-- observation even when an inline declaration is selected for display.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let gap : ProvedStatus := .incomplete { knownSorry := #[{
+    location := .proof, origin := .dependency }] }
+  let clean : ExternalRef := { (ExternalRef.ofName `shared) with provedStatus := .proved }
+  let blocked := { clean with provedStatus := gap }
+  let sources : Array BlockCodeData := #[
+    { externalDecls := #[clean, blocked] },
+    { literateDeclarations := { definedTheorems := #[{ name := `shared, provedStatus := .proved }] } }]
+  let health := codeHealthOfBlockSources .theorem {} sources
+  let missing := codeHealthOfBlockSources .theorem { isMissing := (· == `shared) } sources
+  let uncertain := codeHealthOfBlockSources .theorem { provedStatus := fun _ => .incomplete {} } sources
+  let empty := codeHealthOfBlockSources .theorem {} #[{}]
+  let uncaptured : CodeHealth := { totalDecls := 1 }
+  health.totalDecls == 1 && health.presentDecls == 1 && health.anyGapCount == 1 &&
+    health.provedStatus == gap && health.localStatementFormalized && !health.localProofFormalized &&
+    missing.totalDecls == 1 && missing.missingDecls == 1 && missing.presentDecls == 0 &&
+    missing.verdict == "missing" && !missing.localStatementFormalized && !missing.localProofFormalized &&
+    uncertain.provedStatus.hasKnownSorry && uncertain.provedStatus.hasUnverifiedCoverage &&
+    !uncertain.localStatementFormalized && !uncertain.localProofFormalized &&
+    empty.verdict == "unassociated" && !empty.hasAssociatedCode &&
+    !empty.localStatementFormalized && !empty.localProofFormalized &&
+    !uncaptured.localStatementFormalized && !uncaptured.localProofFormalized
 
 /-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in

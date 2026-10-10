@@ -315,7 +315,11 @@ def ProvedStatus.mergeConservative : ProvedStatus → ProvedStatus → ProvedSta
       unverified := (a.unverified ++ b.unverified).foldl (fun acc gap =>
         if acc.contains gap then acc else acc.push gap) #[] }
 
-
+/-- Canonical declaration status union, independent of the selected display source. -/
+def ProvedStatus.indexByName (observations : Array (Name × ProvedStatus)) : NameMap ProvedStatus :=
+  observations.foldl (init := {}) fun statuses (name, status) =>
+    let name := name.eraseMacroScopes
+    statuses.insert name ((statuses.getD name .proved).mergeConservative status)
 
 /-- Information about a code block, including Lean-level analysis -/
 structure LiterateDef where

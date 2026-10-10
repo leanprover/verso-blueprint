@@ -1794,6 +1794,17 @@ This shares no negative cache across environments. External directive snapshots
 use this batch entrypoint, and snapshots preserve authored expected kinds when
 import visibility hides the original declaration kind.
 
+`VersoBlueprint.CodeHealth` provides the common `Informal.Graph.CodeHealth`
+projection used by graph status, heading UI, and CLI completeness. Its builder
+merges captured observations by canonical declaration name before counting;
+selecting an inline display cannot erase an external blocker. Facet rows retain
+their separate provenance. `codeHealthOfBlockSources` combines selected facets;
+`localStatementFormalized`, `localProofFormalized`, and `verdict` are the shared
+completion policy. An empty projection is unassociated and blocks both tracks.
+`presentDecls` and `hasAssociatedCode` are derived. Lean callers of the old axis
+and proof counters should use semantic completion/evidence predicates instead;
+`statementBlocked` and `anyGapCount` describe policy and present incompleteness.
+
 Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
 and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
 `status.reportJson` exposes `verdict`, `complete`, `knownSorry`, and `unverified`.

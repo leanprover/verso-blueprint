@@ -486,16 +486,25 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 #guard_msgs in
 #eval
   let check (statement proof : Informal.Data.ProvedStatus) (verdict : String)
-      (statementComplete proofComplete : Bool) : Bool :=
+      (statementComplete proofComplete : Bool) (kind : Informal.Data.NodeKind := .theorem) : Bool :=
+    let statementSource : Informal.BlockCodeData := { externalDecls := #[{
+      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := statement }] }
+    let proofSource : Informal.BlockCodeData := { literateDeclarations := { definedTheorems := #[{
+      name := `truthDecl, provedStatus := proof }] } }
+    let source := statementSource.append proofSource
+    let node : Informal.Data.Node := {
+      kind, externalRefs := statementSource.externalDecls,
+      literateCodes := #[{ stx := .missing, definedTheorems := #[{
+        name := `truthDecl, provedStatus := proof }] }] }
+    let health := nodeCodeHealth {} node
+    let heading := Informal.CodeSummary.renderParts {
+      kind, label := label "truth", count := 1, codeData := some source }
+      { source := some source } (fun _ => none)
     let manifest : ManifestFile := { previews := #[
       { key := "informal:truth:statement", targetKind := .block, label := label "truth",
-        facet := .statement, kind := some .theorem, title := "Truth",
-        codeData := some { externalDecls := #[{
-          (Informal.Data.ExternalRef.ofName `truthDecl) with kind := .theorem, provedStatus := statement }] } },
+        facet := .statement, kind := some kind, title := "Truth", codeData := some statementSource },
       { key := "informal:truth:proof", targetKind := .block, label := label "truth",
-        facet := .proof, kind := some .theorem, title := "Proof",
-        codeData := some { literateDeclarations := { definedTheorems := #[{
-          name := `truthDecl, provedStatus := proof }] } } }
+        facet := .proof, kind := some kind, title := "Proof", codeData := some proofSource }
     ] }
     match executeQuery manifest ["status", "truth"] with
     | .error _ => false
@@ -505,6 +514,14 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
       jsonBoolField? json "statementComplete" == some statementComplete &&
       jsonBoolField? json "proofComplete" == some proofComplete &&
       jsonBoolField? json "complete" == some proofComplete &&
+      health.totalDecls == 1 && health.verdict == verdict &&
+      health.localStatementFormalized == statementComplete &&
+      health.localProofFormalized == proofComplete &&
+      (match heading.statusMark with
+       | some mark => mark.status == health.provedStatus &&
+           mark.title.contains "Statement: completed" == statementComplete &&
+           mark.title.contains "Proof: completed" == proofComplete
+       | none => false) &&
       (match jsonArrayField? json "declarations" with
        | some rows => rows.size == 2 && jsonArrayHasStringField rows "facet" "statement" &&
            jsonArrayHasStringField rows "facet" "proof" &&
@@ -521,6 +538,10 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
     check hidden gap "incomplete" true false &&
     check .proved .missing "missing" false false &&
     check .proved .axiomLike "axiom-like" false false &&
+    check .proved gap "incomplete" false false .definition &&
+    check .proved hidden "unverified" false false .definition &&
+    check (.incomplete { knownSorry := #[{ location := .statement }] }) .proved
+      "incomplete" false false &&
     (match executeQuery sampleManifest ["status", "addition_assoc"] with
      | .ok json => jsonStringField? json "verdict" == some "unassociated" &&
          jsonBoolField? json "complete" == some false &&

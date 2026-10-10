@@ -1541,6 +1541,14 @@ missing-reference and missing-declaration problems in the warning channel.
 Completion blocking policy is centralized in one place so summary pages, graph
 coloring, and other status views do not silently drift apart.
 
+`CodeHealth.lean` owns the shared declaration projection used by graph status,
+heading UI, and CLI status queries. It conservatively merges raw observations
+by canonical name before counting or selecting a completion verdict. Rendering
+may choose one display source while facet rows retain their captured provenance;
+neither choice changes completion. Presence and association are derived from
+the canonical counts, and no axis-reference count authorizes a completion claim.
+Heading track text uses the same statement/proof completion predicates as CLI.
+
 Definitions and theorem-like nodes intentionally differ:
 
 - definitions are blocked by both type-side and body-side gaps

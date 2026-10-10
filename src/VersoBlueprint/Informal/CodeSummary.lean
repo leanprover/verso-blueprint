@@ -343,27 +343,28 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
 Zero observed reference counts cannot establish verified coverage. -/
 private def completionAxisText (health : Informal.Graph.CodeHealth) : String :=
   let status := health.provedStatus
-  let axisText (hasGap unverified : Bool) :=
-    if status.isMissing then "missing declaration"
+  let axisText (complete hasGap unverified : Bool) (otherAxisBlocker : String) :=
+    if !health.hasAssociatedCode then "unassociated"
+    else if status.isMissing then "missing declaration"
     else if status.isAxiomLike then "axiom-like (no body)"
+    else if complete then "completed"
     else if hasGap then "blocked by sorry"
     else if status.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
     else if unverified then "unverified"
-    else if health.totalDecls == 0 then "unassociated"
-    else "completed"
-  let statement := axisText status.hasTypeGap status.hasUnverifiedType
-  let proof := axisText status.hasProofGap status.hasUnverifiedProof
+    else if status.hasKnownSorry then otherAxisBlocker
+    else "unverified"
+  let statement := axisText health.localStatementFormalized status.hasTypeGap status.hasUnverifiedType
+    "blocked by sorry in body"
+  let proof := axisText health.localProofFormalized status.hasProofGap status.hasUnverifiedProof
+    "blocked by sorry in statement"
   s!"Statement: {statement}; Proof: {proof}"
 
 /--
 Use the observed declaration evidence for the completion mark. Axis counts
 cannot distinguish inherited, direct, or unknown origins.
 -/
-private def completionStatusFromHealth (health : Informal.Graph.CodeHealth) : Data.ProvedStatus :=
-  health.provedStatus
-
 private def completionStatusMark (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
-  let status := completionStatusFromHealth health
+  let status := health.provedStatus
   let title := completionAxisText health
   if status.isProved then
     {
@@ -381,20 +382,16 @@ private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockSta
   if health.hasMissingExternalDecls then
     {
       status := .missing
-      title := s!"External Lean names: {health.presentDecls} present, {health.missingDecls} missing (statement/proof completion unknown)"
+      title := s!"{completionAxisText health}; Lean declarations: {health.presentDecls} present, {health.missingDecls} missing"
     }
   else
     if health.hasAxiomLike then
       {
         status := .axiomLike
-        title := "Lean declarations include at least one axiom-like constant (no body)"
+        title := completionAxisText health
       }
     else
       completionStatusMark health
-
-/-- Aggregate status across all associations; missing declarations dominate. -/
-private def statusMarkFromCodeSource (source? : Option BlockCodeData) : BlockStatusMark :=
-  statusMarkFromHealth (Informal.Graph.codeHealthOfBlockSource .definition {} source?)
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
   decls.qsort (fun a b =>
@@ -610,7 +607,7 @@ def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Opt
   let source := cdata.source.getD {}
   let health := Informal.Graph.codeHealthOfBlockSource data.kind {} cdata.source
   let renderHealth := externalRenderHealth source.externalDecls
-  let statusMark := statusMarkFromCodeSource cdata.source
+  let statusMark := statusMarkFromHealth health
   let title := if source.isEmpty then "No associated Lean declarations" else
     appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)

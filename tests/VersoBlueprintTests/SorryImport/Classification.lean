@@ -203,7 +203,7 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
       | _ => false
     return ref.present && renderHasUnknown && proofRenderHasUnknown &&
       ref.provedStatus.sorryEvidence == #[statementDependency, unlocalized] && ref.provedStatus.hasUnverifiedCoverage &&
-      health.statementAxisCount == 1 && health.proofAxisCount == 0 && health.anyGapCount == 1 &&
+      health.provedStatus == ref.provedStatus && health.hasStatementGaps && health.anyGapCount == 1 &&
       !Graph.nodeLocalProofFormalized {} node &&
       Graph.proofStatus {} {} `typeOnly node == .incomplete &&
       Graph.nodeLocalStatementFormalized {} proofNode && !Graph.nodeLocalProofFormalized {} proofNode &&
