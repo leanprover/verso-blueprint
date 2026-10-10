@@ -75,6 +75,8 @@ remains a follow-up. Queries do not reparse the complete manifest. Returned
 entries and source locations are reattached to the original browser objects,
 not exposed as JSON clones. Treat loaded manifests as immutable; use the existing
 reset/setter methods to replace them.
+Pending fetches and resolver preparation follow the current cache revision after
+a reset; obsolete completions cannot return the previous manifest's entries.
 
 The current path still parses the complete input in Lean and serializes full
 query results, so it is a deduplication step, not a speedup. Fetching, manifest

@@ -392,6 +392,7 @@ import { prepareManifestResolver } from "./manifest-resolver.mjs";
       await loadBlueprintManifestForApi(options);
       const store = blueprintManifestStoreForApi;
       if (store.rawData === null) return null;
+      const revision = store.revision;
       if (!store.resolverPromise) {
         const promise = prepareManifestResolver(store.rawData, store.map).catch(error => {
           if (store.resolverPromise === promise) store.resolverPromise = null;
@@ -399,7 +400,14 @@ import { prepareManifestResolver } from "./manifest-resolver.mjs";
         });
         store.resolverPromise = promise;
       }
-      return store.resolverPromise;
+      try {
+        const resolver = await store.resolverPromise;
+        // Runtime startup can outlive a reset, just like a manifest fetch.
+        return store.revision === revision ? resolver : loadManifestResolverForApi(options);
+      } catch (error) {
+        if (store.revision !== revision) return loadManifestResolverForApi(options);
+        throw error;
+      }
     }
 
     async function loadBlueprintManifestFileForApi(options) {

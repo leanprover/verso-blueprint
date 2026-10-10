@@ -222,6 +222,85 @@ def test_data_api_uses_shared_lean_lookups_and_original_objects(page, vir_client
         assert result[field]
 
 
+def test_data_api_reset_during_runtime_startup_uses_current_manifest(page, vir_client_site):
+    page.goto(f"{vir_client_site}/client.json")
+    held_requests = []
+    page.route("**/*.wasm", lambda route: held_requests.append(route))
+    # Hold the real cold-start asset request, not a replacement runtime or timer.
+    with page.expect_request("**/*.wasm"):
+        page.evaluate("""async () => {
+            const {createBlueprintDataApi} = await import('./-verso-data/Commands/preview-runtime-data.mjs');
+            const entry = {key: 'alpha--statement', label: 'alpha', targetKind: 'block',
+                facet: 'statement', href: '#old', sourceLocation: {ok: false}};
+            window.changingData = createBlueprintDataApi({fetchJson: async () => ({previews: [entry], groups: []})});
+            window.oldLookup = changingData.resolveLabel('alpha');
+        }""")
+    page.evaluate("""async () => {
+        window.currentEntry = {key: 'alpha--statement', label: 'alpha', targetKind: 'block',
+            facet: 'statement', href: '#current', sourceLocation: {ok: false}};
+        changingData.setFetchJson(async () => ({previews: [currentEntry], groups: []}));
+        window.newLookup = changingData.resolveLabel('alpha');
+        await changingData.loadManifest();
+    }""")
+    assert len(held_requests) == 1
+    held_requests[0].continue_()
+    result = page.evaluate("""async () => {
+        const results = await Promise.all([oldLookup, newLookup]);
+        const current = await changingData.resolveLabel('alpha');
+        const {disposeBlueprintProgram} = await import('./-verso-data/Commands/blueprint-vir-client.mjs');
+        disposeBlueprintProgram();
+        return {hrefs: results.map(result => result.href),
+            currentObjects: results.every(result => result.manifestEntry === currentEntry &&
+                result.sourceLocation === currentEntry.sourceLocation),
+            retainedCurrent: current.manifestEntry === currentEntry};
+    }""")
+    assert result["hrefs"] == ["#current", "#current"]
+    assert result["currentObjects"] and result["retainedCurrent"]
+
+
+def test_data_api_discards_obsolete_preparation_errors_and_retries_current_errors(page, vir_client_site):
+    page.goto(f"{vir_client_site}/client.json")
+    result = page.evaluate("""async () => {
+        const {createBlueprintDataApi} = await import('./-verso-data/Commands/preview-runtime-data.mjs');
+        const shared = await import('./-verso-data/Commands/blueprint-vir-client.mjs');
+        const ready = await shared.getBlueprintProgram();
+        const originalProgram = ready.program;
+        const oldEntry = {key: 'alpha--statement', label: 'alpha', targetKind: 'block',
+            facet: 'statement', href: '#old', sourceLocation: {ok: false}};
+        const currentEntry = {...oldEntry, href: '#current'};
+        const data = createBlueprintDataApi({fetchJson: async () => ({previews: [oldEntry], groups: []})});
+        let prepareCalls = 0;
+        try {
+            // Fault injection at the preparation boundary: invalidation must not
+            // expose a former revision's failure or clear its replacement promise.
+            ready.program = {call(entry, ...args) {
+                if (entry === ready.entries.manifestPrepare && ++prepareCalls === 1) {
+                    data.setFetchJson(async () => ({previews: [currentEntry], groups: []}));
+                    throw Error('obsolete preparation failure');
+                }
+                return originalProgram.call(entry, ...args);
+            }};
+            const recovered = await data.resolveLabel('alpha');
+            const obsoleteIgnored = recovered.manifestEntry === currentEntry && prepareCalls === 2;
+            data.resetStores();
+            ready.program = {call(entry, ...args) {
+                if (entry === ready.entries.manifestPrepare) throw Error('current preparation failure');
+                return originalProgram.call(entry, ...args);
+            }};
+            let currentRejected = false;
+            try { await data.resolveLabel('alpha'); }
+            catch (error) { currentRejected = error.message === 'current preparation failure'; }
+            ready.program = originalProgram;
+            const retried = await data.resolveLabel('alpha');
+            return {obsoleteIgnored, currentRejected, retryWorks: retried.manifestEntry === currentEntry};
+        } finally {
+            ready.program = originalProgram;
+            shared.disposeBlueprintProgram();
+        }
+    }""")
+    assert all(result.values())
+
+
 def test_source_metadata_uses_lean_policy_and_original_references(page, vir_client_site, vir_manifest_resolver_site):
     _, campaign = vir_manifest_resolver_site
     page.goto(f"{vir_client_site}/client.json")
