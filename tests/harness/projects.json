@@ -35,7 +35,7 @@
       "targets": [
         {
           "release": "v4.35.0",
-          "ref": "07a159c5a0331482ab67ad19a20682fe7a9e5b49",
+          "ref": "144025d3bbf95383bc2b53e4c21a46f484643968",
           "publish_reference": true,
           "reference_toolchain": "v4.35.0-rc3"
         }
@@ -61,7 +61,7 @@
       "targets": [
         {
           "release": "v4.35.0",
-          "ref": "cabad2250e1d3caef8962ce11c5ec2c0cec12dae",
+          "ref": "0533fff31bef04db0c31917576cd687bd3ffaf15",
           "reference_toolchain": "v4.35.0-rc4",
           "publish_reference": true
         }
