@@ -11,6 +11,15 @@ require lean_vir from git "https://github.com/ejgallego/lean-vir"@"225218e18a3ae
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
 
+-- Experimental, genre-independent LSP adapter. Not imported by Blueprint yet.
+lean_lib VersoLsp where
+  srcDir := "src"
+  roots := #[`VersoLsp.Source, `VersoLsp.Protocol, `VersoLsp.Client]
+
+lean_exe «verso-lsp-spike» where
+  srcDir := "tests"
+  root := `VersoLspSpike
+
 input_dir embeddedBlueprintAssets where
   path := "src/VersoBlueprint"
   text := true
