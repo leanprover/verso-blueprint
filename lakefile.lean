@@ -140,3 +140,9 @@ lean_exe «blueprint-test-docs» where
   root := `BlueprintTestDocsMain
   srcDir := "tests"
   supportInterpreter := true
+
+-- Optional native scaling probe; not part of normal builds or the test driver.
+lean_exe «blueprint-contribution-bench» where
+  root := `BlueprintContributionBench
+  srcDir := "tests"
+  moreLeancArgs := #["-O3"]

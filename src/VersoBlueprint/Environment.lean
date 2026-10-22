@@ -182,6 +182,8 @@ private def storedContribution (contribution : NodeContribution) : NodeContribut
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
     (incoming : Array NodeContribution) (facts : List Record) (isLocal : Bool) : Except (Array String) State := do
+  if state.authoredOriginConflicts.contains label then
+    throw #[s!"Label {label} was independently introduced by authored contributions"]
   let authored := incoming.any claimsAuthoredNode
   if authored then if let some previous := state.authoredOrigins.get? label then
     if previous != origin then

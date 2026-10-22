@@ -213,6 +213,25 @@ scripts/lean-low-priority lake build \
 ./scripts/run-lean-tests.sh
 ```
 
+For contribution collision scaling, build the optional native probe and invoke
+the executable directly so Lake startup is outside the measurement:
+
+```bash
+scripts/lean-low-priority lake build blueprint-contribution-bench
+scripts/lean-low-priority .lake/build/bin/blueprint-contribution-bench indexed 200 200
+scripts/lean-low-priority .lake/build/bin/blueprint-contribution-bench assemble 200 200
+```
+
+Arguments are mode, record count, and number of labels checked. Inputs have one
+full production record per label; output is JSON with checked-label count and
+elapsed nanoseconds, excluding input construction. `indexed` calls production
+collision detection; `assemble` runs the complete production node assembler.
+The optional `reference` mode reproduces the former exhaustive existential
+decision for comparisons and can be very slow. Run paired modes in both orders
+and retain raw observations; timings are evidence, not CI thresholds. The
+ordinary test suite also exercises 200 actual registrations and compiled import
+replay with concrete membership/index checks.
+
 Bare `lake build` continues to build all configured default targets, including
 the test driver, and is useful when that broader local check is intended.
 

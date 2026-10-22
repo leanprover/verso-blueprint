@@ -266,10 +266,18 @@ The same flow can be read as four contracts:
    label. Replaying the same complete fact is idempotent. Replaying a changed
    fact under one identity or combining conflicting priority values produces
    structured diagnostics rather than an arrival-dependent accepted prefix.
+   Collision detection groups full records by identity once per resolver call
+   and examines only identities used by the requested label. Each bucket keeps
+   records from all labels, so cross-label collisions remain detectable. The
+   bucket lookup and linear representative comparison are proved equivalent to
+   the collision specification; that existential specification is not executed
+   as a global pair search. This index is transient, not another persisted store.
    Pending evidence, contributor provenance, and authored-origin metadata stay
    available for those diagnostics, but rejected input creates no accepted
    `RegisteredNode` or declaration-index entry. Body/kind/markup policy remains
    separate.
+   An imported authored-origin conflict also blocks later local registration:
+   elaboration recovery cannot turn its rejected evidence into an accepted node.
 
    Node exports otherwise retain each module's local `NodeContribution` records,
    together with the module that originally introduced the label and the module

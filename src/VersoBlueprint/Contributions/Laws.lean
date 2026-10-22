@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Contributions
+import Std.Data.HashMap.Lemmas
 
 open Lean Informal.Data
 namespace Informal.Contributions
@@ -139,15 +140,53 @@ theorem collectorLaws : CollectorLaws collector where
   · rintro ⟨a, b, ha, hb, hab⟩
     exact ⟨a, ha, b, hb, hab⟩
 
+/-- The executable identity index retains exactly the complete global bucket,
+in input order; label filtering cannot hide another label's conflicting record. -/
+theorem identity_bucket (rs : List Record) (id : ContributionId) :
+    (rs.groupByKey (·.id)).getD id [] = rs.filter (fun r => decide (r.id = id)) := by
+  induction rs with
+  | nil => simp [List.groupByKey]
+  | cons r rs ih =>
+    simp only [List.groupByKey] at ih
+    by_cases h : r.id = id
+    · simp [List.groupByKey, ← Std.HashMap.getD_eq_getD_getElem?, h, ih]
+    · simp [List.groupByKey, Std.HashMap.getD_alter, h, ih]
+
+/-- A linear scan against one representative detects every unequal pair. -/
+theorem bucketConflicts_iff (rs : List Record) :
+    bucketConflicts rs = true ↔ ∃ a ∈ rs, ∃ b ∈ rs, a ≠ b := by
+  cases rs with
+  | nil => simp [bucketConflicts]
+  | cons first rest =>
+    simp only [bucketConflicts, List.any_eq_true, decide_eq_true_eq]
+    constructor
+    · rintro ⟨r, hr, hne⟩
+      exact ⟨r, List.mem_cons_of_mem _ hr, first, List.mem_cons_self, hne⟩
+    · rintro ⟨a, ha, b, hb, hne⟩
+      by_cases h : a = first
+      · subst a
+        exact ⟨b, (List.mem_cons.mp hb).resolve_left (Ne.symm hne), Ne.symm hne⟩
+      · exact ⟨a, (List.mem_cons.mp ha).resolve_left h, h⟩
+
+theorem indexed_collision_iff (rs : List Record) (id : ContributionId) :
+    bucketConflicts ((rs.groupByKey (·.id)).getD id []) = true ↔ Collision rs id := by
+  rw [identity_bucket, bucketConflicts_iff]
+  simp only [List.mem_filter, decide_eq_true_eq, Collision]
+  constructor
+  · rintro ⟨a, ⟨ha, hai⟩, b, ⟨hb, hbi⟩, hne⟩
+    exact ⟨a, ha, b, hb, hai, hbi, hne⟩
+  · rintro ⟨a, ha, b, hb, hai, hbi, hne⟩
+    exact ⟨a, ⟨ha, hai⟩, b, ⟨hb, hbi⟩, hne⟩
+
 @[simp] theorem mem_collisionIds (label : Label) (rs : List Record) (id : ContributionId) :
     id ∈ collisionIds label rs ↔ RelevantCollision rs label id := by
   simp only [collisionIds, List.mem_filter, List.mem_eraseDups, List.mem_map,
-    decide_eq_true_eq]
+    decide_eq_true_eq, indexed_collision_iff, RelevantCollision]
   constructor
-  · exact And.right
-  · intro h
-    obtain ⟨r, hr, hid, _⟩ := h.2
-    exact ⟨⟨r, hr, hid⟩, h⟩
+  · rintro ⟨⟨r, ⟨hr, hl⟩, hi⟩, hc⟩
+    exact ⟨hc, r, hr, hi, hl⟩
+  · rintro ⟨hc, r, hr, hi, hl⟩
+    exact ⟨⟨r, ⟨hr, hl⟩, hi⟩, hc⟩
 
 @[simp] theorem view_declarations (label : Label) (rs : List Record) (d : Name) :
     d ∈ (view label rs).declarations ↔ Association rs label d := by

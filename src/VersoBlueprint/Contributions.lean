@@ -19,7 +19,7 @@ structure ContributionId where
   subject : Name
   site : Nat -- UTF-8 source offset, or caller-supplied stable synthetic site
   slot : Nat -- stable ordinal within this producer-site expansion
-  deriving DecidableEq, Repr
+  deriving DecidableEq, Hashable, Repr
 
 /-- Complete evidence for the external-association/priority slice. Body, kind and
 markup contributions remain in the existing assembly policy. -/
@@ -130,15 +130,6 @@ def insert (record : Record) (records : List Record) : List Record :=
 
 def collector : Collector (List Record) := ⟨[], insert, id⟩
 
-instance (rs : List Record) (id : ContributionId) : Decidable (Collision rs id) := by
-  unfold Collision
-  infer_instance
-
-instance (rs : List Record) (label : Label) (id : ContributionId) :
-    Decidable (RelevantCollision rs label id) := by
-  unfold RelevantCollision
-  infer_instance
-
 /-- Source records are preserved; list ordering is not semantic ordering. -/
 def recordsFor (label : Label) (rs : List Record) : List Record :=
   (rs.filter fun r => decide (r.label = label)).eraseDups
@@ -153,8 +144,19 @@ def priorityDisagrees (label : Label) (rs : List Record) : Bool :=
   let values := priorityValues label rs
   values.any fun a => values.any fun b => decide (a ≠ b)
 
+/-- A bucket conflicts exactly when some record differs from its first record.
+Exact replay is harmless; compare full records, including both facets and provenance. -/
+def bucketConflicts : List Record → Bool
+  | [] => false
+  | first :: rest => rest.any fun record => decide (record ≠ first)
+
+/-- Index the complete evidence once, then inspect only this label's identities.
+Buckets retain other labels' records so cross-label identity collisions remain visible.
+Do not decide the existential `Collision` specification: that searches all record pairs. -/
 def collisionIds (label : Label) (rs : List Record) : List ContributionId :=
-  (rs.map (·.id)).eraseDups.filter fun id => decide (RelevantCollision rs label id)
+  let buckets := rs.groupByKey (·.id)
+  let ids := ((rs.filter fun r => decide (r.label = label)).map (·.id)).eraseDups
+  ids.filter fun id => bucketConflicts (buckets.getD id [])
 
 def diagnostics (label : Label) (rs : List Record) : Diagnostics := {
   collisions := (collisionIds label rs).map fun id => (id, variants rs id)
