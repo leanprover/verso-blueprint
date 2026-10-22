@@ -13,6 +13,7 @@ namespace Verso.VersoBlueprintTests.BlueprintProofLeanRefs.Provider
 theorem firstProof : True := True.intro
 theorem secondProof : True := True.intro
 theorem admittedProof : True := by sorry
+theorem crossFacetProof : True := True.intro
 
 #docs (Manual) importedAssociations "Imported proof associations" :=
 :::::::
@@ -27,6 +28,9 @@ A compiled statement whose proof is admitted.
 :::
 :::proof "proof.imported.repeated" (lean := "admittedProof")
 The observed hole must survive repeated proof attachments.
+:::
+:::lemma_ "proof.imported.crossFacet" (lean := "crossFacetProof")
+This compiled statement will gain a proof association in its consumer.
 :::
 :::::::
 

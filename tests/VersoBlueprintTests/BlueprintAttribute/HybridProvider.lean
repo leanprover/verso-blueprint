@@ -47,6 +47,16 @@ def hybridSharedFirst : Nat := 17
 @[blueprint "attr.hybrid.shared"]
 def hybridSharedSecond : Nat := 19
 
+-- The provider must observe the same source order as its importers.
+/-- info: true -/
+#guard_msgs in
+#eval show Lean.CoreM Bool from do
+  let some node ← Environment.getNode? (Lean.Name.mkSimple "attr.hybrid.shared")
+    | return false
+  return node.leanDecls == #[
+    `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedFirst,
+    `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedSecond]
+
 @[blueprint "attr.hybrid.late_docstring"
   (uses := ["attr.hybrid.verso_docstring"])]
 def hybridLateDocstringFirst : Nat := 23

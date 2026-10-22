@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintAttribute.Reexport
 import VersoBlueprintTests.BlueprintAttribute.HybridProvider
 import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
+import VersoBlueprintTests.BlueprintAttribute.ProjectionGraft
 
 open Lean
 open Informal
@@ -218,5 +219,24 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
         `Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition
         .definition
         definitionNode
+
+-- Local additions follow imported declarations; repeated assembly must not
+-- reverse either the imported prefix or the earlier local contributions.
+@[blueprint "attr.hybrid.shared"]
+def hybridSharedThird : Nat := 41
+
+@[blueprint "attr.hybrid.shared"]
+def hybridSharedFourth : Nat := 43
+
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  let some node ← importedNode? "attr.hybrid.shared"
+    | return false
+  return node.leanDecls == #[
+    `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedFirst,
+    `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedSecond,
+    `Verso.VersoBlueprintTests.BlueprintAttribute.hybridSharedThird,
+    `Verso.VersoBlueprintTests.BlueprintAttribute.hybridSharedFourth]
 
 end Verso.VersoBlueprintTests.BlueprintAttribute

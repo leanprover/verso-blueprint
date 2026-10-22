@@ -62,6 +62,7 @@ lean_lib VersoBlueprintTests where
   roots := #[
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
+    `VersoBlueprintTests.BlueprintContributions,
     `VersoBlueprintTests.BlueprintImportedContributions,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofs,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofsReverse,
@@ -75,6 +76,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintImportedContributions.AuthorityReverse,
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
+    `VersoBlueprintTests.BlueprintAttribute.OrderRoundtrip,
     `VersoBlueprintTests.BlueprintAttributeRendering,
     `VersoBlueprintTests.BlueprintPlacementContracts,
     `VersoBlueprintTests.BlueprintAttributeLateRendering,

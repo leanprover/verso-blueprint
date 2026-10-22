@@ -39,12 +39,28 @@ theorem admittedAttachedResult : True := by sorry
       let gap := { good with provedStatus := status }
       for refs in #[#[good, gap], #[gap, good]] do
         let inputs := refs.map contribution
-        let .ok batched := ({} : Data.Node).applyContributions `repeated inputs
+        -- Keep producer identities fixed across batching and exact replay.
+        -- Both facets enter the identified slice and retain their authored side.
+        let assemble := fun (indices : Array Nat) =>
+          let records := indices.toList.map fun index =>
+            ({ id := { moduleName := `Repeated, producer := `test, subject := `repeated,
+                       site := index, slot := 0 },
+               label := `repeated,
+               references := if isProof then #[] else #[refs[index]!],
+               proofReferences := if isProof then #[refs[index]!] else #[],
+               priority := none, source := none }
+              : Contributions.Record)
+          (NodeAssembly.assemble `repeated
+            (indices.map fun index => NodeAssembly.withoutSelectedFacts inputs[index]!) records).map (·.node)
+        let indices := (List.range inputs.size).toArray
+        let .ok batched := assemble indices
           | throw <| IO.userError "Repeated associations were rejected"
-        let .ok incremental := inputs.foldlM
-            (fun (node : Data.Node) input => node.applyContributions `repeated #[input]) ({} : Data.Node)
+        let .ok (_, incremental) := indices.foldlM
+            (fun (state : Array Nat × Data.Node) index => do
+              let accumulated := state.1.push index
+              return (accumulated, ← assemble accumulated)) (#[], ({} : Data.Node))
           | throw <| IO.userError "Incremental associations were rejected"
-        let .ok replayed := incremental.applyContributions `repeated inputs
+        let .ok replayed := assemble (indices ++ indices)
           | throw <| IO.userError "Replayed associations were rejected"
         for node in #[batched, incremental, replayed] do
           let refs := node.associatedExternalRefs
@@ -120,6 +136,9 @@ A statement with implementation metadata.
 :::proof "proof.without.references"
 A proof with no attached references.
 :::
+:::proof "proof.imported.crossFacet" (lean := "Provider.crossFacetProof")
+This imported statement association also has a proof-facet occurrence.
+:::
 :::::::
 
 /- Both facets contribute to node membership, inference, and conservative status. -/
@@ -174,10 +193,18 @@ A proof with no attached references.
 
 -- Add a second proof association to a compiled imported node. Export only this
 -- local contribution and check both associations again after another import.
+private def contributeProofReferences (label : Data.Label) (contribution : Data.NodeContribution) :
+    CoreM (Option Data.Node) := do
+  let fact : Contributions.Record := {
+    id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
+    label, proofReferences := contribution.proofExternalRefs
+    priority := none, source := none }
+  Environment.contributeSelected label contribution fact
+
 run_meta do
   let ref ← externalRefSnapshotAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.secondProof)
-  let some _ ← Environment.contribute (Name.mkSimple "proof.imported.associations") {
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") {
     proofExternalRefs := #[ref] }
     | throwError "Could not extend the imported proof associations"
   let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
@@ -191,7 +218,7 @@ run_meta do
   let ref ← externalRefSnapshotAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.admittedProof)
   let neutral := { ref with provedStatus := .proved }
-  let some _ ← Environment.contribute (Name.mkSimple "proof.imported.repeated") {
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") {
     proofExternalRefs := #[neutral, ref] }
     | throwError "Could not repeat the imported proof association"
   let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
@@ -208,7 +235,7 @@ run_meta do
     (Data.ExternalRef.ofName ``Provider.admittedProof)
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := ``Provider.admittedProof, provedStatus := .proved }] }
-  let some _ ← Environment.contribute (Name.mkSimple "proof.inline.overlap") {
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") {
     kind := some .theorem, leanCode := #[.literate code], proofExternalRefs := #[ref] }
     | throwError "Could not register inline/external overlap"
 

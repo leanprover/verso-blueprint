@@ -5,9 +5,31 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprintTests.BlueprintProofLeanRefs
+import VersoBlueprintTests.BlueprintProofLeanRefs.Provider
 
 open Lean Informal
 open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
+
+-- Both direct and transitive imports replay one identified record per producer.
+-- Proof-only records remain proof-only; canonical duplicates keep both facets
+-- and appear only once in the accepted declaration-to-label index.
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  let state := Environment.informalExt.getState (← getEnv)
+  let label := Name.mkSimple "proof.imported.crossFacet"
+  let some node := state.data.get? label | return false
+  let records := state.factRecords.filter (·.label == label)
+  let proofOnly := state.factRecords.filter (·.label == Name.mkSimple "proof.imported.associations")
+  return records.length == 2 &&
+    (records.filter fun r => !r.references.isEmpty && r.proofReferences.isEmpty).length == 1 &&
+    (records.filter fun r => r.references.isEmpty && !r.proofReferences.isEmpty).length == 1 &&
+    proofOnly.length == 2 && proofOnly.all (fun r => r.references.isEmpty && !r.proofReferences.isEmpty) &&
+    node.externalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
+    node.proofExternalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
+    node.leanDecls == #[``Provider.crossFacetProof] &&
+    state.leanNameLabels.getD ``Provider.crossFacetProof #[] == #[label] &&
+    (Graph.nodeCodeHealth {} node).totalDecls == 1
 
 /-- info: true -/
 #guard_msgs in
