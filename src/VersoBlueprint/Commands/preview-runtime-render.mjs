@@ -1,6 +1,7 @@
 import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
 import { missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
 import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
+import { normalizeExternalMarkupPreferences, externalMarkupPreferenceDisplay, selectExternalMarkup } from "./preview-runtime-external-markup.mjs";
 
   // Preview resolution joins semantic manifest entries with opaque body fragments.
   //
@@ -261,88 +262,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return loadManifestEntry(key, options);
   }
 
-  export function normalizeExternalMarkupPreferences(externalMarkup) {
-    if (!externalMarkup || typeof externalMarkup !== "object") return [];
-    if (Array.isArray(externalMarkup)) return externalMarkup;
-    if (Array.isArray(externalMarkup.prefer)) return externalMarkup.prefer;
-    return [externalMarkup];
-  }
-
-  export function normalizeExternalMarkupToken(value) {
-    return typeof value === "string" ? value.trim().toLowerCase() : "";
-  }
-
-  export function isNativeMarkupPreference(preference) {
-    if (!preference || typeof preference !== "object") return false;
-    const language = normalizeExternalMarkupToken(preference.language);
-    return language === "verso" || language === "native";
-  }
-
-  export function externalMarkupPreferenceDisplay(preference) {
-    return normalizeExternalMarkupToken(preference && preference.display);
-  }
-
-  export function externalMarkupPreferenceCanRender(preference) {
-    return (
-      preference &&
-      typeof preference === "object" &&
-      (typeof preference.render === "function" ||
-        externalMarkupPreferenceDisplay(preference) === "source")
-    );
-  }
-
-  export function externalMarkupMatchesPreference(markup, preference) {
-    if (!markup || typeof markup !== "object") return false;
-    const language = normalizeExternalMarkupToken(preference && preference.language);
-    const slot =
-      preference && typeof preference.slot === "string" ? preference.slot.trim() : "";
-    if (language && normalizeExternalMarkupToken(markup.language) !== language) return false;
-    if (slot && String(markup.slot || "").trim() !== slot) return false;
-    return typeof markup.raw === "string" && markup.raw.length > 0;
-  }
-
-  export function firstExternalMarkupForPreference(entry, preference) {
-    const markups =
-      entry && Array.isArray(entry.externalMarkup) ? entry.externalMarkup : [];
-    return markups.find(function (markup) {
-      return externalMarkupMatchesPreference(markup, preference);
-    }) || null;
-  }
-
-  export function selectExternalMarkup(entry, preferences) {
-    let missingRenderer = null;
-    let missingMarkupPreference = null;
-    for (const preference of preferences) {
-      if (!preference || typeof preference !== "object") continue;
-      if (isNativeMarkupPreference(preference)) continue;
-      const markup = firstExternalMarkupForPreference(entry, preference);
-      if (!markup) {
-        if (!missingMarkupPreference) missingMarkupPreference = preference;
-        continue;
-      }
-      if (externalMarkupPreferenceCanRender(preference)) {
-        return {
-          ok: true,
-          markup,
-          preference
-        };
-      }
-      if (!missingRenderer) {
-        missingRenderer = {
-          ok: false,
-          reason: "external-markup-renderer-missing",
-          markup,
-          preference
-        };
-      }
-    }
-    return missingRenderer || {
-      ok: false,
-      reason: "external-markup-missing",
-      markup: null,
-      preference: missingMarkupPreference
-    };
-  }
 
   export function renderExternalMarkupSource(target, markup) {
     const pre = document.createElement("pre");
@@ -592,7 +511,28 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const selection = selectExternalMarkup(manifestEntry, preferences);
+    let selection;
+    try {
+      selection = await selectExternalMarkup(manifestEntry, preferences);
+    } catch (error) {
+      const result = renderNodePreviewResult({
+        ok: false,
+        key: manifestEntry.key || nativeKey,
+        reason: "external-markup-selection-failed",
+        manifestEntry,
+        htmlCacheEntry: nativeResult.htmlCacheEntry || null,
+        html: "",
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          "External markup selection failed.", errorMessage(error),
+          { label: normalized.label, key: manifestEntry.key || nativeKey }
+        )
+      }, {
+        renderMode: "diagnostic", label: normalized.label,
+        facet: normalized.facet, nativePreview: nativeResult
+      });
+      renderHtmlInto(target, opts.diagnostics === false ? "" : result.diagnosticHtml, opts);
+      return result;
+    }
     if (!selection.ok) {
       const preference = selection.preference || {};
       const result = renderNodePreviewResult({
@@ -995,14 +935,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     renderNodePreviewResult,
     externalMarkupEntryKey,
     loadExternalMarkupNodeEntry,
-    normalizeExternalMarkupPreferences,
-    normalizeExternalMarkupToken,
-    isNativeMarkupPreference,
-    externalMarkupPreferenceDisplay,
-    externalMarkupPreferenceCanRender,
-    externalMarkupMatchesPreference,
-    firstExternalMarkupForPreference,
-    selectExternalMarkup,
     renderExternalMarkupSource,
     renderExternalMarkupSelectionInto,
     callExternalMarkupRenderer,
