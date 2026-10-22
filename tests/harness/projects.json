@@ -10,8 +10,7 @@
       },
       "targets": [
         {
-          "release": "v4.35.0",
-          "rc": "4.35-rc4"
+          "release": "v4.35.0"
         }
       ],
       "generate_command": [

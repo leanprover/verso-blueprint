@@ -1,12 +1,12 @@
 import Lake
 open Lake DSL
 
--- Pin the matching Lean 4.35 release-candidate dependency stack.
-require verso from git "https://github.com/leanprover/verso"@"v4.35.0-rc4"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0-rc4"
-require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0-rc4"
-require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.115"
-require lean_vir from git "https://github.com/ejgallego/lean-vir"@"aa465b873387a0bf46669031da1af99f59b0f3b9"
+-- Pin the matching Lean 4.35 stable dependency stack.
+require verso from git "https://github.com/leanprover/verso"@"v4.35.0"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0"
+require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0"
+require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.116"
+require lean_vir from git "https://github.com/ejgallego/lean-vir"@"225218e18a3ae554acc571a93aab484453d857a6"
 
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
