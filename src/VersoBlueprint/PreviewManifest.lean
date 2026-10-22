@@ -5,6 +5,9 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import VersoBlueprintVir.ExternalMarkup
+import VersoBlueprint.Lib.HtmlId
+import VersoBlueprintVir.Resources
 import Lean.Elab.Command
 import Std.Data.HashMap
 import Std.Data.HashSet
@@ -741,6 +744,8 @@ private def graphRuntimeCoreModuleMjs : String := include_str "Commands/graph-ru
 
 private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
+private def graphRuntimeIdModuleMjs : String := include_str "Commands/graph-runtime-id.mjs"
+
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
@@ -779,6 +784,12 @@ private def previewRuntimeTemplateModuleMjs : String := include_str "Commands/pr
 
 private def previewRuntimeApiModuleMjs : String := include_str "Commands/preview-runtime-api.mjs"
 
+private def externalMarkupModuleMjs : String := include_str "Commands/preview-runtime-external-markup.mjs"
+
+private def virClientModuleMjs : String := include_str "Commands/blueprint-vir-client.mjs"
+
+private def manifestResolverModuleMjs : String := include_str "Commands/manifest-resolver.mjs"
+
 private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
@@ -788,7 +799,10 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeLifecycleModuleFilename, previewRuntimeLifecycleModuleMjs),
   (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
   (previewRuntimeTemplateModuleFilename, previewRuntimeTemplateModuleMjs),
-  (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs)
+  (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs),
+  ("preview-runtime-external-markup.mjs", externalMarkupModuleMjs),
+  ("blueprint-vir-client.mjs", virClientModuleMjs),
+  ("manifest-resolver.mjs", manifestResolverModuleMjs)
 ]
 
 private def pageRuntimeModules : Array (String × String) := #[
@@ -797,6 +811,7 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("Commands/graph-runtime-id.mjs", graphRuntimeIdModuleMjs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
 ]
 
@@ -840,6 +855,26 @@ public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit :=
   IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
   writePageRuntimeModules dataDir
   writePreviewRuntimeModules dataDir
+  let site ← IO.ofExcept <|
+    (VersoBlueprintVir.resources.forSite "vir").mapError reprStr
+  unless site.programManifests.size == 1 do
+    throw <| IO.userError "Blueprint clients require exactly one VIR program"
+  for file in site.files do
+    let path := dataDir / file.path
+    IO.FS.createDirAll (path.parent.getD dataDir)
+    IO.FS.writeBinFile path file.bytes
+  let config := Json.mkObj [
+    ("runtimeModule", toJson ("../" ++ site.runtimeModule)),
+    ("runtimeManifest", toJson ("../" ++ site.runtimeManifest)),
+    ("programManifest", toJson ("../" ++ site.programManifests[0]!)),
+    ("entries", Json.mkObj [
+      ("externalMarkup", toJson (`VersoBlueprint.ExternalMarkup.selectMarkup).toString),
+      ("htmlId", toJson (`VersoBlueprint.HtmlId.encode).toString),
+      -- Browser-only bindings must not enter the native generator's imports.
+      ("manifestPrepare", toJson "VersoBlueprint.Manifest.prepare"),
+      ("manifestLookup", toJson "VersoBlueprint.Manifest.lookup"),
+      ("manifestInspectSource", toJson "VersoBlueprint.Manifest.inspectSource")])]
+  writeDataFile dataDir "Commands/blueprint-vir.mjs" ("export default " ++ config.compress ++ ";\n")
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
   IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
   IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs

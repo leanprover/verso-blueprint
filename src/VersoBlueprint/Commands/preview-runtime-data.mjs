@@ -1,6 +1,7 @@
 import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
+import { prepareManifestResolver } from "./manifest-resolver.mjs";
 
   // Generated-data URL helpers.
 
@@ -23,7 +24,10 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       status: null,
       map: null,
       decodedFile: null,
-      promise: null
+      promise: null,
+      rawData: null,
+      resolverPromise: null,
+      revision: 0
     }, fields || {});
   }
 
@@ -57,10 +61,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     };
   }
 
-  function manifestEntryHref(entry) {
-    return entry && typeof entry.href === "string" ? entry.href : "";
-  }
-
   function validateManifestEntrySourceLocation(entry, index) {
     const sourceLocation = entry.sourceLocation;
     if (!sourceLocation || typeof sourceLocation !== "object" || Array.isArray(sourceLocation)) {
@@ -80,16 +80,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     }, fields || {});
   }
 
-  function successfulPreviewLookupResult(fields, manifestEntry) {
-    return Object.assign({
-      ok: true,
-      reason: "",
-      manifestEntry: manifestEntry,
-      href: manifestEntryHref(manifestEntry),
-      sourceLocation: manifestEntry.sourceLocation
-    }, fields || {});
-  }
-
   function labelLookupOptions(options) {
     let rawFacet = null;
     if (typeof options === "string") {
@@ -102,62 +92,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       facet: explicitFacet ? rawFacet.trim() : "statement",
       explicitFacet: explicitFacet
     };
-  }
-
-  function isBlockEntryForLabel(entry, label) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      !Array.isArray(entry) &&
-      entry.targetKind === "block" &&
-      entry.label === label
-    );
-  }
-
-  function findBlockManifestEntryByLabel(manifestMap, label, options) {
-    if (!(manifestMap instanceof Map)) return null;
-    const lookup = labelLookupOptions(options);
-    const key = previewKey(label, lookup.facet);
-    const exact = manifestMap.get(key);
-    if (isBlockEntryForLabel(exact, label)) {
-      return exact;
-    }
-    let first = null;
-    let statement = null;
-    for (const entry of manifestMap.values()) {
-      if (!isBlockEntryForLabel(entry, label)) continue;
-      if (!first) first = entry;
-      if (entry.facet === lookup.facet) return entry;
-      if (entry.facet === "statement" && !statement) statement = entry;
-    }
-    if (lookup.explicitFacet) return null;
-    return statement || first;
-  }
-
-  function isLeanDeclEntry(entry) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      !Array.isArray(entry) &&
-      entry.targetKind === "leanDecl"
-    );
-  }
-
-  function findLeanDeclManifestEntry(manifestMap, declName) {
-    if (!(manifestMap instanceof Map)) return null;
-    const trimmedDecl = typeof declName === "string" ? declName.trim() : "";
-    const key = declarationPreviewKey(trimmedDecl);
-    const exact = manifestMap.get(key);
-    if (isLeanDeclEntry(exact)) {
-      return exact;
-    }
-    for (const entry of manifestMap.values()) {
-      if (!isLeanDeclEntry(entry)) continue;
-      if (entry.label === trimmedDecl || entry.key === key) {
-        return entry;
-      }
-    }
-    return null;
   }
 
   export function createBlueprintDataApi(options) {
@@ -271,10 +205,13 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     });
 
     function resetBlueprintStoreForApi(store) {
+      store.revision += 1;
       store.status = null;
       store.map = null;
       store.decodedFile = null;
       store.promise = null;
+      store.rawData = null;
+      store.resolverPromise = null;
     }
 
     function resetBlueprintDataStoresForApi() {
@@ -376,6 +313,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
         return existingPromise;
       }
       const url = store.url();
+      const revision = store.revision;
       const previousStatus = readBlueprintStoreStatusForApi(store);
       const attempts =
         Number.isFinite(previousStatus.attempts) ? previousStatus.attempts + 1 : 1;
@@ -389,12 +327,14 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       let promise = null;
       promise = fetchBlueprintStoreDataForApi(store, blueprintDataLoadOptions(options))
         .then(function (result) {
+          if (store.revision !== revision) return loadBlueprintStoreForApi(store, options);
           const map = store.decode(result.data);
           store.map = map;
           store.decodedFile =
             typeof store.decodeFile === "function"
               ? store.decodeFile(result.data, map)
               : null;
+          store.rawData = result.data;
           setBlueprintStoreStatusForApi(store, {
             state: "ready",
             attempts: attempts,
@@ -405,12 +345,15 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
           return map;
         })
         .catch(function (err) {
+          if (store.revision !== revision) return loadBlueprintStoreForApi(store, options);
           const message =
             err && typeof err.message === "string" && err.message.length > 0
               ? err.message
               : String(err);
           store.map = null;
           store.decodedFile = null;
+          store.rawData = null;
+          store.resolverPromise = null;
           setBlueprintStoreStatusForApi(store, {
             state: "error",
             attempts: attempts,
@@ -443,6 +386,28 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
 
     function loadBlueprintManifestForApi(options) {
       return loadBlueprintStoreForApi(blueprintManifestStoreForApi, options);
+    }
+
+    async function loadManifestResolverForApi(options) {
+      await loadBlueprintManifestForApi(options);
+      const store = blueprintManifestStoreForApi;
+      if (store.rawData === null) return null;
+      const revision = store.revision;
+      if (!store.resolverPromise) {
+        const promise = prepareManifestResolver(store.rawData, store.map).catch(error => {
+          if (store.resolverPromise === promise) store.resolverPromise = null;
+          throw error;
+        });
+        store.resolverPromise = promise;
+      }
+      try {
+        const resolver = await store.resolverPromise;
+        // Runtime startup can outlive a reset, just like a manifest fetch.
+        return store.revision === revision ? resolver : loadManifestResolverForApi(options);
+      } catch (error) {
+        if (store.revision !== revision) return loadManifestResolverForApi(options);
+        throw error;
+      }
     }
 
     async function loadBlueprintManifestFileForApi(options) {
@@ -522,9 +487,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
           reason: previewLookupReasons.missingLabel
         }, sourceLocationMessages.labelMissing);
       }
-      const manifestMap = await loadBlueprintManifestForApi(options);
-      const manifestEntry = findBlockManifestEntryByLabel(manifestMap, normalizedLabel, options);
-      if (!manifestEntry) {
+      const resolver = await loadManifestResolverForApi(options);
+      if (!resolver) {
         return missingPreviewLookupResult({
           label: normalizedLabel,
           facet: lookup.facet,
@@ -532,14 +496,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
           reason: previewLookupReasons.labelEntryMissing
         }, sourceLocationMessages.labelEntryMissing);
       }
-      const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
-      const resolvedFacet =
-        typeof manifestEntry.facet === "string" ? manifestEntry.facet : lookup.facet;
-      return successfulPreviewLookupResult({
-        label: normalizedLabel,
-        facet: resolvedFacet,
-        key: resolvedKey
-      }, manifestEntry);
+      return resolver.resolve([{ id: "label", kind: "label", value: normalizedLabel,
+        facet: lookup.explicitFacet ? lookup.facet : null }])[0];
     }
 
     async function resolveBlueprintDeclarationForApi(declName, options) {
@@ -552,21 +510,15 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
           reason: previewLookupReasons.missingDeclaration
         }, sourceLocationMessages.declarationMissing);
       }
-      const manifestMap = await loadBlueprintManifestForApi(options);
-      const manifestEntry = findLeanDeclManifestEntry(manifestMap, normalizedDecl);
-      if (!manifestEntry) {
+      const resolver = await loadManifestResolverForApi(options);
+      if (!resolver) {
         return missingPreviewLookupResult({
           declaration: normalizedDecl,
           key: key,
           reason: previewLookupReasons.declarationEntryMissing
         }, sourceLocationMessages.declarationEntryMissing);
       }
-      const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
-      const declaration = typeof manifestEntry.label === "string" ? manifestEntry.label : normalizedDecl;
-      return successfulPreviewLookupResult({
-        declaration: declaration,
-        key: resolvedKey
-      }, manifestEntry);
+      return resolver.resolve([{ id: "declaration", kind: "declaration", value: normalizedDecl }])[0];
     }
 
     function resolveBlueprintSourceMetadataForApi(source, options) {

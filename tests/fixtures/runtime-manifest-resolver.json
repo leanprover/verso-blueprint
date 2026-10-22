@@ -1,0 +1,307 @@
+{
+  "abiVersion": 1,
+  "manifest": {
+    "vbpInternalSchemaVersion": 3,
+    "previews": [
+      {
+        "key": "alpha--statement",
+        "targetKind": "block",
+        "label": "alpha",
+        "authoredLabel": "alpha",
+        "facet": "statement",
+        "title": "Alpha statement",
+        "href": "Chapter/#alpha--statement",
+        "sourceLocation": {
+          "ok": true,
+          "location": {
+            "path": "Blueprint.lean",
+            "range": {
+              "start": { "line": 10, "character": 2 },
+              "end": { "line": 10, "character": 9 }
+            },
+            "href": null
+          },
+          "error": null
+        },
+        "parent": "sample_group",
+        "parentTitle": "Sample group",
+        "sources": [
+          {
+            "document": "paper",
+            "spans": [
+              {
+                "page": "42",
+                "text": {
+                  "path": "source/page-42.md",
+                  "startLine": 4,
+                  "endLine": 7,
+                  "startCharacter": null,
+                  "endCharacter": null
+                },
+                "pdf": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "alpha--proof",
+        "targetKind": "block",
+        "label": "alpha",
+        "authoredLabel": "alpha",
+        "facet": "proof",
+        "title": "Alpha proof",
+        "href": "Chapter/#alpha--proof",
+        "sourceLocation": {
+          "ok": true,
+          "location": {
+            "path": "Blueprint.lean",
+            "range": {
+              "start": { "line": 12, "character": 2 },
+              "end": { "line": 12, "character": 9 }
+            },
+            "href": null
+          },
+          "error": null
+        },
+        "parent": "sample_group",
+        "parentTitle": "Sample group",
+        "sources": []
+      },
+      {
+        "key": "Informal.LeanCodePreview.Nat.add",
+        "targetKind": "leanDecl",
+        "label": "Nat.add",
+        "authoredLabel": "Nat.add",
+        "facet": "statement",
+        "title": "Nat.add",
+        "href": "Code/#Nat.add",
+        "sourceLocation": {
+          "ok": true,
+          "location": {
+            "path": "Init/Prelude.lean",
+            "range": {
+              "start": { "line": 100, "character": 0 },
+              "end": { "line": 100, "character": 7 }
+            },
+            "href": null
+          },
+          "error": null
+        },
+        "sources": []
+      },
+      {
+        "key": "unsourced--statement",
+        "targetKind": "block",
+        "label": "unsourced",
+        "authoredLabel": "unsourced",
+        "facet": "statement",
+        "title": "Unsourced",
+        "href": "Chapter/#unsourced--statement",
+        "sourceLocation": {
+          "ok": false,
+          "location": null,
+          "error": "source location unavailable"
+        },
+        "sources": []
+      }
+    ],
+    "groups": [
+      {
+        "label": "sample_group",
+        "title": "Sample group",
+        "declared": true,
+        "entries": [
+          {
+            "label": "alpha",
+            "title": "Alpha statement",
+            "href": "Chapter/#alpha--statement",
+            "previewKey": "alpha--statement",
+            "axes": []
+          }
+        ]
+      }
+    ],
+    "graphs": [],
+    "sourceDocuments": [
+      {
+        "id": "paper",
+        "title": "Example paper",
+        "kind": "pdf",
+        "pdf": "source/paper.pdf",
+        "pageRoot": null,
+        "imageRoot": null
+      }
+    ]
+  },
+  "requests": [
+    { "id": "preview", "kind": "preview", "value": " alpha--statement " },
+    { "id": "label-default", "kind": "label", "value": " alpha " },
+    { "id": "label-proof", "kind": "label", "value": "alpha", "facet": " proof " },
+    { "id": "label-missing", "kind": "label", "value": "missing" },
+    { "id": "declaration", "kind": "declaration", "value": " Nat.add " },
+    { "id": "declaration-missing", "kind": "declaration", "value": "Missing.Decl" },
+    { "id": "group", "kind": "group", "value": " sample_group " },
+    { "id": "source-document", "kind": "sourceDocument", "value": " paper " },
+    { "id": "source-metadata", "kind": "sourceMetadata", "value": "alpha--statement" },
+    { "id": "source-missing", "kind": "sourceMetadata", "value": "unsourced--statement" },
+    { "id": "entry-missing", "kind": "sourceMetadata", "value": "missing--statement" }
+  ],
+  "expected": [
+    { "id": "preview", "kind": "preview", "ok": true, "key": "alpha--statement", "reason": "", "label": null, "facet": null, "declaration": null, "valueIdentity": "alpha--statement", "href": "Chapter/#alpha--statement", "sourceLocationOk": true, "sourceDocumentIds": [] },
+    { "id": "label-default", "kind": "label", "ok": true, "key": "alpha--statement", "reason": "", "label": "alpha", "facet": "statement", "declaration": null, "valueIdentity": "alpha--statement", "href": "Chapter/#alpha--statement", "sourceLocationOk": true, "sourceDocumentIds": [] },
+    { "id": "label-proof", "kind": "label", "ok": true, "key": "alpha--proof", "reason": "", "label": "alpha", "facet": "proof", "declaration": null, "valueIdentity": "alpha--proof", "href": "Chapter/#alpha--proof", "sourceLocationOk": true, "sourceDocumentIds": [] },
+    { "id": "label-missing", "kind": "label", "ok": false, "key": "missing--statement", "reason": "label-entry-missing", "label": "missing", "facet": "statement", "declaration": null, "valueIdentity": "", "href": "", "sourceLocationOk": false, "sourceDocumentIds": [] },
+    { "id": "declaration", "kind": "declaration", "ok": true, "key": "Informal.LeanCodePreview.Nat.add", "reason": "", "label": null, "facet": null, "declaration": "Nat.add", "valueIdentity": "Informal.LeanCodePreview.Nat.add", "href": "Code/#Nat.add", "sourceLocationOk": true, "sourceDocumentIds": [] },
+    { "id": "declaration-missing", "kind": "declaration", "ok": false, "key": "Informal.LeanCodePreview.Missing.Decl", "reason": "declaration-entry-missing", "label": null, "facet": null, "declaration": "Missing.Decl", "valueIdentity": "", "href": "", "sourceLocationOk": false, "sourceDocumentIds": [] },
+    { "id": "group", "kind": "group", "ok": true, "key": "sample_group", "reason": "", "label": "sample_group", "facet": null, "declaration": null, "valueIdentity": "sample_group", "href": "", "sourceLocationOk": null, "sourceDocumentIds": [] },
+    { "id": "source-document", "kind": "sourceDocument", "ok": true, "key": "paper", "reason": "", "label": null, "facet": null, "declaration": null, "valueIdentity": "paper", "href": "", "sourceLocationOk": null, "sourceDocumentIds": [] },
+    { "id": "source-metadata", "kind": "sourceMetadata", "ok": true, "key": "alpha--statement", "reason": "", "label": null, "facet": null, "declaration": null, "valueIdentity": "alpha--statement", "href": "", "sourceLocationOk": true, "sourceDocumentIds": ["paper"] },
+    { "id": "source-missing", "kind": "sourceMetadata", "ok": false, "key": "unsourced--statement", "reason": "source-missing", "label": null, "facet": null, "declaration": null, "valueIdentity": "unsourced--statement", "href": "", "sourceLocationOk": false, "sourceDocumentIds": [] },
+    { "id": "entry-missing", "kind": "sourceMetadata", "ok": false, "key": "missing--statement", "reason": "manifest-entry-missing", "label": null, "facet": null, "declaration": null, "valueIdentity": "", "href": "", "sourceLocationOk": false, "sourceDocumentIds": [] }
+  ],
+  "invalidCases": [
+    {
+      "id": "missing-source-location",
+      "manifest": {
+        "previews": [
+          { "key": "broken--statement", "targetKind": "block", "label": "broken" }
+        ],
+        "groups": [],
+        "graphs": []
+      },
+      "errorIncludes": "missing sourceLocation"
+    },
+    {
+      "id": "duplicate-preview-key",
+      "manifest": {
+        "previews": [
+          {
+            "key": "duplicate--statement",
+            "targetKind": "citation",
+            "sourceLocation": { "ok": false, "location": null, "error": "unavailable" }
+          },
+          {
+            "key": "duplicate--statement",
+            "targetKind": "citation",
+            "sourceLocation": { "ok": false, "location": null, "error": "unavailable" }
+          }
+        ],
+        "groups": [],
+        "graphs": []
+      },
+      "errorIncludes": "duplicate key duplicate--statement"
+    },
+    {
+      "id": "duplicate-group-member",
+      "manifest": {
+        "previews": [
+          {
+            "key": "member--statement",
+            "targetKind": "block",
+            "label": "member",
+            "facet": "statement",
+            "sourceLocation": { "ok": false, "location": null, "error": "unavailable" },
+            "parent": "group",
+            "parentTitle": "Group"
+          }
+        ],
+        "groups": [
+          {
+            "label": "group",
+            "title": "Group",
+            "entries": [
+              { "label": "member" },
+              { "label": "member" }
+            ]
+          }
+        ],
+        "graphs": []
+      },
+      "errorIncludes": "duplicate member member in group group"
+    },
+    {
+      "id": "duplicate-source-document",
+      "manifest": {
+        "previews": [],
+        "groups": [],
+        "graphs": [],
+        "sourceDocuments": [
+          { "id": "paper" },
+          { "id": "paper" }
+        ]
+      },
+      "errorIncludes": "duplicate source document paper"
+    },
+    {
+      "id": "ordered-unmatched-group-member",
+      "manifest": {
+        "previews": [],
+        "groups": [
+          {
+            "label": "group",
+            "title": "Group",
+            "entries": [
+              { "label": "first", "previewKey": "first--statement" },
+              { "label": "second", "previewKey": "second--statement" }
+            ]
+          }
+        ],
+        "graphs": []
+      },
+      "errorIncludes": "group group member first has no matching manifest entry"
+    }
+  ],
+  "parityCases": [
+    {
+      "id": "blank-group-resource",
+      "manifest": { "previews": [], "groups": [{ "label": "g", "title": "G", "entries": [{ "label": "a", "previewKey": null }, { "label": "b" }] }] },
+      "requests": [{ "id": "group", "kind": "group", "value": "g" }],
+      "expected": [{ "ok": true, "key": "g", "valueIdentity": "g" }]
+    },
+    {
+      "id": "non-ascii-blank-key",
+      "manifest": { "previews": [{ "key": "\u00a0", "sourceLocation": { "ok": false } }], "groups": [] },
+      "errorIncludes": "entry 0 is missing key"
+    },
+    {
+      "id": "untrimmed-group-title",
+      "manifest": {
+        "previews": [{ "key": "a--statement", "targetKind": "block", "label": "a", "facet": "statement", "parent": "g", "parentTitle": " G ", "sourceLocation": { "ok": false } }],
+        "groups": [{ "label": "g", "title": " G ", "entries": [{ "label": "a", "previewKey": "a--statement" }] }]
+      },
+      "requests": [{ "id": "label", "kind": "label", "value": "a" }],
+      "expected": [{ "ok": true, "key": "a--statement", "facet": "statement" }]
+    },
+    {
+      "id": "empty-facet",
+      "manifest": { "previews": [{ "key": "a--statement", "targetKind": "block", "label": "a", "facet": "", "sourceLocation": { "ok": false } }], "groups": [] },
+      "requests": [{ "id": "label", "kind": "label", "value": "a" }],
+      "expected": [{ "ok": true, "key": "a--statement", "facet": "" }]
+    },
+    {
+      "id": "padded-preview-key",
+      "manifest": { "previews": [{ "key": " a--statement ", "targetKind": "block", "label": "a", "facet": "statement", "sourceLocation": { "ok": false } }], "groups": [] },
+      "requests": [{ "id": "label", "kind": "label", "value": "a" }, { "id": "preview", "kind": "preview", "value": "a--statement" }, { "id": "source", "kind": "sourceMetadata", "value": "a--statement" }],
+      "expected": [{ "ok": true, "key": " a--statement " }, { "ok": true, "key": "a--statement" }, { "ok": false, "key": "a--statement", "reason": "source-missing" }]
+    },
+    {
+      "id": "empty-declaration-label",
+      "manifest": { "previews": [{ "key": "Informal.LeanCodePreview.Foo", "targetKind": "leanDecl", "label": "", "sourceLocation": { "ok": false } }], "groups": [] },
+      "requests": [{ "id": "decl", "kind": "declaration", "value": "Foo" }],
+      "expected": [{ "ok": true, "declaration": "" }]
+    },
+    {
+      "id": "missing-facet-and-label-fields",
+      "manifest": { "previews": [{ "key": "a--statement", "targetKind": "block", "label": "a", "sourceLocation": { "ok": false } }, { "key": "Informal.LeanCodePreview.Foo", "targetKind": "leanDecl", "sourceLocation": { "ok": false } }], "groups": [] },
+      "requests": [{ "id": "label", "kind": "label", "value": "a" }, { "id": "decl", "kind": "declaration", "value": "Foo" }],
+      "expected": [{ "ok": true, "facet": "statement" }, { "ok": true, "declaration": "Foo" }]
+    },
+    {
+      "id": "unicode-trim-request",
+      "manifest": { "previews": [{ "key": "a--statement", "targetKind": "block", "label": "a", "facet": "statement", "sourceLocation": { "ok": false } }], "groups": [] },
+      "requests": [{ "id": "label", "kind": "label", "value": "\u00a0\u202fa\ufeff", "facet": "\u3000statement\u2028" }],
+      "expected": [{ "ok": true, "label": "a", "facet": "statement" }]
+    }
+  ]
+}

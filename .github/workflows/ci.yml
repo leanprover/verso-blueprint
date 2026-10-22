@@ -97,7 +97,7 @@ jobs:
           python3 -m pip install uv
           uv run --project tests/browser --extra test playwright install --with-deps chromium
       - name: Compare VIR and native execution
-        run: uv run --project tests/browser --extra test python -m pytest tests/browser/test_vir_client.py -q --browser chromium
+        run: uv run --project tests/browser --extra test python -m pytest tests/browser/test_vir_client.py tests/browser/test_vir_manifest_resolver.py -q --browser chromium
 
   harness-tests:
     name: Harness Tests
