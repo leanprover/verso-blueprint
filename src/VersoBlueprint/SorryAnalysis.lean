@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import Lean.OriginalConstKind
 import Std.Data.HashMap.Lemmas
 import VersoBlueprint.Data
 
@@ -17,17 +18,16 @@ inductive BodyAccess where
   | unavailable
   | absent
 
-/-- The positive own-name convention comes from `Lean.Util.CollectAxioms`:
-a genuine checked axiom inserts its own name, while a hidden theorem's public
-axiom view retains a precomputed footprint of dependencies. Without positive
-kind evidence its body remains unavailable; cached absence grants no coverage. -/
-def ConstantInfo.blueprintBodyAccess (name : Name) (info : ConstantInfo)
-    (axioms : Array Name) : BodyAccess :=
+/-- A bodyless axiom view is genuinely bodyless only when Lean records its
+original kind as axiom. A collector footprint can be synthesized from a hidden
+axiom view when extension state is missing, so it never establishes body access.
+Missing original-kind evidence remains unverified. -/
+def ConstantInfo.blueprintBodyAccess (env : Environment) (info : ConstantInfo) : BodyAccess :=
   match info.value? (allowOpaque := true) with
   | some value => .available value
   | none =>
     match info with
-    | .axiomInfo _ => if axioms.contains name then .absent else .unavailable
+    | .axiomInfo _ => if getOriginalConstKind? env info.name == some .axiom then .absent else .unavailable
     | _ => .absent
 
 /-- Actual dependencies read from a checked declaration, with explicit coverage.
@@ -124,11 +124,12 @@ def declarationExpressions (info : ConstantInfo) : Array Expr :=
     | .recInfo rec => expressions ++ rec.rules.toArray.map (·.rhs)
     | _ => expressions
 
-/-- Inspect one constant. A bodyless axiom view is covered only when positive
-own-name evidence identifies a genuine axiom; otherwise it can hide a body.
-That convention uses positive kind evidence, never a negative sorry footprint. -/
+/-- Inspect one constant. A bodyless axiom view is covered only when Lean's
+original-kind metadata identifies a genuine axiom; otherwise it can hide a body.
+Collector footprints supply positive sorry observations, never body coverage. -/
 def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclaration := do
-  let some info := (← getEnv).checked.get.find? name
+  let env ← getEnv
+  let some info := env.checked.get.find? name
     | return { unverified := some .declarationUnavailable }
   let axioms ← match info with
     | .axiomInfo _ => collectAxioms name
@@ -144,7 +145,7 @@ def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclara
   let unverified :=
     if expressions.any (fun expression => expression.hasMVar || expression.hasFVar) then
       some .uncheckedExpression
-    else match ConstantInfo.blueprintBodyAccess name info axioms with
+    else match ConstantInfo.blueprintBodyAccess env info with
       | .unavailable => some .bodyUnavailable
       | _ => none
   return {

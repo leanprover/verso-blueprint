@@ -105,15 +105,21 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     let consumerStatus ← analyzeDeclaration consumer.name
     let some axiomInfo := env.find? `Verso.VersoBlueprintTests.BlueprintGraph.Shared.external_axiom_decl
       | return false
-    let axiomFootprint ← collectAxioms axiomInfo.name
+    let hiddenHelper : ConstantInfo := .axiomInfo {
+      name := helper.name, levelParams := helper.levelParams, type := helper.type, isUnsafe := false }
+    let unknown : ConstantInfo := .axiomInfo {
+      name := `unknownBodyAccessDeclaration, levelParams := [], type := axiomInfo.type, isUnsafe := false }
     let accessCases :=
-      (match ConstantInfo.blueprintBodyAccess consumer.name consumer #[] with
+      (match ConstantInfo.blueprintBodyAccess env consumer with
         | .available _ => true
         | _ => false) &&
-      (match ConstantInfo.blueprintBodyAccess axiomInfo.name axiomInfo axiomFootprint with
+      (match ConstantInfo.blueprintBodyAccess env axiomInfo with
         | .absent => true
         | _ => false) &&
-      (match ConstantInfo.blueprintBodyAccess axiomInfo.name axiomInfo #[] with
+      (match ConstantInfo.blueprintBodyAccess env hiddenHelper with
+        | .unavailable => true
+        | _ => false) &&
+      (match ConstantInfo.blueprintBodyAccess env unknown with
         | .unavailable => true
         | _ => false)
     let node : Data.Node := {

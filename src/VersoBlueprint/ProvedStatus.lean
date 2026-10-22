@@ -308,14 +308,16 @@ private def axisRoots (name : Name) (expressions : Array Expr) : Array Name :=
 
 /-- Analyze a canonical checked declaration with full transitive inspection.
 Ordinary hidden imports remain unverified even when cached footprints are empty.
-`collectAxioms` is used only for positive evidence and genuine-axiom kind evidence. -/
+`collectAxioms` is used only for positive sorry evidence; original kind comes
+from Lean metadata. -/
 def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := do
-  let some info := (← getEnv).checked.get.find? name
+  let env ← getEnv
+  let some info := env.checked.get.find? name
     | return .incomplete { unverified := #[{ declaration := name }] }
   let axioms ← match info with
     | .axiomInfo _ => collectAxioms name
     | _ => pure #[]
-  let body := ConstantInfo.blueprintBodyAccess name info axioms
+  let body := ConstantInfo.blueprintBodyAccess env info
   if let .axiomInfo _ := info then
     if let .absent := body then return .axiomLike
   let computation : SorryInspectionM m ProvedStatus := do

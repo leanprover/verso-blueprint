@@ -1508,6 +1508,16 @@ axioms, nor correctness of the intended mathematical statement. Genuine axioms
 are allowed as dependencies; directly associated axiom declarations retain the
 separate `axiomLike` blocking policy. Ordinary hypotheses are hypotheses.
 
+Body access uses Lean's original declaration kind to distinguish a genuine
+axiom from a hidden theorem or definition. An own-name entry in an axiom
+footprint is not kind evidence: without initialized imported extension state,
+the collector can synthesize that entry from a hidden axiom view. Programmatic
+exported imports with `loadExts := false` therefore retain unavailable-body
+coverage gaps for hidden declarations; they do not turn exposed consumers into
+complete declarations. Loading the bodies with `importAll` permits ordinary
+checked inspection. Original-kind lookup shares Lean's assumption that
+declarations were added through its normal `Lean.addDecl` pipeline.
+
 Known holes and verification gaps are separate facts and may coexist. Hidden
 proofs remain unverified even if their cached footprint is empty. A positive
 footprint proves that some hole exists, but does not reveal its origin. It can
@@ -1561,6 +1571,9 @@ headings use stored evidence. Summary API fields are `incompleteDecls`,
 
 Lean callers use `Informal.Data.analyzeDeclaration name` in the environment
 monad; the classifier fetches the canonical checked declaration itself.
+Direct callers of `ConstantInfo.blueprintBodyAccess` now pass `env` and its
+checked `info`, replacing the former declaration-name and axiom-footprint
+arguments. The environment supplies the original-kind evidence.
 `ProvedStatus.ofInspection_not_reachable` connects the production completion
 constructor to the closure certificate theorem. The expression extraction and
 checked-environment API form the trusted boundary of that theorem.
