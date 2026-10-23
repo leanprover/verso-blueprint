@@ -2,13 +2,15 @@
 
 This is maintainer tooling for the design in
 [`doc/design/VERSO_LSP_ADAPTER.md`](../../doc/design/VERSO_LSP_ADAPTER.md).
-The optional `Rosetta` library imports Lean and Std, with no Blueprint or Verso
-dependency. It is experimental and is not imported by the Blueprint core.
+The `rosetta` package under [`packages/rosetta`](../../packages/rosetta/README.md)
+imports Lean and Std, with no package dependencies. Its separate `verso/`
+package supplies the Verso bridge. Both are experimental; the Blueprint core
+does not import either library by default.
 
 Build and run the deterministic checks from this worktree:
 
 ```sh
-scripts/lean-low-priority lake build rosetta-spike
+scripts/lean-low-priority lake build @rosetta/rosetta-spike
 python3 tests/lsp/run_spike.py --output /tmp/rosetta-mock
 ```
 
@@ -20,10 +22,12 @@ python3 tests/lsp/run_spike.py --output /tmp/rosetta-real \
   --rocq-command /path/to/opam-switch/bin/coq-lsp
 ```
 
-The runner copies fixtures into the output directory. The servers never modify
-the tracked fixtures. It records the exact experiment sources and their hash,
+The runner copies the entire standalone package unit into a content-addressed
+output directory and runs its own `lake test` driver there. Protocol tests,
+the mock peer, and real-server fixture projects are owned by the core package.
+The servers never modify tracked fixtures. The runner records exact sources and their hash,
 Lean toolchain, selected server versions, raw JSON results, and stderr. The
-runner invokes the Lean executable through `scripts/lean-low-priority lake exe`.
+runner invokes Lake through `scripts/lean-low-priority`.
 Python is needed only for this experiment and the mock server.
 
 The mock checks run without either foreign server. They cover UTF-16, CRLF,
@@ -44,7 +48,7 @@ Unix; the recorded validation platform is Linux. See the
 They now match structured `ClientError` constructors, preserve server codes and
 absent/null/nested error data, distinguish successful null results, and exercise
 typed action-plus-cleanup failures. See the
-[current API and migration guide](../../doc/design/ROSETTA_API.md).
+[current API and migration guide](../../packages/rosetta/doc/API.md).
 
 The real checks query both an authored-block position and a named-reference
 probe in the same project scope. They retrieve available semantic tokens,
@@ -59,18 +63,23 @@ VBP attachment semantics. See its [results and limits](../../doc/design/VERSO_LS
 
 ## Compiled document and offline rendering experiment
 
-`Rosetta` is an independent Lean library whose aggregate import is
-`import Rosetta`. `VersoRosetta` is a separate library whose aggregate import
+`Rosetta` is a library in the independent `rosetta` Lake package; its aggregate
+import is `import Rosetta`. `VersoRosetta` is a separate package/library whose aggregate import
 registers the experimental Manual code block and role. The core imports only
-Lean/Std; the bridge imports Verso and never VBP. Both remain in this package
-while their interfaces are being designed.
+Lean/Std; the bridge imports Verso and never VBP. VBP consumes the bridge as a
+local path dependency while repository ownership and publication are settled.
 
-The document mode builds the core in a temporary Lake package with **no package
-dependencies**, compiles/collects the same requests from plain Verso and a
+The document mode builds/tests both copied packages, checks their dependency
+manifests, and verifies that the core cannot import Verso and the bridge cannot
+import Blueprint. It also creates a test-owned local Git repository and builds
+fresh core and bridge consumer projects using pinned Git dependencies; the
+bridge consumer uses `subDir = "verso"`. No remote is created or pushed.
+
+It then compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:
 
 ```sh
-scripts/lean-low-priority lake build Rosetta VersoRosetta rosetta-docs
+scripts/lean-low-priority lake build @rosetta/Rosetta @verso-rosetta/VersoRosetta rosetta-docs
 python3 tests/lsp/run_spike.py --output /tmp/rosetta-docs \
   --rust-command rust-analyzer \
   --rocq-command /path/to/opam-switch/bin/coq-lsp \

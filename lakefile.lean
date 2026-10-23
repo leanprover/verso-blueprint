@@ -2,6 +2,9 @@ import Lake
 open Lake DSL
 
 -- Pin the matching Lean 4.35 stable dependency stack.
+-- Locally vendored Rosetta packages; VBP consumes the bridge.
+require «verso-rosetta» from "packages/rosetta/verso"
+
 require verso from git "https://github.com/leanprover/verso"@"v4.35.0"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0"
 require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0"
@@ -11,16 +14,6 @@ require lean_vir from git "https://github.com/ejgallego/lean-vir"@"225218e18a3ae
 package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
 
--- Experimental, genre-independent LSP adapter. Not imported by Blueprint yet.
-lean_lib Rosetta where
-  srcDir := "src"
-  roots := #[`Rosetta]
-
--- Verso authoring/rendering bridge; the analysis library has no Verso dependency.
-lean_lib VersoRosetta where
-  srcDir := "src"
-  roots := #[`VersoRosetta]
-
 lean_lib RosettaDocs where
   srcDir := "tests"
   roots := #[`RosettaDocs.Plain, `RosettaDocs.Blueprint]
@@ -28,10 +21,6 @@ lean_lib RosettaDocs where
 lean_exe «rosetta-docs» where
   srcDir := "tests"
   root := `RosettaDocsMain
-
-lean_exe «rosetta-spike» where
-  srcDir := "tests"
-  root := `RosettaSpike
 
 input_dir embeddedBlueprintAssets where
   path := "src/VersoBlueprint"

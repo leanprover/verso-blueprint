@@ -1,0 +1,19 @@
+name = "verso-rosetta"
+defaultTargets = ["VersoRosetta"]
+testDriver = "VersoRosettaTests"
+
+[[require]]
+name = "rosetta"
+path = ".."
+
+[[require]]
+name = "verso"
+git = "https://github.com/leanprover/verso"
+rev = "v4.35.0"
+
+[[lean_lib]]
+name = "VersoRosetta"
+
+[[lean_lib]]
+name = "VersoRosettaTests"
+srcDir = "tests"

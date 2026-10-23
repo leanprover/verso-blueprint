@@ -1,0 +1,12 @@
+name = "rosetta"
+defaultTargets = ["Rosetta"]
+testDriver = "«rosetta-spike»"
+testDriverArgs = ["mock", "tests/lsp/mock_server.py"]
+
+[[lean_lib]]
+name = "Rosetta"
+
+[[lean_exe]]
+name = "rosetta-spike"
+srcDir = "tests"
+root = "RosettaSpike"

@@ -1,152 +1,56 @@
-# Rosetta API and structured failures
+# Rosetta extraction and API index
 
-Date: 2026-10-23. This supersedes the client signatures in the
-[lifecycle review](PARLEY_LIFECYCLE_REVIEW.md). The core and bridge are named
-`Rosetta` and `VersoRosetta`, formerly `Parley` and `VersoParley`. These are experimental APIs in
-the local design branch, not a published independent package.
+The current API guide is owned by the extracted package:
+[`packages/rosetta/doc/API.md`](../../packages/rosetta/doc/API.md).
+The [package README](../../packages/rosetta/README.md) describes the standalone
+build and runtime requirements; the
+[bridge README](../../packages/rosetta/verso/README.md) covers Verso integration.
 
-## The retained surface
+## Current local boundary
 
-`import Rosetta` exposes the Lean/Std-only core. The main application operation
-is now:
+`packages/rosetta/` is one proposed standalone repository containing two Lake
+packages. The `rosetta` package has no package dependencies and owns the core,
+protocol tests, mock peer, and real-server fixture projects. The nested
+`verso-rosetta` package depends on that core through `..` and on pinned Verso.
+It owns an authoring/collection smoke test that requires no Blueprint import.
 
-```lean
-Rosetta.analyze : Array ContextProfile → Array Request → EIO ClientError Bundle
-```
+VBP consumes the bridge through a local path dependency. Its Rosetta libraries
+are no longer declared in the VBP lakefile, and the implementation sources no
+longer live under VBP's `src/`. VBP retains its cross-project rendering fixtures
+and end-to-end maintainer harness. Existing VBP Git dependency revisions are
+preserved. A pinned remote dependency can replace the local path after
+repository ownership and release policy are settled.
 
-Requests describe authored code or references and their source origins.
-Profiles provide language/server configuration, project membership, reference
-syntax, and `collectDiagnostics : Document → EIO ClientError DiagnosticEvidence`.
-Analysis owns the server scopes and returns portable snapshots. `Outcome.failed`
-inside a saved snapshot remains human-readable feature-failure text; live
-operational errors remain typed through analysis and profile callbacks.
+The extraction is local and unreleased. It does not create a remote repository
+or establish multi-release support. The initial package toolchains match the
+current VBP Lean 4.35.0 checkout.
 
-| Entry point | Contract |
-| --- | --- |
-| `Client.withSession config action` | Run an `EIO ClientError` action and own cleanup on success/failure |
-| `Client.start config` | Acquire a manually owned client; returns `EIO ClientError Client` |
-| `client.request method params timeoutMs cancel?` | Workspace/session RPC; return the JSON result or throw `ClientError` |
-| `client.notify method params` | Admit a workspace/session notification to the bounded queue |
-| `client.openDocument uri languageId text` | Return a handle for the admitted document version |
-| `document.request method params timeoutMs cancel?` | RPC with matching URI/version, checked at admission and delivery |
-| `document.change text` | Admit an edit and return its replacement handle |
-| `document.diagnostics` | Read the snapshot through a current handle |
-| `document.close` | Close that version, rejecting stale handles |
-| `client.close` | Return a shared `CloseReport` in `BaseIO`, including incomplete cleanup |
+## Evidence and history
 
-Fallible operations above use `EIO ClientError`. Deadlines and caller-owned
-cancellation tokens remain optional request parameters. The client-wide
-capabilities, stderr, and notification observations are `BaseIO` operations.
-`document.client` is a plain accessor for session-wide readiness observations;
-it does not replace versioned document admission.
+The current maintainer bundle is under
+`_out/verso-lsp-design/rosetta-packages/`. The harness copies the entire package
+unit outside the VBP sources, builds/tests both packages, checks forbidden
+imports, and creates a test-owned local Git repository. Fresh consumer projects
+then use pinned Git dependencies, including `subDir = "verso"` for the bridge.
+This exercises the intended publication layout without publishing a repository.
 
-Manual start/close and scoped ownership are both retained because they cover
-different lifetimes. Workspace and document requests remain separate because
-only the latter carry a versioned document handle.
+The same run checks Rust/Rocq, saved bundles, plain Verso and Blueprint HTML/TeX,
+and Blueprint semantic queries. Browser acceptance remains a separate command
+listed in [`tests/lsp/README.md`](../../tests/lsp/README.md).
 
-Source composition (`compose`, `Projection.mapRange`), portable bundle
-validation/matching (`Bundle.validate`, `Bundle.find`), and the Verso bridge
-retain their existing responsibilities. The current `VersoRosetta.collect` and
-`VersoRosetta.enrich` entry points operate on Manual parts and remain pure.
+Validation passed: the clean VBP/consumer build, both standalone package test
+drivers, the forbidden-import checks, both pinned local-Git consumer builds,
+mock/Rust/Rocq probes, offline rendering and snapshot checks, `vbp check`,
+unchanged Blueprint semantic queries, browser acceptance, and the full VBP
+`lake test` suite. The final bundle preserves source SHA-256
+`682684e01960001623cb2812720900ce740c186309d4aa7f949b076909b4f913`.
 
-## Trimming
+Earlier bundles remain historical evidence:
 
-The old public raw-envelope `request` and result-extracting `call` pair is
-replaced by one result-returning `request` on both clients and documents. Server
-errors retain their full code, message, and optional JSON data in the error
-constructor, so callers need no second RPC entry point to inspect failures.
-Wire IDs and envelopes remain transport details.
-
-The callback-shaped `Document.withClient` is removed in favor of the plain
-`document.client` accessor. The private single-field pending-request wrapper is
-also removed. Framing lives under `Rosetta.Internal`; it is not an application
-entry point. No compatibility aliases or custom monad/options wrappers are added.
-
-## Error contract
-
-`ClientError` is the machine-facing failure interface:
-
-| Constructor | Meaning |
-| --- | --- |
-| `cancelled method` | Caller cancellation |
-| `deadline method` | The operation's monotonic deadline elapsed |
-| `closed` | Closing/closed client rejected work |
-| `staleDocument uri expected actual?` | Handle version differs; `none` means the URI is closed |
-| `invalidInput detail` | Invalid local input, query ownership, plan, or saved-data validation |
-| `queueFull` / `pendingFull` | Outbound admission or pending-request capacity exhausted |
-| `unsupported feature` | Required synchronization/encoding is unsupported |
-| `disconnected` | Transport EOF or retirement |
-| `protocol detail` | Malformed framing, JSON-RPC, or server feature data |
-| `io cause` | Original `IO.Error`, preserving its constructor and fields |
-| `server code message data?` | A valid server error response; arbitrary integer codes survive |
-| `cleanup report original?` | Incomplete scoped cleanup, retaining any original typed failure |
-
-Absent server error data is `none`; explicit JSON null is `some Json.null`.
-A successful JSON null result stays a successful result. A valid server error
-does not poison the transport or cancel an already completed request. Malformed
-responses fail the transport as protocol errors.
-
-Normal `IO` actions lift into `EIO ClientError` using `ClientError.io`, including
-inside session/profile callbacks. Converting back to `IO` is explicit at the
-application boundary. For example, a command-line entry point can choose:
-
-```lean
-import Rosetta
-open Rosetta
-
-def analyzeIO (profiles : Array ContextProfile) (requests : Array Request) : IO Bundle :=
-  (analyze profiles requests).toIO (IO.userError ∘ toString)
-```
-
-Library callers can instead catch and match `ClientError`, or use the standard
-`EIO.toBaseIO` to obtain `Except ClientError α`. `EIO.asTask` preserves the error
-type across concurrent operations. Rendered error wording is diagnostic text,
-not a machine interface. The API remains subject to the project's normal
-no-compatibility policy between revisions.
-
-## Migration and validation
-
-- Replace `.call` with `.request`; existing `.request` users now receive the
-  result directly instead of the envelope.
-- Change client/analysis/profile action signatures to `EIO ClientError` and use
-  constructor matching instead of parsing `IO.Error` text.
-- Replace `document.withClient f` with `f document.client`.
-- Manual cleanup returns `BaseIO CloseReport`; scoped cleanup raises
-  `ClientError.cleanup` if that report is incomplete.
-
-The deterministic tests match failure constructors and validate stale-version
-payloads, arbitrary server codes, absent/null/nested error data, successful null
-results, preserved IO causes, cancellation/deadlines, malformed server replies,
-and simultaneous action/cleanup failures. Cleanup-failure tests deliberately
-create a descendant outside the owned process group and kill it themselves in
-`finally`; this exercises the real incomplete-cleanup boundary.
-
-The structured-error experiment used the former Parley name and is recorded
-under `_out/verso-lsp-design/parley-errors/`. Rename validation is recorded
-separately under `_out/verso-lsp-design/rosetta-rename/`. The workflow also checks real Rust/Rocq,
-the dependency-free core build, offline Verso/Blueprint output, and browser
-behavior. Unix termination still uses the standard `kill` utility; platform
-coverage and independent-package ownership/release policy remain open.
-
-Validation passed: clean targeted batch build; complete `lake test`; deterministic
-typed-error/lifecycle checks; real Rust/Rocq; an independent core package with
-an empty dependency manifest; plan/snapshot checks; offline Verso/Blueprint
-HTML and TeX; `vbp check`; unchanged Blueprint semantic queries; and desktop/mobile
-browser checks. That structured-error experiment's Parley sources are preserved with SHA-256
-`5702696d082387286a312e16f31d7d4ace79ee70cb0a8215566136577286a95c`.
-
-Rosetta rename validation passed for the renamed libraries/executables, the
-dependency-free core package, mock/Rust/Rocq checks, offline Verso/Blueprint
-generation, Blueprint semantic comparisons, browser checks, and `lake test`.
-The rename evidence preserves source SHA-256
-`373fc31a9f42b614688ca29307fab7788f3b4f2a3e8f3477c978fbcfb890b3fe`.
-
-## Next package boundary
-
-The proposed extraction is one repository with two Lake packages: a Rosetta
-core package with no package dependencies, and a VersoRosetta bridge package
-depending on the core and Verso. VBP would consume the bridge through a pinned
-dependency. Merely declaring two libraries in one package would still make
-core-only consumers fetch that package's declared Verso dependencies. Repository
-ownership, the initial Lean/toolchain release policy, and publication remain
-to be settled; this naming revision does not create or publish a repository.
+- `_out/verso-lsp-design/parley-errors/` validated structured errors under the
+  former name; source SHA-256
+  `5702696d082387286a312e16f31d7d4ace79ee70cb0a8215566136577286a95c`.
+- `_out/verso-lsp-design/rosetta-rename/` validated the rename; source SHA-256
+  `373fc31a9f42b614688ca29307fab7788f3b4f2a3e8f3477c978fbcfb890b3fe`.
+- The [Parley lifecycle review](PARLEY_LIFECYCLE_REVIEW.md) records the earlier
+  ownership/deadline work; its superseded signatures are identified there.

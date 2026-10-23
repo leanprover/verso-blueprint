@@ -33,15 +33,15 @@ into the bridge and passes the existing captured rendering model through.
 | `VersoRosetta` | Core data and Verso | Compile inert requests and render accepted facts |
 | Blueprint consumer | Verso bridge and VBP | Enrich a document before the normal Blueprint generator |
 
-The test runner builds the core from the same sources in a fresh temporary Lake
-package with no package dependencies. Its manifest has an empty `packages`
-array and the build passes. This tests the dependency boundary beyond merely
-declaring a second library in the VBP lakefile.
+The subsequent package extraction places both libraries in separate Lake
+packages under `packages/rosetta/`, with VBP consuming the bridge through a path
+dependency. The runner now copies the complete package unit away from VBP
+sources, builds/tests both packages, and builds pinned local-Git consumer
+projects. The core manifest has an empty `packages` array; the bridge has no
+Blueprint dependency. See the [extraction index](ROSETTA_API.md).
 
-Keep both libraries in this repository during interface development. Moving
-the core into its own package is now structurally possible; settling its
-repository, release/toolchain policy, and supported client lifecycle should
-precede publishing it. There is no compatibility wrapper for #63's old model.
+Repository ownership and release/toolchain policy still need to be settled
+before publication. There is no compatibility wrapper for #63's old model.
 
 ## Staging that works
 
