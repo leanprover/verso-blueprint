@@ -37,6 +37,10 @@ appropriate declaration/body content; a theorem realization can associate its
 formal statement and proof with one checked declaration. A source declaration
 need not be split artificially into separate objects to expose those facets.
 
+A facet selects its relevant source documents and references to the realization's
+existing declarations. The same declaration and checked requirement can serve
+statement/proof views without duplicating theorem content or proof evidence.
+
 Independently authored informal Verso, Markdown, and TeX accounts are
 realizations too. A markup slot is a component of a realization, not
 automatically another realization. Rendered HTML, TeX output, highlighted source,
@@ -93,6 +97,11 @@ A translation records a precise authored claim, selected facets, assumptions,
 and completion requirements. It can require several correspondence claims,
 such as statement alignment and a representation-preservation theorem. Grouped
 endpoints do not assert every pairwise correspondence automatically.
+
+The required validations of a claim must identify that claim as their subject.
+External mathematical proofs or reviews remain explicit prerequisites of those
+claim-local requirements; they cannot substitute for the claim's own validation.
+Such prerequisites may refer to other nodes/realizations outside the endpoints.
 
 Source and target endpoint groups are nonempty. Claims and requirements have
 individual identities; group membership does not synthesize a claim or validator.
@@ -358,6 +367,14 @@ One current suitable observation discharges a requirement; multiple mandatory
 checks or reviews must be represented by separate conjunctive requirements.
 Required declarations combine conjunctively. An unrelated unavailable declaration
 does not erase a current local proof result; it can still block the realization.
+Declaration queries check only the selected declaration. Facet queries and
+translation endpoints check their selected documents/declaration references;
+an unrelated proof-only helper does not block an available statement facet.
+Whole-realization queries still check all declared members. Each selected facet
+must have actual source content, via documents or associated declarations; empty
+or whitespace-only canonical bytes cannot be validated by a passing review.
+Correspondence proof requirements also require available selected endpoints,
+while the underlying theorem can remain independently checked on its own subject.
 `selectRequirement` selects by identity/context/name rather than completeness.
 `translations`, `unfinished`, and `actionable` have no rendered-graph or task-state
 dependency. Existing default-Lean selection and automatic-dependency migration

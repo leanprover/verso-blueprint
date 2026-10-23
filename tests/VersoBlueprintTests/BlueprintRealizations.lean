@@ -57,12 +57,13 @@ def fixture : Input := {
   realizations := #[
     contribution `leanRealization {
       key := leanKey, context := leanContext
-      facets := #[{ name := `statement, documents := #[leanDoc] },
-        { name := `proof, documents := #[leanDoc], required := #[proofKey] }]
+      facets := #[{ name := `statement, documents := #[leanDoc], declarations := #[leanObject] },
+        { name := `proof, documents := #[leanDoc], declarations := #[leanObject], required := #[proofKey] }]
       declarations := #[{ object := leanObject, required := #[proofKey] }] },
     contribution `rocqRealization {
       key := rocqKey, context := rocqContext
-      facets := #[{ name := `statement, documents := #[rocqDoc] }, { name := `proof, documents := #[rocqDoc] }]
+      facets := #[{ name := `statement, documents := #[rocqDoc], declarations := #[rocqObject] },
+        { name := `proof, documents := #[rocqDoc], declarations := #[rocqObject] }]
       declarations := #[{ object := rocqObject }] },
     contribution `proseRealization {
       key := informalKey, context := informalContext
@@ -196,8 +197,9 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
 
 -- P10: a linked formal obligation is also part of the reviewed contract.
 #eval show IO Unit from do
-  let withObligation : Input := { fixture with claims := fixture.claims.map fun c =>
-    { c with value := { c.value with required := #[reviewKey, proofKey] } } }
+  let withObligation : Input := { fixture with
+    requirements := fixture.requirements.map fun c =>
+      if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[proofKey] } } else c }
   let input ← withMockEvidence withObligation `review reviewKey mockReview
   let changedGoal : Goal := { goal with proposition := "Changed independently expected obligation" }
   let changed : Input := { input with requirements := input.requirements.map fun c =>

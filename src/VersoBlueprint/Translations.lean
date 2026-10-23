@@ -34,6 +34,8 @@ structure Claim where
   key : ClaimKey
   interpretation : String
   assumptions : Array String := #[]
+  /-- Validation of this claim itself. External mathematical obligations belong
+  in these requirements' prerequisites and cannot replace claim-local evidence. -/
   required : Array RequirementKey := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
@@ -145,6 +147,12 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
       for doc in facet.documents do
         if doc.context != realization.context || !r.documents.any (·.key == doc) then
           diagnostics := diagnostics.push <| issue "unknown-document" realization.key "Missing/wrong-context facet source"
+      if (canonical facet.declarations).size != facet.declarations.size then
+        diagnostics := diagnostics.push <| issue "duplicate-facet-declaration" realization.key "Duplicate selected declaration"
+      for object in facet.declarations do
+        if !realization.declarations.any (·.object == object) then
+          diagnostics := diagnostics.push <| issue "unknown-facet-declaration" realization.key
+            "Facet selects a declaration outside this realization's associations"
     for decl in realization.declarations do
       if !decl.object.valid || decl.object.context != realization.context then
         diagnostics := diagnostics.push <| issue "wrong-project" decl.object "Declaration is outside realization context"
@@ -175,6 +183,11 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
   for claim in r.claims do
     if (r.translation? claim.key.translation).isNone || claim.key.name.isAnonymous || blank claim.interpretation then
       diagnostics := diagnostics.push <| issue "invalid-claim" claim.key "Claim needs owner/name/interpretation"
+    for key in claim.required do
+      if key.subject != .claim claim.key then
+        diagnostics := diagnostics.push <| issue "wrong-claim-subject" claim.key
+          "Claim validation must name this claim; link external obligations through prerequisites"
+          ((r.contributions.claims.filter (·.value.key == claim.key)).map (·.origin))
   for requirement in r.requirements do
     if !r.hasSubject requirement.key.subject || requirement.key.name.isAnonymous || !requirement.expected.valid then
       diagnostics := diagnostics.push <| issue "invalid-requirement" requirement.key "Invalid subject/name/expectation"
@@ -269,14 +282,53 @@ def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBi
     ("claims", toJson (r.claims.filter (fun c => translationKeys.contains c.key.translation))),
     ("documents", toJson (r.documents.filter (fun d => documentKeys.contains d.key)))]).compress
 
+private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array Diagnostic :=
+  match r.documents.find? (·.key == key) with
+  | some document =>
+    if blank document.text then #[issue "content-unavailable" key "Selected canonical source is empty"] else #[]
+  | none => #[issue "content-unavailable" key "Selected canonical source is missing"]
+
+private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
+  match r.objects.find? (·.key == key) with
+  | some observation =>
+    if observation.resolution != .resolved then
+      #[issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"]
+    else match observation.document with
+      | some document => r.documentIssues document
+      | none => #[issue "object-unavailable" key "No canonical source document for selected declaration"]
+  | none => #[issue "object-unavailable" key "No source resolution observation"]
+
+private def Registry.contentIssues (r : Registry) (subject : Subject)
+    (documents : Array DocumentKey) (objects : Array ObjectKey) : Array Diagnostic :=
+  if documents.isEmpty && objects.isEmpty then
+    #[issue "content-unavailable" subject "Selected subject has no associated source content"]
+  else documents.flatMap (r.documentIssues ·) ++ objects.flatMap (r.objectIssues ·)
+
+/-- Preserve source selection instead of widening a declaration/facet to its
+whole realization. Whole-realization queries still inspect all declarations. -/
+private def Registry.subjectContentIssues (r : Registry) (subject : Subject) : Array Diagnostic :=
+  match subject with
+  | .realization key =>
+    match r.realization? key with
+    | some realization => r.contentIssues subject (realization.facets.flatMap (·.documents))
+        (realization.declarations.map (·.object))
+    | none => #[issue "unknown-realization" key "Missing source realization"]
+  | .facet key name =>
+    match (r.realization? key).bind (fun value => value.facets.find? (·.name == name)) with
+    | some facet => r.contentIssues subject facet.documents facet.declarations
+    | none => #[issue "unknown-facet" subject "Missing source facet"]
+  | .declaration _ object => r.objectIssues object
+  | _ => #[]
+
 private def Registry.availabilityIssues (r : Registry) (subject : Subject) : Array Diagnostic :=
-  (r.subjectRealizations subject).flatMap fun key =>
-    ((r.realization? key).map (·.declarations) |>.getD #[]).filterMap fun decl =>
-      match r.objects.find? (·.key == decl.object) with
-      | some observation =>
-        if observation.resolution == .resolved && observation.document.isSome then none
-        else some <| issue "object-unavailable" decl.object s!"{repr observation.resolution}: {observation.explanation}"
-      | none => some <| issue "object-unavailable" decl.object "No source resolution observation"
+  match subject.translation? with
+  | none => canonical (r.subjectContentIssues subject)
+  | some key =>
+    match r.translation? key with
+    | none => #[issue "unknown-translation" key "Missing source translation"]
+    | some translation => canonical <| (translation.source ++ translation.target).flatMap fun endpoint =>
+        if endpoint.facets.isEmpty then r.subjectContentIssues (.realization endpoint.realization)
+        else endpoint.facets.flatMap fun name => r.subjectContentIssues (.facet endpoint.realization name)
 
 /-- Independent local suitability, before prerequisite traversal. -/
 def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.run do
@@ -284,11 +336,16 @@ def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.ru
     | return { status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
   match req.expected with
   | .proof _ witness =>
-    let observation := r.objects.find? (·.key == witness)
-    if !observation.any (fun o => o.resolution == .resolved && o.document.isSome) then
+    let unavailable := r.objectIssues witness
+    if !unavailable.isEmpty then
       return {
         status := .blocked
-        diagnostics := #[issue "witness-unavailable" witness "No current resolved witness source"] }
+        diagnostics := unavailable.push (issue "witness-unavailable" witness "No current resolved witness source") }
+    -- A correspondence proof validates selected endpoints as well as a formal
+    -- goal. The standalone witness can stay checked on its own realization.
+    if key.subject.translation?.isSome then
+      let selected := r.availabilityIssues key.subject
+      if !selected.isEmpty then return { status := .blocked, diagnostics := selected }
   | _ =>
     let unavailable := r.availabilityIssues key.subject
     if !unavailable.isEmpty then return { status := .blocked, diagnostics := unavailable }

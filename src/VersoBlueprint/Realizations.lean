@@ -80,6 +80,9 @@ structure Node where
 structure Facet where
   name : Name
   documents : Array DocumentKey := #[]
+  /-- Source declarations selected by this facet, referencing the realization's
+  existing associations. Sharing a declaration does not duplicate its validation. -/
+  declarations : Array ObjectKey := #[]
   required : Array RequirementKey := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
