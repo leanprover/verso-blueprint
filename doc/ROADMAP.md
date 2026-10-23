@@ -26,6 +26,21 @@ architecture narrative. Those live in
 
 ## Active Workstreams
 
+### Verification of Accepted Blueprint Data
+
+The verification lane owns proofs connecting identified contribution evidence
+to the production assembler, accepted node fields, and environment indexes.
+The [verification plan](roadmap/verification.md) records the bounded sequence,
+assumptions, acceptance commands, and ownership boundaries.
+
+V1 implements the assembly-to-resolver bridge, a two-way acceptance
+characterization, and input-facing priority laws on the merged #469 admission
+boundary. The next bounded milestone is V2a: snapshot merge union, normalization,
+uniqueness, and presence laws. Keep facet membership, environment coherence,
+and conservative completion as separate follow-ups.
+Coordinate Lean observation and coverage contracts with the axiom-analysis lane;
+do not replace missing API guarantees with unverified global axioms.
+
 ### Rendering and Preview Boundary
 
 Goal: keep Blueprint's render entry point thin while making preview delivery
