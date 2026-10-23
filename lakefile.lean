@@ -63,6 +63,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintContributions,
+    `VersoBlueprintTests.ReferenceNameAdmission,
     `VersoBlueprintTests.BlueprintImportedContributions,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofs,
     `VersoBlueprintTests.BlueprintImportedContributions.ConflictingProofsReverse,
