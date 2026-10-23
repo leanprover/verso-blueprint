@@ -665,6 +665,41 @@ Graph/CodeHealth comparisons cover only the supported theorem-local policy. No
 transitive readiness, cycle semantics, legacy-wide parity, production graph
 connection or verification-v1 admission change is included.
 
+### Direct accepted-use report
+
+`Realizations.DependencyReport` adds `Report.ofSource registry context source`, a
+read-only composition of the unchanged selector, evaluator and pure report. Its
+outer `Except` preserves source/view failures. Successful JSON names the accepted
+`source` and explicit logical `context`, nests exactly `Report.ofRegistry` under
+`registry`, and reports direct `uses.statement` and `uses.proof` arrays. A supported
+source without uses has two empty arrays, not a source failure.
+
+Each entry retains the complete effective `use` and its position on that axis.
+Its `selection` contains either the exact selected `requirement` plus existing
+`Registry.resultForRequirement` result, or the exact selector `diagnostic`. Failed
+selection does not invent a blocked validation status or remove the edge. Shared
+targets across axes remain separate. There is no producer-scope inference,
+alternative fallback, self-edge filtering or recursive inspection.
+
+The accepted source's presence establishes only the source of direct edges. It
+does not establish that the supplied registry includes its validation: a sparse
+registry remains sparse, missing target contracts remain selection diagnostics,
+and no unrelated requirement is borrowed as a source proof. No source completion
+or aggregate ready flag is synthesized. All supplied-contract evidence suitability
+and inventory distinctions remain inside the unchanged nested report; source
+bytes, bindings and raw contributions are not exported.
+
+The actual dependency fixture shows its local native proof complete, prose
+unassessed and selected admitted dependency pending together, with unresolved
+targets still visible on both axes. It checks exact metadata/order/keys/results,
+source/context, nested report identity, real consumer selection, sparse inventory,
+empty versus failed source/view, a genuinely complete alternative, one ambiguity
+and actual native unavailability. Reporting preserves accepted state, supplied
+contributions and explicit prerequisites. This is direct-edge inspection, not
+recursive Blueprint closure, project readiness, provider authentication or a new
+prerequisite/traversal installation. Production graph/CLI/browser paths remain
+separate work.
+
 ## Review and working structure
 
 Use one semantic integration owner and a dependency-ordered implementation

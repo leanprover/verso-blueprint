@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Dependencies
+import VersoBlueprint.Realizations.DependencyReport
 import VersoBlueprint.Realizations.Existing
 import VersoBlueprint.Graph
 import VersoBlueprintTests.BlueprintRealizationDependencies.Provider
@@ -40,6 +41,32 @@ private def join (a b : Input) : Input := {
 private def edge (axis : Array SelectedUse) (name : Name) : TermElabM (Except Diagnostic RequirementKey) := do
   let some (_, result) := axis.find? (fun e => e.1.label == name) | throwError "Missing effective edge {name}"
   return result
+
+private def field (value : Json) (name : String) : TermElabM Json :=
+  obtain (value.getObjVal? name)
+
+private def entries (value : Json) (name : String) : TermElabM (Array Json) := do
+  obtain ((← field value name).getArr?)
+
+private def reportedEdge (report : Json) (axis : String) (name : Name) : TermElabM Json := do
+  for entry in ← entries (← field report "uses") axis do
+    if (← field (← field entry "use") "label") == toJson name then
+      return ← field entry "selection"
+  throwError "Missing reported {axis} edge {name}"
+
+private def assessedEntry (report : Json) (family : String) (key : Json) : TermElabM Json := do
+  for entry in ← entries (← field report "registry") family do
+    if (← field (← field entry "value") "key") == key then return entry
+  throwError "Missing nested report entry in {family}: {key}"
+
+private def reportFor (registry : Registry) (source : Name := label "source") : TermElabM Json := do
+  let saved := registry.contributions
+  let report ← obtain (← Report.ofSource registry context source)
+  ensure ((← field report "registry") == Report.ofRegistry registry &&
+    (← field report "source") == toJson source && (← field report "context") == toJson context &&
+    (← obtain (Json.parse report.compress)) == report && registry.contributions == saved)
+    "Direct-use report retains exact supplied report, explicit identity, structured JSON and read-only input"
+  return report
 
 private def edgeError (registry : Registry) (name : Name) (code : String)
     (view : Informal.Realizations.Context := context) : TermElabM Unit := do
@@ -161,6 +188,44 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let consumerUses ← obtain (← selectUses registry context (label "consumer"))
   ensure ((← obtain (← edge consumerUses.1 sourceLabel)) == proofKey localSource)
     "An actual accepted consumer selects the dependency-only source's exact default proof"
+  let report ← reportFor registry
+  let statementReport ← entries (← field report "uses") "statement"
+  let proofReport ← entries (← field report "uses") "proof"
+  ensure (Json.arr (statementReport.map (·.getObjValD "use")) == toJson (Informal.Graph.statementUses source) &&
+    Json.arr (proofReport.map (·.getObjValD "use")) == toJson (Informal.Graph.proofUses source))
+    "Reported effective axes, order and complete UseRef metadata match the actual accepted source"
+  for (axis, key, name) in #[("statement", cleanKey, label "clean"),
+      ("proof", cleanKey, label "clean"), ("statement", admittedKey, label "admitted")] do
+    ensure ((← reportedEdge report axis name) == Json.mkObj [
+      ("requirement", toJson key), ("result", toJson (registry.resultForRequirement key))])
+      "Report retains exact selected requirement and existing result on each axis"
+  let localProofReport ← assessedEntry report "requirements" (toJson (proofKey localSource))
+  let proseReport ← assessedEntry report "realizations" (toJson localSource.informalKey)
+  ensure ((← field (← field localProofReport "result") "status") == toJson Status.complete &&
+    (← field (← field proseReport "result") "status") == toJson Status.unassessed &&
+    (← field (← field (← reportedEdge report "statement" (label "admitted")) "result") "status") ==
+      toJson Status.pending)
+    "Complete local native proof, unassessed prose and pending direct dependency remain distinct"
+  for (axis, selectedAxis) in #[("statement", selected.1), ("proof", selected.2)] do
+    let .error diagnostic ← edge selectedAxis (label "missing") | throwError "Expected actual missing target"
+    ensure ((← reportedEdge report axis (label "missing")) == Json.mkObj [("diagnostic", toJson diagnostic)])
+      "Missing edge retains exact selection diagnostic, without fabricated status or dropped edge"
+  let consumerReport ← reportFor registry (label "consumer")
+  ensure ((← field (← reportedEdge consumerReport "statement" sourceLabel) "requirement") ==
+    toJson (proofKey localSource)) "Real consumer reports the exact selected source proof"
+
+  -- Actual accepted source presence is not a supplied source contract. Only a
+  -- clean target is provided here; other accepted targets keep missing contracts.
+  let sparseRegistry ← obtain (admit cleanInput)
+  let sparseReport ← reportFor sparseRegistry
+  let sparseRequirements ← entries (← field sparseReport "registry") "requirements"
+  ensure (!(sparseRegistry.nodes.any (·.label == sourceLabel)) &&
+    sparseRequirements.size == 1 &&
+    (← field (← reportedEdge sparseReport "statement" (label "clean")) "requirement") == toJson cleanKey &&
+    (← field (← reportedEdge sparseReport "statement" (label "admitted")) "diagnostic").getObjValD "code" ==
+      toJson "missing-prerequisite" &&
+    (← field (← field sparseRequirements[0]! "value") "key") == toJson cleanKey)
+    "Sparse report supplies only its actual clean contract, never source completion or another target's proof"
 
   -- Synthetic rejected proof representations supply no successful facts. Each
   -- mutation is confined to withEnv, and checked again after normal restoration.
@@ -203,9 +268,16 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   | .ok _ => throwError "Missing proof-side edge was hidden"
   let empty ← obtain (← selectUses registry context (label "empty"))
   ensure (empty.1.isEmpty && empty.2.isEmpty) "A supported empty source is a successful empty pair"
+  let emptyReport ← reportFor registry (label "empty")
+  ensure ((← entries (← field emptyReport "uses") "statement").isEmpty &&
+    (← entries (← field emptyReport "uses") "proof").isEmpty) "Supported empty source reports empty axes"
   for (name, code) in #[(label "absent", "missing-source"), (label "definition", "unsupported-source")] do
     match ← selectUses registry context name with
-    | .error diagnostic => ensure (diagnostic.code == code) "Source failure is not an empty dependency list"
+    | .error diagnostic =>
+      ensure (diagnostic.code == code) "Source failure is not an empty dependency list"
+      match ← Report.ofSource registry context name with
+      | .error reported => ensure (reported == diagnostic) "Report preserves exact outer source failure"
+      | .ok _ => throwError "Source failure must not become an empty report"
     | .ok _ => throwError "Missing/unsupported source must not become no dependencies"
   match ← selectUses registry ⟨`rocq, context.project⟩ sourceLabel with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-view") "Only an explicit Lean view is supported"
@@ -213,6 +285,11 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   match ← selectUses registry ⟨`lean, .anonymous⟩ sourceLabel with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-view") "Missing project context is explicit"
   | .ok _ => throwError "A missing context must not acquire a default project"
+  for view in #[Informal.Realizations.Context.mk `rocq context.project, ⟨`lean, .anonymous⟩] do
+    let .error diagnostic ← selectUses registry view sourceLabel | throwError "Expected view failure"
+    match ← Report.ofSource registry view sourceLabel with
+    | .error reported => ensure (reported == diagnostic) "Report preserves exact outer view failure"
+    | .ok _ => throwError "Invalid view must not acquire a report"
   edgeError registry (label "clean") "wrong-default-context" ⟨`lean, `otherProject⟩
   let noDefault ← obtain (admit {})
   edgeError noDefault (label "clean") "missing-prerequisite"
@@ -261,9 +338,15 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     (alternativeRegistry.resultForRequirement admittedKey).status == .pending &&
     (← obtain (← edge alternativeUses.1 (label "admitted"))) == admittedKey)
     "Complete alternative is not implicitly selected instead of admitted default"
+  let alternativeReport ← reportFor alternativeRegistry
+  let selectedDefault ← reportedEdge alternativeReport "statement" (label "admitted")
+  ensure ((← field selectedDefault "requirement") == toJson admittedKey &&
+    (← field (← field selectedDefault "result") "status") == toJson Status.pending)
+    "Report keeps pending default despite genuinely complete alternative"
   let explicit := changeRequirement withAlternative admittedKey fun req => { req with prerequisites := #[alternativeKey] }
   let explicitRegistry ← obtain (admit explicit)
   let _ ← obtain (← selectUses explicitRegistry context sourceLabel)
+  let _ ← reportFor explicitRegistry
   ensure ((explicitRegistry.requirement? admittedKey).any (·.prerequisites == #[alternativeKey]) &&
     explicitRegistry.contributions == explicit) "Explicit same-node cross-realization prerequisite remains untouched"
 
@@ -310,6 +393,11 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let ambiguousRegistry ← obtain (admit ambiguous)
   ensure ((ambiguousRegistry.resultForRequirement cleanKey).complete) "One ambiguous candidate actually completes"
   edgeError ambiguousRegistry (label "clean") "ambiguous-prerequisite"
+  let ambiguousReport ← reportFor ambiguousRegistry
+  let ambiguousUses ← obtain (← selectUses ambiguousRegistry context sourceLabel)
+  let .error ambiguity ← edge ambiguousUses.1 (label "clean") | throwError "Expected selector ambiguity"
+  ensure ((← reportedEdge ambiguousReport "statement" (label "clean")) ==
+    Json.mkObj [("diagnostic", toJson ambiguity)]) "Ambiguity stays an exact diagnostic, not a validation status"
   let missingDefault := clearDeclarationRequirement withAlternative admitted.leanKey
   let missingDefault := { missingDefault with
     realizations := missingDefault.realizations.map fun record => { record with value := { record.value with
@@ -330,6 +418,11 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   ensure ((← obtain (← edge unavailableUses.1 (label "clean"))) == cleanKey &&
     (unavailableRegistry.resultForRequirement cleanKey).status == .blocked)
     "Selection stays fixed; native unavailability is preserved by the existing evaluator"
+  let unavailableReport ← reportFor unavailableRegistry
+  let unavailableEdge ← reportedEdge unavailableReport "statement" (label "clean")
+  ensure ((← field unavailableEdge "requirement") == toJson cleanKey &&
+    (← field (← field unavailableEdge "result") "status") == toJson Status.blocked)
+    "Actual native unavailability reports blocked existing validation with unchanged selected key"
   let after ← Informal.Environment.getNode? sourceLabel
   ensure (reprStr before == reprStr after && beforeLabels ==
     (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source) &&
@@ -339,6 +432,9 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   logInfo "Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained"
   logInfo "Projection: dependency-only source checked locally; prose unassessed; Blueprint dependency still pending"
 
+-- Several full reports and native negative checks share this guarded command.
+-- The larger test-only budget changes no provider or evaluation policy.
+set_option maxHeartbeats 1000000 in
 /--
 info: Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained
 ---
