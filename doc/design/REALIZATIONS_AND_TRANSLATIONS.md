@@ -383,7 +383,7 @@ still require their separately scoped adapters and integration tests.
 ### Trust boundary and test limits
 
 `Validation.Goal` is an independently specified provider-owned proposition
-description in a logical context, with canonical source references. A future
+description in a logical context, with canonical source references. A
 language adapter must elaborate that expectation, check the submitted witness's
 actual type against it, and obtain conservative completeness coverage from its
 normal checking tools. The pure rules compare supplied goal descriptions; they
@@ -400,6 +400,66 @@ Flag/MaxNat sources, real language-checker output, existing environment imports,
 or browser/graph/CLI integration. A named Rust test result is a supplied test
 observation, not a proof certificate. Project-specific axiom/fidelity policies
 remain outside the pure rules.
+
+### Opt-in connection to an accepted Lean theorem
+
+`VersoBlueprint.Realizations.Existing` now provides an explicit read-only API for
+one existing attribute-owned theorem with its own Markdown docstring. `project`
+reads the accepted node through `Environment.getNode?`, keeps its canonical
+qualified declaration, module and source-path association, and reads that source
+file. It returns two named realizations: `lean` and `docstring`. The latter has
+language `markdown`: raw Markdown from Lean's own docstring store is not a claim
+that Verso processing, proofreading or correspondence review succeeded. Missing
+or blank source is an explicit error. The injectable source reader is a provider
+boundary for testing unavailable I/O; successful use must read canonical bytes.
+
+`Projection.validate` takes an independently authored expected proposition as Lean
+syntax. `VersoBlueprint.Validation.Lean` elaborates it in the selected current
+environment, requires a closed proposition with concrete universes, kernel-checks
+it and inspects its dependency closure with the canonical checker. Open terms,
+free assumptions, admissions and unavailable expectation dependencies are rejected
+before witness matching. Bound variables inside a closed proposition are allowed.
+The witness is resolved by qualified identity in the selected Lean context.
+Actual type matching uses Lean definitional equality followed by a kernel-checked
+conversion, so an independently written definitionally equal alias can pass.
+Goal descriptions use exact expression structure; they are never the matching
+algorithm. Only after this comparison does the native observation use the
+expected descriptor for the pure API's proposition comparison.
+
+Completeness comes from canonical `Data.analyzeDeclaration`, including the landed
+imported-body coverage repair. A real proof, an admitted proof, a genuine axiom,
+a missing witness and hidden/unverified body have distinct reports. Hole-free
+coverage does not assert absence of project axioms: observations retain the
+reported axiom assumptions, and separate axiom-policy requirements remain
+necessary where desired. Elaboration/checking state is restored after every
+native call; transient elaborator declarations cannot establish an expectation.
+
+The returned input shares one declaration proof requirement with the proof facet.
+No review or translation is inferred. For example, the provider fixture's theorem
+`∀ n : Nat, n = n` validates against that proposition and its `Reflexivity` alias,
+fails against `False`, and leaves an explicitly authored docstring-to-Lean
+correspondence pending without review. The informal realization is unassessed.
+
+This is an internal explicit API, not a production graph/checker installation.
+Its supported projection excludes grouped/multiple declarations, inline code,
+definitions, foreign associations, own Verso-format or inherited docstrings, and
+additional informal proof bodies. Unsupported cases are diagnosed without choosing
+a first member or dropping associations. Universe-polymorphic *expected*
+contracts are unsupported; concretely instantiated polymorphic witnesses are
+tested. Witnesses are declaration constants checked against their whole declared
+type; argument-applied witness terms are not supported. The caller selects the
+logical project; this API does not discover or
+authenticate project ownership, or accept foreign build artifacts.
+
+Source bytes and compiled metadata must come from the current ordinary owning
+build. This connection does not certify that an arbitrarily edited source file
+still matches an already loaded environment, nor provide historical receipt
+replay. It binds whole source files conservatively. `BlueprintRealizationAdapter`
+tests the real provider/consumer path, including definitional equality, rejected
+expectations, admitted and axiom controls, source-I/O failures, unchanged accepted
+membership and pending correspondence. Hidden-body controls reuse the existing
+same-toolchain module fixture at ordinary import visibility. These tests do not
+certify the separate admission/import rewrite, Rocq/Rust checking or UI paths.
 
 ## Review and working structure
 

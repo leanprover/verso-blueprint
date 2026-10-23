@@ -62,6 +62,7 @@ lean_lib VersoBlueprintTests where
   roots := #[
     `VersoBlueprintTests.BlueprintRealizations,
     `VersoBlueprintTests.BlueprintTranslations,
+    `VersoBlueprintTests.BlueprintRealizationAdapter,
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintContributions,
