@@ -404,14 +404,36 @@ remain outside the pure rules.
 ### Opt-in connection to an accepted Lean theorem
 
 `VersoBlueprint.Realizations.Existing` now provides an explicit read-only API for
-one existing attribute-owned theorem with its own Markdown docstring. `project`
+one existing attribute-owned theorem with its own Markdown or Verso docstring. `project`
 reads the accepted node through `Environment.getNode?`, keeps its canonical
 qualified declaration, module and source-path association, and reads that source
 file. It returns two named realizations: `lean` and `docstring`. The latter has
-language `markdown`: raw Markdown from Lean's own docstring store is not a claim
-that Verso processing, proofreading or correspondence review succeeded. Missing
+language `markdown` or `verso`, selected from the direct own native docstring
+metadata. Neither doc registration nor source parsing establishes proofreading,
+mathematical review, all deferred Verso checks or correspondence acceptance. Missing
 or blank source is an explicit error. The injectable source reader is a provider
 boundary for testing unavailable I/O; successful use must read canonical bytes.
+
+Canonical prose comes from the original declaration's direct modifier comment,
+not a rendering, elaborated-tree representation or fallback children. Parse the
+accepted source file without elaborating its commands, require one declaration
+matching both the full native declaration range and the selected name range, and
+extract its original `/-- ... -/` body. The body convention removes just those
+ASCII delimiters and retains every other byte, including initial/final whitespace,
+native-reference syntax, mathematical markup and supplementary Unicode. This
+also means Markdown uses original source whitespace rather than Lean's normalized
+docstring-store text. Whole-source bindings remain conservative.
+
+Attribute application can precede Lean's range registration, leaving the accepted
+association's snapshot ranges empty. The adapter resolves current ranges through
+the public native reader for the accepted canonical declaration, requires the
+same native owning module, and rejects disagreement with any stored snapshot
+ranges. The owning source `FileMap` and `DeclarationRange.ofStringPositions`
+convert original byte positions to Lean codepoint and UTF-16 columns. The
+consumer's current file map is never used for imported source. Missing ranges,
+synthetic or unmatched positions, competing own formats, duplicate range matches,
+missing own comments and parse failures have explicit diagnostics. There is no
+nearby-comment or source-spelling fallback.
 
 `Projection.validate` takes an independently authored expected proposition as Lean
 syntax. `VersoBlueprint.Validation.Lean` elaborates it in the selected current
@@ -442,7 +464,7 @@ correspondence pending without review. The informal realization is unassessed.
 
 This is an internal explicit API, not a production graph/checker installation.
 Its supported projection excludes grouped/multiple declarations, inline code,
-definitions, foreign associations, own Verso-format or inherited docstrings, and
+definitions, foreign associations, inherited docstrings, and
 additional informal proof bodies. Unsupported cases are diagnosed without choosing
 a first member or dropping associations. This textual native-object boundary
 requires lossless canonical Lean-name serialization: unsupported internal names
@@ -453,6 +475,15 @@ tested. Witnesses are declaration constants checked against their whole declared
 type; argument-applied witness terms are not supported. The caller selects the
 logical project; this API does not discover or
 authenticate project ownership, or accept foreign build artifacts.
+
+Source extraction supports direct ordinary declarations and option-wrapped
+declarations such as `set_option doc.verso true in`. It does not elaborate newly
+defined syntax, enter quoted/macro-generated declarations, or infer arbitrary
+directive provenance. Inline own-comment plus `inherit_doc` is refused. A source
+file containing standalone `attribute [inherit_doc ...]` commands is conservatively
+refused, including quoted forms, because this adapter does not resolve those
+applications into a separate provenance service. Own native metadata without a
+matching original comment is insufficient, even if injected by a metaprogram.
 
 Source bytes and compiled metadata must come from the current ordinary owning
 build. This connection does not certify that an arbitrarily edited source file
@@ -473,6 +504,16 @@ against their own full propositions: a different package is not an incomplete
 proof, and an explicit premise must not disappear during matching. These are
 native boundary controls; no Rocq correspondence review or external artifact
 validation is implied.
+
+The Flag fixture now retains an actual own Verso account with markup, a native
+reference and a two-case explanation. Its real Lean proof completes; the Verso
+realization remains unassessed, and an explicitly authored correspondence remains
+pending without its own review. Exact-text tests use an option-wrapped imported
+declaration with supplementary Unicode before the selected name and inside its
+docstring, plus identical neighboring prose. Failure controls cover conflicting
+native metadata, own/inherited comments, absent original comments/ranges, malformed
+source and synthetic/ambiguous source association. Negative structural/I/O
+injections supply no fabricated successful native observations.
 
 ## Review and working structure
 

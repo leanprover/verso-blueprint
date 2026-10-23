@@ -32,6 +32,37 @@ private def rejected : Except ε α → Bool
 
 private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
 
+private def assertPendingCorrespondence (p : Projection) (input : Input) (expected : Syntax)
+    (interpretation : String) : TermElabM Unit := do
+  -- An explicitly authored correspondence still needs its own review.
+  let t : TranslationKey := ⟨`adapterFixture, `docstringToLean⟩
+  let c : ClaimKey := ⟨t, `statement⟩
+  let review : RequirementKey := ⟨.claim c, `review⟩
+  let linked := { input with
+    translations := #[p.contribution `translation {
+      key := t
+      source := #[{ realization := p.informalKey, facets := #[`statement] }],
+      target := #[{ realization := p.leanKey, facets := #[`statement] }],
+      required := #[proofKey p] }]
+    claims := #[p.contribution `claim {
+      key := c, interpretation
+      required := #[review] }]
+    requirements := input.requirements.push (p.contribution `review {
+      key := review, expected := .review `statementCorrespondence }) }
+  -- Recheck the native proof for the newly authored connected contract;
+  -- no human review observation is supplied.
+  let linkedRegistry ← obtain (admit { linked with evidence := #[] })
+  let some binding := linkedRegistry.bindingFor (proofKey p) | throwError "missing binding"
+  let fresh ← obtain (← NativeLean.check `adapterFixture p.witness expected
+    (p.input.objects.filterMap (·.value.document)))
+  let linked := { linked with evidence := #[p.contribution `proofEvidence {
+    id := p.leanKey.node ++ `nativeProof, requirement := proofKey p, binding
+    observation := .proof fresh.observation }] }
+  let linkedRegistry ← obtain (admit linked)
+  ensure ((linkedRegistry.resultForRequirement (proofKey p)).complete) "Actual proof stays complete"
+  ensure ((linkedRegistry.resultFor (.translation t)).status == .pending) "Correspondence remains pending"
+
+
 -- Native identity must either survive serialization or fail explicitly. These
 -- are actual checked/imported declarations, not fake successful observations.
 run_cmd liftTermElabM do
@@ -56,6 +87,89 @@ run_cmd liftTermElabM do
   | .error diagnostic => ensure (diagnostic.code == "unsupported-identity") "Native checker must diagnose unparseable identity"
   | .ok _ => throwError "Unparseable name is not a missing declaration"
 
+-- Real imported own-Verso source, including markup, whitespace and supplementary
+-- Unicode. The consumer's own options/file map cannot supply this association.
+run_cmd liftTermElabM do
+  let label := Name.mkSimple "adapter.unicode"
+  let before ← Informal.Environment.getNode? label
+  let p ← obtain (← project `adapterFixture label)
+  ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.key.context.language == `verso)
+    "Own native format metadata must select Verso"
+  ensure (p.input.documents[1]!.value.text == " Même *texte* 😀 λ with {name}`Nat`. ")
+    "Exact own source body includes authored whitespace, markup and Unicode"
+  ensure (p.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
+    p.witness == witness (Name.str `RealizationAdapterFixture "état😀"))
+    "Imported source belongs to the accepted declaration, not consumer or neighboring comment"
+  let some ranges ← findDeclarationRanges? p.witness.native.toName | throwError "Missing actual native ranges"
+  ensure (ranges.selectionRange.charUtf16 != ranges.selectionRange.pos.column)
+    "Supplementary Unicode must distinguish Lean codepoint and UTF-16 columns"
+  let text ← liftM <| IO.FS.readFile p.sourcePath
+  let commands ← obtain (← parseSource label p.sourcePath text)
+  let raw ← obtain (docCommentAtRanges label text ranges.range ranges.selectionRange commands)
+  ensure (raw == p.input.documents[1]!.value.text) "Exact owning-source association"
+  -- Explicit negative structural injections, not fabricated provider success.
+  for badCommands in #[commands ++ commands, commands.map fun command =>
+      command.rewriteBottomUp fun stx =>
+        stx.setInfo (.synthetic (stx.getPos?.getD 0) (stx.getTailPos?.getD 0) true)] do
+    ensure (rejected (docCommentAtRanges label text ranges.range ranges.selectionRange badCommands))
+      "Duplicate or canonical-synthetic syntax cannot establish a unique original association"
+  ensure (rejected (docCommentAtRanges label text ranges.range
+    { ranges.selectionRange with charUtf16 := ranges.selectionRange.charUtf16 + 1 } commands))
+    "UTF-16 disagreement is not a byte/codepoint conversion fallback"
+  ensure (rejected (docCommentAtRanges label (text ++ "\n") ranges.range ranges.selectionRange commands))
+    "Syntax from a different source string cannot establish original ownership"
+  let other := ranges.range
+  ensure (rejected (docCommentAtRanges label text ranges.range other commands))
+    "Full declaration range cannot replace the selected name range"
+  let trueGoal ← `(term| True)
+  let input ← obtain (← p.validate trueGoal)
+  assertPendingCorrespondence p input trueGoal "The own Verso source states this theorem"
+  let after ← Informal.Environment.getNode? label
+  ensure (reprStr before == reprStr after) "Verso projection/checking preserves accepted state"
+  -- Current consumer settings must not relabel already authored own Markdown.
+  let markdown ← withOptions (fun opts => opts.setBool `doc.verso true) <|
+    project `adapterFixture (Name.mkSimple "adapter.reflexivity")
+  let markdown ← obtain markdown
+  ensure (markdown.docstringFormat == `markdown &&
+    markdown.input.documents[1]!.value.text == " Every natural number equals itself. Raw Markdown, with **emphasis**. ")
+    "Markdown retains its exact own raw body and native format"
+  let basic ← obtain (← project `adapterFixture (Name.mkSimple "adapter.verso"))
+  ensure (basic.input.documents[1]!.value.text == " An own *Verso* docstring with {name}`Nat` and é 😀. ")
+    "Option-wrapped Verso source remains exact"
+
+run_cmd liftTermElabM do
+  for (label, code) in #[("adapter.inherited", "unsupported-docstring"),
+      ("adapter.own.inherited", "inherited-docstring"),
+      ("adapter.ambiguous", "ambiguous-docstring"),
+      ("adapter.no.original.comment", "missing-docstring"),
+      ("adapter.synthetic", "source-association-unavailable")] do
+    match ← project `adapterFixture (Name.mkSimple label) with
+    | .error diagnostic =>
+      ensure (diagnostic.code == code)
+        s!"{label}: expected {code}, got {diagnostic.code}"
+    | .ok _ => throwError "Unsupported source association must not fall back to another comment"
+  -- Inspect the actual ordinary declaration with no source comment directly;
+  -- late injected text cannot supply an original modifier association.
+  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.unicode"))
+  let source ← liftM <| IO.FS.readFile p.sourcePath
+  let commands ← obtain (← parseSource `noComment p.sourcePath source)
+  let some ranges ← findDeclarationRanges? `RealizationAdapterFixture.noOriginalComment
+    | throwError "Missing actual uncommented declaration ranges"
+  match docCommentAtRanges `noComment source ranges.range ranges.selectionRange commands with
+  | .error diagnostic => ensure (diagnostic.code == "missing-own-comment") "No adjacent-comment fallback"
+  | .ok _ => throwError "Native text cannot create an original doc comment"
+  -- Explicit source/parser failure injection, not replacement canonical content.
+  let malformed ← project `adapterFixture (Name.mkSimple "adapter.verso")
+    (fun _ => pure "import Lean\n/-- unterminated source")
+  match malformed with
+  | .error diagnostic => ensure (diagnostic.code == "source-parse-failed") "Malformed source is explicit"
+  | .ok _ => throwError "Malformed source must not borrow a native-rendered docstring"
+  let standalone := "import Lean\n/-- own -/ theorem t : True := True.intro\nattribute [inherit_doc True.intro] t\n"
+  let commands ← obtain (← parseSource `standalone "<injected-source>" standalone)
+  match docCommentAtRanges `standalone standalone default default commands with
+  | .error diagnostic => ensure (diagnostic.code == "inherited-docstring") "Standalone inheritance is diagnosed"
+  | .ok _ => throwError "Standalone inheritance cannot silently override own-source provenance"
+
 -- Exercise the pilot's actual involution and package-specific statements, beyond
 -- reflexivity/True. These are native current-build controls, not foreign proof
 -- observations, correspondence reviews, or a second mapping database.
@@ -66,6 +180,10 @@ run_cmd liftTermElabM do
   let input ← obtain (← p.validate expected)
   let r ← obtain (admit input)
   ensure ((r.resultForRequirement (proofKey p)).complete) "Actual two-case involution must complete"
+  ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.text ==
+    "\nToggling a *two-state* flag twice returns the original flag: é 😀.\nFor {name}`RealizationAdapterFixture.Flag.off`, toggle gives on then off;\nfor on, it gives off then on.\n")
+    "Flag retains the full exact own Verso account"
+  assertPendingCorrespondence p input expected "The Verso account states toggle involution by its two cases"
   ensure (input.translations.isEmpty && (r.resultFor (.realization p.informalKey)).status == .unassessed)
     "Flag proof does not invent correspondence or proofreading"
   let selectedPackage ← `(term| RealizationAdapterFixture.Involutive RealizationAdapterFixture.togglePackage)
@@ -138,33 +256,7 @@ run_cmd liftTermElabM do
   let incompleteRegistry ← obtain (admit incompleteInput)
   ensure (!(incompleteRegistry.resultForRequirement (proofKey admittedProjection)).complete)
     "Admitted proof with matching goal cannot complete through pure rules"
-  -- An explicitly authored correspondence still needs its own review.
-  let t : TranslationKey := ⟨`adapterFixture, `docstringToLean⟩
-  let c : ClaimKey := ⟨t, `statement⟩
-  let review : RequirementKey := ⟨.claim c, `review⟩
-  let linked := { input with
-    translations := #[p.contribution `translation {
-      key := t
-      source := #[{ realization := p.informalKey, facets := #[`statement] }],
-      target := #[{ realization := p.leanKey, facets := #[`statement] }],
-      required := #[proofKey p] }]
-    claims := #[p.contribution `claim {
-      key := c, interpretation := "The prose states natural-number reflexivity"
-      required := #[review] }]
-    requirements := input.requirements.push (p.contribution `review {
-      key := review, expected := .review `statementCorrespondence }) }
-  -- Recheck the native proof for the newly authored connected contract;
-  -- no human review observation is supplied.
-  let linkedRegistry ← obtain (admit { linked with evidence := #[] })
-  let some binding := linkedRegistry.bindingFor (proofKey p) | throwError "missing binding"
-  let fresh ← obtain (← NativeLean.check `adapterFixture p.witness expected
-    (p.input.objects.filterMap (·.value.document)))
-  let linked := { linked with evidence := #[p.contribution `proofEvidence {
-    id := label ++ `nativeProof, requirement := proofKey p, binding
-    observation := .proof fresh.observation }] }
-  let linkedRegistry ← obtain (admit linked)
-  ensure ((linkedRegistry.resultForRequirement (proofKey p)).complete) "Actual proof stays complete"
-  ensure ((linkedRegistry.resultFor (.translation t)).status == .pending) "Correspondence remains pending"
+  assertPendingCorrespondence p input expected "The prose states natural-number reflexivity"
   let _ ← obtain (← project `adapterFixture label)
   let after ← Informal.Environment.getNode? label
   ensure (reprStr before == reprStr after &&
@@ -208,7 +300,7 @@ run_cmd liftTermElabM do
 
 run_cmd liftTermElabM do
   for label in #["adapter.grouped", "adapter.definition", "adapter.undocumented", "adapter.missing",
-      "adapter.verso", "adapter.inherited"] do
+      "adapter.inherited"] do
     ensure (rejected (← project `adapterFixture (Name.mkSimple label))) "Unsupported input must be explicit"
   -- Explicitly labeled source-I/O failure injection; never a successful provider.
   let missing ← project `adapterFixture (Name.mkSimple "adapter.reflexivity")

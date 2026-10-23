@@ -38,12 +38,44 @@ theorem undocumented : True := True.intro
 def number : Nat := 1
 
 set_option doc.verso true in
-/-- A Verso docstring is outside this first Markdown projection. -/
+/-- An own *Verso* docstring with {name}`Nat` and é 😀. -/
 @[blueprint "adapter.verso"]
 theorem versoDocstring : True := True.intro
 
 @[inherit_doc reflexivity, blueprint "adapter.inherited"]
 theorem inheritedDocstring : ∀ n : Nat, n = n := fun _ => rfl
+
+/-- Own text with conflicting inheritance. -/
+@[inherit_doc reflexivity, blueprint "adapter.own.inherited"]
+theorem ownInheritedDocstring : True := True.intro
+
+set_option doc.verso true in
+/-- Même *texte* 😀 λ with {name}`Nat`. -/ @[blueprint "adapter.unicode"] theorem «état😀» : True := True.intro
+
+set_option doc.verso true in
+/-- Même *texte* 😀 λ with {name}`Nat`. -/
+theorem neighboringComment : True := True.intro
+
+set_option doc.verso true in
+/-- Actual Verso metadata with an intentionally conflicting Markdown entry. -/
+@[blueprint "adapter.ambiguous"]
+theorem ambiguousFormat : True := True.intro
+
+-- Explicit native-metadata ambiguity injection in its owning module. This
+-- supplies no successful proof/review observation and must remain unsupported.
+run_cmd Lean.addDocStringCore ``ambiguousFormat "injected competing Markdown"
+
+theorem noOriginalComment : True := True.intro
+
+-- Own native text injected before attribute registration still cannot supply a
+-- source comment where the actual declaration has none.
+open Lean Elab Command in
+run_cmd do
+  let name := ``noOriginalComment
+  addDocStringCore name "Injected metadata is not an original modifier comment."
+  let attr ← `(attr| blueprint "adapter.no.original.comment")
+  let impl ← ofExcept <| getAttributeImpl (← getEnv) `blueprint
+  liftTermElabM <| liftM <| impl.add name attr.raw .global
 
 -- Native adaptation of the canonical translation-reuse/Fixture/Flag.lean pilot.
 -- This is an ordinary local build, not imported LIRIS artifacts or a claim of
@@ -64,7 +96,12 @@ def identityPackage : FlagPackage := ⟨id⟩
 def Involutive (package : FlagPackage) : Prop :=
   ∀ flag, package.operation (package.operation flag) = flag
 
-/-- Toggling a two-state flag twice returns the original flag. -/
+set_option doc.verso true in
+/--
+Toggling a *two-state* flag twice returns the original flag: é 😀.
+For {name}`RealizationAdapterFixture.Flag.off`, toggle gives on then off;
+for on, it gives off then on.
+-/
 @[blueprint "adapter.flag.involutive"]
 theorem flagInvolutive : Involutive togglePackage := by
   intro flag
@@ -88,6 +125,18 @@ run_cmd do
     name, levelParams := [], type := mkConst ``True, value := mkConst ``True.intro }
   addDocStringCore name "Non-round-tripping internal declaration name."
   let attributeSyntax ← `(attr| blueprint "adapter.nonroundtrip")
+  let impl ← ofExcept <| getAttributeImpl (← getEnv) `blueprint
+  liftTermElabM <| liftM <| impl.add name attributeSyntax.raw .global
+
+-- Actual native metadata without an original declaration/source range. It must
+-- remain unsupported rather than attaching a neighboring comment.
+open Lean Elab Command in
+run_cmd do
+  let name := `RealizationAdapterFixture.syntheticDoc
+  liftTermElabM <| addDecl <| .thmDecl {
+    name, levelParams := [], type := mkConst ``True, value := mkConst ``True.intro }
+  addDocStringCore name "Synthetic documentation without source ranges."
+  let attributeSyntax ← `(attr| blueprint "adapter.synthetic")
   let impl ← ofExcept <| getAttributeImpl (← getEnv) `blueprint
   liftTermElabM <| liftM <| impl.add name attributeSyntax.raw .global
 
