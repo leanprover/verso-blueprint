@@ -4,6 +4,10 @@ Date: 2026-10-22. This follows the
 [round-one design](VERSO_LSP_ADAPTER.md). The work is a tested experimental core,
 not the completed Verso/VBP integration.
 
+The [follow-up document slice](VERSO_LSP_DOCUMENT_SLICE.md) now adds independent
+library imports, compiled requests, and offline Verso/Blueprint rendering. The
+limits below describe the first experiment at its recorded date.
+
 ## What now exists
 
 - `src/VersoLsp/Client.lean`: an owned stdio session with one receiver, concurrent

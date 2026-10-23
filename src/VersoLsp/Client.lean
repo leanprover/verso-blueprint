@@ -19,6 +19,9 @@ structure ClientConfig where
   env : Array (String × Option String) := #[]
   initializationOptions : Json := .null
   configuration : Array (String × Json) := #[]
+  /-- Extension capabilities implemented by the owning profile through its
+  notification/readiness hooks. The generic client does not interpret them. -/
+  experimentalCapabilities : Json := .null
   timeoutMs : Nat := 5000
 
 private def stdio : IO.Process.StdioConfig := {
@@ -263,6 +266,7 @@ def Client.start (config : ClientConfig) : IO Client := do
       ("workspaceFolders", toJson #[Json.mkObj [("uri", toJson rootUri), ("name", "project")]]),
       ("initializationOptions", config.initializationOptions),
       ("capabilities", Json.mkObj [
+        ("experimental", config.experimentalCapabilities),
         ("general", Json.mkObj [("positionEncodings", toJson #["utf-16"])]),
         ("workspace", Json.mkObj [("configuration", toJson true), ("workspaceFolders", toJson true)]),
         ("textDocument", Json.mkObj [

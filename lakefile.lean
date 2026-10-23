@@ -14,7 +14,20 @@ package VersoBlueprint where
 -- Experimental, genre-independent LSP adapter. Not imported by Blueprint yet.
 lean_lib VersoLsp where
   srcDir := "src"
-  roots := #[`VersoLsp.Source, `VersoLsp.Protocol, `VersoLsp.Client]
+  roots := #[`VersoLsp]
+
+-- Verso authoring/rendering bridge; the analysis library has no Verso dependency.
+lean_lib VersoLspVerso where
+  srcDir := "src"
+  roots := #[`VersoLspVerso]
+
+lean_lib VersoLspDocs where
+  srcDir := "tests"
+  roots := #[`VersoLspDocs.Plain, `VersoLspDocs.Blueprint]
+
+lean_exe «verso-lsp-docs» where
+  srcDir := "tests"
+  root := `VersoLspDocsMain
 
 lean_exe «verso-lsp-spike» where
   srcDir := "tests"

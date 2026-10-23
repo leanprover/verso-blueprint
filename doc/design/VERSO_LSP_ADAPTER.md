@@ -1,7 +1,8 @@
 # Reusable Verso LSP adapter: design round one
 
 Status: proposal, 2026-10-22. A first experimental protocol/mapping core now
-exists; see the [spike results](VERSO_LSP_SPIKE.md). No supported public API is
+exists; see the [spike results](VERSO_LSP_SPIKE.md) and the
+[independent-library/document slice](VERSO_LSP_DOCUMENT_SLICE.md). No supported public API is
 established by this document.
 
 The intended product supports **both checked code blocks and named external
