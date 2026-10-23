@@ -60,6 +60,8 @@ lean_exe «vbp» where
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
   roots := #[
+    `VersoBlueprintTests.BlueprintRealizations,
+    `VersoBlueprintTests.BlueprintTranslations,
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintContributions,

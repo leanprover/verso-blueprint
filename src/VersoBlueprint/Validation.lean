@@ -1,0 +1,163 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+import VersoBlueprint.Realizations
+
+/-! Subject-specific requirements and observations. These records describe the
+boundary to trusted language tools; constructing a record does not run a checker.
+In particular, equality of goal descriptions below is not Lean type checking. -/
+
+namespace Informal.Validation
+
+open Lean Realizations
+
+/-- An independently authored expected proposition in a selected formal context.
+The provider must elaborate it, check the witness's actual type against it, and
+report completeness. `proposition` is a provider-owned canonical goal description,
+including binders and selected package arguments, never a theorem-name shortcut. -/
+structure Goal where
+  context : Context
+  proposition : String
+  documents : Array DocumentKey := #[]
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+/-- Source documents are provenance, not part of proposition equality. Actual
+definitional equality must be established by the provider before this boundary. -/
+def Goal.sameProposition (a b : Goal) : Bool :=
+  a.context == b.context && a.proposition == b.proposition
+
+/-- Proof checking, human review, and named executable checks remain distinct. -/
+inductive Expectation where
+  | proof (goal : Goal) (witness : ObjectKey)
+  | review (criterion : Name)
+  | check (validator : Name)
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+inductive Coverage where
+  | subject
+  | dependencyClosure
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+structure Requirement where
+  key : RequirementKey
+  expected : Expectation
+  coverage : Coverage := .subject
+  prerequisites : Array RequirementKey := #[]
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+inductive Outcome where
+  | passed
+  | failed
+  | unavailable
+  | notApplicable
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+/-- Input from the owning checker, not an unchecked success flag on a realization.
+`actualType` must be obtained from the checked witness. Complete proof evidence
+requires dependency-closure coverage, including absence of holes/verification gaps.
+Project-specific axiom policies belong to separately named requirements. -/
+structure ProofObservation where
+  witness : ObjectKey
+  actualType : Option Goal := none
+  outcome : Outcome
+  coverage : Coverage := .subject
+  assumptions : Array String := #[]
+  explanation : String := ""
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+structure ReviewObservation where
+  criterion : Name
+  reviewer : Name
+  outcome : Outcome
+  coverage : Coverage := .subject
+  explanation : String := ""
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+structure CheckObservation where
+  validator : Name
+  outcome : Outcome
+  coverage : Coverage := .subject
+  explanation : String := ""
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+inductive Observation where
+  | proof (observation : ProofObservation)
+  | review (observation : ReviewObservation)
+  | check (observation : CheckObservation)
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+def Observation.explanation : Observation → String
+  | .proof o => o.explanation
+  | .review o => o.explanation
+  | .check o => o.explanation
+
+/-- Exact canonical content/contract encoding returned by the registry. This is
+intentionally not a timestamp or a persistent artifact/snapshot identifier. -/
+abbrev ContentBinding := String
+
+structure Evidence where
+  id : Name
+  requirement : RequirementKey
+  binding : ContentBinding
+  observation : Observation
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+def Expectation.valid : Expectation → Bool
+  | .proof goal witness =>
+    goal.context.valid && !blank goal.proposition && witness.valid && witness.context == goal.context
+  | .review criterion => !criterion.isAnonymous
+  | .check validator => !validator.isAnonymous
+
+def Coverage.covers (actual required : Coverage) : Bool :=
+  actual == .dependencyClosure || actual == required
+
+/-- Explain unsuitable evidence; successful output only means the supplied
+provider observation fits this contract, not that this function checked a proof. -/
+def Evidence.mismatch? (evidence : Evidence) (requirement : Requirement)
+    (currentBinding : ContentBinding) : Option String := do
+  if evidence.requirement != requirement.key then return "wrong-subject"
+  if blank evidence.binding || evidence.binding != currentBinding then return "stale-content"
+  match requirement.expected, evidence.observation with
+  | .proof goal witness, .proof observation =>
+    if observation.witness != witness then return "wrong-proof"
+    if observation.outcome == .unavailable then return "validation-unavailable"
+    if observation.outcome == .notApplicable then return "not-applicable"
+    if !observation.actualType.any (·.sameProposition goal) then return "wrong-proof"
+    if observation.coverage != .dependencyClosure then return "insufficient-coverage"
+    if observation.outcome != .passed then return "proof-not-complete"
+    none
+  | .review criterion, .review observation =>
+    if observation.criterion != criterion || observation.reviewer.isAnonymous then return "wrong-review"
+    if observation.outcome == .unavailable then return "validation-unavailable"
+    if !observation.coverage.covers requirement.coverage then return "insufficient-coverage"
+    if observation.outcome != .passed then return "review-not-accepted"
+    none
+  | .check validator, .check observation =>
+    if observation.validator != validator then return "wrong-validator"
+    if observation.outcome == .unavailable then return "validation-unavailable"
+    if !observation.coverage.covers requirement.coverage then return "insufficient-coverage"
+    if observation.outcome != .passed then return "check-not-passed"
+    none
+  | _, _ => return "wrong-evidence-kind"
+
+inductive Status where
+  | unassessed
+  | pending
+  | blocked
+  | complete
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+structure Result where
+  status : Status
+  /-- Independent local evidence survives failure of prerequisite closure. -/
+  localComplete : Bool := false
+  diagnostics : Array Diagnostic := #[]
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
+def Result.complete (result : Result) : Bool := result.status == .complete
+
+def Result.actionable (result : Result) : Bool := result.status == .pending
+
+end Informal.Validation

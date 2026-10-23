@@ -325,6 +325,65 @@ their richer prerequisite families; task ledger lifecycle and worker launching;
 interactive Beam sessions; automatic whole-corpus mapping coverage; and LIRIS
 authority migration. These are not prerequisites for the first implementation.
 
+## First internal implementation checkpoint
+
+The first bounded implementation supplies pure Lean data and functions, tested
+without connecting existing producers, environment extensions, graph/CLI exports,
+or language tools. This is an internal API for review, not landed authoring syntax
+or a second production completion authority.
+
+| Module | Current responsibility |
+| --- | --- |
+| `VersoBlueprint.Realizations` | Logical project/language/object/document identities, node and realization/facet/declaration records, semantic subject/requirement keys, producer provenance |
+| `VersoBlueprint.Validation` | Expected proof/review/named-check requirements, distinct provider observations and coverage, evidence suitability and result vocabulary |
+| `VersoBlueprint.Translations` | Explicit endpoint facet selection and claims, collect-then-resolve admission, current-content bindings, prerequisite evaluation, selection and inventory queries |
+
+`Translations.admit` rejects structural reference errors and incompatible
+producer/semantic definitions with deterministic diagnostics. Identical replay is
+harmless. Missing/unsupported source observations and unsuitable evidence remain
+queryable unfinished work. Requirement cycles are rejected by the validation
+projection, retaining independently established local results; they do not erase
+the collected source facts. Correspondence topology alone does not create a
+validation prerequisite.
+
+`Registry.bindingFor` produces an exact canonical JSON encoding of participating
+source documents, object/document identities and connected contracts. It excludes
+evidence, producer replay order, and lookup diagnostic wording. Whole documents
+and connected contracts give deliberately conservative invalidation. This is a
+current-content comparison token, not an artifact/version import format.
+
+`Registry.localResult`, `resultForRequirement`, and `resultFor` distinguish a
+local matching observation, prerequisite completion, and an aggregate contract.
+One current suitable observation discharges a requirement; multiple mandatory
+checks or reviews must be represented by separate conjunctive requirements.
+Required declarations combine conjunctively. An unrelated unavailable declaration
+does not erase a current local proof result; it can still block the realization.
+`selectRequirement` selects by identity/context/name rather than completeness.
+`translations`, `unfinished`, and `actionable` have no rendered-graph or task-state
+dependency. Existing default-Lean selection and automatic-dependency migration
+still require their separately scoped adapters and integration tests.
+
+### Trust boundary and test limits
+
+`Validation.Goal` is an independently specified provider-owned proposition
+description in a logical context, with canonical source references. A future
+language adapter must elaborate that expectation, check the submitted witness's
+actual type against it, and obtain conservative completeness coverage from its
+normal checking tools. The pure rules compare supplied goal descriptions; they
+do not implement type checking or definitional equality. Source documents are
+provenance rather than proposition equality. A successful flag without a matching
+type observation is insufficient; an unavailable checker need not invent a type.
+
+All source-resolution, proof, review, and executable-check facts in
+`BlueprintRealizations.lean` and `BlueprintTranslations.lean` are explicitly mocked.
+P01-P22 provide traceability for pure identity/admission/validation/planning
+controls, including goal mismatch, conditional-witness mismatch, stale reviews,
+alternative realizations, cycles, and replay. These tests do not certify canonical
+Flag/MaxNat sources, real language-checker output, existing environment imports,
+or browser/graph/CLI integration. A named Rust test result is a supplied test
+observation, not a proof certificate. Project-specific axiom/fidelity policies
+remain outside the pure rules.
+
 ## Review and working structure
 
 Use one semantic integration owner and a dependency-ordered implementation
