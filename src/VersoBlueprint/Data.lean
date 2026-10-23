@@ -529,7 +529,8 @@ instance : DecidableEq ExternalDeclRender
 /--
 Reference to an external declaration mentioned by a blueprint node.
 {lit}`written` preserves the user spelling, while {lit}`canonical` is scope-erased for
-environment lookup and duplicate detection.
+environment lookup and duplicate detection. Declaration names are Lean-owned;
+Blueprint label policies must not rewrite them.
 -/
 structure ExternalRef where
   written : Name
@@ -571,27 +572,6 @@ structure RustInlineCode where
   raw : String
 deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
-inductive CodeRef where
-  /-
-  Blueprint code references can currently come from two sources:
-  1. An inline Lean block processed by Verso/Lean integration (`.literate`).
-  2. A regular Lean declaration tagged with `@[blueprint]` or
-     `@[blueprint "..."]` (`.external`, origin `.blueprintAttr`).
-     A `(lean := "...")` directive reference to Lean code we do not directly control
-     also lands in `.external` (origin `.directiveLean`).
-
-  Name ownership model:
-  - informal object labels are blueprint-owned metadata;
-  - `(lean := "...")` declaration names are Lean-owned and must not be rewritten by blueprint label policies.
-
-  External-definition metadata should be attached to `ExternalRef` or a sibling
-  external-declaration record. The `.external` names themselves remain Lean
-  declaration names, not Blueprint labels.
-  -/
-  | external (decls : Array ExternalRef)
-  | literate (code : Code)
-deriving Repr, Inhabited
-
 private def pushNameUnique (names : Array Name) (name : Name) : Array Name :=
   let name := name.eraseMacroScopes
   if names.contains name then names else names.push name
@@ -599,15 +579,6 @@ private def pushNameUnique (names : Array Name) (name : Name) : Array Name :=
 def Code.definedDeclNames (code : Code) : Array Name :=
   (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).foldl
     pushNameUnique #[]
-
-def CodeRef.leanDecls : CodeRef → Array Name
-  | .external refs =>
-    refs.foldl (init := #[]) fun acc ref =>
-      if ref.present then
-        pushNameUnique acc ref.canonical
-      else
-        acc
-  | .literate code => code.definedDeclNames
 
 structure InformalBody where
   stx : Syntax
@@ -666,7 +637,9 @@ structure Node where
 deriving Repr, Inhabited
 
 /--
-Only fields supplied by one registration. Dependencies are independent of body
+Body, dependency, metadata, and literate-code inputs for one registration.
+External associations and priority belong exclusively to identified contribution
+records. Dependencies are independent of body
 additions; adding code or dependencies cannot reclassify an authored statement.
 -/
 structure NodeContribution where
@@ -677,12 +650,10 @@ structure NodeContribution where
   proofBody : Option InformalBody := none
   statementUses : Array UseRef := #[]
   proofUses : Array UseRef := #[]
-  leanCode : Array CodeRef := #[]
-  proofExternalRefs : Array ExternalRef := #[]
+  literateCodes : Array Code := #[]
   rustCode : Option RustInlineCode := none
   externalMarkup : ExternalMarkupSet := {}
   parent : Option Parent := none
-  priority : Option String := none
   owner : Option AuthorId := none
   tags : Array String := #[]
   effort : Option String := none
@@ -706,18 +677,6 @@ def ExternalRef.mergeSnapshots (current incoming : Array ExternalRef) : Array Ex
       positions := positions.insert ref.canonical refs.size
       refs := refs.push ref
   return refs
-/-- Statement-facet references carried by the selected association field. -/
-def NodeContribution.externalReferences (contribution : NodeContribution) : Array ExternalRef :=
-  contribution.leanCode.foldl (init := #[]) fun refs code =>
-    match code with
-    | .external more => refs ++ more
-    | .literate _ => refs
-
-/-- Selected fields require a producer-identified contribution record. -/
-def NodeContribution.hasSelectedFields (contribution : NodeContribution) : Bool :=
-  contribution.priority.isSome || !contribution.externalReferences.isEmpty ||
-    !contribution.proofExternalRefs.isEmpty
-
 /-- All captured external associations. Facet snapshots remain separate;
 declaration membership and status projections consume both facets. -/
 def Node.externalAssociationSnapshots (node : Node) : Array ExternalRef :=

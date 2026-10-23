@@ -9,17 +9,6 @@ import Std.Data.HashMap.Lemmas
 open Lean Informal.Data
 namespace Informal.Contributions
 
-/-- The legacy payload projection preserves both selected semantic fields. -/
-theorem Record.toNodeContribution_priority (r : Record) :
-    r.toNodeContribution.priority = r.priority := rfl
-
-theorem Record.toNodeContribution_leanCode (r : Record) :
-    r.toNodeContribution.leanCode = #[.external r.references] := rfl
-
-/-- Proof associations retain their facet in the producer payload. -/
-theorem Record.toNodeContribution_proofExternalRefs (r : Record) :
-    r.toNodeContribution.proofExternalRefs = r.proofReferences := rfl
-
 structure CollectorLaws (c : Collector σ) : Prop where
   empty_exact : ∀ r, r ∉ c.records c.empty
   insert_exact : ∀ s r x, x ∈ c.records (c.insert r s) ↔ x = r ∨ x ∈ c.records s

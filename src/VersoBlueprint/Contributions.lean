@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Data
 
 /-! Identified external-declaration and priority contributions. This pure core
-retains complete evidence; producer/import adoption is a separate integration.
+retains complete evidence and is used by registration and import assembly.
 Body, kind, other metadata and rendered-resource policies remain outside it. -/
 
 open Lean Informal.Data
@@ -37,16 +37,6 @@ structure Record where
 /-- Both facets establish normal node membership; neither is descriptive-only. -/
 def Record.allReferences (r : Record) : Array ExternalRef :=
   r.references ++ r.proofReferences
-
--- Native source order remains observable even though evidence is extensional.
-def Record.sourceOrder (r : Record) : Name × Nat × Nat :=
-  (r.id.moduleName, r.id.site, r.id.slot)
-
-def Record.toNodeContribution (r : Record) : NodeContribution := {
-  leanCode := #[.external r.references]
-  proofExternalRefs := r.proofReferences
-  priority := r.priority
-}
 
 def EvidenceEq (xs ys : List Record) : Prop := ∀ r, r ∈ xs ↔ r ∈ ys
 

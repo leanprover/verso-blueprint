@@ -333,7 +333,7 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
         pure <| deps.toUseRefs (currentLabel? := some cfg.label)
       else pure ({} : DependencyAnalysis.InferredUseRefs)
     let some _ ← Environment.contribute cfg.label {
-      leanCode := #[.literate {
+      literateCodes := #[{
         stx := codeRef
         definedDefs := res.definedDefs
         definedTheorems := res.definedTheorems }]

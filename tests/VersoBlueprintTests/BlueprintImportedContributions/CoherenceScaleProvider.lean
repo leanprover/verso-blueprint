@@ -14,5 +14,5 @@ run_cmd do
       label
       references := #[Data.ExternalRef.ofName (.num `coherence_decl i)]
       priority := none, source := none }
-    let some _ ← Environment.contributeSelected label fact.toNodeContribution fact
+    let some _ ← Environment.contributeRecord fact {}
       | throwError "Valid scale contribution was rejected"

@@ -8,42 +8,18 @@ import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 open Lean Informal Lean.Elab.Command
 
-private def contributeSelected (label : Name) (site : Nat) (contribution : Data.NodeContribution) : CoreM (Option Data.Node) :=
-  let references := contribution.leanCode.foldl (init := #[]) fun refs code =>
-    match code with | .external more => refs ++ more | .literate _ => refs
-  Environment.contributeSelected label contribution {
-    id := {
-      moduleName := Name.mkSimple "AtomicFailure"
-      producer := Name.mkSimple "test.synthetic"
-      subject := label
-      site := site
-      slot := 0 }
-    label := label
-    references := references
-    priority := contribution.priority
-    source := none }
+private def testRecord (label : Name) (site : Nat)
+    (references : Array Data.ExternalRef := #[]) (priority : Option String := none) :
+    Contributions.Record := {
+  id := {
+    moduleName := `AtomicFailure
+    producer := Name.mkSimple "test.synthetic"
+    subject := label
+    site
+    slot := 0 }
+  label, references, priority, source := none }
 
-run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 1 { priority := some "high" }
-
--- An identified record cannot override independently supplied selected fields.
-/-- error: Selected fields for key_theorem must exactly match their identified contribution record -/
-#guard_msgs in
-#eval show CoreM Unit from do
-  let before := Environment.informalExt.getState (← getEnv)
-  discard <| Environment.contributeSelected `key_theorem {} {
-    id := {
-      moduleName := Name.mkSimple "AtomicFailure"
-      producer := Name.mkSimple "test.synthetic"
-      subject := `mismatched_selected_fields
-      site := 99
-      slot := 0 }
-    label := `key_theorem
-    references := #[]
-    priority := some "low"
-    source := none }
-  let after := Environment.informalExt.getState (← getEnv)
-  unless reprStr before == reprStr after do
-    throwError "Mismatched selected fields changed Blueprint state"
+run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 1 (priority := some "high")) {}
 
 -- A rejected new label must not reserve its requested number or export/index
 -- any of its otherwise valid data.
@@ -51,10 +27,10 @@ run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 1 { priority := 
 #guard_msgs in
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
-  discard <| contributeSelected `rejected_new_node 2 {
+  discard <| Environment.contributeRecord
+    (testRecord `rejected_new_node 2 #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]) {
     count := before.nextCount + 100
     proofUses := #[{ label := `dep }, { label := `dep, intent := .technical }]
-    leanCode := #[.external #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -74,13 +50,12 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
 #guard_msgs in
 #eval show CoreM Unit from do
   let before := Environment.informalExt.getState (← getEnv)
-  discard <| contributeSelected `key_theorem 3 {
+  discard <| Environment.contributeRecord
+    (testRecord `key_theorem 3 #[{ canonical := `rejectedDecl, written := `rejectedDecl, present := true }] (some "low")) {
     count := before.nextCount + 100
-    priority := some "low"
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
     proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
-    leanCode := #[.external #[{ canonical := `rejectedDecl, written := `rejectedDecl, present := true }]]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -88,7 +63,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
 
 -- Repeating equal single-valued metadata is idempotent and does not warn.
 #guard_msgs in
-run_cmd discard <| liftCoreM <| contributeSelected `key_theorem 4 { priority := some "high" }
+run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 4 (priority := some "high")) {}
 
 
 open Verso.Genre Lean.Elab.Command
@@ -116,11 +91,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4702/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3631/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5405/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4334/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -367,20 +342,3 @@ run_cmd discard <| Environment.contribute `attr_authorities {
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `manual_authorities {
   statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
-
--- Proof associations have the same identified-admission boundary as statements.
--- A missing or mismatched record must not update any Blueprint store or index.
-/-- error: Blueprint external references and priority require an identified contribution record -/
-#guard_msgs in
-#check_blueprint_atomic
-run_cmd discard <| Environment.contribute `unidentified_proof {
-  proofExternalRefs := #[Data.ExternalRef.ofName `atomicWitness] }
-
-/-- error: Selected fields for mismatched_proof must exactly match their identified contribution record -/
-#guard_msgs in
-#check_blueprint_atomic
-run_cmd discard <| Environment.contributeSelected `mismatched_proof {} {
-  id := ⟨`AtomicFailure, `test.proof, `mismatched_proof, 0, 0⟩
-  label := `mismatched_proof
-  proofReferences := #[Data.ExternalRef.ofName `atomicWitness]
-  priority := none, source := none }
