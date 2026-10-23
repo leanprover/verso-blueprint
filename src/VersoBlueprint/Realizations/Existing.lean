@@ -117,6 +117,17 @@ def Projection.contribution (p : Projection) (slot : Name) (value : α) : Contri
       id := p.leanKey.node ++ `existingRealization ++ slot
       moduleName := p.moduleName, source := p.sourcePath }, value }
 
+/-- Compare optional accepted snapshot ranges with current owning native ranges.
+The latter must be read for that same canonical declaration. This pure check
+does not fill in or mutate any accepted record. -/
+def checkedSourceRanges (label : Name) (snapshotRange snapshotSelection : Option DeclarationRange)
+    (native : Option DeclarationRanges) : Except Diagnostic DeclarationRanges := do
+  let some ranges := native
+    | throw <| issue "source-association-unavailable" label "Accepted declaration has no native source ranges"
+  if snapshotRange.any (· != ranges.range) || snapshotSelection.any (· != ranges.selectionRange) then
+    throw <| issue "source-association-unavailable" label "Accepted snapshot and current native ranges disagree"
+  return ranges
+
 /-- Read canonical bytes at the accepted association's path. The injectable
 reader permits explicit I/O-failure tests, not alternate successful provenance.
 The caller must use a current ordinary build of the owning source. -/
@@ -157,10 +168,10 @@ def project (projectName label : Name)
     | some _, some _ => return .error <| issue "ambiguous-docstring" label "Conflicting own native docstring formats"
   -- Attribute application can precede range registration. Resolve current owning
   -- metadata by the accepted canonical declaration, never by source spelling.
-  let some ranges ← findDeclarationRanges? ref.canonical
-    | return .error <| issue "source-association-unavailable" label "Accepted declaration has no native source ranges"
-  if ref.range?.any (· != ranges.range) || ref.selectionRange?.any (· != ranges.selectionRange) then
-    return .error <| issue "source-association-unavailable" label "Accepted snapshot and current native ranges disagree"
+  let ranges ← match checkedSourceRanges label ref.range? ref.selectionRange?
+      (← findDeclarationRanges? ref.canonical) with
+    | .ok ranges => pure ranges
+    | .error diagnostic => return .error diagnostic
   let text ← try liftM <| readSource sourcePath catch _ =>
     return .error <| issue "source-unavailable" label "Cannot read canonical source at accepted association path"
   if blank text then return .error <| issue "source-unavailable" label "Canonical source is empty"

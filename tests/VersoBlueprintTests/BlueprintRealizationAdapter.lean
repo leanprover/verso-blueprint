@@ -92,6 +92,10 @@ run_cmd liftTermElabM do
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.unicode"
   let before ← Informal.Environment.getNode? label
+  let some accepted := before | throwError "Missing actual accepted Unicode theorem"
+  let association := accepted.externalRefs[0]!
+  ensure (association.range?.isNone && association.selectionRange?.isNone)
+    "Ordinary attribute snapshot predates native range registration"
   let p ← obtain (← project `adapterFixture label)
   ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.key.context.language == `verso)
     "Own native format metadata must select Verso"
@@ -101,6 +105,31 @@ run_cmd liftTermElabM do
     p.witness == witness (Name.str `RealizationAdapterFixture "état😀"))
     "Imported source belongs to the accepted declaration, not consumer or neighboring comment"
   let some ranges ← findDeclarationRanges? p.witness.native.toName | throwError "Missing actual native ranges"
+  let reconciled ← obtain (checkedSourceRanges label association.range? association.selectionRange? (some ranges))
+  ensure (reconciled.range == ranges.range && reconciled.selectionRange == ranges.selectionRange)
+    "Absent snapshots must use actual native ranges for the same accepted canonical theorem"
+  for (snapshot, selection) in #[(some ranges.range, none), (none, some ranges.selectionRange),
+      (some ranges.range, some ranges.selectionRange)] do
+    let agreed ← obtain (checkedSourceRanges label snapshot selection (some ranges))
+    ensure (agreed.range == ranges.range && agreed.selectionRange == ranges.selectionRange)
+      "Present agreeing snapshots retain the same owning native ranges"
+  -- Negative snapshot inputs are standalone comparison values; neither the
+  -- accepted association nor its producer/environment record is modified.
+  let badRange := { ranges.range with charUtf16 := ranges.range.charUtf16 + 1 }
+  let badSelection := { ranges.selectionRange with endCharUtf16 := ranges.selectionRange.endCharUtf16 + 1 }
+  for (snapshot, selection) in #[(some badRange, none), (none, some badSelection)] do
+    match checkedSourceRanges label snapshot selection (some ranges) with
+    | .error diagnostic =>
+      ensure (diagnostic.code == "source-association-unavailable" && diagnostic.message.endsWith "disagree")
+        "Stored full/name snapshot disagreement must fail before source parsing"
+    | .ok _ => throwError "Native ranges must not silently override a disagreeing stored snapshot"
+  let unavailable ← findDeclarationRanges? `RealizationAdapterFixture.syntheticDoc
+  ensure unavailable.isNone "Actual checked synthetic fixture has no original native ranges"
+  match checkedSourceRanges label none none unavailable with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "source-association-unavailable" && diagnostic.message.endsWith "no native source ranges")
+      "Missing snapshots plus unavailable actual native ranges must fail explicitly"
+  | .ok _ => throwError "Unavailable native ranges must not be synthesized"
   ensure (ranges.selectionRange.charUtf16 != ranges.selectionRange.pos.column)
     "Supplementary Unicode must distinguish Lean codepoint and UTF-16 columns"
   let text ← liftM <| IO.FS.readFile p.sourcePath

@@ -435,6 +435,13 @@ synthetic or unmatched positions, competing own formats, duplicate range matches
 missing own comments and parse failures have explicit diagnostics. There is no
 nearby-comment or source-spelling fallback.
 
+Focused controls assert that an ordinary accepted attribute snapshot really lacks
+both range fields while current native ranges and exact source projection succeed.
+Agreeing optional snapshots pass; disagreement in either full or name selection
+ranges fails. The unavailable-range control reads a real checked synthetic
+declaration. The pure range-agreement helper accepts standalone comparison inputs
+for negative tests and never changes an accepted record or producer fact.
+
 `Projection.validate` takes an independently authored expected proposition as Lean
 syntax. `VersoBlueprint.Validation.Lean` elaborates it in the selected current
 environment, requires a closed proposition with concrete universes, kernel-checks
