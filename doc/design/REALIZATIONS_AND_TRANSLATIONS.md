@@ -565,6 +565,49 @@ Production library dependencies/toolchains are unchanged. This is an opt-in type
 acceptance example, not a new authoring service, production graph/CLI/browser view,
 Rocq compiler invocation or foreign correspondence certification.
 
+### Opt-in accepted dependency selection
+
+`Realizations.Dependencies.selectUses` reads a supported accepted attribute theorem
+and returns its effective statement and proof uses separately. Each result retains
+the full `UseRef`, its existing order and either a selected requirement key or a
+diagnostic. Manual/automatic origin and intent remain metadata; origin does not
+select a producer scope. Shared labels across axes stay separate. The adapter does
+not filter self edges, merge axes or traverse dependencies. Missing or unsupported
+source/view is an outer error, distinct from a supported source with no uses;
+unresolved targets remain individual edges.
+
+For a single accepted attributed theorem, the explicit Lean project context,
+realization `lean` and requirement `proof` are passed to the existing registry
+selector. The selected subject must be exactly that realization's accepted
+canonical declaration. Its expectation must be a proof with the same witness and
+goal context, with `dependencyClosure` coverage, required by that declaration.
+The default realization must associate exactly that one declaration. Missing or
+ambiguous defaults, review/check requirements named `proof`, another declaration
+or witness, mismatched context and insufficient coverage stay diagnostic. Native
+names that cannot round-trip losslessly retain the existing unsupported-identity
+boundary. Definitions, grouped declarations and other association forms are
+outside this first adapter.
+
+Selection never consults completion, tries a complete alternative, rewrites
+prerequisites or manufactures proof/review observations. The existing evaluator
+answers completion for the returned key. In particular, matching contract identity
+does not certify an arbitrary goal description as the native theorem's type;
+independent expected-proposition checking remains the native provider's job.
+Explicit same-node cross-realization prerequisites remain unchanged.
+
+`BlueprintRealizationDependencies` uses actual accepted manual/automatic uses and
+imported native theorem checks. A clean theorem completes; a clean statement with
+an admitted proof selects its declaration proof and remains pending despite a
+genuinely checked complete alternative. Removing evidence preserves selection;
+actual wrong-proposition and unavailable-environment checks cannot supply proof
+completion. In-memory contract corruptions are labeled synthetic and contribute
+no mock successful validation. The source's proof-axis metadata is read directly;
+its theorem is checked directly because the existing docstring projection remains
+limited to nodes without proof-axis bodies. Accepted state is not mutated.
+Graph/CodeHealth comparisons cover only the supported theorem-local policy. No
+transitive readiness, cycle semantics, legacy-wide parity, production graph
+connection or verification-v1 admission change is included.
+
 ## Review and working structure
 
 Use one semantic integration owner and a dependency-ordered implementation
