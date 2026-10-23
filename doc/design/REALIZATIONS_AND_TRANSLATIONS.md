@@ -574,6 +574,49 @@ Production library dependencies/toolchains are unchanged. This is an opt-in type
 acceptance example, not a new authoring service, production graph/CLI/browser view,
 Rocq compiler invocation or foreign correspondence certification.
 
+### Inspectable supplied-contract report
+
+`Realizations.Report.ofRegistry` is an opt-in pure Registry-to-JSON projection.
+It reports only the supplied admitted contracts and existing evaluator results;
+it does not establish project readiness, omitted Blueprint dependency closure,
+provider authenticity or external source/tool freshness. There is no overall
+ready/completed flag, new assessment rule, mutable cache or import/replay path.
+
+The report retains full authored node, object-resolution, realization,
+translation, claim and requirement inventories. Document entries contain keys,
+not source bytes. Realization entries retain qualified identities and original
+facet/declaration associations, with existing whole/facet/declaration results.
+Translation endpoints retain their exact selected facets; claims retain authored
+interpretations and assumptions. Requirements expose `localResult` separately
+from prerequisite-aware `result`. Existing `unfinished` and `actionable` queries
+produce key selections alongside the full authored translation inventory, so a
+blocked translation stays discoverable.
+
+Evidence entries retain identifier, exact requirement reference and typed provider
+observation, including outcome, assumptions and coverage. Their separate
+`suitability` delegates to `Evidence.mismatch?` using that exact requirement and
+the registry's current binding. `matchesCurrentRequirement` and `mismatch` concern
+that individual observation, independently of other evidence or the requirement's
+aggregate result. A provider outcome of `passed` may still have `stale-content`;
+another suitable item does not endorse it. Suitability is a contract/binding
+check, not provider authentication or proof that all subject content is available.
+Bindings remain internal; no raw contribution dump or full source bytes are
+exported. This output cannot serve as an imported validation receipt.
+
+The existing actual Flag composition tests structured JSON parsing, qualified
+identities, source resolution explanations, selected facets and four independent
+outcomes: native proof complete, prose unassessed, Verso correspondence pending,
+Rocq correspondence blocked. Existing source/config/claim and alternative controls
+exercise the report without erasing the independent native proof. A labeled
+synthetic native-source change leaves its actual `passed` observation present but
+unsuitable and its requirement pending. A mixed inventory retains the stale item
+as unsuitable even when a current item completes that requirement. Identical
+producer replay and top-level contribution reordering preserve output without
+reordering authored contracts. Empty registries produce empty inventories;
+reporting changes neither supplied contributions nor accepted Blueprint state.
+Production graph, manifest, CLI/browser, registration and dependency traversal
+remain separate work.
+
 ### Opt-in accepted dependency selection
 
 `Realizations.Dependencies.selectUses` reads a supported accepted attribute theorem

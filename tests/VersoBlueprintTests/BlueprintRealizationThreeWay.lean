@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Existing
+import VersoBlueprint.Realizations.Report
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 
 /-! One source-backed example through the existing opt-in APIs. Only the native
@@ -40,6 +41,31 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
 private def binding (r : Registry) (key : RequirementKey) : TermElabM String := do
   let some value := r.bindingFor key | throwError "Missing binding"
   return value
+
+private def field (value : Json) (name : String) : TermElabM Json :=
+  obtain (value.getObjVal? name)
+
+private def entries (value : Json) (name : String) : TermElabM (Array Json) := do
+  obtain ((← field value name).getArr?)
+
+private def reportEntry (report : Json) (family : String) (key : Json) : TermElabM Json := do
+  for entry in ← entries report family do
+    if (← field (← field entry "value") "key") == key then return entry
+  throwError "Missing report entry in {family}: {key}"
+
+private def reportEvidence (report : Json) (id : Name) : TermElabM Json := do
+  for entry in ← entries report "evidence" do
+    if (← field entry "id") == toJson id then return entry
+  throwError "Missing report evidence {id}"
+
+private def reportStatus (entry : Json) (name : String := "result") : TermElabM Json := do
+  field (← field entry name) "status"
+
+private partial def hasPrivatePayload : Json → Bool
+  | .arr values => values.any hasPrivatePayload
+  | .obj fields => fields.toList.any fun (key, value) =>
+      ["text", "binding", "contributions"].contains key || hasPrivatePayload value
+  | _ => false
 
 private def statusText (result : Result) : String :=
   match result.status with
@@ -135,6 +161,105 @@ run_cmd liftTermElabM do
   ensure (r.unfinished.size == 2 && r.unfinished.any (·.key == rocqTranslation) &&
     r.actionable.size == 1 && r.actionable.any (·.key == versoTranslation))
     "Blocked work stays in unfinished inventory while actionable work excludes it"
+  let checkReport (registry : Registry) : TermElabM Json := do
+    let saved := registry.contributions
+    let report := Report.ofRegistry registry
+    ensure ((← obtain (Json.parse report.compress)) == report && !hasPrivatePayload report)
+      "Report is structured JSON without source bytes, bindings or contribution dump"
+    ensure ((← reportStatus (← reportEntry report "requirements" (toJson proof))) == toJson Status.complete &&
+      (← reportStatus (← reportEntry report "realizations" (toJson p.informalKey))) == toJson Status.unassessed &&
+      (← reportStatus (← reportEntry report "translations" (toJson versoTranslation))) == toJson Status.pending &&
+      (← reportStatus (← reportEntry report "translations" (toJson rocqTranslation))) == toJson Status.blocked)
+      "Report preserves four independent supplied-contract outcomes, not overall project readiness"
+    ensure (registry.contributions == saved) "Report generation is read-only"
+    return report
+  let report ← checkReport r
+  ensure ((← field report "nodes") == toJson r.nodes &&
+    (← field report "documents") == toJson (r.documents.map (·.key)) &&
+    (← field report "objects") == toJson r.objects)
+    "Full authored source identity and resolution inventory is retained without document bytes"
+  let leanEntry ← reportEntry report "realizations" (toJson p.leanKey)
+  ensure ((← field leanEntry "value") == toJson ((r.realization? p.leanKey).get!) &&
+    (← reportStatus leanEntry) == toJson Status.complete)
+    "Qualified realization and declaration associations retain native completion"
+  let declarationEntries ← entries leanEntry "declarations"
+  ensure (declarationEntries.size == 1 &&
+    (← field declarationEntries[0]! "subject") == toJson (Subject.declaration p.leanKey p.witness) &&
+    (← reportStatus declarationEntries[0]!) == toJson Status.complete)
+    "Selected declaration result is independently inspectable"
+  let facetEntries ← entries leanEntry "facets"
+  ensure (facetEntries.size == 2 && facetEntries.any fun entry =>
+    entry.getObjValD "subject" == toJson (Subject.facet p.leanKey `statement))
+    "Typed facet identity is retained"
+  for key in #[versoTranslation, rocqTranslation] do
+    let entry ← reportEntry report "translations" (toJson key)
+    ensure ((← field entry "value") == toJson ((r.translation? key).get!))
+      "Endpoint facets, required proof and semantic context are exported without widening"
+  for key in #[versoClaim, rocqClaim] do
+    let entry ← reportEntry report "claims" (toJson key)
+    ensure ((← field entry "value") == toJson ((r.claim? key).get!))
+      "Authored claim interpretation/assumptions and requirement association are retained"
+  let rocqEntry ← reportEntry report "translations" (toJson rocqTranslation)
+  let diagnostics ← entries (← field rocqEntry "result") "diagnostics"
+  ensure (diagnostics.any fun diagnostic => diagnostic.getObjValD "code" == toJson "object-unavailable")
+    "Report retains the explicit unsupported-resolution blocker"
+  let proofEntry ← reportEntry report "requirements" (toJson proof)
+  ensure ((← reportStatus proofEntry "localResult") == toJson Status.complete)
+    "Local requirement result remains separate from prerequisite-aware result"
+  ensure ((← field report "unfinished") == toJson #[rocqTranslation, versoTranslation] &&
+    (← field report "actionable") == toJson #[versoTranslation])
+    "Blocked authored translation remains unfinished and is excluded only from actionable selection"
+  let actualEvidence := native.evidence[0]!.value
+  let evidenceEntry ← reportEvidence report actualEvidence.id
+  ensure ((← field evidenceEntry "observation") == toJson actualEvidence.observation &&
+    (← field (← field evidenceEntry "suitability") "matchesCurrentRequirement") == toJson true &&
+    (← field (← field evidenceEntry "suitability") "mismatch") == .null)
+    "Actual native outcome, assumptions and coverage are distinct from current-binding suitability"
+
+  let reordered := { input with
+    nodes := input.nodes.reverse, documents := input.documents.reverse
+    objects := input.objects.reverse, realizations := input.realizations.reverse
+    translations := input.translations.reverse, claims := input.claims.reverse
+    requirements := input.requirements.reverse, evidence := input.evidence.reverse }
+  let replayed : Input := {
+    nodes := input.nodes ++ input.nodes, documents := input.documents ++ input.documents
+    objects := input.objects ++ input.objects, realizations := input.realizations ++ input.realizations
+    translations := input.translations ++ input.translations, claims := input.claims ++ input.claims
+    requirements := input.requirements ++ input.requirements, evidence := input.evidence ++ input.evidence }
+  for candidate in #[reordered, replayed] do
+    let replayRegistry ← obtain (admit candidate)
+    ensure ((Report.ofRegistry replayRegistry).compress == report.compress)
+      "Identical replay/top-level reordering preserves report without reordering authored contracts"
+  let emptyRegistry ← obtain (admit {})
+  let emptyReport := Report.ofRegistry emptyRegistry
+  for name in #["nodes", "documents", "objects", "realizations", "translations", "claims", "requirements", "evidence", "unfinished", "actionable"] do
+    ensure ((← entries emptyReport name).isEmpty) "An empty registry invents no report assessment"
+
+  -- Synthetic selected-source mutation, using the existing actual native
+  -- observation unchanged. Provider passed is not current suitability.
+  let nativeDoc := (native.objects[0]!.value.document).get!
+  let staleInput := { input with documents := input.documents.map fun record =>
+    if record.value.key == nativeDoc then
+      { record with value := { record.value with text := record.value.text ++ "\nstale native source control\n" } }
+    else record }
+  let staleRegistry ← obtain (admit staleInput)
+  let staleReport := Report.ofRegistry staleRegistry
+  let staleEvidence ← reportEvidence staleReport actualEvidence.id
+  ensure ((← field staleEvidence "observation") == toJson actualEvidence.observation &&
+    (← field (← field staleEvidence "suitability") "matchesCurrentRequirement") == toJson false &&
+    (← field (← field staleEvidence "suitability") "mismatch") == toJson (some "stale-content") &&
+    (← reportStatus (← reportEntry staleReport "requirements" (toJson proof))) == toJson Status.pending)
+    "Passed native observation becomes visibly unsuitable after synthetic selected-content change"
+  let staleBinding ← binding staleRegistry proof
+  let staleId := actualEvidence.id ++ `syntheticStale
+  let mixed := { input with evidence := input.evidence.push (authored `staleEvidence {
+    actualEvidence with id := staleId, binding := staleBinding }) }
+  let mixedRegistry ← obtain (admit mixed)
+  let mixedReport ← checkReport mixedRegistry
+  let mixedEvidence ← reportEvidence mixedReport staleId
+  ensure ((← field (← field mixedEvidence "suitability") "matchesCurrentRequirement") == toJson false &&
+    (← field (← field mixedEvidence "suitability") "mismatch") == toJson (some "stale-content"))
+    "Another suitable observation can complete a requirement without endorsing its stale evidence item"
   let rocqBinding ← binding r rocqReview
   let versoBinding ← binding r versoReview
   -- Synthetic in-memory content/contract mutations, not edits or certifications
@@ -145,6 +270,7 @@ run_cmd liftTermElabM do
         { record with value := { record.value with text := record.value.text ++ "\nmutation control\n" } }
       else record }
     let changedRegistry ← obtain (admit changed)
+    let _ ← checkReport changedRegistry
     ensure ((← binding changedRegistry rocqReview) != rocqBinding &&
       (← binding changedRegistry versoReview) == versoBinding &&
       (← binding changedRegistry proof) == nativeBinding && (changedRegistry.resultForRequirement proof).complete)
@@ -154,6 +280,9 @@ run_cmd liftTermElabM do
       { record with value := { record.value with interpretation := record.value.interpretation ++ "; extra premise" } }
     else record }
   let changedRegistry ← obtain (admit changedClaim)
+  let changedReport ← checkReport changedRegistry
+  ensure ((← field (← reportEntry changedReport "claims" (toJson rocqClaim)) "value") ==
+    toJson ((changedRegistry.claim? rocqClaim).get!)) "Report follows the changed authored claim"
   ensure ((← binding changedRegistry rocqReview) != rocqBinding &&
     (← binding changedRegistry proof) == nativeBinding && (changedRegistry.resultForRequirement proof).complete)
     "Claim interpretation has its own binding, independent of the native theorem"
@@ -162,6 +291,7 @@ run_cmd liftTermElabM do
   let emptySource := { input with documents := input.documents.map fun record =>
     if record.value.key == sourceDoc then { record with value := { record.value with text := "" } } else record }
   let emptyRegistry ← obtain (admit emptySource)
+  let _ ← checkReport emptyRegistry
   ensure ((emptyRegistry.resultFor (.translation rocqTranslation)).status == .blocked &&
     (emptyRegistry.resultFor (.translation rocqTranslation)).diagnostics.any (·.code == "content-unavailable"))
     "Empty source is explicitly unavailable"
@@ -172,6 +302,9 @@ run_cmd liftTermElabM do
         explanation := "Synthetic missing-source control" } }
     else record }
   let missingRegistry ← obtain (admit missingSource)
+  let missingReport ← checkReport missingRegistry
+  ensure ((← field missingReport "objects") == toJson missingRegistry.objects)
+    "Report retains changed missing-source observation rather than cached resolution"
   ensure ((missingRegistry.resultFor (.translation rocqTranslation)).status == .blocked &&
     missingRegistry.unfinished.any (·.key == rocqTranslation) && (missingRegistry.resultForRequirement proof).complete)
     "Missing selected source remains discoverable without erasing the native proof"
@@ -186,6 +319,7 @@ run_cmd liftTermElabM do
   let withAlternative := { input with realizations := input.realizations.push (authored `alternative {
     key := alternative, context := rocqContext, facets := #[{ name := `statement, documents := #[sourceDoc, configDoc] }] }) }
   let alternativeRegistry ← obtain (admit withAlternative)
+  let _ ← checkReport alternativeRegistry
   ensure ((alternativeRegistry.resultFor (.realization alternative)).status == .unassessed &&
     (alternativeRegistry.resultFor (.translation rocqTranslation)).status == .blocked &&
     (alternativeRegistry.resultForRequirement proof).complete)
