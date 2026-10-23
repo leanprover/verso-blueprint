@@ -366,12 +366,13 @@ Custom registration calls to `Environment.contribute` return `Option Node`:
 registration was rejected. Combine dependent changes into one `NodeContribution`;
 discard the result only when no following operation depends on acceptance.
 External references on either facet and priority require
-`Environment.contributeSelected label contribution record`, with matching
-`Contributions.Record` fields and a stable producer identity. The legacy
+`Environment.contributeRecord record legacy`, with a stable producer identity.
+The record exclusively owns its label, priority, and associations; the legacy
+payload must contain none of those selected fields. The legacy
 `contribute` and `Node.applyContributions` entry points reject those fields.
 `Record.references` carries statement associations; `Record.proofReferences`
 carries proof associations. Both are normal associations for membership and status,
-and both must exactly match their corresponding contribution fields.
+and both are supplied only through the identified record.
 Directive expanders use `Environment.withDirective` for scoped error recovery
 and atomic Blueprint-state updates. The unscoped push/pop API and attachment helpers that discarded rejection are
 removed. Standalone code and markup expanders must emit no semantic occurrence

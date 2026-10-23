@@ -120,11 +120,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4702/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4880/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5405/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@5583/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -373,18 +373,19 @@ run_cmd discard <| Environment.contribute `manual_authorities {
   statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
 
 -- Proof associations have the same identified-admission boundary as statements.
--- A missing or mismatched record must not update any Blueprint store or index.
-/-- error: Blueprint external references and priority require an identified contribution record -/
+-- Unidentified or duplicated proof fields must not update any Blueprint store or index.
+/-- error: Blueprint legacy payload cannot include external references or priority; supply them only in a contribution record -/
 #guard_msgs in
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `unidentified_proof {
   proofExternalRefs := #[Data.ExternalRef.ofName `atomicWitness] }
 
-/-- error: Selected fields for mismatched_proof must exactly match their identified contribution record -/
+/-- error: Blueprint legacy payload cannot include external references or priority; supply them only in a contribution record -/
 #guard_msgs in
 #check_blueprint_atomic
-run_cmd discard <| Environment.contributeSelected `mismatched_proof {} {
+run_cmd discard <| Environment.contributeRecord {
   id := ⟨`AtomicFailure, `test.proof, `mismatched_proof, 0, 0⟩
   label := `mismatched_proof
   proofReferences := #[Data.ExternalRef.ofName `atomicWitness]
-  priority := none, source := none }
+  priority := none, source := none } {
+  proofExternalRefs := #[Data.ExternalRef.ofName `atomicWitness] }

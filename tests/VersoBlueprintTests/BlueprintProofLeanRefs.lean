@@ -32,13 +32,9 @@ theorem admittedAttachedResult : True := by sorry
   let unverified : Data.ProvedStatus := .incomplete { unverified := #[{
     location := .proof, declaration := good.canonical, reason := .bodyUnavailable }] }
   for isProof in #[false, true] do
-    let contribution := fun ref =>
-      if isProof then ({ proofExternalRefs := #[ref] } : Data.NodeContribution)
-      else { leanCode := #[.external #[ref]] }
     for status in #[known, unverified] do
       let gap := { good with provedStatus := status }
       for refs in #[#[good, gap], #[gap, good]] do
-        let inputs := refs.map contribution
         -- Keep producer identities fixed across batching and exact replay.
         -- Both facets enter the identified slice and retain their authored side.
         let assemble := fun (indices : Array Nat) =>
@@ -50,9 +46,8 @@ theorem admittedAttachedResult : True := by sorry
                proofReferences := if isProof then #[refs[index]!] else #[],
                priority := none, source := none }
               : Contributions.Record)
-          (NodeAssembly.assemble `repeated
-            (indices.map fun index => NodeAssembly.withoutSelectedFacts inputs[index]!) records).map (·.node)
-        let indices := (List.range inputs.size).toArray
+          (NodeAssembly.assemble `repeated #[] records).map (·.node)
+        let indices := (List.range refs.size).toArray
         let .ok batched := assemble indices
           | throw <| IO.userError "Repeated associations were rejected"
         let .ok (_, incremental) := indices.foldlM
@@ -193,19 +188,19 @@ This imported statement association also has a proof-facet occurrence.
 
 -- Add a second proof association to a compiled imported node. Export only this
 -- local contribution and check both associations again after another import.
-private def contributeProofReferences (label : Data.Label) (contribution : Data.NodeContribution) :
+private def contributeProofReferences (label : Data.Label) (references : Array Data.ExternalRef)
+    (legacy : Data.NodeContribution := {}) :
     CoreM (Option Data.Node) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
-    label, proofReferences := contribution.proofExternalRefs
+    label, proofReferences := references
     priority := none, source := none }
-  Environment.contributeSelected label contribution fact
+  Environment.contributeRecord fact legacy
 
 run_meta do
   let ref ← externalRefSnapshotAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.secondProof)
-  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") {
-    proofExternalRefs := #[ref] }
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") #[ref]
     | throwError "Could not extend the imported proof associations"
   let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
     | throwError "Missing imported proof node"
@@ -218,8 +213,7 @@ run_meta do
   let ref ← externalRefSnapshotAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.admittedProof)
   let neutral := { ref with provedStatus := .proved }
-  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") {
-    proofExternalRefs := #[neutral, ref] }
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") #[neutral, ref]
     | throwError "Could not repeat the imported proof association"
   let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
     | throwError "Missing repeated imported proof node"
@@ -235,8 +229,8 @@ run_meta do
     (Data.ExternalRef.ofName ``Provider.admittedProof)
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := ``Provider.admittedProof, provedStatus := .proved }] }
-  let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") {
-    kind := some .theorem, leanCode := #[.literate code], proofExternalRefs := #[ref] }
+  let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
+    kind := some .theorem, leanCode := #[.literate code] }
     | throwError "Could not register inline/external overlap"
 
 #eval show CoreM Unit from do

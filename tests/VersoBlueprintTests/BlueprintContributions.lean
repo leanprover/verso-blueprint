@@ -175,9 +175,9 @@ private def collisionMessagesFor (records : List Record) : Array String :=
 -- snapshot comparison must run before that lossy diagnostic projection.
 private def differentSorryLocationSnapshotA : Record := { snapshotA with
   references := #[{ snapshotA.references[0]! with
-    provedStatus := .containsSorry #[{ location := .statement }] }] }
+    provedStatus := .incomplete { knownSorry := #[{ location := .statement }] } }] }
 #guard let messages := collisionMessagesFor [snapshotA, differentSorryLocationSnapshotA]
-  messages.any (·.contains "status (contains-sorry(1) → contains-sorry(1))")
+  messages.any (·.contains "status (incomplete(known-sorry=1, unverified=0) → incomplete(known-sorry=1, unverified=0))")
 #guard collisionMessagesFor [a, diagnosticSnapshotA] ==
   collisionMessagesFor [diagnosticSnapshotA, a]
 
