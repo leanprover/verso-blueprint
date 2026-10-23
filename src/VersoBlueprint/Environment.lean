@@ -196,7 +196,7 @@ private def claimsAuthoredNode (contribution : NodeContribution) : Bool :=
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array NodeContribution) (facts : List Record) : Except (Array String) State := do
+    (incoming : Array NodeContribution) (facts : List Record) : Except (Array String) (State × Node) := do
   let authored := incoming.any claimsAuthoredNode
   let pending := (state.pendingNodes.getD label {}).append origin contributor incoming true authored
   if pending.authoredOriginConflict then
@@ -209,14 +209,14 @@ private def State.addNode (state : State) (label origin contributor : Name)
     toNode := node
     origin := nodeOrigin
     modules := pending.contributors }
-  return { state with
+  return ({ state with
     data := state.data.insert label registered
     nextCount := max state.nextCount (node.count + 1)
     leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
     pendingNodes := state.pendingNodes.insert label pending
     factRecords := records
     localFactRecords := facts.foldl (fun records record => collector.insert record records) state.localFactRecords
-    }
+    }, node)
 
 /-- Resolve every imported label against the complete decoded evidence set. -/
 private def State.reassembleImported (state : State) : State := Id.run do
@@ -348,9 +348,9 @@ private def commitContribution (label : Label) (contribution : NodeContribution)
   let state := informalExt.getState (← getEnv)
   let origin := (state.pendingNodes.getD label {}).authoredOrigin?.getD mainModule
   match state.addNode label origin mainModule #[contribution] facts with
-  | .ok state =>
+  | .ok (state, node) =>
     modifyEnv (informalExt.setState · state)
-    return (state.data.get? label).map (·.toNode)
+    return some node
   | .error reasons =>
     for reason in reasons do logError reason
     return none
