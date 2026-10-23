@@ -33,6 +33,15 @@ server-specific error codes, concurrent requests answered in reverse order,
 unsupported server requests, chatty-server deadlines, cancellation, late
 responses, server death, encoding rejection, and forced shutdown.
 
+The lifecycle checks additionally cover blocked stdin, pre-cancellation,
+zero deadlines, outbound/pending capacity, stderr retention, stale handles and
+in-flight replies across edits and close/reopen, mismatched query URIs,
+unbound document requests, malformed envelopes, oversized/partial frames,
+concurrent/repeated close, SIGTERM-resistant servers, and descendants retaining
+stdio after their leader exits. These process-group checks currently target
+Unix; the recorded validation platform is Linux. See the
+[lifecycle contract and limits](../../doc/design/PARLEY_LIFECYCLE_REVIEW.md).
+
 The real checks query both an authored-block position and a named-reference
 probe in the same project scope. They retrieve available semantic tokens,
 analyze an unsaved invalid fragment, map its diagnostics to authored source,

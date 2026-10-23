@@ -3,12 +3,13 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Lean.Data.Lsp.Communication
+import Parley.Framing
 import Parley.Protocol
 import Std.Sync.Mutex
+import Std.Sync.CancellationToken
 
-/-! An experimental stdio client for the adapter spike. No session cache or
-Blueprint dependency. This is not yet a supported end-user API. -/
+/-! Experimental stdio client. Transport state never protects blocking IO.
+Document handles belong to one client and one admitted document version. -/
 namespace Parley
 open Lean
 
@@ -19,35 +20,137 @@ structure ClientConfig where
   env : Array (String × Option String) := #[]
   initializationOptions : Json := .null
   configuration : Array (String × Json) := #[]
-  /-- Extension capabilities implemented by the owning profile through its
-  notification/readiness hooks. The generic client does not interpret them. -/
   experimentalCapabilities : Json := .null
   timeoutMs : Nat := 5000
+  maxQueuedMessages : Nat := 128
+  maxQueuedBytes : Nat := 8 * 1024 * 1024
+  maxPendingRequests : Nat := 128
+  maxInboundBytes : Nat := 16 * 1024 * 1024
+
+/-- Cleanup is successful only when the child is reaped and every IO worker
+has stopped. An incomplete report must not be treated as a reusable session. -/
+structure CloseReport where
+  reaped : Bool := false
+  workersStopped : Bool := false
+  forced : Bool := false
+  errors : Array String := #[]
+  deriving Inhabited, Repr
+
+def CloseReport.complete (report : CloseReport) : Bool :=
+  report.reaped && report.workersStopped && report.errors.isEmpty
 
 private def stdio : IO.Process.StdioConfig := {
   stdin := .piped, stdout := .piped, stderr := .piped }
 
+private structure Outbound where
+  payload : String
+  requestId? : Option Nat := none
+  deadline : Nat
+
+private structure Pending where
+  response? : Option Json := none
+
 private structure State where
   nextId : Nat := 0
-  pending : Std.HashMap Nat (Option Json) := {}
+  nextVersion : Int := 1
+  pending : Std.HashMap Nat Pending := {}
   documents : Std.HashMap String OpenDocument := {}
+  queue : Array Outbound := #[]
+  queuedBytes : Nat := 0
+  active? : Option Outbound := none
+  stopWriter : Bool := false
   notifications : Array Json := #[]
   droppedNotifications : Nat := 0
   failure? : Option String := none
-  closed : Bool := false
+  closing : Bool := false
 
 structure Client where
+  private mk ::
   private child : IO.Process.Child stdio
-  private input : IO.FS.Stream
   private state : Std.Mutex State
   private reader : Task (Except IO.Error Unit)
+  private writer : Task (Except IO.Error Unit)
+  private watchdog : Task (Except IO.Error Unit)
   private stderrReader : Task (Except IO.Error Unit)
   private stderrBytes : IO.Ref ByteArray
   private initializeResult : IO.Ref Json
   private config : ClientConfig
+  private cleanup : IO.Promise CloseReport
 
-private def send (input : IO.FS.Stream) (message : Json) : IO Unit :=
-  input.writeSerializedLspMessage message.compress
+/-- A document version in its owning session. Obtain a new handle after an edit;
+closing/reopening a URI never revives an older handle. -/
+structure Document where
+  private mk ::
+  private client : Client
+  uri : String
+  version : Int
+
+/-- Access session observations for profile-specific readiness hooks. Document
+requests still require the versioned handle. -/
+def Document.withClient (document : Document) (action : Client → IO α) : IO α :=
+  action document.client
+
+private def fail (s : State) (message : String) : State :=
+  { s with failure? := s.failure? <|> some message, queue := #[], queuedBytes := 0, stopWriter := true }
+
+private def admit (s : State) (internal : Bool := false) : IO Unit := do
+  if s.closing && !internal then throw <| IO.userError "client is closing"
+  if let some failure := s.failure? then throw <| IO.userError failure
+
+private def enqueue (config : ClientConfig) (s : State) (frame : Outbound) : IO State := do
+  if s.stopWriter then throw <| IO.userError "transport is stopped"
+  if s.queue.size ≥ config.maxQueuedMessages ||
+      s.queuedBytes + frame.payload.utf8ByteSize > config.maxQueuedBytes then
+    throw <| IO.userError "outbound queue capacity exceeded"
+  return { s with queue := s.queue.push frame, queuedBytes := s.queuedBytes + frame.payload.utf8ByteSize }
+
+private def validDocument (s : State) (document? : Option (String × Int)) : Bool :=
+  document?.all fun (uri, version) => s.documents[uri]?.any (·.version == version)
+
+private def notification (method : String) (params : Json) : String :=
+  (Json.mkObj [("jsonrpc", "2.0"), ("method", toJson method), ("params", params)]).compress
+
+private partial def writeLoop (input : IO.FS.Stream) (state : Std.Mutex State) : IO Unit := do
+  try
+    repeat
+      let (frame?, stopped) ← state.atomically do
+        let s ← get
+        if s.stopWriter && s.queue.isEmpty then return (none, true)
+        let some frame := s.queue[0]? | return (none, false)
+        set { s with
+          queue := s.queue.extract 1 s.queue.size
+          queuedBytes := s.queuedBytes - frame.payload.utf8ByteSize }
+        -- Cancelled requests that have not started writing never reach the peer.
+        if frame.requestId?.any (fun id => !s.pending.contains id) then return (none, false)
+        modify fun s => { s with active? := some frame }
+        return (some frame, false)
+      if stopped then break
+      if let some frame := frame? then
+        input.writeSerializedLspMessage frame.payload
+        state.atomically do modify fun s => { s with active? := none }
+      else IO.sleep 2
+  catch error => state.atomically do
+    modify fun s => { (fail s s!"LSP write failed: {error}") with active? := none }
+
+/-- A partially written frame cannot be cancelled and followed by another frame.
+Retire the transport instead, waking request waiters without taking a pipe lock. -/
+private partial def watchWrites (child : IO.Process.Child stdio) (state : Std.Mutex State) : IO Unit := do
+  repeat
+    let now ← IO.monoMsNow
+    let (expired, stopped) ← state.atomically do
+      let s ← get
+      -- Cleanup owns termination once closing starts. The tracked watchdog is
+      -- the only other signal sender; close must join it before reaping.
+      if s.closing then return (false, true)
+      if s.active?.any (fun frame => s.failure?.isSome || now ≥ frame.deadline) then
+        set <| fail s "LSP write deadline exceeded"
+        return (true, false)
+      return (false, s.stopWriter && s.active?.isNone)
+    if expired then
+      try child.kill catch _ => pure ()
+      break
+    if stopped then break
+    IO.sleep 2
 
 private def configurationResult (config : ClientConfig) (params : Json) : Json :=
   let items := (params.getObjValAs? (Array Json) "items").toOption.getD #[]
@@ -55,56 +158,62 @@ private def configurationResult (config : ClientConfig) (params : Json) : Json :
     let configSection := (item.getObjValAs? String "section").toOption.getD ""
     (config.configuration.find? (·.1 == configSection)).map (·.2) |>.getD .null
 
-private def dispatch (config : ClientConfig) (input : IO.FS.Stream)
-    (state : Std.Mutex State) (message : Json) : IO Unit :=
-  state.atomically do
-    if let .ok method := message.getObjValAs? String "method" then
-      let params := (message.getObjVal? "params").toOption.getD .null
-      if let .ok id := message.getObjVal? "id" then
-        let result? := match method with
-          | "workspace/configuration" => some <| configurationResult config params
-          | "workspace/workspaceFolders" => some <| toJson #[Json.mkObj [
-              ("uri", toJson (System.Uri.pathToUri config.root : String)),
-              ("name", toJson (config.root.fileName.getD "project"))]]
-          | "window/showMessageRequest" => some Json.null
-          | _ => none
-        let reply := match result? with
-          | some result => Json.mkObj [("jsonrpc", "2.0"), ("id", id), ("result", result)]
-          | none => Json.mkObj [("jsonrpc", "2.0"), ("id", id),
-              ("error", Json.mkObj [("code", toJson (-32601 : Int)),
-                ("message", toJson s!"unsupported client method: {method}")])]
-        liftM <| send input reply
-      else if method == "textDocument/publishDiagnostics" then
-        match fromJson? (α := Lsp.PublishDiagnosticsParams) params with
-        | .error error => modify fun s => { s with failure? := some s!"invalid diagnostics: {error}" }
-        | .ok params => modify fun s =>
-            match s.documents[params.uri]? with
-            | none => s
-            | some doc => { s with documents := s.documents.insert params.uri (doc.publish params) }
-      else
-        modify fun s =>
-          if s.notifications.size < 512 then
-            { s with notifications := s.notifications.push message }
-          else { s with droppedNotifications := s.droppedNotifications + 1 }
-    else
-      let .ok id := message.getObjValAs? Nat "id"
-        | modify fun s => { s with failure? := some "response has no numeric client request id" }
+private def dispatch (config : ClientConfig) (state : Std.Mutex State) (message : Json) : IO Unit := do
+  unless (message.getObjValAs? String "jsonrpc").toOption == some "2.0" do
+    throw <| IO.userError "invalid JSON-RPC version"
+  if let .ok method := message.getObjValAs? String "method" then
+    let params := (message.getObjVal? "params").toOption.getD .null
+    if let .ok id := message.getObjVal? "id" then
+      unless (fromJson? (α := String) id).isOk || (fromJson? (α := Int) id).isOk do
+        throw <| IO.userError "invalid server request id"
+      let result? := match method with
+        | "workspace/configuration" => some <| configurationResult config params
+        | "workspace/workspaceFolders" => some <| toJson #[Json.mkObj [
+            ("uri", toJson (System.Uri.pathToUri config.root : String)),
+            ("name", toJson (config.root.fileName.getD "project"))]]
+        | "window/showMessageRequest" => some Json.null
+        | _ => none
+      let reply := match result? with
+        | some result => Json.mkObj [("jsonrpc", "2.0"), ("id", id), ("result", result)]
+        | none => Json.mkObj [("jsonrpc", "2.0"), ("id", id),
+            ("error", Json.mkObj [("code", toJson (-32601 : Int)),
+              ("message", toJson s!"unsupported client method: {method}")])]
+      let payload := reply.compress
+      let deadline := (← IO.monoMsNow) + config.timeoutMs
+      state.atomically do
+        let s ← get
+        unless s.stopWriter do set (← enqueue config s { payload, deadline })
+    else if method == "textDocument/publishDiagnostics" then
+      let params ← IO.ofExcept <| fromJson? (α := Lsp.PublishDiagnosticsParams) params
+      state.atomically do
+        modify fun s => match s.documents[params.uri]? with
+          | none => s
+          | some doc => { s with documents := s.documents.insert params.uri (doc.publish params) }
+    else state.atomically do
       modify fun s =>
-        if s.pending.contains id then { s with pending := s.pending.insert id (some message) }
-        else s -- A late response to a cancelled operation cannot answer another request.
+        if s.notifications.size < 512 then { s with notifications := s.notifications.push message }
+        else { s with droppedNotifications := s.droppedNotifications + 1 }
+  else
+    let id ← IO.ofExcept <| message.getObjValAs? Nat "id"
+    let result := message.getObjVal? "result"
+    let error := message.getObjVal? "error"
+    unless result.isOk != error.isOk do throw <| IO.userError "response must contain exactly one result or error"
+    if let .ok error := error then
+      discard <| IO.ofExcept <| error.getObjValAs? Int "code"
+      discard <| IO.ofExcept <| error.getObjValAs? String "message"
+    state.atomically do
+      modify fun s => match s.pending[id]? with
+        | some pending => { s with pending := s.pending.insert id { pending with response? := some message } }
+        | none => s -- Late responses never answer another operation.
 
-private partial def receiveLoop (config : ClientConfig) (input output : IO.FS.Stream)
+private partial def receiveLoop (config : ClientConfig) (output : IO.FS.Stream)
     (state : Std.Mutex State) : IO Unit := do
   try
     repeat
-      -- Lean.JsonRpc.ErrorCode is closed over Lean's known codes. Decode the
-      -- framed JSON directly so arbitrary legal server error codes survive.
-      let raw ← output.readLspMessageAsString
+      let raw ← readFrame output config.maxInboundBytes
       let message ← IO.ofExcept (Json.parse raw)
-      dispatch config input state message
-  catch error =>
-    state.atomically do
-      modify fun s => { s with failure? := some error.toString }
+      dispatch config state message
+  catch error => state.atomically do modify (fail · s!"LSP receive failed: {error}")
 
 private partial def drainStderr (handle : IO.FS.Handle) (bytes : IO.Ref ByteArray) : IO Unit := do
   repeat
@@ -120,128 +229,253 @@ def Client.capabilities (client : Client) : IO Json := do
 def Client.stderr (client : Client) : IO String := do
   return (String.fromUTF8? (← client.stderrBytes.get)).getD "[stderr contains non-UTF-8 bytes]"
 
-def Client.notify (client : Client) (method : String) (params : Json) : IO Unit :=
+private def Client.notifyCore (client : Client) (method : String) (params : Json)
+    (internal : Bool := false) : IO Unit := do
+  let payload := notification method params
+  let deadline := (← IO.monoMsNow) + client.config.timeoutMs
   client.state.atomically do
-    if (← get).closed then throw <| IO.userError "client is closed"
-    liftM <| send client.input <| Json.mkObj [
-      ("jsonrpc", "2.0"), ("method", toJson method), ("params", params)]
+    let s ← get
+    admit s internal
+    set (← enqueue client.config s { payload, deadline })
 
-private def Client.cancel (client : Client) (id : Nat) : IO Unit :=
+/-- Admission to the bounded writer queue, not an acknowledgement by the peer.
+Document lifecycle notifications must use the document operations below. -/
+def Client.notify (client : Client) (method : String) (params : Json) : IO Unit := do
+  if #["textDocument/didOpen", "textDocument/didChange", "textDocument/didClose"].contains method then
+    throw <| IO.userError "use document lifecycle operations"
+  client.notifyCore method params
+
+private def Client.cancel (client : Client) (id : Nat) : IO Unit := do
+  let deadline := (← IO.monoMsNow) + client.config.timeoutMs
+  let payload := notification "$/cancelRequest" (Json.mkObj [("id", toJson id)])
   client.state.atomically do
     modify fun s => { s with pending := s.pending.erase id }
-    liftM <| send client.input <| Json.mkObj [
-      ("jsonrpc", "2.0"), ("method", "$/cancelRequest"),
-      ("params", Json.mkObj [("id", toJson id)])]
+    let s ← get
+    if s.closing then return ()
+    if s.active?.any (·.requestId? == some id) then
+      set <| fail s "request interrupted during a write; transport retired"
+      return () -- The tracked watchdog handles termination, never this caller.
+    unless s.stopWriter do
+      try set (← enqueue client.config s { payload, deadline })
+      catch _ => set <| fail s "cancellation queue capacity exceeded"
 
-/-- Return the entire response envelope, retaining arbitrary server error codes.
-The deadline starts at admission and is never extended by server traffic.
-Cancellation is caller-owned; no hidden global cancellation state exists. -/
-def Client.request (client : Client) (method : String) (params : Json)
-    (timeoutMs : Nat := client.config.timeoutMs) (cancelled : IO Bool := pure false) : IO Json := do
+private def cancellationRequested (cancel? : Option Std.CancellationToken) : IO Bool :=
+  match cancel? with
+  | none => pure false
+  | some token => token.isCancelled
+
+private def Client.requestCore (client : Client) (method : String) (params : Json)
+    (timeoutMs : Nat) (cancel? : Option Std.CancellationToken)
+    (document? : Option (String × Int) := none) (internal : Bool := false) : IO Json := do
   let deadline := (← IO.monoMsNow) + timeoutMs
+  if ← cancellationRequested cancel? then throw <| IO.userError "request cancelled"
+  let encodedParams := params.compress
+  let encodedMethod := (toJson method).compress
+  if (← IO.monoMsNow) ≥ deadline then throw <| IO.userError s!"request deadline exceeded: {method}"
   let id ← client.state.atomically do
     let s ← get
-    if s.closed then throw <| IO.userError "client is closed"
-    if let some failure := s.failure? then throw <| IO.userError failure
+    admit s internal
+    unless validDocument s document? do throw <| IO.userError "stale document handle"
+    if s.pending.size ≥ client.config.maxPendingRequests then
+      throw <| IO.userError "pending request capacity exceeded"
     let id := s.nextId
-    liftM <| send client.input <| Json.mkObj [
-      ("jsonrpc", "2.0"), ("id", toJson id), ("method", toJson method), ("params", params)]
-    set { s with nextId := id + 1, pending := s.pending.insert id none }
+    let payload := "{\"jsonrpc\":\"2.0\",\"id\":" ++ toString id ++
+      ",\"method\":" ++ encodedMethod ++ ",\"params\":" ++ encodedParams ++ "}"
+    let s ← enqueue client.config s { payload, requestId? := some id, deadline }
+    set { s with nextId := id + 1, pending := s.pending.insert id {} }
     return id
   try
     repeat
-      if ← cancelled then throw <| IO.userError "request cancelled"
+      if ← cancellationRequested cancel? then throw <| IO.userError "request cancelled"
       if (← IO.monoMsNow) ≥ deadline then throw <| IO.userError s!"request deadline exceeded: {method}"
-      let (response?, failure?) ← client.state.atomically do
+      let response? ← client.state.atomically do
         let s ← get
-        return (s.pending[id]?.join, s.failure?)
-      if let some response := response? then
-        client.state.atomically do modify fun s => { s with pending := s.pending.erase id }
-        return response
-      if let some failure := failure? then throw <| IO.userError failure
+        admit s internal
+        unless validDocument s document? do throw <| IO.userError "stale document handle"
+        let response? := s.pending[id]? >>= (·.response?)
+        if response?.isSome then modify fun s => { s with pending := s.pending.erase id }
+        return response?
+      if let some response := response? then return response
       IO.sleep 2
     throw <| IO.userError "unreachable request loop"
   catch error =>
-    try client.cancel id catch _ => pure ()
+    client.cancel id
     throw error
 
-def Client.call (client : Client) (method : String) (params : Json)
-    (timeoutMs : Nat := client.config.timeoutMs) : IO Json := do
-  let response ← client.request method params timeoutMs
+/-- Workspace/session operation. Document operations require a versioned handle.
+Return the complete envelope, retaining arbitrary server error codes and data. -/
+def Client.request (client : Client) (method : String) (params : Json)
+    (timeoutMs : Nat := client.config.timeoutMs) (cancel? : Option Std.CancellationToken := none) : IO Json := do
+  if (params.getObjVal? "textDocument").isOk then
+    throw <| IO.userError "document requests require a document handle"
+  client.requestCore method params timeoutMs cancel?
+
+private def responseResult (method : String) (response : Json) : IO Json := do
   if let .ok error := response.getObjVal? "error" then
     throw <| IO.userError s!"{method}: {error.compress}"
   IO.ofExcept <| response.getObjVal? "result"
 
-def Client.openDocument (client : Client) (uri languageId text : String) : IO Unit := do
-  client.state.atomically do
-    let s ← get
-    if s.closed then throw <| IO.userError "client is closed"
-    if s.documents.contains uri then throw <| IO.userError "document is already open"
-    liftM <| send client.input <| Json.mkObj [
-      ("jsonrpc", "2.0"), ("method", "textDocument/didOpen"),
-      ("params", Json.mkObj [("textDocument", Json.mkObj [
-        ("uri", toJson uri), ("languageId", toJson languageId), ("version", toJson (1 : Nat)),
-        ("text", toJson text)])])]
-    set { s with documents := s.documents.insert uri { version := 1, text } }
+def Client.call (client : Client) (method : String) (params : Json)
+    (timeoutMs : Nat := client.config.timeoutMs) : IO Json := do
+  responseResult method (← client.request method params timeoutMs)
 
-/-- Use full replacement for full sync and one whole-document range edit for
-incremental sync. State/version admission and writing are serialized together. -/
-def Client.changeDocument (client : Client) (uri text : String) : IO Unit := do
+/-- Reject mismatched URIs and stale handles at both admission and delivery.
+The handle itself selects the owning client; it cannot be reused in another one. -/
+def Document.request (document : Document) (method : String) (params : Json)
+    (timeoutMs : Nat := document.client.config.timeoutMs) (cancel? : Option Std.CancellationToken := none) : IO Json := do
+  unless (params.getObjVal? "textDocument" >>= (·.getObjValAs? String "uri")).toOption == some document.uri do
+    throw <| IO.userError "request URI does not match document handle"
+  if let .ok raw := params.getObjVal? "textDocument" >>= (·.getObjVal? "version") then
+    let version ← IO.ofExcept <| fromJson? (α := Int) raw
+    unless version == document.version do throw <| IO.userError "request version does not match document handle"
+  document.client.requestCore method params timeoutMs cancel? (some (document.uri, document.version))
+
+def Document.call (document : Document) (method : String) (params : Json)
+    (timeoutMs : Nat := document.client.config.timeoutMs) : IO Json := do
+  responseResult method (← document.request method params timeoutMs)
+
+def Client.openDocument (client : Client) (uri languageId text : String) : IO Document := do
+  let deadline := (← IO.monoMsNow) + client.config.timeoutMs
+  let version ← client.state.atomically do
+    let s ← get
+    admit s
+    if s.documents.contains uri then throw <| IO.userError "document is already open"
+    let version := s.nextVersion
+    let payload := notification "textDocument/didOpen" <| Json.mkObj [
+      ("textDocument", Json.mkObj [("uri", toJson uri), ("languageId", toJson languageId),
+        ("version", toJson version), ("text", toJson text)])]
+    let s ← enqueue client.config s { payload, deadline }
+    set { s with nextVersion := version + 1, documents := s.documents.insert uri { version, text } }
+    return version
+  return { client, uri, version }
+
+/-- Full replacement for full sync, a whole-document range for incremental sync.
+The returned handle supersedes the old version atomically with queue admission. -/
+def Document.change (document : Document) (text : String) : IO Document := do
+  let client := document.client
   let caps ← client.capabilities
   let sync := (caps.getObjVal? "textDocumentSync").toOption.getD .null
-  let kind := (fromJson? (α := Nat) sync).toOption <|>
-    (sync.getObjValAs? Nat "change").toOption
-  unless kind == some 1 || kind == some 2 do
-    throw <| IO.userError "document synchronization is unsupported"
-  client.state.atomically do
+  let kind := (fromJson? (α := Nat) sync).toOption <|> (sync.getObjValAs? Nat "change").toOption
+  unless kind == some 1 || kind == some 2 do throw <| IO.userError "document synchronization is unsupported"
+  let deadline := (← IO.monoMsNow) + client.config.timeoutMs
+  let version ← client.state.atomically do
     let s ← get
-    if s.closed then throw <| IO.userError "client is closed"
-    let some doc := s.documents[uri]? | throw <| IO.userError "document is not open"
-    let version := doc.version + 1
+    admit s
+    unless validDocument s (some (document.uri, document.version)) do throw <| IO.userError "stale document handle"
+    let some doc := s.documents[document.uri]? | throw <| IO.userError "document is not open"
+    let version := s.nextVersion
     let change := if kind == some 1 then Json.mkObj [("text", toJson text)] else
       let oldRange : Lsp.Range := {
         start := ⟨0, 0⟩
         «end» := (FileMap.ofString doc.text).utf8PosToLspPos ⟨doc.text.utf8ByteSize⟩ }
       Json.mkObj [("range", toJson oldRange), ("text", toJson text)]
-    liftM <| send client.input <| Json.mkObj [
-      ("jsonrpc", "2.0"), ("method", "textDocument/didChange"),
-      ("params", Json.mkObj [
-        ("textDocument", Json.mkObj [("uri", toJson uri), ("version", toJson version)]),
-        ("contentChanges", toJson #[change])])]
-    set { s with documents := s.documents.insert uri { version, text } }
+    let payload := notification "textDocument/didChange" <| Json.mkObj [
+      ("textDocument", Json.mkObj [("uri", toJson document.uri), ("version", toJson version)]),
+      ("contentChanges", toJson #[change])]
+    let s ← enqueue client.config s { payload, deadline }
+    set { s with nextVersion := version + 1, documents := s.documents.insert document.uri { version, text } }
+    return version
+  return { document with version }
 
-def Client.diagnostics (client : Client) (uri : String) : IO (Option DiagnosticSnapshot) :=
-  client.state.atomically do return (← get).documents[uri]? >>= (·.diagnostics?)
+def Document.close (document : Document) : IO Unit := do
+  let client := document.client
+  let deadline := (← IO.monoMsNow) + client.config.timeoutMs
+  let payload := notification "textDocument/didClose" (Json.mkObj [
+    ("textDocument", Json.mkObj [("uri", toJson document.uri)])])
+  client.state.atomically do
+    let s ← get
+    admit s
+    unless validDocument s (some (document.uri, document.version)) do throw <| IO.userError "stale document handle"
+    let s ← enqueue client.config s { payload, deadline }
+    set { s with documents := s.documents.erase document.uri }
 
-/-- Bounded trace for profile-specific readiness experiments. A dropped count
-prevents callers from mistaking an incomplete trace for complete evidence. -/
+def Document.diagnostics (document : Document) : IO (Option DiagnosticSnapshot) :=
+  document.client.state.atomically do
+    let s ← get
+    admit s
+    unless validDocument s (some (document.uri, document.version)) do throw <| IO.userError "stale document handle"
+    return s.documents[document.uri]? >>= (·.diagnostics?)
+
 def Client.notifications (client : Client) : IO (Array Json × Nat) :=
   client.state.atomically do return ((← get).notifications, (← get).droppedNotifications)
 
-private def waitForExit (client : Client) (timeoutMs : Nat) : IO Bool := do
+private def Client.workersStopped (client : Client) : IO Bool := do
+  return (← IO.hasFinished client.reader) && (← IO.hasFinished client.writer) &&
+    (← IO.hasFinished client.stderrReader) && (← IO.hasFinished client.watchdog)
+
+private def Client.waitWorkers (client : Client) (timeoutMs : Nat) : IO Bool := do
   let deadline := (← IO.monoMsNow) + timeoutMs
   repeat
-    if (← client.child.tryWait).isSome then return true
+    if ← client.workersStopped then return true
     if (← IO.monoMsNow) ≥ deadline then return false
     IO.sleep 2
   return false
 
-/-- True means the child was reaped. Lean's process API sends SIGTERM; if the
-server ignores it, return false instead of blocking indefinitely or claiming
-successful cleanup. Concurrent close/request is outside this spike's contract. -/
-def Client.close (client : Client) : IO Bool := do
-  if ← client.state.atomically (return (← get).closed) then
-    return (← client.child.tryWait).isSome
-  let uris ← client.state.atomically (return (← get).documents.toList.map (·.1))
+private def Client.closeCore (client : Client) : IO CloseReport := do
+  let uris ← client.state.atomically do
+    let s ← get
+    set { s with pending := {}, documents := {} }
+    return s.documents.toList.map (·.1)
   for uri in uris do
-    try client.notify "textDocument/didClose" (Json.mkObj [
-      ("textDocument", Json.mkObj [("uri", toJson uri)])]) catch _ => pure ()
-  try discard <| client.call "shutdown" .null 500 catch _ => pure ()
-  try client.notify "exit" .null catch _ => pure ()
-  client.state.atomically do modify fun s => { s with closed := true, documents := {} }
-  if ← waitForExit client 500 then return true
-  try client.child.kill catch _ => pure ()
-  waitForExit client 500
+    try client.notifyCore "textDocument/didClose" (Json.mkObj [
+      ("textDocument", Json.mkObj [("uri", toJson uri)])]) true catch _ => pure ()
+  try
+    discard <| client.requestCore "shutdown" .null 500 none none true
+  catch _ => pure ()
+  try client.notifyCore "exit" .null true catch _ => pure ()
+  client.state.atomically do modify fun s => { s with stopWriter := true }
+  -- Do not reap the leader while inherited pipes may still be open: its PID
+  -- reserves our process-group identity until escalation is complete.
+  if ← client.waitWorkers 500 then
+    if (← client.child.tryWait).isSome then return { reaped := true, workersStopped := true }
+  let mut errors := #[]
+  try client.child.kill catch error => errors := errors.push error.toString
+  discard <| client.waitWorkers 100
+  -- Lean only exposes SIGTERM on Unix. Invoke the POSIX utility directly,
+  -- without a shell, against the session/process group created by spawn.
+  -- Always escalate before reaping, including when the leader exited first.
+  if !System.Platform.isWindows then
+    try
+      let killer ← IO.Process.spawn {
+        cmd := "kill", args := #["-KILL", "--", s!"-{client.child.pid}"]
+        stdout := .null, stderr := .null }
+      let deadline := (← IO.monoMsNow) + 500
+      repeat
+        if (← killer.tryWait).isSome then break
+        if (← IO.monoMsNow) ≥ deadline then
+          killer.kill
+          errors := errors.push "force-termination helper did not exit"
+          break
+        IO.sleep 2
+    catch error => errors := errors.push s!"force termination failed: {error}"
+  let workersStopped ← client.waitWorkers 500
+  -- A delayed signal sender must never retain a PID after we reap its owner.
+  unless ← IO.hasFinished client.watchdog do
+    return {
+      workersStopped, forced := true
+      errors := errors.push "termination watchdog still running; child not reaped" }
+  let deadline := (← IO.monoMsNow) + 500
+  let mut reaped := false
+  repeat
+    if (← client.child.tryWait).isSome then
+      reaped := true
+      break
+    if (← IO.monoMsNow) ≥ deadline then break
+    IO.sleep 2
+  return { reaped, workersStopped, forced := true, errors }
+
+/-- One caller owns cleanup; concurrent and repeated callers share its report.
+Closing rejects new work and invalidates all document handles immediately. -/
+def Client.close (client : Client) : IO CloseReport := do
+  let owner ← client.state.atomically do
+    let s ← get
+    if s.closing then return false
+    set { s with closing := true }
+    return true
+  if !owner then return (← IO.wait client.cleanup.result?).getD {}
+  let report ← try client.closeCore catch error => pure { errors := #[error.toString] }
+  client.cleanup.resolve report
+  return report
 
 def Client.start (config : ClientConfig) : IO Client := do
   let root ← IO.FS.realPath config.root
@@ -254,14 +488,17 @@ def Client.start (config : ClientConfig) : IO Client := do
   let stderrBytes ← IO.mkRef ByteArray.empty
   let stderrReader ← IO.asTask (drainStderr child.stderr stderrBytes) .dedicated
   let reader ← IO.asTask
-    (receiveLoop config input (IO.FS.Stream.ofHandle child.stdout) state) .dedicated
+    (receiveLoop config (IO.FS.Stream.ofHandle child.stdout) state) .dedicated
+  let writer ← IO.asTask (writeLoop input state) .dedicated
+  let watchdog ← IO.asTask (watchWrites child state) .dedicated
+  let cleanup ← IO.Promise.new
   let initializeResult ← IO.mkRef Json.null
   let client : Client := {
-    child, input, state, reader, stderrReader, stderrBytes, initializeResult, config }
+    child, state, reader, writer, watchdog, stderrReader, stderrBytes, initializeResult, config, cleanup }
   try
     let rootUri := (System.Uri.pathToUri config.root : String)
     let result ← client.call "initialize" <| Json.mkObj [
-      ("processId", Json.null), ("clientInfo", Json.mkObj [("name", "Parley")]),
+      ("processId", toJson (← IO.Process.getPID).toNat), ("clientInfo", Json.mkObj [("name", "Parley")]),
       ("rootUri", toJson rootUri),
       ("workspaceFolders", toJson #[Json.mkObj [("uri", toJson rootUri), ("name", "project")]]),
       ("initializationOptions", config.initializationOptions),
@@ -291,7 +528,21 @@ def Client.start (config : ClientConfig) : IO Client := do
     client.notify "initialized" (Json.mkObj [])
     return client
   catch error =>
-    discard <| client.close
-    throw error
+    let report ← client.close
+    if report.complete then throw error
+    throw <| IO.userError s!"{error}; startup cleanup incomplete: {repr report}"
+
+/-- Preserve the action's failure if cleanup also fails. -/
+def Client.withSession (config : ClientConfig) (action : Client → IO α) : IO α := do
+  let client ← Client.start config
+  let result : Except IO.Error α ← try pure (.ok (← action client)) catch error => pure (.error error)
+  let report ← client.close
+  match result with
+  | .ok value =>
+    unless report.complete do throw <| IO.userError s!"session cleanup incomplete: {repr report}"
+    return value
+  | .error error =>
+    if report.complete then throw error
+    throw <| IO.userError s!"{error}; session cleanup incomplete: {repr report}"
 
 end Parley

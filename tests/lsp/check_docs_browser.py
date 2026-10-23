@@ -74,7 +74,10 @@ def main():
                 page.evaluate("window.scrollTo(0, 0)")
                 page.screenshot(path=str(root / f"{kind}-desktop.png"), full_page=True)
                 page.set_viewport_size({"width": 390, "height": 844})
-                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+                # Resize and tooltip reposition/hide handlers can finish on a
+                # later frame. Persistent page overflow still fails this check.
+                page.wait_for_function(
+                    "document.documentElement.scrollWidth <= window.innerWidth + 1", timeout=5000)
                 page.screenshot(path=str(root / f"{kind}-mobile.png"), full_page=True)
                 assert not errors, errors
                 assert not dialogs, dialogs

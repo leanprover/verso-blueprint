@@ -31,25 +31,27 @@ private def awaitRust (client : Client) : IO Json := do
     IO.sleep 5
   throw <| IO.userError "unreachable readiness loop"
 
-private def rustDiagnostics (client : Client) (uri : String) : IO DiagnosticEvidence := do
-  let completion ← awaitRust client
-  let result ← client.call "textDocument/diagnostic" <| Json.mkObj [
+private def rustDiagnostics (document : Document) : IO DiagnosticEvidence := do
+  let uri := document.uri
+  let completion ← document.withClient awaitRust
+  let result ← document.call "textDocument/diagnostic" <| Json.mkObj [
     ("textDocument", Json.mkObj [("uri", toJson uri)])]
   return {
     coverage := "rust-analyzer native diagnostics; compiler checks disabled"
     completion
     diagnostics := ← IO.ofExcept <| result.getObjValAs? (Array Lsp.Diagnostic) "items" }
 
-private def rocqDiagnostics (client : Client) (uri : String) : IO DiagnosticEvidence := do
-  let completion ← client.call "coq/getDocument" <| Json.mkObj [
-    ("textDocument", Json.mkObj [("uri", toJson uri), ("version", toJson (1 : Nat))])]
+private def rocqDiagnostics (document : Document) : IO DiagnosticEvidence := do
+  let uri := document.uri
+  let completion ← document.call "coq/getDocument" <| Json.mkObj [
+    ("textDocument", Json.mkObj [("uri", toJson uri), ("version", toJson document.version)])]
   let status := completion.getObjVal? "completed" >>= (·.getObjValAs? (Array String) "status")
   unless status.toOption == some #["Yes"] do
     throw <| IO.userError "Rocq document processing did not complete"
   let deadline := (← IO.monoMsNow) + 3000
   repeat
-    if let some snapshot ← client.diagnostics uri then
-      if snapshot.version? == some 1 then
+    if let some snapshot ← document.diagnostics then
+      if snapshot.version? == some document.version then
         return {
           coverage := "Rocq document processing and versioned push diagnostics"
           completion, diagnostics := snapshot.diagnostics }

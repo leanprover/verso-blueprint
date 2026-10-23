@@ -35,7 +35,7 @@ array and the build passes. This tests the dependency boundary beyond merely
 declaring a second library in the VBP lakefile.
 
 Keep both libraries in this repository during interface development. Moving
-the core into its own package is now structurally possible; deciding its name,
+the core into its own package is now structurally possible; settling its
 repository, release/toolchain policy, and supported client lifecycle should
 precede publishing it. There is no compatibility wrapper for #63's old model.
 
@@ -155,10 +155,12 @@ Validation passed:
 
 ## Remaining work
 
-The transport limitations in the first report remain: synchronous pipe writes,
-SIGTERM-only bounded cleanup, incomplete lifecycle admission, and no guarantee
-for concurrent close/request. This slice does not make that client production
-ready.
+The subsequent [Parley lifecycle review](PARLEY_LIFECYCLE_REVIEW.md) replaces
+the first report's transport contract: writes run on a bounded dedicated worker,
+document queries use versioned handles, and concurrent close callers share a
+cleanup report. Unix cleanup can escalate beyond SIGTERM. The first report is
+historical evidence, not the current API. The library remains experimental;
+platform coverage and a typed client error API still need release decisions.
 
 Before a supported release, settle profiles and external-project inputs,
 context/source identity, artifact input fingerprints, editor feedback, richer

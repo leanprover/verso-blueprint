@@ -26,7 +26,7 @@ structure ContextProfile where
   referencePrefix : String
   referenceSuffix : String
   referenceQueryOffset : String → Nat := fun _ => 0
-  collectDiagnostics : Client → String → IO DiagnosticEvidence
+  collectDiagnostics : Document → IO DiagnosticEvidence
 
 private structure Placement where
   request : Request
@@ -62,15 +62,16 @@ private def supports (capabilities : Json) (key : String) : Bool :=
   | .error _ | .ok .null | .ok (.bool false) => false
   | _ => true
 
-private def query (client : Client) (caps : Json) (uri : String) (projection : Projection)
+private def query (document : Document) (caps : Json) (projection : Projection)
     (position : Lsp.Position) (range : Lsp.Range) : IO QuerySnapshot := do
+  let uri := document.uri
   let params := Json.mkObj [
     ("textDocument", Json.mkObj [("uri", toJson uri)]), ("position", toJson position)]
   let hover ← if supports caps "hoverProvider" then attempt do
-      IO.ofExcept <| decodeHover (← client.call "textDocument/hover" params)
+      IO.ofExcept <| decodeHover (← document.call "textDocument/hover" params)
     else pure .unsupported
   let definitions ← if supports caps "definitionProvider" then attempt do
-      IO.ofExcept <| definitionTargets (← client.call "textDocument/definition" params)
+      IO.ofExcept <| definitionTargets (← document.call "textDocument/definition" params)
     else pure .unsupported
   let mut localTargets := #[]
   if let .ok targets := definitions then
@@ -84,16 +85,15 @@ private def query (client : Client) (caps : Json) (uri : String) (projection : P
 private def analyzeContext (profile : ContextProfile) (requests : Array Request) :
     IO (Array RequestSnapshot × ContextObservation) := do
   let (projection, placements) ← IO.ofExcept <| prepare profile requests
-  let client ← Client.start profile.client
-  try
+  Client.withSession profile.client fun client => do
     let uri := (System.Uri.pathToUri profile.document : String)
-    client.openDocument uri profile.languageId projection.text
-    let evidence ← profile.collectDiagnostics client uri
+    let document ← client.openDocument uri profile.languageId projection.text
+    let evidence ← profile.collectDiagnostics document
     let caps ← client.capabilities
     let tokens ← match caps.getObjVal? "semanticTokensProvider" with
       | .ok provider =>
         if supports provider "full" then attempt do
-          let raw ← client.call "textDocument/semanticTokens/full" <|
+          let raw ← document.call "textDocument/semanticTokens/full" <|
             Json.mkObj [("textDocument", Json.mkObj [("uri", toJson uri)])]
           IO.ofExcept <| semanticSpans projection.text provider raw
         else pure .unsupported
@@ -132,7 +132,7 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
         unless offset < request.text.utf8ByteSize do
           throw <| IO.userError "reference query offset is outside its text"
         let position := fileMap.utf8PosToLspPos ⟨placement.bodyStart + offset⟩
-        queries := queries.push (← query client caps uri projection position (fullRange request.text))
+        queries := queries.push (← query document caps projection position (fullRange request.text))
       else
         -- Bound eager hover/navigation work. No token support means plain code,
         -- while explicit reference queries continue to work independently.
@@ -143,15 +143,13 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
           let some (start, _) := byteRange? request.text token.range
             | throw <| IO.userError "invalid projected token"
           let position := fileMap.utf8PosToLspPos ⟨placement.bodyStart + start⟩
-          queries := queries.push (← query client caps uri projection position token.range)
+          queries := queries.push (← query document caps projection position token.range)
       snapshots := snapshots.push {
         request, languageId := profile.languageId, tokens := localTokens, queries
         diagnostics := (mappedDiagnostics.filter (·.1 == request.key)).map (·.2) }
     return (snapshots, {
       key := profile.key, languageId := profile.languageId,
       diagnosticCoverage := evidence.coverage, completion := evidence.completion, generatedDiagnostics })
-  finally
-    unless ← client.close do throw <| IO.userError "analysis server could not be reaped"
 
 /-- Analyze a complete plan once at the generator boundary. Duplicate identical
 requests are shared; conflicting identities and unregistered contexts fail.

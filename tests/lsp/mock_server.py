@@ -1,6 +1,8 @@
 """Deterministic stdio peer for the experimental Lean client. No dependencies."""
 
 import json
+import os
+import signal
 import sys
 import threading
 import time
@@ -9,6 +11,7 @@ write_lock = threading.Lock()
 chatter = {}
 held = None
 client_request = None
+document_request = None
 mode = None
 
 
@@ -57,6 +60,8 @@ while True:
     params = message.get("params", {})
     if method == "initialize":
         mode = (params.get("initializationOptions") or {}).get("mode")
+        if mode == "ignore-term":
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
         reply(request_id, {"capabilities": {
             "positionEncoding": "utf-8" if mode == "wrong-encoding" else "utf-16",
             "textDocumentSync": 1,
@@ -64,15 +69,53 @@ while True:
         }})
     elif method == "textDocument/didOpen":
         document = params["textDocument"]
-        diagnostics(document["uri"], 1, "old warning")
-        diagnostics(document["uri"], 1)
-        diagnostics(document["uri"], 0, "stale warning")
+        diagnostics(document["uri"], document["version"], "old warning")
+        diagnostics(document["uri"], document["version"])
+        diagnostics(document["uri"], document["version"] - 1, "stale warning")
     elif method == "textDocument/didChange":
         document = params["textDocument"]
         diagnostics(document["uri"], 1, "stale after edit")
         diagnostics(document["uri"], document["version"], "current warning")
     elif method == "test/barrier":
         reply(request_id, True)
+    elif method == "test/hold-document":
+        document_request = request_id
+        send({"method": "test/held-" + params["tag"], "params": {}})
+    elif method == "test/release-document":
+        reply(document_request, "obsolete")
+        document_request = None
+        reply(request_id, True)
+    elif method == "test/stop-reading":
+        reply(request_id, True)
+        while True:
+            time.sleep(60)
+    elif method == "test/stderr":
+        sys.stderr.write("e" * 200000)
+        sys.stderr.flush()
+        reply(request_id, True)
+    elif method == "test/descendant":
+        ready_read, ready_write = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(ready_read)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            os.write(ready_write, b"r")
+            os.close(ready_write)
+            while True:
+                time.sleep(60)
+        os.close(ready_write)
+        assert os.read(ready_read, 1) == b"r"
+        os.close(ready_read)
+        reply(request_id, pid)
+        sys.exit(0)
+    elif method == "test/bad-envelope":
+        send({"id": request_id, "result": True, "error": {"code": -1, "message": "bad"}})
+    elif method == "test/oversized":
+        sys.stdout.buffer.write(b"Content-Length: 999999999\r\n\r\n")
+        sys.stdout.buffer.flush()
+    elif method == "test/partial":
+        sys.stdout.buffer.write(b"Content-Length: 100\r\n\r\n{")
+        sys.stdout.buffer.flush()
     elif method == "test/error":
         send({"id": request_id, "error": {"code": -32097, "message": "server-specific"}})
     elif method == "test/first":
@@ -103,8 +146,8 @@ while True:
         sys.stderr.flush()
         sys.exit(7)
     elif method == "shutdown":
-        if mode != "ignore-shutdown":
+        if mode not in ("ignore-shutdown", "ignore-term"):
             reply(request_id, None)
     elif method == "exit":
-        if mode != "ignore-shutdown":
+        if mode not in ("ignore-shutdown", "ignore-term"):
             sys.exit(0)
