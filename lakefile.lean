@@ -12,26 +12,26 @@ package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
 
 -- Experimental, genre-independent LSP adapter. Not imported by Blueprint yet.
-lean_lib VersoLsp where
+lean_lib Parley where
   srcDir := "src"
-  roots := #[`VersoLsp]
+  roots := #[`Parley]
 
 -- Verso authoring/rendering bridge; the analysis library has no Verso dependency.
-lean_lib VersoLspVerso where
+lean_lib VersoParley where
   srcDir := "src"
-  roots := #[`VersoLspVerso]
+  roots := #[`VersoParley]
 
-lean_lib VersoLspDocs where
+lean_lib ParleyDocs where
   srcDir := "tests"
-  roots := #[`VersoLspDocs.Plain, `VersoLspDocs.Blueprint]
+  roots := #[`ParleyDocs.Plain, `ParleyDocs.Blueprint]
 
-lean_exe «verso-lsp-docs» where
+lean_exe «parley-docs» where
   srcDir := "tests"
-  root := `VersoLspDocsMain
+  root := `ParleyDocsMain
 
-lean_exe «verso-lsp-spike» where
+lean_exe «parley-spike» where
   srcDir := "tests"
-  root := `VersoLspSpike
+  root := `ParleySpike
 
 input_dir embeddedBlueprintAssets where
   path := "src/VersoBlueprint"

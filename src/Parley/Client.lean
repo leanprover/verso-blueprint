@@ -4,12 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import Lean.Data.Lsp.Communication
-import VersoLsp.Protocol
+import Parley.Protocol
 import Std.Sync.Mutex
 
 /-! An experimental stdio client for the adapter spike. No session cache or
 Blueprint dependency. This is not yet a supported end-user API. -/
-namespace VersoLsp
+namespace Parley
 open Lean
 
 structure ClientConfig where
@@ -261,7 +261,7 @@ def Client.start (config : ClientConfig) : IO Client := do
   try
     let rootUri := (System.Uri.pathToUri config.root : String)
     let result ← client.call "initialize" <| Json.mkObj [
-      ("processId", Json.null), ("clientInfo", Json.mkObj [("name", "verso-lsp-spike")]),
+      ("processId", Json.null), ("clientInfo", Json.mkObj [("name", "Parley")]),
       ("rootUri", toJson rootUri),
       ("workspaceFolders", toJson #[Json.mkObj [("uri", toJson rootUri), ("name", "project")]]),
       ("initializationOptions", config.initializationOptions),
@@ -294,4 +294,4 @@ def Client.start (config : ClientConfig) : IO Client := do
     discard <| client.close
     throw error
 
-end VersoLsp
+end Parley

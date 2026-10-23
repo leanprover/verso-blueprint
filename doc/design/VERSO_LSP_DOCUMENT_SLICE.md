@@ -4,21 +4,29 @@ Date: 2026-10-23. This extends the [protocol experiment](VERSO_LSP_SPIKE.md)
 with real authored documents and saved-result rendering. The libraries and
 author syntax remain experimental.
 
+Naming update: the core and bridge are now `Parley` and `VersoParley`.
+Current imports and targets below use those names; the original evidence bundle
+retains the working names `VersoLsp` and `VersoLspVerso` in its source copies.
+The rename was validated separately under
+`_out/verso-lsp-design/parley-rename/`: both libraries/executables build, the
+dependency-free core package and protocol/document checks pass, and browser
+checks pass with the renamed anchors and hover theme.
+
 ## Library boundary
 
-The analysis library is now exposed through `import VersoLsp`. It contains
+The analysis library is now exposed through `import Parley`. It contains
 source projection, protocol normalization, an owned client, request/snapshot
 data, and context analysis. It imports only Lean and Std.
 
-`import VersoLspVerso` is a separate `lean_lib` for Manual authoring, request
+`import VersoParley` is a separate `lean_lib` for Manual authoring, request
 collection/enrichment, HTML, and TeX rendering. It imports Verso but never VBP.
 Blueprint itself does not import either library by default. Its fixture opts
 into the bridge and passes the existing captured rendering model through.
 
 | Layer | Dependencies | Role |
 | --- | --- | --- |
-| `VersoLsp` | Lean/Std | Analyze explicit document contexts and produce portable facts |
-| `VersoLspVerso` | Core data and Verso | Compile inert requests and render accepted facts |
+| `Parley` | Lean/Std | Analyze explicit document contexts and produce portable facts |
+| `VersoParley` | Core data and Verso | Compile inert requests and render accepted facts |
 | Blueprint consumer | Verso bridge and VBP | Enrich a document before the normal Blueprint generator |
 
 The test runner builds the core from the same sources in a fresh temporary Lake

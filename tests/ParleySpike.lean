@@ -3,10 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoLsp.Client
-import VersoLsp.Source
+import Parley.Client
+import Parley.Source
 
-open Lean VersoLsp
+open Lean Parley
 
 private def check (condition : Bool) (message : String) : IO Unit :=
   unless condition do throw <| IO.userError message
@@ -232,7 +232,7 @@ private def probe (language command root : String) : IO Unit := do
     if language == "rust" then
       let detachedUri := (System.Uri.pathToUri (root / "Detached.rs") : String)
       client.openDocument detachedUri "rust"
-        "use verso_lsp_spike::step;\nfn probe() { let _ = step; }\n"
+        "use parley_spike::step;\nfn probe() { let _ = step; }\n"
       detachedDefinition ← client.call "textDocument/definition" (queryParams detachedUri 1 22)
     let (notifications, dropped) ← client.notifications
     let diagnostics ← client.diagnostics uri
@@ -258,4 +258,4 @@ def main (args : List String) : IO Unit := do
   match args with
   | ["mock", server] => pureChecks; mockChecks server
   | ["probe", language, command, root] => probe language command root
-  | _ => throw <| IO.userError "usage: verso-lsp-spike mock SERVER.py | probe LANGUAGE COMMAND ROOT"
+  | _ => throw <| IO.userError "usage: parley-spike mock SERVER.py | probe LANGUAGE COMMAND ROOT"

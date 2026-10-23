@@ -3,11 +3,11 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoLspVerso.Render
+import VersoParley.Render
 import VersoManual
 
-namespace VersoLspVerso
-open Lean Lean.Elab Verso Verso.Doc Verso.Doc.Elab Verso.Genre.Manual VersoLsp
+namespace VersoParley
+open Lean Lean.Elab Verso Verso.Doc Verso.Doc.Elab Verso.Genre.Manual Parley
 open Verso.Genre (Manual)
 
 /-- Each phase owns the request exactly once, including its source text. -/
@@ -205,4 +205,4 @@ def enrich (bundle : Bundle) (part : Part Manual) : Except String (Part Manual) 
     | _ => true
   return { part with content := #[.other (Block.lspContexts contexts) #[]] ++ content }
 
-end VersoLspVerso
+end VersoParley

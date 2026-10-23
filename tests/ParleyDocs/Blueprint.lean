@@ -3,10 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoLspDocs.Plain
+import ParleyDocs.Plain
 import VersoBlueprint
 
-namespace VersoLspDocs
+namespace ParleyDocs
 open Verso Verso.Doc Verso.Doc.Elab Verso.Genre.Manual
 open Informal
 
@@ -18,7 +18,7 @@ def sharedLspExample : DirectiveExpanderOf Unit
 
 set_option doc.verso true
 
-#docs (Genre.Manual) blueprint "LSP analysis inside Blueprint" :=
+#docs (Genre.Manual) blueprint "Parley analysis inside Blueprint" :=
 :::::::
 :::definition "lsp.background"
 The background specification.
@@ -38,4 +38,4 @@ Foreign-language lookup does not alter Blueprint proof progress.
 
 def blueprintDocument : Informal.BlueprintDocument := .capture blueprint.toPart
 
-end VersoLspDocs
+end ParleyDocs

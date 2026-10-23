@@ -8,6 +8,9 @@ The [follow-up document slice](VERSO_LSP_DOCUMENT_SLICE.md) now adds independent
 library imports, compiled requests, and offline Verso/Blueprint rendering. The
 limits below describe the first experiment at its recorded date.
 
+The core is now named `Parley`; the module paths below retain the working names
+used by this archived experiment and its recorded source hash.
+
 ## What now exists
 
 - `src/VersoLsp/Client.lean`: an owned stdio session with one receiver, concurrent

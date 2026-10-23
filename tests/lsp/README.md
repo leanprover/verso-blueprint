@@ -2,20 +2,20 @@
 
 This is maintainer tooling for the design in
 [`doc/design/VERSO_LSP_ADAPTER.md`](../../doc/design/VERSO_LSP_ADAPTER.md).
-The optional `VersoLsp` library imports Lean and Std, with no Blueprint or Verso
+The optional `Parley` library imports Lean and Std, with no Blueprint or Verso
 dependency. It is experimental and is not imported by the Blueprint core.
 
 Build and run the deterministic checks from this worktree:
 
 ```sh
-scripts/lean-low-priority lake build verso-lsp-spike
-python3 tests/lsp/run_spike.py --output /tmp/verso-lsp-mock
+scripts/lean-low-priority lake build parley-spike
+python3 tests/lsp/run_spike.py --output /tmp/parley-mock
 ```
 
 Add explicitly selected language servers to exercise real projects:
 
 ```sh
-python3 tests/lsp/run_spike.py --output /tmp/verso-lsp-real \
+python3 tests/lsp/run_spike.py --output /tmp/parley-real \
   --rust-command rust-analyzer \
   --rocq-command /path/to/opam-switch/bin/coq-lsp
 ```
@@ -46,8 +46,8 @@ VBP attachment semantics. See its [results and limits](../../doc/design/VERSO_LS
 
 ## Compiled document and offline rendering experiment
 
-`VersoLsp` is an independent Lean library whose aggregate import is
-`import VersoLsp`. `VersoLspVerso` is a separate library whose aggregate import
+`Parley` is an independent Lean library whose aggregate import is
+`import Parley`. `VersoParley` is a separate library whose aggregate import
 registers the experimental Manual code block and role. The core imports only
 Lean/Std; the bridge imports Verso and never VBP. Both remain in this package
 while their interfaces are being designed.
@@ -57,8 +57,8 @@ dependencies**, compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:
 
 ```sh
-scripts/lean-low-priority lake build VersoLsp VersoLspVerso verso-lsp-docs
-python3 tests/lsp/run_spike.py --output /tmp/verso-lsp-docs \
+scripts/lean-low-priority lake build Parley VersoParley parley-docs
+python3 tests/lsp/run_spike.py --output /tmp/parley-docs \
   --rust-command rust-analyzer \
   --rocq-command /path/to/opam-switch/bin/coq-lsp \
   --documents
@@ -75,7 +75,7 @@ browser-test environment:
 
 ```sh
 uv run --project tests/browser --extra test python tests/lsp/check_docs_browser.py \
-  /tmp/verso-lsp-docs/documents
+  /tmp/parley-docs/documents
 ```
 
 The pages require no live language server. The browser check verifies exact

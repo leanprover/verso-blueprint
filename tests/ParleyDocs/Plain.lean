@@ -3,14 +3,14 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoLspVerso
+import VersoParley
 
-namespace VersoLspDocs
-open Verso Verso.Doc Verso.Genre.Manual VersoLspVerso
+namespace ParleyDocs
+open Verso Verso.Doc Verso.Genre.Manual VersoParley
 
 set_option doc.verso true
 
-#docs (Genre.Manual) plain "LSP analysis in a Verso document" :=
+#docs (Genre.Manual) plain "Parley analysis in a Verso document" :=
 :::::::
 *Rust code and references*
 
@@ -42,4 +42,4 @@ Check missing_name.
 ```
 :::::::
 
-end VersoLspDocs
+end ParleyDocs
