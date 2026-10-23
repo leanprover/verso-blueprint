@@ -4,6 +4,12 @@ Date: 2026-10-23. This follows the [document slice](VERSO_LSP_DOCUMENT_SLICE.md)
 The core and bridge remain local experimental libraries; this does not publish
 a package or update PR #63.
 
+API update: the subsequent [structured-error revision](PARLEY_API.md) replaces
+the `request`/`call` pair below with one result-returning `request`, uses
+`EIO ClientError` through analysis and profile actions, and removes
+`Document.withClient`. The lifecycle evidence and timings here describe the
+earlier revision; the linked guide describes the current API.
+
 ## Decisions implemented
 
 The original client's state mutex enclosed blocking pipe writes, including
@@ -121,10 +127,6 @@ and Blueprint output retain the same semantic comparison and browser checks.
 
 Before publishing an independent package:
 
-- Choose a typed client failure interface. The raw response API preserves
-  arbitrary server error codes/data, but convenience calls and local transport
-  failures still raise `IO.Error`; consumers must not treat error strings as a
-  stable machine interface.
 - Set the supported platform contract. This batch validates Linux. The Unix
   escalation path needs the standard external `kill` utility at runtime, despite
   the library's dependency-free Lean build. Windows/macOS cleanup is unvalidated.

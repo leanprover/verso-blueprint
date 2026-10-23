@@ -12,6 +12,7 @@ chatter = {}
 held = None
 client_request = None
 document_request = None
+cancelled_requests = []
 mode = None
 
 
@@ -93,11 +94,13 @@ while True:
         sys.stderr.write("e" * 200000)
         sys.stderr.flush()
         reply(request_id, True)
-    elif method == "test/descendant":
+    elif method in ("test/descendant", "test/escaped-descendant"):
         ready_read, ready_write = os.pipe()
         pid = os.fork()
         if pid == 0:
             os.close(ready_read)
+            if method == "test/escaped-descendant":
+                os.setsid()
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             os.write(ready_write, b"r")
             os.close(ready_write)
@@ -107,9 +110,12 @@ while True:
         assert os.read(ready_read, 1) == b"r"
         os.close(ready_read)
         reply(request_id, pid)
-        sys.exit(0)
+        if method == "test/descendant":
+            sys.exit(0)
     elif method == "test/bad-envelope":
         send({"id": request_id, "result": True, "error": {"code": -1, "message": "bad"}})
+    elif method == "test/bad-error":
+        send({"id": request_id, "error": {"code": "invalid", "message": "bad"}})
     elif method == "test/oversized":
         sys.stdout.buffer.write(b"Content-Length: 999999999\r\n\r\n")
         sys.stdout.buffer.flush()
@@ -117,7 +123,16 @@ while True:
         sys.stdout.buffer.write(b"Content-Length: 100\r\n\r\n{")
         sys.stdout.buffer.flush()
     elif method == "test/error":
-        send({"id": request_id, "error": {"code": -32097, "message": "server-specific"}})
+        error = {"code": -32097, "message": "server-specific"}
+        if isinstance(params, dict):
+            error["code"] = params.get("code", error["code"])
+            if "data" in params:
+                error["data"] = params["data"]
+        send({"id": request_id, "error": error})
+    elif method == "test/null":
+        reply(request_id, None)
+    elif method == "test/cancellations":
+        reply(request_id, cancelled_requests)
     elif method == "test/first":
         held = request_id
         send({"method": "test/held", "params": {}})
@@ -134,6 +149,7 @@ while True:
         chatter[request_id] = stopped
         threading.Thread(target=chat, args=(request_id, stopped), daemon=True).start()
     elif method == "$/cancelRequest":
+        cancelled_requests.append(params["id"])
         if params["id"] in chatter:
             chatter[params["id"]].set()
     elif method == "test/unversioned":

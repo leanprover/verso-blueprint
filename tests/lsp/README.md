@@ -41,6 +41,10 @@ concurrent/repeated close, SIGTERM-resistant servers, and descendants retaining
 stdio after their leader exits. These process-group checks currently target
 Unix; the recorded validation platform is Linux. See the
 [lifecycle contract and limits](../../doc/design/PARLEY_LIFECYCLE_REVIEW.md).
+They now match structured `ClientError` constructors, preserve server codes and
+absent/null/nested error data, distinguish successful null results, and exercise
+typed action-plus-cleanup failures. See the
+[current API and migration guide](../../doc/design/PARLEY_API.md).
 
 The real checks query both an authored-block position and a named-reference
 probe in the same project scope. They retrieve available semantic tokens,

@@ -26,7 +26,7 @@ structure ContextProfile where
   referencePrefix : String
   referenceSuffix : String
   referenceQueryOffset : String → Nat := fun _ => 0
-  collectDiagnostics : Document → IO DiagnosticEvidence
+  collectDiagnostics : Document → EIO ClientError DiagnosticEvidence
 
 private structure Placement where
   request : Request
@@ -53,7 +53,7 @@ private def prepare (profile : ContextProfile) (requests : Array Request) :
     offset := offset + request.text.utf8ByteSize + suffix.utf8ByteSize + 1
   return (← compose pieces, placements)
 
-private def attempt (action : IO α) : IO (Outcome α) := do
+private def attempt (action : EIO ClientError α) : EIO ClientError (Outcome α) := do
   try return .ok (← action)
   catch error => return .failed error.toString
 
@@ -63,15 +63,15 @@ private def supports (capabilities : Json) (key : String) : Bool :=
   | _ => true
 
 private def query (document : Document) (caps : Json) (projection : Projection)
-    (position : Lsp.Position) (range : Lsp.Range) : IO QuerySnapshot := do
+    (position : Lsp.Position) (range : Lsp.Range) : EIO ClientError QuerySnapshot := do
   let uri := document.uri
   let params := Json.mkObj [
     ("textDocument", Json.mkObj [("uri", toJson uri)]), ("position", toJson position)]
   let hover ← if supports caps "hoverProvider" then attempt do
-      IO.ofExcept <| decodeHover (← document.call "textDocument/hover" params)
+      EIO.ofExcept <| (decodeHover (← document.request "textDocument/hover" params)).mapError ClientError.protocol
     else pure .unsupported
   let definitions ← if supports caps "definitionProvider" then attempt do
-      IO.ofExcept <| definitionTargets (← document.call "textDocument/definition" params)
+      EIO.ofExcept <| (definitionTargets (← document.request "textDocument/definition" params)).mapError ClientError.protocol
     else pure .unsupported
   let mut localTargets := #[]
   if let .ok targets := definitions then
@@ -83,8 +83,8 @@ private def query (document : Document) (caps : Json) (projection : Projection)
   return { range, hover, definitions, localTargets }
 
 private def analyzeContext (profile : ContextProfile) (requests : Array Request) :
-    IO (Array RequestSnapshot × ContextObservation) := do
-  let (projection, placements) ← IO.ofExcept <| prepare profile requests
+    EIO ClientError (Array RequestSnapshot × ContextObservation) := do
+  let (projection, placements) ← EIO.ofExcept <| (prepare profile requests).mapError ClientError.invalidInput
   Client.withSession profile.client fun client => do
     let uri := (System.Uri.pathToUri profile.document : String)
     let document ← client.openDocument uri profile.languageId projection.text
@@ -93,31 +93,31 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
     let tokens ← match caps.getObjVal? "semanticTokensProvider" with
       | .ok provider =>
         if supports provider "full" then attempt do
-          let raw ← document.call "textDocument/semanticTokens/full" <|
+          let raw ← document.request "textDocument/semanticTokens/full" <|
             Json.mkObj [("textDocument", Json.mkObj [("uri", toJson uri)])]
-          IO.ofExcept <| semanticSpans projection.text provider raw
+          EIO.ofExcept <| (semanticSpans projection.text provider raw).mapError ClientError.protocol
         else pure .unsupported
       | .error _ => pure .unsupported
     let mut snapshots := #[]
     let mut generatedDiagnostics := #[]
     let mut mappedDiagnostics : Array (String × MappedDiagnostic) := #[]
     for diagnostic in evidence.diagnostics do
-      let mapped ← IO.ofExcept <| projection.mapRange diagnostic.range
+      let mapped ← EIO.ofExcept <| (projection.mapRange diagnostic.range).mapError ClientError.protocol
       if mapped.containsGenerated || mapped.locations.isEmpty then
         generatedDiagnostics := generatedDiagnostics.push diagnostic
       for location in mapped.locations do
         let some request := requests.find? (·.key == location.uri)
-          | throw <| IO.userError "projection contains an unknown request"
+          | throw <| ClientError.invalidInput "projection contains an unknown request"
         mappedDiagnostics := mappedDiagnostics.push (request.key, {
           diagnostic := { diagnostic with range := location.range }
-          authored := ← IO.ofExcept <| request.authoredLocations location.range })
+          authored := ← EIO.ofExcept <| (request.authoredLocations location.range).mapError ClientError.invalidInput })
     let fileMap := FileMap.ofString projection.text
     for placement in placements do
       let request := placement.request
       let mut spans := #[]
       if let .ok tokens := tokens then
         for token in tokens do
-          let mapped ← IO.ofExcept <| projection.mapRange token.range
+          let mapped ← EIO.ofExcept <| (projection.mapRange token.range).mapError ClientError.protocol
           if mapped.containsGenerated then continue
           for location in mapped.locations do
             if location.uri == request.key then
@@ -130,7 +130,7 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
       if request.kind == .reference then
         let offset := profile.referenceQueryOffset request.text
         unless offset < request.text.utf8ByteSize do
-          throw <| IO.userError "reference query offset is outside its text"
+          throw <| ClientError.invalidInput "reference query offset is outside its text"
         let position := fileMap.utf8PosToLspPos ⟨placement.bodyStart + offset⟩
         queries := queries.push (← query document caps projection position (fullRange request.text))
       else
@@ -141,7 +141,7 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
             continue
           if queries.size ≥ 32 then break
           let some (start, _) := byteRange? request.text token.range
-            | throw <| IO.userError "invalid projected token"
+            | throw <| ClientError.invalidInput "invalid projected token"
           let position := fileMap.utf8PosToLspPos ⟨placement.bodyStart + start⟩
           queries := queries.push (← query document caps projection position token.range)
       snapshots := snapshots.push {
@@ -154,11 +154,11 @@ private def analyzeContext (profile : ContextProfile) (requests : Array Request)
 /-- Analyze a complete plan once at the generator boundary. Duplicate identical
 requests are shared; conflicting identities and unregistered contexts fail.
 This function has no persistent result cache. -/
-def analyze (profiles : Array ContextProfile) (requests : Array Request) : IO Bundle := do
+def analyze (profiles : Array ContextProfile) (requests : Array Request) : EIO ClientError Bundle := do
   let mut unique := #[]
   for request in requests do
     if let some previous := unique.find? (fun previous : Request => previous.key == request.key) then
-      unless previous == request do throw <| IO.userError s!"conflicting request identity: {request.key}"
+      unless previous == request do throw <| ClientError.invalidInput s!"conflicting request identity: {request.key}"
     else unique := unique.push request
   let mut contexts : Array String := #[]
   for request in unique do
@@ -166,11 +166,11 @@ def analyze (profiles : Array ContextProfile) (requests : Array Request) : IO Bu
   let mut bundle : Bundle := { requests := #[], contexts := #[] }
   for context in contexts do
     let profilesForContext := profiles.filter (·.key == context)
-    unless profilesForContext.size == 1 do throw <| IO.userError s!"expected one profile for context {context}"
-    let some profile := profilesForContext[0]? | throw <| IO.userError "missing context profile"
+    unless profilesForContext.size == 1 do throw <| ClientError.invalidInput s!"expected one profile for context {context}"
+    let some profile := profilesForContext[0]? | throw <| ClientError.invalidInput "missing context profile"
     let (snapshots, observation) ← analyzeContext profile (unique.filter (·.context == context))
     bundle := { requests := bundle.requests ++ snapshots, contexts := bundle.contexts.push observation }
-  IO.ofExcept bundle.validate
+  EIO.ofExcept <| bundle.validate.mapError ClientError.invalidInput
   return bundle
 
 end Parley

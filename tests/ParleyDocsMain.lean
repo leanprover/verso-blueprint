@@ -15,39 +15,39 @@ private def requests : IO (Array Request) := do
   unless plain == blueprint do throw <| IO.userError "Blueprint changed the compiled analysis requests"
   return plain
 
-private def awaitRust (client : Client) : IO Json := do
+private def awaitRust (client : Client) : EIO ClientError Json := do
   let deadline := (← IO.monoMsNow) + 15000
   repeat
     let (notifications, dropped) ← client.notifications
-    unless dropped == 0 do throw <| IO.userError "readiness trace overflow"
+    unless dropped == 0 do throw <| ClientError.io <| IO.userError "readiness trace overflow"
     if let some status := notifications.toList.reverse.find? (fun message =>
         (message.getObjValAs? String "method").toOption == some "experimental/serverStatus") then
       let params ← IO.ofExcept <| status.getObjVal? "params"
       if (params.getObjValAs? Bool "quiescent").toOption == some true then
         unless (params.getObjValAs? String "health").toOption == some "ok" do
-          throw <| IO.userError s!"Rust workspace is not healthy: {params.compress}"
+          throw <| ClientError.io <| IO.userError s!"Rust workspace is not healthy: {params.compress}"
         return params
-    unless (← IO.monoMsNow) < deadline do throw <| IO.userError "Rust workspace readiness timed out"
+    unless (← IO.monoMsNow) < deadline do throw <| ClientError.io <| IO.userError "Rust workspace readiness timed out"
     IO.sleep 5
-  throw <| IO.userError "unreachable readiness loop"
+  throw <| ClientError.io <| IO.userError "unreachable readiness loop"
 
-private def rustDiagnostics (document : Document) : IO DiagnosticEvidence := do
+private def rustDiagnostics (document : Document) : EIO ClientError DiagnosticEvidence := do
   let uri := document.uri
-  let completion ← document.withClient awaitRust
-  let result ← document.call "textDocument/diagnostic" <| Json.mkObj [
+  let completion ← awaitRust document.client
+  let result ← document.request "textDocument/diagnostic" <| Json.mkObj [
     ("textDocument", Json.mkObj [("uri", toJson uri)])]
   return {
     coverage := "rust-analyzer native diagnostics; compiler checks disabled"
     completion
     diagnostics := ← IO.ofExcept <| result.getObjValAs? (Array Lsp.Diagnostic) "items" }
 
-private def rocqDiagnostics (document : Document) : IO DiagnosticEvidence := do
+private def rocqDiagnostics (document : Document) : EIO ClientError DiagnosticEvidence := do
   let uri := document.uri
-  let completion ← document.call "coq/getDocument" <| Json.mkObj [
+  let completion ← document.request "coq/getDocument" <| Json.mkObj [
     ("textDocument", Json.mkObj [("uri", toJson uri), ("version", toJson document.version)])]
   let status := completion.getObjVal? "completed" >>= (·.getObjValAs? (Array String) "status")
   unless status.toOption == some #["Yes"] do
-    throw <| IO.userError "Rocq document processing did not complete"
+    throw <| ClientError.io <| IO.userError "Rocq document processing did not complete"
   let deadline := (← IO.monoMsNow) + 3000
   repeat
     if let some snapshot ← document.diagnostics then
@@ -55,9 +55,9 @@ private def rocqDiagnostics (document : Document) : IO DiagnosticEvidence := do
         return {
           coverage := "Rocq document processing and versioned push diagnostics"
           completion, diagnostics := snapshot.diagnostics }
-    unless (← IO.monoMsNow) < deadline do throw <| IO.userError "missing Rocq diagnostics"
+    unless (← IO.monoMsNow) < deadline do throw <| ClientError.io <| IO.userError "missing Rocq diagnostics"
     IO.sleep 2
-  throw <| IO.userError "unreachable diagnostics loop"
+  throw <| ClientError.io <| IO.userError "unreachable diagnostics loop"
 
 /-- Only this fixture runner creates project scaffolding, under the requested
 experiment output. The reusable analyzer never writes project source. -/
@@ -126,7 +126,7 @@ def main (args : List String) : IO UInt32 := do
     IO.FS.writeFile output (toJson (← requests)).pretty
     return 0
   | ["analyze", output, runtimeRoot, rust, rocq] =>
-    let bundle ← analyze (← profiles runtimeRoot rust rocq) (← requests)
+    let bundle ← (analyze (← profiles runtimeRoot rust rocq) (← requests)).toIO (IO.userError ∘ toString)
     IO.FS.writeFile output (toJson bundle).pretty
     IO.println s!"Analyzed {bundle.requests.size} requests in {bundle.contexts.size} contexts"
     return 0

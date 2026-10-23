@@ -160,7 +160,9 @@ the first report's transport contract: writes run on a bounded dedicated worker,
 document queries use versioned handles, and concurrent close callers share a
 cleanup report. Unix cleanup can escalate beyond SIGTERM. The first report is
 historical evidence, not the current API. The library remains experimental;
-platform coverage and a typed client error API still need release decisions.
+platform coverage and package ownership still need release decisions. The
+[current API guide](PARLEY_API.md) records the later structured-error and API
+trimming revision.
 
 Before a supported release, settle profiles and external-project inputs,
 context/source identity, artifact input fingerprints, editor feedback, richer
