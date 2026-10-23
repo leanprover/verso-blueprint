@@ -14,12 +14,12 @@ namespace Informal.NodeAssembly
 open Lean Informal.Data Informal.Contributions
 
 /-- A successful production assembly exposes the resolver's accepted priority. -/
-theorem assemble_ok_priority {label : Label} {legacy : Array NodeContribution}
+theorem assemble_ok_priority {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) :
+    (h : assemble label payloads records = .ok assembled) :
     assembled.node.priority = assembled.view.priority := by
   unfold assemble at h
-  cases hn : Node.applyContributions label {} legacy with
+  cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -30,12 +30,12 @@ theorem assemble_ok_priority {label : Label} {legacy : Array NodeContribution}
       rfl
 
 /-- A successful production assembly retains exactly the resolver's supports. -/
-theorem assemble_ok_supports {label : Label} {legacy : Array NodeContribution}
+theorem assemble_ok_supports {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) (record : Record) :
+    (h : assemble label payloads records = .ok assembled) (record : Record) :
     record ∈ assembled.view.supports ↔ record ∈ records ∧ record.label = label := by
   unfold assemble at h
-  cases hn : Node.applyContributions label {} legacy with
+  cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -47,12 +47,12 @@ theorem assemble_ok_supports {label : Label} {legacy : Array NodeContribution}
 
 /-- Attribute-attachment capability is projected from every accepted support. -/
 theorem assemble_ok_blueprintAttributeAttachments {label : Label}
-    {legacy : Array NodeContribution} {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) :
+    {payloads : Array NodeContribution} {records : List Record} {assembled : Assembly}
+    (h : assemble label payloads records = .ok assembled) :
     assembled.node.blueprintAttributeAttachments =
       supportsHaveBlueprintAttributeAttachments assembled.view.supports := by
   unfold assemble at h
-  cases hn : Node.applyContributions label {} legacy with
+  cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -64,8 +64,8 @@ theorem assemble_ok_blueprintAttributeAttachments {label : Label}
 
 /-- The assembled attribute capability is true exactly for accepted input evidence. -/
 theorem assemble_ok_blueprintAttributeAttachments_iff {label : Label}
-    {legacy : Array NodeContribution} {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) :
+    {payloads : Array NodeContribution} {records : List Record} {assembled : Assembly}
+    (h : assemble label payloads records = .ok assembled) :
     assembled.node.blueprintAttributeAttachments = true ↔
       ∃ record ∈ records, record.label = label ∧
         record.allReferences.any (fun ref => ref.origin == .blueprintAttr) = true := by
@@ -79,13 +79,13 @@ theorem assemble_ok_blueprintAttributeAttachments_iff {label : Label}
     exact ⟨record, (assemble_ok_supports h record).mpr ⟨hin, hlabel⟩, href⟩
 
 /-- Statement snapshots are projected only from the statement side of supports. -/
-theorem assemble_ok_externalRefs {label : Label} {legacy : Array NodeContribution}
+theorem assemble_ok_externalRefs {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) :
+    (h : assemble label payloads records = .ok assembled) :
     assembled.node.externalRefs = assembled.view.supports.foldl
       (fun refs record => ExternalRef.mergeSnapshots refs record.references) #[] := by
   unfold assemble at h
-  cases hn : Node.applyContributions label {} legacy with
+  cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -96,13 +96,13 @@ theorem assemble_ok_externalRefs {label : Label} {legacy : Array NodeContributio
       rfl
 
 /-- Proof snapshots are projected only from the proof side of supports. -/
-theorem assemble_ok_proofExternalRefs {label : Label} {legacy : Array NodeContribution}
+theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
-    (h : assemble label legacy records = .ok assembled) :
+    (h : assemble label payloads records = .ok assembled) :
     assembled.node.proofExternalRefs = assembled.view.supports.foldl
       (fun refs record => ExternalRef.mergeSnapshots refs record.proofReferences) #[] := by
   unfold assemble at h
-  cases hn : Node.applyContributions label {} legacy with
+  cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with

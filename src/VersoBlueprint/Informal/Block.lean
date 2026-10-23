@@ -252,7 +252,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let prepare := do
       let resolved ← cfg.resolveForDirective kind isProof
       pure ({
-        label, kind := resolved.envKind, codeHint := resolved.codeHint
+        label, kind := resolved.envKind, externalRefs := resolved.externalRefs
         parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
         tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
         issueUrl := resolved.issueUrl

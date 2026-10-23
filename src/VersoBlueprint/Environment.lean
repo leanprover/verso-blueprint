@@ -25,7 +25,7 @@ before the final checked contribution is assembled.
 structure InProgress where
   label : Label
   kind : Data.InProgressKind := .proof
-  codeHint : Option CodeRef := none
+  externalRefs : Array ExternalRef := #[]
   parent : Option Parent := none
   priority : Option String := none
   owner : Option AuthorId := none
@@ -72,12 +72,12 @@ def AttributeLabelCatalog.insert (catalog : AttributeLabelCatalog) (label : Labe
 private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 
-/-- All pending legacy inputs and their provenance for one Blueprint label. -/
+/-- All pending payload inputs and their provenance for one Blueprint label. -/
 structure PendingNode where
-  legacy : Array NodeContribution := #[]
-  /-- The local subset is exported; imported legacy inputs remain evidence only. -/
-  localLegacy : Array NodeContribution := #[]
-  /-- First contributor, unless an authored contribution establishes an origin. -/
+  payloads : Array NodeContribution := #[]
+  /-- The local subset is exported; imported payloads remain evidence only. -/
+  localPayloads : Array NodeContribution := #[]
+  /-- First contributing origin; an authored origin takes precedence on accepted nodes. -/
   origin : Name := .anonymous
   contributors : Array Name := #[]
   authoredOrigin? : Option Name := none
@@ -90,8 +90,8 @@ private def PendingNode.append (pending : PendingNode) (incomingOrigin contribut
   let authoredOriginConflict := pending.authoredOriginConflict ||
     (authored && pending.authoredOrigin?.any (· != incomingOrigin))
   { pending with
-    legacy := pending.legacy ++ incoming
-    localLegacy := if isLocal then pending.localLegacy ++ incoming else pending.localLegacy
+    payloads := pending.payloads ++ incoming
+    localPayloads := if isLocal then pending.localPayloads ++ incoming else pending.localPayloads
     origin
     contributors := pushUnique pending.contributors contributor
     authoredOrigin? := if authored then pending.authoredOrigin? <|> some incomingOrigin else pending.authoredOrigin?
@@ -109,7 +109,7 @@ structure State where
   data : NameMap RegisteredNode := {}
   /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
   nextCount : Nat := 1
-  /-- Pending legacy payloads and all label-local provenance, including rejected imports. -/
+  /-- Pending payloads and all label-local provenance, including rejected imports. -/
   pendingNodes : NameMap PendingNode := {}
   /-- Complete selected-fact evidence, newest first. Reverse for assembly so
   declaration presentation follows registration order, including imported evidence. -/
@@ -202,7 +202,7 @@ private def State.addNode (state : State) (label origin contributor : Name)
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
   let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
-  let assembled ← NodeAssembly.assemble label pending.legacy records.reverse
+  let assembled ← NodeAssembly.assemble label pending.payloads records.reverse
   let node := assembled.node
   let nodeOrigin := pending.authoredOrigin?.getD pending.origin
   let registered : RegisteredNode := {
@@ -230,7 +230,7 @@ private def State.reassembleImported (state : State) : State := Id.run do
       let origins := pending.contributors
       conflicts := pushImportedConflict conflicts .node label
         #[s!"Label {label} was independently introduced by authored contributions"] origins
-    else match NodeAssembly.assemble label pending.legacy records with
+    else match NodeAssembly.assemble label pending.payloads records with
     | .ok assembled =>
       let node := assembled.node
       let origin := pending.authoredOrigin?.getD pending.origin
@@ -280,9 +280,9 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       let compact (payload : InformalBody) :=
         if payload.previewBlocks.isEmpty then payload else { payload with elabStx := #[] }
       let nodeEntries := state.pendingNodes.toArray.filterMap fun (name, pending) =>
-        if pending.localLegacy.isEmpty then none else some <| (name, pending)
+        if pending.localPayloads.isEmpty then none else some <| (name, pending)
       let nodeEntries := nodeEntries.map fun (name, pending) =>
-        let contributions := pending.localLegacy
+        let contributions := pending.localPayloads
         let contributions := contributions.map fun contribution =>
           { contribution with
             statementBody := contribution.statementBody.map compact
@@ -355,24 +355,18 @@ private def commitContribution (label : Label) (contribution : NodeContribution)
     for reason in reasons do logError reason
     return none
 
-/-- Register a legacy-only payload under an explicit label. -/
+/-- Register a node payload under an explicit label. -/
 def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
   reportImportedConflicts
-  if contribution.hasSelectedFields then
-    logError m!"Blueprint legacy payload cannot include external references or priority; supply them only in a contribution record"
-    return none
   commitContribution label contribution []
 
 /--
-Register a producer-identified selected record with a legacy-only payload.
+Register a producer-identified selected record with a node payload.
 The record is the sole owner of the selected label, external references, and priority.
 -/
 def contributeRecord (fact : Record) (contribution : NodeContribution) :
     m (Option Node) := do
   reportImportedConflicts
-  if contribution.hasSelectedFields then
-    logError m!"Blueprint legacy payload cannot include external references or priority; supply them only in a contribution record"
-    return none
   commitContribution fact.label contribution [fact]
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
@@ -423,10 +417,6 @@ private def InProgress.toContribution (current : InProgress) (count : Nat) (ref 
   proofUses := match current.kind with
     | .statement _ => current.proofUses
     | .proof => current.deps ++ current.proofUses
-  leanCode := match current.kind with
-    | .statement _ => current.codeHint.toArray.filter fun code =>
-      match code with | .external _ => false | .literate _ => true
-    | .proof => #[]
   parent := current.parent
   owner := current.owner
   tags := current.tags
@@ -435,12 +425,8 @@ private def InProgress.toContribution (current : InProgress) (count : Nat) (ref 
   issueUrl := current.issueUrl
 }
 
-private def CodeRef.externalReferences : CodeRef → Array ExternalRef
-  | .external references => references
-  | .literate _ => #[]
-
 private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : CoreM (Option Record) := do
-  let externalRefs := current.codeHint.map CodeRef.externalReferences |>.getD #[]
+  let externalRefs := current.externalRefs
   if externalRefs.isEmpty && current.priority.isNone then
     return none
   let some position := ref.getPos?

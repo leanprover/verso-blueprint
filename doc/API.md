@@ -366,10 +366,10 @@ Custom registration calls to `Environment.contribute` return `Option Node`:
 registration was rejected. Combine dependent changes into one `NodeContribution`;
 discard the result only when no following operation depends on acceptance.
 External references on either facet and priority require
-`Environment.contributeRecord record legacy`, with a stable producer identity.
-The record exclusively owns its label, priority, and associations; the legacy
-payload must contain none of those selected fields. The legacy
-`contribute` and `Node.applyContributions` entry points reject those fields.
+`Environment.contributeRecord record payload`, with a stable producer identity.
+The record exclusively owns its label, priority, and associations.
+`NodeContribution` contains only body, dependency, metadata, and literate-code
+inputs; selected facts cannot be supplied through that payload type.
 `Record.references` carries statement associations; `Record.proofReferences`
 carries proof associations. Both are normal associations for membership and status,
 and both are supplied only through the identified record.
@@ -389,8 +389,11 @@ to retain the location of each annotation.
 `Node.summaryLiterateCodes` and `BlockCodeData.summaryLiterateDeclarations`
 prefer one inline display entry while retaining status evidence from every
 association of that canonical declaration, including external proof annotations.
-`NodeContribution.leanCode` accepts statement external groups or literate
-blocks; `NodeContribution.proofExternalRefs` contributes proof associations.
+`NodeContribution.literateCodes : Array Code` supplies literate blocks. Migrate
+external groups and priority from the former mixed payload to `Record.references`,
+`Record.proofReferences`, and `Record.priority`. The mixed `CodeRef` type and
+`Record.toNodeContribution` adapter have been removed. Directive configuration
+and in-progress directives carry `externalRefs` directly.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal

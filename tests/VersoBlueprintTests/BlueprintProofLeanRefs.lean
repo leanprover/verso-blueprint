@@ -189,13 +189,13 @@ This imported statement association also has a proof-facet occurrence.
 -- Add a second proof association to a compiled imported node. Export only this
 -- local contribution and check both associations again after another import.
 private def contributeProofReferences (label : Data.Label) (references : Array Data.ExternalRef)
-    (legacy : Data.NodeContribution := {}) :
+    (payload : Data.NodeContribution := {}) :
     CoreM (Option Data.Node) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
     label, proofReferences := references
     priority := none, source := none }
-  Environment.contributeRecord fact legacy
+  Environment.contributeRecord fact payload
 
 run_meta do
   let ref ← externalRefSnapshotAtCurrentDir {}
@@ -230,7 +230,7 @@ run_meta do
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := ``Provider.admittedProof, provedStatus := .proved }] }
   let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
-    kind := some .theorem, leanCode := #[.literate code] }
+    kind := some .theorem, literateCodes := #[code] }
     | throwError "Could not register inline/external overlap"
 
 #eval show CoreM Unit from do

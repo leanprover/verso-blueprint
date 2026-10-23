@@ -224,30 +224,18 @@ private def highA : Record := { a with priority := some "high" }
       assembled.view.priority == some "high"
   | .error _ => false
 
--- The retained public reducer rejects the selected fields it cannot admit, but
--- continues to accept the legacy body and dependency payloads it owns.
-#guard match ({} : Node).applyContributions `shared #[{ priority := some "high" }] with
-  | .error _ => true
-  | .ok _ => false
-#guard match ({} : Node).applyContributions `shared
-    #[{ leanCode := #[.external a.references] }] with
-  | .error _ => true
-  | .ok _ => false
-#guard match ({} : Node).applyContributions `shared
-    #[{ proofExternalRefs := a.references }] with
-  | .error _ => true
-  | .ok _ => false
+-- Payload reduction retains authored bodies, dependencies, and literate code.
 #guard match ({} : Node).applyContributions `shared #[{
     statementBody := some { stx := .missing, elabStx := #[.missing] }
     statementUses := #[{ label := `dependency }]
-    leanCode := #[.literate { stx := .missing }]
+    literateCodes := #[{ stx := .missing }]
   }] with
   | .ok node => node.statement.any fun statement => statement.hasBody &&
       statement.deps == #[{ label := `dependency }] && node.literateCodes.size == 1
   | .error _ => false
 
--- Supported legacy updates must preserve an already assembled capability.
-#guard match Informal.NodeAssembly.assemble `shared #[] [a] with
+-- Payload updates preserve the selected priority, facet references, and capability.
+#guard match Informal.NodeAssembly.assemble `shared #[] [highA, proofA] with
   | .error _ => false
   | .ok assembled => match assembled.node.applyContributions `shared #[{
       statementBody := some { stx := .missing, elabStx := #[.missing] }
@@ -255,6 +243,8 @@ private def highA : Record := { a with priority := some "high" }
     }] with
     | .error _ => false
     | .ok updated => updated.blueprintAttributeAttachments &&
+        updated.priority == some "high" && updated.externalRefs == a.references &&
+        updated.proofExternalRefs == proofA.proofReferences &&
         updated.statement.any fun statement => statement.hasBody &&
           statement.deps == #[{ label := `dependency }]
 

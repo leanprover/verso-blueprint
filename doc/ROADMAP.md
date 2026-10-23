@@ -168,8 +168,9 @@ Work:
    `Data.Node` plus external declaration checks; declaration rows, summary
    detail rows, heading marks, code-entry icons, and external-code rows already
    share the declaration-status vocabulary
-5. encode the intended ownership rules for `CodeRef.external`, especially the
-   difference between Blueprint-owned labels and Lean-owned declaration names
+5. preserve the structural separation between identified external associations
+   and node payloads; Blueprint labels and Lean declaration names retain their
+   separate ownership through capture and rendering
 6. decide whether richer group metadata belongs in the core data model, then
    either port the local `group-metadata-rendering` work or retire it
 7. reject invalid nested and duplicate declarations before they mutate the

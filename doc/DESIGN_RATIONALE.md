@@ -289,7 +289,7 @@ The same flow can be read as four contracts:
 
    `NodeAssembly.assemble` is a pure checked reducer shared by local
    registration and import replay. It combines the proved selected-fact resolver
-   with the legacy body/kind/markup reducer, and returns either the accepted node or its
+   with the body/kind/markup reducer, and returns either the accepted node or its
    conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
    its introducing module, and its contributing modules. Pending provenance is
    intentionally retained even when assembly rejects an input, so provenance is
@@ -300,11 +300,11 @@ The same flow can be read as four contracts:
    slots, and equally authoritative dependency intents are errors.
 
    Custom registration code should call `Informal.Environment.contribute` with
-   a legacy payload that has no external references or priority, rather than
+   a node payload whose type excludes external references and priority, rather than
    updating and re-exporting a whole node. Registrations that supply either
    selected field must call `Informal.Environment.contributeRecord` with a
    `Contributions.Record`, which is the sole owner of its label, statement and proof references,
-   and priority; the legacy payload rejects those fields. Its identity must be
+   and priority; those fields do not exist in the node payload type. Its identity must be
    stable at the producer site and slot. Each entry point returns `Option Node`, making
    acceptance explicit. `withDirective` scopes
    the one optional active directive and restores Blueprint state on rejection,
@@ -357,12 +357,12 @@ The same flow can be read as four contracts:
    priority, exact supports, separate statement/proof snapshot folds, and the
    `blueprintAttributeAttachments` capability projected from every accepted
    support. These guarantees are conditional on successful assembly. They do
-   not prove confluence for legacy body/kind/markup policies, choose among
+   not prove confluence for body/kind/markup policies, choose among
    conflicting provenance or render snapshots, prove the conservative status
    projection, or make rejected
-   evidence accepted data. The legacy public reducer explicitly rejects
-   selected external-reference and priority fields; identified records enter
-   through `contributeRecord` instead.
+   evidence accepted data. The payload reducer accepts body, dependency, metadata,
+   and literate-code inputs; identified association and priority records enter
+   through `contributeRecord`.
 
    Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of
    the Manual genre. Blueprint registers docstring handlers for `uses` and

@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Contributions
 
-/-! The narrow assembly layer combines legacy node payloads with the proved
+/-! The narrow assembly layer combines node payloads with the proved
 external-association/priority slice.  It deliberately does not import the
 environment extension or rendering consumers. -/
 
@@ -73,12 +73,7 @@ private def mergeContribution (label : Label) (node : Node)
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
   let issueUrl ← mergeMetadata label "issue URLs" node.issueUrl incoming.issueUrl
-  let externalRefs := node.externalRefs
-  let mut literateCodes := node.literateCodes
-  for code in incoming.leanCode do
-    match code with
-    | .external _ => pure ()
-    | .literate code => literateCodes := literateCodes.push code
+  let literateCodes := node.literateCodes ++ incoming.literateCodes
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
@@ -86,7 +81,7 @@ private def mergeContribution (label : Label) (node : Node)
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
     | none => pure <| if node.kindIsExplicit then node.kind else
-        inferredNodeKind (ExternalRef.mergeSnapshots externalRefs node.proofExternalRefs) literateCodes
+        inferredNodeKind (ExternalRef.mergeSnapshots node.externalRefs node.proofExternalRefs) literateCodes
   return { node with
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
@@ -94,8 +89,8 @@ private def mergeContribution (label : Label) (node : Node)
     literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
-/-- Private legacy reducer for body, kind, markup, dependency, and literate payloads. -/
-private def applyLegacy (label : Label) (node : Node)
+/-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
+private def applyPayloads (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
   let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
   if errors.isEmpty then .ok node else .error errors
@@ -104,20 +99,12 @@ end Informal.NodeAssembly
 
 namespace Informal.Data
 
-/--
-Apply body, kind, markup, dependency and literate payloads to a node.
-This public legacy API rejects priority and references on either facet because their
-admission requires an identified selected contribution record; producers should
-use `Environment.contributeRecord` for those fields. Its implementation lives
-in `NodeAssembly` so the environment can combine it with the selected-fact
-resolver without a Data ↔ Contributions cycle.
--/
+/-- Apply body, kind, markup, dependency, and literate payloads to a node.
+Selected associations and priority are supplied separately through identified
+records. This reducer preserves those fields on an already assembled node. -/
 def Node.applyContributions (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
-  if contributions.any NodeContribution.hasSelectedFields then
-    .error #["Blueprint external references and priority require an identified contribution record"]
-  else
-    Informal.NodeAssembly.applyLegacy label node contributions
+  Informal.NodeAssembly.applyPayloads label node contributions
 
 end Informal.Data
 
@@ -230,10 +217,10 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
 /--
 Assemble one complete node atomically. Selected records are resolved exactly once;
 their accepted projection supplies external references and priority, while the
-legacy reducer retains body, kind, markup, dependency, and literate policies.
+payload reducer retains body, kind, markup, dependency, and literate policies.
 On success, the node exposes the resolved priority and an attribute capability
 projected from every accepted support. It does not choose a general snapshot or
-claim confluence for unrelated legacy payloads.
+claim confluence for unrelated payload policies.
 -/
 structure Assembly where
   node : Node
@@ -252,9 +239,9 @@ private def project (node : Node) (view : View) : Assembly :=
     priority := view.priority
     kind := kind }, view }
 
-def assemble (label : Label) (legacy : Array NodeContribution) (records : List Record) :
+def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
     Except (Array String) Assembly :=
-  match Node.applyContributions label {} legacy with
+  match Node.applyContributions label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
