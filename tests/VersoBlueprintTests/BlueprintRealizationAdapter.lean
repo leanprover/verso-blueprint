@@ -32,6 +32,69 @@ private def rejected : Except ε α → Bool
 
 private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
 
+-- Native identity must either survive serialization or fail explicitly. These
+-- are actual checked/imported declarations, not fake successful observations.
+run_cmd liftTermElabM do
+  let trueGoal ← `(term| True)
+  let escaped := Name.str `RealizationAdapterFixture "with.dot"
+  let escapedProjection ← obtain (← project `adapterFixture (Name.mkSimple "adapter.escaped"))
+  ensure (escapedProjection.witness.native.toName == escaped) "Escaped dotted name preserves typed identity"
+  let escapedInput ← obtain (← escapedProjection.validate trueGoal)
+  let escapedRegistry ← obtain (admit escapedInput)
+  ensure ((escapedRegistry.resultForRequirement (proofKey escapedProjection)).complete)
+    "Ordinary escaped dotted witness remains supported"
+  let unusual := Name.str `RealizationAdapterFixture "bad»name"
+  ensure (((← getEnv).checked.get.find? unusual).isSome && unusual.toString.toName != unusual)
+    "Regression must use a present checked theorem whose name cannot round-trip"
+  let some accepted ← Informal.Environment.getNode? (Name.mkSimple "adapter.nonroundtrip")
+    | throwError "Regression requires a real accepted attribute association"
+  ensure (accepted.externalRefs.any (·.canonical == unusual)) "Accepted association retains original typed name"
+  match ← project `adapterFixture (Name.mkSimple "adapter.nonroundtrip") with
+  | .error diagnostic => ensure (diagnostic.code == "unsupported-identity") "Projection must diagnose identity loss"
+  | .ok _ => throwError "Projection must not silently replace a typed Lean identity"
+  match ← NativeLean.check `adapterFixture (witness unusual) trueGoal with
+  | .error diagnostic => ensure (diagnostic.code == "unsupported-identity") "Native checker must diagnose unparseable identity"
+  | .ok _ => throwError "Unparseable name is not a missing declaration"
+
+-- Exercise the pilot's actual involution and package-specific statements, beyond
+-- reflexivity/True. These are native current-build controls, not foreign proof
+-- observations, correspondence reviews, or a second mapping database.
+run_cmd liftTermElabM do
+  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.flag.involutive"))
+  let expected ← `(term| ∀ flag : RealizationAdapterFixture.Flag,
+    RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)
+  let input ← obtain (← p.validate expected)
+  let r ← obtain (admit input)
+  ensure ((r.resultForRequirement (proofKey p)).complete) "Actual two-case involution must complete"
+  ensure (input.translations.isEmpty && (r.resultFor (.realization p.informalKey)).status == .unassessed)
+    "Flag proof does not invent correspondence or proofreading"
+  let selectedPackage ← `(term| RealizationAdapterFixture.Involutive RealizationAdapterFixture.togglePackage)
+  let packageInput ← obtain (← p.validate selectedPackage)
+  let packageRegistry ← obtain (admit packageInput)
+  ensure ((packageRegistry.resultForRequirement (proofKey p)).complete) "Selected package alias must match"
+  for name in #[`RealizationAdapterFixture.groupedOne,
+      `RealizationAdapterFixture.identityInvolutive, `RealizationAdapterFixture.conditionalInvolutive] do
+    let result ← obtain (← NativeLean.check `adapterFixture (witness name) expected)
+    ensure (result.observation.outcome == .failed && result.observation.actualType.isNone &&
+      result.observation.explanation.startsWith "wrong-proposition:")
+      "True, a different package and a conditional proof cannot satisfy unconditional involution"
+  -- Neither alternative is an incomplete theorem. They are complete proofs of
+  -- their own full propositions and still cannot establish the selected claim.
+  let identityGoal ← `(term| RealizationAdapterFixture.Involutive RealizationAdapterFixture.identityPackage)
+  let identityResult ← obtain (← NativeLean.check `adapterFixture
+    (witness `RealizationAdapterFixture.identityInvolutive) identityGoal)
+  ensure (identityResult.observation.outcome == .passed) "Different package proof is independently complete"
+  let conditionalGoal ← `(term|
+    RealizationAdapterFixture.Involutive RealizationAdapterFixture.togglePackage →
+    RealizationAdapterFixture.Involutive RealizationAdapterFixture.togglePackage)
+  let conditionalResult ← obtain (← NativeLean.check `adapterFixture
+    (witness `RealizationAdapterFixture.conditionalInvolutive) conditionalGoal)
+  ensure (conditionalResult.observation.outcome == .passed) "Conditional theorem retains its full premise"
+  let wrongPackage ← obtain (← p.validate identityGoal)
+  let wrongRegistry ← obtain (admit wrongPackage)
+  ensure (!(wrongRegistry.resultForRequirement (proofKey p)).complete)
+    "A proof for the selected toggle package cannot be relabeled as identity-package evidence"
+
 -- The ordinary imported provider has canonical accepted Blueprint facts. Reading
 -- and checking twice must not install new registrations or alter membership.
 run_cmd liftTermElabM do

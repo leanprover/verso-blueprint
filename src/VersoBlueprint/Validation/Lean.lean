@@ -33,6 +33,10 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
   try
     if project.isAnonymous || witness.context != { language := `lean, project } || !witness.valid then
       return .error <| issue "wrong-context" witness "Witness is outside the selected Lean project"
+    let name := witness.native.toName
+    if name.isAnonymous || name.toString != witness.native then
+      return .error <| issue "unsupported-identity" witness
+        "Native object spelling is not a supported canonical Lean name"
     let proposition ← withoutErrToSorry <| elabTermEnsuringType expected (some (mkSort .zero))
     synthesizeSyntheticMVarsNoPostponing
     let proposition ← instantiateMVars proposition
@@ -55,7 +59,6 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     -- This is an exact structural descriptor, not the equality algorithm. It
     -- comes from the independently checked expectation, never the witness type.
     let goal : Goal := { context := witness.context, proposition := reprStr proposition, documents }
-    let name := witness.native.toName
     let some info := (← getEnv).checked.get.find? name
       | return .ok { goal, observation := {
           witness, outcome := .unavailable

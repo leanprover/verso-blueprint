@@ -48,6 +48,9 @@ def project (projectName label : Name)
   let ref := node.externalRefs[0]!
   unless ref.origin == .blueprintAttr && ref.kind == .theorem && ref.present do
     return .error <| issue "unsupported-association" label "Expected one present attribute theorem association"
+  unless ref.canonical.toString.toName == ref.canonical do
+    return .error <| issue "unsupported-identity" label
+      "Canonical Lean name cannot be represented losslessly by this adapter"
   let some body := node.statement
     | return .error <| issue "missing-docstring" label "No accepted statement body"
   unless body.stx.isOfKind `Informal.blueprint && body.hasBody do

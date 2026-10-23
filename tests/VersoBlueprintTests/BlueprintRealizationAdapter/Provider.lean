@@ -45,4 +45,50 @@ theorem versoDocstring : True := True.intro
 @[inherit_doc reflexivity, blueprint "adapter.inherited"]
 theorem inheritedDocstring : ∀ n : Nat, n = n := fun _ => rfl
 
+-- Native adaptation of the canonical translation-reuse/Fixture/Flag.lean pilot.
+-- This is an ordinary local build, not imported LIRIS artifacts or a claim of
+-- validated Rocq correspondence. The package controls below are local tests.
+inductive Flag where
+  | off
+  | on
+
+def toggle : Flag → Flag
+  | .off => .on
+  | .on => .off
+
+structure FlagPackage where
+  operation : Flag → Flag
+
+def togglePackage : FlagPackage := ⟨toggle⟩
+def identityPackage : FlagPackage := ⟨id⟩
+def Involutive (package : FlagPackage) : Prop :=
+  ∀ flag, package.operation (package.operation flag) = flag
+
+/-- Toggling a two-state flag twice returns the original flag. -/
+@[blueprint "adapter.flag.involutive"]
+theorem flagInvolutive : Involutive togglePackage := by
+  intro flag
+  cases flag <;> rfl
+
+theorem identityInvolutive : Involutive identityPackage := fun _ => rfl
+
+theorem conditionalInvolutive (h : Involutive togglePackage) : Involutive togglePackage := h
+
+/-- Ordinary escaped names remain supported. -/
+@[blueprint "adapter.escaped"]
+theorem «with.dot» : True := True.intro
+
+-- A real kernel-checked theorem with a legal internal name that cannot be
+-- spelled by Name.toString/String.toName without identity loss. Register it
+-- using the existing public attribute implementation, not new admission code.
+open Lean Elab Command in
+run_cmd do
+  let name := Name.str `RealizationAdapterFixture "bad»name"
+  liftTermElabM <| addDecl <| .thmDecl {
+    name, levelParams := [], type := mkConst ``True, value := mkConst ``True.intro }
+  addDocStringCore name "Non-round-tripping internal declaration name."
+  let attributeSyntax ← `(attr| blueprint "adapter.nonroundtrip")
+  let impl ← ofExcept <| getAttributeImpl (← getEnv) `blueprint
+  liftTermElabM <| liftM <| impl.add name attributeSyntax.raw .global
+
 end RealizationAdapterFixture

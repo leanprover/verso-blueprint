@@ -444,7 +444,10 @@ This is an internal explicit API, not a production graph/checker installation.
 Its supported projection excludes grouped/multiple declarations, inline code,
 definitions, foreign associations, own Verso-format or inherited docstrings, and
 additional informal proof bodies. Unsupported cases are diagnosed without choosing
-a first member or dropping associations. Universe-polymorphic *expected*
+a first member or dropping associations. This textual native-object boundary
+requires lossless canonical Lean-name serialization: unsupported internal names
+are diagnosed as `unsupported-identity`, not reported as missing declarations.
+Ordinary escaped names remain supported. Universe-polymorphic *expected*
 contracts are unsupported; concretely instantiated polymorphic witnesses are
 tested. Witnesses are declaration constants checked against their whole declared
 type; argument-applied witness terms are not supported. The caller selects the
@@ -460,6 +463,16 @@ expectations, admitted and axiom controls, source-I/O failures, unchanged accept
 membership and pending correspondence. Hidden-body controls reuse the existing
 same-toolchain module fixture at ordinary import visibility. These tests do not
 certify the separate admission/import rewrite, Rocq/Rust checking or UI paths.
+
+The native fixture also adapts the canonical two-state Flag pilot through a
+normal local build. Its involution proof matches both an independently written
+toggle proposition and an explicit selected-package alias. Complete proofs of
+`True`, identity-package involution, or a conditional involution theorem do not
+satisfy that unconditional toggle requirement. The latter two still validate
+against their own full propositions: a different package is not an incomplete
+proof, and an explicit premise must not disappear during matching. These are
+native boundary controls; no Rocq correspondence review or external artifact
+validation is implied.
 
 ## Review and working structure
 
