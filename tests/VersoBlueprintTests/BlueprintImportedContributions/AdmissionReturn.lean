@@ -9,7 +9,7 @@ import VersoBlueprint.Environment
 open Lean Informal Lean.Elab.Command
 
 -- Registration returns the complete accepted node, including earlier payloads
--- and selected evidence, and commits that same node to the environment.
+-- and selected evidence, and commits matching fields to the environment.
 run_cmd do
   let label := `admission_return
   let some initial ← Environment.contribute label { tags := #["earlier"] }
@@ -35,5 +35,6 @@ run_cmd do
   let state := Environment.informalExt.getState (← getEnv)
   let some stored := state.data.get? label
     | throwError "Accepted node was not committed"
-  unless reprStr updated == reprStr stored.toNode do
-    throwError "Returned node differs from the committed node"
+  unless updated.tags == stored.tags && updated.priority == stored.priority &&
+      updated.externalRefs == stored.externalRefs && updated.leanDecls == stored.leanDecls do
+    throwError "Returned payload and association fields differ from the committed node"

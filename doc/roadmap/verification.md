@@ -1,9 +1,11 @@
 # Verification lane: strengthen the production proof boundary
 
 Owner: contribution/verification lane.
-Status: V1 implemented; V2a is the next bounded milestone and needs separate
-implementation authorization.
-Reviewed foundation: #467 and the merged #469 admission boundary.
+Status: V1 implemented; V2a is the next bounded milestone.
+Foundation: [#467](https://github.com/leanprover/verso-blueprint/pull/467)
+established the production identified-evidence resolver and its laws;
+[#469](https://github.com/leanprover/verso-blueprint/pull/469) centralized admission
+and separated node payloads from identified association and priority evidence.
 Merged baseline: `fab2fc4470253bd854fca99c0530809357af5c54` on `v4.35.0`
 (2026-10-23), including #469. All GitHub checks passed before this work began.
 V1 validation covers production/law builds, the full Lean/integration driver,
@@ -16,13 +18,9 @@ its accepted projections distinct. State every producer/coverage assumption;
 do not add global API axioms to bypass an unproved adapter contract. Audit
 theorem dependencies and keep proof imports outside production targets.
 
-Use one editing owner, the user-approved Sol/high allocation, with no recursive
-delegation or automatic model escalation. If that allocation is unavailable,
-report it. Record the exact baseline, model/effort, scope, acceptance commands,
-proof assumptions, and remaining boundary in each ticket. On a blocker, return
-the smallest Lean goal or reproducer and the decision needed. Publication and
-merge require their existing separate authorization; do not change global
-Codex configuration. Plan approval does not approve every later implementation.
+Each ticket records its baseline, scope, acceptance commands, proof assumptions,
+and remaining boundary. Keep session allocation and approval notes in local
+coordination records.
 
 ## Sequence and gates
 
@@ -43,12 +41,13 @@ hidden-body/coverage experiments, upstream coordination, and dependency pins.
 
 ## V1: assembly acceptance and resolver-result bridge (implemented)
 
-Model/effort: user-approved Sol/high, one owner.
-Behavior change: none. The separately authorized admission cleanup returns the
+Behavior change: none. The admission cleanup returns the
 accepted `Node` alongside `State` from `State.addNode`; `commitContribution`
 consumes it directly instead of looking it up again. A direct registration
 regression checks returned payloads, retained evidence, and the committed node.
-Primary proof file: `src/VersoBlueprint/NodeAssembly/Laws.lean`.
+The named theorems below live in
+[`NodeAssembly/Laws.lean`](../../src/VersoBlueprint/NodeAssembly/Laws.lean)
+and reuse [`resolverLaws`](../../src/VersoBlueprint/Contributions/Laws.lean).
 No API preservation work, snapshot redesign, status policy, broader environment
 refactor, or additional stored data.
 
@@ -57,8 +56,7 @@ refactor, or additional stored data.
 2. `assemble_success_iff` proves assembly success iff the actual payload reducer
    succeeds, relevant contribution identities do not collide, and priorities
    do not disagree. The theorem uses the complete record set. Authored-origin
-   validity remains an environment
-   obligation, not an invented assembler premise.
+   validity remains an environment obligation, not an invented assembler premise.
 3. `assemble_ok_priority_none_iff` proves node priority `none` iff there is no
    input priority claim; `assemble_ok_priority_some_iff` proves node priority
    `some value` iff that value is claimed and all claims agree.
@@ -73,13 +71,14 @@ Acceptance commands (run from a harness-created worktree on the merged base):
 python3 -m scripts.blueprint_harness require-branch-role default_dev
 scripts/lean-low-priority lake build VersoBlueprint +VersoBlueprint.Contributions.Laws:olean +VersoBlueprint.NodeAssembly.Laws:olean
 scripts/run-lean-tests.sh
-scripts/lean-low-priority lake lean .contract/AxiomAudit.lean
+scripts/lean-low-priority lake lean tests/verification/AssemblyAxiomAudit.lean
 git diff --check
 ```
 
-The untracked audit imports `VersoBlueprint.NodeAssembly.Laws` and prints axioms
+The tracked audit imports `VersoBlueprint.NodeAssembly.Laws` and prints axioms
 of the new bridge, acceptance theorem, both priority corollaries, and retained
-collector/resolver laws. Accept no `sorryAx`, new axioms, `sorry`, or `admit`.
+collector/resolver laws. It prints dependencies for review, rather than enforcing
+an automated allowlist. Accept no `sorryAx`, new axioms, `sorry`, or `admit`.
 Check production import closure remains independent of law modules. Existing CI
 runs the broader tests; a proof-only change does not need new tests mirroring
 the proof scripts. Any further production behavior change needs a separately
