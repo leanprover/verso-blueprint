@@ -26,6 +26,17 @@ architecture narrative. Those live in
 
 ## Active Workstreams
 
+### Realizations and Translation Semantics
+
+The [frozen first-phase design](design/REALIZATIONS_AND_TRANSLATIONS.md) separates
+nodes, named informal/formal realizations, typed validation requirements, and
+directed translation relationships. It is planned behavior. Start with canonical
+source, current proof checks, coherent contribution admission, and one shared
+graph/query completion projection. Richer prerequisite kinds, external artifact
+import, and task/Beam integrations are deferred. Coordinate the declaration
+identity boundary with the independent Verso LSP/rendering lane before migrating
+producers.
+
 ### Rendering and Preview Boundary
 
 Goal: keep Blueprint's render entry point thin while making preview delivery
