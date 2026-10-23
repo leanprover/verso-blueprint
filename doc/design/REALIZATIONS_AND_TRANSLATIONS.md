@@ -522,6 +522,49 @@ native metadata, own/inherited comments, absent original comments/ranges, malfor
 source and synthetic/ambiguous source association. Negative structural/I/O
 injections supply no fabricated successful native observations.
 
+### Combined three-realization source example
+
+`BlueprintRealizationThreeWay.lean` composes the accepted Flag projection with
+one authored `rocq-reference` realization on the same node. Existing `docstring`
+and `lean` identities/checking remain unchanged. The Rocq source and `_RocqProject`
+are ordinary local test adaptations of the existing Flag family, not replacement
+authorities for LIRIS/Rocq or imported compiled artifacts. They are actual tracked
+source/config bytes. The qualified symbol spelling
+`TranslationHarnessReuse.Flag.toggle_involutive` and its project context are
+explicit authored references, never parsed as Lean names or reported as resolved.
+Readable source, a matching filename/config prefix and `Qed` establish no foreign
+checking. Resolution is explicitly `unsupported`, with the provider gap retained.
+
+The typed query outcomes are:
+
+| Item | Result |
+| --- | --- |
+| Independently expected native Lean toggle-involution proof | Complete through actual checking |
+| Actual Verso account | Unassessed |
+| Explicit Verso-to-Lean statement correspondence | Pending its own review |
+| Explicit Rocq-to-Lean statement correspondence | Blocked on unsupported declaration resolution |
+
+Both correspondences have distinct claim-local review requirements. Only actual
+native proof evidence is supplied. The selected Rocq statement facet includes its
+declaration association as well as source/config documents, so readable text cannot
+silently bypass unavailable resolution. Both links remain in unfinished inventory;
+the blocked Rocq link is excluded from actionable work. This does not erase the
+independent Lean proof or infer correspondence between any pair of realizations.
+
+Synthetic in-memory source/config/claim changes invalidate the Rocq correspondence
+binding while preserving native proof evidence. Empty/missing source, wrong project
+and an unselected readable alternative stay explicit. These controls supply no
+successful foreign resolution, proof or human review, and mutate no accepted node.
+
+The two fixture files are content-tracked Lake inputs wired to the existing test
+library, a deliberately coarse test-only dependency. The new focused root embeds
+their bytes and compares them with current files during actual elaboration. Normal
+builds after bounded reversible source/config byte edits verify that the example
+re-elaborates; no module mtime, output deletion or artifact restoration is used.
+Production library dependencies/toolchains are unchanged. This is an opt-in typed
+acceptance example, not a new authoring service, production graph/CLI/browser view,
+Rocq compiler invocation or foreign correspondence certification.
+
 ## Review and working structure
 
 Use one semantic integration owner and a dependency-ordered implementation
