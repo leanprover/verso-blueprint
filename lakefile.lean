@@ -12,26 +12,26 @@ package VersoBlueprint where
   leanOptions := #[⟨`experimental.module, true⟩]
 
 -- Experimental, genre-independent LSP adapter. Not imported by Blueprint yet.
-lean_lib Parley where
+lean_lib Rosetta where
   srcDir := "src"
-  roots := #[`Parley]
+  roots := #[`Rosetta]
 
 -- Verso authoring/rendering bridge; the analysis library has no Verso dependency.
-lean_lib VersoParley where
+lean_lib VersoRosetta where
   srcDir := "src"
-  roots := #[`VersoParley]
+  roots := #[`VersoRosetta]
 
-lean_lib ParleyDocs where
+lean_lib RosettaDocs where
   srcDir := "tests"
-  roots := #[`ParleyDocs.Plain, `ParleyDocs.Blueprint]
+  roots := #[`RosettaDocs.Plain, `RosettaDocs.Blueprint]
 
-lean_exe «parley-docs» where
+lean_exe «rosetta-docs» where
   srcDir := "tests"
-  root := `ParleyDocsMain
+  root := `RosettaDocsMain
 
-lean_exe «parley-spike» where
+lean_exe «rosetta-spike» where
   srcDir := "tests"
-  root := `ParleySpike
+  root := `RosettaSpike
 
 input_dir embeddedBlueprintAssets where
   path := "src/VersoBlueprint"

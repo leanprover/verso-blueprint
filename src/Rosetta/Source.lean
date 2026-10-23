@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 import Lean.Data.Lsp.Utf16
 
 /-! Experimental source projection for external language analysis. -/
-namespace Parley
+namespace Rosetta
 open Lean
 
 /-- Rejects positions beyond a line or inside a UTF-16 surrogate pair.
@@ -101,4 +101,4 @@ def Projection.mapRange (projection : Projection) (range : Lsp.Range) :
         result := { result with locations := result.locations.push { origin with range } }
   return result
 
-end Parley
+end Rosetta

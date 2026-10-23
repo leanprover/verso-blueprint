@@ -3,14 +3,14 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley.Document
+import Rosetta.Document
 import Verso.Doc.Html
 import Verso.Doc.TeX
 
-namespace VersoParley
-open Lean Verso Verso.Output Parley
+namespace VersoRosetta
+open Lean Verso Verso.Output Rosetta
 
-def requestAnchor (key : String) : String := s!"verso-parley-{hash key}"
+def requestAnchor (key : String) : String := s!"verso-rosetta-{hash key}"
 
 def css : String := "
 .hl.lsp { white-space: pre; font-family: monospace; }
@@ -25,7 +25,7 @@ def css : String := "
 .lsp-status { font-size: .85em; color: var(--text-muted, #6b7280); }
 .lsp-diagnostics { border-left: .2em solid #b91c1c; padding-left: 1.5rem; }
 .lsp-hover-content { white-space: pre-wrap; max-width: 40rem; font-family: monospace; }
-.tippy-box[data-theme~='verso-parley'] { background: #fff; color: #111827; border: 1px solid #9ca3af; }
+.tippy-box[data-theme~='verso-rosetta'] { background: #fff; color: #111827; border: 1px solid #9ca3af; }
 "
 
 /-- Reuse Verso's generated hover table and Tippy assets, with neutral selectors.
@@ -42,9 +42,9 @@ window.addEventListener('load', async () => {
       const html = docs[node.dataset.versoHover];
       if (typeof html !== 'string') continue;
       tippy(node, { content: html, allowHTML: true, interactive: true,
-        theme: 'verso-parley', trigger: 'mouseenter focus', maxWidth: 'none' });
+        theme: 'verso-rosetta', trigger: 'mouseenter focus', maxWidth: 'none' });
     }
-  } catch (error) { console.error('Verso Parley hovers:', error); }
+  } catch (error) { console.error('Verso Rosetta hovers:', error); }
 });
 "
 
@@ -140,4 +140,4 @@ def referenceHtml {g : Doc.Genre} (request : Request) (snapshot? : Option Reques
   return Html.tag "code" #[("class", "hl lsp lsp-reference"), ("id", requestAnchor request.key)]
     (← sourceHtml request snapshot?)
 
-end VersoParley
+end VersoRosetta

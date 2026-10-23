@@ -2,20 +2,20 @@
 
 This is maintainer tooling for the design in
 [`doc/design/VERSO_LSP_ADAPTER.md`](../../doc/design/VERSO_LSP_ADAPTER.md).
-The optional `Parley` library imports Lean and Std, with no Blueprint or Verso
+The optional `Rosetta` library imports Lean and Std, with no Blueprint or Verso
 dependency. It is experimental and is not imported by the Blueprint core.
 
 Build and run the deterministic checks from this worktree:
 
 ```sh
-scripts/lean-low-priority lake build parley-spike
-python3 tests/lsp/run_spike.py --output /tmp/parley-mock
+scripts/lean-low-priority lake build rosetta-spike
+python3 tests/lsp/run_spike.py --output /tmp/rosetta-mock
 ```
 
 Add explicitly selected language servers to exercise real projects:
 
 ```sh
-python3 tests/lsp/run_spike.py --output /tmp/parley-real \
+python3 tests/lsp/run_spike.py --output /tmp/rosetta-real \
   --rust-command rust-analyzer \
   --rocq-command /path/to/opam-switch/bin/coq-lsp
 ```
@@ -44,7 +44,7 @@ Unix; the recorded validation platform is Linux. See the
 They now match structured `ClientError` constructors, preserve server codes and
 absent/null/nested error data, distinguish successful null results, and exercise
 typed action-plus-cleanup failures. See the
-[current API and migration guide](../../doc/design/PARLEY_API.md).
+[current API and migration guide](../../doc/design/ROSETTA_API.md).
 
 The real checks query both an authored-block position and a named-reference
 probe in the same project scope. They retrieve available semantic tokens,
@@ -59,8 +59,8 @@ VBP attachment semantics. See its [results and limits](../../doc/design/VERSO_LS
 
 ## Compiled document and offline rendering experiment
 
-`Parley` is an independent Lean library whose aggregate import is
-`import Parley`. `VersoParley` is a separate library whose aggregate import
+`Rosetta` is an independent Lean library whose aggregate import is
+`import Rosetta`. `VersoRosetta` is a separate library whose aggregate import
 registers the experimental Manual code block and role. The core imports only
 Lean/Std; the bridge imports Verso and never VBP. Both remain in this package
 while their interfaces are being designed.
@@ -70,8 +70,8 @@ dependencies**, compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:
 
 ```sh
-scripts/lean-low-priority lake build Parley VersoParley parley-docs
-python3 tests/lsp/run_spike.py --output /tmp/parley-docs \
+scripts/lean-low-priority lake build Rosetta VersoRosetta rosetta-docs
+python3 tests/lsp/run_spike.py --output /tmp/rosetta-docs \
   --rust-command rust-analyzer \
   --rocq-command /path/to/opam-switch/bin/coq-lsp \
   --documents
@@ -88,7 +88,7 @@ browser-test environment:
 
 ```sh
 uv run --project tests/browser --extra test python tests/lsp/check_docs_browser.py \
-  /tmp/parley-docs/documents
+  /tmp/rosetta-docs/documents
 ```
 
 The pages require no live language server. The browser check verifies exact

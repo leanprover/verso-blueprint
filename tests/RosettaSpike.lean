@@ -3,10 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley.Client
-import Parley.Source
+import Rosetta.Client
+import Rosetta.Source
 
-open Lean Parley
+open Lean Rosetta
 
 private def check (condition : Bool) (message : String) : IO Unit :=
   unless condition do throw <| IO.userError message
@@ -77,7 +77,7 @@ private def failsWith (action : EIO ClientError α) (accept : ClientError → Bo
 private def heldParams (document : Document) (tag : String) : Json := Json.mkObj [
   ("textDocument", Json.mkObj [("uri", toJson document.uri)]), ("tag", toJson tag)]
 
-/-- Deliberately create an escaped descendant, outside Parley's ownership, so
+/-- Deliberately create an escaped descendant, outside Rosetta's ownership, so
 cleanup fails honestly. The test owns and kills that descendant in all cases. -/
 private def cleanupFailureChecks (server : String) : EIO ClientError Unit := do
   for failAction in #[false, true] do
@@ -305,7 +305,7 @@ private def mockChecks (server : String) : EIO ClientError Unit := do
     | .io (.noFileOrDirectory filename code details) =>
       filename == "fixture-owned-input" && code == 2 && details == "preserved cause"
     | _ => false)) "lifting IO erased its structured cause"
-  let startup ← (Client.start { command := "/parley-missing-fixture/server", root := "." }).toBaseIO
+  let startup ← (Client.start { command := "/rosetta-missing-fixture/server", root := "." }).toBaseIO
   let startupTyped := match startup with
     | .error (.io _) | .error .disconnected => true
     | _ => false
@@ -416,7 +416,7 @@ private def probe (language command root : String) : EIO ClientError Unit := do
     if language == "rust" then
       let detachedUri := (System.Uri.pathToUri (root / "Detached.rs") : String)
       let detached ← client.openDocument detachedUri "rust"
-        "use parley_spike::step;\nfn probe() { let _ = step; }\n"
+        "use rosetta_spike::step;\nfn probe() { let _ = step; }\n"
       detachedDefinition ← detached.request "textDocument/definition" (queryParams detachedUri 1 22)
     let (notifications, dropped) ← client.notifications
     let diagnostics ← document.diagnostics
@@ -442,4 +442,4 @@ def main (args : List String) : IO Unit := do
   match args with
   | ["mock", server] => pureChecks; (mockChecks server).toIO (IO.userError ∘ toString)
   | ["probe", language, command, root] => (probe language command root).toIO (IO.userError ∘ toString)
-  | _ => throw <| IO.userError "usage: parley-spike mock SERVER.py | probe LANGUAGE COMMAND ROOT"
+  | _ => throw <| IO.userError "usage: rosetta-spike mock SERVER.py | probe LANGUAGE COMMAND ROOT"

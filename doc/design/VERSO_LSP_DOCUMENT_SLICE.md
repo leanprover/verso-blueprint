@@ -4,29 +4,33 @@ Date: 2026-10-23. This extends the [protocol experiment](VERSO_LSP_SPIKE.md)
 with real authored documents and saved-result rendering. The libraries and
 author syntax remain experimental.
 
-Naming update: the core and bridge are now `Parley` and `VersoParley`.
+Naming update: the core and bridge are now `Rosetta` and `VersoRosetta`,
+formerly `Parley` and `VersoParley`.
 Current imports and targets below use those names; the original evidence bundle
 retains the working names `VersoLsp` and `VersoLspVerso` in its source copies.
-The rename was validated separately under
+The earlier Parley rename was validated separately under
 `_out/verso-lsp-design/parley-rename/`: both libraries/executables build, the
 dependency-free core package and protocol/document checks pass, and browser
 checks pass with the renamed anchors and hover theme.
+Current Rosetta rename evidence lives under
+`_out/verso-lsp-design/rosetta-rename/`; the current API guide is
+[`ROSETTA_API.md`](ROSETTA_API.md).
 
 ## Library boundary
 
-The analysis library is now exposed through `import Parley`. It contains
+The analysis library is now exposed through `import Rosetta`. It contains
 source projection, protocol normalization, an owned client, request/snapshot
 data, and context analysis. It imports only Lean and Std.
 
-`import VersoParley` is a separate `lean_lib` for Manual authoring, request
+`import VersoRosetta` is a separate `lean_lib` for Manual authoring, request
 collection/enrichment, HTML, and TeX rendering. It imports Verso but never VBP.
 Blueprint itself does not import either library by default. Its fixture opts
 into the bridge and passes the existing captured rendering model through.
 
 | Layer | Dependencies | Role |
 | --- | --- | --- |
-| `Parley` | Lean/Std | Analyze explicit document contexts and produce portable facts |
-| `VersoParley` | Core data and Verso | Compile inert requests and render accepted facts |
+| `Rosetta` | Lean/Std | Analyze explicit document contexts and produce portable facts |
+| `VersoRosetta` | Core data and Verso | Compile inert requests and render accepted facts |
 | Blueprint consumer | Verso bridge and VBP | Enrich a document before the normal Blueprint generator |
 
 The test runner builds the core from the same sources in a fresh temporary Lake
@@ -161,7 +165,7 @@ document queries use versioned handles, and concurrent close callers share a
 cleanup report. Unix cleanup can escalate beyond SIGTERM. The first report is
 historical evidence, not the current API. The library remains experimental;
 platform coverage and package ownership still need release decisions. The
-[current API guide](PARLEY_API.md) records the later structured-error and API
+[current API guide](ROSETTA_API.md) records the later structured-error and API
 trimming revision.
 
 Before a supported release, settle profiles and external-project inputs,

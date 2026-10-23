@@ -3,14 +3,14 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoParley
+import VersoRosetta
 
-namespace ParleyDocs
-open Verso Verso.Doc Verso.Genre.Manual VersoParley
+namespace RosettaDocs
+open Verso Verso.Doc Verso.Genre.Manual VersoRosetta
 
 set_option doc.verso true
 
-#docs (Genre.Manual) plain "Parley analysis in a Verso document" :=
+#docs (Genre.Manual) plain "Rosetta analysis in a Verso document" :=
 :::::::
 *Rust code and references*
 
@@ -42,4 +42,4 @@ Check missing_name.
 ```
 :::::::
 
-end ParleyDocs
+end RosettaDocs

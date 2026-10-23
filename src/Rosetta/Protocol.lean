@@ -4,10 +4,10 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import Lean.Data.Lsp
-import Parley.Source
+import Rosetta.Source
 
 /-! Experimental normalization of external LSP results, without genre metadata. -/
-namespace Parley
+namespace Rosetta
 open Lean
 
 structure DefinitionTarget where
@@ -95,4 +95,4 @@ def semanticSpans (source : String) (provider result : Json) :
       modifiers := (modifiers.zipIdx.filter (fun (_, bit) => mask.testBit bit)).map (·.1) }
   return spans
 
-end Parley
+end Rosetta

@@ -25,14 +25,14 @@ def main():
     repo = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    prefix = [str(repo / "scripts/lean-low-priority"), "lake", "exe", "parley-spike"]
+    prefix = [str(repo / "scripts/lean-low-priority"), "lake", "exe", "rosetta-spike"]
     identity = hashlib.sha256()
-    for path in sorted([*(repo / "src/Parley").glob("*.lean"),
-                        repo / "src/Parley.lean", repo / "src/VersoParley.lean",
-                        *(repo / "src/VersoParley").glob("*.lean"),
-                        *(repo / "tests/ParleyDocs").glob("*.lean"),
-                        repo / "tests/ParleyDocsMain.lean",
-                        repo / "tests/ParleySpike.lean",
+    for path in sorted([*(repo / "src/Rosetta").glob("*.lean"),
+                        repo / "src/Rosetta.lean", repo / "src/VersoRosetta.lean",
+                        *(repo / "src/VersoRosetta").glob("*.lean"),
+                        *(repo / "tests/RosettaDocs").glob("*.lean"),
+                        repo / "tests/RosettaDocsMain.lean",
+                        repo / "tests/RosettaSpike.lean",
                         repo / "lakefile.lean", repo / "lean-toolchain", repo / "lake-manifest.json",
                         *Path(__file__).parent.rglob("*")]):
         if path.is_file() and "__pycache__" not in path.parts:
@@ -70,7 +70,7 @@ def main():
     if args.documents:
         docs = output / "documents"
         docs.mkdir(exist_ok=True)
-        command = prefix[:-1] + ["parley-docs"]
+        command = prefix[:-1] + ["rosetta-docs"]
 
         def run_document_case(name, arguments, tool=command, cwd=repo):
             result = subprocess.run(tool + arguments, cwd=cwd, capture_output=True,
@@ -85,9 +85,9 @@ def main():
         independent.mkdir(exist_ok=True)
         (independent / "lean-toolchain").write_text((repo / "lean-toolchain").read_text())
         (independent / "lakefile.toml").write_text(
-            'name = "parley_independence"\n[[lean_lib]]\nname = "Parley"\nsrcDir = '
+            'name = "rosetta_independence"\n[[lean_lib]]\nname = "Rosetta"\nsrcDir = '
             + json.dumps(str(repo / "src")) + "\n")
-        run_document_case("independent-core", ["Parley"],
+        run_document_case("independent-core", ["Rosetta"],
                           tool=prefix[:2] + ["build"], cwd=independent)
         assert json.loads((independent / "lake-manifest.json").read_text())["packages"] == []
         run_document_case("plan", ["plan", str(docs / "plan.json")])

@@ -3,10 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley.Client
-import Parley.Document
+import Rosetta.Client
+import Rosetta.Document
 
-namespace Parley
+namespace Rosetta
 open Lean
 
 structure DiagnosticEvidence where
@@ -173,4 +173,4 @@ def analyze (profiles : Array ContextProfile) (requests : Array Request) : EIO C
   EIO.ofExcept <| bundle.validate.mapError ClientError.invalidInput
   return bundle
 
-end Parley
+end Rosetta

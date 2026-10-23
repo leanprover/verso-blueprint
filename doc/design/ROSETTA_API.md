@@ -1,16 +1,17 @@
-# Parley API and structured failures
+# Rosetta API and structured failures
 
 Date: 2026-10-23. This supersedes the client signatures in the
-[lifecycle review](PARLEY_LIFECYCLE_REVIEW.md). These are experimental APIs in
+[lifecycle review](PARLEY_LIFECYCLE_REVIEW.md). The core and bridge are named
+`Rosetta` and `VersoRosetta`, formerly `Parley` and `VersoParley`. These are experimental APIs in
 the local design branch, not a published independent package.
 
 ## The retained surface
 
-`import Parley` exposes the Lean/Std-only core. The main application operation
+`import Rosetta` exposes the Lean/Std-only core. The main application operation
 is now:
 
 ```lean
-Parley.analyze : Array ContextProfile → Array Request → EIO ClientError Bundle
+Rosetta.analyze : Array ContextProfile → Array Request → EIO ClientError Bundle
 ```
 
 Requests describe authored code or references and their source origins.
@@ -45,8 +46,8 @@ only the latter carry a versioned document handle.
 
 Source composition (`compose`, `Projection.mapRange`), portable bundle
 validation/matching (`Bundle.validate`, `Bundle.find`), and the Verso bridge
-retain their existing responsibilities. The current `VersoParley.collect` and
-`VersoParley.enrich` entry points operate on Manual parts and remain pure.
+retain their existing responsibilities. The current `VersoRosetta.collect` and
+`VersoRosetta.enrich` entry points operate on Manual parts and remain pure.
 
 ## Trimming
 
@@ -58,7 +59,7 @@ Wire IDs and envelopes remain transport details.
 
 The callback-shaped `Document.withClient` is removed in favor of the plain
 `document.client` accessor. The private single-field pending-request wrapper is
-also removed. Framing lives under `Parley.Internal`; it is not an application
+also removed. Framing lives under `Rosetta.Internal`; it is not an application
 entry point. No compatibility aliases or custom monad/options wrappers are added.
 
 ## Error contract
@@ -90,8 +91,8 @@ inside session/profile callbacks. Converting back to `IO` is explicit at the
 application boundary. For example, a command-line entry point can choose:
 
 ```lean
-import Parley
-open Parley
+import Rosetta
+open Rosetta
 
 def analyzeIO (profiles : Array ContextProfile) (requests : Array Request) : IO Bundle :=
   (analyze profiles requests).toIO (IO.userError ∘ toString)
@@ -120,8 +121,9 @@ and simultaneous action/cleanup failures. Cleanup-failure tests deliberately
 create a descendant outside the owned process group and kill it themselves in
 `finally`; this exercises the real incomplete-cleanup boundary.
 
-Maintainer evidence for this revision belongs under
-`_out/verso-lsp-design/parley-errors/`. The workflow also checks real Rust/Rocq,
+The structured-error experiment used the former Parley name and is recorded
+under `_out/verso-lsp-design/parley-errors/`. Rename validation is recorded
+separately under `_out/verso-lsp-design/rosetta-rename/`. The workflow also checks real Rust/Rocq,
 the dependency-free core build, offline Verso/Blueprint output, and browser
 behavior. Unix termination still uses the standard `kill` utility; platform
 coverage and independent-package ownership/release policy remain open.
@@ -130,5 +132,21 @@ Validation passed: clean targeted batch build; complete `lake test`; determinist
 typed-error/lifecycle checks; real Rust/Rocq; an independent core package with
 an empty dependency manifest; plan/snapshot checks; offline Verso/Blueprint
 HTML and TeX; `vbp check`; unchanged Blueprint semantic queries; and desktop/mobile
-browser checks. Exact experiment sources are preserved with SHA-256
+browser checks. That structured-error experiment's Parley sources are preserved with SHA-256
 `5702696d082387286a312e16f31d7d4ace79ee70cb0a8215566136577286a95c`.
+
+Rosetta rename validation passed for the renamed libraries/executables, the
+dependency-free core package, mock/Rust/Rocq checks, offline Verso/Blueprint
+generation, Blueprint semantic comparisons, browser checks, and `lake test`.
+The rename evidence preserves source SHA-256
+`373fc31a9f42b614688ca29307fab7788f3b4f2a3e8f3477c978fbcfb890b3fe`.
+
+## Next package boundary
+
+The proposed extraction is one repository with two Lake packages: a Rosetta
+core package with no package dependencies, and a VersoRosetta bridge package
+depending on the core and Verso. VBP would consume the bridge through a pinned
+dependency. Merely declaring two libraries in one package would still make
+core-only consumers fetch that package's declared Verso dependencies. Repository
+ownership, the initial Lean/toolchain release policy, and publication remain
+to be settled; this naming revision does not create or publish a repository.

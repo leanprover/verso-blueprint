@@ -3,14 +3,14 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley.Framing
-import Parley.Protocol
+import Rosetta.Framing
+import Rosetta.Protocol
 import Std.Sync.Mutex
 import Std.Sync.CancellationToken
 
 /-! Experimental stdio client. Transport state never protects blocking IO.
 Document handles belong to one client and one admitted document version. -/
-namespace Parley
+namespace Rosetta
 open Lean
 
 structure ClientConfig where
@@ -472,7 +472,7 @@ def Client.start (config : ClientConfig) : EIO ClientError Client := do
   try
     let rootUri := (System.Uri.pathToUri config.root : String)
     let result ← client.request "initialize" <| Json.mkObj [
-      ("processId", toJson (← IO.Process.getPID).toNat), ("clientInfo", Json.mkObj [("name", "Parley")]),
+      ("processId", toJson (← IO.Process.getPID).toNat), ("clientInfo", Json.mkObj [("name", "Rosetta")]),
       ("rootUri", toJson rootUri),
       ("workspaceFolders", toJson #[Json.mkObj [("uri", toJson rootUri), ("name", "project")]]),
       ("initializationOptions", config.initializationOptions),
@@ -519,4 +519,4 @@ def Client.withSession (config : ClientConfig) (action : Client → EIO ClientEr
     if report.complete then throw error
     throw <| ClientError.cleanup report (some error)
 
-end Parley
+end Rosetta

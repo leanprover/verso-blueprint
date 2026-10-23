@@ -4,9 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import Lean.Data.Lsp.Communication
-import Parley.Error
+import Rosetta.Error
 
-namespace Parley.Internal
+namespace Rosetta.Internal
 
 /-- Bounded framing for an untrusted stdio peer. Reading runs on a dedicated
 worker; a partial header/body is interrupted by terminating the owned process. -/
@@ -39,4 +39,4 @@ def readFrame (output : IO.FS.Stream) (maxBytes : Nat) : EIO ClientError String 
   let some text := String.fromUTF8? body | throw <| ClientError.protocol "invalid UTF-8 LSP body"
   return text
 
-end Parley.Internal
+end Rosetta.Internal

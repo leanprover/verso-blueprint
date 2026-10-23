@@ -3,10 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley.Protocol
+import Rosetta.Protocol
 import Lean
 
-namespace Parley
+namespace Rosetta
 open Lean
 
 /-- An exact authored line start. Kept as scalar fields to quote requests without
@@ -154,4 +154,4 @@ def Bundle.validate (bundle : Bundle) : Except String Unit := do
       let authored ← request.authoredLocations diagnostic.diagnostic.range
       unless toJson authored == toJson diagnostic.authored do throw "saved diagnostic source map disagrees"
 
-end Parley
+end Rosetta

@@ -5,7 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import Lean.Data.Json
 
-namespace Parley
+namespace Rosetta
 open Lean
 
 /-- Cleanup succeeds only when the child is reaped and every IO worker stops.
@@ -67,4 +67,4 @@ original IO error. Conversion back to IO belongs at the application's boundary. 
 instance : MonadLift IO (EIO ClientError) where
   monadLift := IO.toEIO ClientError.io
 
-end Parley
+end Rosetta

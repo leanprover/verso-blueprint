@@ -3,15 +3,15 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Parley
-import ParleyDocs.Blueprint
+import Rosetta
+import RosettaDocs.Blueprint
 import VersoBlueprint.PreviewManifest
 
-open Lean Verso Verso.Doc Verso.Genre.Manual Parley
+open Lean Verso Verso.Doc Verso.Genre.Manual Rosetta
 
 private def requests : IO (Array Request) := do
-  let plain ← IO.ofExcept <| VersoParley.collect ParleyDocs.plain.toPart
-  let blueprint ← IO.ofExcept <| VersoParley.collect ParleyDocs.blueprintDocument.text
+  let plain ← IO.ofExcept <| VersoRosetta.collect RosettaDocs.plain.toPart
+  let blueprint ← IO.ofExcept <| VersoRosetta.collect RosettaDocs.blueprintDocument.text
   unless plain == blueprint do throw <| IO.userError "Blueprint changed the compiled analysis requests"
   return plain
 
@@ -68,7 +68,7 @@ private def profiles (root : System.FilePath) (rust rocq : String) : IO (Array C
   IO.FS.createDirAll (rustRoot / "src")
   unless ← (rustRoot / "Cargo.toml").pathExists do
     IO.FS.writeFile (rustRoot / "Cargo.toml")
-      "[package]\nname = \"parley-docs\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n"
+      "[package]\nname = \"rosetta-docs\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n"
   unless ← (rustRoot / "src/lib.rs").pathExists do
     IO.FS.writeFile (rustRoot / "src/lib.rs") "// Owned analysis overlay target.\n"
   let rustProfile : ContextProfile := {
@@ -111,11 +111,11 @@ private def render (bundlePath output kind : String) : IO UInt32 := do
   let bundle ← loadBundle bundlePath
   let arguments := ["--output", output, "--with-html-single", "--without-html-multi", "--with-tex"]
   if kind == "plain" then
-    let text ← IO.ofExcept <| VersoParley.enrich bundle ParleyDocs.plain.toPart
+    let text ← IO.ofExcept <| VersoRosetta.enrich bundle RosettaDocs.plain.toPart
     manualMain text (extensionImpls := by exact extension_impls%) arguments
   else if kind == "blueprint" then
-    let document := ParleyDocs.blueprintDocument
-    let text ← IO.ofExcept <| VersoParley.enrich bundle document.text
+    let document := RosettaDocs.blueprintDocument
+    let text ← IO.ofExcept <| VersoRosetta.enrich bundle document.text
     Informal.PreviewManifest.blueprintMainWithPreviewData text arguments
       (extensionImpls := by exact extension_impls%) (model := document.model)
   else throw <| IO.userError "expected plain or blueprint"
@@ -132,7 +132,7 @@ def main (args : List String) : IO UInt32 := do
     return 0
   | ["render", bundle, output, kind] => render bundle output kind
   | ["baseline", output] =>
-    let document := ParleyDocs.blueprintDocument
+    let document := RosettaDocs.blueprintDocument
     Informal.PreviewManifest.blueprintMainWithPreviewData document.text
       ["--output", output, "--with-html-single", "--without-html-multi", "--with-tex"]
       (extensionImpls := by exact extension_impls%) (model := document.model)
@@ -146,9 +146,9 @@ def main (args : List String) : IO UInt32 := do
     let some saved := bundle.requests[0]? | throw <| IO.userError "expected a nonempty analysis bundle"
     unless !({ bundle with requests := bundle.requests.push saved }.validate).isOk do
       throw <| IO.userError "duplicate snapshot identity was accepted"
-    let once ← IO.ofExcept <| VersoParley.enrich bundle ParleyDocs.plain.toPart
-    let twice ← IO.ofExcept <| VersoParley.enrich bundle once
+    let once ← IO.ofExcept <| VersoRosetta.enrich bundle RosettaDocs.plain.toPart
+    let twice ← IO.ofExcept <| VersoRosetta.enrich bundle once
     unless toJson once == toJson twice do throw <| IO.userError "snapshot replay is not idempotent"
     IO.println "Compiled plans agree, snapshot replay matches, and changed source is rejected"
     return 0
-  | _ => throw <| IO.userError "usage: parley-docs plan FILE | analyze FILE RUNTIME_ROOT RUST ROCQ | render BUNDLE OUTPUT plain|blueprint | check BUNDLE | baseline OUTPUT"
+  | _ => throw <| IO.userError "usage: rosetta-docs plan FILE | analyze FILE RUNTIME_ROOT RUST ROCQ | render BUNDLE OUTPUT plain|blueprint | check BUNDLE | baseline OUTPUT"
