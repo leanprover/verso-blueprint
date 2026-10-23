@@ -414,6 +414,15 @@ mathematical review, all deferred Verso checks or correspondence acceptance. Mis
 or blank source is an explicit error. The injectable source reader is a provider
 boundary for testing unavailable I/O; successful use must read canonical bytes.
 
+Ordinary attribute proof dependencies do not make an informal proof body. The
+projection accepts either no proof slot or the dependency-only slot assembled
+with missing syntax and no retained preview blocks or elaboration syntax. An
+authored nonmissing placeholder remains unsupported even without a body; retained
+preview or elaboration content remains unsupported even with missing syntax.
+Accepted uses remain in the Blueprint environment, without duplicate storage,
+generated proof prose or installed validation prerequisites. This support does
+not change source, native identity, association or range checks.
+
 Canonical prose comes from the original declaration's direct modifier comment,
 not a rendering, elaborated-tree representation or fallback children. Parse the
 accepted source file without elaborating its commands, require one declaration
@@ -601,9 +610,14 @@ an admitted proof selects its declaration proof and remains pending despite a
 genuinely checked complete alternative. Removing evidence preserves selection;
 actual wrong-proposition and unavailable-environment checks cannot supply proof
 completion. In-memory contract corruptions are labeled synthetic and contribute
-no mock successful validation. The source's proof-axis metadata is read directly;
-its theorem is checked directly because the existing docstring projection remains
-limited to nodes without proof-axis bodies. Accepted state is not mutated.
+no mock successful validation. Its actual source theorem now uses the same
+`project`/`validate` path despite its dependency-only proof slot. Tests assert
+exact own Verso raw bytes, canonical identities and owning source bytes. An actual
+consumer selects that source's default native proof. Local native checking
+completes while the source's admitted Blueprint dependency remains pending and
+its prose unassessed; this is not aggregate dependency closure/readiness. Synthetic
+proof-body and placeholder injections are rejected and restore the environment
+on success and failure. Accepted state is not mutated.
 Graph/CodeHealth comparisons cover only the supported theorem-local policy. No
 transitive readiness, cycle semantics, legacy-wide parity, production graph
 connection or verification-v1 admission change is included.

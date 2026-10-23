@@ -130,7 +130,9 @@ def checkedSourceRanges (label : Name) (snapshotRange snapshotSelection : Option
 
 /-- Read canonical bytes at the accepted association's path. The injectable
 reader permits explicit I/O-failure tests, not alternate successful provenance.
-The caller must use a current ordinary build of the owning source. -/
+The caller must use a current ordinary build of the owning source. A dependency-only
+proof slot is metadata, not an authored proof: it must have missing syntax and
+no retained preview/elaboration body. -/
 def project (projectName label : Name)
     (readSource : System.FilePath → IO String := IO.FS.readFile) : CoreM (Except Diagnostic Projection) := do
   let some node ← Environment.getNode? label
@@ -138,7 +140,7 @@ def project (projectName label : Name)
   unless !projectName.isAnonymous && node.blueprintAttributeAttachments &&
       node.externalRefs.size == 1 && node.proofExternalRefs.isEmpty &&
       node.literateCodes.isEmpty && node.rustCode.isNone && node.externalMarkup.isEmpty &&
-      node.proof.isNone do
+      (node.proof.all fun proof => proof.stx.isMissing && !proof.hasBody) do
     return .error <| issue "unsupported-node" label "Expected one attribute-owned theorem and docstring only"
   let ref := node.externalRefs[0]!
   unless ref.origin == .blueprintAttr && ref.kind == .theorem && ref.present do

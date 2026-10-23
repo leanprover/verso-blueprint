@@ -80,6 +80,17 @@ private def authored (id : Name) (value : α) : Contribution α := {
     source := "tests/VersoBlueprintTests/BlueprintRealizationDependencies.lean" }
   value }
 
+-- Synthetic negative slot injection only. withEnv restores the accepted
+-- environment through finally, including when the test action throws.
+private def withSyntheticProofSlot (slot : Informal.Data.InformalData)
+    (action : TermElabM α) : TermElabM α := do
+  withEnv (← getEnv) do
+    Informal.Environment.modify fun state =>
+      match state.data.get? (label "source") with
+      | none => state
+      | some node => { state with data := state.data.insert (label "source") { node with proof := some slot } }
+    action
+
 -- Real native availability failure in a normal same-toolchain Lean environment
 -- without the fixture module. This is a labeled negative environment injection,
 -- not a fake unavailable observation and never a successful proof replacement.
@@ -95,18 +106,35 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let before ← Informal.Environment.getNode? sourceLabel
   let some source := before | throwError "Missing accepted source"
   let beforeLabels ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source
+  let consumerBefore ← Informal.Environment.getNode? (label "consumer")
+  let consumerLabelsBefore ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer
+  let some proofSlot := source.proof | throwError "Actual source must have proof uses"
+  ensure (proofSlot.stx.isMissing && !proofSlot.hasBody && !proofSlot.deps.isEmpty)
+    "The actual imported source has dependency-only proof metadata"
   let expected ← `(term| True)
   let clean ← obtain (← project context.project (label "clean"))
   let admitted ← obtain (← project context.project (label "admitted"))
   let other ← obtain (← project context.project (label "other"))
+  let localSource ← obtain (← project context.project sourceLabel)
   let cleanInput ← obtain (← clean.validate expected)
   let admittedInput ← obtain (← admitted.validate expected)
   let otherInput ← obtain (← other.validate expected)
-  -- The source has accepted proof-axis uses, beyond the docstring-only Existing
-  -- projection. Check its actual theorem directly; do not widen that adapter.
-  let localSource ← obtain (← NativeLean.check context.project
-    ⟨context, "DependencySelectionFixture.source"⟩ expected)
-  let input := join (join cleanInput admittedInput) otherInput
+  let sourceInput ← obtain (← localSource.validate expected)
+  ensure (localSource.leanKey == ⟨sourceLabel, `lean⟩ &&
+    localSource.informalKey == ⟨sourceLabel, `docstring⟩ &&
+    localSource.witness == ⟨context, "DependencySelectionFixture.source"⟩ &&
+    localSource.moduleName == `VersoBlueprintTests.BlueprintRealizationDependencies.Provider &&
+    localSource.docstringFormat == `verso)
+    "Projection retains the source's actual canonical identities and native Verso format"
+  let rawDoc := "\nThe source uses {uses \"dependencies.clean\" (intent := \"technical\")}[clean support]\nand {uses \"dependencies.admitted\" (intent := \"auxiliary\")}[unfinished support].\n"
+  ensure (localSource.input.documents.any fun record =>
+    record.value.key.context.language == `verso && record.value.text == rawDoc)
+    "Own raw docstring bytes, including uses markup, are unchanged"
+  let sourceBytes ← liftM <| IO.FS.readFile localSource.sourcePath
+  ensure (localSource.input.documents.any fun record =>
+    record.value.key == ⟨context, localSource.sourcePath⟩ && record.value.text == sourceBytes)
+    "The native association retains the owning source bytes"
+  let input := join (join (join cleanInput admittedInput) otherInput) sourceInput
   let registry ← obtain (admit input)
   let selected ← obtain (← selectUses registry context sourceLabel)
   ensure (decide (selected.1.map (·.1) = Informal.Graph.statementUses source) &&
@@ -125,8 +153,43 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     "One target on both axes selects the same declaration obligation without merging axes"
   ensure ((registry.resultForRequirement cleanKey).complete &&
     (registry.resultForRequirement admittedKey).status == .pending &&
-    localSource.observation.outcome == .passed)
-    "Actual clean proof completes, admitted target remains pending, local source proof is independent"
+    (registry.resultForRequirement (proofKey localSource)).complete)
+    "Local native proof completes while the admitted Blueprint dependency remains pending, without traversal"
+  ensure ((registry.resultFor (.realization localSource.informalKey)).status == .unassessed &&
+    (registry.requirement? (proofKey localSource)).any (·.prerequisites.isEmpty))
+    "Projection does not assess prose or install mathematical dependencies as prerequisites"
+  let consumerUses ← obtain (← selectUses registry context (label "consumer"))
+  ensure ((← obtain (← edge consumerUses.1 sourceLabel)) == proofKey localSource)
+    "An actual accepted consumer selects the dependency-only source's exact default proof"
+
+  -- Synthetic rejected proof representations supply no successful facts. Each
+  -- mutation is confined to withEnv, and checked again after normal restoration.
+  let preview : Verso.Doc.Block Verso.Genre.Manual := .para #[.text "Synthetic proof body"]
+  let placeholder : Syntax := mkIdent `syntheticProofPlaceholder
+  let rejectedSlots : Array (String × Informal.Data.InformalData) := #[
+    ("nonmissing placeholder without body", { stx := placeholder }),
+    ("authored preview body", { stx := placeholder, previewBlocks := #[preview] }),
+    ("authored elaboration body", { stx := placeholder, elabStx := #[placeholder] }),
+    ("missing syntax with retained preview", { stx := .missing, previewBlocks := #[preview] }),
+    ("missing syntax with retained elaboration", { stx := .missing, elabStx := #[placeholder] })]
+  for (description, slot) in rejectedSlots do
+    withSyntheticProofSlot slot do
+      match ← project context.project sourceLabel with
+      | .error diagnostic => ensure (diagnostic.code == "unsupported-node") s!"Reject {description}"
+      | .ok _ => throwError "Unsupported proof slot passed: {description}"
+    ensure (reprStr before == reprStr (← Informal.Environment.getNode? sourceLabel))
+      "Synthetic slot injection restores accepted state after normal return"
+  let mut caught := false
+  try
+    withSyntheticProofSlot { stx := placeholder } do
+      let some injected ← Informal.Environment.getNode? sourceLabel | throwError "Missing injection source"
+      ensure (injected.proof.any (·.stx == placeholder)) "Failure probe runs inside injected environment"
+      throwError "synthetic proof-slot action failure"
+  catch ex =>
+    ensure ((← ex.toMessageData.toString) == "synthetic proof-slot action failure") "Catch only the deliberate test failure"
+    caught := true
+  ensure (caught && reprStr before == reprStr (← Informal.Environment.getNode? sourceLabel))
+    "Synthetic slot injection also restores accepted state after failure"
   for (name, key) in #[(label "clean", cleanKey), (label "admitted", admittedKey)] do
     let some target ← Informal.Environment.getNode? name | throwError "Missing accepted target"
     ensure (Informal.Graph.nodeLocalStatementFormalized {} target) "Both native statements are clean"
@@ -269,11 +332,18 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     "Selection stays fixed; native unavailability is preserved by the existing evaluator"
   let after ← Informal.Environment.getNode? sourceLabel
   ensure (reprStr before == reprStr after && beforeLabels ==
-    (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source))
+    (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source) &&
+    reprStr consumerBefore == reprStr (← Informal.Environment.getNode? (label "consumer")) &&
+    consumerLabelsBefore == (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer))
     "Accepted source/membership and contracts remain read-only"
   logInfo "Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained"
+  logInfo "Projection: dependency-only source checked locally; prose unassessed; Blueprint dependency still pending"
 
-/-- info: Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained -/
+/--
+info: Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained
+---
+info: Projection: dependency-only source checked locally; prose unassessed; Blueprint dependency still pending
+-/
 #guard_msgs in
 #eval runControls
 

@@ -34,6 +34,10 @@ and {uses "dependencies.admitted" (intent := "auxiliary")}[unfinished support].
   (proofUses := ["dependencies.clean", "dependencies.missing"])]
 theorem source : usingCleanType := other
 
+/-- The source theorem is a dependency target even with its own proof uses. -/
+@[blueprint "dependencies.consumer" (uses := ["dependencies.source"])]
+theorem consumer : True := source
+
 /-- A supported source with no dependencies. -/
 @[blueprint "dependencies.empty"]
 theorem empty : True := True.intro
