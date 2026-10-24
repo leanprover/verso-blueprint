@@ -11,7 +11,7 @@ No validation observation, binding or derived Registry is persisted. -/
 
 namespace Informal.Realizations.Authoring
 
-open Lean Meta Elab Term Validation Translations Existing
+open Lean Meta Elab Term Validation Translations NativeSource
 
 private def orThrow (result : Except (Array Diagnostic) Unit) : CoreM Unit := do
   if let .error issues := result then throwError "{repr issues}"
@@ -60,19 +60,6 @@ private def read (reader : System.FilePath → IO String) (key : DocumentKey)
     else return { key, text }
   | .error _ => reject "source-unavailable" key.path "Cannot read canonical source" #[origin]
 
-private partial def declarations (command : Syntax) : Array Syntax :=
-  if command.isOfKind ``Parser.Command.declaration then #[command]
-  else if command.isOfKind ``Parser.Command.«in» && command[0].isOfKind ``Parser.Command.set_option then
-    declarations command[2]
-  else #[]
-
-private def originalRange (text : String) (stx : Syntax) : Option Syntax.Range := do
-  let .original leading _ _ _ := stx.getHeadInfo | none
-  let .original _ _ trailing _ := stx.getTailInfo | none
-  let range ← stx.getRange?
-  if leading.str != text || trailing.str != text || range.stop.byteIdx > text.utf8ByteSize then none
-  else some range
-
 private def ownedDefinition (name : Name) (origin : Origin) (source : Document) : MaterializeM Unit := do
   let env ← getEnv
   let some (.defnInfo info) := env.checked.get.find? name
@@ -85,14 +72,8 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
     reject "wrong-expectation-owner" name.toString "Specification belongs to another module" #[origin]
   let some ranges ← findDeclarationRanges? name
     | reject "source-association-unavailable" name.toString "Specification has no native declaration ranges" #[origin]
-  let commands ← one (← Existing.parseSource name source.key.path source.text)
-  let map := FileMap.ofString source.text
-  let candidates := commands.flatMap declarations |>.filter fun command => Id.run do
-    let some whole := originalRange source.text command | return false
-    let some selected := originalRange source.text (Elab.getDeclarationSelectionRef command[1]) | return false
-    return DeclarationRange.ofStringPositions map whole.start whole.stop == ranges.range &&
-      DeclarationRange.ofStringPositions map selected.start selected.stop == ranges.selectionRange
-  unless candidates.size == 1 do
+  let commands ← one (← NativeSource.parseSource name source.key.path source.text)
+  unless (NativeSource.declarationAtRanges name source.text ranges.range ranges.selectionRange commands).isOk do
     reject "source-association-unavailable" name.toString "Specification has no unique original source declaration" #[origin]
   -- NativeLean.check below checks that this constant's type is Prop, and rejects
   -- open/concrete-universe/admitted expectations before matching the witness.
@@ -136,9 +117,13 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
   let mut input : Input := {}
   let mut observations : Array (Origin × RequirementKey × Observation) := #[]
   for (record, fact) in defaults do
-    let p ← one (← Existing.project record.project fact.label reader)
-    unless p.moduleName == fact.id.moduleName && p.witness.native.toName == fact.id.subject do
-      reject "default-identity" fact.label.toString "Materialized source differs from its selected producer" #[record.origin]
+    -- Only the old eligibility gate remains coupled to the old node layout.
+    -- Native source/model preparation consumes typed source metadata directly.
+    let selected ← one (← Existing.request record.project fact.label)
+    unless selected.moduleName == fact.id.moduleName && selected.canonical == fact.id.subject do
+      reject "default-identity" fact.label.toString "Source request differs from its selected producer" #[record.origin]
+    let source ← one (← NativeSource.prepareDocumented selected reader)
+    let p ← one (source.realize record.origin { label := fact.label, title := fact.label.toString } `lean `docstring)
     let specs := records.flatMap fun spec => spec.nativeGoals.mapIdx fun index (node, expected) =>
       (spec, index, node, expected)
     let specs := specs.filter fun (spec, _, node, _) => node == fact.label && spec.project == record.project

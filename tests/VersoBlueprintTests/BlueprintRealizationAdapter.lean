@@ -13,6 +13,7 @@ obtained from real current Lean checks, never mocked provider success. -/
 open Lean Meta Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
 open Informal.Realizations.Existing
+open Informal.Realizations.NativeSource
 
 namespace VersoBlueprintTests.BlueprintRealizationAdapter
 
@@ -30,7 +31,85 @@ private def rejected : Except ε α → Bool
   | .error _ => true
   | .ok _ => false
 
-private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+
+-- Direct owning-source preparation does not need a Blueprint node or enrollment.
+-- These are actual imported declarations/source bytes; native checking and model
+-- admission remain separate operations, rather than facts invented by lookup.
+run_cmd liftTermElabM do
+  let before ← Informal.Environment.stagedAuthoring
+  let request : NativeSource.Request := {
+    project := `adapterFixture
+    canonical := `RealizationAdapterFixture.identityInvolutive
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider
+    sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" }
+  ensure ((← Informal.Environment.labelsForLeanDecl request.canonical).isEmpty)
+    "Direct source control must use an unenrolled declaration"
+  let source ← obtain (← NativeSource.prepare request)
+  ensure (source.canonical == request.canonical && source.declaration == witness request.canonical &&
+    source.moduleName == request.moduleName && source.document.key.path == request.sourcePath &&
+    source.document.text == (← IO.FS.readFile request.sourcePath) && source.semanticContext.isSome)
+    "Direct source must preserve typed identity, exact owning bytes and current semantic inputs"
+  let nativeOrigin : Informal.Realizations.Origin := {
+    id := `undocumentedSource, moduleName := request.moduleName, source := request.sourcePath }
+  let nativeOnly ← obtain (source.realizeNative nativeOrigin
+    { label := `undocumentedNative, title := "Undocumented native source" } `implementation)
+  let nativeOnly ← obtain (admit nativeOnly)
+  ensure (nativeOnly.realizations.size == 1 && nativeOnly.documents.size == 1 &&
+    nativeOnly.evidence.isEmpty && nativeOnly.requirements.isEmpty)
+    "Undocumented native model must not fabricate a prose realization or proof contract"
+  let noDoc ← NativeSource.prepareDocumented request
+  match noDoc with
+  | .error diagnostic => ensure (diagnostic.code == "unsupported-docstring") "Undocumented source is not prose"
+  | .ok _ => throwError "Undocumented declaration borrowed a nearby docstring"
+  let definition ← obtain (← NativeSource.prepare { request with canonical := `RealizationAdapterFixture.Reflexivity })
+  ensure (definition.canonical == `RealizationAdapterFixture.Reflexivity && definition.semanticContext.isSome)
+    "A checked definition has native source without an artificial theorem/prose contract"
+  let documented ← obtain (← NativeSource.prepareDocumented { request with canonical := `RealizationAdapterFixture.number })
+  ensure (documented.format == `markdown && documented.rawDocstring == " An unsupported definition. ")
+    "Direct owning documentation supports definitions without a legacy theorem-only node gate"
+  let directLabel := Name.mkSimple "native.direct.definition"
+  ensure ((← Informal.Environment.getNode? directLabel).isNone)
+    "Direct model control must have no old node to project"
+  let origin : Informal.Realizations.Origin := {
+    id := `directSource, moduleName := request.moduleName, source := request.sourcePath }
+  let nativeKey : RealizationKey := ⟨directLabel, `implementation⟩
+  let proseKey : RealizationKey := ⟨directLabel, `description⟩
+  let concept : Informal.Realizations.Node := { label := directLabel, title := "A direct native definition" }
+  let model ← obtain (documented.realize origin concept nativeKey.name proseKey.name)
+  let r ← obtain (admit model.input)
+  ensure (model.origin == origin && model.leanKey == nativeKey && model.informalKey == proseKey &&
+    r.nodes == #[concept] && r.evidence.isEmpty && r.requirements.isEmpty && r.realizations.size == 2 &&
+    (r.resultFor (.realization nativeKey)).status == .unassessed &&
+    (r.resultFor (.realization proseKey)).status == .unassessed)
+    "Direct model preparation preserves explicit destinations/origin and invents no checking or prose assessment"
+  ensure (r.realizations.any (fun realization => realization.key == nativeKey &&
+    realization.facets.any (·.name == `body) && !realization.facets.any (·.name == `proof)))
+    "A definition's native body must not be presented as a theorem proof"
+  ensure (rejected (documented.realize origin concept nativeKey.name nativeKey.name) &&
+    rejected (documented.realize origin { concept with label := .anonymous } nativeKey.name proseKey.name) &&
+    rejected (documented.realize { origin with moduleName := `WrongOwner } concept nativeKey.name proseKey.name))
+    "Source model destinations and owning producer must be explicit and consistent"
+  let neighbor ← obtain (← NativeSource.prepareDocumented { request with canonical := `RealizationAdapterFixture.neighboringComment })
+  ensure (neighbor.format == `verso && neighbor.rawDocstring == " Même *texte* 😀 λ with {name}`Nat`. ")
+    "Own unregistered Verso comment preserves exact supplementary Unicode bytes"
+  for (bad, code) in #[
+      ({ request with project := .anonymous }, "invalid-source-request"),
+      ({ request with canonical := `RealizationAdapterFixture.notPresent }, "missing-declaration"),
+      ({ request with moduleName := `WrongOwner }, "source-association-unavailable"),
+      ({ request with canonical := Name.str `RealizationAdapterFixture "bad»name" }, "unsupported-identity"),
+      ({ request with canonical := `RealizationAdapterFixture.syntheticDoc }, "source-association-unavailable"),
+      ({ request with range? := some { source.ranges.range with charUtf16 := source.ranges.range.charUtf16 + 1 } },
+        "source-association-unavailable")] do
+    match ← NativeSource.prepare bad with
+    | .error diagnostic => ensure (diagnostic.code == code) "Direct native source rejection changed"
+    | .ok _ => throwError "Direct native source accepted inconsistent identity/owner/ranges"
+  let unreadable ← NativeSource.prepare request (fun _ => throw <| IO.userError "injected unavailable source")
+  match unreadable with
+  | .error diagnostic => ensure (diagnostic.code == "source-unavailable") "No source-I/O fallback"
+  | .ok _ => throwError "Direct source manufactured readable bytes"
+  ensure (decide (before = (← Informal.Environment.stagedAuthoring)))
+    "Source preparation must not enroll declarations or persist semantic observations"
 
 -- FIR's unexecuted source concern: an actual passing check of the first theorem
 -- must not complete its admitted sibling merely by sharing a required key.
@@ -138,7 +217,7 @@ run_cmd liftTermElabM do
     before.eAssignment.toList == after.eAssignment.toList &&
     decide (rawBefore = (← Informal.Environment.stagedAuthoring))) "Native check leaked state or persisted observations"
 
-private def assertPendingCorrespondence (p : Projection) (input : Input) (expected : Syntax)
+private def assertPendingCorrespondence (p : PreparedModel) (input : Input) (expected : Syntax)
     (interpretation : String) : TermElabM Unit := do
   -- An explicitly authored correspondence still needs its own review.
   let t : TranslationKey := ⟨`adapterFixture, `docstringToLean⟩

@@ -15,7 +15,8 @@ synthetic; no mock successful proof/check/review observations are supplied. -/
 
 open Lean Meta Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
-open Informal.Realizations.Existing Informal.Realizations.Dependencies
+open Informal.Realizations.Existing
+open Informal.Realizations.NativeSource Informal.Realizations.Dependencies
 
 namespace VersoBlueprintTests.BlueprintRealizationDependencies
 
@@ -30,7 +31,7 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .ok value => pure value
   | .error error => throwError "Unexpected rejection: {repr error}"
 
-private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
 
 private def join (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents

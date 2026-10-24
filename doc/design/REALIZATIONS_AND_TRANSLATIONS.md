@@ -767,7 +767,7 @@ associations fail explicitly. Only then does it project current canonical source
 using the existing native-range timing rules. Each physical source is read once
 per attempt, with its owning FileMap and original association checks intact.
 
-`Existing.Projection.prepareValidation` returns evidence-free source/contracts
+`NativeSource.PreparedModel.prepareValidation` returns evidence-free source/contracts
 and a fresh native observation, without admission or binding. Its optional extra
 goal documents include the independent specification source. Existing `validate`
 delegates with unchanged defaults. Authoring collects *every* default,
@@ -934,6 +934,42 @@ semantics intact. Hidden/unavailable coverage is explicit and supplies no comple
 closure certificate. This primitive still needs the normal canonical source
 association and same-snapshot requirement binding at the production capture
 boundary; an unbound provider result is not migrated graph acceptance.
+
+### Native owning-source boundary
+
+`Realizations.NativeSource` extracts source preparation from the temporary
+`Existing.project` bridge. It imports no Blueprint Environment and never reads a
+node or enrollment record. Its `Request` contains an explicit logical project,
+typed canonical Lean name, owning module/path and optional original range
+snapshots. The caller establishes that this metadata belongs to its selected
+producer; source lookup does not establish a Blueprint association.
+
+`prepare` returns the original full document, exact native full/name ranges,
+typed declaration identity and available current semantic inputs. It supports
+ordinary undocumented declarations and definitions. `prepareDocumented`
+additionally requires direct own native format metadata and returns the original
+modifier-comment body. It preserves the existing unique-association, owning
+FileMap/Unicode, snapshot-disagreement, inheritance, synthetic/unavailable range
+and no-nearby-comment rules. Missing checked identities are explicit, distinct
+from source or metadata failures. Neither operation checks a proof, supplies an
+expected proposition, admits a model or persists evidence.
+
+The parser/range/comment operations now live only at that boundary. An
+own-documented source can `realize` caller-supplied concept metadata and distinct native/prose
+names with the owning producer's origin, returning evidence-free `PreparedModel`
+input. `Prepared.realizeNative` also prepares a native-only model without
+fabricating prose; definitions expose a body facet, while theorems expose proof.
+Preparation of independent-goal validation also lives there. Ordinary authoring uses this direct source/model
+API with its retained producer origin; only `Existing.request`, the temporary
+old-shape eligibility gate, still reads old node fields. The transitional
+`Existing.project` consumer delegates to the same operations and stores no second
+model. Independently owned goal definitions also use the shared range check.
+The bridge retains its existing theorem/docstring shape policy until
+the canonical collector replaces it; it is not a compatibility target. Actual
+adapter controls prepare unenrolled theorems, an undocumented proposition
+definition and an own-documented definition/Verso declaration directly, with
+identity/owner/range/I/O negatives. This extraction removes the source provider's
+dependency on old node layout; it does not complete the node/consumer cutover.
 
 ### Consumer cutover and deletion
 
