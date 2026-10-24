@@ -247,12 +247,10 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     references := #[extRef]
     priority := none
     source }
-  let accepted ← Environment.contributeRecord fact {
+  discard <| Environment.contributeAttribute fact {
     statementBody := docstring?.map Prod.fst
     statementUses := deps.statement
     proofUses := deps.proof }
-  if accepted.isSome then
-    Environment.registerBlueprintAttributeLabel label
 
 open Lean in
 initialize

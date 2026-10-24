@@ -9,6 +9,7 @@ import Lean.EnvExtension
 import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.NodeAssembly
+import VersoBlueprint.Translations
 
 namespace Informal.Environment
 
@@ -68,6 +69,51 @@ def AttributeLabelCatalog.insert (catalog : AttributeLabelCatalog) (label : Labe
     AttributeLabelCatalog :=
   if catalog.members.contains label then catalog
   else { labels := catalog.labels.push label, members := catalog.members.insert label }
+
+/-- Source-authored attachments only. No nodes, provider observations or evidence. -/
+structure AuthoredBatch where
+  sources : Array Realizations.DocumentKey := #[]
+  references : Array (Realizations.ObjectKey × Option Realizations.DocumentKey) := #[]
+  realizations : Array Realizations.Realization := #[]
+  translations : Array Translations.Translation := #[]
+  claims : Array Translations.Claim := #[]
+  requirements : Array Validation.Requirement := #[]
+deriving Inhabited, Repr, DecidableEq
+
+/-- Persisted source recipe, never an admitted or checked model. -/
+structure AuthoringRecord where
+  origin : Realizations.Origin
+  project : Name
+  defaults : Array ContributionId := #[]
+  authored : AuthoredBatch := {}
+  nativeGoals : Array (Name × Name) := #[]
+deriving Inhabited, Repr, DecidableEq
+
+private def nameIdentity : Name → Json
+  | .anonymous => Json.arr #[]
+  | .str parent value => Json.arr #[toJson "str", nameIdentity parent, toJson value]
+  | .num parent value => Json.arr #[toJson "num", nameIdentity parent, toJson value]
+
+/-- Opaque structured identity; no ambiguous module/name concatenation or hash. -/
+private def authoringId (parts : Array Json) : Name := Name.mkSimple (Json.arr parts).compress
+
+private def authoringIssue (code message : String) (origins : Array Realizations.Origin := #[]) :
+    Realizations.Diagnostic :=
+  { code, subject := "authoring", message, origins := Realizations.canonical origins }
+
+/-- Check complete raw producer envelopes before any materialization. -/
+def authoringRecordIssues (records : Array AuthoringRecord) : Array Realizations.Diagnostic := Id.run do
+  let mut issues := #[]
+  for record in records do
+    if record.origin.id.isAnonymous || record.origin.moduleName.isAnonymous || record.project.isAnonymous ||
+        Realizations.blank record.origin.source || record.authored.sources.any (! ·.valid) ||
+        record.authored.references.any (fun (key, doc) => !key.valid || doc.any (! ·.valid)) ||
+        record.nativeGoals.any (fun (node, expected) => node.isAnonymous || expected.isAnonymous) then
+      issues := issues.push (authoringIssue "invalid-authoring" "Invalid source authoring envelope" #[record.origin])
+    let bucket := records.filter (·.origin.id == record.origin.id)
+    if bucket.any (fun other => decide (other ≠ record)) then
+      issues := issues.push (authoringIssue "producer-collision" "Conflicting raw authoring envelopes" (bucket.map (·.origin)))
+  return Realizations.canonical issues
 
 private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
@@ -130,6 +176,10 @@ structure State where
   importedConflictsReported : Bool := false
   /-- At most one directive can be open; nested declarations are rejected. -/
   activeDirective : Option InProgress := none
+  /-- Configuration belongs to this exact module and is never imported. -/
+  authoringProject? : Option (Name × Name) := none
+  authoringRecords : Array AuthoringRecord := #[]
+  localAuthoringRecords : Array AuthoringRecord := #[]
 deriving Inhabited, Repr
 
 private def ImportedConflictKind.rank : ImportedConflictKind → Nat
@@ -172,6 +222,7 @@ inductive Entry where
   | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
+  | authoring (record : AuthoringRecord)
 deriving Inhabited, Repr
 
 private def addBlueprintAttributeLabel
@@ -245,6 +296,7 @@ private def State.reassembleImported (state : State) : State := Id.run do
 
 /-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
 private def State.collectImportedEntry (state : State) : Entry → State
+  | .authoring record => { state with authoringRecords := state.authoringRecords.push record }
   | .node label origin contributor contributions facts authored =>
     let pending := (state.pendingNodes.getD label {}).append origin contributor contributions false authored
     let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
@@ -301,7 +353,8 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
       OLeanEntries.uniform
-        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries)
+        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries ++
+          state.localAuthoringRecords.map Entry.authoring)
   }
 
 section EnvOps
@@ -315,6 +368,52 @@ def modifyM (f : State -> m State) : m Unit := do
   let st := informalExt.getState (← getEnv)
   let st ← f st
   modifyEnv (informalExt.setState · st)
+
+def stagedAuthoring : CoreM (Array AuthoringRecord) :=
+  return (informalExt.getState (← getEnv)).authoringRecords
+
+def configureAuthoringProject (project : Name) : CoreM (Except (Array Realizations.Diagnostic) Unit) := do
+  let moduleName ← getMainModule
+  let before := informalExt.getState (← getEnv)
+  if project.isAnonymous || moduleName.isAnonymous then
+    return .error #[authoringIssue "missing-project" "An explicit nonempty logical project is required"]
+  if before.authoringProject?.any (fun (owner, value) => owner == moduleName && value != project) then
+    return .error #[authoringIssue "project-conflict" "This module already selected a different project"]
+  modify fun state => { state with authoringProject? := some (moduleName, project) }
+  return .ok ()
+
+private def State.planAuthoring (state : State) (record : AuthoringRecord) :
+    Except (Array Realizations.Diagnostic) State := do
+  let issues := authoringRecordIssues (state.authoringRecords.push record)
+  unless issues.isEmpty do throw issues
+  if state.authoringRecords.any (fun previous => decide (previous = record)) then return state
+  return { state with
+    authoringRecords := state.authoringRecords.push record
+    localAuthoringRecords := state.localAuthoringRecords.push record }
+
+private def stageAuthoring (id : Name) (authored : AuthoredBatch)
+    (nativeGoals : Array (Name × Name)) : CoreM (Except (Array Realizations.Diagnostic) Unit) := do
+  let moduleName ← getMainModule
+  let before := informalExt.getState (← getEnv)
+  let some (owner, project) := before.authoringProject?
+    | return .error #[authoringIssue "missing-project" "Configure this authoring module explicitly"]
+  unless owner == moduleName && !id.isAnonymous do
+    return .error #[authoringIssue "invalid-authoring" "Missing current-module configuration or site identity"]
+  let origin : Realizations.Origin := {
+    id := authoringId #[nameIdentity moduleName, toJson "authored", nameIdentity id]
+    moduleName, source := ← getFileName }
+  match before.planAuthoring { origin, project, authored, nativeGoals } with
+  | .error issues => return .error issues
+  | .ok candidate =>
+    modify fun _ => candidate
+    return .ok ()
+
+def stageAuthored (id : Name) (batch : AuthoredBatch) : CoreM (Except (Array Realizations.Diagnostic) Unit) :=
+  stageAuthoring id batch #[]
+
+def stageNativeExpectation (id node expectedProposition : Name) :
+    CoreM (Except (Array Realizations.Diagnostic) Unit) :=
+  stageAuthoring id {} #[(node, expectedProposition)]
 
 /-- Record a successful attribute registration in module application order. -/
 def registerBlueprintAttributeLabel (label : Label) : m Unit := do
@@ -448,6 +547,50 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
 private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
   let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
   return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+
+/-- Plan legacy acceptance, optional raw enrollment and the catalog together.
+Eligibility is computed from the pre-state; the assembler's returned Node is used
+directly. No source reader/provider runs while the attribute is being applied. -/
+def contributeAttribute (fact : Record) (payload : NodeContribution) : CoreM (Option Node) := do
+  let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
+  reportImportedConflicts
+  let before := informalExt.getState (← getEnv)
+  let moduleName ← getMainModule
+  let eligible := !(before.data.contains fact.label)
+  let origin := (before.pendingNodes.getD fact.label {}).authoredOrigin?.getD moduleName
+  match before.addNode fact.label origin moduleName #[payload] [fact] with
+  | .error reasons =>
+    for reason in reasons do logError reason
+    return none
+  | .ok (candidate, node) =>
+    let mut candidate := candidate
+    if let some (owner, project) := before.authoringProject? then
+      if owner == moduleName then
+        unless eligible && node.kind.isTheoremLike && fact.references.size == 1 &&
+            fact.proofReferences.isEmpty && payload.statementBody.any (·.hasBody) &&
+            fact.id.moduleName == moduleName && fact.id.producer == `blueprint.attribute &&
+            fact.references[0]!.origin == .blueprintAttr && fact.references[0]!.kind == .theorem do
+          logError "Unsupported default authoring: expected a new single attribute theorem with its own docstring"
+          return none
+        let record : AuthoringRecord := {
+          origin := {
+            id := authoringId #[nameIdentity fact.id.moduleName, nameIdentity fact.id.producer,
+              nameIdentity fact.id.subject, toJson fact.id.site, toJson fact.id.slot, toJson "default"]
+            moduleName, source := ← getFileName }
+          project, defaults := #[fact.id] }
+        match candidate.planAuthoring record with
+        | .error issues =>
+          for issue in issues do logError issue.message
+          return none
+        | .ok planned => candidate := planned
+    candidate := { candidate with
+      blueprintAttributeLabelsByModule :=
+        addBlueprintAttributeLabel candidate.blueprintAttributeLabelsByModule moduleName fact.label.eraseMacroScopes
+      localBlueprintAttributeLabelsByModule :=
+        addBlueprintAttributeLabel candidate.localBlueprintAttributeLabelsByModule moduleName fact.label.eraseMacroScopes }
+    if ← hasErrorsSince messageCount then return none
+    modify fun _ => candidate
+    return some node
 
 /--
 Elaborate and register one directive as a scoped Blueprint-state transaction.

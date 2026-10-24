@@ -700,6 +700,96 @@ recursive Blueprint closure, project readiness, provider authentication or a new
 prerequisite/traversal installation. Production graph/CLI/browser paths remain
 separate work.
 
+### Ordinary source authoring and import (opt-in)
+
+`Realizations.Authoring` connects the accepted theorem/docstring adapter to
+ordinary modules. A module explicitly chooses its logical project before its
+attribute declarations and source attachments:
+
+```lean
+run_cmd liftCoreM <| Informal.Realizations.Authoring.configureProject `myProject
+
+/-- Independently authored prose for this theorem. -/
+@[blueprint "my.result"] theorem result : True := True.intro
+
+def expectedResult : Prop := True
+run_cmd liftCoreM <| Informal.Realizations.Authoring.expectNative
+    `resultContract (Name.mkSimple "my.result") `MyModule.expectedResult
+```
+
+The independently authored expected proposition must be a safe checked definition
+or abbreviation owned by the specification module, with a unique original
+declaration/source-range association. An axiom is not a specification definition.
+The existing native provider checks closedness, proposition typing, admissions,
+actual definitional equality and proof completeness. Expected goals are never
+copied from witness types. A specification may be staged before its definition;
+checking waits for the query after normal owning-module elaboration/build.
+
+Configuration is exact-module-local and not inherited by importers. Within a
+configured module the default producer supports a new single attribute theorem
+with its own docstring, using the same accepted canonical association. It stages
+the exact complete `ContributionId`, not another editable copy of its identity.
+Unconfigured attributes retain their existing behavior. Existing nodes and
+unsupported default shapes reject explicitly; accepted legacy-node presence
+alone never enrolls a default. A default without an expectation is unassessed.
+Docstring presence creates neither proofreading nor completed correspondence.
+
+`Authoring.stage id batch` retains additional source documents, authored object
+references, realizations, translations, claims and requirements. It installs no
+node, observation or validation result. Authored references currently resolve as
+unsupported, even when their original source/configuration bytes are readable.
+This supports a Rocq attachment without manufacturing foreign symbol/proof facts.
+Stable site IDs have structured module/name boundaries: module `M` with site
+`N.x` differs from module `M.N` with site `x`. Exact replay is idempotent; different
+complete envelopes from the same producer identity reject as collisions.
+
+One existing Environment extension stores these raw records. Only locally
+authored records are exported; imports collect all variants, preserve their
+original specification origins, and permit forward references. Staging success
+means retained input, not semantic admission. The attribute transaction computes
+eligibility from the pre-state, runs the shared reducer, plans raw enrollment and
+catalogs on the returned candidate, then publishes once. Planning failures,
+exceptions and newly logged errors publish no candidate. An enclosing directive
+transaction restores all the new fields along with its existing stores.
+
+A normal consumer imports Owner/Attachment modules and calls
+`Authoring.registry : TermElabM (Except (Array Diagnostic) Registry)`. It does not
+assemble `Input` or call `admit`. The query resolves exact default IDs against all
+retained facts and accepted associations; missing, colliding and unsupported
+associations fail explicitly. Only then does it project current canonical source,
+using the existing native-range timing rules. Each physical source is read once
+per attempt, with its owning FileMap and original association checks intact.
+
+`Existing.Projection.prepareValidation` returns evidence-free source/contracts
+and a fresh native observation, without admission or binding. Its optional extra
+goal documents include the independent specification source. Existing `validate`
+delegates with unchanged defaults. Authoring collects *every* default,
+specification and attachment, admits the complete evidence-free batch, binds the
+observations to that same admitted snapshot, then admits the complete final
+batch. No fragment Registry or silently accepted subset escapes. Competing
+expectations retain all original specification origins and reject together;
+equivalent expectations retain both origins and fresh observations. Queries
+restore Environment and elaborator state on success, rejection and exception.
+No observation, binding, Registry, status or completion bit is persisted/imported.
+
+`BlueprintRealizationAuthoring` imports an ordinary Owner/Attachment diamond,
+including a forward Rocq endpoint and exact replay. Its actual Flag theorem is
+complete, its Verso prose is unassessed, its Verso correspondence is pending and
+its Rocq correspondence is blocked. An independent consumer-owned expected
+definition can validate another imported default. Tests cover original source
+bytes/current bindings, attribute-before-range timing, project isolation, lossless
+module/site identity, producer collisions, competing/invalid specifications,
+complete-fact/accepted-association mismatch and deterministic batch rejection.
+Labeled synthetic inputs test candidate/default/catalog rollback and enclosing
+directive failure/exception restoration; they supply no successful provider facts.
+
+This is a bounded opt-in source connection on landed #498. Pending #499's exact
+selected-name gate remains a mandatory separate combined-tree validation/landing
+dependency; it has not been imported into this checkpoint. The shared reducers,
+selected-evidence laws and their test root remain independently owned. Production
+graph/CLI/browser integration, Blueprint dependency-closure/prerequisite
+installation, foreign checking and authority migration remain outside this step.
+
 ## Review and working structure
 
 Use one semantic integration owner and a dependency-ordered implementation

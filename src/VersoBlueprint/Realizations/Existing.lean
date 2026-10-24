@@ -206,12 +206,15 @@ def project (projectName label : Name)
         key := informalKey, context := proseContext
         facets := #[{ name := `statement, documents := #[proseDoc] }] }] } }
 
-/-- Attach a freshly checked proof requirement/evidence to the returned input.
-Does not register anything in the existing Blueprint environment. -/
-def Projection.validate (p : Projection) (expected : Syntax) : Elab.Term.TermElabM (Except Diagnostic Input) := do
-  let docs := p.input.objects.filterMap (·.value.document)
+/-- Prepare source/contracts plus a fresh observation without admission or binding.
+The complete caller batch must supply any additional goal documents. -/
+def Projection.prepareValidation (p : Projection) (expected : Syntax)
+    (goalDocuments : Array DocumentKey := #[]) :
+    Elab.Term.TermElabM (Except Diagnostic (Input × ProofObservation)) := do
+  let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key)
+    (p.input.objects.filterMap (·.value.document))
   let checked ← NativeLean.check p.witness.context.project p.witness expected docs
-  let .ok checked := checked | return checked.map (fun _ => p.input)
+  let .ok checked := checked | return checked.map (fun checked => (p.input, checked.observation))
   let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
   let input := { p.input with
     realizations := p.input.realizations.map fun record =>
@@ -223,12 +226,20 @@ def Projection.validate (p : Projection) (expected : Syntax) : Elab.Term.TermEla
     requirements := #[p.contribution `proofRequirement {
       key, expected := .proof checked.goal p.witness
       coverage := .dependencyClosure }] }
+  return .ok (input, checked.observation)
+
+/-- Attach a freshly checked proof requirement/evidence to the returned input.
+Does not register anything in the existing Blueprint environment. -/
+def Projection.validate (p : Projection) (expected : Syntax) : Elab.Term.TermElabM (Except Diagnostic Input) := do
+  let prepared ← p.prepareValidation expected
+  let .ok (input, observation) := prepared | return prepared.map (·.1)
+  let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
   let .ok registry := admit input
     | return .error <| issue "invalid-projection" p.leanKey.node "Projected input failed pure structural admission"
   let some binding := registry.bindingFor key
     | return .error <| issue "missing-binding" p.leanKey.node "No binding for native proof requirement"
   return .ok { input with evidence := #[p.contribution `proofEvidence {
     id := p.leanKey.node ++ `nativeProof, requirement := key, binding
-    observation := .proof checked.observation }] }
+    observation := .proof observation }] }
 
 end Informal.Realizations.Existing
