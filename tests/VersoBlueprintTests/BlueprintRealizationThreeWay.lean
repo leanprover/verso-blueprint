@@ -220,12 +220,14 @@ run_cmd liftTermElabM do
     nodes := input.nodes.reverse, documents := input.documents.reverse
     objects := input.objects.reverse, realizations := input.realizations.reverse
     translations := input.translations.reverse, claims := input.claims.reverse
-    requirements := input.requirements.reverse, evidence := input.evidence.reverse }
+    requirements := input.requirements.reverse, evidence := input.evidence.reverse
+    bindingInputs := input.bindingInputs.reverse }
   let replayed : Input := {
     nodes := input.nodes ++ input.nodes, documents := input.documents ++ input.documents
     objects := input.objects ++ input.objects, realizations := input.realizations ++ input.realizations
     translations := input.translations ++ input.translations, claims := input.claims ++ input.claims
-    requirements := input.requirements ++ input.requirements, evidence := input.evidence ++ input.evidence }
+    requirements := input.requirements ++ input.requirements, evidence := input.evidence ++ input.evidence
+    bindingInputs := input.bindingInputs ++ input.bindingInputs }
   for candidate in #[reordered, replayed] do
     let replayRegistry ← obtain (admit candidate)
     ensure ((Report.ofRegistry replayRegistry).compress == report.compress)

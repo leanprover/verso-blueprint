@@ -49,16 +49,24 @@ structure Input where
   claims : Array (Contribution Claim) := #[]
   requirements : Array (Contribution Requirement) := #[]
   evidence : Array (Contribution Evidence) := #[]
+  bindingInputs : Array (Contribution BindingInput) := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Construct only through `admit`; accepted provenance remains inspectable. -/
 structure Registry where
   private mk ::
-  contributions : Input
+  private input : Input
+  private semanticValues : Array BindingInput := #[]
+  private evidenceValues : Array Evidence := #[]
+  private bindings : Array (RequirementKey × ContentBinding) := #[]
   deriving Repr
 
 private def values [BEq α] [ToJson α] (records : Array (Contribution α)) : Array α :=
   canonical (records.map (·.value))
+
+/-- Read-only admitted source. It is not a public record-update field: changing
+input must pass admission and derive fresh bindings rather than reuse a cache. -/
+def Registry.contributions (r : Registry) : Input := r.input
 
 def Registry.nodes (r : Registry) : Array Node := values r.contributions.nodes
 def Registry.documents (r : Registry) : Array Document := values r.contributions.documents
@@ -67,7 +75,8 @@ def Registry.realizations (r : Registry) : Array Realization := values r.contrib
 def Registry.translations (r : Registry) : Array Translation := values r.contributions.translations
 def Registry.claims (r : Registry) : Array Claim := values r.contributions.claims
 def Registry.requirements (r : Registry) : Array Requirement := values r.contributions.requirements
-def Registry.evidence (r : Registry) : Array Evidence := values r.contributions.evidence
+def Registry.evidence (r : Registry) : Array Evidence := r.evidenceValues
+def Registry.bindingInputs (r : Registry) : Array BindingInput := r.semanticValues
 
 def Registry.realization? (r : Registry) (key : RealizationKey) : Option Realization :=
   r.realizations.find? (·.key == key)
@@ -103,7 +112,8 @@ private def Input.producerIssues (input : Input) : Array Diagnostic := Id.run do
   let records := producerRecords "node" input.nodes ++ producerRecords "document" input.documents ++
     producerRecords "object" input.objects ++ producerRecords "realization" input.realizations ++
     producerRecords "translation" input.translations ++ producerRecords "claim" input.claims ++
-    producerRecords "requirement" input.requirements ++ producerRecords "evidence" input.evidence
+    producerRecords "requirement" input.requirements ++ producerRecords "evidence" input.evidence ++
+    producerRecords "bindingInput" input.bindingInputs
   let mut diagnostics := #[]
   for id in canonical (records.map (·.1)) do
     let bucket := records.filter (·.1 == id)
@@ -159,6 +169,10 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
       for key in decl.required do
         if key.subject.realization? != some realization.key then
           diagnostics := diagnostics.push <| issue "wrong-subject" key "Declaration requirement belongs elsewhere"
+        if let .declaration _ object := key.subject then
+          if object != decl.object then
+            diagnostics := diagnostics.push <| issue "wrong-declaration-subject" key
+              "A declaration-local requirement cannot validate a sibling declaration"
         if let some req := r.requirement? key then
           if let .proof _ witness := req.expected then
             if witness != decl.object then
@@ -191,6 +205,15 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
   for requirement in r.requirements do
     if !r.hasSubject requirement.key.subject || requirement.key.name.isAnonymous || !requirement.expected.valid then
       diagnostics := diagnostics.push <| issue "invalid-requirement" requirement.key "Invalid subject/name/expectation"
+    if requirement.expected.isNativeDeclarationCheck then
+      match requirement.key.subject with
+      | .declaration _ object =>
+        if object.context.language != `lean then
+          diagnostics := diagnostics.push <| issue "wrong-native-context" requirement.key
+            "Native Lean checks require a Lean declaration subject"
+      | _ =>
+        diagnostics := diagnostics.push <| issue "wrong-native-subject" requirement.key
+          "An own-declaration native check must name the exact declaration it checks"
     if let .proof goal _ := requirement.expected then
       if let some key := requirement.key.subject.realization? then
         if !(r.realization? key).any (·.context == goal.context) then
@@ -209,20 +232,10 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
   for evidence in r.evidence do
     if evidence.id.isAnonymous || (r.requirement? evidence.requirement).isNone then
       diagnostics := diagnostics.push <| issue "invalid-evidence" evidence.id "Missing evidence identity/requirement"
+  for input in r.bindingInputs do
+    if !r.hasSubject input.subject || input.name.isAnonymous || blank input.content then
+      diagnostics := diagnostics.push <| issue "invalid-binding-input" input.subject "Missing semantic subject/name/content"
   return diagnostics
-
-/-- Fatal structural admission is all-or-nothing; missing provider observations
-and unsuitable evidence instead remain inspectable unfinished validation. -/
-def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
-  let r := Registry.mk input
-  let diagnostics := input.producerIssues ++
-    familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
-    familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
-    familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
-    familyIssues "requirement" (·.key) input.requirements ++ familyIssues "evidence" (·.id) input.evidence ++
-    r.referenceIssues
-  if diagnostics.isEmpty then return .ok r
-  return .error (canonical diagnostics)
 
 def Registry.requiredFor (r : Registry) : Subject → Array RequirementKey
   | .realization key => (r.realization? key).map (·.requirements) |>.getD #[]
@@ -246,7 +259,7 @@ private def Registry.subjectRealizations (r : Registry) (subject : Subject) : Ar
 /-- Exact canonical structured binding. Includes selected endpoint documents and
 the connected contracts/goals, never evidence, time, or producer replay order.
 Whole participating documents deliberately give conservative invalidation. -/
-def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding := do
+private def Registry.computeBindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding := do
   let _ ← r.requirement? key
   let mut keys := #[key]
   for _ in [:r.requirements.size + 1] do
@@ -274,13 +287,41 @@ def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBi
     objects.filterMap (·.document) ++ requirements.flatMap (fun req => match req.expected with
       | .proof goal _ => goal.documents
       | _ => #[])
+  let semanticInputs := r.bindingInputs.filter fun input =>
+    subjects.contains input.subject || input.subject.realization?.any realizationKeys.contains ||
+    input.subject.translation?.any translationKeys.contains ||
+    (match input.subject with
+      | .declaration _ object => objects.any (·.key == object)
+      | _ => false)
   return (Json.mkObj [
     ("requirement", toJson key), ("contracts", toJson requirements),
     ("realizations", toJson realizations),
     ("objects", toJson (objects.map fun o => (o.key, o.document))),
     ("translations", toJson (r.translations.filter (fun t => translationKeys.contains t.key))),
     ("claims", toJson (r.claims.filter (fun c => translationKeys.contains c.key.translation))),
-    ("documents", toJson (r.documents.filter (fun d => documentKeys.contains d.key)))]).compress
+    ("documents", toJson (r.documents.filter (fun d => documentKeys.contains d.key))),
+    ("semanticInputs", toJson semanticInputs)]).compress
+
+/-- Exact bindings are derived once from this immutable admitted input. No
+provider state, persistence or independent source of semantic truth is cached. -/
+def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding :=
+  (r.bindings.find? (·.1 == key)).map (·.2)
+
+/-- Fatal structural admission is all-or-nothing; missing provider observations
+and unsuitable evidence instead remain inspectable unfinished validation. -/
+def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
+  let r := Registry.mk input (values input.bindingInputs) (values input.evidence) #[]
+  let diagnostics := input.producerIssues ++
+    familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
+    familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
+    familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
+    familyIssues "requirement" (·.key) input.requirements ++ familyIssues "evidence" (·.id) input.evidence ++
+    familyIssues "binding input" (fun value => (value.subject, value.name)) input.bindingInputs ++
+    r.referenceIssues
+  unless diagnostics.isEmpty do return .error (canonical diagnostics)
+  let bindings := r.requirements.filterMap fun req =>
+    (r.computeBindingFor req.key).map (fun binding => (req.key, binding))
+  return .ok { r with bindings }
 
 private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array Diagnostic :=
   match r.documents.find? (·.key == key) with
@@ -327,8 +368,18 @@ private def Registry.availabilityIssues (r : Registry) (subject : Subject) : Arr
     match r.translation? key with
     | none => #[issue "unknown-translation" key "Missing source translation"]
     | some translation => canonical <| (translation.source ++ translation.target).flatMap fun endpoint =>
-        if endpoint.facets.isEmpty then r.subjectContentIssues (.realization endpoint.realization)
-        else endpoint.facets.flatMap fun name => r.subjectContentIssues (.facet endpoint.realization name)
+        let content := if endpoint.facets.isEmpty then r.subjectContentIssues (.realization endpoint.realization)
+          else endpoint.facets.flatMap fun name => r.subjectContentIssues (.facet endpoint.realization name)
+        let selected := (r.realization? endpoint.realization).map (fun value =>
+          if endpoint.facets.isEmpty then value.declarations.map (·.object)
+          else value.facets.filter (fun facet => endpoint.facets.contains facet.name) |>.flatMap (·.declarations)) |>.getD #[]
+        content ++ selected.filterMap fun object =>
+          if r.bindingInputs.any (fun input => input.name == NativeLean.sourceContext &&
+              match input.subject with
+              | .declaration _ actual => actual == object
+              | _ => false) then none
+          else some <| issue "semantic-context-unavailable" object
+            "Selected declaration lacks current provider/build semantic inputs for correspondence"
 
 /-- Independent local suitability, before prerequisite traversal. -/
 def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.run do
@@ -346,6 +397,10 @@ def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.ru
     if key.subject.translation?.isSome then
       let selected := r.availabilityIssues key.subject
       if !selected.isEmpty then return { status := .blocked, diagnostics := selected }
+    unless r.bindingInputs.any (fun input => input.subject == key.subject &&
+        input.name == NativeLean.expectedContextFor key) do
+      return { status := .blocked, diagnostics := #[issue "semantic-context-unavailable" key
+        "Expected proposition/witness lacks current provider/build semantic inputs"] }
   | _ =>
     let unavailable := r.availabilityIssues key.subject
     if !unavailable.isEmpty then return { status := .blocked, diagnostics := unavailable }

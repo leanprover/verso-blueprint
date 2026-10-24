@@ -192,6 +192,7 @@ def project (projectName label : Name)
   let leanDoc : DocumentKey := ⟨leanContext, sourcePath⟩
   let proseDoc : DocumentKey := ⟨proseContext, sourcePath ++ "#docstring:" ++ ref.canonical.toString⟩
   let p : Projection := { input := {}, witness, leanKey, informalKey, moduleName, sourcePath, docstringFormat := format }
+  let semantics := (← NativeLean.semanticContext projectName #[ref.canonical]).toOption
   return .ok { p with input := {
     nodes := #[p.contribution `node { label, title := label.toString }]
     documents := #[p.contribution `source { key := leanDoc, text },
@@ -204,7 +205,9 @@ def project (projectName label : Name)
           { name := `proof, declarations := #[witness] }], declarations := #[{ object := witness }] },
       p.contribution `informal {
         key := informalKey, context := proseContext
-        facets := #[{ name := `statement, documents := #[proseDoc] }] }] } }
+        facets := #[{ name := `statement, documents := #[proseDoc] }] }]
+    bindingInputs := semantics.toArray.map fun content => p.contribution `nativeSourceContext {
+      subject := .declaration leanKey witness, name := NativeLean.sourceContext, content } } }
 
 /-- Prepare source/contracts plus a fresh observation without admission or binding.
 The complete caller batch must supply any additional goal documents. -/
@@ -225,7 +228,9 @@ def Projection.prepareValidation (p : Projection) (expected : Syntax)
             if facet.name == `proof then { facet with required := #[key] } else facet } }
     requirements := #[p.contribution `proofRequirement {
       key, expected := .proof checked.goal p.witness
-      coverage := .dependencyClosure }] }
+      coverage := .dependencyClosure }]
+    bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
+      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) }
   return .ok (input, checked.observation)
 
 /-- Attach a freshly checked proof requirement/evidence to the returned input.

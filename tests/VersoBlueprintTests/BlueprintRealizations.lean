@@ -14,6 +14,10 @@ namespace VersoBlueprintTests.BlueprintRealizations
 
 open Lean Informal.Realizations Informal.Validation Informal.Translations
 
+-- Replacing admitted input must recompute bindings through admission. The
+-- public contributions accessor cannot update a Registry and retain old caches.
+#check_failure (fun (r : Registry) => ({ r with contributions := ({} : Input) } : Registry))
+
 def contribution (id : Name) (value : α) : Contribution α :=
   { origin := { id, moduleName := `MockProvider, source := "synthetic-test-input" }, value }
 
@@ -78,6 +82,16 @@ def fixture : Input := {
   requirements := #[
     contribution `proofRequirement { key := proofKey, expected := .proof goal leanObject },
     contribution `reviewRequirement { key := reviewKey, expected := .review `statement_correspondence }]
+  bindingInputs := #[
+    contribution `mockLeanSemantics {
+      subject := .declaration leanKey leanObject
+      name := NativeLean.sourceContext, content := "MOCK current Lean semantic closure/provider context" },
+    contribution `mockRocqSemantics {
+      subject := .declaration rocqKey rocqObject
+      name := NativeLean.sourceContext, content := "MOCK current Rocq semantic closure/provider context" },
+    contribution `mockExpectedSemantics {
+      subject := proofKey.subject, name := NativeLean.expectedContextFor proofKey
+      content := "MOCK independently expected proposition semantic closure/provider context" }]
 }
 
 /-- Explicit mock of a trusted language boundary. It does not check a Lean term. -/
@@ -89,6 +103,19 @@ def mockReview : Observation :=
   .review { criterion := `statement_correspondence, reviewer := `MockReviewer, outcome := .passed }
 
 def withMockEvidence (input : Input) (id : Name) (key : RequirementKey) (observation : Observation) : IO Input := do
+  -- Explicit MOCK expected-goal context for additional synthetic proof contracts.
+  -- Supply the complete synthetic batch before any observation is bound; adding
+  -- a semantic input later would correctly make an earlier connected review stale.
+  let mut input := input
+  for record in input.requirements do
+    if let .proof .. := record.value.expected then
+      let proof := record.value.key
+      unless input.bindingInputs.any (fun record => record.value.subject == proof.subject &&
+          record.value.name == NativeLean.expectedContextFor proof) do
+        let context := contribution (id ++ `mockExpectedContext ++ Name.num .anonymous input.bindingInputs.size) {
+          subject := proof.subject, name := NativeLean.expectedContextFor proof
+          content := "MOCK expected-goal semantic context" }
+        input := { input with bindingInputs := input.bindingInputs.push context }
   let r ← registry input
   let some binding := r.bindingFor key | throw <| IO.userError "Missing test requirement"
   return { input with evidence := input.evidence.push <| contribution id { id, requirement := key, binding, observation } }
@@ -97,13 +124,15 @@ def reverseInput (input : Input) : Input := {
   nodes := input.nodes.reverse, documents := input.documents.reverse
   objects := input.objects.reverse, realizations := input.realizations.reverse
   translations := input.translations.reverse, claims := input.claims.reverse
-  requirements := input.requirements.reverse, evidence := input.evidence.reverse }
+  requirements := input.requirements.reverse, evidence := input.evidence.reverse
+  bindingInputs := input.bindingInputs.reverse }
 
 def replay (input : Input) : Input := {
   nodes := input.nodes ++ input.nodes, documents := input.documents ++ input.documents
   objects := input.objects ++ input.objects, realizations := input.realizations ++ input.realizations
   translations := input.translations ++ input.translations, claims := input.claims ++ input.claims
-  requirements := input.requirements ++ input.requirements, evidence := input.evidence ++ input.evidence }
+  requirements := input.requirements ++ input.requirements, evidence := input.evidence ++ input.evidence
+  bindingInputs := input.bindingInputs ++ input.bindingInputs }
 
 def rejectsWith (input : Input) (code : String) : Bool :=
   match admit input with

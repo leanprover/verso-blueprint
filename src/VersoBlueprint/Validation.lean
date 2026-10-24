@@ -35,6 +35,22 @@ inductive Expectation where
   | check (validator : Name)
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
+namespace NativeLean
+
+/-- Shared contract identities; native completeness is not an arbitrary check
+named `proof`, or a proof of an independently specified proposition. -/
+def statementValidator : Name := `lean.declarationStatement
+def bodyValidator : Name := `lean.declarationCompleteness
+def sourceContext : Name := `source.semanticContext
+def expectedContext : Name := `lean.expectedContext
+def expectedContextFor (key : RequirementKey) : Name := expectedContext ++ key.name
+
+end NativeLean
+
+def Expectation.isNativeDeclarationCheck : Expectation → Bool
+  | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
+  | _ => false
+
 inductive Coverage where
   | subject
   | dependencyClosure
@@ -77,8 +93,12 @@ structure ReviewObservation where
 
 structure CheckObservation where
   validator : Name
+  /-- Required for native declaration checks; generic joint tests may omit it. -/
+  declaration : Option ObjectKey := none
   outcome : Outcome
   coverage : Coverage := .subject
+  /-- Declared native assumptions remain inspectable; this is not an axiom policy. -/
+  assumptions : Array String := #[]
   explanation : String := ""
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
@@ -136,6 +156,9 @@ def Evidence.mismatch? (evidence : Evidence) (requirement : Requirement)
     none
   | .check validator, .check observation =>
     if observation.validator != validator then return "wrong-validator"
+    if requirement.expected.isNativeDeclarationCheck then
+      let .declaration _ object := requirement.key.subject | return "wrong-native-subject"
+      if observation.declaration != some object then return "wrong-check-object"
     if observation.outcome == .unavailable then return "validation-unavailable"
     if !observation.coverage.covers requirement.coverage then return "insufficient-coverage"
     if observation.outcome != .passed then return "check-not-passed"

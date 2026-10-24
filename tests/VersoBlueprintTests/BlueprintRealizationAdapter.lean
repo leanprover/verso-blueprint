@@ -32,6 +32,78 @@ private def rejected : Except ε α → Bool
 
 private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
 
+-- FIR's unexecuted source concern: an actual passing check of the first theorem
+-- must not complete its admitted sibling merely by sharing a required key.
+run_cmd liftTermElabM do
+  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.reflexivity"))
+  let sibling ← obtain (← project `adapterFixture (Name.mkSimple "adapter.admitted"))
+  let own ← obtain (← NativeLean.checkDeclaration `adapterFixture p.witness)
+  let admitted ← obtain (← NativeLean.checkDeclaration `adapterFixture sibling.witness)
+  ensure (own.body.outcome == .passed && admitted.body.outcome == .failed)
+    "Borrowing control requires real passing and admitted declarations"
+  let q := proofKey p
+  let input : Input := { p.input with
+    objects := p.input.objects ++ sibling.input.objects
+    realizations := p.input.realizations.map fun record =>
+      if record.value.key != p.leanKey then record else
+        { record with value := { record.value with declarations := #[
+          { object := p.witness, required := #[q] },
+          { object := sibling.witness, required := #[q] }] } }
+    requirements := #[p.contribution `nativeRequirement {
+      key := q, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
+  match admit input with
+  | .error issues =>
+    ensure (issues.any (·.code == "wrong-declaration-subject"))
+      "Sibling requirement borrowing must be rejected at admission"
+  | .ok _ => throwError "Sibling declaration borrowed another declaration's native requirement"
+  let facetKey : RequirementKey := ⟨.facet p.leanKey `proof, `proof⟩
+  let facetOnly := { input with
+    requirements := #[p.contribution `facetNativeRequirement {
+      key := facetKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }]
+    realizations := input.realizations.map fun record =>
+      if record.value.key != p.leanKey then record else
+        { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+          { decl with required := #[facetKey] } } } }
+  match admit facetOnly with
+  | .error issues => ensure (issues.any (·.code == "wrong-native-subject")) "Native checks need declaration subjects"
+  | .ok _ => throwError "Native check escaped declaration identity through a broad facet contract"
+  let jointKey : RequirementKey := ⟨.realization p.leanKey, `jointReview⟩
+  let joint := { input with
+    requirements := #[p.contribution `jointReviewRequirement { key := jointKey, expected := .review `jointReview }]
+    realizations := input.realizations.map fun record =>
+      if record.value.key != p.leanKey then record else
+        { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+          { decl with required := #[jointKey] } } } }
+  discard <| obtain (admit joint)
+  let siblingKey : RequirementKey := ⟨.declaration p.leanKey sibling.witness, `proof⟩
+  let input := { input with
+    realizations := input.realizations.map fun record =>
+      if record.value.key != p.leanKey then record else
+        { record with value := { record.value with
+          declarations := #[{ object := p.witness, required := #[q] },
+            { object := sibling.witness, required := #[siblingKey] }]
+          facets := record.value.facets.map fun facet => { facet with required := #[q] } } }
+    requirements := input.requirements.push (p.contribution `siblingRequirement {
+      key := siblingKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }) }
+  let r ← obtain (admit input)
+  let some firstBinding := r.bindingFor q | throwError "Missing first binding"
+  let some siblingBinding := r.bindingFor siblingKey | throwError "Missing sibling binding"
+  let withFirst := { input with evidence := #[p.contribution `firstNative {
+    id := `actualFirstDeclaration, requirement := q, binding := firstBinding, observation := .check own.body }] }
+  let r ← obtain (admit withFirst)
+  ensure ((r.resultFor (.facet p.leanKey `statement)).complete &&
+    (r.resultFor (.facet p.leanKey `proof)).complete &&
+    !(r.resultFor (.declaration p.leanKey sibling.witness)).complete &&
+    !(r.resultFor (.realization p.leanKey)).complete)
+    "One declaration can serve its own facets, without completing its sibling or the group"
+  let borrowed := { withFirst with evidence := withFirst.evidence.push (p.contribution `wrongNative {
+    id := `borrowedFirstObservation, requirement := siblingKey, binding := siblingBinding
+    observation := .check own.body }) }
+  let r ← obtain (admit borrowed)
+  ensure ((r.localResult siblingKey).diagnostics.any (·.code == "wrong-check-object") &&
+    !(r.resultFor (.declaration p.leanKey sibling.witness)).complete)
+    "Fresh sibling binding cannot disguise an observation of another declaration"
+
 -- Native validity concerns the declaration's own source statement. These real
 -- observations contain no independently authored goal or correspondence claim.
 run_cmd liftTermElabM do
@@ -108,6 +180,11 @@ run_cmd liftTermElabM do
   let escapedRegistry ← obtain (admit escapedInput)
   ensure ((escapedRegistry.resultForRequirement (proofKey escapedProjection)).complete)
     "Ordinary escaped dotted witness remains supported"
+  let noExpectedContext ← obtain (admit { escapedInput with
+    bindingInputs := escapedInput.bindingInputs.filter (·.value.name !=
+      NativeLean.expectedContextFor (proofKey escapedProjection)) })
+  ensure ((noExpectedContext.localResult (proofKey escapedProjection)).diagnostics.any
+      (·.code == "semantic-context-unavailable")) "Selected source alone cannot bind unknown expected-goal semantics"
   let unusual := Name.str `RealizationAdapterFixture "bad»name"
   ensure (((← getEnv).checked.get.find? unusual).isSome && unusual.toString.toName != unusual)
     "Regression must use a present checked theorem whose name cannot round-trip"

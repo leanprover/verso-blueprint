@@ -137,6 +137,14 @@ structure Diagnostic where
   origins : Array Origin := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
+/-- Current provider/build semantic inputs for a selected subject. These are
+materialized with current source, never exported by source authoring or reports. -/
+structure BindingInput where
+  subject : Subject
+  name : Name
+  content : String
+  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+
 /-- Canonical ordering uses exact structured content, not a possibly colliding hash. -/
 def canonical [BEq α] [ToJson α] (values : Array α) : Array α :=
   values.toList.eraseDups.toArray.qsort fun a b => (toJson a).compress < (toJson b).compress

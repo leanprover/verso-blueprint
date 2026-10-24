@@ -18,6 +18,7 @@ def proseKey : RealizationKey := ⟨node, `docstring⟩
 def rocqKey : RealizationKey := ⟨node, `«rocq-reference»⟩
 def native : ObjectKey := ⟨⟨`lean, projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.involutive"⟩
 def proof : RequirementKey := ⟨.declaration leanKey native, `proof⟩
+def expectedProof : RequirementKey := ⟨.declaration leanKey native, `expectedProof⟩
 def versoLink : TranslationKey := ⟨projectName, `versoToLean⟩
 def rocqLink : TranslationKey := ⟨projectName, `rocqToLean⟩
 
@@ -32,9 +33,21 @@ theorem involutive : ∀ flag : RealizationAdapterFixture.Flag,
   intro flag
   cases flag <;> rfl
 
-/-- This native theorem has no authored proof validation contract. -/
+/-- This native theorem needs no independently repeated expected proposition. -/
 @[blueprint "authoring.unassessed"]
 theorem withoutContract : True := True.intro
+
+/-- An ordinary imported dependent selects its target's native complete-proof check. -/
+@[blueprint "authoring.nativeDependent" (uses := ["authoring.unassessed"])]
+theorem nativeDependent : True := withoutContract
+
+/-- An ordinary default whose native statement is valid and whose proof is admitted. -/
+@[blueprint "authoring.nativeAdmitted"]
+theorem nativeAdmitted : True := by sorry
+
+/-- The selected admitted prerequisite must stay visible even for a clean local proof. -/
+@[blueprint "authoring.admittedDependent" (uses := ["authoring.nativeAdmitted", "authoring.nativeDependent"])]
+theorem admittedDependent : True := True.intro
 
 run_cmd liftCoreM do
   let state := Environment.informalExt.getState (← getEnv)
@@ -56,9 +69,9 @@ def expected : Prop := ∀ flag : RealizationAdapterFixture.Flag,
 run_cmd liftCoreM <| Realizations.Authoring.stage `correspondences {
   translations := #[
     { key := versoLink, source := #[{ realization := proseKey, facets := #[`statement] }]
-      target := #[{ realization := leanKey, facets := #[`statement] }], required := #[proof] },
+      target := #[{ realization := leanKey, facets := #[`statement] }], required := #[proof, expectedProof] },
     { key := rocqLink, source := #[{ realization := rocqKey, facets := #[`statement] }]
-      target := #[{ realization := leanKey, facets := #[`statement] }], required := #[proof] }]
+      target := #[{ realization := leanKey, facets := #[`statement] }], required := #[proof, expectedProof] }]
   claims := #[
     { key := ⟨versoLink, `statement⟩, interpretation := "The two-case prose states toggle involution"
       required := #[⟨.claim ⟨versoLink, `statement⟩, `correspondence⟩] },

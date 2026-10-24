@@ -36,7 +36,8 @@ private def join (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents
   objects := a.objects ++ b.objects, realizations := a.realizations ++ b.realizations
   translations := a.translations ++ b.translations, claims := a.claims ++ b.claims
-  requirements := a.requirements ++ b.requirements, evidence := a.evidence ++ b.evidence }
+  requirements := a.requirements ++ b.requirements, evidence := a.evidence ++ b.evidence
+  bindingInputs := a.bindingInputs ++ b.bindingInputs }
 
 private def edge (axis : Array SelectedUse) (name : Name) : TermElabM (Except Diagnostic RequirementKey) := do
   let some (_, result) := axis.find? (fun e => e.1.label == name) | throwError "Missing effective edge {name}"
@@ -326,7 +327,9 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
       key := alternative, context
       declarations := #[{ object := clean.witness, required := #[alternativeKey] }] })
     requirements := input.requirements.push (authored `alternativeRequirement {
-      key := alternativeKey, expected := .proof fresh.goal clean.witness, coverage := .dependencyClosure }) }
+      key := alternativeKey, expected := .proof fresh.goal clean.witness, coverage := .dependencyClosure })
+    bindingInputs := input.bindingInputs ++ fresh.semanticContext.toArray.map (fun content => authored `alternativeContext {
+      subject := alternativeKey.subject, name := NativeLean.expectedContextFor alternativeKey, content }) }
   let alternativeRegistry ← obtain (admit withAlternative)
   let some alternativeBinding := alternativeRegistry.bindingFor alternativeKey | throwError "Missing alternative binding"
   let withAlternative := { withAlternative with evidence := withAlternative.evidence.push (authored `alternativeEvidence {
@@ -352,7 +355,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
 
   -- Synthetic contract corruptions. Existing admission rejects invalid contexts;
   -- otherwise the adapter rejects policy-incompatible admitted contracts.
-  for expectation in #[Expectation.review `proofread, .check `unitTests] do
+  for expectation in #[Expectation.review `proofread, .check `unitTests, .check `proof,
+      .check NativeLean.statementValidator] do
     let bad ← obtain (admit (changeRequirement input cleanKey fun req => { req with expected := expectation }))
     edgeError bad (label "clean") "not-proof-requirement"
   let coverage ← obtain (admit (changeRequirement input cleanKey fun req => { req with coverage := .subject }))
@@ -366,7 +370,10 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let wrongDeclaration := rekey input cleanKey otherDeclarationKey
   let wrongDeclaration := changeRequirement wrongDeclaration otherDeclarationKey fun req =>
     { req with expected := .proof fresh.goal other.witness }
-  let wrongDeclaration := { wrongDeclaration with realizations := wrongDeclaration.realizations.map fun record =>
+  let wrongDeclaration := { wrongDeclaration with
+    bindingInputs := wrongDeclaration.bindingInputs.filter
+      (·.value.subject != .declaration clean.leanKey clean.witness)
+    realizations := wrongDeclaration.realizations.map fun record =>
     if record.value.key == clean.leanKey then { record with value := { record.value with
       declarations := record.value.declarations.map fun decl => { decl with object := other.witness }
       facets := record.value.facets.map fun facet => { facet with declarations := #[other.witness] } } }

@@ -61,8 +61,12 @@ private def selectTarget (registry : Registry) (context : Context) (label : Name
       return .error <| issue "wrong-default-witness" label "Selected proof expects a different witness"
     if goal.context != context || actualWitness.context != context then
       return .error <| issue "wrong-default-context" label "Proof goal and witness must use the selected Lean context"
+  | .check validator =>
+    if validator != NativeLean.bodyValidator then
+      return .error <| issue "not-proof-requirement" label
+        "Only the owning native declaration-completeness check supplies a native theorem prerequisite"
   | _ =>
-    return .error <| issue "not-proof-requirement" label "A review or check named proof cannot supply complete-proof validation"
+    return .error <| issue "not-proof-requirement" label "A review named proof cannot supply complete-proof validation"
   if requirement.coverage != .dependencyClosure then
     return .error <| issue "insufficient-coverage" label "Default theorem policy requires dependency-closure coverage"
   let some realization := registry.realization? realizationKey

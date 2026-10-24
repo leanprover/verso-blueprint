@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Owner
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Attachment
 import VersoBlueprint.Realizations.Report
+import VersoBlueprint.Realizations.Dependencies
 
 open Lean Meta Elab Command Term Informal
 open Realizations Validation Translations
@@ -31,10 +32,50 @@ run_cmd liftTermElabM do
     (r.resultFor (.translation Owner.versoLink)).status == .pending &&
     (r.resultFor (.translation Owner.rocqLink)).status == .blocked)
     "Actual imported contracts retain independent native/prose/correspondence outcomes"
-  ensure ((r.resultFor (.realization ⟨Name.mkSimple "authoring.unassessed", `lean⟩)).status == .unassessed)
-    "Native attribute presence without expectation creates no proof contract"
-  ensure (r.nodes.size == 2 && r.realizations.size == 5 && r.translations.size == 2 && r.evidence.size == 1)
+  ensure ((r.resultFor (.realization ⟨Name.mkSimple "authoring.unassessed", `lean⟩)).complete)
+    "A real native check supplies proof validity without a duplicate independent specification"
+  ensure (r.nodes.size == 5 && r.realizations.size == 11 && r.translations.size == 2 && r.evidence.size == 11)
     "Actual diamond imports and exact replay duplicate no semantic values or evidence"
+  for (consumer, target, complete) in #[("authoring.nativeDependent", "authoring.unassessed", true),
+      ("authoring.admittedDependent", "authoring.nativeAdmitted", false)] do
+    let uses ← obtain (← Realizations.Dependencies.selectUses r ⟨`lean, Owner.projectName⟩ (Name.mkSimple consumer))
+    let some (_, selected) := uses.1.find? (fun edge => edge.1.label == Name.mkSimple target)
+      | throwError "Missing native-only ordinary dependency"
+    let selected ← obtain selected
+    let some requirement := r.requirement? selected | throwError "Missing native contract"
+    ensure (selected.name == `proof && requirement.expected == .check NativeLean.bodyValidator &&
+      (r.resultForRequirement selected).complete == complete)
+      "Native prerequisites select exact complete-body checks without expected-goal duplication"
+  -- A real complete native alternative is an explicitly constructed control;
+  -- it must not donate completion to the ordinary admitted default.
+  let alternative : RealizationKey := ⟨Name.mkSimple "authoring.nativeAdmitted", `alternative⟩
+  let witness : ObjectKey := ⟨⟨`lean, Owner.projectName⟩,
+    "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩
+  let fresh ← obtain (← NativeLean.checkDeclaration Owner.projectName witness)
+  let alternativeKey : RequirementKey := ⟨.declaration alternative witness, `proof⟩
+  let moduleName ← getMainModule
+  let extended := { r.contributions with
+    realizations := r.contributions.realizations.push {
+      origin := { id := `nativeAlternative, moduleName }
+      value := {
+        key := alternative, context := witness.context
+        declarations := #[{ object := witness, required := #[alternativeKey] }] } }
+    requirements := r.contributions.requirements.push {
+      origin := { id := `nativeAlternativeRequirement, moduleName }
+      value := { key := alternativeKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure } } }
+  let candidate ← obtain (admit extended)
+  let some binding := candidate.bindingFor alternativeKey | throwError "Missing alternative binding"
+  let alternatives ← obtain (admit { extended with evidence := extended.evidence.push {
+    origin := { id := `nativeAlternativeEvidence, moduleName }
+    value := {
+      id := `nativeAlternativeCheck, requirement := alternativeKey, binding
+      observation := .check fresh.body } } })
+  let uses ← obtain (← Realizations.Dependencies.selectUses alternatives witness.context (Name.mkSimple "authoring.admittedDependent"))
+  let some (_, .ok selected) := uses.1.find? (fun entry => entry.1.label == Name.mkSimple "authoring.nativeAdmitted")
+    | throwError "Missing admitted native default"
+  ensure ((alternatives.resultForRequirement alternativeKey).complete &&
+    !(alternatives.resultForRequirement selected).complete &&
+    selected.subject != alternativeKey.subject) "A complete native alternative cannot rescue the selected admitted default"
   let after := Environment.informalExt.getState (← getEnv)
   ensure (decide (before.authoringRecords = after.authoringRecords) &&
     decide (before.localAuthoringRecords = after.localAuthoringRecords) &&
@@ -131,10 +172,11 @@ run_cmd liftCoreM <| Realizations.Authoring.expectNative `consumerProof (Name.mk
 run_cmd liftTermElabM do
   let r ← obtain (← query)
   let key : RealizationKey := ⟨Name.mkSimple "authoring.unassessed", `lean⟩
-  ensure ((r.resultFor (.realization key)).complete && r.evidence.size == 2)
+  ensure ((r.resultFor (.realization key)).complete && r.evidence.size == 12)
     "A separately authored consumer specification can validate an imported default"
-  let some requirement := r.requirements.find? (·.key.subject == .declaration key
-      ⟨⟨`lean, Owner.projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩)
+  let some requirement := r.requirements.find? (fun requirement => requirement.key.name == `expectedProof &&
+      requirement.key.subject == .declaration key
+        ⟨⟨`lean, Owner.projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩)
     | throwError "Missing consumer-owned native requirement"
   let .proof goal _ := requirement.expected | throwError "Wrong requirement"
   ensure (goal.documents.any (·.path.endsWith "/Owner.lean") &&
@@ -145,21 +187,39 @@ run_cmd liftTermElabM do
     ensure (document.text == (← IO.FS.readFile key.path)) "Bound source is not the original canonical bytes"
   for evidence in r.evidence do
     ensure (r.bindingFor evidence.requirement == some evidence.binding) "Observation bound to another snapshot"
-    let .proof observation := evidence.observation | throwError "Unexpected manufactured review/check evidence"
-    ensure (observation.outcome == .passed) "Actual complete native theorem did not pass"
+    match evidence.observation with
+    | .proof observation => ensure (observation.outcome == .passed) "Actual independent-goal proof did not pass"
+    | .check observation =>
+      ensure observation.declaration.isSome "A native check must retain its own declaration identity"
+    | .review _ => throwError "Unexpected manufactured review evidence"
   let env ← getEnv
   ensure (((Environment.informalExt.getState env).authoringRecords.filter
       (fun record => record.origin.moduleName == env.mainModule)).size == 2)
     "Consumer/Owner prefix site collided or query persisted observations"
 
+-- This combined command runs many complete current-source admissions. Its
+-- budget is local to these regression controls, not a production query setting.
+set_option maxHeartbeats 800000 in
 run_cmd liftTermElabM do
+  isolated do
+    Realizations.Authoring.expectNative `wrongIndependentGoal (Name.mkSimple "authoring.nativeDependent")
+      `VersoBlueprintTests.BlueprintRealizationAuthoring.wrongExpected
+    let r ← obtain (← query)
+    let uses ← obtain (← Realizations.Dependencies.selectUses r ⟨`lean, Owner.projectName⟩
+      (Name.mkSimple "authoring.admittedDependent"))
+    let some (_, .ok key) := uses.1.find? (fun entry => entry.1.label == Name.mkSimple "authoring.nativeDependent")
+      | throwError "Missing exact native prerequisite"
+    let expected := { key with name := `expectedProof }
+    ensure ((r.resultForRequirement key).complete && !(r.resultForRequirement expected).complete &&
+      (r.resultFor (.facet ⟨Name.mkSimple "authoring.nativeDependent", `lean⟩ `proof)).complete)
+      "Wrong independently expected goal must not erase native validity or change native prerequisite selection"
   isolated do
     Realizations.Authoring.expectNative `secondConsumerSpec (Name.mkSimple "authoring.unassessed")
       `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedTrue
     let r ← obtain (← query)
     let specs := r.contributions.requirements.filter (fun record =>
       record.origin.moduleName == `VersoBlueprintTests.BlueprintRealizationAuthoring)
-    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id && r.evidence.size == 3)
+    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id && r.evidence.size == 13)
       "Equivalent expectations must retain both specification origins and current observations"
   isolated do
     Realizations.Authoring.stage `sameProducer {}

@@ -43,7 +43,8 @@ private def append (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents
   objects := a.objects ++ b.objects, realizations := a.realizations ++ b.realizations
   translations := a.translations ++ b.translations, claims := a.claims ++ b.claims
-  requirements := a.requirements ++ b.requirements, evidence := a.evidence ++ b.evidence }
+  requirements := a.requirements ++ b.requirements, evidence := a.evidence ++ b.evidence
+  bindingInputs := a.bindingInputs ++ b.bindingInputs }
 
 private def contributionAt (origin : Origin) (family : Name) (index : Nat) (value : α) : Contribution α :=
   { origin := { origin with id := .num (origin.id ++ family) index }, value }
@@ -133,7 +134,7 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
       unless defaults.any (fun (owner, fact) => fact.label == node && owner.project == record.project) do
         reject "missing-native-default" node.toString "Expectation does not name an explicitly enrolled default in its project" #[record.origin]
   let mut input : Input := {}
-  let mut observations : Array (Origin × RequirementKey × ProofObservation) := #[]
+  let mut observations : Array (Origin × RequirementKey × Observation) := #[]
   for (record, fact) in defaults do
     let p ← one (← Existing.project record.project fact.label reader)
     unless p.moduleName == fact.id.moduleName && p.witness.native.toName == fact.id.subject do
@@ -141,18 +142,47 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
     let specs := records.flatMap fun spec => spec.nativeGoals.mapIdx fun index (node, expected) =>
       (spec, index, node, expected)
     let specs := specs.filter fun (spec, _, node, _) => node == fact.label && spec.project == record.project
-    if specs.isEmpty then input := append input p.input
+    let checked ← one (← NativeLean.checkDeclaration record.project p.witness)
+    unless checked.declaration == p.witness do
+      reject "wrong-check-object" fact.label.toString "Native observation belongs to another selected declaration" #[record.origin]
+    let statementKey : RequirementKey := ⟨.declaration p.leanKey p.witness, `statement⟩
+    let proofKey : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+    let expectedKey : RequirementKey := ⟨.declaration p.leanKey p.witness, `expectedProof⟩
+    let required := if specs.isEmpty then #[proofKey] else #[proofKey, expectedKey]
+    let prepared := { p.input with
+      realizations := p.input.realizations.map fun contribution =>
+        if contribution.value.key != p.leanKey then contribution else
+          { contribution with value := { contribution.value with
+            declarations := #[{ object := p.witness, required }]
+            facets := contribution.value.facets.map fun facet =>
+              if facet.name == `statement then { facet with required := #[statementKey] }
+              else if facet.name == `proof then { facet with required := #[proofKey] } else facet } }
+      requirements := #[
+        contributionAt record.origin `nativeRequirement 0 {
+          key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure },
+        contributionAt record.origin `nativeRequirement 1 {
+          key := proofKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
+    input := append input prepared
+    observations := observations ++ #[
+      ((contributionAt record.origin `nativeObservation 0 ()).origin, statementKey, .check checked.statement),
+      ((contributionAt record.origin `nativeObservation 1 ()).origin, proofKey, .check checked.body)]
     for (spec, index, _, expected) in specs do
       let specDoc ← read reader ⟨p.witness.context, spec.origin.source⟩ spec.origin
       ownedDefinition expected spec.origin specDoc
       let (prepared, observation) ← one (← p.prepareValidation (mkCIdent expected) #[specDoc.key])
-      let prepared := { prepared with
-        documents := prepared.documents.push (contributionAt spec.origin `specification index specDoc)
+      -- The source model is already collected once above. Independent goals
+      -- add their own contract/inputs; they never replace native validity.
+      let prepared : Input := {
+        documents := #[contributionAt spec.origin `specification index specDoc]
         requirements := prepared.requirements.mapIdx fun slot requirement =>
-          contributionAt spec.origin `nativeRequirement (index + slot) requirement.value }
+          contributionAt spec.origin `nativeRequirement (index + slot) { requirement.value with key := expectedKey }
+        bindingInputs := (prepared.bindingInputs.filter (fun input =>
+          input.value.name == NativeLean.expectedContextFor proofKey)).mapIdx fun slot input =>
+          contributionAt spec.origin `nativeExpectedContext (index + slot)
+            { input.value with name := NativeLean.expectedContextFor expectedKey } }
       input := append input prepared
       observations := observations.push ((contributionAt spec.origin `nativeObservation index ()).origin,
-        ⟨.declaration p.leanKey p.witness, `proof⟩, observation)
+        expectedKey, .proof observation)
   for record in records do
     let batch := record.authored
     for index in [:batch.sources.size] do
@@ -172,7 +202,7 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
     let some binding := candidate.bindingFor key
       | reject "missing-binding" key.name.toString "Complete candidate has no native contract binding" #[origin]
     input := { input with evidence := input.evidence.push { origin, value := {
-      id := origin.id, requirement := key, binding, observation := .proof observation } } }
+      id := origin.id, requirement := key, binding, observation } } }
   full (admit input)
 
 /-- Materialize a complete current source snapshot and fresh native observations.

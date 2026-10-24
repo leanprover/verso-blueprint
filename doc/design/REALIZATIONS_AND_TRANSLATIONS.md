@@ -632,10 +632,13 @@ unresolved targets remain individual edges.
 For a single accepted attributed theorem, the explicit Lean project context,
 realization `lean` and requirement `proof` are passed to the existing registry
 selector. The selected subject must be exactly that realization's accepted
-canonical declaration. Its expectation must be a proof with the same witness and
-goal context, with `dependencyClosure` coverage, required by that declaration.
+canonical declaration. Its expectation must be either the native
+`lean.declarationCompleteness` check or an independently expected proof with the
+same witness and goal context. Both require `dependencyClosure` coverage and
+membership in that declaration's requirements.
 The default realization must associate exactly that one declaration. Missing or
-ambiguous defaults, review/check requirements named `proof`, another declaration
+ambiguous defaults, reviews or arbitrary checks named `proof`, statement-only
+native checks, another declaration
 or witness, mismatched context and insufficient coverage stay diagnostic. Native
 names that cannot round-trip losslessly retain the existing unsupported-identity
 boundary. Definitions, grouped declarations and other association forms are
@@ -732,8 +735,11 @@ with its own docstring, using the same accepted canonical association. It stages
 the exact complete `ContributionId`, not another editable copy of its identity.
 Unconfigured attributes retain their existing behavior. Existing nodes and
 unsupported default shapes reject explicitly; accepted legacy-node presence
-alone never enrolls a default. A default without an expectation is unassessed.
-Docstring presence creates neither proofreading nor completed correspondence.
+alone never enrolls a default. Every enrolled default gets its actual native
+statement and complete-body checks. A clean theorem without an independent
+expectation can therefore have complete native proof validation; its prose stays
+unassessed. Docstring presence creates neither proofreading nor completed
+correspondence.
 
 `Authoring.stage id batch` retains additional source documents, authored object
 references, realizations, translations, claims and requirements. It installs no
@@ -769,7 +775,12 @@ specification and attachment, admits the complete evidence-free batch, binds the
 observations to that same admitted snapshot, then admits the complete final
 batch. No fragment Registry or silently accepted subset escapes. Competing
 expectations retain all original specification origins and reject together;
-equivalent expectations retain both origins and fresh observations. Queries
+equivalent expectations retain both origins and fresh observations. The native
+`proof` requirement remains separate from the independent `expectedProof`
+requirement: a wrong independent expectation cannot erase the theorem's own
+native validity. Declaration-wide completion includes both when both are
+required; the native proof facet and ordinary selected theorem prerequisite use
+the native body check without duplicating the expected specification. Queries
 restore Environment and elaborator state on success, rejection and exception.
 No observation, binding, Registry, status or completion bit is persisted/imported.
 
@@ -790,6 +801,77 @@ dependency; it has not been imported into this checkpoint. The shared reducers,
 selected-evidence laws and their test root remain independently owned. Production
 graph/CLI/browser integration, Blueprint dependency-closure/prerequisite
 installation, foreign checking and authority migration remain outside this step.
+
+### FIR evaluation follow-up
+
+The theorem dependency selector accepts the exact native complete-body check
+described above. It retains the same default realization, declaration, context,
+required-membership and coverage rules; it does not consult completion or try
+another implementation. Actual imported controls cover a complete native-only
+theorem, an admitted default with a genuinely complete alternative, and a wrong
+independent expectation alongside a complete native proof.
+
+An owner-run regression confirmed that a second declaration could previously
+require its sibling's declaration-local native check and borrow its completion.
+Admission now rejects that association. Native observations also retain their
+checked declaration, and suitability requires an exact match with the native
+requirement's declaration subject. Relabeling a real observation and binding it
+afresh cannot make it validate another declaration. One declaration's check can
+still serve its own statement/proof facets. Joint realization/facet reviews and
+cross-node mathematical prerequisites remain legal; they do not become native
+declaration checks. Native check observations retain their actual assumptions
+separately from conservative no-hole coverage.
+
+Current correspondence bindings include transient provider semantic inputs as
+well as canonical source bytes and contracts. For native Lean, these capture the
+reachable checked declaration types, available bodies, declaration kinds and
+reduction rules, the compiler version/commit, effective options, and the compiled
+native provider/checker source. Independent expected-goal checks additionally
+capture the witness and independently elaborated proposition's semantic roots;
+each requirement has its own expected-context input. Missing/hidden semantic
+inputs leave correspondence or independent-goal validation explicitly blocked.
+An unchanged local name or source document cannot substitute for imported meaning.
+
+Both subject-scoped and dependency-closure-scoped correspondence reviews include
+the native semantic closure needed to interpret their selected declarations.
+`dependencyClosure` additionally requests the explicitly linked validation
+prerequisites; it does not discover omitted Blueprint edges or certify project
+readiness. Bindings remain conservative over connected contracts and containing
+documents, so irrelevant local changes can invalidate a review too. Prose-only
+content binds its authored bytes; arbitrary prose mentions, external runtime/FFI
+state and test environments require explicit inputs from their owning provider.
+No foreign semantic capture or general environment-authentication guarantee is
+claimed by this native adapter.
+
+These inputs and derived binding/evidence caches belong to one immutable admitted
+snapshot. `Registry.contributions` is read-only; changed input must pass complete
+admission and recompute its derived bindings. No semantic snapshot, completion or
+review evidence is persisted by import. Reports expose suitability separately
+from provider outcomes and do not export raw semantic inputs, source or bindings.
+Caching the derived values avoids repeatedly encoding large semantic closures
+during a single report/query; this is not a scaling certification.
+
+`BlueprintRealizationSemantics` and
+`tests/test-realization-semantic-binding.py` exercise ordinary imports/builds.
+The test saves explicitly mocked current review bindings, changes only an imported
+runtime definition, rebuilds normally, and requires both review scopes to become
+stale while fresh native proof checking stays complete. It restores the exact
+bytes, rebuilds again and checks the original bindings are current. The theorem,
+prose and consumer source stay unchanged. Native observations are real; the saved
+reviews are temporary test controls, not human assessments or a receipt feature.
+
+The FIR consumer cases remain acceptance requirements for the canonical cutover:
+partial progress must not complete a parent package; conditional theorems must
+not discharge unconditional instances; direct/inherited gaps retain their axis
+and actual cause; definitions keep their mathematical homes and grouped
+declarations remain conjunctive; descriptive mentions do not create proof
+associations or uses; stable labels do not preserve stale reviews after content
+changes; examples, general theorems and later corollaries keep their distinct
+statements and checked instantiations. The typed-mention query gap remains the
+existing BP-VBP-20261020-001 request. No additional historical receipt system or
+`generalizes` relation is needed. Agent updates remain ordinary source edits,
+normal builds and read-only queries. These bounded tests do not claim that the
+ordinary production graph/CLI/API can run those FIR cases yet.
 
 ## Canonical migration required before publication
 

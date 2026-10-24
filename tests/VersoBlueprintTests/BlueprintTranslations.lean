@@ -345,7 +345,8 @@ def withMissingProofHelper : IO Input := do
       if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with
         facets := #[{ name := `statement }], declarations := #[], required := #[] } }
       else c
-    requirements := fixture.requirements.filter (·.value.key == reviewKey) }
+    requirements := fixture.requirements.filter (·.value.key == reviewKey)
+    bindingInputs := #[] }
   let input ← withMockEvidence empty `emptyReview reviewKey mockReview
   let r ← registry input
   let result := r.resultFor (.translation translationKey)
@@ -411,6 +412,7 @@ def withMissingProofHelper : IO Input := do
       if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with
         facets := #[], declarations := c.value.declarations.map fun d => { d with required := #[] } } } else c
     requirements := fixture.requirements.filter (·.value.key == reviewKey)
+    bindingInputs := fixture.bindingInputs.filter (·.value.name == NativeLean.sourceContext)
     translations := fixture.translations.map fun c => { c with value := { c.value with source := #[rocqKey], target := #[leanKey] } } }
   let input ← withMockEvidence wholeDeclaration `wholeReview reviewKey mockReview
   let r ← registry input
