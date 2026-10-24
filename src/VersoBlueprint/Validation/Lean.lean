@@ -39,7 +39,9 @@ private def providerSources : Array (String × String) := #[
   ("Validation.lean", include_str "../Validation.lean"),
   ("ProvedStatus.lean", include_str "../ProvedStatus.lean"),
   ("SorryAnalysis.lean", include_str "../SorryAnalysis.lean"),
-  ("Data.lean", include_str "../Data.lean")]
+  ("Data.lean", include_str "../Data.lean"),
+  ("ConceptMetadata.lean", include_str "../ConceptMetadata.lean"),
+  ("SourcePayload.lean", include_str "../SourcePayload.lean")]
 
 private def declarationShape (info : ConstantInfo) : Json × Array Name :=
   match info with

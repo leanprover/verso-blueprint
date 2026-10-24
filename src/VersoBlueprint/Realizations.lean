@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Lean
+import VersoBlueprint.ConceptMetadata
 
 /-! Pure identities and authored realization data. No environment extension,
 language-server transport, renderer, or completion checker is installed here. -/
@@ -72,7 +72,7 @@ structure RequirementKey where
   name : Name
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
-structure Node where
+structure Node extends Data.NodeMetadata where
   label : Name
   title : String
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson

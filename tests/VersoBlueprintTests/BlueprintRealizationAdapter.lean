@@ -75,7 +75,8 @@ run_cmd liftTermElabM do
     id := `directSource, moduleName := request.moduleName, source := request.sourcePath }
   let nativeKey : RealizationKey := ⟨directLabel, `implementation⟩
   let proseKey : RealizationKey := ⟨directLabel, `description⟩
-  let concept : Informal.Realizations.Node := { label := directLabel, title := "A direct native definition" }
+  let concept : Informal.Realizations.Node := {
+    label := directLabel, title := "A direct native definition", kind := .definition }
   let model ← obtain (documented.realize origin concept nativeKey.name proseKey.name)
   let r ← obtain (admit model.input)
   ensure (model.origin == origin && model.leanKey == nativeKey && model.informalKey == proseKey &&
@@ -439,6 +440,10 @@ run_cmd liftTermElabM do
   let before ← Informal.Environment.getNode? label
   let labels ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity
   let p ← obtain (← project `adapterFixture label)
+  let some accepted := before | throwError "Missing actual accepted metadata"
+  ensure (p.input.nodes.any fun contribution => contribution.value.label == label &&
+    contribution.value.toNodeMetadata == accepted.toNodeMetadata)
+    "Current source model must preserve the exact accepted concept metadata"
   ensure (p.docstringFormat == `markdown && p.input.realizations.size == 2) "Expected raw Markdown and Lean realizations"
   let source ← liftM <| IO.FS.readFile p.sourcePath
   ensure (p.witness == witness `RealizationAdapterFixture.reflexivity &&

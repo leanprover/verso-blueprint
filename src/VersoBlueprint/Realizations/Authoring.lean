@@ -123,7 +123,10 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
     unless selected.moduleName == fact.id.moduleName && selected.canonical == fact.id.subject do
       reject "default-identity" fact.label.toString "Source request differs from its selected producer" #[record.origin]
     let source ← one (← NativeSource.prepareDocumented selected reader)
-    let p ← one (source.realize record.origin { label := fact.label, title := fact.label.toString } `lean `docstring)
+    let some accepted := state.data.get? fact.label
+      | reject "default-unavailable" fact.label.toString "Default metadata was not accepted" #[record.origin]
+    let p ← one (source.realize record.origin
+      (accepted.toNode.toConcept fact.label fact.label.toString) `lean `docstring)
     let specs := records.flatMap fun spec => spec.nativeGoals.mapIdx fun index (node, expected) =>
       (spec, index, node, expected)
     let specs := specs.filter fun (spec, _, node, _) => node == fact.label && spec.project == record.project

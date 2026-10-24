@@ -57,8 +57,10 @@ def project (projectName label : Name)
   let source ← match ← NativeSource.prepareDocumented request readSource with
     | .ok source => pure source
     | .error diagnostic => return .error { diagnostic with subject := label.toString }
+  let some accepted ← Environment.getNode? label
+    | return .error <| issue "missing-node" label "No accepted Blueprint metadata"
   return source.realize {
     id := label ++ `existingRealization, moduleName := request.moduleName
-    source := request.sourcePath } { label, title := label.toString } `lean `docstring
+    source := request.sourcePath } (accepted.toConcept label label.toString) `lean `docstring
 
 end Informal.Realizations.Existing

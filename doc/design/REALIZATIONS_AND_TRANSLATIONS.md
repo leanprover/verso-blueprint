@@ -885,6 +885,35 @@ that the cutover has already happened.
 
 ### One authoritative representation
 
+The first structural core checkpoint introduces `NodeMetadata` in
+`ConceptMetadata.lean` (namespace `Informal.Data`) as the shared concept record. The pure
+`Realizations.Node` and the transitional registration container both use that
+same metadata type. Source preparation copies the accepted metadata projection
+without rebuilding defaults for kind, ordering, grouping, ownership or triage.
+The metadata includes no language source or completion field.
+
+Provider/render primitives now live in `SourcePayload`; their implementation is
+relocated unchanged. Native semantic bindings include the relocated provider and
+metadata sources as well as the existing checker sources, so the move cannot
+leave future checker changes outside the current binding inputs.
+
+`SourceData` defines keyed raw `FacetSource`, `UseDeclaration` and
+`NativeAssociation` inputs for the upcoming collector replacement. Its structural
+checks validate explicit destination/context assertions against the composed
+definition. Empty, duplicate and unknown native facets reject; empty translation
+endpoint selection retains its existing whole-realization meaning. Shared uses
+preserve statement/proof axes; scoped uses name a realization and actual facet.
+Manual/automatic origin remains metadata. Missing native references and unresolved
+use targets remain raw input, not invented provider success. Native Name stability
+and full producer/import admission remain at their owning boundaries.
+
+These types install no persistent store, producer, evaluator or capture path.
+The old registration container still carries source fields in this checkpoint;
+its metadata-only projection is a temporary bridge removed with that container.
+Structural source checks do not yet implement fragment assembly, producer
+collision/import handling or the ordinary capture/graph/CLI switch. The checkpoint
+provides actual reviewable data/API code; it is not acceptance of that cutover.
+
 Keep labels, kind, ordering, grouping, authorship and other shared concept metadata
 on nodes. Store statement/proof source as named facets of named realizations.
 Keep source-language/project identity on realizations and native object identities
