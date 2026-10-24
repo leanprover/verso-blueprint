@@ -843,6 +843,16 @@ binding. Do not synthesize an expected goal from the witness to claim statement
 alignment. Reachable holes, unknown body coverage and assumptions remain visible
 under the existing conservative native analysis.
 
+`NativeLean.checkDeclaration` supplies this provider primitive as distinct named
+checks (`lean.declarationStatement`, `lean.declarationCompleteness`). Its result
+retains the exact declaration identity, statement/body observations, conservative
+native status and inspectable assumptions. It supports the declaration's own
+universe parameters, restores query state and leaves independent-goal `check`
+semantics intact. Hidden/unavailable coverage is explicit and supplies no complete
+closure certificate. This primitive still needs the normal canonical source
+association and same-snapshot requirement binding at the production capture
+boundary; an unbound provider result is not migrated graph acceptance.
+
 ### Consumer cutover and deletion
 
 Build the accepted model and fresh validation once at the project capture/query

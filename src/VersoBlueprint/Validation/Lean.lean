@@ -8,7 +8,8 @@ import VersoBlueprint.Validation
 import VersoBlueprint.ProvedStatus
 
 /-! Explicit native provider. Importing this module installs no completion path.
-The caller authors the expected proposition independently of the witness. -/
+Independent-goal proof checks require a separately authored expectation; native
+own-declaration checks establish neither that goal nor prose correspondence. -/
 
 namespace Informal.Validation.NativeLean
 
@@ -22,6 +23,79 @@ structure Checked where
 private def issue (code : String) (witness : ObjectKey) (message : String) : Diagnostic :=
   { code, subject := witness.native, message }
 
+private def nativeName (project : Name) (witness : ObjectKey) : Except Diagnostic Name := do
+  if project.isAnonymous || witness.context != { language := `lean, project } || !witness.valid then
+    throw <| issue "wrong-context" witness "Witness is outside the selected Lean project"
+  let name := witness.native.toName
+  if name.isAnonymous || name.toString != witness.native then
+    throw <| issue "unsupported-identity" witness "Native object spelling is not a supported canonical Lean name"
+  return name
+
+def statementValidator : Name := `lean.declarationStatement
+def bodyValidator : Name := `lean.declarationCompleteness
+
+/-- Current native checking of a declaration's own statement/body. These are
+named checks, not proof observations for an independently specified proposition
+or an assessment of correspondence with prose. The caller supplies canonical
+source association and binds these observations to the complete current model. -/
+structure CheckedDeclaration where
+  declaration : ObjectKey
+  statement : CheckObservation
+  body : CheckObservation
+  status : Data.ProvedStatus
+  assumptions : Array String := #[]
+
+/-- Check the original checked environment, including declaration universes and
+conservative reachable-body coverage. No expected goal is synthesized from the
+witness; independent-goal proof checking remains `check` below. -/
+def checkDeclaration (project : Name) (witness : ObjectKey) :
+    TermElabM (Except Diagnostic CheckedDeclaration) := do
+  let saved ← Term.saveState
+  try
+    let name ← match nativeName project witness with
+      | .ok name => pure name
+      | .error diagnostic => return .error diagnostic
+    let some info := (← getEnv).checked.get.find? name
+      | return .ok {
+          declaration := witness
+          statement := {
+            validator := statementValidator, outcome := .unavailable
+            explanation := "missing-declaration: no current checked declaration" }
+          body := {
+            validator := bodyValidator, outcome := .unavailable
+            explanation := "missing-declaration: no current checked declaration" }
+          status := .missing }
+    if info.isUnsafe then
+      return .error <| issue "unsafe-declaration" witness "Unsafe declaration cannot supply trusted native validation"
+    let constant := Lean.mkConst name (info.levelParams.map Level.param)
+    checkWithKernel constant
+    let status ← Data.analyzeDeclaration name
+    let assumptions ← collectAxioms name
+    let kind : Data.NodeKind := match info with
+      | .thmInfo _ => .theorem
+      | _ => .definition
+    let statementUnknown := status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
+    let statementGap := status.hasTypeGap || status.hasUnlocalizedSorry ||
+      (kind == .definition && status.hasProofGap)
+    return .ok {
+      declaration := witness
+      statement := {
+        validator := statementValidator
+        outcome := if !status.blocksStatementCompletion kind then .passed
+          else if statementUnknown && !statementGap then .unavailable else .failed
+        coverage := if statementUnknown then .subject else .dependencyClosure
+        explanation := status.reportJson.compress }
+      body := {
+        validator := bodyValidator
+        outcome := if status.isProved then .passed else if status.isUnverified then .unavailable else .failed
+        coverage := if status.hasUnverifiedCoverage then .subject else .dependencyClosure
+        explanation := status.reportJson.compress }
+      status, assumptions := assumptions.map Name.toString }
+  catch exception =>
+    return .error <| issue "invalid-native-declaration" witness (← exception.toMessageData.toString)
+  finally
+    saved.restore (restoreInfo := true)
+
 /-- Check in the current environment, without retaining elaborator/environment
 changes. Only closed, monomorphic expected propositions are supported here;
 universe-polymorphic contracts need an explicit later API. Binders *inside* a
@@ -31,12 +105,9 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     (documents : Array DocumentKey := #[]) : TermElabM (Except Diagnostic Checked) := do
   let saved ← Term.saveState
   try
-    if project.isAnonymous || witness.context != { language := `lean, project } || !witness.valid then
-      return .error <| issue "wrong-context" witness "Witness is outside the selected Lean project"
-    let name := witness.native.toName
-    if name.isAnonymous || name.toString != witness.native then
-      return .error <| issue "unsupported-identity" witness
-        "Native object spelling is not a supported canonical Lean name"
+    let name ← match nativeName project witness with
+      | .ok name => pure name
+      | .error diagnostic => return .error diagnostic
     let proposition ← withoutErrToSorry <| elabTermEnsuringType expected (some (mkSort .zero))
     synthesizeSyntheticMVarsNoPostponing
     let proposition ← instantiateMVars proposition

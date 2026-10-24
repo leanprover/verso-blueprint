@@ -32,6 +32,40 @@ private def rejected : Except ε α → Bool
 
 private def proofKey (p : Projection) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
 
+-- Native validity concerns the declaration's own source statement. These real
+-- observations contain no independently authored goal or correspondence claim.
+run_cmd liftTermElabM do
+  let before ← getMCtx
+  let rawBefore ← Informal.Environment.stagedAuthoring
+  for name in #[`RealizationAdapterFixture.reflexivity, `RealizationAdapterFixture.polymorphic,
+      `RealizationAdapterFixture.number] do
+    let checked ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness name))
+    ensure (checked.declaration == witness name &&
+      checked.statement.outcome == .passed && checked.body.outcome == .passed &&
+      checked.statement.validator == NativeLean.statementValidator &&
+      checked.body.validator == NativeLean.bodyValidator &&
+      checked.body.coverage == .dependencyClosure) "Actual own-declaration checking failed"
+  let admitted ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `RealizationAdapterFixture.admitted))
+  ensure (admitted.statement.outcome == .passed && admitted.body.outcome == .failed &&
+    admitted.status.hasKnownSorry) "Native statement and proof validity must remain separate"
+  let conditional ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `RealizationAdapterFixture.conditionalProof))
+  ensure (conditional.body.outcome == .passed &&
+    conditional.assumptions.contains "RealizationAdapterFixture.assumption") "Assumptions must remain inspectable"
+  let axiomResult ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `RealizationAdapterFixture.assumption))
+  ensure (axiomResult.body.outcome == .failed && axiomResult.status.isAxiomLike) "An axiom has no completed native proof"
+  let missing ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `RealizationAdapterFixture.notPresent))
+  ensure (missing.status.isMissing && missing.body.outcome == .unavailable) "Valid missing identity must remain unavailable"
+  let unusual := Name.str `RealizationAdapterFixture "bad»name"
+  match ← NativeLean.checkDeclaration `adapterFixture (witness unusual) with
+  | .error diagnostic => ensure (diagnostic.code == "unsupported-identity") "Native identity loss needs its own diagnostic"
+  | .ok _ => throwError "Unsupported identity must not be silently replaced"
+  ensure (rejected (← NativeLean.checkDeclaration `wrongProject (witness `RealizationAdapterFixture.reflexivity)))
+    "Logical project selection cannot be ignored"
+  let after ← getMCtx
+  ensure (before.mvarCounter == after.mvarCounter && before.lmvarCounter == after.lmvarCounter &&
+    before.eAssignment.toList == after.eAssignment.toList &&
+    decide (rawBefore = (← Informal.Environment.stagedAuthoring))) "Native check leaked state or persisted observations"
+
 private def assertPendingCorrespondence (p : Projection) (input : Input) (expected : Syntax)
     (interpretation : String) : TermElabM Unit := do
   -- An explicitly authored correspondence still needs its own review.
@@ -360,6 +394,12 @@ private unsafe def hiddenChecks : CoreM Bool := do
     let hidden ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportHiddenHelper) goal)
     let admitted ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportAdmitted) goal)
     let axiomResult ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportAxiom) goal)
+    let ownComplete ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportComplete))
+    let ownHidden ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportHiddenHelper))
+    ensure (ownComplete.body.outcome == .unavailable && ownHidden.body.outcome == .unavailable &&
+      ownComplete.body.coverage == .subject && ownHidden.body.coverage == .subject &&
+      ownComplete.status.hasUnverifiedCoverage && ownHidden.status.hasUnverifiedCoverage)
+      "Own-declaration checking cannot certify hidden bodies or a cached-empty footprint"
     ensure (complete.observation.outcome == .unavailable && complete.status.any (·.isUnverified))
       "Hidden complete body is unverified, not a certificate"
     ensure ((← collectAxioms `sorryImportHiddenHelper).isEmpty &&
