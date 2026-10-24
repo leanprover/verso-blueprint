@@ -1,7 +1,8 @@
 # Realizations and translations
 
-Status: frozen ontology and first-phase scope, 2026-10-23. This is an agreed
-design for implementation, not a description of supported syntax or APIs.
+Status: frozen ontology, 2026-10-23; canonical migration milestone amended by the
+user on 2026-10-24. This is an agreed design for implementation, not a description
+of all currently supported syntax or APIs.
 Concrete Lean declarations and authoring syntax remain subject to implementation
 review. Changes to the ontology or phase boundary require an explicit decision.
 
@@ -789,6 +790,83 @@ dependency; it has not been imported into this checkpoint. The shared reducers,
 selected-evidence laws and their test root remain independently owned. Production
 graph/CLI/browser integration, Blueprint dependency-closure/prerequisite
 installation, foreign checking and authority migration remain outside this step.
+
+## Canonical migration required before publication
+
+The opt-in checkpoints above establish the rules and adapter behavior. The user
+requires the existing representation to be replaced before this refactoring is
+published. An additive authoring path or another report wrapper does not satisfy
+this milestone. Existing authoring, imported data, graph/query behavior and
+rendering must consume the realization model; the superseded representation and
+completion path must be deleted. This section is the migration target, not a claim
+that the cutover has already happened.
+
+### One authoritative representation
+
+Keep labels, kind, ordering, grouping, authorship and other shared concept metadata
+on nodes. Store statement/proof source as named facets of named realizations.
+Keep source-language/project identity on realizations and native object identities
+on declarations. Preserve original source, compiled presentation payloads and
+navigation metadata as source/provider data for those realizations, with explicit
+keys; they must not become a second editable semantic model.
+
+Replace the existing node-level statement/proof body fields, external statement/
+proof reference arrays, literate Lean blocks, Rust attachment and markup slots
+with realization/facet contributions. Existing markup authoring remains a frontend
+to this representation. A theorem declaration may serve both facets without two
+copies of its proof. Mathematical uses retain their authored metadata, order and
+statement/proof axes; translations remain distinct relationships. Required
+declarations and alternative realizations retain their different combination
+rules.
+
+The existing Environment entry/collection/transaction boundary remains the single
+source of raw imported input. Producers write ordinary realization contributions
+directly, and the complete collected batch is admitted together. The temporary
+legacy-node-to-realization/default enrollment bridge must disappear. Views may
+derive rendering/index data from accepted realizations; compatibility storage,
+legacy fallback and independently authoritative registries are not part of the
+target.
+
+### Native checking and optional prose assessment
+
+The user confirmed that a Lean theorem's native proof check is independent from
+assessment of its prose. A checked native theorem can have complete native proof
+validation while its informal statement and correspondence remain unassessed.
+Prose lint/proofreading and correspondence contracts are explicit and optional;
+their absence does not erase or manufacture native proof validity.
+
+The native checker can report checking of the declaration's own canonical source
+statement/body as a named native check. This is distinct from proving an
+independently specified proposition: existing proof requirements still require
+the independently authored expected goal, checked witness conversion and current
+binding. Do not synthesize an expected goal from the witness to claim statement
+alignment. Reachable holes, unknown body coverage and assumptions remain visible
+under the existing conservative native analysis.
+
+### Consumer cutover and deletion
+
+Build the accepted model and fresh validation once at the project capture/query
+boundary. Graphs, summaries, headings, widgets, manifests and CLI queries consume
+the same selected realization/facet results. Display selection cannot choose a
+complete alternative, erase unresolved endpoints or infer correspondence.
+Preserve the distinction between local native completion and explicitly required
+mathematical prerequisites. Any graph status policy is a projection of these
+results, rather than another completion evaluator.
+
+Delete the old node-language storage, legacy projection bridge and direct
+node-CodeHealth completion authority after their producers/consumers have moved.
+Source-native analysis, rendering and useful aggregate display counts remain
+provider/view responsibilities; deleting the old layer does not require replacing
+the Lean checker or pretending foreign checking exists. Port the checked admission
+guarantees and relevant laws to the new representation, preserving complete raw
+evidence, selected-name stability and atomic rejection/import replay.
+
+The migration is complete only when ordinary authoring/import and the public
+graph/query/render flows use realizations, obsolete authoritative fields and
+fallbacks are absent, representative reference blueprints still build, and tests
+cover independent native/prose/correspondence outcomes through those ordinary
+flows. The earlier opt-in fixture alone is insufficient acceptance evidence for
+this milestone. Publication remains on hold during this cutover.
 
 ## Review and working structure
 
