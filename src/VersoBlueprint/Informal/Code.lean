@@ -332,13 +332,12 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
         let deps ← liftM <| DependencyAnalysis.inferDecls decls
         pure <| deps.toUseRefs (currentLabel? := some cfg.label)
       else pure ({} : DependencyAnalysis.InferredUseRefs)
+    let source ← liftM <| Environment.sourceAt cfg.label `lean `body `lean
+      (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
     let some _ ← Environment.contribute cfg.label {
-      literateCodes := #[{
-        stx := codeRef
-        definedDefs := res.definedDefs
-        definedTheorems := res.definedTheorems }]
-      statementUses := inferredUseRefs.statement
-      proofUses := inferredUseRefs.proof }
+      sources := #[source]
+      uses := SourceData.usesFor cfg.label (some `lean) `statement inferredUseRefs.statement ++
+        SourceData.usesFor cfg.label (some `lean) `proof inferredUseRefs.proof }
       | ``(Block.concat #[])
     let data : InlineCodeData := {
       blockId
@@ -410,8 +409,10 @@ private def externalMarkupImpl
     }
     match cfg.label? with
     | some label =>
-      let some _ ← Environment.contribute label {
-        externalMarkup := ({} : Data.ExternalMarkupSet).insert markup }
+      let source ← liftM <| Environment.sourceAt label
+        (Name.str (Name.mkSimple language.key) cfg.slot) `statement (Name.mkSimple language.key)
+        (.markup markup) (← getRef)
+      let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)
       let data : ExternalMarkupBlockData := {

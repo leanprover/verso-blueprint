@@ -1061,6 +1061,51 @@ definition and an own-documented definition/Verso declaration directly, with
 identity/owner/range/I/O negatives. This extraction removes the source provider's
 dependency on old node layout; it does not complete the node/consumer cutover.
 
+### Ordinary source registration storage
+
+Ordinary attributes, directives and code blocks now register a
+`SourceData.Registration`: concept-only `NodeContribution` metadata plus arrays
+of keyed `FacetSource` and `UseDeclaration` inputs. The old contribution fields
+`statementBody`, `proofBody`, `statementUses`, `proofUses`, `literateCodes`,
+`rustCode` and `externalMarkup` are removed. This uses the same persistent
+`Entry.node` and pending-registration collection; local-only export, complete
+import reassembly, the returned accepted candidate and transaction rollback are
+unchanged. No Registry or validation evidence is persisted.
+
+The ordinary destinations are Verso statement/proof, Lean body for inline blocks,
+Rust body, and a separate markup realization for each language/slot. Markup slot
+identity uses structured Name components, so dots in an authored slot do not
+change its boundaries. The provider payload retains original markup text and its
+optional external location in a typed `markup` variant. Its owning Blueprint
+source document/range is separate; external location metadata never masquerades
+as a loaded external artifact. Native association inputs remain in their existing
+identified records, including all missing references.
+
+Project configuration is explicit for every source producer. `sourceAt` captures
+the owning file and public LSP source range without reading source or checking a
+proof during attribute application. Missing ranges remain explicit. Raw source
+checks enforce enclosing concept, document/context ownership and provider language;
+full-batch checks also reject competing contexts for one realization, including
+native/inline disagreement. Imported conflicts remain raw and cannot be repaired
+by silently adding a later valid local contribution.
+
+Dependency scope is assigned where the dependency is produced, independently of
+origin/intent metadata. Native analysis produces Lean-scoped uses. Explicit label
+constraints, docstring references and prose roles remain shared, even if their
+authored origin tag is `automatic`. Original declaration order and both axes are
+retained. Effective manual precedence does not erase conflicting raw authority
+claims. No dependency selection or completion is performed by registration.
+
+This deletes the old *input* source slots. The assembled `Data.Node` consumer view
+still exists in this intermediate unpublished checkpoint. Until its deletion,
+temporary representability checks reject source/use destinations it cannot display
+without conflating realizations. They are not restrictions on the pure ontology
+and must disappear with that view and the earlier native projection guard.
+`Node.applyRegistrations` and its laws now refer to keyed registrations; the old
+`applyContributions` API is removed. Capture, default-enrollment deletion and
+public graph/query/render completion cutover remain outstanding. Native snapshot
+statuses in presentation payloads do not become imported realization evidence.
+
 ### Consumer cutover and deletion
 
 Build the accepted model and fresh validation once at the project capture/query

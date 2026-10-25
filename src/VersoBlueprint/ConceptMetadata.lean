@@ -241,4 +241,17 @@ structure NodeMetadata where
   issueUrl : Option String := none
 deriving Repr, Inhabited, BEq, DecidableEq, ToJson, FromJson
 
+/-- Concept metadata authored in one registration. Source and dependency inputs
+belong to explicit realization/facet destinations in that registration. -/
+structure NodeContribution where
+  kind : Option NodeKind := none
+  count : Nat := 0
+  parent : Option Parent := none
+  owner : Option AuthorId := none
+  tags : Array String := #[]
+  effort : Option String := none
+  prUrl : Option String := none
+  issueUrl : Option String := none
+  deriving Repr, Inhabited
+
 end Informal.Data

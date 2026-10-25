@@ -10,18 +10,18 @@ open Informal.NodeAssembly
 
 -- Validate all permutations and every contiguous registration batching.
 #eval show IO Unit from do
-  let a : NodeContribution := { proofUses := #[{ label := `dep, origin := .automatic }] }
-  let b : NodeContribution := { proofUses := #[{ label := `dep, origin := .automatic, intent := .technical }] }
-  let m : NodeContribution := { proofUses := #[{ label := `dep, intent := .auxiliary }] }
+  let a : Informal.SourceData.Registration := { uses := Informal.SourceData.usesFor `target (some `lean) `proof #[{ label := `dep, origin := .automatic }] }
+  let b : Informal.SourceData.Registration := { uses := Informal.SourceData.usesFor `target (some `lean) `proof #[{ label := `dep, origin := .automatic, intent := .technical }] }
+  let m : Informal.SourceData.Registration := { uses := Informal.SourceData.usesFor `target (some `lean) `proof #[{ label := `dep, intent := .auxiliary }] }
   for refs in #[#[a,b,m], #[a,m,b], #[b,a,m], #[b,m,a], #[m,a,b], #[m,b,a]] do
     for batches in #[#[refs], #[refs[:1].toArray, refs[1:].toArray],
         #[refs[:2].toArray, refs[2:].toArray], refs.map (#[·])] do
-      let result := batches.foldlM (fun node batch => node.applyContributions `target batch) ({} : Node)
+      let result := batches.foldlM (fun node batch => node.applyRegistrations `target batch) ({} : Node)
       match result with
       | .error _ => pure ()
       | .ok _ => throw <| IO.userError "A manual override hid conflicting automatic intents"
   for refs in #[#[a,m], #[m,a], #[a,a,m,m]] do
-    let .ok node := ({} : Node).applyContributions `target refs
+    let .ok node := ({} : Node).applyRegistrations `target refs
       | throw <| IO.userError "Compatible authority levels were rejected"
     unless node.proof.map (·.deps) == some #[{ label := `dep, intent := .auxiliary }] do
       throw <| IO.userError "Manual metadata lost precedence"

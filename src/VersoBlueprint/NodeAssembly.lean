@@ -56,24 +56,37 @@ private def inferredNodeKind (external : Array ExternalRef) (literate : Array Co
   else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then .definition else .lemma
 
 private def mergeContribution (label : Label) (node : Node)
-    (incoming : NodeContribution) : MergeM Node := do
-  let statement ← mergePayload label "statement" node.statement incoming.statementBody incoming.statementUses
-  let proof ← mergePayload label "proof" node.proof incoming.proofBody incoming.proofUses
+    (incoming : SourceData.Registration) : MergeM Node := do
+  let mut statement := node.statement
+  let mut proof := node.proof
+  let mut literateCodes := node.literateCodes
   let mut rustCode := node.rustCode
-  if let some code := incoming.rustCode then
-    if rustCode.isSome then conflict s!"Label {label} already has associated Rust code" else rustCode := some code
   let mut externalMarkup := node.externalMarkup
-  for markup in incoming.externalMarkup.toArray do
-    let key := markup.key
-    if externalMarkup.contains key then
-      conflict s!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
-    else externalMarkup := externalMarkup.insert markup
+  for source in incoming.sources do
+    match source.payload with
+    | .prose body =>
+      if source.destination.facet == `statement then
+        statement ← mergePayload label "statement" statement (some body) #[]
+      else
+        proof ← mergePayload label "proof" proof (some body) #[]
+    | .leanInline code => literateCodes := literateCodes.push code
+    | .text raw =>
+      if rustCode.isSome then conflict s!"Label {label} already has associated Rust code"
+      else rustCode := some { raw }
+    | .markup markup =>
+      let key := markup.key
+      if externalMarkup.contains key then
+        conflict s!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
+      else externalMarkup := externalMarkup.insert markup
+  statement ← mergePayload label "statement" statement none
+    ((incoming.uses.filter (·.facet == `statement)).map (·.reference))
+  proof ← mergePayload label "proof" proof none
+    ((incoming.uses.filter (·.facet == `proof)).map (·.reference))
   let parent ← mergeMetadata label "parents" node.parent incoming.parent
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
   let issueUrl ← mergeMetadata label "issue URLs" node.issueUrl incoming.issueUrl
-  let literateCodes := node.literateCodes ++ incoming.literateCodes
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
@@ -89,10 +102,33 @@ private def mergeContribution (label : Label) (node : Node)
     literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
+/-- Temporary representability checks while public consumers still use the old
+node view. Raw storage is keyed; unsupported destinations must not be flattened
+into another realization's source. Delete with that old view, not via fallback. -/
+private def registrationIssues (label : Label) (incoming : SourceData.Registration) : Array String := Id.run do
+  let mut errors := incoming.sources.flatMap fun source =>
+    (source.rawIssues label).map fun issue => s!"Label {label}: {issue.code}: {issue.message}"
+  for source in incoming.sources do
+    let key := source.destination
+    let supported := match source.payload with
+      | .prose _ => key.realization.name == `verso && (key.facet == `statement || key.facet == `proof)
+      | .leanInline _ => key.realization.name == `lean && key.facet == `body
+      | .text _ => source.context.language == `rust && key.realization.name == `rust && key.facet == `body
+      | .markup value => key.realization.name == Name.str (Name.mkSimple value.language.key) value.slot && key.facet == `statement
+    unless supported do
+      errors := errors.push s!"Label {label}: unsupported-source-projection: Source cannot be represented by the remaining node view"
+  for use in incoming.uses do
+    if use.node != label || use.reference.label.isAnonymous ||
+        (use.realization.isSome && use.realization != some `lean) ||
+        (use.facet != `statement && use.facet != `proof) then
+      errors := errors.push s!"Label {label}: unsupported-use-projection: Use must preserve its concept, explicit scope and supported axis"
+  return errors
+
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
 private def applyPayloads (label : Label) (node : Node)
-    (contributions : Array NodeContribution) : Except (Array String) Node :=
-  let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
+    (contributions : Array SourceData.Registration) : Except (Array String) Node :=
+  let sourceErrors := contributions.flatMap (registrationIssues label)
+  let (node, errors) := (contributions.foldlM (mergeContribution label) node).run sourceErrors
   if errors.isEmpty then .ok node else .error errors
 
 end Informal.NodeAssembly
@@ -102,8 +138,8 @@ namespace Informal.Data
 /-- Apply body, kind, markup, dependency, and literate payloads to a node.
 Selected associations and priority are supplied separately through identified
 records. This reducer preserves those fields on an already assembled node. -/
-def Node.applyContributions (label : Label) (node : Node)
-    (contributions : Array NodeContribution) : Except (Array String) Node :=
+def Node.applyRegistrations (label : Label) (node : Node)
+    (contributions : Array SourceData.Registration) : Except (Array String) Node :=
   Informal.NodeAssembly.applyPayloads label node contributions
 
 end Informal.Data
@@ -247,13 +283,20 @@ private def project (node : Node) (view : View) : Assembly :=
 
 /-- Raw keyed destination checks shared by local planning and complete import
 reassembly. They do not establish composed membership or native-name stability. -/
-def nativeDestinationIssues (label : Label) (records : List Record) : Array String := Id.run do
+def sourceDestinationIssues (label : Label) (payloads : Array SourceData.Registration) (records : List Record) : Array String := Id.run do
   let records := (recordsFor label records).toArray
   let mut issues := records.flatMap fun record =>
     record.nativeAssociations.flatMap fun association =>
       (association.rawIssues label).map fun issue =>
         s!"Label {label}: {issue.code}: {issue.message} ({issue.subject})"
   let mut contexts : Std.HashMap Realizations.RealizationKey Realizations.Context := {}
+  for source in payloads.flatMap (·.sources) do
+    let key := source.destination.realization
+    match contexts[key]? with
+    | some context =>
+      if context != source.context then
+        issues := issues.push s!"Label {label}: source-context-mismatch: Realization '{key.name}' has conflicting source contexts"
+    | none => contexts := contexts.insert key source.context
   for record in records do
     for association in record.nativeAssociations do
       -- Until the remaining old source container is deleted, it can expose only
@@ -269,14 +312,14 @@ def nativeDestinationIssues (label : Label) (records : List Record) : Array Stri
       | none => contexts := contexts.insert association.realization association.context
   return issues
 
-def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
+def assemble (label : Label) (payloads : Array SourceData.Registration) (records : List Record) :
     Except (Array String) Assembly :=
-  match Node.applyContributions label {} payloads with
+  match Node.applyRegistrations label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
     | .ok view =>
-      let issues := nativeDestinationIssues label records
+      let issues := sourceDestinationIssues label payloads records
       if issues.isEmpty then .ok (project node view) else .error issues
 
 end Informal.NodeAssembly

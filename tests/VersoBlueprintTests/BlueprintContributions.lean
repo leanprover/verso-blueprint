@@ -226,10 +226,10 @@ private def highA : Record := { a with priority := some "high" }
   | .error _ => false
 
 -- Payload reduction retains authored bodies, dependencies, and literate code.
-#guard match ({} : Node).applyContributions `shared #[{
-    statementBody := some { stx := .missing, elabStx := #[.missing] }
-    statementUses := #[{ label := `dependency }]
-    literateCodes := #[{ stx := .missing }]
+#guard match ({} : Node).applyRegistrations `shared #[{
+    sources := #[BlueprintNativeFixture.source `shared `verso `statement `verso (.prose { stx := .missing, elabStx := #[.missing] }),
+      BlueprintNativeFixture.source `shared `lean `body `lean (.leanInline { stx := .missing })]
+    uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
   }] with
   | .ok node => node.statement.any fun statement => statement.hasBody &&
       statement.deps == #[{ label := `dependency }] && node.literateCodes.size == 1
@@ -238,9 +238,9 @@ private def highA : Record := { a with priority := some "high" }
 -- Payload updates preserve the selected priority, facet references, and capability.
 #guard match Informal.NodeAssembly.assemble `shared #[] [highA, proofA] with
   | .error _ => false
-  | .ok assembled => match assembled.node.applyContributions `shared #[{
-      statementBody := some { stx := .missing, elabStx := #[.missing] }
-      statementUses := #[{ label := `dependency }]
+  | .ok assembled => match assembled.node.applyRegistrations `shared #[{
+      sources := #[BlueprintNativeFixture.source `shared `verso `statement `verso (.prose { stx := .missing, elabStx := #[.missing] })]
+      uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
     }] with
     | .error _ => false
     | .ok updated => updated.blueprintAttributeAttachments &&

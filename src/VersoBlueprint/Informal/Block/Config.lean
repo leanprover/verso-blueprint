@@ -138,8 +138,7 @@ structure ResolvedConfig where
   effort : Option String := none
   prUrl : Option String := none
   issueUrl : Option String := none
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
+  uses : Array SourceData.UseDeclaration := #[]
 
 private def resolvePriority? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
@@ -259,7 +258,13 @@ def Config.resolveForDirective {m}
       liftM <| DependencyAnalysis.inferExternalRefs resolvedExternalCode
     else
       pure {}
-  let inferredUseRefs := inferredDeps.toUseRefs cfg.metadataUses (some cfg.label)
+  let inferredUseRefs := inferredDeps.toUseRefs #[] (some cfg.label)
+  let manualLabels := cfg.metadataUses.map (·.label)
+  let statementAxis := if isProof then `proof else `statement
+  let uses := SourceData.usesFor cfg.label (some `lean) statementAxis inferredUseRefs.statement ++
+    SourceData.usesFor cfg.label none statementAxis cfg.metadataUses ++
+    SourceData.usesFor cfg.label (some `lean) `proof (inferredUseRefs.proof.filter fun reference =>
+      !manualLabels.contains reference.label)
   pure {
     label := cfg.label
     labelSyntax := cfg.labelSyntax
@@ -272,8 +277,7 @@ def Config.resolveForDirective {m}
     effort
     prUrl
     issueUrl
-    statementUses := inferredUseRefs.statement
-    proofUses := inferredUseRefs.proof
+    uses
   }
 
 end Informal

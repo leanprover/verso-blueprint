@@ -20,7 +20,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
         !(state.leanNameLabels.getD `CanonicalNativePersistence.original #[]).contains label do
       throwError "Conflicting imported native destinations were collapsed or admitted"
     unless state.localFactRecords.isEmpty &&
-        state.pendingNodes.all (fun _ pending => pending.localPayloads.isEmpty) do
+        state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) do
       throwError "Malformed imported evidence must remain raw, not become a local export"
     -- Exercise later attachment without conflating diagnostic reporting state
     -- with semantic rollback. Restore this whole test environment on every exit.

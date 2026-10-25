@@ -19,7 +19,7 @@ open Informal.Contributions
 
 register_option verso.blueprint.project : String := {
   defValue := ""
-  descr := "Explicit logical project for ordinary native Blueprint source associations"
+  descr := "Explicit logical project for ordinary Blueprint sources and native associations"
 }
 
 /--
@@ -39,8 +39,7 @@ structure InProgress where
   effort : Option String := none
   prUrl : Option String := none
   issueUrl : Option String := none
-  deps : Array UseRef := #[]
-  proofUses : Array UseRef := #[]
+  uses : Array SourceData.UseDeclaration := #[]
 deriving Inhabited, Repr
 
 inductive ImportedConflictKind where
@@ -125,9 +124,9 @@ private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
 
 /-- All pending payload inputs and their provenance for one Blueprint label. -/
 structure PendingNode where
-  payloads : Array NodeContribution := #[]
-  /-- The local subset is exported; imported payloads remain evidence only. -/
-  localPayloads : Array NodeContribution := #[]
+  registrations : Array SourceData.Registration := #[]
+  /-- The local subset is exported; imported registrations remain evidence only. -/
+  localRegistrations : Array SourceData.Registration := #[]
   /-- First contributing origin; an authored origin takes precedence on accepted nodes. -/
   origin : Name := .anonymous
   contributors : Array Name := #[]
@@ -136,13 +135,13 @@ structure PendingNode where
 deriving Inhabited, Repr
 
 private def PendingNode.append (pending : PendingNode) (incomingOrigin contributor : Name)
-    (incoming : Array NodeContribution) (isLocal authored : Bool) : PendingNode :=
+    (incoming : Array SourceData.Registration) (isLocal authored : Bool) : PendingNode :=
   let origin := if pending.contributors.isEmpty then incomingOrigin else pending.origin
   let authoredOriginConflict := pending.authoredOriginConflict ||
     (authored && pending.authoredOrigin?.any (· != incomingOrigin))
   { pending with
-    payloads := pending.payloads ++ incoming
-    localPayloads := if isLocal then pending.localPayloads ++ incoming else pending.localPayloads
+    registrations := pending.registrations ++ incoming
+    localRegistrations := if isLocal then pending.localRegistrations ++ incoming else pending.localRegistrations
     origin
     contributors := pushUnique pending.contributors contributor
     authoredOrigin? := if authored then pending.authoredOrigin? <|> some incomingOrigin else pending.authoredOrigin?
@@ -160,7 +159,7 @@ structure State where
   data : NameMap RegisteredNode := {}
   /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
   nextCount : Nat := 1
-  /-- Pending payloads and all label-local provenance, including rejected imports. -/
+  /-- Pending registrations and all label-local provenance, including rejected imports. -/
   pendingNodes : NameMap PendingNode := {}
   /-- Complete selected-fact evidence, newest first. Reverse for assembly so
   declaration presentation follows registration order, including imported evidence. -/
@@ -222,7 +221,7 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
         a.label.toString < b.label.toString)
 
 inductive Entry where
-  | node (label origin contributor : Name) (contributions : Array NodeContribution)
+  | node (label origin contributor : Name) (contributions : Array SourceData.Registration)
     (facts : List Record := []) (authored : Bool := false)
   | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
@@ -247,18 +246,15 @@ private def addNodeLeanDeclLabels
     NameMap (Array Label) :=
   node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
-private def claimsAuthoredNode (contribution : NodeContribution) : Bool :=
-  contribution.kind.isSome || contribution.statementBody.any (·.hasBody) || contribution.proofBody.any (·.hasBody)
-
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array NodeContribution) (facts : List Record) : Except (Array String) (State × Node) := do
-  let authored := incoming.any claimsAuthoredNode
+    (incoming : Array SourceData.Registration) (facts : List Record) : Except (Array String) (State × Node) := do
+  let authored := incoming.any (·.claimsAuthoredNode)
   let pending := (state.pendingNodes.getD label {}).append origin contributor incoming true authored
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
   let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
-  let assembled ← NodeAssembly.assemble label pending.payloads records.reverse
+  let assembled ← NodeAssembly.assemble label pending.registrations records.reverse
   let node := assembled.node
   let nodeOrigin := pending.authoredOrigin?.getD pending.origin
   let registered : RegisteredNode := {
@@ -286,7 +282,7 @@ private def State.reassembleImported (state : State) : State := Id.run do
       let origins := pending.contributors
       conflicts := pushImportedConflict conflicts .node label
         #[s!"Label {label} was independently introduced by authored contributions"] origins
-    else match NodeAssembly.assemble label pending.payloads records with
+    else match NodeAssembly.assemble label pending.registrations records with
     | .ok assembled =>
       let node := assembled.node
       let origin := pending.authoredOrigin?.getD pending.origin
@@ -334,21 +330,15 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       pure state.reassembleImported
     -- Export only local contributions, retaining the original label's module.
     exportEntriesFnEx env := fun state =>
-      let compact (payload : InformalBody) :=
-        if payload.previewBlocks.isEmpty then payload else { payload with elabStx := #[] }
       let nodeEntries := state.pendingNodes.toArray.filterMap fun (name, pending) =>
-        if pending.localPayloads.isEmpty then none else some <| (name, pending)
+        if pending.localRegistrations.isEmpty then none else some <| (name, pending)
       let nodeEntries := nodeEntries.map fun (name, pending) =>
-        let contributions := pending.localPayloads
-        let contributions := contributions.map fun contribution =>
-          { contribution with
-            statementBody := contribution.statementBody.map compact
-            proofBody := contribution.proofBody.map compact }
+        let contributions := pending.localRegistrations.map (·.compact)
         match state.data.get? name with
         | some node =>
           let facts := (state.localFactRecords.filter (fun record => record.label == name)).reverse
           Entry.node name (pending.authoredOrigin?.getD node.origin) env.mainModule
-            contributions facts (contributions.any claimsAuthoredNode)
+            contributions facts (contributions.any (·.claimsAuthoredNode))
         | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let attributeLabelEntries :=
         state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
@@ -399,8 +389,22 @@ def sourceProject : CoreM Name := do
   let value := (verso.blueprint.project.get (← getOptions)).trimAscii.toString
   let project := value.toName
   unless !project.isAnonymous && project.toString == value do
-    throwError "Native Blueprint associations require an explicit canonical 'verso.blueprint.project' option"
+    throwError "Blueprint sources require an explicit canonical 'verso.blueprint.project' option"
   return project
+
+/-- Capture the owning source identity at production time. Missing ranges stay
+explicit; no reader/provider runs before the owning module has finished building. -/
+def sourceAt (node realization facet language : Name) (payload : SourceData.ProviderPayload)
+    (ref : Syntax) : CoreM SourceData.FacetSource := do
+  let context : Realizations.Context := ⟨language, ← sourceProject⟩
+  let location ← SourceLocation.ofSyntax? ref
+  return {
+    destination := ⟨⟨node, realization⟩, facet⟩
+    context, document := ⟨context, ← getFileName⟩
+    source := match location with
+      | some location => .found location
+      | none => .unavailable "Original source range unavailable at registration"
+    payload }
 
 private def State.planAuthoring (state : State) (record : AuthoringRecord) :
     Except (Array Realizations.Diagnostic) State := do
@@ -461,7 +465,7 @@ def reportImportedConflicts : m Unit := do
     return { state with importedConflictsReported := true }
 
 /-- Commit one checked registration after its admission inputs have been validated. -/
-private def commitContribution (label : Label) (contribution : NodeContribution) (facts : List Record) :
+private def commitContribution (label : Label) (contribution : SourceData.Registration) (facts : List Record) :
     m (Option Node) := do
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
@@ -475,7 +479,7 @@ private def commitContribution (label : Label) (contribution : NodeContribution)
     return none
 
 /-- Register a node payload under an explicit label. -/
-def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
+def contribute (label : Label) (contribution : SourceData.Registration) : m (Option Node) := do
   reportImportedConflicts
   commitContribution label contribution []
 
@@ -483,7 +487,7 @@ def contribute (label : Label) (contribution : NodeContribution) : m (Option Nod
 Register a producer-identified selected record with a node payload.
 The record is the sole owner of the selected label, external references, and priority.
 -/
-def contributeRecord (fact : Record) (contribution : NodeContribution) :
+def contributeRecord (fact : Record) (contribution : SourceData.Registration) :
     m (Option Node) := do
   reportImportedConflicts
   commitContribution fact.label contribution [fact]
@@ -522,27 +526,17 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     logError m!"Cannot declare nested definitions"
     return false
 
-private def InProgress.toContribution (current : InProgress) (count : Nat) (ref : Syntax)
-    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : NodeContribution := {
-  kind := match current.kind with | .statement kind => some kind | .proof => none
-  count := match current.kind with | .statement _ => count | .proof => 0
-  statementBody := match current.kind with
-    | .statement _ => some { stx := ref, previewBlocks := blocks }
-    | .proof => none
-  proofBody := match current.kind with
-    | .statement _ => none
-    | .proof => some { stx := ref, previewBlocks := blocks }
-  statementUses := match current.kind with | .statement _ => current.deps | .proof => #[]
-  proofUses := match current.kind with
-    | .statement _ => current.proofUses
-    | .proof => current.deps ++ current.proofUses
-  parent := current.parent
-  owner := current.owner
-  tags := current.tags
-  effort := current.effort
-  prUrl := current.prUrl
-  issueUrl := current.issueUrl
-}
+private def InProgress.toRegistration (current : InProgress) (count : Nat) (ref : Syntax)
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
+  let facet := match current.kind with | .statement _ => `statement | .proof => `proof
+  let source ← sourceAt current.label `verso facet `verso (.prose { stx := ref, previewBlocks := blocks }) ref
+  return {
+    kind := match current.kind with | .statement kind => some kind | .proof => none
+    count := match current.kind with | .statement _ => count | .proof => 0
+    sources := #[source]
+    uses := current.uses
+    parent := current.parent, owner := current.owner, tags := current.tags
+    effort := current.effort, prUrl := current.prUrl, issueUrl := current.issueUrl }
 
 private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : CoreM (Option Record) := do
   let externalRefs := current.externalRefs
@@ -577,7 +571,7 @@ private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool :=
 /-- Plan legacy acceptance, optional raw enrollment and the catalog together.
 Eligibility is computed from the pre-state; the assembler's returned Node is used
 directly. No source reader/provider runs while the attribute is being applied. -/
-def contributeAttribute (fact : Record) (payload : NodeContribution) : CoreM (Option Node) := do
+def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option Node) := do
   let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
   reportImportedConflicts
   let before := informalExt.getState (← getEnv)
@@ -596,7 +590,7 @@ def contributeAttribute (fact : Record) (payload : NodeContribution) : CoreM (Op
         unless eligible && node.kind.isTheoremLike && associations.size == 1 &&
             associations[0]!.realization == ⟨fact.label, `lean⟩ &&
             associations[0]!.context == ⟨`lean, project⟩ &&
-            associations[0]!.facets == #[`statement] && payload.statementBody.any (·.hasBody) &&
+            associations[0]!.facets == #[`statement] && (payload.proseAt ⟨fact.label, `verso⟩ ⟨`verso, project⟩ `statement).any (·.hasBody) &&
             fact.id.moduleName == moduleName && fact.id.producer == `blueprint.attribute &&
             associations[0]!.reference.origin == .blueprintAttr && associations[0]!.reference.kind == .theorem do
           logError "Unsupported default authoring: expected a new single attribute theorem with its own docstring"
@@ -649,7 +643,7 @@ def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
           logError "Internal error: Blueprint directive scope was closed during elaboration"
           pure none
         | some current =>
-          let contribution := current.toContribution state.nextCount ref blocks
+          let contribution ← liftM <| current.toRegistration state.nextCount ref blocks
           let fact? ← liftM <| current.selectedFact? ref
           let node? ← match fact? with
             | some fact => contributeRecord fact contribution
@@ -668,7 +662,10 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
   | none => logErrorAt stx m!"uses declaration outside an informal environment"
   | some current =>
     modify fun state =>
-      { state with activeDirective := some { current with deps := current.deps.push useRef } }
+      { state with activeDirective := some { current with uses := current.uses.push {
+        node := current.label
+        facet := match current.kind with | .statement _ => `statement | .proof => `proof
+        reference := useRef } } }
 
 def addDep (stx : Syntax) (dep : Name) : m Unit :=
   addUse stx { label := dep }

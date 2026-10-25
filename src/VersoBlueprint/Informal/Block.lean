@@ -256,7 +256,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
         tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
         issueUrl := resolved.issueUrl
-        deps := resolved.statementUses, proofUses := resolved.proofUses } : Environment.InProgress)
+        uses := resolved.uses } : Environment.InProgress)
     let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
         let parsedContents ← parseDirectiveSourceMetadata cfg contents
         let contents ← parsedContents.body.mapM elabBlock

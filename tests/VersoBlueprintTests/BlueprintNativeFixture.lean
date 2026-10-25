@@ -19,4 +19,13 @@ def associations (node : Name) (facets : Array Name) (references : Array Data.Ex
   references.map fun reference => {
     realization := ⟨node, realization⟩, context := ⟨`lean, project⟩, facets, reference }
 
+/-- Synthetic source provenance for pure reducer/rollback tests only. -/
+def source (node realization facet language : Name) (payload : SourceData.ProviderPayload)
+    (project : Name := `blueprintFixtures) : SourceData.FacetSource := {
+  destination := ⟨⟨node, realization⟩, facet⟩
+  context := ⟨language, project⟩
+  document := ⟨⟨language, project⟩, "synthetic-fixture.lean"⟩
+  source := .unavailable "Synthetic reducer fixture; no provider lookup"
+  payload }
+
 end BlueprintNativeFixture

@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.SourcePayload
+import VersoBlueprint.SourceData
 import VersoBlueprint.Realizations
 
 namespace Informal.Data
@@ -49,31 +49,6 @@ this projection. The old Node container is removed with its consumer migration. 
 def Node.toConcept (node : Node) (label : Name) (title : String) : Realizations.Node :=
   { toNodeMetadata := node.toNodeMetadata, label, title }
 
-
-/--
-Body, dependency, metadata, and literate-code inputs for one registration.
-External associations and priority belong exclusively to identified contribution
-records. Dependencies are independent of body
-additions; adding code or dependencies cannot reclassify an authored statement.
--/
-structure NodeContribution where
-  /-- Explicit kind from a statement directive, including an empty placeholder. -/
-  kind : Option NodeKind := none
-  count : Nat := 0
-  statementBody : Option InformalBody := none
-  proofBody : Option InformalBody := none
-  statementUses : Array UseRef := #[]
-  proofUses : Array UseRef := #[]
-  literateCodes : Array Code := #[]
-  rustCode : Option RustInlineCode := none
-  externalMarkup : ExternalMarkupSet := {}
-  parent : Option Parent := none
-  owner : Option AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-deriving Repr, Inhabited
 
 /-- All captured external associations. Facet snapshots remain separate;
 declaration membership and status projections consume both facets. -/

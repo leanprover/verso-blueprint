@@ -50,7 +50,7 @@ private def model : Realization := {
   let source : FacetSource := {
     destination := ⟨key, `statement⟩, context, document
     source := Data.SourceLocationResult.unavailable "Structural fixture has no source lookup"
-    payload := .prose { stx := .missing } }
+    payload := .text "Structural source fixture" }
   ensure ((source.issues node model).isEmpty) "An explicitly unavailable location is retained, not fabricated"
   ensure (has (({ source with context := ⟨`lean, `otherProject⟩ } : FacetSource).issues node model)
     "source-context-mismatch") "A same-spelled declaration from another project is not this source"

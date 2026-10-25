@@ -121,7 +121,7 @@ private def unchanged (before after : Environment.State) : TermElabM Unit := do
   ensure (before.pendingNodes.toArray.map (·.1) == after.pendingNodes.toArray.map (·.1)) "Pending labels changed"
   for (label, a) in before.pendingNodes.toArray do
     let some b := after.pendingNodes.get? label | throwError "Pending node disappeared"
-    ensure (a.payloads.size == b.payloads.size && a.localPayloads.size == b.localPayloads.size &&
+    ensure (a.registrations.size == b.registrations.size && a.localRegistrations.size == b.localRegistrations.size &&
       a.origin == b.origin && a.contributors == b.contributors && a.authoredOrigin? == b.authoredOrigin? &&
       a.authoredOriginConflict == b.authoredOriginConflict) "Pending payload/export/provenance changed"
   for (a, b) in #[(before.blueprintAttributeLabelsByModule, after.blueprintAttributeLabelsByModule),
@@ -275,7 +275,7 @@ run_cmd liftTermElabM do
 
 -- Synthetic transaction inputs are used only to test rejection/rollback, never
 -- as provider facts or evidence. The native identity is a real checked theorem.
-private def rollbackInput (label : Name) : CoreM (Contributions.Record × Data.NodeContribution) := do
+private def rollbackInput (label : Name) : CoreM (Contributions.Record × SourceData.Registration) := do
   let state := Environment.informalExt.getState (← getEnv)
   let moduleName ← getMainModule
   let id : Contributions.ContributionId := {
@@ -286,7 +286,8 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Data.N
     written := `rollbackDeclaration, present := true, origin := .blueprintAttr, kind := .theorem }
   return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label #[`statement] #[reference] Owner.projectName, priority := none, source := none },
     { count := state.nextCount + 100, tags := #["synthetic candidate"]
-      statementBody := some { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] } })
+      sources := #[BlueprintNativeFixture.source label `verso `statement `verso
+        (.prose { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
 
 /-- error: Conflicting raw authoring envelopes -/
 #guard_msgs in

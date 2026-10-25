@@ -74,6 +74,8 @@ lean_lib VersoBlueprintTests where
   roots := #[
     `VersoBlueprintTests.BlueprintNativeFixture,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
+    `VersoBlueprintTests.BlueprintCanonicalSourcePersistence,
+    `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Conflict,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence.Conflict,
     `VersoBlueprintTests.BlueprintRealizations,
     `VersoBlueprintTests.BlueprintTranslations,

@@ -160,8 +160,8 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     }, deps)
 
 private structure ResolvedAutoDeps where
-  statement : Array Data.UseRef := #[]
-  proof : Array Data.UseRef := #[]
+  statement : Array SourceData.UseDeclaration := #[]
+  proof : Array SourceData.UseDeclaration := #[]
 deriving Inhabited, Repr
 
 private def labelsForManualTarget
@@ -185,22 +185,26 @@ private def resolveManualTargets
     return labels.foldl Data.Label.pushUnique acc
 
 private def collectAxisDeps
-    (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
+    (currentDecl currentLabel facet : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
     (docstringDeps : Array Data.UseRef := #[]) :
-    CoreM (Array Data.UseRef) := do
+    CoreM (Array SourceData.UseDeclaration) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
   let excluded := Data.Label.pushUnique excluded currentLabel
   let mut out := #[]
   for label in DependencyAnalysis.sortLabels inferred do
     if !excluded.contains label then
-      out := out.push (DependencyAnalysis.automaticUseRef label)
+      out := out.push {
+        node := currentLabel
+        realization := some `lean
+        facet := facet
+        reference := DependencyAnalysis.automaticUseRef label }
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then
-      out := out.push dependency
+      out := out.push { node := currentLabel, facet, reference := dependency }
   for label in explicit do
     if !excluded.contains label then
-      out := out.push (manualUseRef label)
+      out := out.push { node := currentLabel, facet, reference := manualUseRef label }
   return out
 
 private def resolveAutoDeps
@@ -212,10 +216,10 @@ private def resolveAutoDeps
       DependencyAnalysis.infer decl info
     else
       pure {}
-  let statement ← collectAxisDeps decl label inferred.statement cfg.uses docstringDeps
-  let statementLabels := Data.UseRef.labels statement
+  let statement ← collectAxisDeps decl label `statement inferred.statement cfg.uses docstringDeps
+  let statementLabels := statement.map (·.reference.label)
   let proofInferred := inferred.proof.filter fun label => !statementLabels.contains label
-  let proof ← collectAxisDeps decl label proofInferred cfg.proofUses
+  let proof ← collectAxisDeps decl label `proof proofInferred cfg.proofUses
   return { statement, proof }
 
 private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
@@ -250,10 +254,11 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
       facets := #[`statement], reference := extRef }]
     priority := none
     source }
+  let sources ← docstring?.toArray.mapM fun (body, _) =>
+    Environment.sourceAt label `verso `statement `verso (.prose body) ref
   discard <| Environment.contributeAttribute fact {
-    statementBody := docstring?.map Prod.fst
-    statementUses := deps.statement
-    proofUses := deps.proof }
+    sources
+    uses := deps.statement ++ deps.proof }
 
 open Lean in
 initialize

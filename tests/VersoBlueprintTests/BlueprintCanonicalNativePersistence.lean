@@ -22,7 +22,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let state := Environment.informalExt.getState (← getEnv)
   let records := state.factRecords.filter (·.label == label)
   unless records.length == 4 && state.localFactRecords.isEmpty &&
-      state.pendingNodes.all (fun _ pending => pending.localPayloads.isEmpty) &&
+      state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) &&
       state.authoringRecords.isEmpty do
     throwError "Imports must retain complete native inputs once, with no local export or enrolled default"
   let associations := records.toArray.flatMap (·.nativeAssociations)
@@ -111,7 +111,7 @@ elab "#native_registration_unchanged " command:command : command => do
     unless reprStr before == reprStr (Environment.informalExt.getState (← getEnv)) do
       throwError "Rejected ordinary native attribute changed a Blueprint store"
 
-/-- error: Native Blueprint associations require an explicit canonical 'verso.blueprint.project' option -/
+/-- error: Blueprint sources require an explicit canonical 'verso.blueprint.project' option -/
 #guard_msgs in
 #native_registration_unchanged
 set_option verso.blueprint.project "" in

@@ -439,11 +439,11 @@ package MyProject where
 ```
 
 Lean's `weak` prefix applies this setting where Blueprint is loaded and lets
-independent Lean-only modules ignore the unregistered option. Native producers
-still require a configured project. The chosen project is stored with each native
+independent Lean-only modules ignore the unregistered option. Source producers
+require a configured project: attributes, prose directives, inline Lean/Rust and
+labeled external markup. The chosen project is stored with each source and native
 association; changing options in an importing query does not relabel that source.
-This is required for compiled Blueprint attributes and directive `lean`
-associations. Metadata-only registrations require no native context. The bounded
+Metadata-only registrations require no source context. The bounded
 opt-in realization authoring API also accepts its explicit module configuration.
 
 Use the `@[blueprint]` attribute when a compiled definition-like

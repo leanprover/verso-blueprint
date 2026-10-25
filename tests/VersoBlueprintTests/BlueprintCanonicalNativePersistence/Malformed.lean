@@ -20,5 +20,5 @@ run_cmd Lean.Elab.Command.liftCoreM do
     { association with realization := ⟨label, `differentDestination⟩ } }
   Environment.modify fun state => { state with
     pendingNodes := state.pendingNodes.insert label {
-      state.pendingNodes.getD label {} with localPayloads := #[{}] }
+      state.pendingNodes.getD label {} with localRegistrations := #[{}] }
     localFactRecords := [record, variant] }

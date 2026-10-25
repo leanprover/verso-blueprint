@@ -32,7 +32,7 @@ run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 1 (prio
   discard <| Environment.contributeRecord
     (testRecord `rejected_new_node 2 #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]) {
     count := before.nextCount + 100
-    proofUses := #[{ label := `dep }, { label := `dep, intent := .technical }]
+    uses := SourceData.usesFor `rejected_new_node (some `lean) `proof #[{ label := `dep }, { label := `dep, intent := .technical }]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -57,7 +57,8 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     count := before.nextCount + 100
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
-    proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
+    sources := #[BlueprintNativeFixture.source `key_theorem `verso `proof `verso
+      (.prose { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] })]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -93,11 +94,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3760/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3888/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4463/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4591/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -182,12 +183,13 @@ run_cmd do
 -- Standalone producers must agree with the accepted registry, even during recovery.
 run_cmd do
   discard <| Environment.contribute `atomic_standalone {
-    proofUses := #[{ label := `atomic_dependency, origin := .automatic, intent := .technical }] }
+    uses := SourceData.usesFor `atomic_standalone (some `lean) `proof #[{ label := `atomic_dependency, origin := .automatic, intent := .technical }] }
   discard <| Environment.contribute `atomic_standalone_markup {
-    externalMarkup := ({} : Data.ExternalMarkupSet).insert {
-      language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" } }
+    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_markup `markdown.default `statement `markdown
+      (.markup { language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" }) (← getRef)] }
   discard <| Environment.contribute `atomic_standalone_rust {
-    rustCode := some { raw := "pub fn accepted() {}" } }
+    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_rust `rust `body `rust
+      (.text "pub fn accepted() {}") (← getRef)] }
 
 -- Attribute registration must not publish a module-catalog entry when its
 -- contribution is rejected. The shared checker also covers declaration indexes.
@@ -337,10 +339,10 @@ run_cmd do
 #guard_msgs in
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `attr_authorities {
-  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+  uses := SourceData.usesFor `attr_authorities (some `lean) `statement #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
 
 /-- error: Label manual_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
 #guard_msgs in
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `manual_authorities {
-  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+  uses := SourceData.usesFor `manual_authorities (some `lean) `statement #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
