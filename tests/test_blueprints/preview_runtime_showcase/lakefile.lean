@@ -5,7 +5,7 @@ require VersoBlueprint from "../../../"
 
 package PreviewRuntimeShowcase where
   precompileModules := false
-  leanOptions := #[⟨`experimental.module, true⟩]
+  leanOptions := #[⟨`experimental.module, true⟩, ⟨`weak.verso.blueprint.project, "PreviewRuntimeShowcase"⟩]
 
 input_dir previewRuntimeShowcaseAssets where
   path := "PreviewRuntimeShowcase/Chapters"

@@ -422,6 +422,30 @@ work in the same project.
 
 ### Compiled code tagged with `@[blueprint]`
 
+Configure the logical source project in each producing module, after its
+Blueprint import:
+
+```lean
+import VersoBlueprint
+set_option verso.blueprint.project "MyProject"
+```
+
+Use a nonempty canonical Lean name as the project string. You can instead
+share it through your package's existing `leanOptions` in `lakefile.lean`:
+
+```lean
+package MyProject where
+  leanOptions := #[⟨`weak.verso.blueprint.project, "MyProject"⟩]
+```
+
+Lean's `weak` prefix applies this setting where Blueprint is loaded and lets
+independent Lean-only modules ignore the unregistered option. Native producers
+still require a configured project. The chosen project is stored with each native
+association; changing options in an importing query does not relabel that source.
+This is required for compiled Blueprint attributes and directive `lean`
+associations. Metadata-only registrations require no native context. The bounded
+opt-in realization authoring API also accepts its explicit module configuration.
+
 Use the `@[blueprint]` attribute when a compiled definition-like
 declaration or theorem should appear as a compiled-declaration-backed Blueprint
 node. With no string argument, its Blueprint label is the declaration's

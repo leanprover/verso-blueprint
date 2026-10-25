@@ -12,6 +12,7 @@ import VersoBlueprint.NodeAssembly.Laws
 #print axioms Informal.Contributions.resolve_collect
 #print axioms Informal.Contributions.independentAssociations
 #print axioms Informal.NodeAssembly.assemble_ok_resolve
+#print axioms Informal.NodeAssembly.assemble_ok_nativeDestinations
 #print axioms Informal.NodeAssembly.assemble_success_iff
 #print axioms Informal.NodeAssembly.assemble_ok_priority
 #print axioms Informal.NodeAssembly.assemble_ok_priority_none_iff

@@ -17,6 +17,11 @@ open Lean
 open Informal.Data
 open Informal.Contributions
 
+register_option verso.blueprint.project : String := {
+  defValue := ""
+  descr := "Explicit logical project for ordinary native Blueprint source associations"
+}
+
 /--
 Elaboration-time builder for the single currently open directive.
 
@@ -382,6 +387,21 @@ def configureAuthoringProject (project : Name) : CoreM (Except (Array Realizatio
   modify fun state => { state with authoringProject? := some (moduleName, project) }
   return .ok ()
 
+/-- Resolve context at the producing site, never from an importing query's
+options. The bounded authoring configuration is also explicit and module-local;
+ordinary projects configure the package/module option instead of enrolling in
+that opt-in producer. The chosen context is retained in every raw association. -/
+def sourceProject : CoreM Name := do
+  let moduleName ← getMainModule
+  let state := informalExt.getState (← getEnv)
+  if let some (owner, project) := state.authoringProject? then
+    if owner == moduleName then return project
+  let value := (verso.blueprint.project.get (← getOptions)).trimAscii.toString
+  let project := value.toName
+  unless !project.isAnonymous && project.toString == value do
+    throwError "Native Blueprint associations require an explicit canonical 'verso.blueprint.project' option"
+  return project
+
 private def State.planAuthoring (state : State) (record : AuthoringRecord) :
     Except (Array Realizations.Diagnostic) State := do
   let issues := authoringRecordIssues (state.authoringRecords.push record)
@@ -531,6 +551,13 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
   let some position := ref.getPos?
     | throwError "Blueprint selected contributions require a stable source position"
   let source ← Data.SourceLocation.ofSyntax? ref
+  let mut associations : Array SourceData.NativeAssociation := #[]
+  unless externalRefs.isEmpty do
+    let context : Realizations.Context := ⟨`lean, ← sourceProject⟩
+    associations := externalRefs.map fun reference => {
+      realization := ⟨current.label, `lean⟩, context
+      facets := #[match current.kind with | .statement _ => `statement | .proof => `proof]
+      reference }
   return some {
     id := {
       moduleName := ← getMainModule
@@ -539,8 +566,7 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
       site := position.byteIdx
       slot := 0 }
     label := current.label
-    references := match current.kind with | .statement _ => externalRefs | .proof => #[]
-    proofReferences := match current.kind with | .proof => externalRefs | .statement _ => #[]
+    nativeAssociations := associations
     priority := current.priority
     source }
 
@@ -566,10 +592,13 @@ def contributeAttribute (fact : Record) (payload : NodeContribution) : CoreM (Op
     let mut candidate := candidate
     if let some (owner, project) := before.authoringProject? then
       if owner == moduleName then
-        unless eligible && node.kind.isTheoremLike && fact.references.size == 1 &&
-            fact.proofReferences.isEmpty && payload.statementBody.any (·.hasBody) &&
+        let associations := fact.nativeAssociations
+        unless eligible && node.kind.isTheoremLike && associations.size == 1 &&
+            associations[0]!.realization == ⟨fact.label, `lean⟩ &&
+            associations[0]!.context == ⟨`lean, project⟩ &&
+            associations[0]!.facets == #[`statement] && payload.statementBody.any (·.hasBody) &&
             fact.id.moduleName == moduleName && fact.id.producer == `blueprint.attribute &&
-            fact.references[0]!.origin == .blueprintAttr && fact.references[0]!.kind == .theorem do
+            associations[0]!.reference.origin == .blueprintAttr && associations[0]!.reference.kind == .theorem do
           logError "Unsupported default authoring: expected a new single attribute theorem with its own docstring"
           return none
         let record : AuthoringRecord := {

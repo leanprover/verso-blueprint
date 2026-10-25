@@ -3,6 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Owner
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Attachment
 import VersoBlueprint.Realizations.Report
@@ -283,19 +284,27 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Data.N
   let reference : Data.ExternalRef := {
     canonical := `VersoBlueprintTests.BlueprintRealizationAuthoring.rollbackDeclaration
     written := `rollbackDeclaration, present := true, origin := .blueprintAttr, kind := .theorem }
-  return ({ id, label, references := #[reference], priority := none, source := none },
+  return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label #[`statement] #[reference] Owner.projectName, priority := none, source := none },
     { count := state.nextCount + 100, tags := #["synthetic candidate"]
       statementBody := some { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] } })
 
-/-- error: Invalid source authoring envelope -/
+/-- error: Conflicting raw authoring envelopes -/
 #guard_msgs in
 run_cmd liftTermElabM do
   isolated do
     let (fact, payload) ← rollbackInput `defaultPlanningFailure
     isolated do
       ensure (← Environment.contributeRecord fact payload).isSome "Test must pass ordinary reducer acceptance"
-    let moduleName ← getMainModule
-    Environment.modify fun state => { state with authoringProject? := some (moduleName, .anonymous) }
+    -- Obtain the real envelope identity through an otherwise successful default
+    -- plan, then retain a competing valid raw variant. Context checks and the
+    -- ordinary reducer must not make this planning-failure control vacuous.
+    let competing ← isolated do
+      ensure (← Environment.contributeAttribute fact payload).isSome "Control default plan must succeed"
+      let state := Environment.informalExt.getState (← getEnv)
+      let some record := state.localAuthoringRecords.find? (·.defaults.contains fact.id)
+        | throwError "Control default plan produced no envelope"
+      pure { record with nativeGoals := #[(fact.label, ``expectedTrue)] }
+    Environment.modify fun state => { state with authoringRecords := state.authoringRecords.push competing }
     let before := Environment.informalExt.getState (← getEnv)
     ensure (← Environment.contributeAttribute fact payload).isNone "Invalid default planning unexpectedly committed"
     unchanged before (Environment.informalExt.getState (← getEnv))

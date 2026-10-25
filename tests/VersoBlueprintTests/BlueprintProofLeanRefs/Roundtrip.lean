@@ -21,10 +21,12 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
   let some node := state.data.get? label | return false
   let records := state.factRecords.filter (·.label == label)
   let proofOnly := state.factRecords.filter (·.label == Name.mkSimple "proof.imported.associations")
+  let refs (record : Contributions.Record) (facet : Name) :=
+    record.referencesAt ⟨record.label, `lean⟩ ⟨`lean, `blueprintFixtures⟩ facet
   return records.length == 2 &&
-    (records.filter fun r => !r.references.isEmpty && r.proofReferences.isEmpty).length == 1 &&
-    (records.filter fun r => r.references.isEmpty && !r.proofReferences.isEmpty).length == 1 &&
-    proofOnly.length == 2 && proofOnly.all (fun r => r.references.isEmpty && !r.proofReferences.isEmpty) &&
+    (records.filter fun r => !(refs r `statement).isEmpty && (refs r `proof).isEmpty).length == 1 &&
+    (records.filter fun r => (refs r `statement).isEmpty && !(refs r `proof).isEmpty).length == 1 &&
+    proofOnly.length == 2 && proofOnly.all (fun r => (refs r `statement).isEmpty && !(refs r `proof).isEmpty) &&
     node.externalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
     node.proofExternalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
     node.leanDecls == #[``Provider.crossFacetProof] &&

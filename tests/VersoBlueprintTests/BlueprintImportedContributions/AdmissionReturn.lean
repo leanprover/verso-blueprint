@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprint.Environment
 
 open Lean Informal Lean.Elab.Command
@@ -19,7 +20,7 @@ run_cmd do
   let fact : Contributions.Record := {
     id := { moduleName := ← getMainModule, producer := `test, subject := label, site := 1, slot := 0 }
     label
-    references := #[{ canonical := `acceptedDecl, written := `acceptedDecl, present := true }]
+    nativeAssociations := BlueprintNativeFixture.associations label #[`statement] #[{ canonical := `acceptedDecl, written := `acceptedDecl, present := true }]
     priority := some "high"
     source := none }
   let some selected ← Environment.contributeRecord fact { tags := #["selected"] }

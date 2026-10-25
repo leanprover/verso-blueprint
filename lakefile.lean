@@ -68,9 +68,13 @@ lean_exe «vbp» where
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
+  leanOptions := #[⟨`weak.verso.blueprint.project, "blueprintFixtures"⟩]
   -- Coarse test-library wiring keeps both non-Lean fixture inputs content tracked.
   needs := #[realizationFlagRocqSource, realizationFlagRocqProject]
   roots := #[
+    `VersoBlueprintTests.BlueprintNativeFixture,
+    `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
+    `VersoBlueprintTests.BlueprintCanonicalNativePersistence.Conflict,
     `VersoBlueprintTests.BlueprintRealizations,
     `VersoBlueprintTests.BlueprintTranslations,
     `VersoBlueprintTests.BlueprintRealizationAdapter,

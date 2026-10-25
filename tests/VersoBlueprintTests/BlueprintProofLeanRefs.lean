@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.Blueprint.Support
 import VersoBlueprint.Vbp
 import VersoBlueprint.PreviewManifest.BlockRender
@@ -42,8 +43,7 @@ theorem admittedAttachedResult : True := by sorry
             ({ id := { moduleName := `Repeated, producer := `test, subject := `repeated,
                        site := index, slot := 0 },
                label := `repeated,
-               references := if isProof then #[] else #[refs[index]!],
-               proofReferences := if isProof then #[refs[index]!] else #[],
+               nativeAssociations := BlueprintNativeFixture.associations `repeated #[if isProof then `proof else `statement] #[refs[index]!],
                priority := none, source := none }
               : Contributions.Record)
           (NodeAssembly.assemble `repeated #[] records).map (·.node)
@@ -193,7 +193,7 @@ private def contributeProofReferences (label : Data.Label) (references : Array D
     CoreM (Option Data.Node) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
-    label, proofReferences := references
+    label, nativeAssociations := BlueprintNativeFixture.associations label #[`proof] references
     priority := none, source := none }
   Environment.contributeRecord fact payload
 

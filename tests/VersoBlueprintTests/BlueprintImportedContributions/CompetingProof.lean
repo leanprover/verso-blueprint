@@ -18,7 +18,6 @@ run_cmd do
         site := 1
         slot := 0 }
       label := `key_theorem
-      references := #[]
       priority := some "high"
       source := none } { tags := #["proof"] }
 

@@ -96,12 +96,15 @@ private def materialize (reader : System.FilePath → IO String) : MaterializeM 
         | reject "default-identity" record.origin.id.toString "Missing selected default identity" #[record.origin]
       let some accepted := state.data.get? fact.label
         | reject "default-unavailable" fact.label.toString "Default node was not accepted" #[record.origin]
-      unless fact.references.size == 1 && fact.proofReferences.isEmpty && accepted.externalRefs.size == 1 &&
+      let associations := fact.nativeAssociations
+      unless associations.size == 1 && associations[0]!.realization == ⟨fact.label, `lean⟩ &&
+          associations[0]!.context == ⟨`lean, record.project⟩ && associations[0]!.facets == #[`statement] &&
+          accepted.externalRefs.size == 1 &&
           fact.id.moduleName == record.origin.moduleName && fact.id.producer == `blueprint.attribute &&
-          fact.references[0]!.canonical == fact.id.subject && fact.references[0]!.present &&
-          fact.references[0]!.origin == .blueprintAttr && fact.references[0]!.kind == .theorem &&
-          accepted.externalRefs[0]!.canonical == fact.references[0]!.canonical &&
-          accepted.externalRefs[0]!.provenance == fact.references[0]!.provenance do
+          associations[0]!.reference.canonical == fact.id.subject && associations[0]!.reference.present &&
+          associations[0]!.reference.origin == .blueprintAttr && associations[0]!.reference.kind == .theorem &&
+          accepted.externalRefs[0]!.canonical == associations[0]!.reference.canonical &&
+          accepted.externalRefs[0]!.provenance == associations[0]!.reference.provenance do
         reject "unsupported-default" fact.label.toString "Selected identity does not match the accepted default association" #[record.origin]
       defaults := defaults.push (record, fact)
   for (record, fact) in defaults do

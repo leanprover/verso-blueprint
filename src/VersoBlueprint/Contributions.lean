@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Data
+import VersoBlueprint.SourceData
 
 /-! Identified external-declaration and priority contributions. This pure core
 retains complete evidence and is used by registration and import assembly.
@@ -26,17 +27,24 @@ markup contributions remain in the existing assembly policy. -/
 structure Record where
   id : ContributionId
   label : Label
-  /-- Statement-facet associations, including attribute attachments. -/
-  references : Array ExternalRef := #[]
-  /-- Proof-facet associations; the facet survives collection and projection. -/
-  proofReferences : Array ExternalRef := #[]
+  /-- Every native destination and full typed snapshot survives collection and
+  import. Facet/realization selection does not narrow the raw evidence union. -/
+  nativeAssociations : Array Informal.SourceData.NativeAssociation := #[]
   priority : Option String
   source : Option SourceLocation
   deriving DecidableEq, Repr
 
 /-- Both facets establish normal node membership; neither is descriptive-only. -/
 def Record.allReferences (r : Record) : Array ExternalRef :=
-  r.references ++ r.proofReferences
+  r.nativeAssociations.map (·.reference)
+
+/-- Exact selected source membership; independent of resolution/completion and
+the node-wide union. Missing native snapshots remain selected inputs. -/
+def Record.referencesAt (r : Record) (key : Informal.Realizations.RealizationKey)
+    (context : Informal.Realizations.Context) (facet : Name) : Array ExternalRef :=
+  (r.nativeAssociations.filter fun association =>
+    association.realization == key && association.context == context &&
+      association.facets.contains facet).map (·.reference)
 
 def EvidenceEq (xs ys : List Record) : Prop := ∀ r, r ∈ xs ↔ r ∈ ys
 

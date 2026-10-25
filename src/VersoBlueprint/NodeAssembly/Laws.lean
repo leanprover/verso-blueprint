@@ -25,29 +25,49 @@ theorem assemble_ok_resolve {label : Label} {payloads : Array NodeContribution}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · simp [hn, hr, hs] at h
+        cases h
+        rfl
+      · simp [hn, hr, hs] at h
 
-/-- Assembly accepts exactly when the payload reducer and complete evidence permit it.
-Authored-origin validity belongs to the environment's admission boundary. -/
+/-- Raw destination validation is necessary for accepted production state. -/
+theorem assemble_ok_nativeDestinations {label : Label} {payloads : Array NodeContribution}
+    {records : List Record} {assembled : Assembly}
+    (h : assemble label payloads records = .ok assembled) :
+    (nativeDestinationIssues label records).isEmpty = true := by
+  unfold assemble at h
+  cases hn : Node.applyContributions label {} payloads with
+  | error _ => simp [hn] at h
+  | ok node =>
+    cases hr : resolve label records with
+    | error _ => simp [hn, hr] at h
+    | ok view =>
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · exact hs
+      · simp [hn, hr, hs] at h
+
+/-- Assembly accepts exactly when payloads, complete evidence and raw native
+sources agree. Authored-origin validity belongs to the environment boundary;
+actual composed membership and selected-name admission are separate obligations. -/
 theorem assemble_success_iff (label : Label) (payloads : Array NodeContribution)
     (records : List Record) :
     (∃ assembled, assemble label payloads records = .ok assembled) ↔
       (∃ node, Node.applyContributions label {} payloads = .ok node) ∧
-        NoCollision records label ∧ ¬ PriorityDisagreement records label := by
+        (NoCollision records label ∧ ¬ PriorityDisagreement records label) ∧
+        (nativeDestinationIssues label records).isEmpty = true := by
   constructor
   · rintro ⟨assembled, h⟩
     have accepted := (resolverLaws.success_iff label records).mp
       ⟨assembled.view, assemble_ok_resolve h⟩
-    refine ⟨?_, accepted⟩
+    refine ⟨?_, accepted, assemble_ok_nativeDestinations h⟩
     unfold assemble at h
     cases hn : Node.applyContributions label {} payloads with
     | error _ => simp [hn] at h
     | ok node => exact ⟨node, rfl⟩
-  · rintro ⟨⟨node, hn⟩, accepted⟩
+  · rintro ⟨⟨node, hn⟩, accepted, hs⟩
     obtain ⟨view, hr⟩ := (resolverLaws.success_iff label records).mpr accepted
-    simp only [assemble, hn, hr]
+    simp only [assemble, hn, hr, hs, ite_true]
     exact ⟨_, rfl⟩
 
 /-- A successful production assembly exposes the resolver's accepted priority. -/
@@ -62,9 +82,11 @@ theorem assemble_ok_priority {label : Label} {payloads : Array NodeContribution}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · simp [hn, hr, hs] at h
+        cases h
+        rfl
+      · simp [hn, hr, hs] at h
 
 /-- The returned node has no priority exactly when no input record claims one. -/
 theorem assemble_ok_priority_none_iff {label : Label} {payloads : Array NodeContribution}
@@ -103,9 +125,11 @@ theorem assemble_ok_blueprintAttributeAttachments {label : Label}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · simp [hn, hr, hs] at h
+        cases h
+        rfl
+      · simp [hn, hr, hs] at h
 
 /-- The assembled attribute capability is true exactly for accepted input evidence. -/
 theorem assemble_ok_blueprintAttributeAttachments_iff {label : Label}
@@ -128,7 +152,8 @@ theorem assemble_ok_externalRefs {label : Label} {payloads : Array NodeContribut
     {records : List Record} {assembled : Assembly}
     (h : assemble label payloads records = .ok assembled) :
     assembled.node.externalRefs = assembled.view.supports.foldl
-      (fun refs record => ExternalRef.mergeSnapshots refs record.references) #[] := by
+      (fun refs record => ExternalRef.mergeSnapshots refs
+        ((record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference))) #[] := by
   unfold assemble at h
   cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
@@ -136,16 +161,19 @@ theorem assemble_ok_externalRefs {label : Label} {payloads : Array NodeContribut
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · simp [hn, hr, hs] at h
+        cases h
+        rfl
+      · simp [hn, hr, hs] at h
 
 /-- Proof snapshots are projected only from the proof side of supports. -/
 theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
     (h : assemble label payloads records = .ok assembled) :
     assembled.node.proofExternalRefs = assembled.view.supports.foldl
-      (fun refs record => ExternalRef.mergeSnapshots refs record.proofReferences) #[] := by
+      (fun refs record => ExternalRef.mergeSnapshots refs
+        ((record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference))) #[] := by
   unfold assemble at h
   cases hn : Node.applyContributions label {} payloads with
   | error _ => simp [hn] at h
@@ -153,8 +181,10 @@ theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array NodeCont
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      by_cases hs : (nativeDestinationIssues label records).isEmpty = true
+      · simp [hn, hr, hs] at h
+        cases h
+        rfl
+      · simp [hn, hr, hs] at h
 
 end Informal.NodeAssembly

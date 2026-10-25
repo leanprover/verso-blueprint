@@ -936,7 +936,39 @@ wrong-facet/project cases, inline members, replay and a real prepared Flag sourc
 without evidence. The future collector must call this check on its complete raw
 batch; these controls do not certify that unimplemented collection or its imports.
 
-These types install no persistent store, producer, evaluator or capture path.
+Native selected-fact persistence now stores `Record.nativeAssociations` in the
+existing registration Entry/fact collection. The former raw `references` and
+`proofReferences` record fields are removed. Each native association retains its
+full realization key, project/language context, selected facets and typed native
+snapshot. Ordinary attributes and directive `lean` associations produce that
+form after explicit source-project configuration; no source reader runs during
+attribute application. `Record.referencesAt` selects by exact realization,
+context and facet, while `allReferences` retains the complete native union,
+including missing references. Producer equality includes every destination.
+Local planning and full imported reassembly share destination checks; conflicts
+remain raw evidence and have no accepted node/index projection. No extension or
+persisted Registry/evidence is added. Changing importer options cannot relabel
+stored contexts. The bounded authoring adapter verifies that its selected raw
+association has the expected complete default destination.
+Existing snapshot status fields remain legacy provider/presentation metadata;
+they cannot supply imported realization validation. Canonical capture must run
+fresh native checks before binding observations to the complete admitted batch.
+
+The remaining old source view is still derived from statement/proof native axes.
+Until that view is deleted, ordinary assembly explicitly rejects an association
+with neither of those axes instead of dropping it from native membership. This
+temporary `unsupported-native-projection` diagnostic is not a restriction on pure
+realization facet names. Remove it with the old view, after all native sources
+reach keyed capture/consumers. Native-context agreement is checked per complete
+realization key across all retained records. These destination checks are not
+selected-name admission or complete composed model membership. The exact #499
+checker/proof integration remains a separate prerequisite, not implicitly ported
+or certified by changing the raw record. Current pre-#499 assembler laws are
+updated to require successful raw destination checks as well as payload, collision
+and priority agreement; their old record-field projections now derive from the
+keyed native arrays.
+
+The source types install no second persistent store, evaluator or capture path.
 The old registration container still carries source fields in this checkpoint;
 its metadata-only projection is a temporary bridge removed with that container.
 Structural source checks do not yet implement fragment assembly, producer

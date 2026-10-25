@@ -52,8 +52,8 @@ theorem admittedDependent : True := True.intro
 run_cmd liftCoreM do
   let state := Environment.informalExt.getState (← getEnv)
   let some fact := state.factRecords.find? (·.label == node) | throwError "Missing actual attribute fact"
-  unless fact.references.size == 1 && fact.references[0]!.range?.isNone &&
-      fact.references[0]!.selectionRange?.isNone &&
+  unless fact.nativeAssociations.size == 1 && fact.nativeAssociations[0]!.reference.range?.isNone &&
+      fact.nativeAssociations[0]!.reference.selectionRange?.isNone &&
       (← findDeclarationRanges? `VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.involutive).isSome &&
       state.authoringRecords.any (fun record => record.defaults.contains fact.id) do
     throwError "Raw default must survive attribute-before-range timing without source projection"

@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.BlueprintAutoDeps.HelperProvider
 import VersoBlueprintTests.BlueprintAutoDeps.Support
 import VersoBlueprintTests.Blueprint.Support
@@ -177,7 +178,7 @@ theorem afterAssociation : lateHelper := True.intro
         site := 1
         slot := 0 }
       label := label "auto.frontier.constructor"
-      references := #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations (label "auto.frontier.constructor") #[`statement] #[ref]
       priority := none
       source := none } {}
     | throwError "Could not register the collector's constructor boundary"

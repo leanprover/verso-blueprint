@@ -236,6 +236,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   let some position := ref.getPos?
     | throwError "'[blueprint]' attributes require a stable source position"
   let source ← Data.SourceLocation.ofSyntax? ref
+  let project ← Environment.sourceProject
   let fact : Contributions.Record := {
     id := {
       moduleName := ← getMainModule
@@ -244,7 +245,9 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
       site := position.byteIdx
       slot := 0 }
     label
-    references := #[extRef]
+    nativeAssociations := #[{
+      realization := ⟨label, `lean⟩, context := ⟨`lean, project⟩
+      facets := #[`statement], reference := extRef }]
     priority := none
     source }
   discard <| Environment.contributeAttribute fact {

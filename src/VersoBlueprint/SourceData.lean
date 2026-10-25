@@ -58,6 +58,26 @@ structure NativeAssociation where
   reference : Data.ExternalRef
   deriving Repr, Inhabited, DecidableEq, ToJson
 
+/-- Basic raw-envelope assertions, before a complete composed model exists.
+Retain malformed typed names for their separate native admission boundary. -/
+def NativeAssociation.rawIssues (association : NativeAssociation) (node : Name) : Array Diagnostic := Id.run do
+  let subject := (toJson (Subject.realization association.realization)).compress
+  let diagnostic (code message : String) : Diagnostic := { code, subject, message }
+  let mut issues := #[]
+  if node.isAnonymous || !association.realization.valid || association.realization.node != node then
+    issues := issues.push (diagnostic "source-destination-mismatch"
+      "Native association destination must retain its enclosing concept")
+  if !association.context.valid || association.context.language != `lean then
+    issues := issues.push (diagnostic "wrong-native-context"
+      "Native association requires an explicit Lean project context")
+  if association.facets.isEmpty then
+    issues := issues.push (diagnostic "empty-native-facets" "Native association must select explicit facets")
+  if (canonical association.facets).size != association.facets.size then
+    issues := issues.push (diagnostic "duplicate-native-facet" "Native association repeats a destination facet")
+  if association.facets.any (·.isAnonymous) then
+    issues := issues.push (diagnostic "unknown-native-facet" "Native association has an anonymous facet")
+  return issues
+
 private def issue (code : String) (subject : Subject) (message : String) : Diagnostic :=
   { code, subject := (toJson subject).compress, message }
 
@@ -113,13 +133,8 @@ with their existing owning boundaries; no spelling normalization occurs here. -/
 def NativeAssociation.issues (association : NativeAssociation) (node : Name)
     (model : Realization) : Array Diagnostic := Id.run do
   let subject := Subject.realization association.realization
-  let mut issues := destinationIssues node association.realization association.context model
-  if association.context.language != `lean then
-    issues := issues.push (issue "wrong-native-context" subject "Native Lean association requires Lean context")
-  if association.facets.isEmpty then
-    issues := issues.push (issue "empty-native-facets" subject "Native association must select explicit facets")
-  if (canonical association.facets).size != association.facets.size then
-    issues := issues.push (issue "duplicate-native-facet" subject "Native association repeats a destination facet")
+  let mut issues := association.rawIssues node ++
+    destinationIssues node association.realization association.context model
   for name in association.facets do
     if name.isAnonymous || !model.facets.any (·.name == name) then
       issues := issues.push (issue "unknown-native-facet" subject "Native association selects an undeclared facet")

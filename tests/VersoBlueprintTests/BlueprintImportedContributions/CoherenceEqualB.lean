@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprint
 
 open Lean Informal
@@ -25,7 +26,7 @@ run_cmd do
         site := 1
         slot := 0 }
       label := `coherent_equal
-      references := #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations `coherent_equal #[`statement] #[ref]
       priority := some "high"
       source := none } {}
 

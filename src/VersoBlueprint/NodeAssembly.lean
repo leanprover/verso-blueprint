@@ -117,9 +117,11 @@ def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
   supports.any fun record => record.allReferences.any fun ref => ref.origin == .blueprintAttr
 
 private def recordMessage (record : Record) : String :=
-  let refs := String.intercalate ", " (record.references.toList.map fun ref => ref.canonical.toString)
-  let proofRefs := if record.proofReferences.isEmpty then "" else
-    s!" proofRefs=[{String.intercalate ", " (record.proofReferences.toList.map fun ref => ref.canonical.toString)}]"
+  let statement := (record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference)
+  let proof := (record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference)
+  let refs := String.intercalate ", " (statement.toList.map fun ref => ref.canonical.toString)
+  let proofRefs := if proof.isEmpty then "" else
+    s!" proofRefs=[{String.intercalate ", " (proof.toList.map fun ref => ref.canonical.toString)}]"
   s!"{record.id.moduleName}.{record.id.producer}:{record.id.subject}@{record.id.site}/{record.id.slot} label={record.label} refs=[{refs}]{proofRefs} priority={record.priority}"
 
 private def externalOriginMessage : ExternalOrigin → String
@@ -163,9 +165,11 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.source != record.source then
     differences := differences.push
       s!"registration source ({registrationSourceMessage first.source} → {registrationSourceMessage record.source})"
-  if first.references.map (·.canonical) != record.references.map (·.canonical) ||
-      first.proofReferences.map (·.canonical) != record.proofReferences.map (·.canonical) then
-    differences := differences.push "facet associations"
+  if first.nativeAssociations.map (fun association => (association.realization, association.context, association.facets)) !=
+      record.nativeAssociations.map (fun association => (association.realization, association.context, association.facets)) then
+    differences := differences.push "native destinations"
+  if first.allReferences.map (·.canonical) != record.allReferences.map (·.canonical) then
+    differences := differences.push "native associations"
   if first.allReferences.map (·.origin) != record.allReferences.map (·.origin) then
     let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
     let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
@@ -196,7 +200,7 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
   let priorities := diagnostics.priorityConflict.toArray.qsort fun a b => a.1 < b.1
   let supportKey := fun record : Record =>
     s!"{idKey record.id}/{record.label.toString}/" ++
-      String.intercalate "," (record.references.toList.map fun ref => ref.canonical.toString) ++
+      String.intercalate "," (record.allReferences.toList.map fun ref => ref.canonical.toString) ++
       s!"/{record.priority}"
   let keyedSupports := fun (supports : List Record) => supports.toArray.map fun record =>
     (supportKey record, reprStr record, record)
@@ -227,8 +231,10 @@ structure Assembly where
   view : View
 
 private def project (node : Node) (view : View) : Assembly :=
-  let externalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs record.references) #[]
-  let proofExternalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs record.proofReferences) #[]
+  let externalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs
+      ((record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference))) #[]
+  let proofExternalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs
+      ((record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference))) #[]
   let blueprintAttributeAttachments := supportsHaveBlueprintAttributeAttachments view.supports
   let kind := if node.kindIsExplicit then node.kind else
     inferredNodeKind (ExternalRef.mergeSnapshots externalRefs proofExternalRefs) node.literateCodes
@@ -239,12 +245,38 @@ private def project (node : Node) (view : View) : Assembly :=
     priority := view.priority
     kind := kind }, view }
 
+/-- Raw keyed destination checks shared by local planning and complete import
+reassembly. They do not establish composed membership or native-name stability. -/
+def nativeDestinationIssues (label : Label) (records : List Record) : Array String := Id.run do
+  let records := (recordsFor label records).toArray
+  let mut issues := records.flatMap fun record =>
+    record.nativeAssociations.flatMap fun association =>
+      (association.rawIssues label).map fun issue =>
+        s!"Label {label}: {issue.code}: {issue.message} ({issue.subject})"
+  let mut contexts : Std.HashMap Realizations.RealizationKey Realizations.Context := {}
+  for record in records do
+    for association in record.nativeAssociations do
+      -- Until the remaining old source container is deleted, it can expose only
+      -- these two native axes. Refuse an unrepresentable accepted association
+      -- rather than silently drop it from declaration membership and indexes.
+      unless association.facets.any (fun facet => facet == `statement || facet == `proof) do
+        issues := issues.push s!"Label {label}: unsupported-native-projection: Native association has no facet supported by the remaining source view"
+      match contexts[association.realization]? with
+      | some context =>
+        if context != association.context then
+          let message := s!"Label {label}: source-context-mismatch: Native realization '{association.realization.name}' has conflicting source contexts"
+          unless issues.contains message do issues := issues.push message
+      | none => contexts := contexts.insert association.realization association.context
+  return issues
+
 def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
     Except (Array String) Assembly :=
   match Node.applyContributions label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
-    | .ok view => .ok (project node view)
+    | .ok view =>
+      let issues := nativeDestinationIssues label records
+      if issues.isEmpty then .ok (project node view) else .error issues
 
 end Informal.NodeAssembly
