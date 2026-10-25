@@ -922,6 +922,20 @@ Manual/automatic origin remains metadata. Missing native references and unresolv
 use targets remain raw input, not invented provider success. Native Name stability
 and full producer/import admission remain at their owning boundaries.
 
+`SourceData.nativeMembershipIssues` adds a separate complete-batch check for an
+ordinary composed Lean realization. Its declaration inventory must equal all raw
+native associations plus every inline definition and theorem; each facet must
+equal its explicitly selected association and inline-source union. Missing native
+references stay in that union. Collection preserves typed names and source arrays;
+the current ObjectKey boundary explicitly diagnoses unsupported lossy spellings.
+The check is independent of required validation keys: a facet's source membership
+does not silently add proof requirements or forbid an explicit requirement on
+another subject. Source membership establishes no resolution, proof or review.
+The existing structural fixture exercises full unions, missing/extra/sibling and
+wrong-facet/project cases, inline members, replay and a real prepared Flag source
+without evidence. The future collector must call this check on its complete raw
+batch; these controls do not certify that unimplemented collection or its imports.
+
 These types install no persistent store, producer, evaluator or capture path.
 The old registration container still carries source fields in this checkpoint;
 its metadata-only projection is a temporary bridge removed with that container.

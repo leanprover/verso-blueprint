@@ -5,6 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Data
 import VersoBlueprint.SourceData
+import VersoBlueprint.Realizations.NativeSource
+import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 
 /-! Structural raw-input controls, not provider/checker success. Native snapshots
 below are explicit synthetic metadata. No proof, test or review is certified by
@@ -116,5 +118,118 @@ private def model : Realization := {
     "Use scope cannot leak across concepts"
   ensure (shared.reference.label == inferred.reference.label && shared.facet == inferred.facet)
     "Source validation preserves the original unresolved target and axis"
+
+-- Synthetic metadata only: these controls establish source membership, never
+-- native resolution, proof completion or review acceptance.
+#eval show IO Unit from do
+  let a := `SyntheticNative.a
+  let b := `SyntheticNative.b
+  let missing := `SyntheticNative.missing
+  let object (name : Name) : ObjectKey := ⟨context, name.toString⟩
+  let association (name : Name) (facets : Array Name) : NativeAssociation := {
+    realization := key, context, facets
+    reference := { Data.ExternalRef.ofName name with present := false } }
+  let associations := #[association a #[`statement], association b #[`proof],
+    association missing #[`statement, `proof], association a #[`proof]]
+  let inlineDef := `SyntheticNative.inlineDef
+  let inlineTheorem := `SyntheticNative.inlineTheorem
+  let source : FacetSource := {
+    destination := ⟨key, `proof⟩, context, document
+    source := Data.SourceLocationResult.unavailable "Synthetic inline metadata; no source lookup"
+    payload := .leanInline {
+      stx := .missing
+      definedDefs := #[{ name := inlineDef }]
+      definedTheorems := #[{ name := inlineTheorem }] } }
+  let expected := #[a, b, missing, inlineDef, inlineTheorem]
+  let complete : Realization := { model with
+    declarations := expected.map (fun name => { object := object name })
+    facets := #[
+      { name := `statement, documents := #[document], declarations := #[object a, object missing] },
+      { name := `proof, documents := #[document], declarations := expected.map object }] }
+  ensure (nativeNames associations #[source] == expected)
+    "Full native collection preserves registration order and unions external/inline identities once"
+  ensure ((nativeMembershipIssues node complete associations #[source]).isEmpty)
+    "Missing associations and inline definitions/theorems belong to the exact composed union"
+  ensure ((nativeMembershipIssues node complete (associations ++ associations) #[source, source]).isEmpty)
+    "Raw replay does not duplicate semantic membership"
+  let reordered := { complete with
+    declarations := complete.declarations.reverse
+    facets := complete.facets.map fun facet => { facet with declarations := facet.declarations.reverse } }
+  ensure ((nativeMembershipIssues node reordered associations #[source]).isEmpty)
+    "Membership equality is independent of model declaration presentation order"
+  let explicitContract := { complete with facets := complete.facets.map fun facet =>
+    if facet.name == `statement then
+      { facet with required := #[⟨.declaration key (object b), `selectedCheck⟩] }
+    else facet }
+  ensure ((nativeMembershipIssues node explicitContract associations #[source]).isEmpty)
+    "Exact source membership does not restrict an independently explicit requirement on another subject"
+  ensure (has (nativeMembershipIssues node
+    { complete with declarations := complete.declarations.filter (·.object != object missing) }
+    associations #[source]) "native-declaration-membership")
+    "Unavailable native references cannot disappear from the realization union"
+  ensure (has (nativeMembershipIssues node
+    { complete with declarations := complete.declarations.filter (·.object != object inlineDef) }
+    associations #[source]) "native-declaration-membership")
+    "Inline definitions participate independently of inline theorems"
+  ensure (has (nativeMembershipIssues node
+    { complete with declarations := complete.declarations.push { object := object `uncollectedSibling } }
+    associations #[source]) "native-declaration-membership")
+    "An uncollected sibling cannot appear as an association"
+  let wrongFacet := { complete with facets := complete.facets.map fun facet =>
+    if facet.name == `statement then { facet with declarations := facet.declarations.push (object b) } else facet }
+  ensure (has (nativeMembershipIssues node wrongFacet associations #[source]) "native-facet-membership")
+    "Realization-wide membership cannot confer membership in another selected facet"
+  let omittedInline := { complete with facets := complete.facets.map fun facet =>
+    { facet with declarations := facet.declarations.filter (· != object inlineTheorem) } }
+  ensure (has (nativeMembershipIssues node omittedInline associations #[source]) "native-facet-membership")
+    "Inline theorem membership must survive at its exact destination facet"
+  let otherProject := { associations[0]! with context := ⟨`lean, `anotherProject⟩ }
+  ensure (has (nativeMembershipIssues node complete (associations.push otherProject) #[source])
+    "source-context-mismatch") "A same-spelled native identity in another project cannot be silently accepted"
+  let otherRealization := { source with destination := ⟨⟨node, `alternative⟩, `proof⟩ }
+  ensure (has (nativeMembershipIssues node complete associations #[otherRealization])
+    "source-destination-mismatch") "A source for an alternative cannot enter this collection"
+  let unsupported := Name.str `SyntheticNative "bad»name"
+  let raw := #[association unsupported #[`statement]]
+  ensure (nativeNames raw #[] == #[unsupported]) "Collection retains the exact typed unsupported native name"
+  ensure (has (nativeMembershipIssues node complete raw #[]) "unsupported-native-identity")
+    "The ObjectKey boundary rejects lossy names rather than comparing an incorrectly parsed declaration"
+  let escaped := Name.str `SyntheticNative "with.dot"
+  let escapedModel : Realization := {
+    key, context
+    declarations := #[{ object := object escaped }]
+    facets := #[{ name := `statement, declarations := #[object escaped] }] }
+  ensure ((nativeMembershipIssues node escapedModel #[association escaped #[`statement]] #[]).isEmpty)
+    "A losslessly escaped dot remains a supported native identity"
+  ensure (has (nativeMembershipIssues node complete associations
+    #[{ source with context := ⟨`rust, context.project⟩ }]) "source-context-mismatch")
+    "Inline collection cannot relabel compiled Lean source as foreign content"
+  ensure (has (nativeMembershipIssues `anotherConcept complete associations #[source])
+    "source-destination-mismatch") "An enclosing concept mismatch remains explicit"
+  ensure (has (nativeMembershipIssues node { model with context := ⟨`lean, .anonymous⟩ } #[] #[])
+    "source-context-mismatch") "Empty input cannot conceal an invalid composed context"
+
+-- Real owning-source preparation feeds the same membership boundary. It supplies
+-- no proof/review observation; membership success cannot certify native validity.
+run_cmd Lean.Elab.Command.liftTermElabM do
+  let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
+  let prepared ← NativeSource.prepare {
+    project := context.project, canonical := `RealizationAdapterFixture.flagInvolutive
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider, sourcePath := path }
+  let .ok prepared := prepared | throwError "Real native owning-source preparation failed"
+  let .ok input := prepared.realizeNative {
+    id := `canonicalMembershipFlag, moduleName := prepared.moduleName, source := path }
+    { label := node, title := "Flag" } key.name
+    | throwError "Real native source model preparation failed"
+  let native := input.realizations[0]!.value
+  let association : NativeAssociation := {
+    realization := key, context, facets := #[`statement, `proof]
+    reference := Data.ExternalRef.ofName prepared.canonical }
+  unless (nativeMembershipIssues node native #[association] #[]).isEmpty && input.evidence.isEmpty do
+    throwError "Real native source membership must preserve exact source identity without creating validation"
+  let omitted := { native with facets := native.facets.map fun facet =>
+    if facet.name == `proof then { facet with declarations := #[] } else facet }
+  unless (nativeMembershipIssues node omitted #[association] #[]).any (·.code == "native-facet-membership") do
+    throwError "Real native proof-facet source membership cannot be silently dropped"
 
 end VersoBlueprintTests.BlueprintCanonicalSources

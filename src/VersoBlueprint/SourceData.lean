@@ -125,6 +125,64 @@ def NativeAssociation.issues (association : NativeAssociation) (node : Name)
       issues := issues.push (issue "unknown-native-facet" subject "Native association selects an undeclared facet")
   return issues
 
+/-- Full typed native union before resolution or presentation selection. Missing
+references and inline definitions/theorems all remain inputs. This enumeration
+does not erase macro scopes, parse a foreign name or certify native admission. -/
+def nativeNames (associations : Array NativeAssociation) (sources : Array FacetSource) : Array Name := Id.run do
+  let external := associations.map (·.reference.canonical)
+  let inline := sources.flatMap fun source => match source.payload with
+    | .leanInline code => code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
+    | _ => #[]
+  let mut seen : Std.HashSet Name := {}
+  let mut names := #[]
+  for name in external ++ inline do
+    unless seen.contains name do
+      seen := seen.insert name
+      names := names.push name
+  return names
+
+/-- Check the complete native membership of an ordinary composed Lean model.
+Unlike the destination-only `issues` checks, this requires exact realization and
+facet unions. Call on the whole collected batch for this realization, including
+all missing references and inline declarations, before full model admission.
+
+The existing string ObjectKey codec has a bounded supported scope: reject a
+non-round-tripping typed identity instead of comparing it to another declaration.
+This is not the selected-name admission gate, source lookup or proof checking.
+No model, input record, required key or presentation payload is changed. -/
+def nativeMembershipIssues (node : Name) (model : Realization)
+    (associations : Array NativeAssociation) (sources : Array FacetSource) : Array Diagnostic := Id.run do
+  let subject := Subject.realization model.key
+  let mut issues := destinationIssues node model.key model.context model ++
+    associations.flatMap (·.issues node model) ++ sources.flatMap (·.issues node model)
+  if model.context.language != `lean then
+    issues := issues.push (issue "wrong-native-context" subject
+      "Native membership checking requires an ordinary Lean realization")
+  -- Keep the typed Name through collection; only a lossless supported spelling
+  -- may cross the present pure model's ObjectKey boundary.
+  let names := nativeNames associations sources
+  for name in names do
+    if name.isAnonymous || name.toString.toName != name then
+      issues := issues.push (issue "unsupported-native-identity" subject
+        "Collected native identity cannot be represented losslessly by the current ObjectKey codec")
+  let object (name : Name) : ObjectKey := ⟨model.context, name.toString⟩
+  let expected := canonical (names.map object)
+  let actual := canonical (model.declarations.map (·.object))
+  if actual != expected then
+    issues := issues.push (issue "native-declaration-membership" subject
+      "Composed declarations must equal the full native association and inline declaration union")
+  for facet in model.facets do
+    let external := associations.filter (·.facets.contains facet.name) |>.map (·.reference.canonical)
+    let inline := sources.flatMap fun source =>
+      if source.destination.facet != facet.name then #[] else match source.payload with
+      | .leanInline code => code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
+      | _ => #[]
+    let expected := canonical ((external ++ inline).map object)
+    if canonical facet.declarations != expected then
+      issues := issues.push (issue "native-facet-membership" (.facet model.key facet.name)
+        "Composed facet declarations must equal its full selected native and inline declaration union")
+  return canonical issues
+
 /-- Preserve concept-level statement/proof axes and explicit realization scope.
 This does not resolve the target label or turn a selection error into a status. -/
 def UseDeclaration.issues (use : UseDeclaration) (node : Name)
