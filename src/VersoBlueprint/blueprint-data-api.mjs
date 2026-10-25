@@ -17,6 +17,9 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * Browser clients that need to insert Blueprint content should use
  * `api/preview.mjs` instead. Graph dashboards may use this module for manifest
  * data, but graph-specific helpers are collected in `api/graph.mjs`.
+ * Label/declaration and source-metadata resolution use the site's matching VIR resources
+ * over HTTP; it is not available through direct Node file loading. Raw loading
+ * and raw source/group loading do not initialize the browser runtime.
  *
  * @module blueprint-data-api
  */

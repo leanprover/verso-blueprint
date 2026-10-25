@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+module
+
 import Lean
 
 namespace Informal.HtmlId
@@ -34,7 +36,7 @@ Encode arbitrary text as a stable DOM-id suffix.
 This preserves distinctions that `String.sluggify` intentionally normalizes
 away, which matters for ids derived from declaration names.
 -/
-def key (s : String) : String :=
+public def key (s : String) : String :=
   s.foldl (init := "") fun acc c =>
     if c.isAlphanum then
       acc.push c
@@ -44,7 +46,7 @@ def key (s : String) : String :=
       acc ++ s!"-{toHex c.toNat}"
 
 /-- Build a DOM id from a fixed prefix and an encoded value. -/
-def prefixed (idPrefix value : String) : String :=
+public def prefixed (idPrefix value : String) : String :=
   let body := key value
   if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
 
