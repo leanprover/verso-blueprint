@@ -77,7 +77,7 @@ private def declarationShape (info : ConstantInfo) : Json × Array Name :=
       | .ind => "induction"
     (toJson ("quotient", kind), #[])
 
-/-- Exact current checked type/body closure, compiler identity/options and provider
+/-- Exact current checked type/body closure, compiler identity and provider
 source. Imported semantic changes affect this input even when local bytes and
 constant names do not change. Hidden bodies yield an explicit unavailable input;
 cached footprints never stand in for the missing semantics. -/
@@ -111,13 +111,9 @@ def semanticContext (project : Name) (roots : Array Name) : CoreM (Except Diagno
       ("name", toJson (reprStr name)), ("universes", toJson (reprStr info.levelParams)),
       ("type", toJson (reprStr info.type)), ("body", body),
       ("unsafe", toJson info.isUnsafe), ("shape", shape)])
-  let mut options : Array (String × String) := #[]
-  for (name, value) in ← getOptions do
-    options := options.push (reprStr name, reprStr value)
-  options := options.qsort (fun a b => a.1 < b.1)
   return .ok <| (Json.mkObj [
     ("project", toJson (reprStr project)), ("compiler", toJson (Lean.versionString, Lean.githash)),
-    ("options", toJson options), ("providerSources", toJson providerSources),
+    ("providerSources", toJson providerSources),
     ("declarations", toJson ((entries.qsort (fun a b => a.1 < b.1)).map (·.2)))]).compress
 
 /-- Current native checking of a declaration's own statement/body. These are

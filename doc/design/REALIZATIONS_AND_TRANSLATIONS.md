@@ -356,6 +356,16 @@ projection, retaining independently established local results; they do not erase
 the collected source facts. Correspondence topology alone does not create a
 validation prerequisite.
 
+The admitted snapshot canonicalizes inventories once and keeps typed immutable
+lookup indexes. Binding closure uses a visited worklist. Local suitability is
+computed once; prerequisite components are found with Tarjan's SCC algorithm and
+evaluated in prerequisite order. Shared diamond dependencies do not replay every
+path, and cycles retain local evidence while reporting the cyclic component and
+unfinished external causes. Querying a requirement reads its derived result from
+that same snapshot. No mutable/public cache update or second completion evaluator
+is introduced. Exact document/connected-contract encodings remain conservative;
+these algorithmic changes do not claim minimal invalidation or production scale.
+
 `Registry.bindingFor` produces an exact canonical JSON encoding of participating
 source documents, object/document identities and connected contracts. It excludes
 evidence, producer replay order, and lookup diagnostic wording. Whole documents
@@ -825,12 +835,17 @@ separately from conservative no-hole coverage.
 Current correspondence bindings include transient provider semantic inputs as
 well as canonical source bytes and contracts. For native Lean, these capture the
 reachable checked declaration types, available bodies, declaration kinds and
-reduction rules, the compiler version/commit, effective options, and the compiled
+reduction rules, the compiler version/commit, and the compiled
 native provider/checker source. Independent expected-goal checks additionally
 capture the witness and independently elaborated proposition's semantic roots;
 each requirement has its own expected-context input. Missing/hidden semantic
 inputs leave correspondence or independent-goal validation explicitly blocked.
 An unchanged local name or source document cannot substitute for imported meaning.
+Query-site display/budget options are excluded: they cannot change the meaning
+of already checked constants. Independently authored expectations still undergo
+actual elaboration/type/kernel checks, and their resulting canonical term is
+captured. Proof bodies remain in this shared binding input conservatively because
+it currently binds native completeness observations as well as statement meaning.
 
 Both subject-scoped and dependency-closure-scoped correspondence reviews include
 the native semantic closure needed to interpret their selected declarations.

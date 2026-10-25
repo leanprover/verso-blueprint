@@ -16,17 +16,17 @@ open Lean
 structure Context where
   language : Name
   project : Name
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure ObjectKey where
   context : Context
   native : String
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure DocumentKey where
   context : Context
   path : String
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 /-- Current canonical bytes supplied by the owning source provider. -/
 structure Document where
@@ -37,17 +37,17 @@ structure Document where
 structure RealizationKey where
   node : Name
   name : Name
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure TranslationKey where
   project : Name
   name : Name
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure ClaimKey where
   translation : TranslationKey
   name : Name
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 /-- Statement/proof are named facets; declarations can have separate requirements. -/
 inductive Subject where
@@ -56,7 +56,7 @@ inductive Subject where
   | declaration (key : RealizationKey) (object : ObjectKey)
   | translation (key : TranslationKey)
   | claim (key : ClaimKey)
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 def Subject.realization? : Subject → Option RealizationKey
   | .realization key | .facet key _ | .declaration key _ => some key
@@ -70,7 +70,7 @@ def Subject.translation? : Subject → Option TranslationKey
 structure RequirementKey where
   subject : Subject
   name : Name
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure Node extends Data.NodeMetadata where
   label : Name
@@ -145,9 +145,20 @@ structure BindingInput where
   content : String
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
-/-- Canonical ordering uses exact structured content, not a possibly colliding hash. -/
-def canonical [BEq α] [ToJson α] (values : Array α) : Array α :=
-  values.toList.eraseDups.toArray.qsort fun a b => (toJson a).compress < (toJson b).compress
+/-- Serialize each sort key once. Equality is checked within equal-JSON buckets;
+non-injective display JSON cannot erase distinct values. Structural Repr breaks
+sort ties for the pure record types used by the kernel. -/
+def canonical [BEq α] [ToJson α] [Repr α] (values : Array α) : Array α := Id.run do
+  let mut seen : Std.HashMap String (Array α) := {}
+  let mut keyed : Array (String × α) := #[]
+  for value in values do
+    let key := (toJson value).compress
+    let bucket := seen[key]?.getD #[]
+    unless bucket.contains value do
+      seen := seen.insert key (bucket.push value)
+      keyed := keyed.push (key, value)
+  return (keyed.qsort fun a b =>
+    if a.1 == b.1 then reprStr a.2 < reprStr b.2 else a.1 < b.1).map (·.2)
 
 def blank (s : String) : Bool := s.trimAscii.isEmpty
 

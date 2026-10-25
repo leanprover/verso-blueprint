@@ -46,6 +46,12 @@ run_cmd liftTermElabM do
   ensure ((← Informal.Environment.labelsForLeanDecl request.canonical).isEmpty)
     "Direct source control must use an unenrolled declaration"
   let source ← obtain (← NativeSource.prepare request)
+  let changedQueryOptions ← withOptions (fun options =>
+      (options.set `maxHeartbeats (123456 : Nat)).setBool `pp.universes true) <|
+    NativeLean.semanticContext request.project #[request.canonical]
+  let changedQueryOptions ← obtain changedQueryOptions
+  ensure (source.semanticContext == some changedQueryOptions)
+    "Query-site display/budget options cannot change the meaning of an already checked declaration"
   ensure (source.canonical == request.canonical && source.declaration == witness request.canonical &&
     source.moduleName == request.moduleName && source.document.key.path == request.sourcePath &&
     source.document.text == (← IO.FS.readFile request.sourcePath) && source.semanticContext.isSome)

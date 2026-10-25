@@ -52,52 +52,70 @@ structure Input where
   bindingInputs : Array (Contribution BindingInput) := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
-/-- Construct only through `admit`; accepted provenance remains inspectable. -/
+/-- Construct only through full admission. All indexes/caches are derived from
+this one immutable input; public source access cannot update a Registry. -/
 structure Registry where
   private mk ::
   private input : Input
-  private semanticValues : Array BindingInput := #[]
-  private evidenceValues : Array Evidence := #[]
-  private bindings : Array (RequirementKey × ContentBinding) := #[]
+  private nodeValues : Array Node
+  private documentValues : Array Document
+  private objectValues : Array ObjectObservation
+  private realizationValues : Array Realization
+  private translationValues : Array Translation
+  private claimValues : Array Claim
+  private requirementValues : Array Requirement
+  private semanticValues : Array BindingInput
+  private evidenceValues : Array Evidence
+  private nodeIndex : Std.HashMap Name Node
+  private documentIndex : Std.HashMap DocumentKey Document
+  private objectIndex : Std.HashMap ObjectKey ObjectObservation
+  private realizationIndex : Std.HashMap RealizationKey Realization
+  private translationIndex : Std.HashMap TranslationKey Translation
+  private claimIndex : Std.HashMap ClaimKey Claim
+  private requirementIndex : Std.HashMap RequirementKey Requirement
+  private evidenceIndex : Std.HashMap RequirementKey (Array Evidence)
+  private requiredIndex : Std.HashMap Subject (Array RequirementKey) := {}
+  private bindings : Std.HashMap RequirementKey ContentBinding := {}
+  private localValues : Std.HashMap RequirementKey Result := {}
+  private resultValues : Std.HashMap RequirementKey Result := {}
   deriving Repr
 
-private def values [BEq α] [ToJson α] (records : Array (Contribution α)) : Array α :=
+private def values [BEq α] [ToJson α] [Repr α] (records : Array (Contribution α)) : Array α :=
   canonical (records.map (·.value))
 
-/-- Read-only admitted source. It is not a public record-update field: changing
-input must pass admission and derive fresh bindings rather than reuse a cache. -/
+private def indexBy [BEq κ] [Hashable κ] (key : α → κ) (values : Array α) : Std.HashMap κ α :=
+  values.foldl (fun out value => out.insert (key value) value) {}
+
+/-- Read-only admitted source. Changing input requires complete admission. -/
 def Registry.contributions (r : Registry) : Input := r.input
 
-def Registry.nodes (r : Registry) : Array Node := values r.contributions.nodes
-def Registry.documents (r : Registry) : Array Document := values r.contributions.documents
-def Registry.objects (r : Registry) : Array ObjectObservation := values r.contributions.objects
-def Registry.realizations (r : Registry) : Array Realization := values r.contributions.realizations
-def Registry.translations (r : Registry) : Array Translation := values r.contributions.translations
-def Registry.claims (r : Registry) : Array Claim := values r.contributions.claims
-def Registry.requirements (r : Registry) : Array Requirement := values r.contributions.requirements
+def Registry.nodes (r : Registry) : Array Node := r.nodeValues
+def Registry.documents (r : Registry) : Array Document := r.documentValues
+def Registry.objects (r : Registry) : Array ObjectObservation := r.objectValues
+def Registry.realizations (r : Registry) : Array Realization := r.realizationValues
+def Registry.translations (r : Registry) : Array Translation := r.translationValues
+def Registry.claims (r : Registry) : Array Claim := r.claimValues
+def Registry.requirements (r : Registry) : Array Requirement := r.requirementValues
 def Registry.evidence (r : Registry) : Array Evidence := r.evidenceValues
 def Registry.bindingInputs (r : Registry) : Array BindingInput := r.semanticValues
 
-def Registry.realization? (r : Registry) (key : RealizationKey) : Option Realization :=
-  r.realizations.find? (·.key == key)
-
-def Registry.translation? (r : Registry) (key : TranslationKey) : Option Translation :=
-  r.translations.find? (·.key == key)
-
-def Registry.requirement? (r : Registry) (key : RequirementKey) : Option Requirement :=
-  r.requirements.find? (·.key == key)
-
-def Registry.claim? (r : Registry) (key : ClaimKey) : Option Claim := r.claims.find? (·.key == key)
+def Registry.realization? (r : Registry) (key : RealizationKey) : Option Realization := r.realizationIndex[key]?
+def Registry.translation? (r : Registry) (key : TranslationKey) : Option Translation := r.translationIndex[key]?
+def Registry.requirement? (r : Registry) (key : RequirementKey) : Option Requirement := r.requirementIndex[key]?
+def Registry.claim? (r : Registry) (key : ClaimKey) : Option Claim := r.claimIndex[key]?
 
 private def issue [ToJson α] (code : String) (subject : α) (message : String)
     (origins : Array Origin := #[]) : Diagnostic :=
   { code, subject := (toJson subject).compress, message, origins := canonical origins }
 
-private def familyIssues [BEq α] [ToJson α] [BEq κ] [ToJson κ]
+private def familyIssues [BEq α] [ToJson α] [Repr α] [BEq κ] [Hashable κ] [ToJson κ]
     (family : String) (key : α → κ) (records : Array (Contribution α)) : Array Diagnostic := Id.run do
+  let mut buckets : Std.HashMap κ (Array (Contribution α)) := {}
+  for record in records do
+    let k := key record.value
+    buckets := buckets.insert k ((buckets[k]?.getD #[]).push record)
   let mut diagnostics := #[]
-  for k in canonical (records.map (fun record => key record.value)) do
-    let bucket := records.filter (fun record => key record.value == k)
+  for (k, bucket) in buckets do
     if (values bucket).size > 1 then
       diagnostics := diagnostics.push <| issue "semantic-conflict" k
         s!"Incompatible {family} definitions" (bucket.map (·.origin))
@@ -114,13 +132,15 @@ private def Input.producerIssues (input : Input) : Array Diagnostic := Id.run do
     producerRecords "translation" input.translations ++ producerRecords "claim" input.claims ++
     producerRecords "requirement" input.requirements ++ producerRecords "evidence" input.evidence ++
     producerRecords "bindingInput" input.bindingInputs
+  let mut buckets : Std.HashMap Name (Array (String × Origin)) := {}
+  for (id, value, origin) in records do
+    buckets := buckets.insert id ((buckets[id]?.getD #[]).push (value, origin))
   let mut diagnostics := #[]
-  for id in canonical (records.map (·.1)) do
-    let bucket := records.filter (·.1 == id)
-    if id.isAnonymous || bucket.any (·.2.2.moduleName.isAnonymous) ||
-        (canonical (bucket.map (·.2.1))).size > 1 then
+  for (id, bucket) in buckets do
+    if id.isAnonymous || bucket.any (·.2.moduleName.isAnonymous) ||
+        bucket.any (fun entry => entry.1 != bucket[0]!.1) then
       diagnostics := diagnostics.push <| issue "producer-collision" id
-        "Producer-site identity is empty or has incompatible records" (bucket.map (·.2.2))
+        "Producer-site identity is empty or has incompatible records" (bucket.map (·.2))
   return diagnostics
 
 def Registry.hasSubject (r : Registry) : Subject → Bool
@@ -142,11 +162,11 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
     if !object.key.valid then
       diagnostics := diagnostics.push <| issue "invalid-object" object.key "Invalid object identity"
     if let some doc := object.document then
-      if doc.context != object.key.context || !r.documents.any (·.key == doc) then
+      if doc.context != object.key.context || !r.documentIndex.contains doc then
         diagnostics := diagnostics.push <| issue "unknown-document" object.key "Missing/wrong-context source"
   for realization in r.realizations do
     if !realization.key.valid || !realization.context.valid ||
-        !r.nodes.any (·.label == realization.key.node) then
+        !r.nodeIndex.contains realization.key.node then
       diagnostics := diagnostics.push <| issue "invalid-realization" realization.key "Missing node/context"
     if (canonical (realization.facets.map (·.name))).size != realization.facets.size ||
         realization.facets.any (·.name.isAnonymous) then
@@ -155,7 +175,7 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
       diagnostics := diagnostics.push <| issue "duplicate-declaration" realization.key "Duplicate declaration"
     for facet in realization.facets do
       for doc in facet.documents do
-        if doc.context != realization.context || !r.documents.any (·.key == doc) then
+        if doc.context != realization.context || !r.documentIndex.contains doc then
           diagnostics := diagnostics.push <| issue "unknown-document" realization.key "Missing/wrong-context facet source"
       if (canonical facet.declarations).size != facet.declarations.size then
         diagnostics := diagnostics.push <| issue "duplicate-facet-declaration" realization.key "Duplicate selected declaration"
@@ -219,7 +239,7 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
         if !(r.realization? key).any (·.context == goal.context) then
           diagnostics := diagnostics.push <| issue "wrong-project" requirement.key "Proof goal is outside realization context"
       for doc in goal.documents do
-        if doc.context != goal.context || !r.documents.any (·.key == doc) then
+        if doc.context != goal.context || !r.documentIndex.contains doc then
           diagnostics := diagnostics.push <| issue "unknown-document" requirement.key "Missing expected-goal source"
     for key in requirement.prerequisites do
       if (r.requirement? key).isNone then
@@ -237,7 +257,7 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
       diagnostics := diagnostics.push <| issue "invalid-binding-input" input.subject "Missing semantic subject/name/content"
   return diagnostics
 
-def Registry.requiredFor (r : Registry) : Subject → Array RequirementKey
+private def Registry.computeRequiredFor (r : Registry) : Subject → Array RequirementKey
   | .realization key => (r.realization? key).map (·.requirements) |>.getD #[]
   | .facet key name => r.requirements.filterMap fun req =>
       if ((r.realization? key).bind (fun value => value.facets.find? (·.name == name))).any
@@ -250,6 +270,9 @@ def Registry.requiredFor (r : Registry) : Subject → Array RequirementKey
         (r.claims.filter (·.key.translation == key)).flatMap (·.required)
   | .claim key => (r.claim? key).map (·.required) |>.getD #[]
 
+def Registry.requiredFor (r : Registry) (subject : Subject) : Array RequirementKey :=
+  r.requiredIndex[subject]?.getD #[]
+
 private def Registry.subjectRealizations (r : Registry) (subject : Subject) : Array RealizationKey :=
   match subject.realization?, subject.translation? with
   | some key, _ => #[key]
@@ -261,19 +284,21 @@ the connected contracts/goals, never evidence, time, or producer replay order.
 Whole participating documents deliberately give conservative invalidation. -/
 private def Registry.computeBindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding := do
   let _ ← r.requirement? key
-  let mut keys := #[key]
-  for _ in [:r.requirements.size + 1] do
-    let more := keys.flatMap fun current =>
-      match r.requirement? current with
-      | none => #[]
-      | some req =>
-        let parent := match req.key.subject.translation?, req.key.subject.realization? with
-          | some owner, _ => r.requiredFor (.translation owner)
-          | _, some owner => r.requiredFor (.realization owner)
-          | _, _ => #[]
-        req.prerequisites ++ r.requiredFor req.key.subject ++ parent
-    keys := canonical (keys ++ more)
-  let requirements := r.requirements.filter (fun req => keys.contains req.key)
+  let mut todo := #[key]
+  let mut seen : Std.HashSet RequirementKey := {}
+  while !todo.isEmpty do
+    let current := todo.back!
+    todo := todo.pop
+    if seen.contains current then continue
+    seen := seen.insert current
+    if let some req := r.requirement? current then
+      let parent := match req.key.subject.translation?, req.key.subject.realization? with
+        | some owner, _ => r.requiredFor (.translation owner)
+        | _, some owner => r.requiredFor (.realization owner)
+        | _, _ => #[]
+      todo := todo ++ req.prerequisites ++ r.requiredFor req.key.subject ++ parent
+  -- Preserve the existing canonical inventory order and exact binding semantics.
+  let requirements := r.requirements.filter (fun req => seen.contains req.key)
   let subjects := canonical (requirements.map (·.key.subject))
   let translationKeys := canonical (subjects.filterMap (·.translation?))
   let realizationKeys := canonical (subjects.flatMap (r.subjectRealizations ·))
@@ -305,32 +330,16 @@ private def Registry.computeBindingFor (r : Registry) (key : RequirementKey) : O
 /-- Exact bindings are derived once from this immutable admitted input. No
 provider state, persistence or independent source of semantic truth is cached. -/
 def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding :=
-  (r.bindings.find? (·.1 == key)).map (·.2)
-
-/-- Fatal structural admission is all-or-nothing; missing provider observations
-and unsuitable evidence instead remain inspectable unfinished validation. -/
-def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
-  let r := Registry.mk input (values input.bindingInputs) (values input.evidence) #[]
-  let diagnostics := input.producerIssues ++
-    familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
-    familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
-    familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
-    familyIssues "requirement" (·.key) input.requirements ++ familyIssues "evidence" (·.id) input.evidence ++
-    familyIssues "binding input" (fun value => (value.subject, value.name)) input.bindingInputs ++
-    r.referenceIssues
-  unless diagnostics.isEmpty do return .error (canonical diagnostics)
-  let bindings := r.requirements.filterMap fun req =>
-    (r.computeBindingFor req.key).map (fun binding => (req.key, binding))
-  return .ok { r with bindings }
+  r.bindings[key]?
 
 private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array Diagnostic :=
-  match r.documents.find? (·.key == key) with
+  match r.documentIndex[key]? with
   | some document =>
     if blank document.text then #[issue "content-unavailable" key "Selected canonical source is empty"] else #[]
   | none => #[issue "content-unavailable" key "Selected canonical source is missing"]
 
 private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
-  match r.objects.find? (·.key == key) with
+  match r.objectIndex[key]? with
   | some observation =>
     if observation.resolution != .resolved then
       #[issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"]
@@ -382,7 +391,7 @@ private def Registry.availabilityIssues (r : Registry) (subject : Subject) : Arr
             "Selected declaration lacks current provider/build semantic inputs for correspondence"
 
 /-- Independent local suitability, before prerequisite traversal. -/
-def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.run do
+private def Registry.computeLocalResult (r : Registry) (key : RequirementKey) : Result := Id.run do
   let some req := r.requirement? key
     | return { status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
   match req.expected with
@@ -405,7 +414,7 @@ def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.ru
     let unavailable := r.availabilityIssues key.subject
     if !unavailable.isEmpty then return { status := .blocked, diagnostics := unavailable }
   let binding := (r.bindingFor key).getD ""
-  let candidates := r.evidence.filter (·.requirement == key)
+  let candidates := r.evidenceIndex[key]?.getD #[]
   if candidates.any (fun evidence => (evidence.mismatch? req binding).isNone) then
     return { status := .complete, localComplete := true }
   -- An old or unrelated unavailable observation cannot block current work.
@@ -417,24 +426,130 @@ def Registry.localResult (r : Registry) (key : RequirementKey) : Result := Id.ru
       (evidence.mismatch? req binding).map fun code => issue code evidence.id
         s!"Evidence does not discharge requirement. {evidence.observation.explanation}" }
 
-private def Registry.evaluate (r : Registry) : Nat → Array RequirementKey → RequirementKey → Result
-  | 0, _, key => { status := .blocked, diagnostics := #[issue "requirement-cycle" key "Requirement traversal exhausted"] }
-  | fuel + 1, path, key => Id.run do
-    let own := r.localResult key
-    if path.contains key then
-      return { own with
-        status := .blocked
-        diagnostics := own.diagnostics.push (issue "requirement-cycle" key "Recursive validation requirement") }
-    let some req := r.requirement? key | return own
-    let dependencies := req.prerequisites.map (r.evaluate fuel (path.push key) ·)
-    if dependencies.all (·.complete) then return own
-    return { own with
-      status := .blocked
-      diagnostics := canonical <| own.diagnostics ++ dependencies.flatMap (·.diagnostics) ++
-        #[issue "unfinished-prerequisite" key "A selected prerequisite requirement is unfinished"] }
+private structure Components where
+  next : Nat := 0
+  indices : Std.HashMap RequirementKey Nat := {}
+  lows : Std.HashMap RequirementKey Nat := {}
+  stack : Array RequirementKey := #[]
+  onStack : Std.HashSet RequirementKey := {}
+  finished : Array (Array RequirementKey) := #[]
+
+/-- Tarjan's walk visits every requirement/edge once. Components are emitted
+prerequisite-first, so closure evaluation never replays shared diamond paths. -/
+private partial def visitComponent (r : Registry) (key : RequirementKey) : StateM Components Unit := do
+  let index := (← get).next
+  modify fun state => { state with
+    next := index + 1, indices := state.indices.insert key index
+    lows := state.lows.insert key index, stack := state.stack.push key
+    onStack := state.onStack.insert key }
+  for dependency in ((r.requirement? key).map (·.prerequisites)).getD #[] do
+    if !(← get).indices.contains dependency then
+      visitComponent r dependency
+      modify fun state => { state with
+        lows := state.lows.insert key (min (state.lows[key]?.getD index) (state.lows[dependency]?.getD index)) }
+    else if (← get).onStack.contains dependency then
+      modify fun state => { state with
+        lows := state.lows.insert key (min (state.lows[key]?.getD index) (state.indices[dependency]?.getD index)) }
+  if (← get).lows[key]? == some index then
+    let mut component := #[]
+    let mut done := false
+    while !done do
+      let state ← get
+      let member := state.stack.back!
+      set { state with stack := state.stack.pop, onStack := state.onStack.erase member }
+      component := component.push member
+      done := member == key
+    modify fun state => { state with finished := state.finished.push (canonical component) }
+
+private def Registry.computeResults (r : Registry) : Std.HashMap RequirementKey Result := Id.run do
+  let build : StateM Components Unit := do
+    for requirement in r.requirements do
+      unless (← get).indices.contains requirement.key do visitComponent r requirement.key
+  let (_, components) := build.run {}
+  let mut results : Std.HashMap RequirementKey Result := {}
+  for component in components.finished do
+    let members := component.foldl (fun out key => out.insert key) ({} : Std.HashSet RequirementKey)
+    let cyclic := component.size > 1 || component.any fun key =>
+      (r.requirement? key).any (·.prerequisites.contains key)
+    let cycleDiagnostics := if cyclic then component.map fun key =>
+        issue "requirement-cycle" key "Recursive validation requirement"
+      else #[]
+    for key in component do
+      let own := r.localValues[key]?.getD { status := .blocked }
+      let dependencies := if cyclic then component.flatMap (fun member =>
+          ((r.requirement? member).map (·.prerequisites)).getD #[])
+        else ((r.requirement? key).map (·.prerequisites)).getD #[]
+      let external := dependencies.filter (fun dependency => !members.contains dependency)
+      let prerequisiteResults := external.map fun dependency =>
+        results[dependency]?.getD { status := .blocked }
+      if !cyclic && prerequisiteResults.all (·.complete) then
+        results := results.insert key own
+      else
+        let cycleLocalDiagnostics := if cyclic then component.flatMap fun member =>
+          (r.localValues[member]?.getD { status := .blocked }).diagnostics else #[]
+        results := results.insert key { own with
+          status := .blocked
+          diagnostics := canonical <| own.diagnostics ++ cycleLocalDiagnostics ++ cycleDiagnostics ++
+            prerequisiteResults.flatMap (·.diagnostics) ++
+            #[issue "unfinished-prerequisite" key "A selected prerequisite requirement is unfinished"] }
+  return results
+
+/-- Cached local suitability and closure are derived from the same immutable
+admitted snapshot; querying performs no graph traversal or provider operation. -/
+def Registry.localResult (r : Registry) (key : RequirementKey) : Result :=
+  r.localValues[key]?.getD {
+    status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
 
 def Registry.resultForRequirement (r : Registry) (key : RequirementKey) : Result :=
-  r.evaluate (r.requirements.size + 1) #[] key
+  r.resultValues[key]?.getD {
+    status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
+
+/-- Fatal admission remains all-or-nothing. No temporary input/index escapes
+before full reference validation, binding construction and closure evaluation. -/
+def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
+  let nodes := values input.nodes
+  let documents := values input.documents
+  let objects := values input.objects
+  let realizations := values input.realizations
+  let translations := values input.translations
+  let claims := values input.claims
+  let requirements := values input.requirements
+  let evidence := values input.evidence
+  let evidenceIndex := evidence.foldl (fun out item =>
+    out.insert item.requirement ((out[item.requirement]?.getD #[]).push item))
+    ({} : Std.HashMap RequirementKey (Array Evidence))
+  let r : Registry := {
+    input, nodeValues := nodes, documentValues := documents, objectValues := objects
+    realizationValues := realizations, translationValues := translations
+    claimValues := claims, requirementValues := requirements
+    semanticValues := values input.bindingInputs, evidenceValues := evidence
+    nodeIndex := indexBy (·.label) nodes, documentIndex := indexBy (·.key) documents
+    objectIndex := indexBy (·.key) objects, realizationIndex := indexBy (·.key) realizations
+    translationIndex := indexBy (·.key) translations, claimIndex := indexBy (·.key) claims
+    requirementIndex := indexBy (·.key) requirements, evidenceIndex }
+  let diagnostics := input.producerIssues ++
+    familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
+    familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
+    familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
+    familyIssues "requirement" (·.key) input.requirements ++ familyIssues "evidence" (·.id) input.evidence ++
+    familyIssues "binding input" (fun value => (value.subject, value.name)) input.bindingInputs ++ r.referenceIssues
+  unless diagnostics.isEmpty do return .error (canonical diagnostics)
+  let subjects := r.realizations.flatMap (fun value => #[Subject.realization value.key] ++
+      value.facets.map (fun facet => .facet value.key facet.name) ++
+      value.declarations.map (fun decl => .declaration value.key decl.object)) ++
+    r.translations.map (fun value => .translation value.key) ++ r.claims.map (fun value => .claim value.key)
+  let requiredIndex := subjects.foldl (fun out subject => out.insert subject (r.computeRequiredFor subject))
+    ({} : Std.HashMap Subject (Array RequirementKey))
+  let r := { r with requiredIndex }
+  let bindings := r.requirements.foldl (fun out req =>
+    match r.computeBindingFor req.key with
+    | some binding => out.insert req.key binding
+    | none => out) ({} : Std.HashMap RequirementKey ContentBinding)
+  let r := { r with bindings }
+  let localValues := r.requirements.foldl (fun out req => out.insert req.key (r.computeLocalResult req.key))
+    ({} : Std.HashMap RequirementKey Result)
+  let r := { r with localValues }
+  return .ok { r with resultValues := r.computeResults }
 
 def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
   if !r.hasSubject subject then
