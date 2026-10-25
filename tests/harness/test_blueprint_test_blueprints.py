@@ -59,6 +59,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                 "PreviewRuntimeShowcaseMain.lean",
                 "--output",
                 "{output_dir}",
+                "--with-html-single",
             ),
         )
         self.assertEqual(fixture.browser_tests_path, "tests/browser")
