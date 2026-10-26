@@ -443,8 +443,18 @@ independent Lean-only modules ignore the unregistered option. Source producers
 require a configured project: attributes, prose directives, inline Lean/Rust and
 labeled external markup. The chosen project is stored with each source and native
 association; changing options in an importing query does not relabel that source.
-Metadata-only registrations require no source context. The bounded
-opt-in realization authoring API also accepts its explicit module configuration.
+Metadata-only registrations require no source context. The realization authoring
+API also accepts explicit module configuration for source attachments and independent
+expected propositions.
+
+For Lean consumers, `Informal.Realizations.Capture.capture` collects ordinary
+Blueprint registrations after the owning modules have been built. Its successful
+snapshot contains the admitted registry, selected dependency edges and diagnostics;
+consumers do not construct a registry manually. A checked native declaration, an
+independently specified proposition and correspondence with prose are separate
+requirements. Missing source or unresolved dependencies remain explicit. This API
+is the current migration checkpoint; graph, summary and CLI consumers have not yet
+switched to it.
 
 Use the `@[blueprint]` attribute when a compiled definition-like
 declaration or theorem should appear as a compiled-declaration-backed Blueprint

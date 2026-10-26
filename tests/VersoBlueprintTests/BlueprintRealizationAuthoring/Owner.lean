@@ -4,7 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Authoring
-import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
+import VersoBlueprint
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprintTests.BlueprintRealizationFlag
 
 open Lean Elab Command Term Informal
 open Realizations Validation Translations
@@ -14,7 +16,7 @@ namespace VersoBlueprintTests.BlueprintRealizationAuthoring.Owner
 def node : Name := Name.mkSimple "authoring.flag"
 def projectName : Name := `authoringPilot
 def leanKey : RealizationKey := ⟨node, `lean⟩
-def proseKey : RealizationKey := ⟨node, `docstring⟩
+def proseKey : RealizationKey := ⟨node, `verso⟩
 def rocqKey : RealizationKey := ⟨node, `«rocq-reference»⟩
 def native : ObjectKey := ⟨⟨`lean, projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.involutive"⟩
 def proof : RequirementKey := ⟨.declaration leanKey native, `proof⟩
@@ -54,9 +56,8 @@ run_cmd liftCoreM do
   let some fact := state.factRecords.find? (·.label == node) | throwError "Missing actual attribute fact"
   unless fact.nativeAssociations.size == 1 && fact.nativeAssociations[0]!.reference.range?.isNone &&
       fact.nativeAssociations[0]!.reference.selectionRange?.isNone &&
-      (← findDeclarationRanges? `VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.involutive).isSome &&
-      state.authoringRecords.any (fun record => record.defaults.contains fact.id) do
-    throwError "Raw default must survive attribute-before-range timing without source projection"
+      (← findDeclarationRanges? `VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.involutive).isSome do
+    throwError "Ordinary native association must survive attribute-before-range timing without source projection"
 
 -- The expectation may refer forward to its independently authored definition.
 run_cmd liftCoreM <| Realizations.Authoring.expectNative `toggleProof node `VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.expected
@@ -86,7 +87,7 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `prefixSite {}
 
 run_cmd liftTermElabM do
   let before ← Environment.stagedAuthoring
-  match ← Realizations.Authoring.registry with
+  match (← Realizations.Capture.capture).map (·.registry) with
   | .error issues => unless issues.any (·.code == "unknown-realization") do
       throwError "Expected the staged forward endpoint to remain unresolved: {repr issues}"
   | .ok _ => throwError "Owner alone must not admit a partial model without its forward attachment"

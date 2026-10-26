@@ -23,7 +23,7 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .error error => throwError "Unexpected rejection: {repr error}"
 
 run_cmd liftTermElabM do
-  let r ← obtain (← Realizations.Authoring.registry)
+  let r ← obtain ((← Realizations.Capture.capture).map (·.registry))
   ensure ((r.resultForRequirement proofKey).complete &&
     (r.resultFor (.translation correspondence)).status == .pending)
     "Actual native validity and unreviewed correspondence must remain separate"

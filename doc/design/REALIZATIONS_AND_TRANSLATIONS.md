@@ -1102,9 +1102,65 @@ temporary representability checks reject source/use destinations it cannot displ
 without conflating realizations. They are not restrictions on the pure ontology
 and must disappear with that view and the earlier native projection guard.
 `Node.applyRegistrations` and its laws now refer to keyed registrations; the old
-`applyContributions` API is removed. Capture, default-enrollment deletion and
-public graph/query/render completion cutover remain outstanding. Native snapshot
+`applyContributions` API is removed. Ordinary capture and default-enrollment deletion are implemented below. Public
+graph/query/render completion cutover remains outstanding. Native snapshot
 statuses in presentation payloads do not become imported realization evidence.
+
+### Ordinary capture API (2026-10-26 checkpoint)
+
+`Realizations.Capture.capture` is a read-only `TermElabM` operation returning
+`Except (Array Diagnostic) Snapshot`. It collects every accepted ordinary concept,
+its keyed raw registrations and full native membership, plus authored attachments
+and independent specifications, from the existing Environment extension. It does
+not require default enrollment, a docstring, a theorem-only source, or a manually
+assembled consumer Registry. `Authoring.registry` and persisted default enrollment
+are deleted; `Authoring` now supplies only explicit configuration and source staging.
+The attribute still publishes its accepted candidate and catalog exactly once.
+
+Capture admits the complete collected candidate, binds fresh provider observations
+to its exact bindings, then admits the complete final result. Structural/import or
+producer conflicts return an error for the whole capture. Unavailable source or
+provider checks remain explicit diagnostics and blocked subjects. Neither successful
+nor failed capture changes the Environment, metavariables or persisted observations.
+All reads in one attempt share a physical-file snapshot; the normal owning build
+remains a precondition. Query options do not relabel stored source contexts.
+
+Native membership includes every external association and inline declaration,
+including multiple declarations in one concept. Each declaration has its own
+statement and completeness checks. A separately authored expected proposition adds
+`expectedProof`, without replacing native validity. A node-level specification must
+select exactly one native declaration in the stored context; ambiguous grouped
+witnesses reject. All competing specification values and origins survive admission.
+Requirement names are labels; their typed expectation identifies a native check,
+an independent-goal proof, or a review.
+
+Inline source is reparsed from the original block using Verso's byte-preserving
+padding, with both native ranges checked against the owning FileMap. Cached command
+syntax cannot replace original input. Attribute prose uses its exact stored producer
+site to find the owning native association and then the direct original modifier
+comment. Missing, inherited, ambiguous or synthetic comments are unavailable, never
+rendered substitutes. Original comment whitespace is retained. Source/semantic-input
+failures stay distinct from a checker reporting that a native proof passed.
+
+Dependency selection uses stored scope, axes, metadata and order. A target selects
+the ordinary `lean` realization in the same project context, all its exact native
+completeness contracts, and its explicitly required independent specifications.
+Selection is independent of completion; a complete alternative cannot rescue the
+default. The returned snapshot retains each selected edge or selection diagnostic.
+A mechanical `blueprint.dependencySelection` check records the actual selection
+outcome, and native requirements link the selected keys through existing prerequisites.
+This check asserts only that selection succeeded. Missing targets produce unavailable
+selection observations, not invented theorem requirements or successful proofs.
+The existing evaluator handles closure and cycles; no second traversal evaluator is
+introduced. Local native success survives as `localResult` when the Blueprint closure
+is unfinished. Prose, Rust and markup remain unassessed without explicit validation.
+
+The first actual fixture measures capture of ten concepts, including real imported
+inline/foreign sources, native holes, grouped declarations, missing targets and cycles.
+This is a measured small case, not a scaling certification. The current large exact
+content bindings and semantic source closures remain known costs. The old Node display
+projection and public graph/query/render completion are still pending migration; this
+API checkpoint does not claim the full migration or publication acceptance.
 
 ### Consumer cutover and deletion
 

@@ -27,7 +27,7 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
 run_cmd liftTermElabM do
   let before := Environment.informalExt.getState (← getEnv)
   ensure before.authoringProject?.isNone "Imports must not configure the consumer"
-  let r ← obtain (← Realizations.Authoring.registry)
+  let r ← obtain ((← Realizations.Capture.capture).map (·.registry))
   ensure ((r.resultForRequirement Owner.proof).complete &&
     (r.resultFor (.realization Owner.proseKey)).status == .unassessed &&
     (r.resultFor (.translation Owner.versoLink)).status == .pending &&
@@ -35,7 +35,7 @@ run_cmd liftTermElabM do
     "Actual imported contracts retain independent native/prose/correspondence outcomes"
   ensure ((r.resultFor (.realization ⟨Name.mkSimple "authoring.unassessed", `lean⟩)).complete)
     "A real native check supplies proof validity without a duplicate independent specification"
-  ensure (r.nodes.size == 5 && r.realizations.size == 11 && r.translations.size == 2 && r.evidence.size == 11)
+  ensure (r.nodes.size == 5 && r.realizations.size == 11 && r.translations.size == 2 && r.evidence.size == 15)
     "Actual diamond imports and exact replay duplicate no semantic values or evidence"
   for (consumer, target, complete) in #[("authoring.nativeDependent", "authoring.unassessed", true),
       ("authoring.admittedDependent", "authoring.nativeAdmitted", false)] do
@@ -147,7 +147,7 @@ private def query : TermElabM (Except (Array Diagnostic) Registry) := do
   let before := Environment.informalExt.getState (← getEnv)
   let sentinel ← mkFreshExprMVar (mkConst ``True)
   let metaBefore ← getMCtx
-  let result ← Realizations.Authoring.registry
+  let result := (← Realizations.Capture.capture).map (·.registry)
   let metaAfter ← getMCtx
   unchanged before (Environment.informalExt.getState (← getEnv))
   ensure (!(← sentinel.mvarId!.isAssigned) && metaBefore.mvarCounter == metaAfter.mvarCounter &&
@@ -173,7 +173,7 @@ run_cmd liftCoreM <| Realizations.Authoring.expectNative `consumerProof (Name.mk
 run_cmd liftTermElabM do
   let r ← obtain (← query)
   let key : RealizationKey := ⟨Name.mkSimple "authoring.unassessed", `lean⟩
-  ensure ((r.resultFor (.realization key)).complete && r.evidence.size == 12)
+  ensure ((r.resultFor (.realization key)).complete && r.evidence.size == 16)
     "A separately authored consumer specification can validate an imported default"
   let some requirement := r.requirements.find? (fun requirement => requirement.key.name == `expectedProof &&
       requirement.key.subject == .declaration key
@@ -191,7 +191,7 @@ run_cmd liftTermElabM do
     match evidence.observation with
     | .proof observation => ensure (observation.outcome == .passed) "Actual independent-goal proof did not pass"
     | .check observation =>
-      ensure observation.declaration.isSome "A native check must retain its own declaration identity"
+      ensure (observation.validator == `blueprint.dependencySelection || observation.declaration.isSome) "A native check must retain its own declaration identity"
     | .review _ => throwError "Unexpected manufactured review evidence"
   let env ← getEnv
   ensure (((Environment.informalExt.getState env).authoringRecords.filter
@@ -212,7 +212,7 @@ run_cmd liftTermElabM do
       | throwError "Missing exact native prerequisite"
     let expected := { key with name := `expectedProof }
     ensure ((r.resultForRequirement key).complete && !(r.resultForRequirement expected).complete &&
-      (r.resultFor (.facet ⟨Name.mkSimple "authoring.nativeDependent", `lean⟩ `proof)).complete)
+      (r.localResult key).complete)
       "Wrong independently expected goal must not erase native validity or change native prerequisite selection"
   isolated do
     Realizations.Authoring.expectNative `secondConsumerSpec (Name.mkSimple "authoring.unassessed")
@@ -220,7 +220,7 @@ run_cmd liftTermElabM do
     let r ← obtain (← query)
     let specs := r.contributions.requirements.filter (fun record =>
       record.origin.moduleName == `VersoBlueprintTests.BlueprintRealizationAuthoring)
-    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id && r.evidence.size == 13)
+    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id && r.evidence.size == 17)
       "Equivalent expectations must retain both specification origins and current observations"
   isolated do
     Realizations.Authoring.stage `sameProducer {}
@@ -252,11 +252,13 @@ run_cmd liftTermElabM do
     let some fact := state.factRecords.find? (·.label == Owner.node) | throwError "Missing actual fact"
     -- Isolated raw corruption: conflicting complete fact with the same identity.
     Environment.modify fun state => { state with factRecords := { fact with priority := some "synthetic" } :: state.factRecords }
-    discard <| rejected "default-identity" (← query)
+    discard <| rejected "producer-collision" (← query)
   isolated do
     Environment.modify fun state => { state with data := state.data.modify Owner.node fun node =>
       { node with externalRefs := node.externalRefs.map fun ref => { ref with canonical := `Wrong.subject } } }
-    discard <| rejected "unsupported-default" (← query)
+    let captured ← obtain (← query)
+    ensure ((captured.resultForRequirement Owner.proof).complete)
+      "Obsolete display projection replaced the retained canonical native association"
   let conflict (reverse : Bool) := isolated do
     let a : Environment.AuthoredBatch := {
       realizations := #[{ key := ⟨Owner.node, `conflict⟩, context := ⟨`lean, Owner.projectName⟩ }] }
@@ -289,39 +291,18 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Source
       sources := #[BlueprintNativeFixture.source label `verso `statement `verso
         (.prose { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
 
-/-- error: Conflicting raw authoring envelopes -/
-#guard_msgs in
-run_cmd liftTermElabM do
-  isolated do
-    let (fact, payload) ← rollbackInput `defaultPlanningFailure
-    isolated do
-      ensure (← Environment.contributeRecord fact payload).isSome "Test must pass ordinary reducer acceptance"
-    -- Obtain the real envelope identity through an otherwise successful default
-    -- plan, then retain a competing valid raw variant. Context checks and the
-    -- ordinary reducer must not make this planning-failure control vacuous.
-    let competing ← isolated do
-      ensure (← Environment.contributeAttribute fact payload).isSome "Control default plan must succeed"
-      let state := Environment.informalExt.getState (← getEnv)
-      let some record := state.localAuthoringRecords.find? (·.defaults.contains fact.id)
-        | throwError "Control default plan produced no envelope"
-      pure { record with nativeGoals := #[(fact.label, ``expectedTrue)] }
-    Environment.modify fun state => { state with authoringRecords := state.authoringRecords.push competing }
-    let before := Environment.informalExt.getState (← getEnv)
-    ensure (← Environment.contributeAttribute fact payload).isNone "Invalid default planning unexpectedly committed"
-    unchanged before (Environment.informalExt.getState (← getEnv))
-
-/-- error: Unsupported default authoring: expected a new single attribute theorem with its own docstring -/
-#guard_msgs in
+-- Ordinary capture has no default-enrollment phase or theorem/docstring gate.
+-- Supplemental attributes still publish the admitted candidate and catalog once.
 run_cmd liftTermElabM do
   isolated do
     ensure (← Environment.contribute `preExistingDefault { tags := #["earlier"] }).isSome
-      "Test must start with an accepted empty default candidate"
+      "Test must start with an accepted metadata-only concept"
     let (fact, payload) ← rollbackInput `preExistingDefault
-    isolated do
-      ensure (← Environment.contributeRecord fact payload).isSome "Pre-existing candidate must pass the reducer"
-    let before := Environment.informalExt.getState (← getEnv)
-    ensure (← Environment.contributeAttribute fact payload).isNone "Pre-existing node was enrolled as new"
-    unchanged before (Environment.informalExt.getState (← getEnv))
+    ensure (← Environment.contributeAttribute fact payload).isSome
+      "Ordinary attribute was incorrectly restricted to opt-in new defaults"
+    let state := Environment.informalExt.getState (← getEnv)
+    ensure ((state.localBlueprintAttributeLabelsByModule.getD (← getMainModule) {}).labels.contains `preExistingDefault)
+      "Successful ordinary attribute did not publish its catalog entry"
 
 /-- error: Duplicate imported blueprint group label 'syntheticImport' -/
 #guard_msgs in

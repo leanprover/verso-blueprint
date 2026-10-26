@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint
+import VersoBlueprintTests.BlueprintRealizationFlag
 
 namespace RealizationAdapterFixture
 
@@ -80,22 +81,6 @@ run_cmd do
 -- Native adaptation of the canonical translation-reuse/Fixture/Flag.lean pilot.
 -- This is an ordinary local build, not imported LIRIS artifacts or a claim of
 -- validated Rocq correspondence. The package controls below are local tests.
-inductive Flag where
-  | off
-  | on
-
-def toggle : Flag → Flag
-  | .off => .on
-  | .on => .off
-
-structure FlagPackage where
-  operation : Flag → Flag
-
-def togglePackage : FlagPackage := ⟨toggle⟩
-def identityPackage : FlagPackage := ⟨id⟩
-def Involutive (package : FlagPackage) : Prop :=
-  ∀ flag, package.operation (package.operation flag) = flag
-
 set_option doc.verso true in
 /--
 Toggling a *two-state* flag twice returns the original flag: é 😀.

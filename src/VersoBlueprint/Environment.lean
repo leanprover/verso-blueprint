@@ -88,7 +88,6 @@ deriving Inhabited, Repr, DecidableEq
 structure AuthoringRecord where
   origin : Realizations.Origin
   project : Name
-  defaults : Array ContributionId := #[]
   authored : AuthoredBatch := {}
   nativeGoals : Array (Name × Name) := #[]
 deriving Inhabited, Repr, DecidableEq
@@ -378,9 +377,8 @@ def configureAuthoringProject (project : Name) : CoreM (Except (Array Realizatio
   return .ok ()
 
 /-- Resolve context at the producing site, never from an importing query's
-options. The bounded authoring configuration is also explicit and module-local;
-ordinary projects configure the package/module option instead of enrolling in
-that opt-in producer. The chosen context is retained in every raw association. -/
+options. The authoring configuration is explicit and module-local; projects may
+configure the package/module option instead. The chosen context is retained in every raw association. -/
 def sourceProject : CoreM Name := do
   let moduleName ← getMainModule
   let state := informalExt.getState (← getEnv)
@@ -568,45 +566,20 @@ private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool :=
   let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
   return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
 
-/-- Plan legacy acceptance, optional raw enrollment and the catalog together.
-Eligibility is computed from the pre-state; the assembler's returned Node is used
-directly. No source reader/provider runs while the attribute is being applied. -/
+/-- Plan ordinary admission and the module catalog in one transaction. Source
+capture happens after the owning build; no opt-in default enrollment is needed. -/
 def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option Node) := do
   let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
   reportImportedConflicts
   let before := informalExt.getState (← getEnv)
   let moduleName ← getMainModule
-  let eligible := !(before.data.contains fact.label)
   let origin := (before.pendingNodes.getD fact.label {}).authoredOrigin?.getD moduleName
   match before.addNode fact.label origin moduleName #[payload] [fact] with
   | .error reasons =>
     for reason in reasons do logError reason
     return none
   | .ok (candidate, node) =>
-    let mut candidate := candidate
-    if let some (owner, project) := before.authoringProject? then
-      if owner == moduleName then
-        let associations := fact.nativeAssociations
-        unless eligible && node.kind.isTheoremLike && associations.size == 1 &&
-            associations[0]!.realization == ⟨fact.label, `lean⟩ &&
-            associations[0]!.context == ⟨`lean, project⟩ &&
-            associations[0]!.facets == #[`statement] && (payload.proseAt ⟨fact.label, `verso⟩ ⟨`verso, project⟩ `statement).any (·.hasBody) &&
-            fact.id.moduleName == moduleName && fact.id.producer == `blueprint.attribute &&
-            associations[0]!.reference.origin == .blueprintAttr && associations[0]!.reference.kind == .theorem do
-          logError "Unsupported default authoring: expected a new single attribute theorem with its own docstring"
-          return none
-        let record : AuthoringRecord := {
-          origin := {
-            id := authoringId #[nameIdentity fact.id.moduleName, nameIdentity fact.id.producer,
-              nameIdentity fact.id.subject, toJson fact.id.site, toJson fact.id.slot, toJson "default"]
-            moduleName, source := ← getFileName }
-          project, defaults := #[fact.id] }
-        match candidate.planAuthoring record with
-        | .error issues =>
-          for issue in issues do logError issue.message
-          return none
-        | .ok planned => candidate := planned
-    candidate := { candidate with
+    let candidate := { candidate with
       blueprintAttributeLabelsByModule :=
         addBlueprintAttributeLabel candidate.blueprintAttributeLabelsByModule moduleName fact.label.eraseMacroScopes
       localBlueprintAttributeLabelsByModule :=

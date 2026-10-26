@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Authoring
+import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Attribute
 import VersoBlueprintTests.BlueprintRealizationSemantics.Runtime
 
@@ -13,7 +14,7 @@ namespace FIRSemanticFixture
 
 def node : Name := Name.mkSimple "fir.semanticWitness"
 def leanKey : RealizationKey := ⟨node, `lean⟩
-def proseKey : RealizationKey := ⟨node, `docstring⟩
+def proseKey : RealizationKey := ⟨node, `verso⟩
 def nativeObject : ObjectKey := ⟨⟨`lean, `firSemanticFixture⟩, "FIRSemanticFixture.semanticWitness"⟩
 def proofKey : RequirementKey := ⟨.declaration leanKey nativeObject, `proof⟩
 def correspondence : TranslationKey := ⟨`firSemanticFixture, `runtimeCorrespondence⟩

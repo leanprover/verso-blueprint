@@ -136,6 +136,7 @@ structure Prepared where
   document : Document
   ranges : DeclarationRanges
   semanticContext : Option String := none
+  semanticDiagnostics : Array Diagnostic := #[]
 
 structure Documented extends Prepared where
   format : Name
@@ -166,6 +167,22 @@ private def nativeDocstringFormat (name : Name) : CoreM (Except Diagnostic Name)
     | none, none => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
     | some _, some _ => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
+private def preparedAt (request : Request) (text : String) (ranges : DeclarationRanges) :
+    CoreM (Except Diagnostic Prepared) := do
+  let some info := (← getEnv).checked.get.find? request.canonical
+    | return .error <| issue "missing-declaration" request.canonical "Declaration is not in the current checked environment"
+  let context : Context := ⟨`lean, request.project⟩
+  let kind : Data.NodeKind := match info with
+    | .thmInfo _ => .theorem
+    | _ => .definition
+  let semantics ← NativeLean.semanticContext request.project #[request.canonical]
+  return .ok {
+    canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
+    kind, moduleName := request.moduleName
+    document := { key := ⟨context, request.sourcePath⟩, text }, ranges
+    semanticContext := semantics.toOption
+    semanticDiagnostics := match semantics with | .ok _ => #[] | .error issue => #[issue] }
+
 private def prepareSource (request : Request) (readSource : System.FilePath → IO String) :
     CoreM (Except Diagnostic (Prepared × Array Syntax)) := do
   let name := request.canonical
@@ -182,18 +199,7 @@ private def prepareSource (request : Request) (readSource : System.FilePath → 
   match declarationAtRanges name text ranges.range ranges.selectionRange commands with
   | .error diagnostic => return .error diagnostic
   | .ok _ => pure ()
-  let context : Context := ⟨`lean, request.project⟩
-  let some info := (← getEnv).checked.get.find? name
-    | return .error <| issue "missing-declaration" name "Declaration is not in the current checked environment"
-  let kind : Data.NodeKind := match info with
-    | .thmInfo _ => .theorem
-    | _ => .definition
-  let source : Prepared := {
-    canonical := name, declaration := ⟨context, name.toString⟩
-    kind
-    moduleName := request.moduleName, document := { key := ⟨context, request.sourcePath⟩, text }
-    ranges, semanticContext := (← NativeLean.semanticContext request.project #[name]).toOption }
-  return .ok (source, commands)
+  return (← preparedAt request text ranges).map (·, commands)
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a
 body-bearing definition. Source lookup neither checks proof validity nor asserts
@@ -202,6 +208,51 @@ def prepare (request : Request) (readSource : System.FilePath → IO String := I
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   return (← prepareSource request readSource).map (·.1)
+
+/-- Prepare a declaration from an original Blueprint Lean block. Reparse the
+original block contents with Verso's byte-preserving padding, then compare both
+native ranges. Cached command syntax and rendered text cannot supply the source.
+The owning source must still equal the producer's original syntax input; ordinary
+source edits therefore require the normal owning-module rebuild. -/
+def prepareInline (request : Request) (code : Data.Code)
+    (readSource : System.FilePath → IO String := IO.FS.readFile) :
+    CoreM (Except Diagnostic Prepared) := do
+  if let .error diagnostic ← checkOwner request then return .error diagnostic
+  let name := request.canonical
+  let declared := code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
+  unless (declared.filter (· == name)).size == 1 do
+    return .error <| issue "source-association-unavailable" name "Inline source must select the exact declaration once"
+  let text ← try liftM <| readSource request.sourcePath catch _ =>
+    return .error <| issue "source-unavailable" name "Cannot read owning inline source"
+  unless code.stx.isOfKind ``Lean.Doc.Syntax.codeblock && (originalRange? text code.stx).isSome do
+    return .error <| issue "source-association-unavailable" name "Inline block is not original syntax from the current owning file"
+  let strings := code.stx.getArgs.filter (·.isStrLit?.isSome)
+  unless strings.size == 1 && (originalRange? text strings[0]!).isSome do
+    return .error <| issue "source-association-unavailable" name "Inline block has no unique original contents"
+  let padded ← withReader (fun ctx : Core.Context => { ctx with
+      fileName := request.sourcePath, fileMap := FileMap.ofString text }) <|
+    Verso.SyntaxUtils.parserInputString ⟨strings[0]!⟩
+  let ranges ← match checkedSourceRanges name request.range? request.selectionRange?
+      (← findDeclarationRanges? name) with
+    | .ok ranges => pure ranges
+    | .error diagnostic => return .error diagnostic
+  let commands ← match ← parseSource name request.sourcePath padded with
+    | .ok commands => pure commands
+    | .error diagnostic => return .error diagnostic
+  match declarationAtRanges name padded ranges.range ranges.selectionRange commands with
+  | .error diagnostic => return .error diagnostic
+  | .ok declaration =>
+    -- Check the same byte ranges in the real owning FileMap too. Padding must
+    -- never hide a Unicode/coordinate disagreement with the checked declaration.
+    let some whole := declaration.getRange?
+      | return .error <| issue "source-association-unavailable" name "Inline declaration has no original range"
+    let some selected := (Elab.getDeclarationSelectionRef declaration[1]).getRange?
+      | return .error <| issue "source-association-unavailable" name "Inline declaration has no original name range"
+    let map := FileMap.ofString text
+    unless DeclarationRange.ofStringPositions map whole.start whole.stop == ranges.range &&
+        DeclarationRange.ofStringPositions map selected.start selected.stop == ranges.selectionRange do
+      return .error <| issue "source-association-unavailable" name "Inline native ranges disagree with the owning FileMap"
+  preparedAt request text ranges
 
 /-- Additionally require direct own native format metadata and one original
 modifier comment at the declaration's exact full/name ranges. Return raw authored

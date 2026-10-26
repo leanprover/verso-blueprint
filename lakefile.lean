@@ -75,6 +75,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintNativeFixture,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
     `VersoBlueprintTests.BlueprintCanonicalSourcePersistence,
+    `VersoBlueprintTests.BlueprintRealizationCapture,
+    `VersoBlueprintTests.BlueprintRealizationFlag,
     `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Conflict,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence.Conflict,
     `VersoBlueprintTests.BlueprintRealizations,
