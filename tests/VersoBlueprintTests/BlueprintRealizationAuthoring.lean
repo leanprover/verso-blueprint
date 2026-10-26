@@ -134,11 +134,18 @@ private def isolated (action : TermElabM α) : TermElabM α := do
   let env ← getEnv
   try action finally setEnv env
 
+private def capturePlanned : TermElabM (Except (Array Diagnostic) Capture.Snapshot) := do
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let plan := Capture.plan raw
+  match ← Capture.observe plan with
+  | .error issues => pure (.error issues)
+  | .ok observations => pure (Capture.evaluate plan observations)
+
 private def query : TermElabM (Except (Array Diagnostic) Registry) := do
   let before := Environment.informalExt.getState (← getEnv)
   let sentinel ← mkFreshExprMVar (mkConst ``True)
   let metaBefore ← getMCtx
-  let result := (← Realizations.Capture.capture).map (·.registry)
+  let result := (← capturePlanned).map (·.registry)
   let metaAfter ← getMCtx
   unchanged before (Environment.informalExt.getState (← getEnv))
   ensure (!(← sentinel.mvarId!.isAssigned) && metaBefore.mvarCounter == metaAfter.mvarCounter &&
@@ -339,5 +346,94 @@ run_cmd liftTermElabM do
       caught := (← exception.toMessageData.toString) == "Synthetic enclosing directive exception"
     ensure caught "Expected directive exception"
     unchanged before (Environment.informalExt.getState (← getEnv))
+
+-- Two real declarations form a later ambiguous native witness for the ordered
+-- authored-failure regression below.
+@[blueprint "authoring.ambiguous"]
+theorem ambiguousFirst : True := True.intro
+
+@[blueprint "authoring.ambiguous"]
+theorem ambiguousSecond : True := True.intro
+
+run_cmd liftTermElabM do
+  isolated do
+    -- The first record fails only after its specification document has been
+    -- observed. Planning must not report the later multi-witness ambiguity first.
+    Realizations.Authoring.expectNative `earlierInvalid Owner.node
+      `VersoBlueprintTests.BlueprintRealizationAuthoring.assumedExpected
+    Realizations.Authoring.expectNative `laterAmbiguous (Name.mkSimple "authoring.ambiguous")
+      `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedTrue
+    let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+    let plan := Capture.plan raw
+    match ← Capture.observe plan with
+    | .error issues =>
+      ensure (issues.size == 1 && issues[0]!.code == "invalid-expectation" &&
+        issues[0]!.subject == "VersoBlueprintTests.BlueprintRealizationAuthoring.assumedExpected")
+        s!"Earlier invalid owned definition must win over later ambiguous witness: {repr issues}"
+    | .ok _ => throwError "Invalid first specification was accepted before the later ambiguity"
+
+run_cmd liftTermElabM do
+  isolated do
+    let target := Name.mkSimple "authoring.unassessed"
+    let env ← getEnv
+    let raw := Capture.Raw.ofState (Environment.informalExt.getState env)
+    -- Keep this request's actual consumer-owned proposition, while avoiding
+    -- unrelated imported specification jobs in this focused source-failure case.
+    let raw := { raw with authored := raw.authored.filter fun record =>
+      record.origin.moduleName == env.mainModule &&
+        record.nativeGoals.any (fun goal => goal.1 == target) }
+    let plan := Capture.plan raw
+    let ownerPath ← liftM <| IO.FS.realPath
+      "tests/VersoBlueprintTests/BlueprintRealizationAuthoring/Owner.lean"
+    let reader (path : System.FilePath) : IO String := do
+      if path == ownerPath then throw <| IO.userError "injected owning-source read failure"
+      IO.FS.readFile path
+    let before := Environment.informalExt.getState (← getEnv)
+    let sentinel ← mkFreshExprMVar (mkConst ``True)
+    let metaBefore ← getMCtx
+    let observed ← Capture.observe plan reader
+    let metaAfter ← getMCtx
+    unchanged before (Environment.informalExt.getState (← getEnv))
+    ensure (!(← sentinel.mvarId!.isAssigned) && metaBefore.mvarCounter == metaAfter.mvarCounter &&
+      metaBefore.lmvarCounter == metaAfter.lmvarCounter &&
+      metaBefore.eAssignment.toList == metaAfter.eAssignment.toList &&
+      metaBefore.lAssignment.toList == metaAfter.lAssignment.toList &&
+      metaBefore.decls.toList.map (·.1) == metaAfter.decls.toList.map (·.1))
+      "Normal observation return must restore elaboration state"
+    let observations ← obtain observed
+    let expectedRequests := plan.expected.mapIdx fun handle request => (handle, request)
+    let some (expectedHandle, expectedRequest) := expectedRequests.find? (·.2.node == target)
+      | throwError "Missing focused independent expected-goal request"
+    let witness : ObjectKey := ⟨⟨`lean, Owner.projectName⟩,
+      "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩
+    let some expectedResult := observations.expected.find? (·.handle == expectedHandle)
+      | throwError "Expected-goal observation disappeared"
+    let specification := plan.specifications[expectedRequest.specification]!
+    let specificationDocument := plan.documents[specification.document]!
+    ensure (expectedRequest.nativeSources.any fun handle =>
+      observations.native.any fun result => result.handle == handle &&
+        match result.result with
+        | .error diagnostic => diagnostic.code == "source-unavailable"
+        | .ok _ => false)
+      "A real native source request must retain its unavailable result"
+    ensure (expectedResult.result.documents == #[specificationDocument] &&
+      expectedResult.result.witness == witness)
+      "Expected-goal documents must use only the authored spec after witness-source failure"
+    let .ok checked := expectedResult.result.result
+      | throwError "Independent expected goal did not run after the native source failure"
+    ensure (checked.observation.outcome == .passed && checked.goal.documents == #[specificationDocument])
+      "The independently authored goal must be checked against its exact spec-only documents"
+    let checkRequests := plan.checks.mapIdx (fun handle request => (handle, request))
+    let some checkedDeclaration := checkRequests.find? (·.2.witness == witness)
+      | throwError "Missing actual own-native check request"
+    let some checkedResult := observations.checks.find? (·.handle == checkedDeclaration.1)
+      | throwError "Own-native observation disappeared after source failure"
+    let .ok nativeCheck := checkedResult.result | throwError "Own-native check did not run"
+    ensure (nativeCheck.body.outcome == .passed)
+      "A failed source association must not suppress the real own-native check"
+    let snapshot ← obtain (Capture.evaluate plan observations)
+    ensure (snapshot.diagnostics.any (·.code == "source-unavailable") &&
+      snapshot.nativeChecks.any (fun result => result.declaration == witness && result.body.outcome == .passed))
+      "Evaluated snapshot must retain the source diagnostic and independent real native check"
 
 end VersoBlueprintTests.BlueprintRealizationAuthoring

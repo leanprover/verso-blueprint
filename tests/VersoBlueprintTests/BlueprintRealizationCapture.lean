@@ -10,6 +10,8 @@ import VersoBlueprint.Realizations.Authoring
 open Lean Meta Elab Command Term Informal
 open Realizations Validation Translations
 
+set_option trace.blueprint.capture true
+
 namespace RealizationCaptureFixture
 
 /-- Native validity does not require an independent restatement. -/
@@ -61,8 +63,57 @@ run_cmd liftTermElabM do
   let before := Environment.informalExt.getState (← getEnv)
   ensure before.authoringRecords.isEmpty "Control accidentally enrolled opt-in defaults"
   let start ← IO.monoMsNow
-  let snapshot ← obtain (← Capture.capture)
-  let elapsed := (← IO.monoMsNow) - start
+  let plan := Capture.plan (Capture.Raw.ofState before)
+  let reads ← IO.mkRef (#[] : Array System.FilePath)
+  let observations ← obtain (← Capture.observe plan fun path => do
+    reads.modify (·.push path)
+    IO.FS.readFile path)
+  let observedAt ← IO.monoMsNow
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  let evaluatedAt ← IO.monoMsNow
+  let elapsed := evaluatedAt - start
+  logInfo m!"split phases: observe {observedAt - start} ms; evaluate {evaluatedAt - observedAt} ms"
+  let paths ← reads.get
+  ensure (paths.size == (paths.foldl (fun seen path => if seen.contains path then seen else seen.push path) #[]).size)
+    "One successful physical source read must serve every provider family"
+  ensure (paths.size < plan.documents.size + plan.native.size + plan.inline.size + plan.documented.size)
+    "Shared-reader control did not actually exercise repeated physical requests"
+  ensure (!observations.native.isEmpty && !observations.inline.isEmpty && !observations.documented.isEmpty)
+    "Native, inline and documented results must retain their separate families"
+  let reversed : Capture.Observations plan := {
+    documents := observations.documents.reverse, native := observations.native.reverse
+    inline := observations.inline.reverse, documented := observations.documented.reverse
+    checks := observations.checks.reverse, specifications := observations.specifications.reverse
+    expected := observations.expected.reverse }
+  let replay ← obtain (Capture.evaluate plan reversed)
+  ensure (snapshot.registry.contributions == replay.registry.contributions &&
+    snapshot.diagnostics == replay.diagnostics && reprStr snapshot.uses == reprStr replay.uses)
+    "Observation insertion order changed exact contributions, bindings, diagnostics or selected-use metadata"
+  let nativeInventory (s : Capture.Snapshot) := s.nativeChecks.map fun c =>
+    (c.declaration, c.kind, c.statement, c.body, c.status)
+  ensure (nativeInventory snapshot == nativeInventory replay) "Observation order changed native inventory"
+  -- Fault injection only at the pure boundary; successful facts come from real
+  -- providers, never mocked proof success.
+  let rejects (code : String) (batch : Capture.Observations plan) : TermElabM Unit := do
+    match Capture.evaluate plan batch with
+    | .ok _ => throwError "Malformed observation batch was admitted: {code}"
+    | .error issues => ensure (issues.any (·.code == code)) s!"Wrong batch rejection: {repr issues}"
+  let some document := observations.documents[0]? | throwError "Missing actual document control"
+  rejects "missing-observation" { observations with documents := observations.documents.extract 1 observations.documents.size }
+  rejects "duplicate-observation" { observations with documents := observations.documents.push document }
+  rejects "extraneous-observation" { observations with documents := observations.documents.push { document with handle := plan.documents.size } }
+  rejects "mismatched-observation" { observations with documents := observations.documents.modify 0 fun entry =>
+    { entry with result := ({ entry.result.1 with key := { entry.result.1.key with path := "wrong-document" } }, entry.result.2) } }
+  for batch in #[
+      { observations with native := observations.native.extract 1 observations.native.size },
+      { observations with inline := observations.inline.extract 1 observations.inline.size },
+      { observations with documented := observations.documented.extract 1 observations.documented.size },
+      { observations with checks := observations.checks.extract 1 observations.checks.size }] do
+    rejects "missing-observation" batch
+  let some check := observations.checks[0]? | throwError "Missing actual check control"
+  let .ok checked := check.result | throwError "Expected a real checked declaration"
+  rejects "mismatched-observation" { observations with checks := observations.checks.modify 0 fun entry =>
+    { entry with result := .ok { checked with declaration := { checked.declaration with native := "wrong.witness" } } } }
   logInfo m!"ordinary capture: {snapshot.registry.nodes.size} nodes in {elapsed} ms"
   let registry := snapshot.registry
   -- Public consumer projections retain native validity separately from Blueprint
@@ -166,9 +217,28 @@ run_cmd liftCoreM <| Authoring.configureProject `blueprintFixtures
 run_cmd liftCoreM <| Authoring.expectNative `expectedComplete (Name.mkSimple "capture.complete") `RealizationCaptureFixture.expectedTrue
 
 run_cmd liftTermElabM do
-  let snapshot ← obtain (← Capture.capture)
+  let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
   ensure ((snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete `expectedProof)).complete)
     "Independently authored expected proposition did not check"
+  let replay ← obtain (Capture.evaluate plan { observations with
+    specifications := observations.specifications.reverse, expected := observations.expected.reverse })
+  ensure (replay.registry.contributions == snapshot.registry.contributions)
+    "Expected-goal table order changed origins, goal documents or bindings"
+  let rejects (code : String) (batch : Capture.Observations plan) : TermElabM Unit := do
+    match Capture.evaluate plan batch with
+    | .ok _ => throwError "Malformed authored observation batch was admitted"
+    | .error issues => ensure (issues.any (·.code == code)) s!"Wrong authored batch rejection: {repr issues}"
+  rejects "missing-observation" { observations with specifications := #[] }
+  rejects "missing-observation" { observations with expected := #[] }
+  let some expected := observations.expected[0]? | throwError "Missing expected-goal result control"
+  rejects "duplicate-observation" { observations with expected := observations.expected.push expected }
+  rejects "extraneous-observation" { observations with expected := observations.expected.push { expected with handle := plan.expected.size } }
+  rejects "mismatched-observation" { observations with expected := observations.expected.modify 0 fun entry =>
+    { entry with result := { entry.result with documents := #[] } } }
+  rejects "mismatched-observation" { observations with specifications := observations.specifications.modify 0 fun entry =>
+    { entry with result := { entry.result with document := { entry.result.document with text := "different specification bytes" } } } }
   let env ← getEnv
   try
     Authoring.expectNative `competingExpectation (Name.mkSimple "capture.complete") `RealizationCaptureFixture.expectedFalse
@@ -195,7 +265,7 @@ run_cmd liftTermElabM do
       let some node := state.data.get? target | return state
       let associations := node.nativeAssociations.map fun association => { association with
         reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } }
-      return { state with data := state.data.insert target { node with nativeAssociations := associations } }
+      return { state with data := state.data.insert target { node with nativeAssociations := node.nativeAssociations ++ associations } }
     let snapshot ← obtain (← Capture.capture)
     ensure (snapshot.diagnostics.any (·.code == "source-unavailable")) "Missing association diagnostic was lost"
     ensure (!(snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
@@ -249,5 +319,29 @@ run_cmd liftTermElabM do
   ensure (!(snapshot.registry.resultForRequirement
     (key "capture.wrongExpected" `RealizationCaptureFixture.wrongExpected `expectedProof)).complete)
     "Wrong expected proposition acquired a completed proof"
+
+-- The actual observation scope restores all three kinds of elaborator state
+-- even when an unexpected exception escapes a provider. No provider success is
+-- supplied by this test.
+run_cmd liftTermElabM do
+  let before := Environment.informalExt.getState (← getEnv)
+  let sentinel ← mkFreshExprMVar (mkConst ``True)
+  let metaBefore ← getMCtx
+  let infoBefore ← getInfoState
+  let result : Except (Array Diagnostic) Unit ← Capture.withObservationState do
+    Environment.modify fun state => { state with authoringRecords := #[] }
+    sentinel.mvarId!.assign (mkConst ``True.intro)
+    discard <| mkFreshExprMVar (mkConst ``True)
+    modifyInfoState fun state => { state with enabled := !state.enabled, trees := {} }
+    throwError "deliberate observation exception"
+  let .error issues := result | throwError "Observation exception escaped conversion"
+  ensure (issues.size == 1 && issues[0]!.code == "capture-failed" &&
+    issues[0]!.message == "deliberate observation exception") "Lost observation exception diagnostic"
+  ensure (reprStr before == reprStr (Environment.informalExt.getState (← getEnv))) "Exception leaked environment mutation"
+  ensure (!(← sentinel.mvarId!.isAssigned) && (← getMCtx).mvarCounter == metaBefore.mvarCounter)
+    "Exception leaked metavariable mutation"
+  let infoAfter ← getInfoState
+  ensure (infoAfter.enabled == infoBefore.enabled && infoAfter.trees.size == infoBefore.trees.size)
+    "Exception leaked info-state mutation"
 
 end RealizationCaptureFixture
