@@ -93,13 +93,6 @@ def nonProposition : Nat := 0
 axiom assumedExpected : Prop
 theorem rollbackDeclaration : True := True.intro
 
-private def sameBody (a b : Option Data.InformalData) : Bool :=
-  match a, b with
-  | none, none => true
-  | some a, some b => a.stx == b.stx && a.elabStx == b.elabStx &&
-      a.previewBlocks.size == b.previewBlocks.size && a.useDeclarations == b.useDeclarations
-  | _, _ => false
-
 -- Assert semantic fields, evidence buffers, indexes, catalogs and counters
 -- directly. No debug rendering is used as a substitute for state assertions.
 private def unchanged (before after : Environment.State) : TermElabM Unit := do
@@ -107,10 +100,8 @@ private def unchanged (before after : Environment.State) : TermElabM Unit := do
   for (label, a) in before.data.toArray do
     let some b := after.data.get? label | throwError "Accepted node disappeared"
     ensure (a.kind == b.kind && a.kindIsExplicit == b.kindIsExplicit && a.count == b.count &&
-      sameBody a.statement b.statement && sameBody a.proof b.proof &&
-      a.externalRefs == b.externalRefs && a.proofExternalRefs == b.proofExternalRefs &&
-      a.blueprintAttributeAttachments == b.blueprintAttributeAttachments &&
-      a.literateCodes.size == b.literateCodes.size && a.rustCode.isSome == b.rustCode.isSome &&
+      reprStr a.sources == reprStr b.sources && a.uses == b.uses &&
+      a.nativeAssociations == b.nativeAssociations &&
       a.parent == b.parent && a.priority == b.priority && a.owner == b.owner && a.tags == b.tags &&
       a.effort == b.effort && a.prUrl == b.prUrl && a.issueUrl == b.issueUrl &&
       a.origin == b.origin && a.modules == b.modules) "Accepted node fields changed"
@@ -255,10 +246,9 @@ run_cmd liftTermElabM do
     discard <| rejected "producer-collision" (← query)
   isolated do
     Environment.modify fun state => { state with data := state.data.modify Owner.node fun node =>
-      { node with externalRefs := node.externalRefs.map fun ref => { ref with canonical := `Wrong.subject } } }
-    let captured ← obtain (← query)
-    ensure ((captured.resultForRequirement Owner.proof).complete)
-      "Obsolete display projection replaced the retained canonical native association"
+      { node with nativeAssociations := node.nativeAssociations.map fun association =>
+        { association with reference := { association.reference with canonical := `Wrong.subject } } } }
+    discard <| rejected "unknown-requirement" (← query)
   let conflict (reverse : Bool) := isolated do
     let a : Environment.AuthoredBatch := {
       realizations := #[{ key := ⟨Owner.node, `conflict⟩, context := ⟨`lean, Owner.projectName⟩ }] }

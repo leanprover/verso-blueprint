@@ -138,7 +138,7 @@ Inner statement.
 :::::::
 
 -- This reports an error without throwing out of the body elaborator.
-/-- error: Label atomic_duplicate_rust already has associated Rust code -/
+/-- error: Label atomic_duplicate_rust: duplicate-source: realization 'rust' already has a body source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) loggedAtomicFailure "Logged body failure" :=
@@ -209,7 +209,7 @@ theorem rejectedStandaloneWitness : True := atomicDependency
 ```
 :::::::
 
-/-- error: Label atomic_standalone_markup already has associated markdown external markup in slot 'default' -/
+/-- error: Label atomic_standalone_markup: duplicate-source: realization 'markdown.default' already has a statement source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) rejectedStandaloneMarkup "Rejected standalone markup" :=
@@ -219,7 +219,7 @@ Rejected markup.
 ```
 :::::::
 
-/-- error: Label atomic_standalone_rust already has associated Rust code -/
+/-- error: Label atomic_standalone_rust: duplicate-source: realization 'rust' already has a body source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) rejectedStandaloneRust "Rejected standalone Rust" :=
@@ -309,12 +309,16 @@ def attrAutoReverse : Nat := 0
 /-- error: Label attr_inference_conflict declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
 #guard_msgs in
 #check_blueprint_atomic
-/-- {uses "atomic_type" (origin := "automatic") (intent := "technical")}[]. -/
-@[blueprint "attr_inference_conflict" (autoDeps := true) (uses := ["atomic_type"])]
+/--
+{uses "atomic_type" (origin := "automatic")}[] and
+{uses "atomic_type" (origin := "automatic") (intent := "technical")}[].
+-/
+@[blueprint "attr_inference_conflict" (autoDeps := false)]
 def attrInferenceConflict : AtomicType := (0 : Nat)
 
--- Equal declarations deduplicate, but manual precedence only projects the
--- effective edge; it must retain the automatic declaration for later validation.
+-- Raw registrations retain repeated declarations, while effective display
+-- collapses exact duplicates and manual metadata wins without erasing the
+-- automatic declaration needed for later validation.
 /-- {uses "atomic_type"}[] and again {uses "atomic_type"}[]. -/
 @[blueprint "attr_authorities" (autoDeps := true) (uses := ["atomic_type"])]
 def attrAuthorities : AtomicType := (0 : Nat)
@@ -329,10 +333,13 @@ Manual external-code authoring retains the same authority evidence.
 run_cmd do
   for label in #[`attr_authorities, `manual_authorities] do
     let some node ← Environment.getNode? label | throwError "Missing node"
-    let some statement := node.statement | throwError "Missing statement"
-    unless statement.useDeclarations == #[
-        { label := `atomic_type, origin := .automatic }, { label := `atomic_type }] &&
-        statement.deps == #[{ label := `atomic_type }] do
+    let statementUses := (node.uses.filter (·.facet == `statement)).map (·.reference)
+    let expectedUses := if label == `attr_authorities then #[
+        { label := `atomic_type, origin := .automatic },
+        { label := `atomic_type }, { label := `atomic_type }, { label := `atomic_type }]
+      else #[{ label := `atomic_type, origin := .automatic }, { label := `atomic_type }]
+    unless statementUses == expectedUses &&
+        node.usesOn `statement == #[{ label := `atomic_type }] do
       throwError "Normalization erased authority evidence or retained equal duplicates"
 
 /-- error: Label attr_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/

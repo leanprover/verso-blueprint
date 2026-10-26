@@ -496,7 +496,7 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
     let statementCanBeFilled :=
-      match node.statement with
+      match (node.proseView `verso `statement) with
       | none => true
       | some statement => !statement.hasBody
     if statementCanBeFilled then
@@ -506,13 +506,13 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
       return false
   | (.proof, some node, true) =>
     let proofCanBeFilled :=
-      match node.proof with
+      match (node.proseView `verso `proof) with
       | none => true
       | some proof => !proof.hasBody
     if !proofCanBeFilled then
       logError m!"Label {label} already has a proof"
       return false
-    else if node.statement.isNone then
+    else if (node.proseView `verso `statement).isNone then
       logError m!"Cannot add proof for {label}: statement/dependencies are missing"
       return false
     else

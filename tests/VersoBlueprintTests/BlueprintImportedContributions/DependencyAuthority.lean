@@ -23,10 +23,12 @@ open Informal.NodeAssembly
   for refs in #[#[a,m], #[m,a], #[a,a,m,m]] do
     let .ok node := ({} : Node).applyRegistrations `target refs
       | throw <| IO.userError "Compatible authority levels were rejected"
-    unless node.proof.map (·.deps) == some #[{ label := `dep, intent := .auxiliary }] do
+    unless node.usesOn `proof == #[{ label := `dep, intent := .auxiliary }] do
       throw <| IO.userError "Manual metadata lost precedence"
-    unless node.proof.map (·.useDeclarations.size) == some 2 do
-      throw <| IO.userError "Validation evidence was lost or duplicated"
+    let rawEvidence := (node.uses.filter (·.facet == `proof)).map (·.reference)
+    let expectedEvidence := refs.flatMap (·.uses.map (·.reference))
+    unless rawEvidence == expectedEvidence do
+      throw <| IO.userError "Raw scoped validation evidence or its registration order changed"
 
 -- This is also reachable through ordinary author syntax, regardless of role order.
 open Verso.Genre Informal

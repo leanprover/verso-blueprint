@@ -13,14 +13,14 @@ namespace ImportedContributions
 def completeNode (withAttachment : Bool) : CoreM Bool := do
   let state := Environment.informalExt.getState (← getEnv)
   let some node ← Environment.getNode? `key_theorem | return false
-  let some statement := node.statement | return false
-  let some proof := node.proof | return false
+  let some statement := node.proseView `verso `statement | return false
+  let some proof := node.proseView `verso `proof | return false
   let labels ← Environment.labelsForLeanDecl `ImportedContributions.attachedTheorem
   return state.importedConflicts.isEmpty && state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) &&
     state.data.size == 3 && node.kind == .theorem && node.count == 3 &&
     statement.hasBody && proof.hasBody &&
-    statement.deps == #[{ label := `statement_dep }] &&
-    proof.deps == #[{ label := `proof_dep, intent := .technical }] &&
+    node.usesOn `statement == #[{ label := `statement_dep }] &&
+    node.usesOn `proof == #[{ label := `proof_dep, intent := .technical }] &&
     node.parent == some `split_group && node.owner == some `split_author &&
     node.priority == some "high" && node.tags == #["statement", "proof"] &&
     node.hasAssociatedCode == withAttachment &&

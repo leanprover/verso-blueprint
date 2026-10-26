@@ -108,10 +108,10 @@ private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
 
 private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
-  let informalData ←
-    match facet with
-    | .statement => node.statement
-    | .proof => node.proof
+  let facetName := match facet with
+    | .statement => `statement
+    | .proof => `proof
+  let informalData ← node.proseView `verso facetName
   match nonEmptyOrNone informalData.previewBlocks with
   | some blocks => some { blocks }
   | none =>

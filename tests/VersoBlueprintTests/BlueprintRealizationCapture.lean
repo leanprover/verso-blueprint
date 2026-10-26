@@ -85,6 +85,14 @@ run_cmd liftTermElabM do
     "Public assessment omitted exact subjects and contracts"
   ensure (NodeAssessment.fromJsonString! (toJson completeView).compress == completeView)
     "Serializable captured assessment did not round-trip"
+  let foreignKey : RealizationKey := ⟨Name.mkSimple "storage.source", `rocqTranslation⟩
+  let some foreign := registry.realization? foreignKey | throwError "Imported named realization disappeared"
+  ensure (foreign.context.language == `rocq && foreign.facets.any (·.name == `implementation) &&
+      foreign.declarations.isEmpty && (registry.resultFor (.realization foreignKey)).status == .unassessed)
+    "Foreign source borrowed a native declaration or validation"
+  ensure (before.data.get? (Name.mkSimple "storage.source") |>.any fun node =>
+      node.sources.any fun source => source.destination == ⟨foreignKey, `implementation⟩)
+    "Accepted source inventory flattened the imported named destination"
   ensure snapshot.diagnostics.isEmpty s!"Unexpected source/provider diagnostics: {repr snapshot.diagnostics}"
   ensure (registry.nodes.size == before.data.size) "Capture omitted ordinary accepted concepts"
   ensure ((registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
@@ -182,11 +190,12 @@ run_cmd liftTermElabM do
 run_cmd liftTermElabM do
   let env ← getEnv
   try
-    modifyEnv fun env => Environment.informalExt.modifyState env fun state =>
-      { state with factRecords := state.factRecords.map fun fact =>
-        if fact.label != Name.mkSimple "capture.complete" then fact else { fact with
-          nativeAssociations := fact.nativeAssociations.map fun association => { association with
-            reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } } } }
+    Environment.modify fun state => Id.run do
+      let target := Name.mkSimple "capture.complete"
+      let some node := state.data.get? target | return state
+      let associations := node.nativeAssociations.map fun association => { association with
+        reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } }
+      return { state with data := state.data.insert target { node with nativeAssociations := associations } }
     let snapshot ← obtain (← Capture.capture)
     ensure (snapshot.diagnostics.any (·.code == "source-unavailable")) "Missing association diagnostic was lost"
     ensure (!(snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
@@ -199,12 +208,12 @@ run_cmd liftTermElabM do
 run_cmd liftTermElabM do
   let env ← getEnv
   try
-    Environment.modify fun state =>
-      let records := state.factRecords.map fun fact =>
-        if fact.label != Name.mkSimple "capture.dependent" then fact else { fact with
-          nativeAssociations := fact.nativeAssociations.map fun association => { association with
-            reference := { association.reference with canonical := `RealizationCaptureFixture.absentNative } } }
-      { state with factRecords := records }
+    Environment.modify fun state => Id.run do
+      let target := Name.mkSimple "capture.dependent"
+      let some node := state.data.get? target | return state
+      let associations := node.nativeAssociations.map fun association => { association with
+        reference := { association.reference with canonical := `RealizationCaptureFixture.absentNative } }
+      return { state with data := state.data.insert target { node with nativeAssociations := associations } }
     let snapshot ← obtain (← Capture.capture)
     ensure (snapshot.diagnostics.any (·.code == "missing-declaration")) "Missing native declaration diagnostic was lost"
     ensure (!(snapshot.registry.resultForRequirement (key "capture.dependent" `RealizationCaptureFixture.absentNative)).complete)

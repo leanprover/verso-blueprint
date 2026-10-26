@@ -21,7 +21,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let registrations := (state.pendingNodes.getD label {}).registrations
   let sources := registrations.flatMap (·.sources)
   let uses := registrations.flatMap (·.uses)
-  unless sources.size == 6 && state.importedConflicts.isEmpty &&
+  unless sources.size == 7 && state.importedConflicts.isEmpty &&
       state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) do
     throwError "Diamond import duplicated a source or re-exported imported registrations"
   unless sources.all (fun source => source.context.project == `blueprintFixtures &&
@@ -35,6 +35,13 @@ run_cmd Lean.Elab.Command.liftCoreM do
       sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, `proof⟩) &&
       sources.any (fun source => source.destination == ⟨⟨label, `lean⟩, `body⟩) do
     throwError "Realization and facet identities were flattened"
+  unless sources.any (fun source =>
+      source.destination == ⟨⟨label, `rocqTranslation⟩, `implementation⟩ &&
+      source.context.language == `rocq && source.document.path.endsWith "Attachment.lean" &&
+      (match source.payload with
+      | .text raw => raw == "Definition flag_identity (b : bool) := b."
+      | _ => false)) do
+    throwError "Imported Rocq source bytes or their named destination were lost"
   unless uses.any (fun use => use.reference.label == Name.mkSimple "storage.forward" &&
       use.facet == `statement && use.realization.isNone && use.reference.origin == .manual) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
@@ -47,7 +54,9 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let inline := nativeNames #[] sources
   unless inline == #[`storedInline] && (← Environment.labelsForLeanDecl `storedInline) == #[label] do
     throwError "Inline declaration membership/index was lost"
-  let rust := sources.filterMap fun source => match source.payload with | .text raw => some raw | _ => none
+  let rust := sources.filterMap fun source =>
+    if source.context.language != `rust then none
+    else match source.payload with | .text raw => some raw | _ => none
   unless rust == #["fn example() -> &'static str { \"𝒫::bad»name\" }\n"] do
     throwError "Original Rust text changed: {repr rust}"
   let markup := sources.filterMap fun source => match source.payload with | .markup value => some value | _ => none
@@ -63,6 +72,47 @@ run_cmd Lean.Elab.Command.liftCoreM do
       unless reprStr state == reprStr (Environment.informalExt.getState (← getEnv)) do
         throwError "Query-site project option relabeled stored sources"
     let source := sources[0]!
+
+    -- Distinct language realizations/facets coexist without collapsing into
+    -- old Rust/Lean slots. Keep both source documents and the scoped use, and
+    -- ensure adding them does not drop the existing Lean index.
+    let beforeForeignSource ← getEnv
+    try
+      let rustContext : Realizations.Context := ⟨`rust, `blueprintFixtures⟩
+      let rustKey : Realizations.RealizationKey := ⟨label, `rustTranslation⟩
+      let rustSource : SourceData.FacetSource := {
+        destination := ⟨rustKey, `body⟩
+        context := rustContext
+        document := ⟨rustContext, "src/lib.rs"⟩
+        source := .unavailable "Foreign fixture bytes are present without a provider range"
+        payload := .text "pub fn value() -> u8 { 1 }" }
+      let rocqContext : Realizations.Context := ⟨`rocq, `blueprintFixtures⟩
+      let rocqKey : Realizations.RealizationKey := ⟨label, `rocqTranslation⟩
+      let rocqSource : SourceData.FacetSource := {
+        destination := ⟨rocqKey, `proof⟩
+        context := rocqContext
+        document := ⟨rocqContext, "theories/Flag.v"⟩
+        source := .unavailable "Foreign fixture bytes are present without a provider range"
+        payload := .text "Theorem flag_involutive : forall x, flag (flag x) = x." }
+      let scopedUse : SourceData.UseDeclaration := {
+        node := label, realization := some `rustTranslation, facet := `body
+        reference := { label := `storage.native, origin := .automatic, intent := .technical } }
+      let some foreignNode ← Environment.contribute label {
+        sources := #[rustSource, rocqSource]
+        uses := #[scopedUse] }
+          | throwError "Distinct language realization/facet sources were rejected"
+      let retainedSources := foreignNode.sources.filterMap fun stored =>
+        match stored.payload with
+        | .text raw => some (stored.destination, stored.document, raw)
+        | _ => none
+      unless retainedSources.contains (rustSource.destination, rustSource.document, "pub fn value() -> u8 { 1 }") &&
+          retainedSources.contains (rocqSource.destination, rocqSource.document, "Theorem flag_involutive : forall x, flag (flag x) = x.") &&
+          foreignNode.uses.contains scopedUse && foreignNode.leanDecls.contains `storedInline &&
+          (← Environment.labelsForLeanDecl `storedInline) == #[label] do
+        throwError "A keyed foreign source or scoped use was lost, or the existing Lean declaration index changed"
+    finally
+      setEnv beforeForeignSource
+
     CanonicalNativePersistence.rejected "source-destination-mismatch" <|
       Environment.contribute label { sources := #[{ source with
         destination := ⟨⟨`sibling, `verso⟩, `statement⟩ }] }
@@ -76,11 +126,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       Environment.contribute label { sources := #[{ source with
         document := ⟨⟨`verso, `otherProject⟩, source.document.path⟩
         payload := .prose { stx := .missing } }] }
-    CanonicalNativePersistence.rejected "unsupported-source-projection" <|
-      Environment.contribute label { sources := #[{ source with
-        destination := ⟨⟨label, `alternative⟩, `statement⟩
-        payload := .prose { stx := .missing } }] }
-    CanonicalNativePersistence.rejected "unsupported-use-projection" <|
+    CanonicalNativePersistence.rejected "invalid-use-destination" <|
       Environment.contribute label { uses := #[{
         node := `sibling, facet := `proof, reference := { label := `target } }] }
     -- A source/native context mismatch also rejects when each group is valid alone.

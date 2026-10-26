@@ -31,6 +31,12 @@ private def externalMarkupLocation?
     (slot : String) : Option Informal.Data.ExternalMarkupLocation :=
   sources.find? language slot |>.bind (·.location)
 
+private def nodeExternalMarkup (node : Informal.Data.Node) : Informal.Data.ExternalMarkupSet :=
+  node.sources.foldl (init := {}) fun entries source =>
+    match source.payload with
+    | .markup markup => entries.insert markup
+    | _ => entries
+
 private def previewEntry?
     (manifest : Informal.PreviewManifest.File) (key : String) :
     Option Informal.PreviewManifest.Entry :=
@@ -196,7 +202,7 @@ Markdown statement witness.
 :::::::
 
 /--
-error: Label «external.duplicate» already has associated tex external markup in slot 'proof'
+error: Label «external.duplicate»: duplicate-source: realization 'tex.proof' already has a statement source
 -/
 #guard_msgs in
 #docs (Manual) duplicateExternalMarkupSlotDoc "Duplicate External Markup Slot" :=
@@ -788,16 +794,19 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       | pure false
     let some multi := state.data.get? (Name.mkSimple "external.multi")
       | pure false
-    let texStatement := externalMarkupRaw? node.externalMarkup .tex "statement" |>.getD ""
-    let mdProof := externalMarkupRaw? node.externalMarkup .markdown "proof" |>.getD ""
-    let witnessSource := externalMarkupRaw? witness.externalMarkup .tex Informal.Data.defaultExternalMarkupSlot |>.getD ""
-    let multiTex := externalMarkupRaw? multi.externalMarkup .tex "statement" |>.getD ""
-    let multiMd := externalMarkupRaw? multi.externalMarkup .markdown "statement" |>.getD ""
-    let some loc := externalMarkupLocation? node.externalMarkup .tex "statement"
+    let nodeMarkup := nodeExternalMarkup node
+    let witnessMarkup := nodeExternalMarkup witness
+    let multiMarkup := nodeExternalMarkup multi
+    let texStatement := externalMarkupRaw? nodeMarkup .tex "statement" |>.getD ""
+    let mdProof := externalMarkupRaw? nodeMarkup .markdown "proof" |>.getD ""
+    let witnessSource := externalMarkupRaw? witnessMarkup .tex Informal.Data.defaultExternalMarkupSlot |>.getD ""
+    let multiTex := externalMarkupRaw? multiMarkup .tex "statement" |>.getD ""
+    let multiMd := externalMarkupRaw? multiMarkup .markdown "statement" |>.getD ""
+    let some loc := externalMarkupLocation? nodeMarkup .tex "statement"
       | pure false
     pure <|
       node.kind == .theorem &&
-      node.statement.isSome &&
+      (node.proseView `verso `statement).isSome &&
       hasSubstr texStatement "\\begin{theorem}" &&
       hasSubstr texStatement "\\label{thm:external-markup}" &&
       hasSubstr mdProof "Imported **Markdown** proof witness." &&
@@ -807,14 +816,14 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       loc.range.«end».line == 8 &&
       loc.range.«end».character == 0 &&
       unlabeledAnchor.kind == .theorem &&
-      unlabeledAnchor.statement.isSome &&
-      unlabeledAnchor.externalMarkup.isEmpty &&
-      witness.statement.isNone &&
-      witness.proof.isNone &&
+      (unlabeledAnchor.proseView `verso `statement).isSome &&
+      !(unlabeledAnchor.sources.any fun source => match source.payload with | .markup _ => true | _ => false) &&
+      (witness.proseView `verso `statement).isNone &&
+      (witness.proseView `verso `proof).isNone &&
       hasSubstr witnessSource "\\begin{theorem}" &&
       hasSubstr witnessSource "\\label{thm:external-witness}" &&
-      multi.statement.isNone &&
-      multi.proof.isNone &&
+      (multi.proseView `verso `statement).isNone &&
+      (multi.proseView `verso `proof).isNone &&
       hasSubstr multiTex "TeX statement witness." &&
       hasSubstr multiMd "Markdown statement witness."
 

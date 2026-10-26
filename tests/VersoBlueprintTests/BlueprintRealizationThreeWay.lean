@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Existing
+import VersoBlueprint.Realizations.NativeSource
 import VersoBlueprint.Realizations.Report
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 
@@ -14,7 +14,6 @@ checking. No successful foreign observation or human review is supplied. -/
 
 open Lean Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
-open Informal.Realizations.Existing
 
 namespace VersoBlueprintTests.BlueprintRealizationThreeWay
 
@@ -80,7 +79,7 @@ run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.flag.involutive"
   let before ← Informal.Environment.getNode? label
   let labelsBefore ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.flagInvolutive
-  let p ← obtain (← project `flagPilot label)
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `flagPilot label `RealizationAdapterFixture.flagInvolutive)
   ensure (p.docstringFormat == `verso) "Use actual accepted Verso source"
   let expected ← `(term| ∀ flag : RealizationAdapterFixture.Flag,
     RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)

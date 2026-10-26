@@ -183,14 +183,14 @@ private def prepareNative (reader : System.FilePath → IO String) (context : Co
 private def collectOrdinary (reader : System.FilePath → IO String) (state : Environment.State) : CaptureM Collected := do
   let mut collected : Collected := {}
   for (label, accepted) in state.data.toArray do
-    let some pending := state.pendingNodes.get? label
+    let some _ := state.pendingNodes.get? label
       | reject "missing-source-envelope" label.toString "Accepted concept has no retained source registrations"
     if let .error diagnostics := Contributions.resolve label state.factRecords then
       reject "producer-collision" label.toString (reprStr diagnostics)
-    let sources := pending.registrations.flatMap (·.sources)
+    let sources := accepted.sources
     let records := state.factRecords.reverse.toArray.filter (·.label == label)
-    let associations := records.flatMap (·.nativeAssociations)
-    let uses := pending.registrations.flatMap (·.uses)
+    let associations := accepted.nativeAssociations
+    let uses := accepted.uses
     collected := { collected with
       input.nodes := collected.input.nodes.push (contribution `node label
         (accepted.toNode.toConcept label label.toString))

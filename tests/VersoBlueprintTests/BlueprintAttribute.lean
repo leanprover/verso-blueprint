@@ -28,7 +28,7 @@ private def importedNodeHasLocalContributions (label : String) : CoreM Bool := d
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
     (node : Informal.Data.Node) : Bool :=
-  match node.externalRefs with
+  match node.nativeRefsOn `statement with
   | #[ref] =>
     ref.origin == .blueprintAttr &&
       ref.present &&
@@ -52,13 +52,13 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
     pure (
       theoremNode.kind == .theorem &&
       theoremNode.hasAssociatedCode &&
-      theoremNode.statement.isSome &&
+      (theoremNode.proseView `verso `statement).isSome &&
       definitionNode.kind == .definition &&
       definitionNode.hasAssociatedCode &&
-      definitionNode.statement.isSome &&
+      (definitionNode.proseView `verso `statement).isSome &&
       inductiveNode.kind == .definition &&
       inductiveNode.hasAssociatedCode &&
-      inductiveNode.statement.isSome &&
+      (inductiveNode.proseView `verso `statement).isSome &&
       undocumentedNode.kind == .definition &&
       undocumentedNode.hasAssociatedCode
     )
@@ -124,14 +124,14 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
     let versoDoc? ← liftM <| findInternalDocString? (← getEnv)
       `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridVersoDocstring
     let bodyWasPersisted :=
-      match bodyNode.statement with
+      match bodyNode.proseView `verso `statement with
       | some statement => !statement.previewBlocks.isEmpty && statement.elabStx.isEmpty
       | none => false
     let lateDocstringDidNotFill :=
-      match lateDocstringNode.statement with
+      match lateDocstringNode.proseView `verso `statement with
       | some statement =>
         !statement.hasBody &&
-          statement.dependencyLabels ==
+          (lateDocstringNode.usesOn `statement).map (·.label) ==
             #[Name.mkSimple "attr.hybrid.verso_docstring"]
       | none => false
     pure <|
@@ -174,8 +174,9 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
 
 /-- Imported statement payloads should keep empty deps and at least one preview source. -/
 private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
-  match node.statement with
-  | some st => st.deps.isEmpty && (!st.previewBlocks.isEmpty || !st.elabStx.isEmpty)
+  match node.proseView `verso `statement with
+  | some st => (node.usesOn `statement).isEmpty &&
+      (!st.previewBlocks.isEmpty || !st.elabStx.isEmpty)
   | none => false
 
 /-- info: true -/
@@ -194,7 +195,7 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
       importedStatementExportOk theoremNode &&
       importedStatementExportOk definitionNode &&
       importedStatementExportOk inductiveNode &&
-      undocumentedNode.statement.isNone
+      (undocumentedNode.proseView `verso `statement).isNone
 
 /- Bare attributes use qualified declaration names and retain explicit dependencies. -/
 /-- info: true -/
@@ -212,8 +213,7 @@ private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
     let some definitionNode ← importedNodeByName? defaultDefinition
       | return false
     pure <|
-      node.statement.map (·.deps.map (·.label)) ==
-        some #[Name.mkSimple "attr.exported.theorem"] &&
+      (node.usesOn `statement).map (·.label) == #[Name.mkSimple "attr.exported.theorem"] &&
       isBlueprintAttrRef decl .theorem node &&
       isBlueprintAttrRef
         `Verso.VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider.qualifiedDefaultDefinition

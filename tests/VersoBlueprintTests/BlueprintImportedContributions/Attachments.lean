@@ -13,14 +13,17 @@ import VersoBlueprintTests.BlueprintImportedContributions.Proof
 #guard_msgs in
 #eval show Lean.CoreM Bool from do
   let some node ← Informal.Environment.getNode? `key_theorem | return false
-  let some statement := node.statement | return false
-  let some proof := node.proof | return false
   let labels ← node.leanDecls.mapM Informal.Environment.labelsForLeanDecl
+  let markup := node.sources.filterMap fun source =>
+    match source.payload with | .markup markup => some markup | _ => none
+  let hasRust := node.sources.any fun source =>
+    match source.payload with | .text _ => true | _ => false
   return (← Informal.Environment.importedConflicts).isEmpty &&
-    statement.hasBody && proof.hasBody &&
-    statement.deps == #[{ label := `statement_dep }] &&
-    proof.deps == #[{ label := `proof_dep, intent := .technical }] &&
-    node.literateCodes.size == 1 && labels == #[#[`key_theorem]] &&
-    node.rustCode.isSome && node.externalMarkup.toArray.size == 2 &&
-    (node.externalMarkup.find? .tex "statement").isSome &&
-    (node.externalMarkup.find? .tex "proof").isSome
+    (node.proseView `verso `statement).any (·.hasBody) &&
+    (node.proseView `verso `proof).any (·.hasBody) &&
+    node.usesOn `statement == #[{ label := `statement_dep }] &&
+    node.usesOn `proof == #[{ label := `proof_dep, intent := .technical }] &&
+    node.inlineCodes.size == 1 && labels == #[#[`key_theorem]] &&
+    hasRust && markup.size == 2 &&
+    markup.any (fun source => source.language == .tex && source.slot == "statement") &&
+    markup.any (fun source => source.language == .tex && source.slot == "proof")

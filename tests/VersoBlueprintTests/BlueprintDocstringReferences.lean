@@ -21,17 +21,18 @@ private def manualImpls : ExtensionImpls := extension_impls%
 #eval show CoreM Bool from do
   let state := Informal.Environment.informalExt.getState (← getEnv)
   let some node := state.data.get? (Name.mkSimple "attr.doc.source") | return false
-  let some statement := node.statement | return false
-  let some proof := node.proof | return false
+  let some statement := node.proseView `verso `statement | return false
+  let some proof := node.proseView `verso `proof | return false
   let some late := state.data.get? (Name.mkSimple "attr.doc.late") | return false
   pure <|
-    statement.deps == #[
+    statement.hasBody && !proof.hasBody &&
+    node.usesOn `statement == #[
       { label := Name.mkSimple "attr.doc.target", intent := .technical },
       { label := Name.mkSimple "attr.doc.automatic", origin := .automatic, intent := .auxiliary }
     ] &&
-    proof.deps == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
-    late.statement.any (fun body => !body.hasBody && body.dependencyLabels ==
-      #[Name.mkSimple "attr.doc.target"]) &&
+      node.usesOn `proof == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
+    (late.proseView `verso `statement).any (fun body => !body.hasBody) &&
+    (late.usesOn `statement).map (·.label) == #[Name.mkSimple "attr.doc.target"] &&
     (state.pendingNodes.getD (Name.mkSimple "attr.doc.source") {}).localRegistrations.isEmpty && state.activeDirective.isNone
 
 #docs (Genre.Manual) includedDoc "Docstring references" :=
@@ -127,7 +128,7 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
   let some node ← Informal.Environment.getNode? (Name.mkSimple "attr.doc.invalid.recovered")
     | return false
   pure <| dependencies.isEmpty &&
-    node.statement.all (·.deps.isEmpty) &&
+    (node.usesOn `statement).isEmpty &&
     hasSubstr (Informal.Docstring.versoDocstringToHtml doc).asString "bad"
 
 /-- error: Unexpected named argument `intent` -/

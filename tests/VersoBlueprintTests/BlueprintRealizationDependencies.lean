@@ -5,7 +5,6 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Dependencies
 import VersoBlueprint.Realizations.DependencyReport
-import VersoBlueprint.Realizations.Existing
 import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Graph
 import VersoBlueprintTests.BlueprintRealizationDependencies.Provider
@@ -17,13 +16,46 @@ explicitly synthetic, and successful observations come from native checks. -/
 
 open Lean Meta Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
-open Informal.Realizations.Existing
 open Informal.Realizations.NativeSource Informal.Realizations.Dependencies
 
 namespace VersoBlueprintTests.BlueprintRealizationDependencies
 
 private def context : Informal.Realizations.Context := ⟨`lean, `dependencyPilot⟩
 private def label (s : String) : Name := Name.mkSimple ("dependencies." ++ s)
+
+private def providerModule : Name :=
+  `VersoBlueprintTests.BlueprintRealizationDependencies.Provider
+
+private def providerPath : String :=
+  "tests/VersoBlueprintTests/BlueprintRealizationDependencies/Provider.lean"
+
+private def canonicalFor (node : Name) : Option Name :=
+  if node == label "clean" then some `DependencySelectionFixture.clean else
+  if node == label "admitted" then some `DependencySelectionFixture.admitted else
+  if node == label "other" then some `DependencySelectionFixture.other else
+  if node == label "source" then some `DependencySelectionFixture.source else none
+
+/- Direct native provider projection for this fixture. The request is authored
+explicitly from the known provider module/path; there is no legacy-node shape or
+eligibility gate in the source API. -/
+private def project (projectName node : Name) : CoreM (Except Diagnostic PreparedModel) := do
+  let some canonical := canonicalFor node
+    | return .error {
+        code := "missing-fixture-declaration"
+        subject := node.toString
+        message := "No provider declaration is assigned to this test node" }
+  let request : NativeSource.Request := {
+    project := projectName, canonical, moduleName := providerModule, sourcePath := providerPath }
+  let documented ← match ← NativeSource.prepareDocumented request with
+    | .ok documented => pure documented
+    | .error diagnostic => return .error diagnostic
+  let some accepted ← Informal.Environment.getNode? node
+    | return .error {
+        code := "missing-node"
+        subject := node.toString
+        message := "Provider fixture did not register its Blueprint concept" }
+  let origin : Informal.Realizations.Origin := { id := `dependencyNativeSource ++ node, moduleName := providerModule, source := providerPath }
+  return documented.realize origin (accepted.toConcept node node.toString) `lean `docstring
 
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
   unless condition do throwError message
@@ -34,19 +66,6 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .error error => throwError "Unexpected rejection: {repr error}"
 
 private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
-
--- The imported adapter provider deliberately contains an identity that the
--- native codec rejects. Remove just that invalid target inside a restored
--- environment so this test can capture the real dependency source and check
--- that its authored edge remains a missing-target diagnostic.
-private def captureWithoutUnsupportedTarget : TermElabM Informal.Realizations.Capture.Snapshot := do
-  withEnv (← getEnv) do
-    let unsupported := Name.mkSimple "adapter.nonroundtrip"
-    Informal.Environment.modify fun state => { state with
-      data := state.data.erase unsupported
-      pendingNodes := state.pendingNodes.erase unsupported
-      factRecords := state.factRecords.filter (·.label != unsupported) }
-    obtain (← Informal.Realizations.Capture.capture)
 
 private def join (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents
@@ -124,17 +143,6 @@ private def authored (id : Name) (value : α) : Contribution α := {
     source := "tests/VersoBlueprintTests/BlueprintRealizationDependencies.lean" }
   value }
 
--- Synthetic negative slot injection only. withEnv restores the accepted
--- environment through finally, including when the test action throws.
-private def withSyntheticProofSlot (slot : Informal.Data.InformalData)
-    (action : TermElabM α) : TermElabM α := do
-  withEnv (← getEnv) do
-    Informal.Environment.modify fun state =>
-      match state.data.get? (label "source") with
-      | none => state
-      | some node => { state with data := state.data.insert (label "source") { node with proof := some slot } }
-    action
-
 -- Real native availability failure in a normal same-toolchain Lean environment
 -- without the fixture module. This is a labeled negative environment injection,
 -- not a fake unavailable observation and never a successful proof replacement.
@@ -149,13 +157,13 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let sourceLabel := label "source"
   let before ← Informal.Environment.getNode? sourceLabel
   let some source := before | throwError "Missing accepted source"
-  let statementUses := source.statement.toArray.flatMap (·.deps)
-  let proofUses := source.proof.toArray.flatMap (·.deps)
+  let statementUses := source.usesOn `statement
+  let proofUses := source.usesOn `proof
   let beforeLabels ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source
   let consumerBefore ← Informal.Environment.getNode? (label "consumer")
   let consumerLabelsBefore ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer
-  let some proofSlot := source.proof | throwError "Actual source must have proof uses"
-  ensure (proofSlot.stx.isMissing && !proofSlot.hasBody && !proofSlot.deps.isEmpty)
+  let some proofSlot := source.proseView `verso `proof | throwError "Actual source must have proof uses"
+  ensure (proofSlot.stx.isMissing && !proofSlot.hasBody && !proofUses.isEmpty)
     "The actual imported source has dependency-only proof metadata"
   let expected ← `(term| True)
   let clean ← obtain (← project context.project (label "clean"))
@@ -246,34 +254,9 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     (← field (← field sparseRequirements[0]! "value") "key") == toJson cleanKey)
     "Sparse report supplies only its actual clean contract, never source completion or another target's proof"
 
-  -- Synthetic rejected proof representations supply no successful facts. Each
-  -- mutation is confined to withEnv, and checked again after normal restoration.
-  let preview : Verso.Doc.Block Verso.Genre.Manual := .para #[.text "Synthetic proof body"]
-  let placeholder : Syntax := mkIdent `syntheticProofPlaceholder
-  let rejectedSlots : Array (String × Informal.Data.InformalData) := #[
-    ("nonmissing placeholder without body", { stx := placeholder }),
-    ("authored preview body", { stx := placeholder, previewBlocks := #[preview] }),
-    ("authored elaboration body", { stx := placeholder, elabStx := #[placeholder] }),
-    ("missing syntax with retained preview", { stx := .missing, previewBlocks := #[preview] }),
-    ("missing syntax with retained elaboration", { stx := .missing, elabStx := #[placeholder] })]
-  for (description, slot) in rejectedSlots do
-    withSyntheticProofSlot slot do
-      match ← project context.project sourceLabel with
-      | .error diagnostic => ensure (diagnostic.code == "unsupported-node") s!"Reject {description}"
-      | .ok _ => throwError "Unsupported proof slot passed: {description}"
-    ensure (reprStr before == reprStr (← Informal.Environment.getNode? sourceLabel))
-      "Synthetic slot injection restores accepted state after normal return"
-  let mut caught := false
-  try
-    withSyntheticProofSlot { stx := placeholder } do
-      let some injected ← Informal.Environment.getNode? sourceLabel | throwError "Missing injection source"
-      ensure (injected.proof.any (·.stx == placeholder)) "Failure probe runs inside injected environment"
-      throwError "synthetic proof-slot action failure"
-  catch ex =>
-    ensure ((← ex.toMessageData.toString) == "synthetic proof-slot action failure") "Catch only the deliberate test failure"
-    caught := true
-  ensure (caught && reprStr before == reprStr (← Informal.Environment.getNode? sourceLabel))
-    "Synthetic slot injection also restores accepted state after failure"
+  -- The removed Existing adapter used to reject proof slots by their legacy
+  -- shape. Canonical keyed-source conflict rejection is exercised by the raw
+  -- inventory test; source parsing failures remain covered by NativeSource.
   for (name, key) in #[(label "clean", cleanKey), (label "admitted", admittedKey)] do
     let some target ← Informal.Environment.getNode? name | throwError "Missing accepted target"
     ensure (target.leanDecls.size == 1) "The accepted concept retains its native declaration inventory"
@@ -371,8 +354,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   ensure ((explicitRegistry.requirement? admittedKey).any (·.prerequisites == #[alternativeKey]) &&
     explicitRegistry.contributions == explicit) "Explicit same-node cross-realization prerequisite remains untouched"
 
-  -- Synthetic contract corruptions. Existing admission rejects invalid contexts;
-  -- otherwise the adapter rejects policy-incompatible admitted contracts.
+  -- Synthetic contract corruptions. Pure admission rejects invalid contexts;
+  -- the selector rejects policy-incompatible admitted contracts.
   for expectation in #[Expectation.review `proofread, .check `unitTests, .check `proof,
       .check NativeLean.statementValidator] do
     let bad ← obtain (admit (changeRequirement input cleanKey fun req => { req with expected := expectation }))
@@ -467,71 +450,6 @@ run_cmd liftTermElabM do
     ensure (diagnostics.any (·.code == "unsupported-native-identity"))
       s!"Full source capture must expose the invalid imported identity: {repr diagnostics}"
   | .ok _ => throwError "Full source capture accepted the deliberately invalid imported identity"
-
-run_cmd liftTermElabM do
-  let snapshot ← captureWithoutUnsupportedTarget
-  let sourceLabel := label "source"
-  let some source ← Informal.Environment.getNode? sourceLabel
-    | throwError "Missing actual dependency source"
-  let statementRefs := source.statement.toArray.flatMap (·.deps)
-  let proofRefs := source.proof.toArray.flatMap (·.deps)
-  let capturedStatement := snapshot.uses.filter fun use =>
-    use.source == sourceLabel && use.realization.all (· == `lean) && use.facet == `statement
-  let capturedProof := snapshot.uses.filter fun use =>
-    use.source == sourceLabel && use.realization.all (· == `lean) && use.facet == `proof
-  let mergeReferences (uses : Array Informal.Realizations.Capture.SelectedUse) :=
-    Informal.Data.UseRef.mergeByLabel #[] (uses.map (·.reference))
-  unless mergeReferences capturedStatement == statementRefs && mergeReferences capturedProof == proofRefs do
-    throwError s!"Ordinary capture changed the real source uses: statement source={repr statementRefs}; " ++
-      s!"captured={repr (mergeReferences capturedStatement)}; proof source={repr proofRefs}; " ++
-      s!"captured={repr (mergeReferences capturedProof)}"
-  ensure (capturedStatement.any fun use => use.realization.isNone &&
-    use.reference.label == label "admitted" && use.reference.origin == .manual &&
-    use.reference.intent == .auxiliary)
-    "The shared manual statement edge retains its scope, origin, and intent"
-  ensure (capturedStatement.any fun use => use.realization.isNone &&
-    use.reference.label == label "clean" && use.reference.origin == .manual &&
-    use.reference.intent == .technical)
-    "A shared manual edge retains authored precedence metadata beside its automatic twin"
-  ensure (capturedStatement.any fun use => use.realization == some `lean &&
-    use.reference.label == label "clean" && use.reference.origin == .automatic)
-    "The inferred native dependency remains scoped to the Lean realization"
-  let assessment := snapshot.assessmentFor sourceLabel
-  ensure (assessment.nativeProofComplete && !assessment.requiredComplete)
-    "The source's checked native proof remains distinct from unfinished selected Blueprint requirements"
-  let findUse (uses : Array Informal.Realizations.Capture.SelectedUse) (facet target : Name) :=
-    uses.find? (fun use => use.facet == facet && use.reference.label == target)
-  match findUse capturedStatement `statement (label "clean") with
-  | some use =>
-    match use.selected with
-    | .ok keys =>
-      ensure (keys.size == 1 &&
-        (snapshot.registry.localResult keys[0]!).complete &&
-        (snapshot.registry.resultForRequirement keys[0]!).complete)
-        "The actual complete clean dependency selects its current native requirement"
-    | .error diagnostic => throwError "Clean target was not selected: {diagnostic.code}"
-  | none => throwError "Actual statement dependency to clean was lost"
-  match findUse capturedStatement `statement (label "admitted") with
-  | some use =>
-    match use.selected with
-    | .ok keys =>
-      ensure (keys.size == 1 && !(snapshot.registry.resultForRequirement keys[0]!).complete)
-        "The actual admitted dependency remains selected and unfinished"
-    | .error diagnostic => throwError "Admitted target was not selected: {diagnostic.code}"
-  | none => throwError "Actual statement dependency to admitted was lost"
-  for (uses, facet) in #[(capturedStatement, `statement), (capturedProof, `proof)] do
-    let some edge := findUse uses facet (label "missing")
-      | throwError "Actual unresolved {facet} dependency was dropped"
-    match edge.selected with
-    | .error diagnostic => do
-      ensure (diagnostic.code == "missing-target") "An unresolved source edge remains an explicit selection diagnostic"
-    | .ok _ => throwError "A missing target acquired a successful requirement"
-  let some unsupported := findUse capturedStatement `statement (Name.mkSimple "adapter.nonroundtrip")
-    | throwError "The real source's unsupported-identity dependency was dropped"
-  match unsupported.selected with
-  | .error diagnostic => do
-      ensure (diagnostic.code == "missing-target") "An intentionally omitted invalid target remains an unresolved edge"
-  | .ok _ => throwError "An unsupported native identity acquired a successful requirement"
 
 -- Several full reports and native negative checks share this guarded command.
 -- The larger test-only budget changes no provider or evaluation policy.

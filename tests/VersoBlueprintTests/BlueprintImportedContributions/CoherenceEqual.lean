@@ -18,7 +18,7 @@ open Lean Informal Verso.Genre
   let labelsA ← Environment.labelsForLeanDecl `CoherenceEqualA.declaration
   let labelsB ← Environment.labelsForLeanDecl `CoherenceEqualB.declaration
   return (← Environment.importedConflicts).isEmpty &&
-    node.priority == some "high" && node.externalRefs.size == 2 &&
+    node.priority == some "high" && (node.nativeRefsOn `statement).size == 2 &&
     labelsA == #[`coherent_equal] && labelsB == #[`coherent_equal]
 
 #docs (Manual) coherenceEqualDoc "Equal selected facts" :=

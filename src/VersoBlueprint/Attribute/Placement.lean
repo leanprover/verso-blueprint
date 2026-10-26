@@ -28,7 +28,7 @@ def Placement.showsCode (placement : Placement) : Bool :=
   !placement.config.compact && placement.config.toNode.facet == "statement"
 
 def nodeHasBlueprintAttributeAttachments (node : Data.Node) : Bool :=
-  node.blueprintAttributeAttachments
+  node.hasAttributeAssociations
 
 /-- Decode the persisted Manual representation without disguising failure as prose. -/
 def decodePersistedManualBlock (jsonText : String) :
@@ -49,7 +49,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
   let some node ← Environment.getNode? label | return none
   if !nodeHasBlueprintAttributeAttachments node then return none
   let statementStxs ←
-    match node.statement with
+    match node.proseView `verso `statement with
     | none => pure #[]
     | some statement =>
       if statement.previewBlocks.isEmpty then

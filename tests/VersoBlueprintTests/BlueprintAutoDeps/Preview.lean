@@ -152,11 +152,12 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.statement_target")
       | return false
-    let some statement := node.statement
+    let some statement := node.proseView `verso `statement
       | return false
+    let statementUses := node.usesOn `statement
     pure <|
       statement.hasBody &&
-      statement.deps ==
+      statementUses ==
         #[
           { label := label "auto.demo.type_source", origin := .automatic },
           { label := label "auto.demo.manual_extra" }
@@ -168,11 +169,12 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.proof_target")
       | return false
-    let some proof := node.proof
+    let some proof := node.proseView `verso `proof
       | return false
+    let proofUses := node.usesOn `proof
     pure <|
       proof.hasBody &&
-      proof.deps ==
+      proofUses ==
         #[
           { label := label "auto.demo.proof_source", origin := .automatic },
           { label := label "auto.demo.manual_extra" }
@@ -184,11 +186,12 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.excluded_target")
       | return false
-    let some statement := node.statement
+    let some statement := node.proseView `verso `statement
       | return false
+    let statementUses := node.usesOn `statement
     pure <|
       statement.hasBody &&
-      statement.deps == #[{ label := label "auto.demo.manual_extra" }]
+      statementUses == #[{ label := label "auto.demo.manual_extra" }]
 
 /-- info: true -/
 #guard_msgs in
@@ -196,13 +199,15 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.external_target")
       | return false
-    let some statement := node.statement
+    let some _statement := node.proseView `verso `statement
       | return false
-    let some proof := node.proof
+    let some _proof := node.proseView `verso `proof
       | return false
+    let statementUses := node.usesOn `statement
+    let proofUses := node.usesOn `proof
     pure <|
-      statement.deps == #[{ label := label "auto.demo.type_source", origin := .automatic }] &&
-      proof.deps == #[{ label := label "auto.demo.proof_source", origin := .automatic }]
+      statementUses == #[{ label := label "auto.demo.type_source", origin := .automatic }] &&
+      proofUses == #[{ label := label "auto.demo.proof_source", origin := .automatic }]
 
 /-- info: true -/
 #guard_msgs in
@@ -210,13 +215,15 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.inline_target")
       | return false
-    let some statement := node.statement
+    let some _statement := node.proseView `verso `statement
       | return false
-    let some proof := node.proof
+    let some _proof := node.proseView `verso `proof
       | return false
+    let statementUses := node.usesOn `statement
+    let proofUses := node.usesOn `proof
     pure <|
-      statement.deps == #[{ label := label "auto.demo.type_source", origin := .automatic }] &&
-      proof.deps == #[{ label := label "auto.demo.proof_source", origin := .automatic }]
+      statementUses == #[{ label := label "auto.demo.type_source", origin := .automatic }] &&
+      proofUses == #[{ label := label "auto.demo.proof_source", origin := .automatic }]
 
 /-- info: true -/
 #guard_msgs in
@@ -224,8 +231,8 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
   show CoreM Bool from do
     let some node ← Environment.getNode? (label "auto.demo.external_opt_out")
       | return false
-    let statementDeps := node.statement.map (·.deps) |>.getD #[]
-    let proofDeps := node.proof.map (·.deps) |>.getD #[]
+    let statementDeps := node.usesOn `statement
+    let proofDeps := node.usesOn `proof
     pure <| statementDeps.isEmpty && proofDeps.isEmpty
 
 /-- info: true -/

@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint
+import VersoBlueprint.Realizations.NativeSource
 import VersoBlueprintTests.BlueprintRealizationFlag
 
 namespace RealizationAdapterFixture
@@ -124,5 +125,27 @@ run_cmd do
   let attributeSyntax ← `(attr| blueprint "adapter.synthetic")
   let impl ← ofExcept <| getAttributeImpl (← getEnv) `blueprint
   liftTermElabM <| liftM <| impl.add name attributeSyntax.raw .global
+
+end RealizationAdapterFixture
+
+namespace RealizationAdapterFixture
+
+/-- Test-only construction of a source-provider model from an explicit native
+identity. This does not project a Blueprint node or test canonical capture. -/
+def prepareModel (project label canonical : Lean.Name)
+    (reader : System.FilePath → IO String := IO.FS.readFile)
+    (metadata : Informal.Data.NodeMetadata := {}) :
+    Lean.CoreM (Except Informal.Realizations.Diagnostic Informal.Realizations.NativeSource.PreparedModel) := do
+  let request : Informal.Realizations.NativeSource.Request := {
+    project, canonical
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider
+    sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" }
+  match ← Informal.Realizations.NativeSource.prepareDocumented request reader with
+  | .error diagnostic => return .error diagnostic
+  | .ok source =>
+    let origin : Informal.Realizations.Origin := {
+      id := label ++ `providerFixture, moduleName := request.moduleName, source := request.sourcePath }
+    return source.realize origin { toNodeMetadata := metadata, label, title := label.toString } `lean `docstring
+
 
 end RealizationAdapterFixture

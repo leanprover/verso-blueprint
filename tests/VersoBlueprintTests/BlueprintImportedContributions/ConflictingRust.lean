@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.OtherRust
 
 /--
 error: Conflicting imported blueprint contributions for label 'key_theorem'
-Label key_theorem already has associated Rust code
+Label key_theorem: duplicate-source: realization 'rust' already has a body source
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.MarkupStatement, VersoBlueprintTests.BlueprintImportedContributions.OtherRust, VersoBlueprintTests.BlueprintImportedContributions.Statement
 -/
 #guard_msgs in

@@ -335,12 +335,12 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
   label
   kind := node.kind
   initialCount := node.count
-  externalRefs := node.externalRefs
-  proofExternalRefs := node.proofExternalRefs
-  literateDeclarations := .ofCodes node.literateCodes
+  externalRefs := node.nativeRefsOn `statement
+  proofExternalRefs := node.nativeRefsOn `proof
+  literateDeclarations := .ofCodes node.inlineCodes
   parent := node.parent
-  statementUses := node.statement.map (·.deps) |>.getD #[]
-  proofUses := node.proof.map (·.deps) |>.getD #[]
+  statementUses := node.usesOn `statement
+  proofUses := node.usesOn `proof
   owner := node.owner
   ownerDisplayName := author.map (·.displayName)
   ownerUrl := author.bind (·.url)

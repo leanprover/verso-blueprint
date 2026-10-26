@@ -20,9 +20,9 @@ An explicitly authored statement.
 
 def checkDocstringAttachments (expected : Nat) : CoreM Unit := do
   let some shared ← Environment.getNode? `shared_docstring | throwError "Missing shared node"
-  unless !shared.hasStatementBody && shared.externalRefs.size == expected do
+  unless !shared.hasStatementBody && (shared.nativeRefsOn `statement).size == expected do
     throwError "A code attachment filled a shared placeholder from its docstring"
   let some authored ← Environment.getNode? `authored_docstring | throwError "Missing authored node"
   unless authored.hasStatementBody && authored.kind == .lemma &&
-      (reprStr (authored.statement.map (·.previewBlocks))).contains "An explicitly authored statement." do
+      (reprStr ((authored.proseView `verso `statement).map (·.previewBlocks))).contains "An explicitly authored statement." do
     throwError "A code attachment changed authored prose"

@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.OtherMarkup
 
 /--
 error: Conflicting imported blueprint contributions for label 'key_theorem'
-Label key_theorem already has associated tex external markup in slot 'proof'
+Label key_theorem: duplicate-source: realization 'tex.proof' already has a statement source
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.MarkupProof, VersoBlueprintTests.BlueprintImportedContributions.OtherMarkup, VersoBlueprintTests.BlueprintImportedContributions.Statement
 -/
 #guard_msgs in

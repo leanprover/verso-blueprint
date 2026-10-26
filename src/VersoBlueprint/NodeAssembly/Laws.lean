@@ -7,7 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Contributions.Laws
 import VersoBlueprint.NodeAssembly
 
-/-! Acceptance and selected-projection laws for the production node assembler. -/
+/-! Acceptance and inventory-projection laws for the production node assembler. -/
 
 namespace Informal.NodeAssembly
 
@@ -112,68 +112,12 @@ theorem assemble_ok_supports {label : Label} {payloads : Array SourceData.Regist
     record ∈ assembled.view.supports ↔ record ∈ records ∧ record.label = label := by
   exact resolverLaws.supports_exact label records assembled.view (assemble_ok_resolve h) record
 
-/-- Attribute-attachment capability is projected from every accepted support. -/
-theorem assemble_ok_blueprintAttributeAttachments {label : Label}
-    {payloads : Array SourceData.Registration} {records : List Record} {assembled : Assembly}
-    (h : assemble label payloads records = .ok assembled) :
-    assembled.node.blueprintAttributeAttachments =
-      supportsHaveBlueprintAttributeAttachments assembled.view.supports := by
-  unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
-  | error _ => simp [hn] at h
-  | ok node =>
-    cases hr : resolve label records with
-    | error _ => simp [hn, hr] at h
-    | ok view =>
-      by_cases hs : (sourceDestinationIssues label payloads records).isEmpty = true
-      · simp [hn, hr, hs] at h
-        cases h
-        rfl
-      · simp [hn, hr, hs] at h
-
-/-- The assembled attribute capability is true exactly for accepted input evidence. -/
-theorem assemble_ok_blueprintAttributeAttachments_iff {label : Label}
-    {payloads : Array SourceData.Registration} {records : List Record} {assembled : Assembly}
-    (h : assemble label payloads records = .ok assembled) :
-    assembled.node.blueprintAttributeAttachments = true ↔
-      ∃ record ∈ records, record.label = label ∧
-        record.allReferences.any (fun ref => ref.origin == .blueprintAttr) = true := by
-  rw [assemble_ok_blueprintAttributeAttachments h]
-  simp only [supportsHaveBlueprintAttributeAttachments, List.any_eq_true]
-  constructor
-  · rintro ⟨record, hrecord, href⟩
-    obtain ⟨hin, hlabel⟩ := (assemble_ok_supports h record).mp hrecord
-    exact ⟨record, hin, hlabel, href⟩
-  · rintro ⟨record, hin, hlabel, href⟩
-    exact ⟨record, (assemble_ok_supports h record).mpr ⟨hin, hlabel⟩, href⟩
-
-/-- Statement snapshots are projected only from the statement side of supports. -/
-theorem assemble_ok_externalRefs {label : Label} {payloads : Array SourceData.Registration}
+/-- The assembled node retains every native association from every accepted support,
+including associations attached to arbitrary named facets. -/
+theorem assemble_ok_nativeAssociations {label : Label} {payloads : Array SourceData.Registration}
     {records : List Record} {assembled : Assembly}
     (h : assemble label payloads records = .ok assembled) :
-    assembled.node.externalRefs = assembled.view.supports.foldl
-      (fun refs record => ExternalRef.mergeSnapshots refs
-        ((record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference))) #[] := by
-  unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
-  | error _ => simp [hn] at h
-  | ok node =>
-    cases hr : resolve label records with
-    | error _ => simp [hn, hr] at h
-    | ok view =>
-      by_cases hs : (sourceDestinationIssues label payloads records).isEmpty = true
-      · simp [hn, hr, hs] at h
-        cases h
-        rfl
-      · simp [hn, hr, hs] at h
-
-/-- Proof snapshots are projected only from the proof side of supports. -/
-theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array SourceData.Registration}
-    {records : List Record} {assembled : Assembly}
-    (h : assemble label payloads records = .ok assembled) :
-    assembled.node.proofExternalRefs = assembled.view.supports.foldl
-      (fun refs record => ExternalRef.mergeSnapshots refs
-        ((record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference))) #[] := by
+    assembled.node.nativeAssociations = assembled.view.supports.toArray.flatMap (·.nativeAssociations) := by
   unfold assemble at h
   cases hn : Node.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h

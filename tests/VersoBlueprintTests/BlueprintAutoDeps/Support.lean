@@ -23,12 +23,12 @@ def node? (labelText : String) : CoreM (Option Data.Node) := do
 def statementUses (labelText : String) : CoreM (Array Data.UseRef) := do
   let some node ← node? labelText
     | return #[]
-  pure <| (node.statement.map (·.deps)).getD #[]
+  pure <| node.usesOn `statement
 
 def proofUses (labelText : String) : CoreM (Array Data.UseRef) := do
   let some node ← node? labelText
     | return #[]
-  pure <| (node.proof.map (·.deps)).getD #[]
+  pure <| node.usesOn `proof
 
 def useRefSummary (useRefs : Array Data.UseRef) :
     Array (Name × Data.UseOrigin × Data.UseIntent) :=

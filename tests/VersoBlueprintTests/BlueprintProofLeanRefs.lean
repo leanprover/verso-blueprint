@@ -66,7 +66,10 @@ theorem admittedAttachedResult : True := by sorry
     let ref := { good with provedStatus := status, present := status != .missing }
     let code : Data.Code := { stx := .missing, definedTheorems := #[{
       name := good.canonical, provedStatus := .proved }] }
-    let node : Data.Node := { kind := .theorem, proofExternalRefs := #[ref], literateCodes := #[code] }
+    let node : Data.Node := {
+      kind := .theorem
+      nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[ref]
+      sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
     unless node.summaryExternalRefs.isEmpty && node.associatedExternalRefs.size == 1 &&
         node.associatedExternalRefs[0]!.provedStatus.reportJson == status.reportJson &&
         node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.reportJson == status.reportJson do
@@ -84,9 +87,13 @@ theorem admittedAttachedResult : True := by sorry
       throw <| IO.userError "Provider display status supplied a missing realization assessment"
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := good.canonical, provedStatus := .proved }] }
-  let node : Data.Node := { kind := .theorem, proofExternalRefs := #[good], literateCodes := #[code] }
+  let node : Data.Node := {
+    kind := .theorem
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[good]
+    sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
   let external := { good with provedStatus := unverified }
-  let observed := { node with proofExternalRefs := #[external] }
+  let observed := { node with
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[external] }
   unless observed.associatedExternalRefs[0]!.provedStatus == unverified do
     throw <| IO.userError "Inline provider inventory discarded external lookup evidence"
 
@@ -135,13 +142,13 @@ This imported statement association also has a proof-facet occurrence.
   let state := Environment.informalExt.getState (← getEnv)
   let some node := state.data.get? (Name.mkSimple "proof.references")
     | throwError "Missing proof-reference node"
-  unless node.externalRefs.map (·.canonical) == #[`Nat.add_assoc] &&
-      node.proofExternalRefs.map (·.canonical) == #[`Nat.add_comm, `Nat.add_left_comm] do
+  unless (node.nativeRefsOn `statement).map (·.canonical) == #[`Nat.add_assoc] &&
+      (node.nativeRefsOn `proof).map (·.canonical) == #[`Nat.add_comm, `Nat.add_left_comm] do
     throwError "A declaration lost its authored facet"
   unless node.leanDecls == #[`Nat.add_assoc, `Nat.add_comm, `Nat.add_left_comm] do
     throwError "Proof declarations were excluded from node membership"
-  unless node.proof.any (·.dependencyLabels == #[Name.mkSimple "proof.helper.owner"]) &&
-      node.statement.any (·.dependencyLabels.isEmpty) do
+  unless (node.usesOn `proof).map (·.label) == #[Name.mkSimple "proof.helper.owner"] &&
+      (node.usesOn `statement).isEmpty do
     throwError "Proof attachments changed authored dependency axes"
   unless state.leanNameLabels.getD `Nat.add_comm #[] ==
       #[Name.mkSimple "proof.helper.owner", Name.mkSimple "proof.references"] do
@@ -149,13 +156,13 @@ This imported statement association also has a proof-facet occurrence.
   let some proofOnly := state.data.get? (Name.mkSimple "proof.attachments.only")
     | throwError "Missing proof-only association node"
   unless proofOnly.hasAssociatedCode && proofOnly.leanDecls == #[``attachedResult] &&
-      proofOnly.proofExternalRefs.map (·.canonical) == #[``attachedResult] &&
-      proofOnly.proof.any (·.dependencyLabels == #[Name.mkSimple "proof.inferred.dep"]) &&
-      proofOnly.statement.any (·.dependencyLabels.isEmpty) do
+      (proofOnly.nativeRefsOn `proof).map (·.canonical) == #[``attachedResult] &&
+      (proofOnly.usesOn `proof).map (·.label) == #[Name.mkSimple "proof.inferred.dep"] &&
+      (proofOnly.usesOn `statement).isEmpty do
     throwError "Proof association did not contribute membership or inferred proof dependencies"
   let some admitted := state.data.get? (Name.mkSimple "proof.attachments.admitted")
     | throwError "Missing admitted proof association"
-  unless admitted.proofExternalRefs.size == 1 && admitted.proofExternalRefs[0]!.provedStatus.isIncomplete do
+  unless (admitted.nativeRefsOn `proof).size == 1 && (admitted.nativeRefsOn `proof)[0]!.provedStatus.isIncomplete do
     throwError "Admitted proof provider evidence was not retained"
   let some both := state.data.get? (Name.mkSimple "proof.attachments.both")
     | throwError "Missing shared-facet association"
@@ -163,18 +170,21 @@ This imported statement association also has a proof-facet occurrence.
     throwError "The same declaration on two facets was counted twice"
   let proofGap : Data.ProvedStatus := .incomplete {
     knownSorry := #[{ location := .proof, origin := .dependency }] }
-  let crossFacetGap : Data.Node := { both.toNode with
-    proofExternalRefs := both.proofExternalRefs.map fun ref => { ref with provedStatus := proofGap } }
-  unless crossFacetGap.proofExternalRefs[0]!.provedStatus == proofGap do
+  let crossFacetGap : Data.Node := { both with
+    nativeAssociations := both.nativeAssociations.map fun association =>
+      if association.facets.contains `proof then
+        { association with reference := { association.reference with provedStatus := proofGap } }
+      else association }
+  unless (crossFacetGap.nativeRefsOn `proof)[0]!.provedStatus == proofGap do
     throwError "Canonical deduplication erased proof-facet provider evidence"
   for status in #[Data.ProvedStatus.proved, .axiomLike, .missing,
       proofGap, .incomplete { knownSorry := #[{ location := .unknown, origin := .unknown }] },
       .incomplete { unverified := #[{ location := .proof, reason := .bodyUnavailable }] }] do
-    let refs := proofOnly.proofExternalRefs.map fun ref =>
-      { ref with provedStatus := status, present := status != .missing }
-    let changed := { proofOnly.toNode with proofExternalRefs := refs }
-    unless changed.proofExternalRefs[0]!.provedStatus == status &&
-        changed.proofExternalRefs[0]!.present == (status != .missing) do
+    let associations := proofOnly.nativeAssociations.map fun association =>
+      { association with reference := { association.reference with provedStatus := status, present := status != .missing } }
+    let changed := { proofOnly with nativeAssociations := associations }
+    unless (changed.nativeRefsOn `proof)[0]!.provedStatus == status &&
+        (changed.nativeRefsOn `proof)[0]!.present == (status != .missing) do
       throwError "Proof association provider facts did not survive projection"
 
 -- Add a second proof association to a compiled imported node. Export only this
@@ -208,7 +218,7 @@ run_meta do
     | throwError "Could not repeat the imported proof association"
   let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
     | throwError "Missing repeated imported proof node"
-  unless node.proofExternalRefs.size == 1 &&
+  unless (node.nativeRefsOn `proof).size == 1 &&
       node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
       node.leanDecls == #[``Provider.admittedProof] do
     throwError "Repeated compiled proof association erased incompleteness"
@@ -228,7 +238,7 @@ run_meta do
       | throwError "Missing inline/external overlap"
     unless node.associatedExternalRefs.size == 1 &&
         node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
-        node.literateCodes[0]!.definedTheorems[0]!.provedStatus == .proved &&
+        node.inlineCodes[0]!.definedTheorems[0]!.provedStatus == .proved &&
         node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.isIncomplete do
       throwError "Inline/external provider snapshots were not preserved independently"
 

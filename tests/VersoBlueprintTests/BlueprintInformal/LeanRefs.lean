@@ -119,10 +119,10 @@ private def hasLabel (labels : Array Informal.Data.Label) (label : String) : Boo
       hasLabel natAddLabels "conflict.inline.ext" &&
       hasLabel extInlineLabels "conflict.ext.inline" &&
       hasLabel inlineExtLabels "conflict.inline.ext" &&
-      extInlineNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
-      inlineExtNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
-      extInlineNode.literateCodes.size == 1 &&
-      inlineExtNode.literateCodes.size == 1
+      (extInlineNode.nativeRefsOn `statement).any (fun ref => ref.canonical == `Nat.add) &&
+      (inlineExtNode.nativeRefsOn `statement).any (fun ref => ref.canonical == `Nat.add) &&
+      extInlineNode.inlineCodes.size == 1 &&
+      inlineExtNode.inlineCodes.size == 1
 
 /-- info: true -/
 #guard_msgs in
@@ -158,7 +158,7 @@ Simple body.
       | pure false
     pure <|
       node.kind == .definition &&
-      match node.externalRefs with
+      match node.nativeRefsOn `statement with
       | #[ref] =>
         ref.present &&
         ref.kind == .definition &&

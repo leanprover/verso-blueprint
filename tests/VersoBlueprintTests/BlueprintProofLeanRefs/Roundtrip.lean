@@ -27,8 +27,8 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
     (records.filter fun r => !(refs r `statement).isEmpty && (refs r `proof).isEmpty).length == 1 &&
     (records.filter fun r => (refs r `statement).isEmpty && !(refs r `proof).isEmpty).length == 1 &&
     proofOnly.length == 2 && proofOnly.all (fun r => (refs r `statement).isEmpty && !(refs r `proof).isEmpty) &&
-    node.externalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
-    node.proofExternalRefs.map (·.canonical) == #[``Provider.crossFacetProof] &&
+    (node.nativeRefsOn `statement).map (·.canonical) == #[``Provider.crossFacetProof] &&
+    (node.nativeRefsOn `proof).map (·.canonical) == #[``Provider.crossFacetProof] &&
     node.leanDecls == #[``Provider.crossFacetProof] &&
     state.leanNameLabels.getD ``Provider.crossFacetProof #[] == #[label] &&
     node.associatedExternalRefs.size == 1
@@ -41,7 +41,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
   return node.leanDecls == #[``Provider.firstProof, ``Provider.secondProof] &&
     (← Environment.labelsForLeanDecl ``Provider.firstProof) == #[Name.mkSimple "proof.imported.associations"] &&
     (← Environment.labelsForLeanDecl ``Provider.secondProof) == #[Name.mkSimple "proof.imported.associations"] &&
-    node.proofExternalRefs.map (·.canonical) == #[``Provider.firstProof, ``Provider.secondProof]
+    (node.nativeRefsOn `proof).map (·.canonical) == #[``Provider.firstProof, ``Provider.secondProof]
 
 /-- info: true -/
 #guard_msgs in
@@ -50,7 +50,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
     | return false
   let labels ← Environment.labelsForLeanDecl ``Provider.admittedProof
   return node.leanDecls == #[``Provider.admittedProof] &&
-    node.proofExternalRefs.size == 1 &&
+    (node.nativeRefsOn `proof).size == 1 &&
     node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
     labels.size == 1 && labels.contains (Name.mkSimple "proof.imported.repeated")
 

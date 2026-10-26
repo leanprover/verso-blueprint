@@ -297,9 +297,8 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
     match state.data.get? (Name.mkSimple "lem:hover.intent.node") with
     | some node =>
-      match node.statement with
-      | some statement =>
-        let uses := statement.deps
+      let uses := node.usesOn `statement
+      if !uses.isEmpty then
         let hidden? := uses.find? (·.label == hiddenLabel)
         let inline? := uses.find? (·.label == inlineLabel)
         pure <|
@@ -312,7 +311,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
             inline.origin == .manual &&
             inline.intent == Informal.Data.UseIntent.auxiliary
           | _, _ => false
-      | none => pure false
+      else pure false
     | none => pure false
 
 /-- info: true -/
@@ -345,7 +344,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let state := Informal.Environment.informalExt.getState (← getEnv)
     match state.data.get? (Name.mkSimple "lem:hover.bpref.ref") with
     | some node =>
-      pure <| node.statement.map (·.deps.isEmpty) |>.getD false
+      pure <| (node.usesOn `statement).isEmpty
     | none => pure false
 
 /-- info: true -/

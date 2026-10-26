@@ -26,7 +26,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
 #eval show CoreM Unit from do
   let some node ← Environment.getNode? (Name.mkSimple "attr.projection.shared")
     | throwError "Missing selected projection node"
-  unless node.blueprintAttributeAttachments do
+  unless node.hasAttributeAssociations do
     throwError "Accepted attribute support did not project to the assembled node"
 
 #eval show IO Unit from do

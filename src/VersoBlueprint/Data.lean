@@ -27,33 +27,55 @@ def InformalData.deps (data : InformalData) : Array UseRef :=
 def InformalData.dependencyLabels (data : InformalData) : Array Label :=
   data.deps.map (·.label)
 
+/-- Accepted source inventory derived from the complete registration batch.
+This is not an admitted validation registry: source facts and rendered snapshots
+cannot establish proof completion. Destinations and scopes remain explicit. -/
 structure Node extends NodeMetadata where
-  statement : Option InformalData := none -- Informal Object statement
-  proof : Option InformalData := none -- Informal Object proof
-  /-- Statement-facet external associations, in registration order. -/
-  externalRefs : Array ExternalRef := #[]
-  /-- Proof-facet external associations, in registration order. They also contribute to the node. -/
-  proofExternalRefs : Array ExternalRef := #[]
-  /-- Whether accepted selected evidence includes a Blueprint-attribute association.
-  This capability is independent of the snapshot retained for each declaration. -/
-  blueprintAttributeAttachments : Bool := false
-  /-- Every associated literate block, in registration order. -/
-  literateCodes : Array Code := #[]
-  rustCode : Option RustInlineCode := none -- Informal object associated Rust code
-  externalMarkup : ExternalMarkupSet := {} -- Raw external markup keyed by language and slot
+  sources : Array SourceData.FacetSource := #[]
+  uses : Array SourceData.UseDeclaration := #[]
+  nativeAssociations : Array SourceData.NativeAssociation := #[]
 deriving Repr, Inhabited
 
-/-- The same accepted shared metadata, projected into the pure model. This is a
-transitional metadata-only bridge; no source fields or completion flags survive
-this projection. The old Node container is removed with its consumer migration. -/
+/-- Shared metadata for the validation model; source inventory is collected separately. -/
 def Node.toConcept (node : Node) (label : Name) (title : String) : Realizations.Node :=
   { toNodeMetadata := node.toNodeMetadata, label, title }
 
+/-- Effective edge metadata for presentation. This is intentionally an aggregate;
+validation consumes the original scoped `uses`, never this flattened view. -/
+def Node.usesOn (node : Node) (facet : Name) : Array UseRef :=
+  UseRef.mergeByLabel #[] ((node.uses.filter (·.facet == facet)).map (·.reference))
 
-/-- All captured external associations. Facet snapshots remain separate;
-declaration membership and status projections consume both facets. -/
+/-- A named prose view for rendering. Admission permits one nonempty prose body
+per named facet. Dependency-only views retain the ordinary placeholder behavior;
+this presentation value is never stored or used to infer validation scope. -/
+def Node.proseView (node : Node) (realization facet : Name) : Option InformalData := Id.run do
+  let bodies := node.sources.filterMap fun source =>
+    if source.destination.realization.name != realization || source.destination.facet != facet then none
+    else match source.payload with | .prose body => some body | _ => none
+  let body := bodies.find? (·.hasBody) <|> bodies[0]?
+  let useDeclarations := ((node.uses.filter (·.facet == facet)).map (·.reference)).foldl
+    (fun refs ref => if refs.contains ref then refs else refs.push ref) #[]
+  match body with
+  | some body => return some { toInformalBody := body, useDeclarations }
+  | none => return if useDeclarations.isEmpty then none
+    else some { stx := .missing, useDeclarations }
+
+/-- Native source snapshots on a display facet, across all realizations.
+The original association inventory retains the realization and context. -/
+def Node.nativeRefsOn (node : Node) (facet : Name) : Array ExternalRef :=
+  ExternalRef.mergeSnapshots #[] <|
+    (node.nativeAssociations.filter (·.facets.contains facet)).map (·.reference)
+
+def Node.inlineCodes (node : Node) : Array Code :=
+  node.sources.filterMap fun source => match source.payload with
+    | .leanInline code => some code | _ => none
+
+def Node.hasAttributeAssociations (node : Node) : Bool :=
+  node.nativeAssociations.any (·.reference.origin == .blueprintAttr)
+
+/-- All captured associations, including arbitrary named facets. -/
 def Node.externalAssociationSnapshots (node : Node) : Array ExternalRef :=
-  node.externalRefs ++ node.proofExternalRefs
+  node.nativeAssociations.map (·.reference)
 
 /-- Canonical node associations from both facets. Rendering keeps each facet's
 snapshot; node-level projections retain every observed status conservatively. -/
@@ -62,7 +84,7 @@ def Node.associatedExternalRefs (node : Node) : Array ExternalRef :=
 
 /-- External summary entries not already supplied by a compiled literate declaration. -/
 def Node.summaryExternalRefs (node : Node) : Array ExternalRef :=
-  let names := node.literateCodes.foldl (init := ({} : NameSet)) fun names code =>
+  let names := node.inlineCodes.foldl (init := ({} : NameSet)) fun names code =>
     code.definedDeclNames.foldl (fun names name => names.insert name) names
   node.associatedExternalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
 
@@ -72,13 +94,13 @@ The authored code blocks remain unchanged for rendering and provenance. -/
 def Node.summaryLiterateCodes (node : Node) : Array Code := Id.run do
   let observations := node.associatedExternalRefs.map
       (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
-    node.literateCodes.flatMap fun code =>
+    node.inlineCodes.flatMap fun code =>
       code.definedDefs.map (fun decl => (decl.name, decl.provedStatus)) ++
       code.definedTheorems.map (fun decl => (decl.name, decl.provedStatus))
   let statuses := ProvedStatus.indexByName observations
   let mut seen : NameSet := {}
   let mut codes := #[]
-  for code in node.literateCodes do
+  for code in node.inlineCodes do
     let mut definitions := #[]
     let mut theorems := #[]
     for decl in code.definedDefs do
@@ -97,14 +119,14 @@ def Node.summaryLiterateCodes (node : Node) : Array Code := Id.run do
 def Node.leanDecls (node : Node) : Array Name :=
   let external := node.externalAssociationSnapshots.foldl (init := #[]) fun acc ref =>
     if ref.present then pushUniqueNativeName acc ref.canonical else acc
-  node.literateCodes.foldl (init := external) fun acc code =>
+  node.inlineCodes.foldl (init := external) fun acc code =>
     code.definedDeclNames.foldl pushUniqueNativeName acc
 
 def Node.hasAssociatedCode (node : Node) : Bool :=
-  !node.externalRefs.isEmpty || !node.proofExternalRefs.isEmpty || !node.literateCodes.isEmpty
+  !node.nativeAssociations.isEmpty || !node.inlineCodes.isEmpty
 
-def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
+def Node.hasStatementBody (node : Node) : Bool := (node.proseView `verso `statement).any (·.hasBody)
 
-def Node.hasProofBody (node : Node) : Bool := node.proof.any (·.hasBody)
+def Node.hasProofBody (node : Node) : Bool := (node.proseView `verso `proof).any (·.hasBody)
 
 end Informal.Data

@@ -25,13 +25,17 @@ private def issue (code : String) (label : Name) (message : String) : Diagnostic
 
 private def canonicalTheorem (role : String) (label : Name) (node : Data.Node) :
     Except Diagnostic Name := do
-  unless node.kind.isTheoremLike && node.blueprintAttributeAttachments &&
-      node.externalRefs.size == 1 && node.proofExternalRefs.isEmpty &&
-      node.literateCodes.isEmpty && node.rustCode.isNone && node.externalMarkup.isEmpty do
-    throw <| issue ("unsupported-" ++ role) label "Expected one accepted attribute theorem"
-  let ref := node.externalRefs[0]!
-  unless ref.present && ref.origin == .blueprintAttr && ref.kind.isTheoremLike do
-    throw <| issue ("unsupported-" ++ role) label "Expected a present canonical attribute theorem association"
+  let associations := node.nativeAssociations.filter fun association =>
+    association.realization == ⟨label, `lean⟩
+  let names := SourceData.nativeNames associations (node.sources.filter fun source =>
+    source.destination.realization == ⟨label, `lean⟩)
+  unless node.kind.isTheoremLike && names.size == 1 do
+    throw <| issue ("unsupported-" ++ role) label "Expected one accepted theorem in the default Lean realization"
+  let some association := associations.find? (·.reference.canonical == names[0]!)
+    | throw <| issue ("unsupported-" ++ role) label "Expected an accepted native theorem association"
+  let ref := association.reference
+  unless ref.present && ref.kind.isTheoremLike do
+    throw <| issue ("unsupported-" ++ role) label "Expected a present canonical theorem association"
   unless !ref.canonical.isAnonymous && ref.canonical.toString.toName == ref.canonical do
     throw <| issue "unsupported-identity" label "Canonical Lean name cannot be represented losslessly"
   return ref.canonical
@@ -90,8 +94,10 @@ def selectUses (registry : Registry) (context : Context) (source : Name) :
   if let .error diagnostic := canonicalTheorem "source" source node then return .error diagnostic
   let selectAxis (uses : Array Data.UseRef) : CoreM (Array SelectedUse) :=
     uses.mapM fun use => return (use, ← selectTarget registry context use.label)
-  let statement ← selectAxis (node.statement.map (·.deps) |>.getD #[])
-  let proof ← selectAxis (node.proof.map (·.deps) |>.getD #[])
+  let statement ← selectAxis (Data.UseRef.mergeByLabel #[] ((node.uses.filter fun use =>
+    use.facet == `statement && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
+  let proof ← selectAxis (Data.UseRef.mergeByLabel #[] ((node.uses.filter fun use =>
+    use.facet == `proof && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
   return .ok (statement, proof)
 
 end Informal.Realizations.Dependencies

@@ -121,8 +121,8 @@ private def proofA : Record := { a with
   [(a.id, [a, { proofA with id := a.id }])] []
 #guard match Informal.NodeAssembly.assemble `shared #[] [proofA] with
   | .error _ => false
-  | .ok assembled => assembled.node.externalRefs.isEmpty &&
-      assembled.node.proofExternalRefs == a.allReferences &&
+  | .ok assembled => (assembled.node.nativeRefsOn `statement).isEmpty &&
+      assembled.node.nativeRefsOn `proof == a.allReferences &&
       assembled.node.leanDecls == #[`declA]
 
 -- Production assembly preserves both status axes across identified statement
@@ -137,8 +137,8 @@ private def unverifiedProof : Record := { proofA with nativeAssociations := Blue
   match Informal.NodeAssembly.assemble `shared #[] records with
   | .error _ => false
   | .ok assembled =>
-    assembled.node.externalRefs.size == 1 &&
-    assembled.node.proofExternalRefs.size == 1 &&
+    (assembled.node.nativeRefsOn `statement).size == 1 &&
+    (assembled.node.nativeRefsOn `proof).size == 1 &&
     assembled.node.leanDecls == #[`declA] &&
     match assembled.node.associatedExternalRefs[0]!.provedStatus with
     | .incomplete info => info.knownSorry.size == 1 && info.unverified.size == 1
@@ -212,7 +212,7 @@ private def sameDeclDirective : Record := {
 
 private def hasAttributeCapability (records : List Record) : Bool :=
   match Informal.NodeAssembly.assemble `shared #[] records with
-  | .ok assembled => assembled.node.blueprintAttributeAttachments
+  | .ok assembled => assembled.node.hasAttributeAssociations
   | .error _ => false
 
 #guard hasAttributeCapability [a, sameDeclDirective]
@@ -231,8 +231,8 @@ private def highA : Record := { a with priority := some "high" }
       BlueprintNativeFixture.source `shared `lean `body `lean (.leanInline { stx := .missing })]
     uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
   }] with
-  | .ok node => node.statement.any fun statement => statement.hasBody &&
-      statement.deps == #[{ label := `dependency }] && node.literateCodes.size == 1
+  | .ok node => (node.proseView `verso `statement).any (·.hasBody) &&
+      node.usesOn `statement == #[{ label := `dependency }] && node.inlineCodes.size == 1
   | .error _ => false
 
 -- Payload updates preserve the selected priority, facet references, and capability.
@@ -243,10 +243,10 @@ private def highA : Record := { a with priority := some "high" }
       uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
     }] with
     | .error _ => false
-    | .ok updated => updated.blueprintAttributeAttachments &&
-        updated.priority == some "high" && updated.externalRefs == a.allReferences &&
-        updated.proofExternalRefs == proofA.allReferences &&
-        updated.statement.any fun statement => statement.hasBody &&
-          statement.deps == #[{ label := `dependency }]
+    | .ok updated => updated.hasAttributeAssociations &&
+        updated.priority == some "high" && updated.nativeRefsOn `statement == a.allReferences &&
+        updated.nativeRefsOn `proof == proofA.allReferences &&
+        (updated.proseView `verso `statement).any (·.hasBody) &&
+        updated.usesOn `statement == #[{ label := `dependency }]
 
 end VersoBlueprintTests.BlueprintContributions

@@ -1200,8 +1200,65 @@ keeps its existing exact-block check. Normal owning-module build is a preconditi
 prefix parsing does not certify the rest of an edited or unbuilt file.
 
 This is an owner-tested consumer checkpoint, not publication acceptance.
-The remaining legacy display/admission projection and exact #499 admission port
-still require deletion/reconciliation and representative external project checks.
+At that checkpoint the legacy display/admission projection remained. The next
+section records its replacement; exact #499 guarantee reconciliation and
+representative external project checks remain separate acceptance work.
+
+### Keyed accepted source inventory (2026-10-26)
+
+`Data.Node` now contains shared metadata and three inventories: `sources`, `uses`,
+and `nativeAssociations`. Their existing typed entries retain realization/facet
+keys, project/language contexts, documents, provider payloads, native names and
+explicit dependency scope. The old statement/proof, language-specific code,
+external-reference and attribute-capability fields are removed. `Existing` is
+removed; native provider tests use explicit `NativeSource` requests, while normal
+project capture consumes the accepted inventories.
+
+This node is the derived accepted source view in the same Environment extension,
+not another authoring store or an admitted Registry. Pending registration envelopes
+remain import/reassembly inputs. Capture reads accepted inventories, gathers fresh
+observations and admits the complete model. Imported display snapshots never
+establish completion. Source lookup, native checks, independent expectations and
+correspondence assessment keep their existing boundaries.
+
+Assembly no longer rejects sources, uses or native associations merely because
+they have an unfamiliar realization or facet name. It preserves every source/use
+entry and all accepted native associations. Context disagreement, malformed keys,
+producer collisions, metadata conflicts and use-intent conflicts within the same
+scope still reject the candidate. The assembly law now states preservation of the
+entire native association inventory rather than two fixed facet projections.
+Local publication remains candidate-then-commit; full capture still rejects an
+invalid imported batch instead of returning a partial registry.
+
+The initial authoring policy stays deliberately small: one nonempty prose body
+per realization/facet, mutually exclusive with a text payload; one text payload
+per realization/facet (including empty text); one markup payload per markup key within that destination. Missing prose
+placeholders do not occupy a body. Multiple inline Lean blocks remain supported.
+Different named realizations/facets can each carry their own source. These are
+explicit authoring limits, not limits on a realization's document list: an
+explicit authored model can still name both source and configuration documents.
+We do not add source-ID machinery or infer replay identity from raw text.
+
+Rendering derives named prose views, native-reference views and effective edge
+metadata. Aggregate display views do not carry validation authority: Capture and
+dependency selection read original dependency scopes. In particular, a scoped
+use cannot become a shared prerequisite because of a display projection.
+`RenderNode` and manifest records may retain presentation-shaped fields; those
+are generated views rather than the accepted node representation.
+
+For Lean callers, construct source registrations with `SourceData.FacetSource`,
+`UseDeclaration` and `NativeAssociation` instead of assigning old node slots.
+Use `Environment.sourceAt` to retain owning source coordinates. For semantic
+queries use `Capture.capture` and its registry/assessment; use `proseView`,
+`nativeRefsOn`, `inlineCodes` and `usesOn` only when a display inventory is needed.
+The current TeX/Markdown block frontend still renders by its explicit language/slot
+selection (which determines its realization key). Programmatic extra named sources
+are discoverable in the captured model; this change adds no automatic multi-realization
+source-panel selector. Distinct model destinations are not rejected merely to fit
+that frontend display key.
+
+No compatibility storage, persisted provider success or Capture execution
+framework is introduced by this replacement.
 
 ### Consumer cutover and deletion
 

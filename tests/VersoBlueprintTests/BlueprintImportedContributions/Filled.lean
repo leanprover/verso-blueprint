@@ -10,10 +10,10 @@ import VersoBlueprintTests.BlueprintImportedContributions.FillPlaceholder
 #guard_msgs in
 #eval show Lean.CoreM Bool from do
   let some node ← Informal.Environment.getNode? `placeholder | return false
-  let some statement := node.statement | return false
-  let some proof := node.proof | return false
+  let some statement := node.proseView `verso `statement | return false
+  let some proof := node.proseView `verso `proof | return false
   return (← Informal.Environment.importedConflicts).isEmpty &&
     node.kind == .theorem && node.count == 5 && node.hasAssociatedCode &&
     statement.hasBody && proof.hasBody &&
-    statement.dependencyLabels == #[`statement_dep, `local_dep] &&
-    proof.dependencyLabels == #[`proof_dep]
+    (node.usesOn `statement).map (·.label) == #[`statement_dep, `local_dep] &&
+    (node.usesOn `proof).map (·.label) == #[`proof_dep]

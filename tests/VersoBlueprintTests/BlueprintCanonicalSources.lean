@@ -15,9 +15,16 @@ still owns producer collision/import/admission and current native checking. -/
 
 open Lean Informal Realizations SourceData
 
--- Canonical concept metadata has no language source slots or completion setter.
-#check_failure (fun (node : Realizations.Node) => node.statement)
-#check_failure (fun (node : Realizations.Node) => node.externalRefs)
+-- Canonical nodes have keyed inventories rather than fixed language slots or a
+-- completion setter. Realizations.Node is the language-independent concept.
+#check_failure (fun (node : Data.Node) => node.statement)
+#check_failure (fun (node : Data.Node) => node.proof)
+#check_failure (fun (node : Data.Node) => node.externalRefs)
+#check_failure (fun (node : Data.Node) => node.proofExternalRefs)
+#check_failure (fun (node : Data.Node) => node.literateCodes)
+#check_failure (fun (node : Data.Node) => node.rustCode)
+#check_failure (fun (node : Data.Node) => node.externalMarkup)
+#check_failure (fun (node : Data.Node) => node.blueprintAttributeAttachments)
 #check_failure (fun (node : Realizations.Node) => node.complete)
 
 namespace VersoBlueprintTests.BlueprintCanonicalSources
@@ -88,6 +95,10 @@ private def model : Realization := {
     "duplicate-native-facet") "Duplicate destinations must reject explicitly"
   ensure (has (({ association with facets := #[`missing] } : NativeAssociation).issues node model) "unknown-native-facet")
     "Unknown native destinations cannot create facets"
+  let bodyModel : Realization := { model with facets := model.facets.push { name := `body } }
+  let bodyAssociation := { association with facets := #[`body] }
+  ensure ((bodyAssociation.issues node bodyModel).isEmpty)
+    "A declared arbitrary native facet is a valid association destination"
   ensure (has (({ association with realization := ⟨`sibling, key.name⟩ } : NativeAssociation).issues node model)
     "source-destination-mismatch") "Native associations must retain their enclosing concept"
   let foreignContext : Context := ⟨`rust, context.project⟩
@@ -118,6 +129,148 @@ private def model : Realization := {
     "Use scope cannot leak across concepts"
   ensure (shared.reference.label == inferred.reference.label && shared.facet == inferred.facet)
     "Source validation preserves the original unresolved target and axis"
+
+-- Raw node storage keeps arbitrary realization/facet keys distinct. Display
+-- accessors may select a view, but never rewrite the authored destination or
+-- collapse shared and realization-scoped uses.
+#eval show IO Unit from do
+  let custom := `authoredVerso
+  let alternative := `translatedVerso
+  let proseContext : Context := ⟨`verso, `canonicalProject⟩
+  let doc (realization : Name) : DocumentKey :=
+    ⟨proseContext, s!"{realization}.vdoc"⟩
+  let prose (realization facet : Name) (text : String) : FacetSource := {
+    destination := ⟨⟨node, realization⟩, facet⟩
+    context := proseContext
+    document := doc realization
+    source := .unavailable "Raw preservation fixture; no source lookup"
+    payload := .prose { stx := .missing, previewBlocks := #[.para #[.text text]] } }
+  let first := prose custom `statement "Original authored statement"
+  let second := prose alternative `commentary "Independent commentary facet"
+  let sharedUse : UseDeclaration := {
+    node, realization := none, facet := `statement,
+    reference := { label := `sharedTarget, origin := .manual, intent := .technical } }
+  let scopedUse : UseDeclaration := {
+    node, realization := some custom, facet := `statement,
+    reference := { label := `nativeTarget, origin := .automatic, intent := .auxiliary } }
+  let registrations : Array Registration := #[{
+    sources := #[first, second]
+    uses := #[sharedUse, scopedUse] }]
+  let stored ← match ({} : Data.Node).applyRegistrations node registrations with
+    | .ok stored => pure stored
+    | .error issues => throw <| IO.userError s!"Valid arbitrary source keys were rejected: {repr issues}"
+  ensure (stored.sources.map (·.destination) == #[first.destination, second.destination])
+    "Distinct authored destinations remain independently stored in order"
+  ensure (((stored.proseView custom `statement).any (·.hasBody)) &&
+    ((stored.proseView alternative `commentary).any (·.hasBody)))
+    "Keyed prose is available only through its exact realization and facet"
+  ensure (stored.uses == #[sharedUse, scopedUse] &&
+    stored.uses[0]!.realization.isNone && stored.uses[1]!.realization == some custom)
+    "Shared and scoped dependencies retain their explicit scope"
+  match ({} : Data.Node).applyRegistrations node #[{ sources := #[first, prose custom `statement "Conflicting duplicate"] }] with
+  | .error _ => pure ()
+  | .ok _ => throw <| IO.userError "Two occupied prose payloads at one exact destination were accepted"
+
+  -- Text payloads have one source per exact realization/facet. A different
+  -- facet or realization remains an independent source destination; raw bytes
+  -- are retained without trimming or using emptiness to select a winner.
+  let textSource (language realization facet : Name) (path raw : String) : FacetSource := {
+    destination := ⟨⟨node, realization⟩, facet⟩
+    context := ⟨language, `canonicalProject⟩
+    document := ⟨⟨language, `canonicalProject⟩, path⟩
+    source := .unavailable "Raw text fixture; no source lookup"
+    payload := .text raw }
+  let sameFacetText := textSource `verso custom `statement "statement.txt" "Independent statement source"
+  for ordered in #[#[first, sameFacetText], #[sameFacetText, first]] do
+    match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
+    | .error _ => pure ()
+    | .ok _ => throw <| IO.userError "A prose body and text source shared one exact facet"
+  let placeholder : FacetSource := { first with payload := .prose { stx := .missing } }
+  for ordered in #[#[placeholder, sameFacetText], #[sameFacetText, placeholder]] do
+    let mixed ← match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
+      | .ok stored => pure stored
+      | .error issues => throw <| IO.userError s!"An empty prose placeholder conflicted with text: {repr issues}"
+    ensure (mixed.sources.size == 2 &&
+        (mixed.proseView custom `statement).any (fun body => !body.hasBody) &&
+        mixed.sources.any (fun source => source.destination == sameFacetText.destination &&
+          (match source.payload with | .text raw => raw == "Independent statement source" | _ => false)))
+      "Missing prose placeholders coexist with text without acquiring body or losing bytes"
+  let rustBody := textSource `rust `rust `body "src/lib.rs" "pub fn value() -> u8 { 1 }"
+  let rustProof := textSource `rust `rust `proof "src/proof.rs" "pub fn proof() -> bool { true }"
+  let rocqBody := textSource `rocq `rocq `body "theories/Flag.v" "Theorem flag_ok : True."
+  let textNode ← match ({} : Data.Node).applyRegistrations node #[{
+      sources := #[rustBody, rustProof, rocqBody] }] with
+    | .ok stored => pure stored
+    | .error issues => throw <| IO.userError s!"Distinct text destinations were rejected: {repr issues}"
+  let textDestinations := textNode.sources.filterMap fun source =>
+    match source.payload with
+    | .text raw => some (source.destination, source.document, raw)
+    | _ => none
+  ensure (textDestinations.size == 3 && textDestinations.contains
+      (rustBody.destination, rustBody.document, "pub fn value() -> u8 { 1 }") &&
+      textDestinations.contains (rustProof.destination, rustProof.document, "pub fn proof() -> bool { true }") &&
+      textDestinations.contains (rocqBody.destination, rocqBody.document, "Theorem flag_ok : True."))
+    "Different facets and realizations retain their exact text, context and document"
+  let duplicateText := textSource `rust `rust `body "src/other.rs" "pub fn different() -> u8 { 3 }"
+  match ({} : Data.Node).applyRegistrations node #[{ sources := #[rustBody, duplicateText] }] with
+  | .error _ => pure ()
+  | .ok _ => throw <| IO.userError "Two text payloads at one exact facet were accepted"
+  let emptyRustBody := textSource `rust `rust `body "src/placeholder.rs" ""
+  let emptyNode ← match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody] }] with
+    | .ok stored => pure stored
+    | .error issues => throw <| IO.userError s!"An empty text payload was rejected: {repr issues}"
+  ensure (emptyNode.sources.any fun source => source.document == emptyRustBody.document &&
+      match source.payload with | .text raw => raw.isEmpty | _ => false)
+    "An empty text payload remains visible byte-for-byte"
+  match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody, rustBody] }] with
+  | .error _ => pure ()
+  | .ok _ => throw <| IO.userError "An empty text payload and a second payload shared one exact facet"
+
+  -- Markup slot identity is scoped to the exact source destination, independent
+  -- of document path. Different slots coexist; the same slot is a conflict.
+  let texContext : Context := ⟨`tex, `canonicalProject⟩
+  let texDocument (path : String) : DocumentKey := ⟨texContext, path⟩
+  let markupSource (path slot raw : String) : FacetSource := {
+    destination := ⟨⟨node, `tex⟩, `statement⟩
+    context := texContext
+    document := texDocument path
+    source := .unavailable "Raw markup fixture; no source lookup"
+    payload := .markup { language := .tex, slot, raw } }
+  let texMain := markupSource "paper-a.tex" "statement" "\\forall x, P(x)"
+  let texProof := markupSource "paper-a.tex" "proof" "by induction"
+  let texMainElsewhere := markupSource "paper-b.tex" "statement" "\\forall x, Q(x)"
+  let markupNode ← match ({} : Data.Node).applyRegistrations node #[{
+      sources := #[texMain, texProof] }] with
+    | .ok stored => pure stored
+    | .error issues => throw <| IO.userError s!"Distinct markup slots were rejected: {repr issues}"
+  let markupFacts := markupNode.sources.filterMap fun source =>
+    match source.payload with
+    | .markup markup => some (source.document.path, markup.slot, markup.raw)
+    | _ => none
+  ensure (markupFacts == #[
+      ("paper-a.tex", "statement", "\\forall x, P(x)"),
+      ("paper-a.tex", "proof", "by induction")])
+    "Distinct markup slots retain their source documents and bytes"
+  match ({} : Data.Node).applyRegistrations node #[{ sources := #[texMain, texMainElsewhere] }] with
+  | .error _ => pure ()
+  | .ok _ => throw <| IO.userError "The same markup key at one destination was accepted from two documents"
+
+  -- Intent disagreement conflicts only for one exact scope/facet/target/origin.
+  let scopedIntentUse : UseDeclaration := {
+    node, realization := some custom, facet := `statement,
+    reference := { label := `sharedTarget, origin := .manual, intent := .technical } }
+  let sharedIntentUse := { scopedIntentUse with
+    realization := none
+    reference := { scopedIntentUse.reference with intent := .regular } }
+  let scopedStored ← match ({} : Data.Node).applyRegistrations node #[{ uses := #[scopedIntentUse, sharedIntentUse] }] with
+    | .ok stored => pure stored
+    | .error issues => throw <| IO.userError s!"Distinct dependency scopes were merged: {repr issues}"
+  ensure (scopedStored.uses == #[scopedIntentUse, sharedIntentUse])
+    "Raw dependency scope and intent survive even for the same target/facet/origin"
+  let conflictingIntent := { scopedIntentUse with reference := { scopedIntentUse.reference with intent := .regular } }
+  match ({} : Data.Node).applyRegistrations node #[{ uses := #[scopedIntentUse, conflictingIntent] }] with
+  | .error _ => pure ()
+  | .ok _ => throw <| IO.userError "Conflicting intent for one exact scoped use was accepted"
 
 -- Synthetic metadata only: these controls establish source membership, never
 -- native resolution, proof completion or review acceptance.

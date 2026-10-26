@@ -16,7 +16,8 @@ open Lean Informal.Data Informal.Contributions
 
 private abbrev MergeM := StateM (Array String)
 
-private def conflict (message : String) : MergeM Unit := modify (·.push message)
+private def conflict (message : String) : MergeM Unit :=
+  modify fun messages => if messages.contains message then messages else messages.push message
 
 private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String)
     (current incoming : Option α) : MergeM (Option α) := do
@@ -28,60 +29,34 @@ private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String
       conflict s!"Label {label} declares conflicting {field}: existing '{existing}', new '{value}'"
     return current
 
-private def mergeUses (label : Label) (side : String)
-    (current incoming : Array UseRef) : MergeM (Array UseRef) := do
-  let mut uses := current
-  for ref in incoming do
-    if let some previous := uses.find? (fun previous =>
-        previous.label == ref.label && previous.origin == ref.origin) then
-      if previous.intent != ref.intent then
-        conflict s!"Label {label} declares conflicting {side} dependency intents for '{ref.label}' ({ref.origin}): existing '{previous.intent}', new '{ref.intent}'"
-    else uses := uses.push ref
-  return uses
-
-private def mergePayload (label : Label) (side : String)
-    (current : Option InformalData) (body : Option InformalBody)
-    (incomingUses : Array UseRef) : MergeM (Option InformalData) := do
-  let useDeclarations ← mergeUses label side (current.map (·.useDeclarations) |>.getD #[]) incomingUses
-  let currentBody := current.map (·.toInformalBody)
-  if (currentBody.any (·.hasBody)) && (body.any (·.hasBody)) then
-    conflict s!"Label {label} already has a {side}"
-  let selected := if body.any (·.hasBody) then body else currentBody <|> body
-  match selected with
-  | some body => return some { toInformalBody := body, useDeclarations }
-  | none => return if useDeclarations.isEmpty then none else some { stx := .missing, useDeclarations }
-
 private def inferredNodeKind (external : Array ExternalRef) (literate : Array Code) : NodeKind :=
   if external.any (·.kind.isTheoremLike) || literate.any (! ·.definedTheorems.isEmpty) then .theorem
   else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then .definition else .lemma
 
 private def mergeContribution (label : Label) (node : Node)
     (incoming : SourceData.Registration) : MergeM Node := do
-  let mut statement := node.statement
-  let mut proof := node.proof
-  let mut literateCodes := node.literateCodes
-  let mut rustCode := node.rustCode
-  let mut externalMarkup := node.externalMarkup
+  -- Keep every raw source and use; conflicts are scoped to their actual keys.
+  let mut sources := node.sources
   for source in incoming.sources do
-    match source.payload with
-    | .prose body =>
-      if source.destination.facet == `statement then
-        statement ← mergePayload label "statement" statement (some body) #[]
-      else
-        proof ← mergePayload label "proof" proof (some body) #[]
-    | .leanInline code => literateCodes := literateCodes.push code
-    | .text raw =>
-      if rustCode.isSome then conflict s!"Label {label} already has associated Rust code"
-      else rustCode := some { raw }
-    | .markup markup =>
-      let key := markup.key
-      if externalMarkup.contains key then
-        conflict s!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
-      else externalMarkup := externalMarkup.insert markup
-  statement ← mergePayload label "statement" statement none
-    ((incoming.uses.filter (·.facet == `statement)).map (·.reference))
-  proof ← mergePayload label "proof" proof none
-    ((incoming.uses.filter (·.facet == `proof)).map (·.reference))
+    for previous in sources do
+      if previous.destination == source.destination then
+        let occupied := match previous.payload, source.payload with
+          | .prose first, .prose second => first.hasBody && second.hasBody
+          | .text _, .text _ => true
+          | .prose body, .text _ | .text _, .prose body => body.hasBody
+          | .markup first, .markup second => first.key == second.key
+          | _, _ => false
+        if occupied then
+          conflict s!"Label {label}: duplicate-source: realization '{source.destination.realization.name}' already has a {source.destination.facet} source"
+    sources := sources.push source
+  let mut uses := node.uses
+  for use in incoming.uses do
+    for previous in uses do
+      if previous.realization == use.realization && previous.facet == use.facet &&
+          previous.reference.label == use.reference.label && previous.reference.origin == use.reference.origin &&
+          previous.reference.intent != use.reference.intent then
+        conflict s!"Label {label} declares conflicting {use.facet} dependency intents for '{use.reference.label}' ({use.reference.origin}): existing '{previous.reference.intent}', new '{use.reference.intent}'"
+    uses := uses.push use
   let parent ← mergeMetadata label "parents" node.parent incoming.parent
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
@@ -94,34 +69,23 @@ private def mergeContribution (label : Label) (node : Node)
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
     | none => pure <| if node.kindIsExplicit then node.kind else
-        inferredNodeKind (ExternalRef.mergeSnapshots node.externalRefs node.proofExternalRefs) literateCodes
+        inferredNodeKind node.externalAssociationSnapshots ({ node with sources }.inlineCodes)
   return { node with
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
-    statement, proof, rustCode, externalMarkup, parent, owner, effort, prUrl, issueUrl
-    literateCodes
+    sources, uses, parent, owner, effort, prUrl, issueUrl
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
-/-- Temporary representability checks while public consumers still use the old
-node view. Raw storage is keyed; unsupported destinations must not be flattened
-into another realization's source. Delete with that old view, not via fallback. -/
+/-- Raw well-formedness only. Destination membership is checked after complete
+realization composition; no fixed language-slot representability gate remains. -/
 private def registrationIssues (label : Label) (incoming : SourceData.Registration) : Array String := Id.run do
   let mut errors := incoming.sources.flatMap fun source =>
     (source.rawIssues label).map fun issue => s!"Label {label}: {issue.code}: {issue.message}"
-  for source in incoming.sources do
-    let key := source.destination
-    let supported := match source.payload with
-      | .prose _ => key.realization.name == `verso && (key.facet == `statement || key.facet == `proof)
-      | .leanInline _ => key.realization.name == `lean && key.facet == `body
-      | .text _ => source.context.language == `rust && key.realization.name == `rust && key.facet == `body
-      | .markup value => key.realization.name == Name.str (Name.mkSimple value.language.key) value.slot && key.facet == `statement
-    unless supported do
-      errors := errors.push s!"Label {label}: unsupported-source-projection: Source cannot be represented by the remaining node view"
   for use in incoming.uses do
-    if use.node != label || use.reference.label.isAnonymous ||
-        (use.realization.isSome && use.realization != some `lean) ||
-        (use.facet != `statement && use.facet != `proof) then
-      errors := errors.push s!"Label {label}: unsupported-use-projection: Use must preserve its concept, explicit scope and supported axis"
+    if use.node != label || use.reference.label.isAnonymous || use.facet.isAnonymous ||
+        use.realization.any (·.isAnonymous) ||
+        (use.realization.isNone && use.facet != `statement && use.facet != `proof) then
+      errors := errors.push s!"Label {label}: invalid-use-destination: Use must preserve its concept, scope and explicit facet"
   return errors
 
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
@@ -147,10 +111,6 @@ end Informal.Data
 namespace Informal.NodeAssembly
 
 open Lean Informal.Data Informal.Contributions
-
-/-- Capability projection for consumers that need every accepted attribute association. -/
-def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
-  supports.any fun record => record.allReferences.any fun ref => ref.origin == .blueprintAttr
 
 private def recordMessage (record : Record) : String :=
   let statement := (record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference)
@@ -254,32 +214,19 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
       ((keyedSupports supports |>.qsort supportOrder).map fun support => recordMessage support.2.2)
   collisionMessages ++ priorityMessages
 
-/--
-Assemble one complete node atomically. Selected records are resolved exactly once;
-their accepted projection supplies external references and priority, while the
-payload reducer retains body, kind, markup, dependency, and literate policies.
-On success, the node exposes the resolved priority and an attribute capability
-projected from every accepted support. It does not choose a general snapshot or
-claim confluence for unrelated payload policies.
--/
+/-- Assemble one complete source inventory atomically. The accepted resolver
+view supplies all keyed native associations and agreed priority. Source/use
+payloads retain their original destinations and scopes; no completion is inferred.
+Metadata display defaults are independent of validation. -/
 structure Assembly where
   node : Node
   view : View
 
 private def project (node : Node) (view : View) : Assembly :=
-  let externalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs
-      ((record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference))) #[]
-  let proofExternalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs
-      ((record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference))) #[]
-  let blueprintAttributeAttachments := supportsHaveBlueprintAttributeAttachments view.supports
+  let nativeAssociations := view.supports.toArray.flatMap (·.nativeAssociations)
   let kind := if node.kindIsExplicit then node.kind else
-    inferredNodeKind (ExternalRef.mergeSnapshots externalRefs proofExternalRefs) node.literateCodes
-  { node := { node with
-    externalRefs := externalRefs
-    proofExternalRefs := proofExternalRefs
-    blueprintAttributeAttachments := blueprintAttributeAttachments
-    priority := view.priority
-    kind := kind }, view }
+    inferredNodeKind (nativeAssociations.map (·.reference)) node.inlineCodes
+  { node := { node with nativeAssociations, priority := view.priority, kind }, view }
 
 /-- Raw keyed destination checks shared by local planning and complete import
 reassembly. They do not establish composed membership or native-name stability. -/
@@ -299,11 +246,6 @@ def sourceDestinationIssues (label : Label) (payloads : Array SourceData.Registr
     | none => contexts := contexts.insert key source.context
   for record in records do
     for association in record.nativeAssociations do
-      -- Until the remaining old source container is deleted, it can expose only
-      -- these two native axes. Refuse an unrepresentable accepted association
-      -- rather than silently drop it from declaration membership and indexes.
-      unless association.facets.any (fun facet => facet == `statement || facet == `proof) do
-        issues := issues.push s!"Label {label}: unsupported-native-projection: Native association has no facet supported by the remaining source view"
       match contexts[association.realization]? with
       | some context =>
         if context != association.context then

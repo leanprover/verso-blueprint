@@ -83,7 +83,7 @@ Second statement.
     let state ← currentState
     let some node := state.data.get? (Name.mkSimple "dup.statement")
       | return false
-    pure (node.statement.isSome && node.proof.isNone)
+    pure ((node.proseView `verso `statement).isSome && (node.proseView `verso `proof).isNone)
 
 #docs (Manual) propositionKindDoc "Proposition Kind" :=
 :::::::
@@ -99,7 +99,7 @@ Proposition body.
     let state ← currentState
     let some node := state.data.get? (Name.mkSimple "prop.kind")
       | return false
-    pure (node.kind == .proposition && node.statement.isSome)
+    pure (node.kind == .proposition && (node.proseView `verso `statement).isSome)
 
 /--
 error: Cannot find proof for label «ghost.proof»

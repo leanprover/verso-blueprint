@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Existing
+import VersoBlueprint.Realizations.NativeSource
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 import VersoBlueprintTests.SorryImport.Provider
 
@@ -12,7 +12,6 @@ obtained from real current Lean checks, never mocked provider success. -/
 
 open Lean Meta Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
-open Informal.Realizations.Existing
 open Informal.Realizations.NativeSource
 
 namespace VersoBlueprintTests.BlueprintRealizationAdapter
@@ -144,8 +143,8 @@ run_cmd liftTermElabM do
 -- FIR's unexecuted source concern: an actual passing check of the first theorem
 -- must not complete its admitted sibling merely by sharing a required key.
 run_cmd liftTermElabM do
-  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.reflexivity"))
-  let sibling ← obtain (← project `adapterFixture (Name.mkSimple "adapter.admitted"))
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity)
+  let sibling ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.admitted") `RealizationAdapterFixture.admitted)
   let own ← obtain (← NativeLean.checkDeclaration `adapterFixture p.witness)
   let admitted ← obtain (← NativeLean.checkDeclaration `adapterFixture sibling.witness)
   ensure (own.body.outcome == .passed && admitted.body.outcome == .failed)
@@ -283,7 +282,7 @@ private def assertPendingCorrespondence (p : PreparedModel) (input : Input) (exp
 run_cmd liftTermElabM do
   let trueGoal ← `(term| True)
   let escaped := Name.str `RealizationAdapterFixture "with.dot"
-  let escapedProjection ← obtain (← project `adapterFixture (Name.mkSimple "adapter.escaped"))
+  let escapedProjection ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.escaped") `RealizationAdapterFixture.«with.dot»)
   ensure (escapedProjection.witness.native.toName == escaped) "Escaped dotted name preserves typed identity"
   let escapedInput ← obtain (← escapedProjection.validate trueGoal)
   let escapedRegistry ← obtain (admit escapedInput)
@@ -299,8 +298,8 @@ run_cmd liftTermElabM do
     "Regression must use a present checked theorem whose name cannot round-trip"
   let some accepted ← Informal.Environment.getNode? (Name.mkSimple "adapter.nonroundtrip")
     | throwError "Regression requires a real accepted attribute association"
-  ensure (accepted.externalRefs.any (·.canonical == unusual)) "Accepted association retains original typed name"
-  match ← project `adapterFixture (Name.mkSimple "adapter.nonroundtrip") with
+  ensure ((accepted.nativeRefsOn `statement).any (·.canonical == unusual)) "Accepted association retains original typed name"
+  match ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.nonroundtrip") (Name.str `RealizationAdapterFixture "bad»name") with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-identity") "Projection must diagnose identity loss"
   | .ok _ => throwError "Projection must not silently replace a typed Lean identity"
   match ← NativeLean.check `adapterFixture (witness unusual) trueGoal with
@@ -313,10 +312,10 @@ run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.unicode"
   let before ← Informal.Environment.getNode? label
   let some accepted := before | throwError "Missing actual accepted Unicode theorem"
-  let association := accepted.externalRefs[0]!
+  let association := (accepted.nativeRefsOn `statement)[0]!
   ensure (association.range?.isNone && association.selectionRange?.isNone)
     "Ordinary attribute snapshot predates native range registration"
-  let p ← obtain (← project `adapterFixture label)
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label `RealizationAdapterFixture.«état😀»)
   ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.key.context.language == `verso)
     "Own native format metadata must select Verso"
   ensure (p.input.documents[1]!.value.text == " Même *texte* 😀 λ with {name}`Nat`. ")
@@ -377,29 +376,29 @@ run_cmd liftTermElabM do
   ensure (reprStr before == reprStr after) "Verso projection/checking preserves accepted state"
   -- Current consumer settings must not relabel already authored own Markdown.
   let markdown ← withOptions (fun opts => opts.setBool `doc.verso true) <|
-    project `adapterFixture (Name.mkSimple "adapter.reflexivity")
+    RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity
   let markdown ← obtain markdown
   ensure (markdown.docstringFormat == `markdown &&
     markdown.input.documents[1]!.value.text == " Every natural number equals itself. Raw Markdown, with **emphasis**. ")
     "Markdown retains its exact own raw body and native format"
-  let basic ← obtain (← project `adapterFixture (Name.mkSimple "adapter.verso"))
+  let basic ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.verso") `RealizationAdapterFixture.versoDocstring)
   ensure (basic.input.documents[1]!.value.text == " An own *Verso* docstring with {name}`Nat` and é 😀. ")
     "Option-wrapped Verso source remains exact"
 
 run_cmd liftTermElabM do
-  for (label, code) in #[("adapter.inherited", "unsupported-docstring"),
-      ("adapter.own.inherited", "inherited-docstring"),
-      ("adapter.ambiguous", "ambiguous-docstring"),
-      ("adapter.no.original.comment", "missing-docstring"),
-      ("adapter.synthetic", "source-association-unavailable")] do
-    match ← project `adapterFixture (Name.mkSimple label) with
+  for (label, canonical, code) in #[("adapter.inherited", `RealizationAdapterFixture.inheritedDocstring, "unsupported-docstring"),
+      ("adapter.own.inherited", `RealizationAdapterFixture.ownInheritedDocstring, "inherited-docstring"),
+      ("adapter.ambiguous", `RealizationAdapterFixture.ambiguousFormat, "ambiguous-docstring"),
+      ("adapter.no.original.comment", `RealizationAdapterFixture.noOriginalComment, "missing-own-comment"),
+      ("adapter.synthetic", `RealizationAdapterFixture.syntheticDoc, "source-association-unavailable")] do
+    match ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple label) canonical with
     | .error diagnostic =>
       ensure (diagnostic.code == code)
         s!"{label}: expected {code}, got {diagnostic.code}"
     | .ok _ => throwError "Unsupported source association must not fall back to another comment"
   -- Inspect the actual ordinary declaration with no source comment directly;
   -- late injected text cannot supply an original modifier association.
-  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.unicode"))
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.unicode") `RealizationAdapterFixture.«état😀»)
   let source ← liftM <| IO.FS.readFile p.sourcePath
   let commands ← obtain (← parseSource `noComment p.sourcePath source)
   let some ranges ← findDeclarationRanges? `RealizationAdapterFixture.noOriginalComment
@@ -408,7 +407,7 @@ run_cmd liftTermElabM do
   | .error diagnostic => ensure (diagnostic.code == "missing-own-comment") "No adjacent-comment fallback"
   | .ok _ => throwError "Native text cannot create an original doc comment"
   -- Explicit source/parser failure injection, not replacement canonical content.
-  let malformed ← project `adapterFixture (Name.mkSimple "adapter.verso")
+  let malformed ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.verso") `RealizationAdapterFixture.versoDocstring
     (fun _ => pure "import Lean\n/-- unterminated source")
   match malformed with
   | .error diagnostic => ensure (diagnostic.code == "source-parse-failed") "Malformed source is explicit"
@@ -423,7 +422,7 @@ run_cmd liftTermElabM do
 -- reflexivity/True. These are native current-build controls, not foreign proof
 -- observations, correspondence reviews, or a second mapping database.
 run_cmd liftTermElabM do
-  let p ← obtain (← project `adapterFixture (Name.mkSimple "adapter.flag.involutive"))
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.flag.involutive") `RealizationAdapterFixture.flagInvolutive)
   let expected ← `(term| ∀ flag : RealizationAdapterFixture.Flag,
     RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)
   let input ← obtain (← p.validate expected)
@@ -468,8 +467,9 @@ run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.reflexivity"
   let before ← Informal.Environment.getNode? label
   let labels ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity
-  let p ← obtain (← project `adapterFixture label)
   let some accepted := before | throwError "Missing actual accepted metadata"
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label
+    `RealizationAdapterFixture.reflexivity (metadata := accepted.toNodeMetadata))
   ensure (p.input.nodes.any fun contribution => contribution.value.label == label &&
     contribution.value.toNodeMetadata == accepted.toNodeMetadata)
     "Current source model must preserve the exact accepted concept metadata"
@@ -503,14 +503,14 @@ run_cmd liftTermElabM do
   ensure (!(wrongRegistry.resultForRequirement (proofKey p)).complete) "Wrong expected proposition must fail"
   ensure (wrongInput.evidence[0]!.value.observation.explanation.startsWith "wrong-proposition:")
     "Wrong expected proposition must fail for its actual checked type"
-  let admittedProjection ← obtain (← project `adapterFixture (Name.mkSimple "adapter.admitted"))
+  let admittedProjection ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.admitted") `RealizationAdapterFixture.admitted)
   let trueGoal ← `(term| True)
   let incompleteInput ← obtain (← admittedProjection.validate trueGoal)
   let incompleteRegistry ← obtain (admit incompleteInput)
   ensure (!(incompleteRegistry.resultForRequirement (proofKey admittedProjection)).complete)
     "Admitted proof with matching goal cannot complete through pure rules"
   assertPendingCorrespondence p input expected "The prose states natural-number reflexivity"
-  let _ ← obtain (← project `adapterFixture label)
+  let _ ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label `RealizationAdapterFixture.reflexivity)
   let after ← Informal.Environment.getNode? label
   ensure (reprStr before == reprStr after &&
     labels == (← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity))
@@ -552,17 +552,22 @@ run_cmd liftTermElabM do
     | .ok _ => throwError "Local assumptions must not escape as closed expectations"
 
 run_cmd liftTermElabM do
-  for label in #["adapter.grouped", "adapter.definition", "adapter.undocumented", "adapter.missing",
-      "adapter.inherited"] do
-    ensure (rejected (← project `adapterFixture (Name.mkSimple label))) "Unsupported input must be explicit"
+  -- Source checking takes an explicit identity; multiple declarations attached
+  -- to a concept and definitions are no longer rejected by an old node-shape gate.
+  for canonical in #[`RealizationAdapterFixture.groupedOne, `RealizationAdapterFixture.number] do
+    let _ ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture `directSource canonical)
+  for canonical in #[`RealizationAdapterFixture.undocumented,
+      `RealizationAdapterFixture.notPresent, `RealizationAdapterFixture.inheritedDocstring] do
+    ensure (rejected (← RealizationAdapterFixture.prepareModel `adapterFixture `directSource canonical))
+      "Missing or inherited own source remains explicit"
   -- Explicitly labeled source-I/O failure injection; never a successful provider.
-  let missing ← project `adapterFixture (Name.mkSimple "adapter.reflexivity")
+  let missing ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity
     (fun _ => throw <| IO.userError "injected unavailable source")
   match missing with
   | .error diagnostic => ensure (diagnostic.code == "source-unavailable") "Missing source diagnostic"
   | .ok _ => throwError "Unreadable source must not project a resolved declaration"
   -- Explicit empty-source failure injection, not replacement successful bytes.
-  let empty ← project `adapterFixture (Name.mkSimple "adapter.reflexivity") (fun _ => pure " \n")
+  let empty ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity (fun _ => pure " \n")
   ensure (rejected empty) "Empty source must not project a resolved declaration"
 
 -- Reuse #497's actual module-system fixture. A legacy import exposes bodies;

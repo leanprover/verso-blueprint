@@ -56,6 +56,35 @@ run_cmd Lean.Elab.Command.liftCoreM do
       record.label == label && record.id.producer == `test.scopedNative && record.id.site == 1)
     | throwError "Missing actual imported scoped source"
   let association := original.nativeAssociations[0]!
+  -- A real current native reference may be attached to any named facet of an
+  -- independently keyed realization. The node inventory and native label
+  -- index must retain that accepted source without projecting it into a fixed
+  -- statement/proof slot.
+  let beforeArbitraryFacet ← getEnv
+  try
+    let ref ← externalRefSnapshotAtCurrentDir (← getOptions)
+      (Data.ExternalRef.ofName `Nat.add_assoc)
+    unless ref.present do throwError "Arbitrary-facet control needs a real current native declaration"
+    let selected : Realizations.RealizationKey := ⟨label, `arbitraryFacet⟩
+    let arbitrary : SourceData.NativeAssociation := {
+      realization := selected, context, facets := #[`body], reference := ref }
+    let oldLabels ← Environment.labelsForLeanDecl `Nat.add_assoc
+    unless !oldLabels.contains label do
+      throwError "Arbitrary-facet index control was already installed"
+    let some accepted ← Environment.contributeRecord {
+      id := ⟨← getMainModule, `test.arbitraryFacet, label, 500, 0⟩, label
+      nativeAssociations := #[arbitrary]
+      priority := none, source := none } {}
+        | throwError "An arbitrary named native facet was rejected"
+    let retained := accepted.nativeAssociations.any fun item =>
+      item.realization == selected && item.context == context && item.facets == #[`body] &&
+        item.reference.canonical == `Nat.add_assoc && item.reference.present
+    let newLabels ← Environment.labelsForLeanDecl `Nat.add_assoc
+    unless retained && accepted.leanDecls.contains `Nat.add_assoc && newLabels.contains label do
+      throwError "Accepted arbitrary-facet association was lost from the node or native-name index"
+  finally
+    setEnv beforeArbitraryFacet
+
   -- Whole destinations participate in same-producer collision identity.
   rejected "native destinations" <| Environment.contributeRecord { original with
     nativeAssociations := #[{ association with realization := ⟨label, `changed⟩ }] } { tags := #["rejected"] }
@@ -66,8 +95,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
     nativeAssociations := #[{ association with facets := #[] }] } {}
   rejected "source-destination-mismatch" <| Environment.contributeRecord { fresh with
     nativeAssociations := #[{ association with realization := ⟨`wrongConcept, `alternative⟩ }] } {}
-  rejected "unsupported-native-projection" <| Environment.contributeRecord { fresh with
-    nativeAssociations := #[{ association with facets := #[`body] }] } {}
   -- A successful inner native contribution must also roll back on an enclosing
   -- directive exception. This covers the raw/native/local-export fields too.
   let before := Environment.informalExt.getState (← getEnv)

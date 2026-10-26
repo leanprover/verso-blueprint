@@ -37,5 +37,5 @@ run_cmd do
   let some stored := state.data.get? label
     | throwError "Accepted node was not committed"
   unless updated.tags == stored.tags && updated.priority == stored.priority &&
-      updated.externalRefs == stored.externalRefs && updated.leanDecls == stored.leanDecls do
+      updated.nativeRefsOn `statement == stored.nativeRefsOn `statement && updated.leanDecls == stored.leanDecls do
     throwError "Returned payload and association fields differ from the committed node"

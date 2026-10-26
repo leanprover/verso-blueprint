@@ -41,7 +41,7 @@ theorem inline_main_complete : True := by
       let .ok snapshot ← Realizations.Capture.capture | pure false
       let assessment := snapshot.assessmentFor label
       let helperProofGapOnly :=
-        node.literateCodes.any fun code =>
+        node.inlineCodes.any fun code =>
           code.definedDefs.any fun decl =>
             let (typeRefs, proofRefs) := decl.provedStatus.sorryRefCounts
             decl.provedStatus.hasProofGap &&
@@ -79,7 +79,7 @@ private def literateDeclNamesFor? (label : Name) : CoreM (Option (Array String))
   | none => pure none
   | some node =>
     let names :=
-      node.literateCodes.foldl (init := #[]) fun acc code =>
+      node.inlineCodes.foldl (init := #[]) fun acc code =>
         acc ++ (code.definedDefs.map (·.name.toString)) ++
           (code.definedTheorems.map (·.name.toString))
     pure <| if names.isEmpty then none else some names

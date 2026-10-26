@@ -13,6 +13,6 @@ open Lean Informal
   let labelsB ← Environment.labelsForLeanDecl `CoherenceEqualB.declaration
   return (← Environment.importedConflicts).isEmpty &&
     node.priority == some "high" &&
-    node.externalRefs.any (·.canonical == `CoherenceEqualA.declaration) &&
-    node.externalRefs.any (·.canonical == `CoherenceEqualB.declaration) &&
+    (node.nativeRefsOn `statement).any (·.canonical == `CoherenceEqualA.declaration) &&
+    (node.nativeRefsOn `statement).any (·.canonical == `CoherenceEqualB.declaration) &&
     labelsA == #[`coherent_equal] && labelsB == #[`coherent_equal]
