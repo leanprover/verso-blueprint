@@ -1260,6 +1260,43 @@ that frontend display key.
 No compatibility storage, persisted provider success or Capture execution
 framework is introduced by this replacement.
 
+### Admission guarantees on the keyed layout (2026-10-26)
+
+The selected-reference check and useful laws from the preserved `24edb814`
+checkpoint are now ported to this layout. Admission checks the exact predicate
+`eraseMacroScopes (eraseMacroScopes name) = eraseMacroScopes name` for every
+selected native association. Missing references and arbitrary named facets are
+included. The check never rewrites retained evidence, filters malformed names,
+or repeatedly normalizes a name until it changes identity.
+
+The same production assembler handles local candidates and imported reassembly.
+Payload errors still precede resolver identity/priority conflicts. After successful
+resolution, destination errors and selected-name errors are both reported, in that
+order. Successful assembly is proved equivalent to successful payload reduction,
+collision-free and priority-consistent resolution, valid destinations, and stable
+selected names. Rejected imported evidence remains available, installs no accepted
+node/index, and cannot be repaired merely by a later valid local attachment.
+
+| Earlier guarantee | Current guarantee |
+| --- | --- |
+| Collector/resolver support, collision, priority, replay | Existing `Contributions.Laws`, unchanged; selected names are an additional checked acceptance condition. |
+| Snapshot merge union, normalization, presence and folds | Ported `ExternalRef.Laws` and `FoldLaws`, proved against the current relocated production definitions. |
+| Stored statement/proof reference arrays | Retired with those fields. `assemble_ok_nativeAssociations_membership` preserves full realization/context/facet witnesses, including missing associations. |
+| Stored attribute capability | Replaced by `assemble_ok_hasAttributeAssociations` over the accepted association inventory. |
+| Node declaration union | `Node.mem_leanDecls` and `assemble_ok_leanDecls_sources`: every present native association plus every inline declaration in the accepted source set, with exact erasure conventions. |
+| Payload source preservation | `assemble_ok_sources` equates the final source inventory to the successful registration reducer result. No general payload confluence claim is added. |
+| Assumed stability at the projection boundary | `referenceNameErrors_isEmpty_iff` and `assemble_ok_stableReferences` establish it from the production acceptance check. |
+
+`ReferenceNameAdmission` remains an independent test root. It imports the law
+modules so the normal test build checks them, and covers actual producer success,
+present/missing malformed references on statement/proof/custom facets, collision
+precedence, combined destination/name errors, raw imported retention, atomic
+rejection and no resurrection. The tracked `AssemblyAxiomAudit` now prints the
+actual keyed-layout theorems; obsolete fixed-field theorem names are removed.
+The audit is evidence about these theorems, not a new global soundness axiom or a
+proof of every environment transition. No naming invariant is assumed of arbitrary
+Lean names, and native source/identity checks still apply separately at capture.
+
 ### Consumer cutover and deletion
 
 Build the accepted model and fresh validation once at the project capture/query

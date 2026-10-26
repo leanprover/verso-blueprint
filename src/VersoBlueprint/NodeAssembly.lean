@@ -254,6 +254,20 @@ def sourceDestinationIssues (label : Label) (payloads : Array SourceData.Registr
       | none => contexts := contexts.insert association.realization association.context
   return issues
 
+/-- Check every selected name without rewriting retained source evidence.
+A second erasure must not move the declaration key normalized by display/indexing. -/
+def referenceNameErrors (label : Label) (records : List Record) : Array String :=
+  ((recordsFor label records).flatMap fun record =>
+    record.allReferences.toList.filterMap fun ref =>
+      if ref.canonical.eraseMacroScopes.eraseMacroScopes == ref.canonical.eraseMacroScopes then none
+      else some s!"Label {label} has external Lean reference '{ref.written}' with unstable canonical name '{ref.canonical}': erasing macro scopes again changes the declaration key").toArray
+
+/-- Both structural and selected-name errors remain visible, in that order.
+Payload and resolver conflicts still precede this final admission check. -/
+def admissionErrors (label : Label) (payloads : Array SourceData.Registration)
+    (records : List Record) : Array String :=
+  sourceDestinationIssues label payloads records ++ referenceNameErrors label records
+
 def assemble (label : Label) (payloads : Array SourceData.Registration) (records : List Record) :
     Except (Array String) Assembly :=
   match Node.applyRegistrations label {} payloads with
@@ -261,7 +275,7 @@ def assemble (label : Label) (payloads : Array SourceData.Registration) (records
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
     | .ok view =>
-      let issues := sourceDestinationIssues label payloads records
+      let issues := admissionErrors label payloads records
       if issues.isEmpty then .ok (project node view) else .error issues
 
 end Informal.NodeAssembly

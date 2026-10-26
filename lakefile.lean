@@ -73,6 +73,7 @@ lean_lib VersoBlueprintTests where
   needs := #[realizationFlagRocqSource, realizationFlagRocqProject]
   roots := #[
     `VersoBlueprintTests.BlueprintNativeFixture,
+    `VersoBlueprintTests.ReferenceNameAdmission,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
     `VersoBlueprintTests.BlueprintCanonicalSourcePersistence,
     `VersoBlueprintTests.BlueprintRealizationCapture,
