@@ -145,11 +145,11 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-const graphDataSchemaVersion = 3;
+const graphDataSchemaVersion = 4;
 
 /**
  * @param {unknown} value
- * @returns {boolean}
+ * @returns {value is Record<string, unknown>}
  */
 function isRecord(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -177,6 +177,33 @@ function isTrimmedNonemptyString(value) {
  */
 function isGraphNodeIdPair(value) {
   return Array.isArray(value) && value.length === 2 && value.every(isTrimmedNonemptyString);
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isNodeAssessment(value) {
+  if (!isRecord(value)) return false;
+  const fields = [
+    "hasNativeDeclarations",
+    "hasAxiomLike",
+    "nativeStatementComplete",
+    "nativeProofComplete",
+    "requiredComplete",
+    "statementDependenciesComplete",
+    "proofDependenciesComplete"
+  ];
+  return fields.every((field) => typeof value[field] === "boolean") && isRecord(value.details);
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isGraphNode(value) {
+  if (!isRecord(value) || !Object.prototype.hasOwnProperty.call(value, "assessment") ||
+      !Object.prototype.hasOwnProperty.call(value, "actionableStage")) return false;
+  if (value.assessment !== null && !isNodeAssessment(value.assessment)) return false;
+  if (value.actionableStage !== null &&
+      value.actionableStage !== "statement" && value.actionableStage !== "proof") return false;
+  return isRecord(value.warnings) && typeof value.warnings.unknownRef === "boolean" &&
+    !Object.prototype.hasOwnProperty.call(value.warnings, "leanOnlyNoStatement") &&
+    !Object.prototype.hasOwnProperty.call(value.warnings, "missingExternalDecl");
 }
 
 /**
@@ -243,8 +270,9 @@ function areGraphVariantsValid(variants) {
  *
  * Topology is finalized by Lean before serialization. Browser clients consume
  * that snapshot and do not carry a second implementation of graph finalization.
- * This boundary validates the schema, top-level collections, and render-variant
- * contract; it trusts Lean's producer boundary for semantic topology agreement.
+ * This boundary validates the schema, node assessment/actionability fields,
+ * top-level collections, and render-variant contract; it trusts Lean's
+ * producer boundary for semantic topology agreement.
  *
  * @param {unknown} rawData Parsed graph JSON.
  * @returns {BlueprintGraphData | null}
@@ -253,7 +281,7 @@ export function decodeGraphData(rawData) {
   if (!isRecord(rawData)) return null;
   const data = /** @type {Record<string, unknown>} */ (rawData);
   if (data.schemaVersion !== graphDataSchemaVersion || !isTrimmedNonemptyString(data.key)) return null;
-  if (!Array.isArray(data.nodes) || !Array.isArray(data.edges) ||
+  if (!Array.isArray(data.nodes) || !data.nodes.every(isGraphNode) || !Array.isArray(data.edges) ||
       !Array.isArray(data.groups) || !Array.isArray(data.variants)) return null;
   if (!areGraphVariantsValid(data.variants)) return null;
   return {

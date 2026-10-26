@@ -555,6 +555,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
   show IO (Array String) from do
     let (showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
+        (model := externalMarkupShowcaseDocBlueprint.model)
     let showcaseFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState showcaseState)
@@ -731,6 +732,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
   show IO (Array String) from do
     let (_showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
+        (model := externalMarkupShowcaseDocBlueprint.model)
     let showcaseFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState showcaseState)
@@ -820,12 +822,13 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (externalOut, externalState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupDoc
-    let unlabeledOut ← renderManualDocHtmlString extension_impls% unlabeledExternalMarkupDoc
-    let witnessOut ← renderManualDocHtmlString extension_impls% externalMarkupWitnessDoc
-    let multiOut ← renderManualDocHtmlString extension_impls% externalMarkupMultiLanguageDoc
-    let summaryOut ← renderManualDocHtmlString extension_impls% externalMarkupSummaryDisplayDoc
-    let sourceOut ← renderManualDocHtmlString extension_impls% externalMarkupSourceDisplayDoc
+    let model := externalMarkupShowcaseDocBlueprint.model
+    let (externalOut, externalState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupDoc (model := model)
+    let unlabeledOut ← renderManualDocHtmlString extension_impls% unlabeledExternalMarkupDoc (model := model)
+    let witnessOut ← renderManualDocHtmlString extension_impls% externalMarkupWitnessDoc (model := model)
+    let multiOut ← renderManualDocHtmlString extension_impls% externalMarkupMultiLanguageDoc (model := model)
+    let summaryOut ← renderManualDocHtmlString extension_impls% externalMarkupSummaryDisplayDoc (model := model)
+    let sourceOut ← renderManualDocHtmlString extension_impls% externalMarkupSourceDisplayDoc (model := model)
     let traversed := (Informal.TraversalIndex.ExternalMarkup.data? externalState (Name.mkSimple "external.markup")).map (·.markup) |>.getD {}
     let traversedTex := externalMarkupRaw? traversed .tex "statement" |>.getD ""
     let traversedMd := externalMarkupRaw? traversed .markdown "proof" |>.getD ""
@@ -835,7 +838,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let externalMarkupOnlyKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markup")
     let some externalBlockEntry := externalFiles.manifest.previews.find? (fun entry => entry.key == externalBlockKey)
       | return false
-    let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
+    let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc (model := model)
     let preparedWitnessState := preparePreviewState witnessState
     let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
     let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
@@ -854,13 +857,13 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       | return false
     let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
       | return false
-    let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc
+    let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc (model := model)
     let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState markdownState)
     let markdownKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markdown.witness")
     let some markdownHtml := markdownFiles.htmlCache.findHtml? markdownKey
       | return false
-    let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc
+    let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc (model := model)
     let bodylessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState bodylessState)
     let bodylessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.bodyless.lean")
@@ -869,7 +872,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let some bodylessHtml := bodylessFiles.htmlCache.findHtml? bodylessKey
       | return false
     let (_punctuationOut, punctuationState) ←
-      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc
+      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc (model := model)
     let punctuationFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState punctuationState)
@@ -913,7 +916,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let some brokenBodylessLoss := brokenBodylessLosses[0]?
       | return false
     let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
-    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc
+    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc (model := model)
     let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState sourcedWitnessState)
     let sourcedWitnessKey :=
@@ -1003,6 +1006,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 -- A rejected stored facet must not become an absent-facet markup fallback.
 #eval show IO Unit from do
   let (_, state) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
+    (model := externalMarkupShowcaseDocBlueprint.model)
   let label := Name.mkSimple "external.witness"
   let key := PreviewCache.statementKey label
   let errors ← IO.mkRef (#[] : Array String)

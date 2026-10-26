@@ -5,15 +5,22 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprintTests.BlueprintImportedContributions.Attachment
 import VersoBlueprintTests.Blueprint.Support
+import VersoBlueprint.Realizations.Capture
 
-open Lean Informal Verso.Genre
+open Lean Informal Verso.Genre Elab Command Term Realizations
 open Verso.VersoBlueprintTests.Blueprint.Support
+
+private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
+  match value with
+  | .ok value => pure value
+  | .error error => throwError "Capture failed: {repr error}"
 
 @[blueprint "dependency_only" (uses := ["statement_dep"]) (proofUses := ["proof_dep"])]
 theorem dependencyOnly : True := trivial
 
-#eval show CoreM Unit from do
-  let summary ← Commands.buildSummary
+run_cmd liftTermElabM do
+  let snapshot ← obtain (← Capture.capture)
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
   for label in #[`key_theorem, `dependency_only] do
     unless summary.pendingInformalEntries.any (·.label == label) do
       throwError "Dependency-only payload for {label} incorrectly counted as informal coverage"
@@ -42,8 +49,9 @@ The actual informal proof.
 :::
 :::::::
 
-#eval show CoreM Unit from do
-  let summary ← Commands.buildSummary
+run_cmd liftTermElabM do
+  let snapshot ← obtain (← Capture.capture)
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
   unless !summary.pendingInformalEntries.any (·.label == `dependency_only) &&
       summary.pendingInformalEntries.any (·.label == `key_theorem) do
     throwError "Coverage did not distinguish new bodies from dependency metadata"

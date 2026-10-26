@@ -15,7 +15,8 @@ structure ExternalCodeStatus where
   isMissing : Name → Bool := fun _ => false
   provedStatus : Name → Data.ProvedStatus := fun _ => .proved
 
-/-- One semantic completion projection shared by graph, headings and CLI.
+/-- Non-authoritative provider/display inventory; completion comes only from
+realization capture and validation.
 Each canonical declaration is counted once after conservatively merging every
 captured observation. Display selection and raw facet provenance are separate.
 Missing declarations have their own count; incomplete counts concern present
@@ -79,11 +80,6 @@ def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatu
     (source? : Option Informal.BlockCodeData) : CodeHealth :=
   codeHealthOfBlockSources kind external source?.toArray
 
-def nodeCodeHealth (external : ExternalCodeStatus) (node : Data.Node) : CodeHealth :=
-  codeHealthOfBlockSource node.kind external <| some {
-    externalDecls := node.externalAssociationSnapshots
-    literateDeclarations := Informal.LiterateDeclarations.ofCodes node.literateCodes }
-
 def CodeHealth.hasMissingExternalDecls (health : CodeHealth) : Bool :=
   health.missingDecls > 0
 
@@ -92,22 +88,5 @@ def CodeHealth.hasStatementGaps (health : CodeHealth) : Bool :=
 
 def CodeHealth.hasAnyGaps (health : CodeHealth) : Bool :=
   health.anyGapCount > 0
-
-def CodeHealth.localStatementFormalized (health : CodeHealth) : Bool :=
-  health.hasAssociatedCode && !health.hasStatementGaps
-
-def CodeHealth.localProofFormalized (health : CodeHealth) : Bool :=
-  health.hasAssociatedCode && health.provedStatus.isProved
-
-def CodeHealth.verdict (health : CodeHealth) : String :=
-  if health.hasAssociatedCode then health.provedStatus.verdict else "unassociated"
-
-def CodeHealth.incompleteAssociatedCode (health : CodeHealth) : Bool :=
-  health.hasAssociatedCode && !health.hasMissingExternalDecls && health.hasAnyGaps
-
-def CodeHealth.localFormalized (health : CodeHealth) (kind : Data.NodeKind) : Bool :=
-  if kind.isTheoremLike then health.localProofFormalized
-  else if kind == .definition then health.localStatementFormalized
-  else false
 
 end Informal.Graph

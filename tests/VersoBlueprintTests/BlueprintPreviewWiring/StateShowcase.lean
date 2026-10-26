@@ -106,25 +106,47 @@ Statement with an intentionally unresolved graph dependency, `def:showcase.ghost
 /-- Captured in this fixture's environment before unrelated fixtures are imported. -/
 def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShowcaseDoc.toPart
 
-/-- info: true -/
+/-- info: #[] -/
 #guard_msgs in
 #eval
-  show IO Bool from do
-    let out ← renderManualDocHtmlString manualImpls stateShowcaseDoc
-    pure (
-      hasSubstr out "Proof Status" &&
-      hasSubstr out proofStatusNoneText &&
-      hasSubstr out proofStatusReadyText &&
-      hasSubstr out proofStatusIncompleteText &&
-      hasSubstr out proofStatusFormalizedText &&
-      hasSubstr out proofStatusFormalizedAncestorsText &&
-      hasSubstr out "Unknown reference" &&
-      hasSubstr out "Missing external Lean declaration" &&
-      hasSubstr out "Lean code, informal statement missing" &&
-      hasSubstr out "def:showcase.ghost" &&
-      hasSubstr out "def:showcase.lean_only" &&
-      hasSubstr out "Current blockers (2)" &&
-      hasSubstr out "Declaration with sorry:"
-    )
+  show IO (Array String) from do
+    let model := stateShowcaseDocBlueprint.model
+    let out ← renderManualDocHtmlString manualImpls stateShowcaseDoc (model := model)
+    let assessmentFor? (label : String) :=
+      (model.nodes.find? (·.label == Lean.Name.mkSimple label)).bind (·.assessment)
+    let graphNode? (label : String) :=
+      model.graph.nodes.find? (·.label == Lean.Name.mkSimple label)
+    let nativeBase := (assessmentFor? "def:showcase.base").any fun assessment =>
+      assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
+        assessment.nativeProofComplete && assessment.requiredComplete
+    let incompleteTheorem := (assessmentFor? "thm:showcase.incomplete").any fun assessment =>
+      assessment.hasNativeDeclarations && !assessment.nativeProofComplete
+    let proseOnly := (assessmentFor? "thm:showcase.proof_ready").any fun assessment =>
+      !assessment.hasNativeDeclarations
+    let unresolvedUse := (graphNode? "lem:showcase.unknown_ref").any fun node =>
+      node.statementUses.any (·.label == Lean.Name.mkSimple "def:showcase.ghost")
+    let ghostIsUnresolved := (graphNode? "def:showcase.ghost").any fun node =>
+      node.assessment.isNone && node.warnings.unknownRef
+    let checks : Array (String × Bool) := #[
+      ("proof status legend", hasSubstr out "Proof Status"),
+      ("unassessed status legend", hasSubstr out proofStatusUnassessedText),
+      ("not ready status legend", hasSubstr out proofStatusNoneText),
+      ("ready status legend", hasSubstr out proofStatusReadyText),
+      ("incomplete status legend", hasSubstr out proofStatusIncompleteText),
+      ("formalized status legend", hasSubstr out proofStatusFormalizedText),
+      ("formalized with dependencies legend", hasSubstr out proofStatusFormalizedAncestorsText),
+      ("unknown reference from selected uses", hasSubstr out "Unknown reference"),
+      ("missing external native declaration", hasSubstr out "Missing external Lean declaration"),
+      ("missing informal coverage is reported separately", hasSubstr out "Missing informal coverage"),
+      ("unknown target label", hasSubstr out "def:showcase.ghost"),
+      ("native-only captured label", hasSubstr out "def:showcase.lean_only"),
+      ("current blocker section", hasSubstr out "Current blockers ("),
+      ("sorry source display", hasSubstr out "Declaration with sorry:"),
+      ("inline declaration has a current native check", nativeBase),
+      ("incomplete theorem keeps its native proof unfinished", incompleteTheorem),
+      ("native-free prose remains unassessed", proseOnly),
+      ("ordinary selected use remains in canonical graph", unresolvedUse),
+      ("unresolved target is not fabricated as a node", ghostIsUnresolved)]
+    pure <| checks.filterMap fun (name, ok) => if ok then none else some name
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase

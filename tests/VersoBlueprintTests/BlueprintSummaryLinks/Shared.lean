@@ -93,6 +93,11 @@ Triage group heading.
 Definition 01.
 :::
 
+```lean "def:triage.01"
+def summaryTriage01 : True := by
+  sorry
+```
+
 :::definition "def:triage.02" (parent := "triage.group")
 Definition 02.
 :::
@@ -141,6 +146,11 @@ Definition 12.
 Actionable leaf definition with no downstream users.
 :::
 
+```lean "def:triage.leaf"
+theorem summaryTriageLeaf : True := by
+  sorry
+```
+
 :::theorem "thm:triage.main" (parent := "triage.group") (owner := "alice") (tags := "critical") (effort := "large")
 Depends on
 {uses "def:triage.01"}[],
@@ -156,6 +166,11 @@ Depends on
 {uses "def:triage.11"}[],
 and {uses "def:triage.12"}[].
 :::
+
+```lean "thm:triage.main"
+theorem summaryTriageMain : True := by
+  sorry
+```
 
 :::theorem "thm:triage.proof" (parent := "triage.group")
 Proof-only dependency sample.

@@ -5,7 +5,6 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprint.CodeHealth
 import VersoBlueprint.PreviewManifest
 
 namespace VersoBlueprint.Vbp
@@ -155,12 +154,12 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
     ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
   ]
 
-/-- Declaration truth over every semantic association, retaining facet provenance.
-This reads the persisted generation snapshot; it does not recheck Lean sources. -/
+/-- Return the captured node assessment separately from legacy declaration display
+snapshots, retaining the latter's facet provenance. This reads persisted output;
+it does not recheck Lean sources or infer completion when capture is absent. -/
 private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := Id.run do
   let facets := manifest.findBlockEntriesByLabel entry.authoredLabel
-  let health := Informal.Graph.codeHealthOfBlockSources (entry.kind.getD .theorem) {}
-    (facets.filterMap (·.codeData))
+  let assessment? := entry.assessment <|> facets.findSome? (·.assessment)
   let mut declarations : Array Json := #[]
   for facet in facets do
     let code := facet.codeData.getD {}
@@ -169,20 +168,29 @@ private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := 
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.canonical), ("facet", toJson facet.facet),
         ("association", Json.str "external"), ("kind", toJson decl.kind),
-        ("status", status.reportJson)]
+        ("sourceSnapshotStatus", status.reportJson)]
     for decl in code.literateDeclarations.declarations do
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.name), ("facet", toJson facet.facet),
         ("association", Json.str "inline"),
-        ("status", decl.provedStatus.reportJson)]
+        ("sourceSnapshotStatus", decl.provedStatus.reportJson)]
+  let validation := match assessment? with
+    | none => Json.mkObj [("captured", toJson false)]
+    | some assessment => Json.mkObj [
+        ("captured", toJson true),
+        ("hasNativeDeclarations", toJson assessment.hasNativeDeclarations),
+        ("hasAxiomLike", toJson assessment.hasAxiomLike),
+        ("nativeStatementComplete", toJson assessment.nativeStatementComplete),
+        ("nativeProofComplete", toJson assessment.nativeProofComplete),
+        ("requiredComplete", toJson assessment.requiredComplete),
+        ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),
+        ("proofDependenciesComplete", toJson assessment.proofDependenciesComplete),
+        ("details", assessment.details)]
   return responseJson [
     ("label", nameJson entry.label),
-    ("asOf", Json.str "generated-snapshot"),
-    ("verdict", Json.str health.verdict),
-    ("complete", toJson health.localProofFormalized),
-    ("statementComplete", toJson health.localStatementFormalized),
-    ("proofComplete", toJson health.localProofFormalized),
-    ("declarations", Json.arr declarations)]
+    ("asOf", Json.str (if assessment?.isSome then "captured-build" else "uncaptured")),
+    ("validation", validation),
+    ("sourceDeclarationSnapshots", Json.arr declarations)]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)

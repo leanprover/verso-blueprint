@@ -122,6 +122,8 @@ or an assessment of correspondence with prose. The caller supplies canonical
 source association and binds these observations to the complete current model. -/
 structure CheckedDeclaration where
   declaration : ObjectKey
+  /-- Current checked declaration kind; missing declarations have no inferred kind. -/
+  kind : Option Data.NodeKind := none
   statement : CheckObservation
   body : CheckObservation
   status : Data.ProvedStatus
@@ -163,7 +165,7 @@ def checkDeclaration (project : Name) (witness : ObjectKey) :
     let statementGap := status.hasTypeGap || status.hasUnlocalizedSorry ||
       (kind == .definition && status.hasProofGap)
     return .ok {
-      declaration := witness
+      declaration := witness, kind := some kind
       statement := {
         validator := statementValidator
         declaration := some witness

@@ -4,143 +4,46 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprintTests.BlueprintGraph.Shared
-import VersoBlueprint.Graph
+import VersoBlueprint.Commands.Summary.Collect
+import VersoBlueprintTests.BlueprintRealizationCapture
+
+open Lean Elab Command Term
+open Informal Data Graph Realizations Translations
 
 namespace Verso.VersoBlueprintTests.BlueprintSummaryStatus
 
-open Lean
-open Informal
-open Informal.Data
-open Informal.Graph
+private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
+  unless condition do throwError message
 
-private def mkInformal (deps : Array Name := #[]) : InformalData :=
-  { stx := .missing, useDeclarations := deps.map (fun label => { label }), elabStx := #[] }
+private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
+  match value with
+  | .ok value => pure value
+  | .error issue => throwError "Capture failed: {repr issue}"
 
-private def mkDefDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateDef :=
-  {
-    name
-    provedStatus := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus typeRefs proofRefs
-  }
+run_cmd liftTermElabM do
+  let counts : Commands.EntryStatusCounts := { completedDepsNo := 1 }
+  ensure ((Commands.statusCountsText counts).contains "native checks complete, requirements incomplete: 1")
+    "Summary text must not call every unfinished realization requirement a dependency gap"
+  let snapshot ← obtain (← Capture.capture)
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
+  ensure (summary.totalEntries == snapshot.registry.nodes.size)
+    "Summary inventory must come from admitted realization nodes"
+  ensure (summary.pendingInformalEntries.any (·.label == Name.mkSimple "capture.complete"))
+    "Optional prose assessment must not erase informational missing-prose coverage"
+  ensure (summary.leanDecls > 0 && summary.incompleteDecls > 0)
+    "Summary native counts should come from captured declaration requirements"
+  ensure (summary.incompleteDetails.any (·.label == Name.mkSimple "capture.admitted"))
+    "Detailed native debt should retain the freshly checked provider status"
 
-private def mkThmDecl (name : Name) (typeRefs proofRefs : Nat) : LiterateThm :=
-  {
-    name
-    provedStatus := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus typeRefs proofRefs
-  }
-
-private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : Array LiterateThm)
-    : Code :=
-  { stx := .missing, definedDefs, definedTheorems }
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let unknownKindNode : NodeData := {
-    label := `unknown_kind
-    title := "Unknown kind"
-    displayLabel := "Unknown kind"
-    statementStatus := .ready
-    visual := { fillcolor := "#ffffff" }
-  }
-  actionableStageForStatuses? .definition .ready .ready == some "statement" &&
-    actionableStageForStatuses? .definition .blocked .incomplete == none &&
-    actionableStageForStatuses? .theorem .ready .none == some "statement" &&
-    actionableStageForStatuses? .theorem .ready .incomplete == some "proof" &&
-    actionableStageForStatuses? .theorem .formalized .ready == some "proof" &&
-    actionableStageForStatuses? .theorem .blocked .incomplete == some "proof" &&
-    actionableStageForStatuses? .theorem .formalized .formalized == none &&
-    unknownKindNode.actionableStage?.isNone
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let provedStatus := ProvedStatus.proved
-  let stmtGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 1 0
-  let proofGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 0 1
-  let bothGap := Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 1 1
-  let bothEvidence : Array SorryInfo :=
-    #[{ location := .statement, refs? := some 1 },
-      { location := .proof, refs? := some 1 }]
-  (!provedStatus.blocksStatementCompletion .definition) &&
-  (!provedStatus.blocksStatementCompletion .proposition) &&
-  (!provedStatus.blocksStatementCompletion .lemma) &&
-  (!provedStatus.blocksStatementCompletion .theorem) &&
-  (!provedStatus.blocksStatementCompletion .corollary) &&
-  stmtGap.blocksStatementCompletion .definition &&
-  stmtGap.blocksStatementCompletion .proposition &&
-  stmtGap.blocksStatementCompletion .lemma &&
-  stmtGap.blocksStatementCompletion .theorem &&
-  stmtGap.blocksStatementCompletion .corollary &&
-  proofGap.blocksStatementCompletion .definition &&
-  (!proofGap.blocksStatementCompletion .proposition) &&
-  (!proofGap.blocksStatementCompletion .lemma) &&
-  (!proofGap.blocksStatementCompletion .theorem) &&
-  (!proofGap.blocksStatementCompletion .corollary) &&
-  bothGap.blocksStatementCompletion .definition &&
-  bothGap.blocksStatementCompletion .proposition &&
-  bothGap.blocksStatementCompletion .lemma &&
-  bothGap.blocksStatementCompletion .theorem &&
-  bothGap.blocksStatementCompletion .corollary &&
-  bothGap == .incomplete { knownSorry := bothEvidence } &&
-  stmtGap.blocksProofCompletion &&
-  proofGap.blocksProofCompletion
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let statuses : Array ProvedStatus := #[.proved, Verso.VersoBlueprintTests.BlueprintGraph.Shared.fixtureStatus 0 1]
-  ProvedStatus.anyBlocksStatementCompletion .definition statuses (fun s => s) &&
-  (!ProvedStatus.anyBlocksStatementCompletion .proposition statuses (fun s => s)) &&
-  (!ProvedStatus.anyBlocksStatementCompletion .theorem statuses (fun s => s)) &&
-  ProvedStatus.anyBlocksProofCompletion statuses (fun s => s)
-
-def definitionWithProofGap : Node :=
-  {
-    kind := .definition
-    statement := some (mkInformal #[])
-    literateCodes := #[mkLiterateCode #[mkDefDecl `def_with_proof_gap 0 1] #[]]
-  }
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let external : ExternalCodeStatus := {}
-  nodeHasStatementBlockers external definitionWithProofGap &&
-  nodeHasProofBlockers external definitionWithProofGap &&
-  (!nodeLocalStatementFormalized external definitionWithProofGap) &&
-  (!nodeLocalFormalized external definitionWithProofGap)
-
-def theoremWithHelperDefProofGap : Node :=
-  {
-    kind := .theorem
-    statement := some (mkInformal #[])
-    literateCodes := #[mkLiterateCode
-      #[mkDefDecl `helper_def_with_proof_gap 0 1]
-      #[mkThmDecl `main_theorem 0 0]]
-  }
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let external : ExternalCodeStatus := {}
-  nodeLocalStatementFormalized external theoremWithHelperDefProofGap &&
-  nodeHasProofBlockers external theoremWithHelperDefProofGap &&
-  (!nodeLocalProofFormalized external theoremWithHelperDefProofGap) &&
-  (!nodeLocalFormalized external theoremWithHelperDefProofGap)
-
-def theoremWithProofGapOnly : Node :=
-  {
-    kind := .theorem
-    statement := some (mkInformal #[])
-    literateCodes := #[mkLiterateCode #[] #[mkThmDecl `theorem_with_proof_gap 0 1]]
-  }
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let external : ExternalCodeStatus := {}
-  nodeLocalStatementFormalized external theoremWithProofGapOnly &&
-  (!nodeLocalProofFormalized external theoremWithProofGapOnly)
+  let complete := snapshot.assessmentFor (Name.mkSimple "capture.complete")
+  let dependent := snapshot.assessmentFor (Name.mkSimple "capture.dependent")
+  let missingProse := snapshot.registry.resultFor
+    (.realization ⟨Name.mkSimple "capture.complete", `verso⟩)
+  ensure (missingProse.status == .unassessed)
+    "Missing prose is an unassessed optional realization, separate from coverage inventory"
+  ensure (complete.nativeProofComplete && complete.requiredComplete)
+    "Native proof and its own realization closure should be counted complete"
+  ensure (dependent.nativeProofComplete && !dependent.requiredComplete)
+    "Native proof completion should remain separate from unfinished Blueprint dependencies"
 
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

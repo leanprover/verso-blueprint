@@ -27,6 +27,10 @@ def groupLegend : Array LegendGroup := groupGraphLegendGroups
     defaultLegend.any fun group => (group.items.any (·.label == "In Mathlib"))
   let hasIncompleteProofLabel : Bool :=
     defaultLegend.any fun group => (group.items.any (·.label == proofStatusIncompleteText))
+  let hasUnassessedStatementLabel : Bool :=
+    defaultLegend.any fun group => (group.items.any (·.label == statementStatusUnassessedText))
+  let hasUnassessedProofLabel : Bool :=
+    defaultLegend.any fun group => (group.items.any (·.label == proofStatusUnassessedText))
   let hasUpdatedProofLabel : Bool :=
     defaultLegend.any fun group => (group.items.any (·.label == proofStatusFormalizedAncestorsText))
   let warningHasNoIncompleteCodeItem : Bool :=
@@ -35,7 +39,8 @@ def groupLegend : Array LegendGroup := groupGraphLegendGroups
     defaultLegend.any (·.title == "Warning Markers")
   let hasUpdatedDashedText : Bool :=
     defaultLegend.any fun group => (group.items.any (·.label == "Dashed: statement deps from box-shaped sources"))
-  !hasMathlibLabel && hasIncompleteProofLabel && hasUpdatedProofLabel &&
+  !hasMathlibLabel && hasIncompleteProofLabel && hasUnassessedStatementLabel &&
+    hasUnassessedProofLabel && hasUpdatedProofLabel &&
     warningHasNoIncompleteCodeItem && hasWarningMarkerTitle && hasUpdatedDashedText
 
 /-- info: true -/

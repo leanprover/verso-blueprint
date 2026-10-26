@@ -298,7 +298,9 @@
  */
 
 /**
- * Semantic declaration facts retained even without a visible code panel.
+ * Declaration display snapshots retained even without a visible code panel.
+ * These provider facts support inventory and rendering; the current admitted
+ * node assessment and its requirements remain the validation authority.
  * @typedef {Object} BlueprintCodeData
  * @property {{definedDefs: Array<{name: string, provedStatus: BlueprintProvedStatus}>, definedTheorems: Array<{name: string, provedStatus: BlueprintProvedStatus}>}} literateDeclarations
  * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus}>} externalDecls
@@ -310,6 +312,7 @@
  *
  * @typedef {Object} BlueprintManifestEntry
  * @property {BlueprintCodeData|null} codeData Declaration status facts for this facet as of generation.
+ * @property {BlueprintNodeAssessment|null} assessment Captured node assessment; null when no admitted Blueprint node was captured for this entry.
  * @property {string} key Canonical manifest key.
  * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
  * @property {string} [label] Canonical Blueprint node label when available.
@@ -344,8 +347,23 @@
  *
  * @typedef {Object} BlueprintGraphWarningFlags
  * @property {boolean} unknownRef The node refers to a label missing from traversal.
- * @property {boolean} leanOnlyNoStatement The node has Lean data but no statement entry.
- * @property {boolean} missingExternalDecl The node refers to a missing external declaration.
+ */
+
+/**
+ * Safe assessment captured from the admitted realization registry that built
+ * this graph. `null` means this endpoint was unresolved and has no admitted
+ * Blueprint node. `details` contains report/selection diagnostics but no raw
+ * source or content bindings.
+ *
+ * @typedef {Object} BlueprintNodeAssessment
+ * @property {boolean} hasNativeDeclarations Whether the default Lean realization selects native declarations.
+ * @property {boolean} hasAxiomLike Whether a selected native declaration has a freshly checked axiom-like status.
+ * @property {boolean} nativeStatementComplete Local native statement checks, before Blueprint prerequisites.
+ * @property {boolean} nativeProofComplete Local native body checks, separate from expected-goal correspondence.
+ * @property {boolean} requiredComplete Whether all explicit requirements of the selected Lean realization complete.
+ * @property {boolean} statementDependenciesComplete Whether the selected statement-axis prerequisites complete.
+ * @property {boolean} proofDependenciesComplete Whether the selected proof-axis prerequisites complete.
+ * @property {Record<string, unknown>} details Safe current requirements, captured selected-use scopes/results, and diagnostics.
  */
 
 /**
@@ -410,10 +428,12 @@
  * @property {string | null} parent Parent/group label, when available.
  * @property {string | null} href Link to the canonical generated node, when available.
  * @property {string | null} previewKey Preview key advertised by this graph record, when available.
- * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
- * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
- * @property {string} statementStatus Statement-track status.
- * @property {string} proofStatus Proof-track status.
+ * @property {BlueprintUseRef[]} statementUses Deduplicated statement-axis graph topology.
+ * @property {BlueprintUseRef[]} proofUses Deduplicated proof-axis graph topology.
+ * @property {BlueprintNodeAssessment | null} assessment Assessment from the same admitted capture; null for unresolved endpoints.
+ * @property {"statement" | "proof" | null} actionableStage Canonical next step, absent when its selected prerequisites block work.
+ * @property {"unassessed" | "blocked" | "ready" | "formalized" | "mathlib"} statementStatus Statement-track projection.
+ * @property {"unassessed" | "none" | "ready" | "incomplete" | "formalized" | "formalizedWithAncestors"} proofStatus Proof-track projection.
  * @property {BlueprintGraphWarningFlags} warnings Graph warning flags.
  * @property {BlueprintGraphNodeVisual} visual Current Blueprint graph styling metadata.
  */
@@ -421,12 +441,14 @@
 /**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
- * Node `statementUses`, `proofUses`, and `parent` fields are authoritative.
+ * Node `statementUses`, `proofUses`, and `parent` fields are topology projections.
+ * Exact selected-use scope and diagnostics are in `assessment.details`; clients
+ * should use `actionableStage` instead of recomputing readiness from statuses.
  * Lean materializes `edges`, group `children`, and render `variants` together
  * from that topology at the graph finalization boundary.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {3} schemaVersion Current finalized graph payload schema version.
+ * @property {4} schemaVersion Current finalized graph payload schema version.
  * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
  * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.

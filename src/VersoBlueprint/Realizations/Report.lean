@@ -47,23 +47,41 @@ private def evidence (registry : Registry) (value : Evidence) : Json := Id.run d
     ("id", toJson value.id), ("requirement", toJson value.requirement),
     ("observation", toJson value.observation), ("suitability", toJson suitability)]
 
-/-- Inspect the supplied admitted contracts through the existing evaluator/query
+private def selectedReport (registry : Registry) (node : Option Name) : Json := Id.run do
+  let models := registry.realizations.filter fun value => node.all (· == value.key.node)
+  let translations := registry.translations.filter fun value => node.all fun node =>
+    (value.source ++ value.target).any (·.realization.node == node)
+  let selected (subject : Subject) : Bool := match subject with
+    | .realization key | .facet key _ | .declaration key _ => node.all (· == key.node)
+    | .translation key => translations.any (·.key == key)
+    | .claim key => translations.any (·.key == key.translation)
+  let requirements := registry.requirements.filter (selected ·.key.subject)
+  let objects := registry.objects.filter fun value => node.isNone || models.any fun model =>
+    model.declarations.any (·.object == value.key)
+  let documents := models.flatMap (·.facets.flatMap (·.documents)) ++ objects.filterMap (·.document) ++
+    requirements.flatMap fun value => match value.expected with | .proof goal _ => goal.documents | _ => #[]
+  return Json.mkObj [
+    ("nodes", toJson (registry.nodes.filter fun value => node.all (· == value.label))),
+    ("documents", toJson (registry.documents.filter (fun value => node.isNone || documents.contains value.key) |>.map (·.key))),
+    ("objects", toJson objects),
+    ("realizations", toJson (models.map (realization registry))),
+    ("translations", toJson (translations.map fun value =>
+      assessed value (registry.resultFor (.translation value.key)))),
+    ("claims", toJson (registry.claims.filter (fun value => selected (.claim value.key)) |>.map fun value =>
+      assessed value (registry.resultFor (.claim value.key)))),
+    ("requirements", toJson (requirements.map (requirement registry))),
+    ("evidence", toJson (registry.evidence.filter (selected ·.requirement.subject) |>.map (evidence registry))),
+    ("unfinished", toJson (registry.unfinished.filter (fun value => selected (.translation value.key)) |>.map (·.key))),
+    ("actionable", toJson (registry.actionable.filter (fun value => selected (.translation value.key)) |>.map (·.key)))]
+
+/-- Inspect supplied admitted contracts through the existing evaluator/query
 methods. Provider observations and exact-current-binding suitability are distinct;
 neither authenticates the provider or implies aggregate readiness. Source bytes,
 bindings and raw contributions are not exported. There is no report import path. -/
-def ofRegistry (registry : Registry) : Json :=
-  Json.mkObj [
-    ("nodes", toJson registry.nodes),
-    ("documents", toJson (registry.documents.map (·.key))),
-    ("objects", toJson registry.objects),
-    ("realizations", toJson (registry.realizations.map (realization registry))),
-    ("translations", toJson (registry.translations.map fun value =>
-      assessed value (registry.resultFor (.translation value.key)))),
-    ("claims", toJson (registry.claims.map fun value =>
-      assessed value (registry.resultFor (.claim value.key)))),
-    ("requirements", toJson (registry.requirements.map (requirement registry))),
-    ("evidence", toJson (registry.evidence.map (evidence registry))),
-    ("unfinished", toJson (registry.unfinished.map (·.key))),
-    ("actionable", toJson (registry.actionable.map (·.key)))]
+def ofRegistry (registry : Registry) : Json := selectedReport registry none
+
+/-- The same safe assessment projection restricted to a concept and its incident
+correspondences. This filters output; it never admits or evaluates a partial model. -/
+def ofNode (registry : Registry) (node : Name) : Json := selectedReport registry (some node)
 
 end Informal.Realizations.Report

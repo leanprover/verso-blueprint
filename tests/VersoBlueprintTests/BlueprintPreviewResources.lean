@@ -131,6 +131,15 @@ This semantic-only node must remain in the graph without a preview link.
 
 private def model : RenderModel := blueprint_render_model%
 
+-- The render model transports one accepted capture to every node occurrence.
+#eval show IO Unit from do
+  let some node := model.nodes.find? (·.label == `resource_statement)
+    | throw <| IO.userError "Render model omitted the captured resource node"
+  let some assessment := node.assessment
+    | throw <| IO.userError "Render model omitted its realization assessment"
+  unless (assessment.details.getObjVal? "assessment").isOk do
+    throw <| IO.userError "Render model lost the exact node report"
+
 private def siteDirectory (config : Manual.Config) (mode : Mode) : System.FilePath :=
   config.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
 
@@ -200,6 +209,13 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
       let validationErrors := VersoBlueprint.Vbp.checkGeneratedData emitted
       unless validationErrors.isEmpty do
         throw <| IO.userError s!"Prepared output failed data validation: {validationErrors}"
+      let some sourceNode := model.nodes.find? (·.label == `resource_statement)
+        | throw <| IO.userError "Render model lost the resource node"
+      let some sourceAssessment := sourceNode.assessment
+        | throw <| IO.userError "Render model lost the realization assessment"
+      let projectedEntries := emitted.manifest.previews.filter (·.label == `resource_statement)
+      unless !projectedEntries.isEmpty && projectedEntries.all (·.assessment == some sourceAssessment) do
+        throw <| IO.userError "Preview manifest did not preserve the captured node assessment"
       unless toJson files.manifest == toJson emitted.manifest &&
           toJson files.htmlCache == toJson emitted.htmlCache do
         throw <| IO.userError "Export rebuilt or changed the prepared resources"

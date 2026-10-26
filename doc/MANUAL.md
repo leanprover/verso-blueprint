@@ -452,9 +452,26 @@ Blueprint registrations after the owning modules have been built. Its successful
 snapshot contains the admitted registry, selected dependency edges and diagnostics;
 consumers do not construct a registry manually. A checked native declaration, an
 independently specified proposition and correspondence with prose are separate
-requirements. Missing source or unresolved dependencies remain explicit. This API
-is the current migration checkpoint; graph, summary and CLI consumers have not yet
-switched to it.
+requirements. Missing source or unresolved dependencies remain explicit. The normal
+`BlueprintDocument` capture supplies the same admitted snapshot to the graph,
+summary, headings and query manifest. A structural/import conflict rejects the
+whole capture; it does not publish a partial project.
+
+`lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
+`nativeProofComplete` describe the selected declarations' own native checks;
+`requiredComplete` also requires their explicit contracts, including independent
+expected propositions and Blueprint dependencies. `details` lists the assessed
+subjects, requirements, observations and unresolved selected edges. A clean proof
+can therefore coexist with unfinished prerequisites. Prose without an explicit
+assessment requirement remains unassessed. Source-only previews say validation is
+unavailable until captured; declaration-panel snapshots cannot supply completion.
+
+This changes the graph payload to schema version 4. Consumers should use the
+exported `assessment` and `actionableStage`, rather than reconstructing readiness
+from graph colors. The status query's `complete` and `declarations` are
+replaced by `validation` and `sourceDeclarationSnapshots`; the latter
+is display inventory, not current validation evidence. Rebuild existing generated
+sites and update API clients together.
 
 Use the `@[blueprint]` attribute when a compiled definition-like
 declaration or theorem should appear as a compiled-declaration-backed Blueprint
@@ -955,9 +972,9 @@ returns that facet under `proof`.
 
 Statement and proof attachments both contribute to the node's associated
 declarations, declaration lookup, summaries, and progress. A declaration mentioned
-on both facets is counted once; its observed status evidence is merged
-conservatively. An incomplete or missing proof attachment cannot be ignored
-when computing the node's formalization status.
+on both facets is counted once in inventory. Capture checks every selected native
+declaration independently against its own current source and contracts. An
+incomplete or missing proof attachment cannot borrow a sibling's successful check.
 
 With `autoDeps := true`, dependencies inferred from declarations attached to a
 proof contribute to the proof-side dependency track. Authored dependencies can
@@ -1585,13 +1602,14 @@ local proof-writing task. Frontier advice remains tracked in
 | Exposed body using a hidden helper with empty cache | None unless other evidence exists | Helper unverified | Blocked |
 | Missing checked declaration or open dependency boundary | None unless other evidence exists | Unverified | Blocked |
 | Directly associated genuine axiom | Axiom-like policy | Body intentionally absent | Blocked |
-| No associated declarations | None | No declaration certificate | Blocked |
+| No associated declarations | None | No declaration certificate | Unassessed |
 
 The statement track for theorem-like nodes requires verified statement coverage
 and no statement or unlocalized hole. A proof-only verification gap can leave
 that statement track complete; the proof track remains blocked. Definitions
 require both axes for statement completion. Whole-declaration `isProved` and
-agent `complete` always require the entire closure.
+captured `nativeProofComplete` require native closure. `requiredComplete` also
+requires the selected Blueprint prerequisites and independently authored contracts.
 
 `ProvedStatus.incomplete` carries `IncompletenessInfo` with `knownSorry` and
 `unverified` arrays. Empty incomplete payloads and default declaration statuses
@@ -1602,8 +1620,9 @@ Use completion predicates for decisions instead of testing zero source counts.
 
 Duplicate snapshots retain each axis/origin pair and the maximum known source
 count, plus every verification gap. `proved` remains a neutral merge element;
-missing and axiom-like declarations retain their blocking dominance. Summary
-headings use stored evidence. Summary API fields are `incompleteDecls`,
+missing and axiom-like declarations retain their blocking dominance in display
+inventory. Summary completion and headings use fresh captured realization
+assessments. Summary API fields are `incompleteDecls`,
 `incompleteDetails`, and `withIncompleteCode`, since blockers include uncertainty.
 
 Lean callers use `Informal.Data.analyzeDeclaration name` in the environment
@@ -1617,11 +1636,10 @@ checked-environment API form the trusted boundary of that theorem.
 For agents, use `lake exe vbp query status <label>` after building the current
 sources; see [API](API.md#lean-completeness-evidence).
 
-Warning markers are reserved for structural or resolution issues such as:
-
-- unresolved Blueprint references
-- missing external Lean declarations
-- Lean-owned entries that have code but no informal statement body
+Graph warning markers identify unresolved Blueprint references. Missing native
+declarations and unavailable sources remain detailed assessment diagnostics.
+Missing informal coverage is informational; it does not create a prose
+proofreading requirement.
 
 ### Progress summary
 

@@ -55,6 +55,10 @@ private def capturedStatus? (label : String) : Option ProvedStatus := do
   let ref ← node.externalRefs[0]?
   return ref.provedStatus
 
+private def capturedAssessment? (label : String) : Option Realizations.NodeAssessment := do
+  let node ← statusCaptureBlueprint.model.nodes.find? (·.label == Name.mkSimple label)
+  node.assessment
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -67,27 +71,37 @@ private def capturedStatus? (label : String) : Option ProvedStatus := do
     capturedStatus? "sorry.capture.complete" == some .proved &&
     capturedStatus? "sorry.capture.external" == capturedStatus? "sorry.capture.both"
 
-/-- info: true -/
+/-- info: #[] -/
 #guard_msgs in
 #eval
   let model := statusCaptureBlueprint.model
-  let graphStatus (label : String) :=
-    model.graph.nodes.find? (·.label == Name.mkSimple label) |>.map (·.proofStatus)
+  let graphNode? (label : String) :=
+    model.graph.nodes.find? (·.label == Name.mkSimple label)
   let summaryStatus (label : String) :=
     model.summary.incompleteDetails.find? (·.label == Name.mkSimple label) |>.map (·.status)
-  graphStatus "sorry.capture.type-only" == some .incomplete &&
-    graphStatus "sorry.capture.both" == some .incomplete &&
-    graphStatus "sorry.capture.proof-only" == some .incomplete &&
-    graphStatus "sorry.capture.inline" == some .incomplete &&
-    (graphStatus "sorry.capture.complete" == some .formalized ||
-      graphStatus "sorry.capture.complete" == some .formalizedWithAncestors) &&
-    (summaryStatus "sorry.capture.type-only").any (fun status => status.hasTypeGap && !status.hasProofGap) &&
-    (summaryStatus "sorry.capture.both").any (fun status => status.hasTypeGap && status.hasProofGap) &&
-    (summaryStatus "sorry.capture.inline").any (fun status => status.dependsOnSorry && !status.containsExplicitSorry) &&
-    (summaryStatus "sorry.capture.complete").isNone &&
-    (summaryStatus "sorry.capture.inline-record").any (fun status =>
-      status.hasTypeGap && status.containsExplicitSorry && status.sorryRefCounts.1 > 0) &&
-    model.summary.incompleteDecls > 5
+  let sameCapturedAssessment (label : String) := Id.run do
+    let some renderNode := model.nodes.find? (·.label == Name.mkSimple label) | return false
+    let some graphNode := graphNode? label | return false
+    let some assessment := renderNode.assessment | return false
+    graphNode.assessment == some assessment &&
+      graphNode.statementStatus == (Graph.statusesForAssessment renderNode.kind assessment).1 &&
+      graphNode.proofStatus == (Graph.statusesForAssessment renderNode.kind assessment).2
+  let checks : Array (String × Bool) := #[
+    ("graph uses the exact captured assessment", ["sorry.capture.type-only", "sorry.capture.both",
+      "sorry.capture.proof-only", "sorry.capture.inline", "sorry.capture.complete"].all sameCapturedAssessment),
+    ("type-only source gap is retained", (summaryStatus "sorry.capture.type-only").any
+      (fun status => status.hasTypeGap && !status.hasProofGap)),
+    ("type and proof source gaps are retained", (summaryStatus "sorry.capture.both").any
+      (fun status => status.hasTypeGap && status.hasProofGap)),
+    ("transitive source hole is retained", (summaryStatus "sorry.capture.inline").any
+      (fun status => status.dependsOnSorry && !status.containsExplicitSorry)),
+    ("complete declaration is absent from incomplete details", (summaryStatus "sorry.capture.complete").isNone),
+    ("incomplete source declarations remain inventoried", model.summary.incompleteDecls > 5),
+    ("fresh native summary retains inline record type hole", (summaryStatus "sorry.capture.inline-record").any
+      (fun status => status.hasTypeGap && status.containsExplicitSorry)),
+    ("native proof completeness remains separate", (capturedAssessment? "sorry.capture.both").any fun assessment =>
+      assessment.hasNativeDeclarations && !assessment.nativeProofComplete)]
+  pure <| checks.filterMap fun (name, ok) => if ok then none else some name
 
 -- Captured producer evidence survives duplicate snapshot merging, including a
 -- later consumer whose neutral lookup contributes no additional evidence.

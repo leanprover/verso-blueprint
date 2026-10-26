@@ -1103,7 +1103,7 @@ without conflating realizations. They are not restrictions on the pure ontology
 and must disappear with that view and the earlier native projection guard.
 `Node.applyRegistrations` and its laws now refer to keyed registrations; the old
 `applyContributions` API is removed. Ordinary capture and default-enrollment deletion are implemented below. Public
-graph/query/render completion cutover remains outstanding. Native snapshot
+graph/query/render completion cutover is implemented in the later consumer section. Native snapshot
 statuses in presentation payloads do not become imported realization evidence.
 
 ### Ordinary capture API (2026-10-26 checkpoint)
@@ -1162,6 +1162,47 @@ content bindings and semantic source closures remain known costs. The old Node d
 projection and public graph/query/render completion are still pending migration; this
 API checkpoint does not claim the full migration or publication acceptance.
 
+### Canonical consumer implementation (2026-10-26)
+
+The ordinary `blueprint_render_model%` boundary now captures once and reuses its
+snapshot for graph, summary and traversal metadata. `Snapshot.assessmentFor`
+projects the existing Registry's local and prerequisite-aware results; it does
+not run another checker or graph closure evaluator. Its serializable
+`NodeAssessment` includes exact safe report details, selected-use diagnostics,
+and the distinction between native validity and all explicit requirements.
+Fresh native declaration classifications accompany capture for diagnostic
+inventory; imported display statuses are not completion evidence.
+
+Graph schema 4 exports this assessment and an explicit actionable stage. Nodes
+without native requirements are unassessed, missing endpoints retain diagnostics,
+and a locally complete theorem stays locally complete when its prerequisites are
+unfinished. Compact colors describe the native check track, not completion of
+all displayed languages or prose correspondences. The detailed assessment shows
+which declarations and requirements were actually checked. Summary, headings,
+widgets and CLI use the same captured results. The old node-CodeHealth completion
+helpers and recursive graph closure evaluator are deleted.
+
+Source-only producer previews do not invoke whole-project capture during attribute
+elaboration. They render explicit unavailable validation; callers with a completed
+snapshot can supply it. The query manifest labels declaration snapshots as display
+inventory, and its status payload separates captured validation from uncaptured
+views. `Report.ofNode` filters safe output from the full admitted registry without
+admitting a fragment. Neither source text nor raw bindings are exported.
+
+Native declaration source lookup parses only through the checked declaration's
+full-range end, then requires exact original declaration and name ranges. This
+allows an ordinary native declaration before later Verso document commands to
+remain available without elaborating those commands during lookup. It retains
+the full original file as binding input. Intervening unsupported syntax before
+the declaration still rejects. Docstring association continues parsing the
+whole file to detect later standalone inheritance, and inline source association
+keeps its existing exact-block check. Normal owning-module build is a precondition;
+prefix parsing does not certify the rest of an edited or unbuilt file.
+
+This is an owner-tested consumer checkpoint, not publication acceptance.
+The remaining legacy display/admission projection and exact #499 admission port
+still require deletion/reconciliation and representative external project checks.
+
 ### Consumer cutover and deletion
 
 Build the accepted model and fresh validation once at the project capture/query
@@ -1191,8 +1232,8 @@ this milestone. Publication remains on hold during this cutover.
 
 Use one semantic integration owner and a dependency-ordered implementation
 series. Review the semantic kernel before parallel producer/projection changes.
-After its API is fixed, delegate only disjoint file scopes in harness-created
-worktrees. Keep the LSP/rendering lane independent and exchange a minimal typed
+After its API is fixed, delegate disjoint file scopes with one integration owner
+and coordinated build slots in the existing harness-created worktree. Keep the LSP/rendering lane independent and exchange a minimal typed
 boundary rather than merging speculative monolithic branches.
 
 An independent Astra review should challenge identity/facet ownership, validation

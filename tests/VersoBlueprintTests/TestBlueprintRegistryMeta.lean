@@ -98,22 +98,7 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     tags := #["metadata", "summary"]
     kind := "curated_doc"
   },
-  {
-    slug := "direct-imported-duplicates"
-    title := "Direct Imported Duplicates"
-    category := "Imports"
-    summary := "Duplicate imported node, group, and author diagnostics."
-    tags := #["imports", "providers", "diagnostics"]
-    kind := "curated_doc"
-  },
-  {
-    slug := "transitive-imported-duplicates"
-    title := "Transitive Imported Duplicates"
-    category := "Imports"
-    summary := "Duplicate imported diagnostics through a reexport chain."
-    tags := #["imports", "providers", "diagnostics"]
-    kind := "curated_doc"
-  },
+  -- Conflicting imported batches are rejection tests, not renderable projects.
   {
     slug := "imported-preview-source"
     title := "Imported Preview Source"

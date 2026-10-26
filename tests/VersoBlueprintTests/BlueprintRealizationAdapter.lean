@@ -56,6 +56,29 @@ run_cmd liftTermElabM do
     source.moduleName == request.moduleName && source.document.key.path == request.sourcePath &&
     source.document.text == (← IO.FS.readFile request.sourcePath) && source.semanticContext.isSome)
     "Direct source must preserve typed identity, exact owning bytes and current semantic inputs"
+  -- Parser-boundary injection only, not successful proof/provider evidence:
+  -- unrelated later syntax need not parse to locate an already checked native
+  -- declaration. The original whole text is retained, and both ranges still bind.
+  let tailInput := source.document.text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
+  let boundedSource ← obtain (← NativeSource.prepare request (fun _ => pure tailInput))
+  ensure (boundedSource.document.text == tailInput && boundedSource.ranges.range == source.ranges.range &&
+    boundedSource.ranges.selectionRange == source.ranges.selectionRange)
+    "Native prefix association must preserve whole source bytes and exact checked ranges"
+  ensure (!(← NativeSource.parseSource request.canonical request.sourcePath tailInput).isOk)
+    "Control tail must require unsupported parser context"
+  let documentedTail ← NativeSource.prepareDocumented
+    { request with canonical := `RealizationAdapterFixture.number } (fun _ => pure tailInput)
+  match documentedTail with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "source-parse-failed")
+      "Docstring association must still inspect the whole source for later inheritance"
+  | .ok _ => throwError "Native prefix shortcut leaked into docstring association"
+  for result in #[
+      ← NativeSource.prepare request (fun _ => pure ("\n" ++ source.document.text)),
+      ← NativeSource.prepare { request with selectionRange? := some {
+        source.ranges.selectionRange with charUtf16 := source.ranges.selectionRange.charUtf16 + 1 } },
+      ← NativeSource.prepare request (fun _ => pure "import Lean\n#broken_before_declaration\n")] do
+    ensure (!result.isOk) "Prefix parsing weakened exact owning declaration/name-range guards"
   let nativeOrigin : Informal.Realizations.Origin := {
     id := `undocumentedSource, moduleName := request.moduleName, source := request.sourcePath }
   let nativeOnly ← obtain (source.realizeNative nativeOrigin

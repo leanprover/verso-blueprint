@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Graph
@@ -299,9 +300,11 @@ def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
 /-- Capture the rendering projection without retaining elaboration or provenance state. -/
-def capture (state : Informal.Environment.State) : Array Informal.RenderNode :=
+def capture (state : Informal.Environment.State)
+    (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none) :
+    Array Informal.RenderNode :=
   state.data.toArray.map fun (label, node) =>
-    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?) (assessmentFor label)
 
 def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
   nodes.foldl saveNode state

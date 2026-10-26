@@ -40,6 +40,31 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
       render := .error (.exception name "synthetic render failure")
   }
 
+private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
+  match rendered.statusMark with
+  | some mark => mark.status == .incomplete {} &&
+      mark.title.contains "Validation unavailable" && mark.symbolOverride? == some "?"
+  | none => false
+
+-- A cached declaration status alone cannot fill an occurrence's assessment.
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let data : BlockData := {
+    kind := .theorem
+    codeData := some { externalDecls := #[proofGapExternalRef `Ext.thm.unassessed] }
+    label := `status.theorem.unassessed
+    count := 1
+  }
+  unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
+
+-- Empty source data stays distinct from a source-backed but unassessed heading.
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let data : BlockData := { kind := .theorem, label := `status.theorem.empty, count := 1 }
+  (CodeSummary.renderParts data {} (fun _ => none)).statusMark.isNone
+
 /-- info: true -/
 #guard_msgs in
 #eval!
@@ -52,18 +77,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   let cdata : CodeSummary.ComputedData := {
     source := data.codeData
   }
-  match (CodeSummary.renderParts data cdata (fun _ => none)).statusMark with
-  | some mark =>
-    match mark.status with
-    | .incomplete details =>
-      let info := details.knownSorry
-      !info.isEmpty &&
-      info.any (·.location == Data.SorryWhere.proof) &&
-      !info.any (·.location == Data.SorryWhere.statement) &&
-      hasSubstr mark.title "Statement: completed" &&
-      hasSubstr mark.title "Proof: blocked by sorry"
-    | _ => false
-  | none => false
+  unavailableHeading (CodeSummary.renderParts data cdata (fun _ => none))
 
 /-- info: true -/
 #guard_msgs in
@@ -81,18 +95,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   let cdata : CodeSummary.ComputedData := {
     source := data.codeData
   }
-  match (CodeSummary.renderParts data cdata (fun _ => none)).statusMark with
-  | some mark =>
-    match mark.status with
-    | .incomplete details =>
-      let info := details.knownSorry
-      !info.isEmpty &&
-      info.any (·.location == Data.SorryWhere.proof) &&
-      !info.any (·.location == Data.SorryWhere.statement) &&
-      hasSubstr mark.title "Statement: blocked by sorry in body" &&
-      hasSubstr mark.title "Proof: blocked by sorry"
-    | _ => false
-  | none => false
+  unavailableHeading (CodeSummary.renderParts data cdata (fun _ => none))
 
 /-- info: true -/
 #guard_msgs in
@@ -172,9 +175,9 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   let rendered := CodeSummary.renderParts headingData cdata (fun _ => none)
   let panelParts := CodeSummary.renderPanelIndicator `status.external.render_fail cdata (fun _ => none)
   match rendered.statusMark with
-  | some mark =>
-    mark.status == ProvedStatus.proved &&
-    hasSubstr rendered.codeEntry.asString "bp_code_link_status_proved" &&
+  | some _ =>
+    unavailableHeading rendered &&
+    !hasSubstr rendered.codeEntry.asString "bp_code_link_status_proved" &&
     hasSubstr rendered.codeEntry.asString "bp_code_render_warning_badge" &&
     appearsBefore rendered.codeEntry.asString "bp_code_render_warning_badge" "bp_code_status_symbol" &&
     hasSubstr rendered.codeEntry.asString "render failed for 1 declaration" &&
@@ -193,12 +196,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   let ref : ExternalRef := { (ExternalRef.ofName `Hidden.typeOnly) with provedStatus := status }
   let data : BlockData := {
     kind := .theorem, label := `hidden.typeOnly, count := 1, codeData := some { externalDecls := #[ref] } }
-  match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
-  | some mark => mark.status == status &&
-      !mark.status.hasProofGap && !mark.status.containsExplicitSorry &&
-      hasSubstr mark.title "Statement: blocked by sorry" &&
-      hasSubstr mark.title "Proof: unknown (sorry location unavailable)"
-  | none => false
+  unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
 
 /-- info: true -/
 #guard_msgs in
@@ -210,33 +208,27 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     { (ExternalRef.ofName `Inherited) with provedStatus := inherited }]
   let data : BlockData := {
     kind := .theorem, label := `mixed.origins, count := 1, codeData := some { externalDecls := refs } }
-  match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
-  | some mark => mark.status.containsExplicitSorry && mark.status.dependsOnSorry &&
-      mark.status.sorryRefCounts == (0, 2)
-  | none => false
+  unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
 
--- No observed sorry on an axis does not establish that its coverage is verified.
+-- Synthetic provider outcomes remain inventory; without an admitted capture they
+-- cannot supply a heading assessment.
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let check (status : ProvedStatus) (statement proof : String) :=
+  let check (status : ProvedStatus) :=
     let ref : ExternalRef := { (ExternalRef.ofName `Hidden.clean) with provedStatus := status }
     let data : BlockData := {
       kind := .theorem, label := `hidden.clean, count := 1,
       codeData := some { externalDecls := #[ref] } }
-    match (CodeSummary.renderParts data { source := data.codeData } (fun _ => none)).statusMark with
-    | some mark => mark.status == status &&
-        mark.title.startsWith s!"Statement: {statement}; Proof: {proof}"
-    | none => false
+    unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
   let hidden : ProvedStatus := .incomplete { unverified := #[{
     location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] }
-  check hidden "completed" "unverified" &&
-    check (.incomplete {}) "unverified" "unverified" &&
-    check .missing "missing declaration" "missing declaration" &&
+  check hidden &&
+    check (.incomplete {}) &&
+    check .missing &&
     check (.incomplete {
       knownSorry := #[{ location := .statement, origin := .dependency }],
-      unverified := #[{ location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] })
-      "blocked by sorry" "unverified" &&
+      unverified := #[{ location := .proof, declaration := `Hidden.clean, reason := .bodyUnavailable }] }) &&
     hidden.presentation.summaryText == "unverified" &&
     hidden.presentation.externalPanelText == "unverified" &&
     !hidden.hasKnownSorry

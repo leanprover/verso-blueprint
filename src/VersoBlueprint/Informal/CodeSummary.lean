@@ -8,6 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Graph
+import VersoBlueprint.CodeHealth
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.LeanCodeLink
@@ -23,7 +24,9 @@ open Lean Elab
 `CodeSummary` computes the heading-level Lean status/summary fragments for informal blocks.
 
 This module intentionally owns the high-level overview for one informal node:
-status marks, declaration-summary tooltips, and code-panel indicators.
+status marks from the captured realization assessment, plus declaration display
+snapshots and code-panel indicators. The old per-declaration status payload remains
+presentation only and cannot complete the node or certify a displayed sibling.
 
 It does not own HTML-cache-backed code-preview hovers for explicit links to code;
 that narrower responsibility lives in `Informal.LeanCodeLink` /
@@ -236,11 +239,12 @@ private def renderSummaryPreview (cdata : ComputedData)
     (hrefOf : Name → Option String) : Output.Html :=
   let items := summaryPreviewItems cdata hrefOf
   let sectionTitle :=
-    if items.isEmpty then "Lean status" else "Associated Lean declarations"
+    if items.isEmpty then "Lean declaration display snapshots" else
+      "Associated Lean declarations (source snapshots; display only; validation shown in heading)"
   let sections := #[{
     title := sectionTitle
     items
-    emptyText := "No associated Lean code or declarations."
+    emptyText := "No associated Lean code or declaration display snapshots."
   }]
   let failures := externalRenderFailures (cdata.source.getD {}).externalDecls
   if failures.isEmpty then
@@ -266,7 +270,8 @@ private def codeEntryVisual (hasSource : Bool) (statusMark : BlockStatusMark) : 
     { classSuffix := "absent", symbol := "X", absent := true }
   else
     let view := statusMark.status.presentation
-    { classSuffix := view.codeEntryClassSuffix, symbol := view.codeEntrySymbol }
+    { classSuffix := view.codeEntryClassSuffix
+      symbol := statusMark.symbolOverride?.getD view.codeEntrySymbol }
 
 private structure ExternalRenderHealth where
   failureCount : Nat := 0
@@ -339,59 +344,36 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
     (focusable := href.isNone)
     (ariaLabel? := if href.isNone then some title else none)
 
-/-- Axis wording follows the same semantic evidence as the completion mark.
-Zero observed reference counts cannot establish verified coverage. -/
-private def completionAxisText (health : Informal.Graph.CodeHealth) : String :=
-  let status := health.provedStatus
-  let axisText (complete hasGap unverified : Bool) (otherAxisBlocker : String) :=
-    if !health.hasAssociatedCode then "unassociated"
-    else if status.isMissing then "missing declaration"
-    else if status.isAxiomLike then "axiom-like (no body)"
-    else if complete then "completed"
-    else if hasGap then "blocked by sorry"
-    else if status.hasUnlocalizedSorry then "unknown (sorry location unavailable)"
-    else if unverified then "unverified"
-    else if status.hasKnownSorry then otherAxisBlocker
-    else "unverified"
-  let statement := axisText health.localStatementFormalized status.hasTypeGap status.hasUnverifiedType
-    "blocked by sorry in body"
-  let proof := axisText health.localProofFormalized status.hasProofGap status.hasUnverifiedProof
-    "blocked by sorry in statement"
-  s!"Statement: {statement}; Proof: {proof}"
-
-/--
-Use the observed declaration evidence for the completion mark. Axis counts
-cannot distinguish inherited, direct, or unknown origins.
--/
-private def completionStatusMark (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
-  let status := health.provedStatus
-  let title := completionAxisText health
-  if status.isProved then
-    {
-      status
-      title
-    }
-  else
-    {
-      status
-      title
-      symbolOverride? := some "⚠"
-    }
-
-private def statusMarkFromHealth (health : Informal.Graph.CodeHealth) : BlockStatusMark :=
-  if health.hasMissingExternalDecls then
-    {
-      status := .missing
-      title := s!"{completionAxisText health}; Lean declarations: {health.presentDecls} present, {health.missingDecls} missing"
-    }
-  else
-    if health.hasAxiomLike then
-      {
-        status := .axiomLike
-        title := completionAxisText health
-      }
-    else
-      completionStatusMark health
+/-- Heading completion is read only from the admitted realization assessment.
+Declaration snapshots remain useful for the code panel, but are not a fallback
+source of proof or dependency completion. -/
+private def statusMarkFromAssessment (kind : Data.NodeKind)
+    (assessment? : Option Realizations.NodeAssessment) : BlockStatusMark := Id.run do
+  let some assessment := assessment?
+    | return {
+        status := .incomplete {}
+        title := "Validation unavailable: this occurrence has no captured realization assessment"
+        symbolOverride? := some "?" }
+  let nativeLocalComplete := if kind.isTheoremLike then
+    assessment.nativeProofComplete else assessment.nativeStatementComplete
+  let complete := assessment.hasNativeDeclarations && nativeLocalComplete &&
+    assessment.requiredComplete && !assessment.hasAxiomLike
+  let status := if assessment.hasAxiomLike then .axiomLike else if complete then .proved else .incomplete {}
+  let nativeStatement := if assessment.hasNativeDeclarations then
+    if assessment.nativeStatementComplete then "passed" else "unfinished"
+    else "unassessed"
+  let nativeProof := if assessment.hasNativeDeclarations then
+    if assessment.nativeProofComplete then "passed" else "unfinished"
+    else "unassessed"
+  let dependencies := if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
+    "complete" else "unfinished"
+  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present; " else ""
+  return {
+    status
+    title := classification ++ s!"Native statement: {nativeStatement}; native proof: {nativeProof}; " ++
+      s!"required Blueprint validation: {if assessment.requiredComplete then "complete" else "unfinished"}; " ++
+      s!"selected dependencies: {dependencies}"
+    symbolOverride? := if complete || assessment.hasAxiomLike then none else some "⚠" }
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
   decls.qsort (fun a b =>
@@ -430,7 +412,7 @@ private def codeSummaryText (label : Data.Label)
         "none"
       else
         String.intercalate ", " (sorries.toList.map fun item => s!"{item.displayName} [{declSummaryStatusText item}]")
-    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nIncomplete declarations: {sorriesTxt}"
+    s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nIncomplete source snapshots: {sorriesTxt}"
 
 private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
     (node previewBody : Output.Html) : Output.Html :=
@@ -453,7 +435,8 @@ private def renderInlinePanelIndicator (label : Data.Label) (cdata : ComputedDat
   let orderedDecls := if cdata.inlineBlocks.isEmpty then codeData.declarations else
     cdata.inlineBlocks.flatMap fun block => sortDeclsByCommand block.declarations
   let previewBody := renderSummaryPreview cdata hrefOf
-  let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
+  let summaryTitle := s!"Lean code for {label} (source snapshots, display only; not realization validation): " ++
+    codeSummaryText label codeData.definedDefs codeData.definedTheorems
   let indicator : Output.Html :=
     if orderedDecls.isEmpty then
       .empty
@@ -466,15 +449,15 @@ private def renderInlinePanelIndicator (label : Data.Label) (cdata : ComputedDat
         let title :=
           if hasSorry then
             if decl.provedStatus.containsExplicitSorry then
-              s!"{decl.name}: {statusView.externalPanelText}"
+              s!"{decl.name}: source snapshot, {statusView.externalPanelText}"
             else
-              s!"{decl.name}: {statusView.summaryText}"
+              s!"{decl.name}: source snapshot, {statusView.summaryText}"
           else
-            s!"{decl.name}: complete"
+            s!"{decl.name}: complete source snapshot; realization validation is shown in the heading"
         {{
           <span class={{cls}} title={{title}} style={{s!"flex: {weight} 1 0%"}}></span>
         }}
-      let bar := {{<span class="bp_code_progress" aria-label="Lean declaration progress">{{segments}}</span>}}
+      let bar := {{<span class="bp_code_progress" aria-label="Lean declaration display snapshots, not realization validation">{{segments}}</span>}}
       wrapPanelIndicator label summaryTitle bar previewBody
   {
     summaryTitle
@@ -542,19 +525,19 @@ private def externalIndicatorPresentation
   if health.missingDecls > 0 then
     {
       className := "bp_external_status_missing"
-      title := s!"Lean declarations: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)"
+      title := s!"Declaration source snapshot: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)"
       badgeText
     }
   else if health.anyGapCount > 0 then
     {
       className := "bp_external_status_sorry"
-      title := s!"Lean declarations: all present, {health.anyGapCount} incomplete"
+      title := s!"Declaration source snapshot: all present, {health.anyGapCount} incomplete"
       badgeText
     }
   else
     {
       className := "bp_external_status_ok"
-      title := s!"Lean declarations: all {health.totalDecls} present"
+      title := s!"Declaration source snapshot: all {health.totalDecls} present"
       badgeText
     }
 
@@ -566,11 +549,13 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
   let previewBody := renderSummaryPreview { source := some { externalDecls := decls } } hrefOf
   let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
-    s!"Lean code for {label}: " ++ appendRenderHealthSummary
+    s!"Lean declaration source snapshot for {label} (display only; not realization validation): " ++
+      appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
       renderHealth
   let badgeTitle :=
-    appendRenderHealthSummary presentation.title renderHealth
+    appendRenderHealthSummary
+      s!"Display snapshot only; not realization validation. {presentation.title}" renderHealth
   let badge : Output.Html := {{
     <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {presentation.className}"}} title={{badgeTitle}}>
       <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text true presentation.iconText}}</span>
@@ -605,13 +590,10 @@ def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
 def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String) : RenderParts :=
   if data.isProof then {} else
   let source := cdata.source.getD {}
-  let health := Informal.Graph.codeHealthOfBlockSource data.kind {} cdata.source
   let renderHealth := externalRenderHealth source.externalDecls
-  let statusMark := statusMarkFromHealth health
+  let statusMark := statusMarkFromAssessment data.kind data.assessment
   let title := if source.isEmpty then "No associated Lean declarations" else
-    appendRenderHealthSummary
-      (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
-      renderHealth
+    appendRenderHealthSummary (statusMark.title) renderHealth
   { statusMark := if source.isEmpty then none else some statusMark
     codeEntry := renderCodeEntryWrap cdata.codeHref title s!"{data.label}"
       (renderSummaryPreview cdata hrefOf) (codeEntryVisual (!source.isEmpty) statusMark) renderHealth }

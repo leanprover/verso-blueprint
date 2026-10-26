@@ -65,6 +65,26 @@ run_cmd liftTermElabM do
   let elapsed := (← IO.monoMsNow) - start
   logInfo m!"ordinary capture: {snapshot.registry.nodes.size} nodes in {elapsed} ms"
   let registry := snapshot.registry
+  -- Public consumer projections retain native validity separately from Blueprint
+  -- prerequisites, and do not borrow validity from a complete sibling.
+  let completeView := snapshot.assessmentFor (Name.mkSimple "capture.complete")
+  ensure (completeView.hasNativeDeclarations && completeView.nativeStatementComplete &&
+    completeView.nativeProofComplete && completeView.requiredComplete &&
+    completeView.proofDependenciesComplete) "Complete public assessment lost its native checks"
+  let admittedView := snapshot.assessmentFor (Name.mkSimple "capture.admitted")
+  ensure (admittedView.nativeStatementComplete && !admittedView.nativeProofComplete &&
+    !admittedView.requiredComplete) "Public assessment hid an admitted native body"
+  for label in #["capture.dependent", "capture.missing", "capture.cycleA", "capture.groupedDependent"] do
+    let view := snapshot.assessmentFor (Name.mkSimple label)
+    ensure (view.nativeProofComplete && !view.requiredComplete && !view.proofDependenciesComplete)
+      s!"Public assessment conflated local proof and prerequisites for {label}"
+  let groupedView := snapshot.assessmentFor (Name.mkSimple "capture.grouped")
+  ensure (groupedView.nativeStatementComplete && !groupedView.nativeProofComplete &&
+    !groupedView.requiredComplete) "Public assessment borrowed the complete sibling's proof"
+  ensure (completeView.details.getObjVal? "assessment" |>.isOk)
+    "Public assessment omitted exact subjects and contracts"
+  ensure (NodeAssessment.fromJsonString! (toJson completeView).compress == completeView)
+    "Serializable captured assessment did not round-trip"
   ensure snapshot.diagnostics.isEmpty s!"Unexpected source/provider diagnostics: {repr snapshot.diagnostics}"
   ensure (registry.nodes.size == before.data.size) "Capture omitted ordinary accepted concepts"
   ensure ((registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
@@ -203,5 +223,22 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "imported-conflict")) "Lost import rejection"
     ensure (reprStr before == reprStr (Environment.informalExt.getState (← getEnv))) "Rejected capture mutated its input"
   finally setEnv env
+
+
+-- An independently authored false expectation does not erase a valid native
+-- proof or become satisfied merely because that proof checks against its own type.
+@[blueprint "capture.wrongExpected"]
+theorem wrongExpected : True := True.intro
+run_cmd liftCoreM <| Authoring.expectNative `wrongExpectedGoal (Name.mkSimple "capture.wrongExpected") `RealizationCaptureFixture.expectedFalse
+
+run_cmd liftTermElabM do
+  let snapshot ← obtain (← Capture.capture)
+  let assessment := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
+  ensure (assessment.nativeStatementComplete && assessment.nativeProofComplete &&
+    !assessment.requiredComplete && assessment.proofDependenciesComplete)
+    "Native proof success concealed an independently authored wrong proposition"
+  ensure (!(snapshot.registry.resultForRequirement
+    (key "capture.wrongExpected" `RealizationCaptureFixture.wrongExpected `expectedProof)).complete)
+    "Wrong expected proposition acquired a completed proof"
 
 end RealizationCaptureFixture

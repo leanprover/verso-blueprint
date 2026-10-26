@@ -414,6 +414,7 @@ private def sampleMetadataManifest : ManifestFile := {
         title := "Zeta"
         displayLabel := "Zeta"
         kind := some .definition
+        actionableStage := some "statement"
         statementStatus := .ready
         proofStatus := .ready
         visual := { fillcolor := "#ffffff" }
@@ -431,6 +432,7 @@ private def sampleMetadataManifest : ManifestFile := {
         title := "Proof statement"
         displayLabel := "Proof statement"
         kind := some .theorem
+        actionableStage := some "proof"
         statementStatus := .formalized
         proofStatus := .incomplete
         visual := { fillcolor := "#ffffff" }
@@ -485,67 +487,90 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 /-- info: true -/
 #guard_msgs in
 #eval
-  let check (statement proof : Informal.Data.ProvedStatus) (verdict : String)
-      (statementComplete proofComplete : Bool) (kind : Informal.Data.NodeKind := .theorem) : Bool :=
+  -- MOCK transport fixture only: these values do not report provider or kernel success.
+  let check (statement proof : Informal.Data.ProvedStatus)
+      (nativeStatementComplete nativeProofComplete requiredComplete : Bool)
+      (kind : Informal.Data.NodeKind := .theorem) : Bool :=
     let statementSource : Informal.BlockCodeData := { externalDecls := #[{
       (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := statement }] }
     let proofSource : Informal.BlockCodeData := { literateDeclarations := { definedTheorems := #[{
       name := `truthDecl, provedStatus := proof }] } }
     let source := statementSource.append proofSource
-    let node : Informal.Data.Node := {
-      kind, externalRefs := statementSource.externalDecls,
-      literateCodes := #[{ stx := .missing, definedTheorems := #[{
-        name := `truthDecl, provedStatus := proof }] }] }
-    let health := nodeCodeHealth {} node
+    let assessment : Informal.Realizations.NodeAssessment := {
+      hasNativeDeclarations := true
+      nativeStatementComplete
+      nativeProofComplete
+      requiredComplete
+      hasAxiomLike := false
+      statementDependenciesComplete := true
+      proofDependenciesComplete := false
+      details := Json.mkObj [
+        ("fixture", Json.str "MOCK: transport only; not provider success"),
+        ("assessment", Json.mkObj [("fixture", Json.str "MOCK")]),
+        ("selectedUses", Json.arr #[]),
+        ("sourceDiagnostics", Json.arr #[])] }
     let heading := Informal.CodeSummary.renderParts {
-      kind, label := label "truth", count := 1, codeData := some source }
+      kind, label := label "truth", count := 1, codeData := some source, assessment := some assessment }
       { source := some source } (fun _ => none)
     let manifest : ManifestFile := { previews := #[
       { key := "informal:truth:statement", targetKind := .block, label := label "truth",
-        facet := .statement, kind := some kind, title := "Truth", codeData := some statementSource },
+        facet := .statement, kind := some kind, title := "Truth", codeData := some statementSource,
+        assessment := some assessment },
       { key := "informal:truth:proof", targetKind := .block, label := label "truth",
-        facet := .proof, kind := some kind, title := "Proof", codeData := some proofSource }
+        facet := .proof, kind := some kind, title := "Proof", codeData := some proofSource,
+        assessment := some assessment }
     ] }
     match executeQuery manifest ["status", "truth"] with
     | .error _ => false
     | .ok json =>
-      jsonStringField? json "verdict" == some verdict &&
-      jsonStringField? json "asOf" == some "generated-snapshot" &&
-      jsonBoolField? json "statementComplete" == some statementComplete &&
-      jsonBoolField? json "proofComplete" == some proofComplete &&
-      jsonBoolField? json "complete" == some proofComplete &&
-      health.totalDecls == 1 && health.verdict == verdict &&
-      health.localStatementFormalized == statementComplete &&
-      health.localProofFormalized == proofComplete &&
-      (match heading.statusMark with
-       | some mark => mark.status == health.provedStatus &&
-           mark.title.contains "Statement: completed" == statementComplete &&
-           mark.title.contains "Proof: completed" == proofComplete
-       | none => false) &&
-      (match jsonArrayField? json "declarations" with
-       | some rows => rows.size == 2 && jsonArrayHasStringField rows "facet" "statement" &&
-           jsonArrayHasStringField rows "facet" "proof" &&
-           rows.all (fun row => (jsonField? row "status").isSome)
-       | none => false)
-  let hidden : Informal.Data.ProvedStatus := .incomplete { unverified := #[{
-    location := .proof, declaration := `hiddenHelper, reason := .bodyUnavailable }] }
-  let gap : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[{
-    location := .proof, origin := .dependency }] }
-  check .proved .proved "complete" true true &&
-    check .proved hidden "unverified" true false &&
-    check hidden .proved "unverified" true false &&
-    check .proved (.incomplete {}) "unverified" false false &&
-    check hidden gap "incomplete" true false &&
-    check .proved .missing "missing" false false &&
-    check .proved .axiomLike "axiom-like" false false &&
-    check .proved gap "incomplete" false false .definition &&
-    check .proved hidden "unverified" false false .definition &&
-    check (.incomplete { knownSorry := #[{ location := .statement }] }) .proved
-      "incomplete" false false &&
+      match jsonField? json "validation", jsonArrayField? json "sourceDeclarationSnapshots" with
+      | some validation, some rows =>
+        match jsonField? validation "details" with
+        | some details =>
+          let checks := #[
+            jsonStringField? json "asOf" == some "captured-build",
+            jsonBoolField? validation "captured" == some true,
+            jsonBoolField? validation "hasNativeDeclarations" == some true,
+            jsonBoolField? validation "hasAxiomLike" == some false,
+            jsonBoolField? validation "nativeStatementComplete" == some nativeStatementComplete,
+            jsonBoolField? validation "nativeProofComplete" == some nativeProofComplete,
+            jsonBoolField? validation "requiredComplete" == some requiredComplete,
+            (jsonField? details "assessment").isSome,
+            jsonStringField? details "fixture" == some "MOCK: transport only; not provider success",
+            (jsonField? details "selectedUses").isSome,
+            (jsonField? details "sourceDiagnostics").isSome,
+            rows.size == 2, rows.all (fun row =>
+              (jsonField? row "sourceSnapshotStatus").isSome && (jsonField? row "status").isNone),
+            (match heading.statusMark with
+             | some mark => mark.status == (if (if kind.isTheoremLike then nativeProofComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "Native statement: passed" == nativeStatementComplete
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "native proof: passed" == nativeProofComplete
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "required Blueprint validation: complete" == requiredComplete
+             | none => false),
+            jsonArrayHasStringField rows "facet" "statement",
+            jsonArrayHasStringField rows "facet" "proof"]
+          checks.all id
+        | none => false
+      | _, _ => false
+  let sourceSaysComplete := check .proved .proved true true false
+  let nativeProofUnfinished := check .proved .proved true false false
+  let nativeProofOnly := check .proved .proved false true false
+  let validationComplete := check .proved .proved true true true
+  let definitionUsesStatementCheck := check .proved .proved true true false .definition
+  sourceSaysComplete && nativeProofUnfinished && nativeProofOnly && validationComplete &&
+    definitionUsesStatementCheck &&
     (match executeQuery sampleManifest ["status", "addition_assoc"] with
-     | .ok json => jsonStringField? json "verdict" == some "unassociated" &&
-         jsonBoolField? json "complete" == some false &&
-         jsonBoolField? json "statementComplete" == some false
+     | .ok json =>
+         match jsonField? json "validation" with
+         | some validation => jsonStringField? json "asOf" == some "uncaptured" &&
+             jsonBoolField? validation "captured" == some false
+         | none => false
      | .error _ => false)
 
 private def previewKeyValue? (key? : Option Informal.PreviewKey) : Option String :=

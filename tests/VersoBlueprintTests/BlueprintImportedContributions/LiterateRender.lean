@@ -115,16 +115,46 @@ theorem omittedMixedSorry : True := by sorry
         (`«omitted:mixed», `omittedMixedSorry, 2)] do
       let some data := TraversalIndex.Nodes.capturedData? state label
         | throw <| IO.userError s!"Missing rendering facts for {label}"
-      let health := Graph.codeHealthOfBlockSource data.kind {} data.codeData
       let heading := CodeSummary.renderParts data { source := data.codeData } (fun _ => none)
       let some graphNode := model.graph.nodes.find? (·.label == label)
         | throw <| IO.userError "Missing captured graph node"
-      unless health.totalDecls == expectedCount && health.anyGapCount == 1 &&
-          graphNode.proofStatus == .incomplete &&
-          hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
-          hasSubstr html.asString declaration.toString &&
-          model.summary.incompleteDetails.any (·.decl == declaration) do
-        throw <| IO.userError s!"Heading, summary, and graph disagree about omitted declaration {declaration}"
+      let some assessment := graphNode.assessment
+        | throw <| IO.userError "Captured graph node has no realization assessment"
+      let headingSnapshot := data.codeData.getD {}
+      let snapshotCount := headingSnapshot.literateDeclarations.declarations.size +
+        headingSnapshot.externalDecls.size
+      let some headingMark := heading.statusMark
+        | throw <| IO.userError "Associated declarations have no heading status"
+      unless snapshotCount == expectedCount && data.assessment == some assessment do
+        throw <| IO.userError s!"Display and graph did not share the captured assessment for {label}"
+      let details := assessment.details.compress
+      if declaration == `omittedLiterateSorry then
+        unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
+            !assessment.nativeProofComplete && !assessment.requiredComplete &&
+            graphNode.proofStatus == .ready &&
+            headingMark.title.contains "Native statement: passed" &&
+            headingMark.title.contains "native proof: unfinished" &&
+            details.contains declaration.toString &&
+            model.summary.incompleteDetails.any (·.decl == declaration) &&
+            hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
+            hasSubstr html.asString declaration.toString do
+          throw <| IO.userError (s!"Captured native validation and summary disagree about omitted declaration {declaration}: " ++
+            s!"assessment={repr assessment}; graph={repr graphNode.proofStatus}; heading={headingMark.title}; " ++
+            s!"detailsMention={details.contains declaration.toString}; " ++
+            s!"summaryMention={model.summary.incompleteDetails.any (·.decl == declaration)}; " ++
+            s!"headingWarning={hasSubstr heading.codeEntry.asString "bp_code_link_status_warning"}; " ++
+            s!"htmlHasDeclaration={hasSubstr html.asString declaration.toString}")
+      else
+        unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
+            !assessment.nativeProofComplete && !assessment.requiredComplete &&
+            graphNode.proofStatus == .ready &&
+            headingMark.title.contains "Native statement: passed" &&
+            headingMark.title.contains "native proof: unfinished" &&
+            details.contains "omittedExternalComplete" && details.contains declaration.toString &&
+            model.summary.incompleteDetails.any (·.decl == declaration) &&
+            hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
+            hasSubstr html.asString declaration.toString do
+          throw <| IO.userError "Captured incomplete code declaration was conflated with its complete external theorem"
       let some entry := files.manifest.findEntry? (PreviewCache.key label .statement)
         | throw <| IO.userError "Missing statement manifest entry"
       unless entry.codeData.any (·.literateDeclarations.declarations.any (·.name == declaration)) &&
@@ -135,8 +165,11 @@ theorem omittedMixedSorry : True := by sorry
       let context := Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
       let some content ← context.renderedContent? { label := label.toString, key := entry.key } entry
         | throw <| IO.userError "Missing manifest-backed statement content"
-      let panelHealth := Graph.codeHealthOfBlockSource data.kind {} content.codeData.nonempty?
-      unless panelHealth.totalDecls == expectedCount - 1 && panelHealth.anyGapCount == 0 do
+      let panelSnapshotCount := content.codeData.literateDeclarations.declarations.size +
+        content.codeData.externalDecls.size
+      unless panelSnapshotCount == expectedCount - 1 &&
+          !content.codeData.literateDeclarations.declarations.any (·.name == declaration) &&
+          !content.codeData.externalDecls.any (·.canonical == declaration) do
         throw <| IO.userError "A manifest-backed code panel counted an omitted declaration"
       let shell := (PreviewManifest.BlockRender.renderWithRenderedContent {} entry content).asString
       unless hasSubstr shell "bp_code_link_status_warning" &&

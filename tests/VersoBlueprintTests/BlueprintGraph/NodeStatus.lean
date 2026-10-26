@@ -1,336 +1,80 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprintTests.BlueprintGraph.Shared
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprintTests.BlueprintRealizationCapture
+
+open Lean Elab Command Term
+open Informal Data Graph Realizations Translations
 
 namespace Verso.VersoBlueprintTests.BlueprintGraph.NodeStatus
 
-open Lean
-open Informal
-open Informal.Data
-open Informal.Environment
-open Informal.Graph
-open Verso.VersoBlueprintTests.BlueprintGraph.Shared
+private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
+  unless condition do throwError message
 
-def stateStatus : Environment.State := mkState [
-  (`def_formal,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      literateCodes := #[mkDefCode `def_formal_decl]
-    }),
-  (`def_ready,
-    {
-      kind := .definition
-      statement := some (mkInformal #[`def_formal])
-    }),
-  (`def_blocked,
-    {
-      kind := .definition
-      statement := some (mkInformal #[`missing_dep])
-    }),
-  (`thm_ready,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[`def_formal])
-    }),
-  (`lean_only,
-    {
-      kind := .definition
-      literateCodes := #[mkDefCode `lean_only_decl]
-    }),
-  (`local_sorry,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[])
-      literateCodes := #[mkTheoremCode `local_sorry_decl false true]
-    }),
-  (`thm_type_sorry,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[])
-      literateCodes := #[mkTheoremCode `thm_type_sorry_decl true false]
-    })
-]
+private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
+  match value with
+  | .ok value => pure value
+  | .error issue => throwError "Capture failed: {repr issue}"
 
-def graphStatus : Graph Unit :=
-  build stateStatus #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
+private def label (raw : String) : Name := Name.mkSimple raw
 
-def graphDataStatus : GraphData :=
-  buildModel stateStatus
-      #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
-      (resolveHref? := fun
-        | `def_formal => some "#def-formal"
-        | _ => none)
-      (resolveTitle? := fun
-        | `def_formal => some "Definition 1"
-        | _ => none)
-    |>.finish "node-status" {}
+run_cmd liftTermElabM do
+  let snapshot ← obtain (← Capture.capture)
+  let registry := snapshot.registry
+  let complete := snapshot.assessmentFor (label "capture.complete")
+  let admitted := snapshot.assessmentFor (label "capture.admitted")
+  let dependent := snapshot.assessmentFor (label "capture.dependent")
 
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphStatus `def_formal (fun n =>
-    n.shape == "box" &&
-    n.color == statementBorderFormalizedColor &&
-    n.fillcolor == proofBackgroundFormalizedAncColor) &&
-  hasNodeWith graphStatus `def_ready (fun n =>
-    n.shape == "box" &&
-    n.color == statementBorderReadyColor) &&
-  hasNodeWith graphStatus `def_blocked (fun n =>
-    n.color == statementBorderBlockedColor) &&
-  hasNodeWith graphStatus `thm_ready (fun n =>
-    n.shape == "ellipse" &&
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundReadyColor)
+  ensure (complete.hasNativeDeclarations && complete.nativeStatementComplete &&
+    complete.nativeProofComplete && complete.requiredComplete)
+    "A checked native theorem should be complete in its own selected realization"
+  ensure (admitted.hasNativeDeclarations && admitted.nativeStatementComplete &&
+    !admitted.nativeProofComplete && !admitted.requiredComplete)
+    "An admitted theorem must remain incomplete"
+  ensure (dependent.nativeProofComplete && !dependent.requiredComplete &&
+    !dependent.proofDependenciesComplete)
+    "A locally checked proof must stay distinct from an unfinished dependency"
+  let admittedGraph := Graph.buildModel snapshot #[label "capture.admitted"] |>.finish "admitted" {}
+  let some admittedNode := admittedGraph.nodes.find? (·.label == label "capture.admitted")
+    | throwError "Missing admitted node"
+  ensure (admittedNode.actionableStage? == some "proof")
+    "A local proof gap is actionable once its selected prerequisites pass"
+  let dependentGraph := Graph.buildModel snapshot #[label "capture.dependent"] |>.finish "dependent" {}
+  let some dependentNode := dependentGraph.nodes.find? (·.label == label "capture.dependent")
+    | throwError "Missing dependent node"
+  ensure dependentNode.actionableStage?.isNone
+    "A locally complete proof is not presented as actionable while its prerequisite is unfinished"
+  ensure ((dependentNode.visual.tooltip?.getD "").contains "Selected Lean requirements: incomplete")
+    "The graph tooltip must distinguish local proof validity from unfinished realization requirements"
 
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphStatus `lean_only (fun n =>
-    n.color == statementBorderFormalizedColor &&
-    n.fillcolor == proofBackgroundFormalizedAncColor &&
-    styleHasToken n.style "dashed" &&
-    n.gradientangle?.isNone) &&
-  hasNodeWith graphStatus `local_sorry (fun n =>
-    n.color == statementBorderFormalizedColor &&
-    n.fillcolor == proofBackgroundIncompleteColor &&
-    !styleHasToken n.style "bold" &&
-    n.gradientangle?.isNone) &&
-  hasNodeWith graphStatus `thm_type_sorry (fun n =>
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundIncompleteColor &&
-    !styleHasToken n.style "bold" &&
-    n.gradientangle?.isNone)
+  let cycleA := label "capture.cycleA"
+  let cycleB := label "capture.cycleB"
+  let graph := Graph.buildModel snapshot #[cycleA] |>.finish "captured-cycle" {}
+  ensure (graph.nodes.any (·.label == cycleA) && graph.nodes.any (·.label == cycleB))
+    "Graph traversal should retain both captured cycle members"
+  let hasForward := graph.edges.any fun edge => edge.source == cycleA && edge.target == cycleB &&
+    edge.axes.contains .statement
+  let hasBackward := graph.edges.any fun edge => edge.source == cycleB && edge.target == cycleA &&
+    edge.axes.contains .statement
+  ensure (hasForward && hasBackward)
+    "Captured forward references should produce the whole cycle topology"
+  for name in #[cycleA, cycleB] do
+    let some node := graph.nodes.find? (·.label == name) | throwError "Missing cycle graph node"
+    ensure (node.assessment.isSome && node.proofStatus == .formalized)
+      "A local proof remains visible while selected cyclic prerequisites block closure"
+    ensure node.actionableStage?.isNone
+      "Cyclic prerequisites block next-step actionability"
+  ensure ((registry.resultFor (.realization ⟨cycleA, `lean⟩)).status == .blocked)
+    "Graph must use the existing evaluator's blocked cycle result"
 
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphStatus `missing_dep (fun n =>
-    n.shape == "box" &&
-    n.color == unresolvedBorderColor &&
-    n.fillcolor == unresolvedFillColor &&
-    n.fontcolor == unresolvedFontColor)
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasGraphDataNodeWith graphDataStatus `def_formal (fun n =>
-    n.title == "Definition 1" &&
-    n.href == some "#def-formal" &&
-    n.previewKey == PreviewKey.ofString? "def_formal--statement" &&
-    n.kind == some Data.NodeKind.definition &&
-    n.statementStatus == .formalized &&
-    n.proofStatus == .formalizedWithAncestors &&
-    n.visual.fillcolor == proofBackgroundFormalizedAncColor) &&
-  hasGraphDataNodeWith graphDataStatus `missing_dep (fun n =>
-    n.warnings.unknownRef &&
-    n.kind.isNone &&
-    n.statementStatus == .blocked) &&
-  hasGraphDataEdge graphDataStatus `missing_dep `def_blocked #[.statement]
-
-def stateAncestorsOk : Environment.State := mkState [
-  (`def_ok,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      literateCodes := #[mkDefCode `def_ok_decl]
-    }),
-  (`thm_dep_ok,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[`def_ok])
-      literateCodes := #[mkTheoremCode `thm_dep_ok_decl]
-    }),
-  (`thm_top_ok,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[`thm_dep_ok])
-      literateCodes := #[mkTheoremCode `thm_top_ok_decl]
-    })
-]
-
-def graphAncestorsOk : Graph Unit := build stateAncestorsOk #[`thm_top_ok]
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphAncestorsOk `thm_top_ok (fun n =>
-    n.fillcolor == proofBackgroundFormalizedAncColor &&
-    n.peripheries == 1)
-
-def stateAncestorsBad : Environment.State := mkState [
-  (`def_unfinished,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-    }),
-  (`thm_dep_bad,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[`def_unfinished])
-      literateCodes := #[mkTheoremCode `thm_dep_bad_decl]
-    }),
-  (`thm_top_bad,
-    {
-      kind := .theorem
-      statement := some (mkInformal #[`thm_dep_bad])
-      literateCodes := #[mkTheoremCode `thm_top_bad_decl]
-    })
-]
-
-def graphAncestorsBad : Graph Unit := build stateAncestorsBad #[`thm_top_bad]
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphAncestorsBad `thm_dep_bad (fun n =>
-    n.fillcolor == proofBackgroundFormalizedColor &&
-    n.peripheries == 1) &&
-  hasNodeWith graphAncestorsBad `thm_top_bad (fun n =>
-    n.fillcolor == proofBackgroundFormalizedColor &&
-    n.peripheries == 1)
-
-def stateExternalCode : Environment.State := mkState [
-  (`def_ext_ok,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.good) with
-          present := true
-          provedStatus := .proved
-        }
-      ]
-    }),
-  (`def_ext_bad,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.bad) with
-          present := true
-          provedStatus := .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
-        }
-      ]
-    }),
-  (`def_ext_missing,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.missing) with
-          present := false
-          provedStatus := .proved
-        }
-      ]
-    })
-]
-
-def externalStatus : ExternalCodeStatus := {
-  isMissing := fun n => n == `Ext.missing
-  provedStatus := fun n =>
-    if n == `Ext.bad then
-      .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
-    else
-      .proved
-}
-
-def externalStatusOverride : ExternalCodeStatus := {
-  isMissing := fun n => n == `Ext.missing || n == `Ext.override_missing
-  provedStatus := fun n =>
-    if n == `Ext.bad || n == `Ext.override_bad then
-      .incomplete { knownSorry := #[{ location := .statement }, { location := .proof }] }
-    else
-      .proved
-}
-
-def graphExternalCode : Graph Unit :=
-  buildWithExternal stateExternalCode #[`def_ext_ok, `def_ext_bad, `def_ext_missing] externalStatus
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphExternalCode `def_ext_ok (fun n =>
-    n.color == statementBorderFormalizedColor) &&
-  hasNodeWith graphExternalCode `def_ext_bad (fun n =>
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundIncompleteColor &&
-    !styleHasToken n.style "bold" &&
-    n.gradientangle?.isNone) &&
-  hasNodeWith graphExternalCode `def_ext_missing (fun n =>
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundReadyColor &&
-    styleHasToken n.style "dotted" &&
-    n.gradientangle?.isNone)
-
-def stateExternalOverride : Environment.State := mkState [
-  (`def_ext_override_bad,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.override_bad) with
-          present := true
-          provedStatus := .proved
-        }
-      ]
-    }),
-  (`def_ext_override_missing,
-    {
-      kind := .definition
-      statement := some (mkInformal #[])
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.override_missing) with
-          present := true
-          provedStatus := .proved
-        }
-      ]
-    })
-]
-
-def graphExternalOverride : Graph Unit :=
-  buildWithExternal stateExternalOverride #[`def_ext_override_bad, `def_ext_override_missing] externalStatusOverride
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  hasNodeWith graphExternalOverride `def_ext_override_bad (fun n =>
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundIncompleteColor &&
-    !styleHasToken n.style "bold" &&
-    n.gradientangle?.isNone) &&
-  hasNodeWith graphExternalOverride `def_ext_override_missing (fun n =>
-    n.color == statementBorderReadyColor &&
-    n.fillcolor == proofBackgroundReadyColor &&
-    styleHasToken n.style "dotted" &&
-    n.gradientangle?.isNone)
-
-def stateLeanOnlyExternalMissing : Environment.State := mkState [
-  (`lean_only_ext_missing,
-    {
-      kind := .definition
-      externalRefs := #[
-        { (Data.ExternalRef.ofName `Ext.missing) with
-          present := false
-          provedStatus := .proved
-        }
-      ]
-    })
-]
-
-def warningLeanOnlyExternalMissing : WarningFlags :=
-  match stateLeanOnlyExternalMissing.data.get? `lean_only_ext_missing with
-  | some node => nodeWarnings externalStatus stateLeanOnlyExternalMissing `lean_only_ext_missing node
-  | none => {}
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  warningLeanOnlyExternalMissing.leanOnlyNoStatement &&
-  warningLeanOnlyExternalMissing.missingExternalDecl
+  let missing := label "capture.absent"
+  let missingGraph := Graph.buildModel snapshot #[label "capture.missing"] |>.finish "missing-use" {}
+  ensure (missingGraph.nodes.any fun node => node.label == missing && node.assessment.isNone &&
+    node.warnings.unknownRef && node.statementStatus == .unassessed)
+    "A missing target stays an unresolved graph endpoint without a fabricated assessment"
 
 end Verso.VersoBlueprintTests.BlueprintGraph.NodeStatus

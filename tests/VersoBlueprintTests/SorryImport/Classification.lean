@@ -31,8 +31,8 @@ private unsafe def withProvider (importAll : Bool) (action : CoreM Bool)
 private def statusOf (name : Name) : CoreM ProvedStatus := do
   analyzeDeclaration name
 
-/-- Evidence attribution is independent of coverage; completion controls below
-check verification explicitly for each visibility boundary. -/
+/-- This suite checks native-provider evidence and visibility-boundary facts.
+Public Blueprint completion is covered by capture-backed consumer tests. -/
 private def checkSorryEvidence (cases : Array (Name × Array SorryInfo)) : CoreM Bool := do
   for (name, expected) in cases do
     let actual ← statusOf name
@@ -191,10 +191,6 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
     let missingRef ← externalRefSnapshotAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
     let nestedRef ← externalRefSnapshotAtCurrentDir {} {
       (ExternalRef.ofName `sorryImportNestedHypothesis) with kind := .theorem }
-    let node : Node := { kind := .theorem, externalRefs := #[ref] }
-    let health := Graph.nodeCodeHealth {} node
-    let proofNode : Node := { kind := .theorem, externalRefs := #[proofRef] }
-    let completeNode : Node := { kind := .theorem, externalRefs := #[completeRef] }
     let renderHasUnknown := match ref.render with
       | .ok html => html.html.contains "depends on sorry"
       | _ => false
@@ -202,13 +198,11 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
       | .ok html => html.html.contains "sorry detected" &&
           !html.html.contains "depends on sorry" && !html.html.contains "contains sorry"
       | _ => false
+    -- These refs are provider inventory only. A rendered ref or cached status
+    -- does not establish current Blueprint completion.
     return ref.present && renderHasUnknown && proofRenderHasUnknown &&
       ref.provedStatus.sorryEvidence == #[statementDependency, unlocalized] && ref.provedStatus.hasUnverifiedCoverage &&
-      health.provedStatus == ref.provedStatus && health.hasStatementGaps && health.anyGapCount == 1 &&
-      !Graph.nodeLocalProofFormalized {} node &&
-      Graph.proofStatus {} {} `typeOnly node == .incomplete &&
-      Graph.nodeLocalStatementFormalized {} proofNode && !Graph.nodeLocalProofFormalized {} proofNode &&
-      !Graph.nodeLocalProofFormalized {} completeNode && completeRef.provedStatus.isUnverified &&
+      completeRef.present &&
       nestedRef.provedStatus.sorryEvidence == #[statementDependency] && nestedRef.provedStatus.hasUnverifiedCoverage &&
       !missingRef.present && missingRef.provedStatus == .missing
 

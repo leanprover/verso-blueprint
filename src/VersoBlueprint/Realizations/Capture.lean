@@ -5,6 +5,8 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Environment
 import VersoBlueprint.Realizations.NativeSource
+import VersoBlueprint.Realizations.Projection
+import VersoBlueprint.Realizations.Report
 
 /-! Capture ordinary, keyed Blueprint sources after their owning modules have
 been built. Raw registrations remain the only persistent store. This boundary
@@ -41,6 +43,7 @@ private def authoredContribution (origin : Origin) (family : Name) (index : Nat)
 /-- Resolution failure stays an edge diagnostic, never a manufactured theorem status. -/
 structure SelectedUse where
   source : Name
+  /-- Context selected for the native target contract, not the source language. -/
   context : Option Context
   realization : Option Name
   facet : Name
@@ -53,12 +56,56 @@ structure Snapshot where
   uses : Array SelectedUse
   /-- Source/provider diagnostics are distinct from native proof outcomes. -/
   diagnostics : Array Diagnostic
+  /-- Fresh native classification for inventory only; Registry remains completion authority. -/
+  nativeChecks : Array NativeLean.CheckedDeclaration := #[]
+
+/-- Derive a consumer view from the same admitted snapshot. No source/status
+fallbacks, new checker invocation or second dependency evaluator occur here. -/
+def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
+  let registry := snapshot.registry
+  let key : RealizationKey := ⟨label, `lean⟩
+  let model := (registry.realization? key).filter (·.context.language == `lean)
+  let declarations := model.map (·.declarations) |>.getD #[]
+  let hasNativeDeclarations := !declarations.isEmpty
+  let locallyComplete (name validator : Name) := hasNativeDeclarations && declarations.all fun declaration =>
+    let requirement : RequirementKey := ⟨.declaration key declaration.object, name⟩
+    (registry.requirement? requirement).any (fun value =>
+      value.expected == .check validator && value.coverage == .dependencyClosure) &&
+      (registry.localResult requirement).complete
+  let uses := snapshot.uses.filter (·.source == label)
+  let selected := uses.filter fun use => use.realization.all (· == `lean) &&
+    model.all (fun model => use.context == some model.context)
+  let dependenciesComplete (statementOnly : Bool) :=
+    (selected.filter fun use => !statementOnly || use.facet == `statement).all fun use =>
+      match use.selected with
+      | .error _ => false
+      | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
+  let sourceDocuments := (registry.realizations.filter (·.key.node == label)).flatMap (·.facets.flatMap (·.documents))
+  let objects := declarations.map (·.object)
+  let diagnostics := snapshot.diagnostics.filter fun diagnostic => diagnostic.subject == label.toString ||
+    objects.any (·.native == diagnostic.subject) || sourceDocuments.any (·.path == diagnostic.subject)
+  return {
+    hasNativeDeclarations
+    hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
+    nativeStatementComplete := locallyComplete `statement NativeLean.statementValidator
+    nativeProofComplete := locallyComplete `proof NativeLean.bodyValidator
+    requiredComplete := hasNativeDeclarations && (registry.resultFor (.realization key)).complete
+    statementDependenciesComplete := dependenciesComplete true
+    proofDependenciesComplete := dependenciesComplete false
+    details := Json.mkObj [
+      ("assessment", Report.ofNode registry label),
+      ("selectedUses", toJson (uses.map fun use => Json.mkObj [
+        ("source", toJson use.source), ("targetContext", toJson use.context),
+        ("realization", toJson use.realization), ("facet", toJson use.facet),
+        ("reference", toJson use.reference), ("selection", toJson use.selected)])),
+      ("sourceDiagnostics", toJson diagnostics)] }
 
 private structure Collected where
   input : Input := {}
   observations : Array (Origin × RequirementKey × Observation) := #[]
   diagnostics : Array Diagnostic := #[]
   uses : Array UseDeclaration := #[]
+  nativeChecks : Array NativeLean.CheckedDeclaration := #[]
 
 private def observe (collected : Collected) (key : RequirementKey) (observation : Observation) : Collected :=
   { collected with observations := collected.observations.push ((contribution `observation key ()).origin, key, observation) }
@@ -236,6 +283,7 @@ private def collectOrdinary (reader : System.FilePath → IO String) (state : En
               { facet with required := facet.required.push (if facet.name == `statement then statementKey else proofKey) } }
         match ← NativeLean.checkDeclaration context.project witness with
         | .ok checked =>
+          collected := { collected with nativeChecks := collected.nativeChecks.push checked }
           collected := (observe collected statementKey (.check checked.statement))
             |> fun value => observe value proofKey (.check checked.body)
         | .error diagnostic =>
@@ -422,7 +470,9 @@ private def materialize (reader : System.FilePath → IO String) : CaptureM Snap
       | reject "missing-binding" key.name.toString "Complete candidate has no contract binding" #[origin]
     input := { input with evidence := input.evidence.push { origin, value := {
       id := origin.id, requirement := key, binding, observation } } }
-  return { registry := ← full (admit input), uses, diagnostics := canonical collected.diagnostics }
+  return {
+    registry := ← full (admit input), uses, diagnostics := canonical collected.diagnostics
+    nativeChecks := collected.nativeChecks }
 
 /-- One read-only current source snapshot. Restores environment, metavariables and
 info state even on exceptions. There is no persisted completion cache. -/

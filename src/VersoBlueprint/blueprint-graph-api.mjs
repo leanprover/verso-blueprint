@@ -15,6 +15,11 @@ import {
  * Data-only calls do not load the interactive graph renderer; render helpers
  * lazy-load it when called.
  *
+ * Each graph node carries the realization assessment from the same admitted
+ * capture that produced its topology. Consumers should use `node.actionableStage`
+ * for a producer-approved next step and inspect `node.assessment.details` for
+ * selected prerequisite diagnostics instead of reconstructing status policy.
+ *
  * Use the data helpers when a dashboard needs topology-finalized graph records
  * from the manifest or graph JSON embedded beside a rendered graph block. Use
  * {@link renderGraphData} to create the standard graph UI from a finalized
@@ -27,7 +32,7 @@ import {
  * @module blueprint-graph-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintGraphController, BlueprintGraphData, BlueprintGraphRenderOptions, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintGraphController, BlueprintGraphData, BlueprintGraphNode, BlueprintGraphRenderOptions, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
 
 /** Browser graph API module version; distinct from `BlueprintGraphData.schemaVersion`. */
 export const version = coreVersion;
@@ -56,7 +61,7 @@ export const graphApiModuleUrl = (baseUrl = moduleUrl) => coreGraphApiModuleUrl(
  * This is for pages that already contain generated graph-block markup. Use
  * {@link loadGraphs} when the current document does not contain the graph you
  * want to inspect. Payloads that are missing or fail the current schema,
- * top-level collection, or render-variant checks return `null`.
+ * node assessment/actionability, top-level collection, or render-variant checks return `null`.
  *
  * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
  * @returns {BlueprintGraphData | null}
@@ -78,7 +83,7 @@ export function getGraphVariants(root) {
 
 /**
  * Load finalized graph records from a manifest URL. Records that fail the
- * current schema, top-level collection, or render-variant checks are omitted.
+ * current schema, node assessment/actionability, top-level collection, or render-variant checks are omitted.
  *
  * @param {string} [url] Manifest URL. Defaults to this module's generated-data manifest.
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
@@ -94,8 +99,8 @@ export const loadManifestGraphs = (url, options) => {
 
 /**
  * Load finalized graph records from this generated site's default manifest.
- * Records that fail the current schema, top-level collection, or render-variant
- * checks are omitted.
+ * Records that fail the current schema, node assessment/actionability,
+ * top-level collection, or render-variant checks are omitted.
  *
  * This is the simplest graph-data entry point for dashboards and audits that
  * need graph records but do not need to render graph blocks.
@@ -110,7 +115,8 @@ export const loadManifestGraphs = (url, options) => {
  * // Load finalized graph records from the generated manifest.
  * const graphs = await loadGraphs();
  * for (const graph of graphs) {
- *   console.log(graph.key, graph.nodes.length, graph.edges.length);
+ *   const next = graph.nodes.filter((node) => node.actionableStage !== null);
+ *   console.log(graph.key, graph.nodes.length, graph.edges.length, next);
  * }
  */
 export const loadGraphs = (options) =>

@@ -32,13 +32,14 @@ theorem inline_main_complete : True := by
 /-- info: true -/
 #guard_msgs in
 #eval
-  show CoreM Bool from do
+  show Elab.Term.TermElabM Bool from do
     let label := Name.mkSimple "inline.theorem.helper"
     let state := Informal.Environment.informalExt.getState (← getEnv)
     match state.data.get? label with
     | none => pure false
     | some node =>
-      let external : ExternalCodeStatus := {}
+      let .ok snapshot ← Realizations.Capture.capture | pure false
+      let assessment := snapshot.assessmentFor label
       let helperProofGapOnly :=
         node.literateCodes.any fun code =>
           code.definedDefs.any fun decl =>
@@ -49,8 +50,10 @@ theorem inline_main_complete : True := by
             proofRefs > 0
       pure <|
         node.kind == .theorem &&
-        nodeLocalStatementFormalized external node &&
-        !nodeLocalProofFormalized external node &&
+        -- The helper is a definition: its value is part of its statement.
+        -- The complete theorem cannot lend that helper a successful check.
+        !assessment.nativeStatementComplete &&
+        !assessment.nativeProofComplete && !assessment.requiredComplete &&
         helperProofGapOnly
 
 #docs (Manual) inlineGeneratedDeclsDoc "Inline Generated Decls" :=

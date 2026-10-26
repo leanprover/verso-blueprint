@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
+import VersoBlueprint.Realizations.Capture
 
 open Lean Verso Doc
 open Verso.Genre (Manual)
@@ -32,9 +33,14 @@ def RenderModel.fromJsonString! (serialized : String) : RenderModel := Id.run do
 elab "blueprint_render_model%" : term => do
   Environment.reportImportedConflicts
   let state := Environment.informalExt.getState (← getEnv)
-  let nodes := TraversalIndex.Nodes.capture state
-  let graph := Graph.buildModel state (state.data.toArray.map (·.1)) (groupTitles := state.groups.toArray)
-  let summary ← Commands.buildSummary
+  let snapshot ← Realizations.Capture.capture
+  let snapshot ← match snapshot with
+    | .ok snapshot => pure snapshot
+    | .error issues => throwError m!"Cannot capture Blueprint realization state: {repr issues}"
+  let nodes := TraversalIndex.Nodes.capture state fun label => some (snapshot.assessmentFor label)
+  let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
+    (groupTitles := state.groups.toArray)
+  let summary ← Commands.buildSummary snapshot
   let serialized := (toJson (nodes, graph, summary)).compress
   Lean.Elab.Term.elabTerm (← `(RenderModel.fromJsonString! $(quote serialized))) none
 

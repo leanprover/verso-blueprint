@@ -11,6 +11,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.Realizations.Capture
 
 open Lean Elab Command
 open ProofWidgets
@@ -28,6 +29,9 @@ structure GraphParams where
   dot : String
   /-- Shared graph legend payload from `VersoBlueprint.Graph`. -/
   legend : Json := Json.arr #[]
+  /-- Explicit validation state; failed pre-build capture explains that the
+  graph is unavailable instead of deriving completion from legacy snapshots. -/
+  validationMessage : Option String := none
   deriving Server.RpcEncodable
 
 @[widget_module]
@@ -38,7 +42,7 @@ def blueprintWidget : Component GraphParams where
     import katex from 'https://cdn.jsdelivr.net/npm/katex@0.16.28/+esm'
     import * as React from 'react';
 
-    export default function ({ title, label, previewHtml, dot, legend }) {
+    export default function ({ title, label, previewHtml, dot, legend, validationMessage }) {
         const graphRef = React.useRef(null);
 
         function loadStyle(url) {
@@ -54,10 +58,14 @@ def blueprintWidget : Component GraphParams where
 
         React.useEffect(() => {
            loadStyle('https://cdn.jsdelivr.net/npm/katex@0.16.28/dist/katex.min.css');
-           if (graphRef.current && dot) {
-             graphviz(graphRef.current)
-               .fit(true)
-               .renderDot(dot);
+           if (graphRef.current) {
+             if (dot) {
+               graphviz(graphRef.current)
+                 .fit(true)
+                 .renderDot(dot);
+             } else {
+               graphRef.current.replaceChildren();
+             }
            }
         }, [dot]);
 
@@ -247,6 +255,13 @@ def blueprintWidget : Component GraphParams where
               style: { cursor: 'pointer', fontWeight: 600 }
             }, title || 'Blueprint graph'),
             React.createElement('div', { key: 'body', style: { marginTop: '0.35rem', display: 'grid', gap: '0.5rem' } }, [
+              validationMessage
+                ? React.createElement('p', {
+                    key: 'validation',
+                    role: 'status',
+                    style: { margin: 0, color: '#475569', fontSize: '0.82rem' }
+                  }, validationMessage)
+                : null,
               React.createElement('div', { key: 'legend', style: legendStyle }, legendNodes),
               React.createElement('div', {
                 key: 'graph',
@@ -271,42 +286,79 @@ structure BuildResult where
   dot : String
   previewSelection? : Option Informal.PreviewSource.Selection := none
   legend : Json
+  validationMessage? : Option String := none
+  snapshot? : Option Informal.Realizations.Capture.Snapshot := none
 
-def buildFor [Monad m] [MonadEnv m] [MonadError m] (label : Name) : m BuildResult := do
+private def assessmentMessage (assessment : Informal.Realizations.NodeAssessment) : String :=
+  let native := if !assessment.hasNativeDeclarations then "native Lean checks unassessed" else
+    s!"native statement {if assessment.nativeStatementComplete then "complete" else "unfinished"}, " ++
+    s!"native proof {if assessment.nativeProofComplete then "complete" else "unfinished"}"
+  let dependencies := if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
+    "selected dependencies complete" else "selected dependencies unfinished"
+  let classification := if assessment.hasAxiomLike then "; axiom-like declarations present" else ""
+  s!"{native}{classification}; required Blueprint validation " ++
+    s!"{if assessment.requiredComplete then "complete" else "unfinished"}; {dependencies}"
+
+def buildFor (label : Name) : Lean.Elab.Term.TermElabM BuildResult := do
   let env ← getEnv
   let state := informalExt.getState env
-  let some _root := state.data.get? label
-    | do
-      let available :=
-        state.data.toArray
-          |>.map (·.1.toString)
-          |>.take 12
-      throwError m!"No Label Found for '{label}'. Known labels (first {available.size}): {String.intercalate ", " available.toList}"
-  let graphModel := Informal.Graph.buildModel state #[label] (groupTitles := state.groups.toArray)
-  let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
   let previewSelection? := Informal.PreviewSource.environmentSelection? env label
-  let includeMathlibLegend :=
-    graphModel.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
-  let legend := toJson (Informal.Graph.graphLegendGroups includeMathlibLegend)
-  pure { dot, previewSelection?, legend }
+  match ← Informal.Realizations.Capture.capture with
+  | .error issues =>
+    let reasons := String.intercalate "; " (issues.toList.map fun issue =>
+      s!"{issue.code}: {issue.message}")
+    pure {
+      dot := ""
+      previewSelection?
+      legend := Json.arr #[]
+      validationMessage? := some s!"Validation unavailable until a complete source capture succeeds. {reasons}" }
+  | .ok snapshot =>
+    let labels := snapshot.registry.nodes.map (·.label)
+    unless labels.contains label do
+      let available := labels.map toString |>.take 12
+      throwError m!"No Label Found for '{label}'. Known captured labels (first {available.size}): {String.intercalate ", " available.toList}"
+    let graphModel := Informal.Graph.buildModel snapshot #[label] (groupTitles := state.groups.toArray)
+    let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
+    let includeMathlibLegend :=
+      graphModel.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
+    let legend := toJson (Informal.Graph.graphLegendGroups includeMathlibLegend)
+    let assessment := snapshot.assessmentFor label
+    pure {
+      dot, previewSelection?, legend
+      validationMessage? := some (assessmentMessage assessment)
+      snapshot? := some snapshot }
 
 open Server in
-def updatePanel (title label : String) (previewHtml legend : Json) (dot : String) stx :=
+def updatePanel (title label : String) (previewHtml legend : Json) (dot : String)
+    (validationMessage? : Option String) stx :=
   Widget.savePanelWidgetInfo
     (blueprintWidget.javascriptHash)
-    (rpcEncode ({ title, label, previewHtml, dot, legend } : GraphParams )) stx
+    (rpcEncode ({ title, label, previewHtml, dot, legend, validationMessage := validationMessage? } : GraphParams )) stx
 
 private def renderSelectedPreviewJson
-    (previewSelection? : Option Informal.PreviewSource.Selection) :
+    (previewSelection? : Option Informal.PreviewSource.Selection)
+    (snapshot? : Option Informal.Realizations.Capture.Snapshot) :
     Lean.Elab.Term.TermElabM Json := do
-  toJson <$> Informal.PreviewSource.renderWidgetHtml (previewSelection?.map (·.preview))
+  let html ← match previewSelection? with
+    | none => pure .empty
+    | some selection =>
+      match snapshot? with
+      | some snapshot =>
+        if !selection.preview.blocks.isEmpty then
+          Informal.renderPreviewBlocksHtmlWithSnapshot selection.preview.blocks snapshot
+        else if !selection.preview.stxs.isEmpty then
+          Informal.renderStatementElabHtmlWithSnapshot selection.preview.stxs snapshot
+        else
+          pure .empty
+      | none => Informal.PreviewSource.renderWidgetHtml (some selection.preview)
+  pure (toJson html)
 
 def activateForLabelDoc (label : Name) (stx : Syntax) : Verso.Doc.Elab.DocElabM Unit := do
   if stx.getPos?.isNone then
     return ()
   let out ← buildFor label
-  let previewHtml ← renderSelectedPreviewJson out.previewSelection?
-  (monadLift (updatePanel s!"BluePrint widget: {label}" label.toString previewHtml out.legend out.dot stx) : Verso.Doc.Elab.DocElabM Unit)
+  let previewHtml ← renderSelectedPreviewJson out.previewSelection? out.snapshot?
+  (monadLift (updatePanel s!"BluePrint widget: {label}" label.toString previewHtml out.legend out.dot out.validationMessage? stx) : Verso.Doc.Elab.DocElabM Unit)
 
 show_panel_widgets [local blueprintWidget]
 
@@ -317,9 +369,9 @@ syntax (name := showGraph) "#show_graph" str : command
 unsafe def elabGraph : CommandElab := fun
   | stx@`(#show_graph $label:str) => do
     let target := Name.mkSimple label.getString
-    let out ← liftCoreM <| buildFor target
-    let previewHtml ← Lean.Elab.Command.liftTermElabM <| renderSelectedPreviewJson out.previewSelection?
-    liftCoreM <| updatePanel s!"BluePrint widget: {target}" label.getString previewHtml out.legend out.dot stx
+    let out ← liftTermElabM <| buildFor target
+    let previewHtml ← Lean.Elab.Command.liftTermElabM <| renderSelectedPreviewJson out.previewSelection? out.snapshot?
+    liftCoreM <| updatePanel s!"BluePrint widget: {target}" label.getString previewHtml out.legend out.dot out.validationMessage? stx
   | _ => throwUnsupportedSyntax
 
 -- #show_graph exampleGraph

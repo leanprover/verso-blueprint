@@ -21,13 +21,17 @@ open Lean Validation Translations
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
 
-/-- Parse only; do not elaborate commands or mutate Blueprint state. Files that
-need intervening syntax elaboration are explicitly unsupported by this adapter. -/
-def parseSource (label : Name) (path text : String) : CoreM (Except Diagnostic (Array Syntax)) := do
+/-- Parse only; do not elaborate commands or mutate Blueprint state. Syntax
+requiring intervening elaboration is unsupported. Native declaration lookup can
+stop after its checked range; whole-file parsing remains required for docstrings
+so a later inheritance directive cannot be hidden. Original source is not sliced. -/
+def parseSource (label : Name) (path text : String)
+    (through? : Option DeclarationRange := none) : CoreM (Except Diagnostic (Array Syntax)) := do
   try
     let input := Parser.mkInputContext text path
     let (_, state, messages) ← liftM <| Parser.parseHeader input
     let env ← getEnv
+    let stop? := through?.map fun range => input.fileMap.ofPosition range.endPos
     let rec loop (fuel : Nat) (state : Parser.ModuleParserState) (messages : MessageLog)
         (commands : Array Syntax) : Except Diagnostic (Array Syntax) := do
       match fuel with
@@ -39,7 +43,9 @@ def parseSource (label : Name) (path text : String) : CoreM (Except Diagnostic (
         if command.isOfKind ``Parser.Command.eoi then return commands
         if Parser.isTerminalCommand command || next.pos <= state.pos then
           throw <| issue "source-parse-failed" label "Owning source parser stopped before end of file"
-        loop fuel next messages (commands.push command)
+        let commands := commands.push command
+        if stop?.any (next.pos >= ·) then return commands
+        loop fuel next messages commands
     return loop (text.utf8ByteSize + 1) state messages #[]
   catch _ =>
     return .error <| issue "source-parse-failed" label "Owning source parser failed"
@@ -183,7 +189,8 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
     semanticContext := semantics.toOption
     semanticDiagnostics := match semantics with | .ok _ => #[] | .error issue => #[issue] }
 
-private def prepareSource (request : Request) (readSource : System.FilePath → IO String) :
+private def prepareSource (request : Request) (readSource : System.FilePath → IO String)
+    (wholeFile : Bool := true) :
     CoreM (Except Diagnostic (Prepared × Array Syntax)) := do
   let name := request.canonical
   let ranges ← match checkedSourceRanges name request.range? request.selectionRange?
@@ -193,7 +200,8 @@ private def prepareSource (request : Request) (readSource : System.FilePath → 
   let text ← try liftM <| readSource request.sourcePath catch _ =>
     return .error <| issue "source-unavailable" name "Cannot read canonical source at owning association path"
   if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
-  let commands ← match ← parseSource name request.sourcePath text with
+  let commands ← match ← parseSource name request.sourcePath text
+      (if wholeFile then none else some ranges.range) with
     | .ok commands => pure commands
     | .error diagnostic => return .error diagnostic
   match declarationAtRanges name text ranges.range ranges.selectionRange commands with
@@ -203,11 +211,14 @@ private def prepareSource (request : Request) (readSource : System.FilePath → 
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a
 body-bearing definition. Source lookup neither checks proof validity nor asserts
-a Blueprint association, expected goal or correspondence. -/
+a Blueprint association, expected goal or correspondence. Parsing stops after the
+checked declaration; unrelated later document syntax does not invalidate its
+association. Normal owning-module build remains a precondition, and both exact
+native ranges are still required. Documentation uses the stricter whole-file path. -/
 def prepare (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
-  return (← prepareSource request readSource).map (·.1)
+  return (← prepareSource request readSource (wholeFile := false)).map (·.1)
 
 /-- Prepare a declaration from an original Blueprint Lean block. Reparse the
 original block contents with Verso's byte-preserving padding, then compare both

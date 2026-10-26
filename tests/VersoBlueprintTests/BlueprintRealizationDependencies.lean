@@ -6,12 +6,14 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Realizations.Dependencies
 import VersoBlueprint.Realizations.DependencyReport
 import VersoBlueprint.Realizations.Existing
+import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Graph
 import VersoBlueprintTests.BlueprintRealizationDependencies.Provider
 
-/-! Actual accepted uses and native proofs. Graph/CodeHealth are test oracles for
-supported theorem-local policy only. All contract corruptions are explicitly
-synthetic; no mock successful proof/check/review observations are supplied. -/
+/-! Actual accepted uses and native proof observations. The pure selector is
+checked against its admitted contract and source facts; no legacy graph status
+projection is treated as completion authority. All contract corruptions are
+explicitly synthetic, and successful observations come from native checks. -/
 
 open Lean Meta Elab Term Command
 open Informal.Realizations Informal.Validation Informal.Translations
@@ -32,6 +34,19 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .error error => throwError "Unexpected rejection: {repr error}"
 
 private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+
+-- The imported adapter provider deliberately contains an identity that the
+-- native codec rejects. Remove just that invalid target inside a restored
+-- environment so this test can capture the real dependency source and check
+-- that its authored edge remains a missing-target diagnostic.
+private def captureWithoutUnsupportedTarget : TermElabM Informal.Realizations.Capture.Snapshot := do
+  withEnv (← getEnv) do
+    let unsupported := Name.mkSimple "adapter.nonroundtrip"
+    Informal.Environment.modify fun state => { state with
+      data := state.data.erase unsupported
+      pendingNodes := state.pendingNodes.erase unsupported
+      factRecords := state.factRecords.filter (·.label != unsupported) }
+    obtain (← Informal.Realizations.Capture.capture)
 
 private def join (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents
@@ -134,6 +149,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let sourceLabel := label "source"
   let before ← Informal.Environment.getNode? sourceLabel
   let some source := before | throwError "Missing accepted source"
+  let statementUses := source.statement.toArray.flatMap (·.deps)
+  let proofUses := source.proof.toArray.flatMap (·.deps)
   let beforeLabels ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source
   let consumerBefore ← Informal.Environment.getNode? (label "consumer")
   let consumerLabelsBefore ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer
@@ -166,8 +183,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let input := join (join (join cleanInput admittedInput) otherInput) sourceInput
   let registry ← obtain (admit input)
   let selected ← obtain (← selectUses registry context sourceLabel)
-  ensure (decide (selected.1.map (·.1) = Informal.Graph.statementUses source) &&
-    decide (selected.2.map (·.1) = Informal.Graph.proofUses source))
+  ensure (decide (selected.1.map (·.1) = statementUses) &&
+    decide (selected.2.map (·.1) = proofUses))
     "Effective axes, ordering and all UseRef metadata must be preserved exactly"
   ensure (selected.1.any fun e => e.1.label == label "clean" && e.1.origin == .manual && e.1.intent == .technical)
     "Manual technical metadata survives effective automatic/manual precedence"
@@ -193,8 +210,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let report ← reportFor registry
   let statementReport ← entries (← field report "uses") "statement"
   let proofReport ← entries (← field report "uses") "proof"
-  ensure (Json.arr (statementReport.map (·.getObjValD "use")) == toJson (Informal.Graph.statementUses source) &&
-    Json.arr (proofReport.map (·.getObjValD "use")) == toJson (Informal.Graph.proofUses source))
+  ensure (Json.arr (statementReport.map (·.getObjValD "use")) == toJson statementUses &&
+    Json.arr (proofReport.map (·.getObjValD "use")) == toJson proofUses)
     "Reported effective axes, order and complete UseRef metadata match the actual accepted source"
   for (axis, key, name) in #[("statement", cleanKey, label "clean"),
       ("proof", cleanKey, label "clean"), ("statement", admittedKey, label "admitted")] do
@@ -259,9 +276,9 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     "Synthetic slot injection also restores accepted state after failure"
   for (name, key) in #[(label "clean", cleanKey), (label "admitted", admittedKey)] do
     let some target ← Informal.Environment.getNode? name | throwError "Missing accepted target"
-    ensure (Informal.Graph.nodeLocalStatementFormalized {} target) "Both native statements are clean"
-    ensure ((registry.resultForRequirement key).complete == Informal.Graph.nodeLocalFormalized {} target)
-      "Supported theorem-local complete-proof policy agrees with canonical Graph/CodeHealth"
+    ensure (target.leanDecls.size == 1) "The accepted concept retains its native declaration inventory"
+    ensure ((registry.localResult key).complete == (name == label "clean"))
+      "Fresh native observations distinguish the clean theorem from its admitted counterpart"
   for (name, code) in #[(label "missing", "missing-target"), (label "definition", "unsupported-target"),
       (label "grouped", "unsupported-target"), (Name.mkSimple "adapter.nonroundtrip", "unsupported-identity")] do
     edgeError registry name code
@@ -437,16 +454,92 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     reprStr consumerBefore == reprStr (← Informal.Environment.getNode? (label "consumer")) &&
     consumerLabelsBefore == (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer))
     "Accepted source/membership and contracts remain read-only"
-  logInfo "Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained"
-  logInfo "Projection: dependency-only source checked locally; prose unassessed; Blueprint dependency still pending"
+  logInfo "Selector fixture: axes/metadata preserved; clean contract complete; admitted contract pending; unresolved edges retained"
+  logInfo "Projection fixture: native proof checked locally; prose unassessed; Blueprint dependency remains pending"
+
+-- Public consumer behavior comes from an ordinary capture of the imported
+-- source, not from the hand-assembled Registry used by the pure selector tests.
+-- First retain the full-batch rejection from the separate invalid-identity
+-- fixture, then isolate only that intentionally unsupported target below.
+run_cmd liftTermElabM do
+  match ← Informal.Realizations.Capture.capture with
+  | .error diagnostics =>
+    ensure (diagnostics.any (·.code == "unsupported-native-identity"))
+      s!"Full source capture must expose the invalid imported identity: {repr diagnostics}"
+  | .ok _ => throwError "Full source capture accepted the deliberately invalid imported identity"
+
+run_cmd liftTermElabM do
+  let snapshot ← captureWithoutUnsupportedTarget
+  let sourceLabel := label "source"
+  let some source ← Informal.Environment.getNode? sourceLabel
+    | throwError "Missing actual dependency source"
+  let statementRefs := source.statement.toArray.flatMap (·.deps)
+  let proofRefs := source.proof.toArray.flatMap (·.deps)
+  let capturedStatement := snapshot.uses.filter fun use =>
+    use.source == sourceLabel && use.realization.all (· == `lean) && use.facet == `statement
+  let capturedProof := snapshot.uses.filter fun use =>
+    use.source == sourceLabel && use.realization.all (· == `lean) && use.facet == `proof
+  let mergeReferences (uses : Array Informal.Realizations.Capture.SelectedUse) :=
+    Informal.Data.UseRef.mergeByLabel #[] (uses.map (·.reference))
+  unless mergeReferences capturedStatement == statementRefs && mergeReferences capturedProof == proofRefs do
+    throwError s!"Ordinary capture changed the real source uses: statement source={repr statementRefs}; " ++
+      s!"captured={repr (mergeReferences capturedStatement)}; proof source={repr proofRefs}; " ++
+      s!"captured={repr (mergeReferences capturedProof)}"
+  ensure (capturedStatement.any fun use => use.realization.isNone &&
+    use.reference.label == label "admitted" && use.reference.origin == .manual &&
+    use.reference.intent == .auxiliary)
+    "The shared manual statement edge retains its scope, origin, and intent"
+  ensure (capturedStatement.any fun use => use.realization.isNone &&
+    use.reference.label == label "clean" && use.reference.origin == .manual &&
+    use.reference.intent == .technical)
+    "A shared manual edge retains authored precedence metadata beside its automatic twin"
+  ensure (capturedStatement.any fun use => use.realization == some `lean &&
+    use.reference.label == label "clean" && use.reference.origin == .automatic)
+    "The inferred native dependency remains scoped to the Lean realization"
+  let assessment := snapshot.assessmentFor sourceLabel
+  ensure (assessment.nativeProofComplete && !assessment.requiredComplete)
+    "The source's checked native proof remains distinct from unfinished selected Blueprint requirements"
+  let findUse (uses : Array Informal.Realizations.Capture.SelectedUse) (facet target : Name) :=
+    uses.find? (fun use => use.facet == facet && use.reference.label == target)
+  match findUse capturedStatement `statement (label "clean") with
+  | some use =>
+    match use.selected with
+    | .ok keys =>
+      ensure (keys.size == 1 &&
+        (snapshot.registry.localResult keys[0]!).complete &&
+        (snapshot.registry.resultForRequirement keys[0]!).complete)
+        "The actual complete clean dependency selects its current native requirement"
+    | .error diagnostic => throwError "Clean target was not selected: {diagnostic.code}"
+  | none => throwError "Actual statement dependency to clean was lost"
+  match findUse capturedStatement `statement (label "admitted") with
+  | some use =>
+    match use.selected with
+    | .ok keys =>
+      ensure (keys.size == 1 && !(snapshot.registry.resultForRequirement keys[0]!).complete)
+        "The actual admitted dependency remains selected and unfinished"
+    | .error diagnostic => throwError "Admitted target was not selected: {diagnostic.code}"
+  | none => throwError "Actual statement dependency to admitted was lost"
+  for (uses, facet) in #[(capturedStatement, `statement), (capturedProof, `proof)] do
+    let some edge := findUse uses facet (label "missing")
+      | throwError "Actual unresolved {facet} dependency was dropped"
+    match edge.selected with
+    | .error diagnostic => do
+      ensure (diagnostic.code == "missing-target") "An unresolved source edge remains an explicit selection diagnostic"
+    | .ok _ => throwError "A missing target acquired a successful requirement"
+  let some unsupported := findUse capturedStatement `statement (Name.mkSimple "adapter.nonroundtrip")
+    | throwError "The real source's unsupported-identity dependency was dropped"
+  match unsupported.selected with
+  | .error diagnostic => do
+      ensure (diagnostic.code == "missing-target") "An intentionally omitted invalid target remains an unresolved edge"
+  | .ok _ => throwError "An unsupported native identity acquired a successful requirement"
 
 -- Several full reports and native negative checks share this guarded command.
 -- The larger test-only budget changes no provider or evaluation policy.
 set_option maxHeartbeats 1000000 in
 /--
-info: Dependencies: axes/metadata preserved; clean proof complete; admitted proof pending; unresolved edges retained
+info: Selector fixture: axes/metadata preserved; clean contract complete; admitted contract pending; unresolved edges retained
 ---
-info: Projection: dependency-only source checked locally; prose unassessed; Blueprint dependency still pending
+info: Projection fixture: native proof checked locally; prose unassessed; Blueprint dependency remains pending
 -/
 #guard_msgs in
 #eval runControls

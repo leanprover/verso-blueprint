@@ -21,11 +21,16 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
     let some ref := node.externalRefs[0]? | return false
     let some captured := statusCaptureBlueprint.model.nodes.find? (·.label == label) | return false
     let some capturedRef := captured.externalRefs[0]? | return false
+    let some assessment := captured.assessment | return false
+    let some graphNode := statusCaptureBlueprint.model.graph.nodes.find? (·.label == label) | return false
     let status := Graph.externalDeclProvedStatus {} ref
     let again := status.mergeConservative capturedRef.provedStatus
+    let expectedStatuses := Graph.statusesForAssessment captured.kind assessment
     return status == ref.provedStatus && again == status &&
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
-      !Graph.nodeLocalProofFormalized {} node &&
+      assessment.hasNativeDeclarations && !assessment.nativeProofComplete &&
+      graphNode.assessment == some assessment &&
+      graphNode.statementStatus == expectedStatuses.1 && graphNode.proofStatus == expectedStatuses.2 &&
       statusCaptureBlueprint.model.summary.incompleteDetails.any (fun item =>
         item.label == label && item.status == status)

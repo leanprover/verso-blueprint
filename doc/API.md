@@ -817,15 +817,16 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 3 identifies records produced under the private-constructor
-topology contract. It retains version 2's string-or-`null` node `previewKey`
-shape, but is semantically incompatible because version 2 did not guarantee
-that edges, group children, and variants agreed with authoritative nodes.
+Graph schema version 4 retains the private-constructor topology contract and adds
+`assessment` plus `actionableStage` to every node. An unresolved endpoint has no
+assessment. A captured node exposes local native statement/body checks, all-required
+completion, prerequisite completion and exact safe report details. Prose without
+an explicit check is unassessed; it is not an implicit proof obligation.
 Regenerate generated Blueprint output when adopting this revision; there is no
-version-2 compatibility path.
+older-schema compatibility path.
 
 Generated `edges` and group `children` are guaranteed projections of the
-authoritative node fields. The browser API recognizes version-3 records with
+authoritative node fields. The browser API recognizes version-4 records with valid node assessments/actionable stages,
 all top-level collections and a valid render-variant contract: `full` is first,
 variant keys are unique, and select/hover mappings target variants in the same
 record. It deliberately does not repeat Lean's graph finalization work. Lean's
@@ -1816,16 +1817,23 @@ This shares no negative cache across environments. External directive snapshots
 use this batch entrypoint, and snapshots preserve authored expected kinds when
 import visibility hides the original declaration kind.
 
-`VersoBlueprint.CodeHealth` provides the common `Informal.Graph.CodeHealth`
-projection used by graph status, heading UI, and CLI completeness. Its builder
-merges captured observations by canonical declaration name before counting;
-selecting an inline display cannot erase an external blocker. Facet rows retain
-their separate provenance. `codeHealthOfBlockSources` combines selected facets;
-`localStatementFormalized`, `localProofFormalized`, and `verdict` are the shared
-completion policy. An empty projection is unassociated and blocks both tracks.
-`presentDecls` and `hasAssociatedCode` are derived. Lean callers of the old axis
-and proof counters should use semantic completion/evidence predicates instead;
-`statementBlocked` and `anyGapCount` describe policy and present incompleteness.
+`Informal.Realizations.Capture.capture` collects ordinary accepted source registrations,
+checks their native declarations, admits the full candidate, and binds fresh
+observations to that same snapshot. It returns an admitted registry, selected
+uses and diagnostics; structural/import conflicts reject the whole capture.
+`Snapshot.assessmentFor` projects the existing evaluator for public consumers.
+The standard `BlueprintDocument` capture reuses this assessment for graph,
+summary, headings and manifest queries. `CodeHealth` is only declaration-panel
+inventory; its former completion helpers are removed.
+
+Native validity, independently authored expected propositions and prose
+correspondence are separate contracts. `nativeProofComplete` can be true while
+`requiredComplete` is false because a selected prerequisite or independent
+expected proposition is unfinished. `details` exposes actual subjects,
+requirements, observations and per-edge diagnostics without raw source or content
+bindings. Graph colors summarize the native track; use the explicit assessment
+for claims about other contracts. Source-only producer previews are uncaptured
+and cannot infer completion from retained declaration snapshots.
 
 Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
 and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
@@ -1838,23 +1846,27 @@ both known holes and verification gaps. Each gap includes its `location`,
 `declaration`, and `reason`. Direct/inherited/unknown origins and optional source
 counts stay in the known-sorry evidence.
 
-`lake exe vbp query status <label>` reads all statement and proof facet
-associations, including external and inline declarations. It returns that
-per-declaration evidence with facet provenance, aggregate `verdict` and
-`complete`, and separate `statementComplete` and `proofComplete` booleans.
-No declarations yields `unassociated` with all completion booleans false.
-`asOf: "generated-snapshot"` means the answer describes the last generation;
-query does not recheck sources. Build current sources before treating the result
-as current truth. `vbp check` validates persisted artifact consistency and does
-not certify freshness or a hole-free proof. Graph colors and work queues are
-planning projections; use declaration evidence for a completeness claim.
+`lake exe vbp query status <label>` returns `validation` separately from
+`sourceDeclarationSnapshots`. `validation.captured` distinguishes a captured
+assessment from unavailable validation. Captured data includes
+`hasNativeDeclarations`, `nativeStatementComplete`, `nativeProofComplete`,
+`requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
+and `details`. It replaces the former aggregate `verdict`, `complete`,
+`statementComplete`, `proofComplete` and `declarations` fields.
+`asOf: "captured-build"` means the answer describes the last generation;
+`"uncaptured"` means no assessment was supplied. Query does not recheck sources.
+Rebuild current sources before treating a persisted capture as current.
+`vbp check` validates artifact consistency, not freshness or a hole-free proof.
+Browser clients should consume the graph's exported `actionableStage` rather
+than reconstructing readiness from status colors.
 
 Generated data clients can use `resolveLabel(label, { facet: "statement" })`
 and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
 to read each entry's `codeData`. External associations carry `provedStatus` in
 `externalDecls`; inline facts carry it in
 `literateDeclarations.definedDefs` and `definedTheorems`. Missing external
-references (`present: false`) block completion. A declaration-keyed preview or
+references (`present: false`) are visible in this display inventory. The captured
+assessment is completion authority. A declaration-keyed preview or
 a missing facet is not an aggregate completeness certificate. `readManifestStatus`
 and `readHtmlCacheStatus` report loading state, not Lean proof status.
 
@@ -1863,6 +1875,6 @@ Source counts are obtained only after semantic analysis using
 
 The status payload migrated from `containsSorry: [...]` to
 `incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
-The internal manifest marker is now 11; the CLI rejects older generations.
+The internal manifest marker is now 12; the CLI rejects older generations.
 Regenerate persisted artifacts and handle both evidence arrays. The generated
 manifest schema validates the nested axes, origins, and verification reasons.

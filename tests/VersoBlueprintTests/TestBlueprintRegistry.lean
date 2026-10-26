@@ -4,8 +4,6 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
-import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 import VersoBlueprintTests.BlueprintAutoDeps.Preview
 import VersoBlueprintTests.BlueprintExternalMarkup
 import VersoBlueprintTests.BlueprintGraft
@@ -40,8 +38,6 @@ private def curatedTestBlueprintDoc? (slug : String) : Option Informal.Blueprint
   | "rust-inline-preview" => some Verso.VersoBlueprintTests.BlueprintRustCode.rustCatalogDocBlueprint
   | "external-markup-source" => some Verso.VersoBlueprintTests.BlueprintExternalMarkup.externalMarkupShowcaseDocBlueprint
   | "metadata-panel" => some Verso.VersoBlueprintTests.BlueprintMetadataPanel.metadataPanelDocBlueprint
-  | "direct-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Direct.directImportedDuplicateDocBlueprint
-  | "transitive-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive.transitiveImportedDuplicateDocBlueprint
   | "imported-preview-source" => some Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.importedPreviewSourceDocBlueprint
   | "lean-auto-deps" => some Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview.autoDepsPreviewDocBlueprint
   | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintGraft.manualSideBySideGraftDocBlueprint

@@ -1594,19 +1594,29 @@ missing-reference and missing-declaration problems in the warning channel.
 Completion blocking policy is centralized in one place so summary pages, graph
 coloring, and other status views do not silently drift apart.
 
-`CodeHealth.lean` owns the shared declaration projection used by graph status,
-heading UI, and CLI status queries. It conservatively merges raw observations
-by canonical name before counting or selecting a completion verdict. Rendering
-may choose one display source while facet rows retain their captured provenance;
-neither choice changes completion. Presence and association are derived from
-the canonical counts, and no axis-reference count authorizes a completion claim.
-Heading track text uses the same statement/proof completion predicates as CLI.
+`Realizations.Capture` collects ordinary source registrations and native associations,
+admits the complete model, and binds fresh native observations to that same
+snapshot. Graph, summary, headings and CLI use `Snapshot.assessmentFor` and its
+safe detailed report. The old CodeHealth completion helpers and recursive graph
+closure evaluator are removed. CodeHealth remains declaration-panel inventory;
+retained display statuses cannot supply current completion evidence.
 
-Definitions and theorem-like nodes intentionally differ:
+Native validity, independently specified propositions and prose correspondence
+remain distinct. A local native proof may pass while required Blueprint
+dependencies are unfinished. Prose without an explicit assessment is unassessed.
+Source-only previews are uncaptured until supplied with a completed snapshot.
+The public graph exports actionability; browser and CLI clients do not infer it
+from colors or duplicate prerequisite evaluation.
 
-- definitions are blocked by both type-side and body-side gaps
-- theorem-like statements are blocked only by statement/type gaps
-- proof completion is blocked by any gap
+Native checking uses each selected declaration's actual kind:
+
+- a definition's statement includes its value, so body-side gaps block it;
+- theorem statements require their types to be valid;
+- native proof completion requires complete checked dependency coverage.
+
+These native checks do not assert that a theorem proves an independently authored
+expected proposition or corresponds to informal prose. Detailed assessments expose
+the actual checked subjects and requirements.
 
 ### Precision and Warning Policy
 
@@ -1614,9 +1624,9 @@ Inline code has finer-grained provenance than external declaration snapshots.
 The UI should expose useful external information without pretending it has the
 same precision as local literate code.
 
-Warning conditions such as missing external declarations, unresolved Blueprint
-references, and Lean-only-without-informal-statement are modeled separately
-from fill colors. Incomplete associated Lean code is instead promoted into the
+Unresolved Blueprint references remain graph warnings. Missing native
+declarations and source associations are assessment diagnostics; missing informal
+coverage is informational summary data, not an automatic validation obligation. Incomplete associated Lean code is instead promoted into the
 proof-fill track so the graph can distinguish "not started", "started but
 incomplete", "locally complete", and "complete with dependencies" directly in
 the node fill.

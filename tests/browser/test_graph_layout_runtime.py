@@ -209,6 +209,23 @@ class TestGraphLayoutRuntime:
                 const manifestSample = manifestGraph
                     ? manifestGraph.nodes.find((node) => node.label === "used_target") || null
                     : null;
+                const nativeAssessment = (label) => {
+                    const node = pageGraph.nodes.find((candidate) => candidate.label === label) || null;
+                    const assessment = node ? node.assessment : null;
+                    const diagnostics = assessment?.details?.sourceDiagnostics || [];
+                    return assessment ? {
+                        hasNativeDeclarations: assessment.hasNativeDeclarations,
+                        nativeStatementComplete: assessment.nativeStatementComplete,
+                        nativeProofComplete: assessment.nativeProofComplete,
+                        requiredComplete: assessment.requiredComplete,
+                        sourceParseFailed: diagnostics.some((diagnostic) => diagnostic.code === "source-parse-failed")
+                    } : null;
+                };
+                const fixtureAssessments = Object.fromEntries([
+                    "panel_external_definition",
+                    "panel_external_theorem",
+                    "panel_external_warning"
+                ].map((label) => [label, nativeAssessment(label)]));
                 const topologySnapshot = (graph) => JSON.stringify({
                     nodes: graph.nodes.map((node) => ({
                         label: node.label,
@@ -243,6 +260,10 @@ class TestGraphLayoutRuntime:
                     manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
                     pageSchemaVersion: pageGraph.schemaVersion,
                     manifestSchemaVersion: manifestGraph ? manifestGraph.schemaVersion : 0,
+                    sampleHasAssessment: !!sample && sample.assessment !== null && typeof sample.assessment === "object",
+                    sampleHasActionableStage: !!sample &&
+                        Object.prototype.hasOwnProperty.call(sample, "actionableStage") &&
+                        (sample.actionableStage === null || ["statement", "proof"].includes(sample.actionableStage)),
                     dataMatches: manifestGraph
                         ? JSON.stringify(pageGraph) === JSON.stringify(manifestGraph)
                         : false,
@@ -253,7 +274,8 @@ class TestGraphLayoutRuntime:
                     sampleTitle: sample ? sample.title : "",
                     sampleHref: sample ? sample.href : "",
                     manifestSampleTitle: manifestSample ? manifestSample.title : "",
-                    manifestSampleHref: manifestSample ? manifestSample.href : ""
+                    manifestSampleHref: manifestSample ? manifestSample.href : "",
+                    fixtureAssessments
                 };
                 """
             )
@@ -272,8 +294,10 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestNodes"] == graph_data["pageNodes"]
         assert graph_data["manifestEdges"] == graph_data["pageEdges"]
         assert graph_data["manifestGroups"] == graph_data["pageGroups"]
-        assert graph_data["pageSchemaVersion"] == 3
-        assert graph_data["manifestSchemaVersion"] == 3
+        assert graph_data["pageSchemaVersion"] == 4
+        assert graph_data["manifestSchemaVersion"] == 4
+        assert graph_data["sampleHasAssessment"]
+        assert graph_data["sampleHasActionableStage"]
         assert graph_data["topologyMatches"]
         assert graph_data["dataMatches"], "page and manifest graph data must agree, including preview availability"
         assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
@@ -281,6 +305,22 @@ class TestGraphLayoutRuntime:
         assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"
         assert graph_data["manifestSampleTitle"] == graph_data["sampleTitle"]
         assert graph_data["manifestSampleHref"] == graph_data["sampleHref"]
+        for label in ("panel_external_definition", "panel_external_theorem"):
+            assessment = graph_data["fixtureAssessments"][label]
+            assert assessment is not None, f"missing captured assessment for {label}"
+            assert assessment["hasNativeDeclarations"] is True
+            assert assessment["nativeStatementComplete"] is True
+            assert assessment["nativeProofComplete"] is True
+            assert assessment["requiredComplete"] is True
+            assert assessment["sourceParseFailed"] is False
+
+        admitted = graph_data["fixtureAssessments"]["panel_external_warning"]
+        assert admitted is not None, "missing captured assessment for the admitted theorem"
+        assert admitted["hasNativeDeclarations"] is True
+        assert admitted["nativeStatementComplete"] is True
+        assert admitted["nativeProofComplete"] is False
+        assert admitted["requiredComplete"] is False
+        assert admitted["sourceParseFailed"] is False
 
     def test_public_graph_api_rejects_obsolete_or_malformed_records(
         self, server: str, page: Page
@@ -308,34 +348,79 @@ class TestGraphLayoutRuntime:
                     groups: [],
                     variants
                 });
+                const assessment = {
+                    hasNativeDeclarations: true,
+                    hasAxiomLike: false,
+                    nativeStatementComplete: true,
+                    nativeProofComplete: false,
+                    requiredComplete: false,
+                    statementDependenciesComplete: true,
+                    proofDependenciesComplete: true,
+                    details: { assessment: {}, selectedUses: [], sourceDiagnostics: [] }
+                };
+                const node = {
+                    label: "node",
+                    title: "Node",
+                    displayLabel: "Node",
+                    kind: "theorem",
+                    parent: null,
+                    href: null,
+                    previewKey: null,
+                    statementUses: [],
+                    proofUses: [],
+                    assessment,
+                    actionableStage: "proof",
+                    statementStatus: "formalized",
+                    proofStatus: "ready",
+                    warnings: { unknownRef: false },
+                    visual: { shape: "ellipse", style: "filled", fillcolor: "#fff", color: "#000",
+                        penwidth: "1", fontcolor: "#000", peripheries: 1,
+                        gradientangle: null, tooltip: null }
+                };
                 const graphs = await graphModule.loadManifestGraphs(
                     "https://example.invalid/blueprint-manifest.json",
                     {
                         fetchJson: () => ({
                             graphs: [
-                                completeRecord(3, "graph:current", [fullVariant]),
-                                completeRecord(2, "graph:obsolete-schema", [fullVariant]),
-                                completeRecord(3, "graph:no-variants", []),
-                                completeRecord(3, "graph:blank-dot", [
+                                completeRecord(4, "graph:current", [fullVariant]),
+                                {
+                                    ...completeRecord(4, "graph:new-assessment", [fullVariant]),
+                                    nodes: [node]
+                                },
+                                {
+                                    ...completeRecord(4, "graph:missing-assessment", [fullVariant]),
+                                    nodes: [{ ...node, assessment: undefined }]
+                                },
+                                {
+                                    ...completeRecord(4, "graph:legacy-warning", [fullVariant]),
+                                    nodes: [{ ...node, warnings: { unknownRef: false, missingExternalDecl: false } }]
+                                },
+                                {
+                                    ...completeRecord(4, "graph:invalid-actionable-stage", [fullVariant]),
+                                    nodes: [{ ...node, actionableStage: "ready" }]
+                                },
+                                completeRecord(3, "graph:obsolete-schema", [fullVariant]),
+                                completeRecord(4, "graph:no-variants", []),
+                                completeRecord(4, "graph:blank-dot", [
                                     { ...fullVariant, dot: " " }
                                 ]),
-                                completeRecord(3, "graph:invalid-options", [
+                                completeRecord(4, "graph:invalid-options", [
                                     { ...fullVariant, options: { direction: "sideways", pack: false } }
                                 ]),
-                                completeRecord(3, "graph:invalid-pair", [
+                                completeRecord(4, "graph:invalid-pair", [
                                     { ...fullVariant, previewKeyByNodeId: [["node-only"]] }
                                 ]),
-                                completeRecord(3, "graph:duplicate-variant", [
+                                completeRecord(4, "graph:duplicate-variant", [
                                     fullVariant,
                                     { ...fullVariant, label: "Duplicate Full Graph" }
                                 ]),
-                                completeRecord(3, "graph:missing-full", [
+                                completeRecord(4, "graph:missing-full", [
                                     { ...fullVariant, key: "group", label: "Group View" }
                                 ]),
-                                completeRecord(3, "graph:unknown-variant-target", [
+                                completeRecord(4, "graph:unknown-variant-target", [
                                     { ...fullVariant, selectOnNodeId: [["node-id", "missing"]] }
                                 ]),
-                                completeRecord(3, "graph:duplicate-node-mapping", [
+                                completeRecord(4, "graph:duplicate-node-mapping", [
                                     {
                                         ...fullVariant,
                                         previewKeyByNodeId: [
@@ -345,7 +430,7 @@ class TestGraphLayoutRuntime:
                                     }
                                 ]),
                                 {
-                                    schemaVersion: 3,
+                                    schemaVersion: 4,
                                     key: "graph:incomplete-record",
                                     nodes: [],
                                     edges: [],
@@ -355,12 +440,17 @@ class TestGraphLayoutRuntime:
                         })
                     }
                 );
-                return graphs.map((graph) => graph.key);
+                return {
+                    keys: graphs.map((graph) => graph.key),
+                    actionableStage: graphs.find((graph) => graph.key === "graph:new-assessment")
+                        .nodes[0].actionableStage
+                };
                 """
             )
         )
 
-        assert keys == ["graph:current"]
+        assert keys["keys"] == ["graph:current", "graph:new-assessment"]
+        assert keys["actionableStage"] == "proof"
 
     def test_public_graph_api_can_render_copied_graph_block(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})

@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoBlueprint.Data
+import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Source.Data
 
 namespace Informal
@@ -240,6 +241,10 @@ structure BlockMetadata where
   prUrl : Option String := none
   /-- Tracking issue associated with this informal node, if any. -/
   issueUrl : Option String := none
+  /-- Current captured realization assessment. `none` means this rendering
+  projection has no captured snapshot; consumers must never infer completion
+  from the legacy declaration display payload in that case. -/
+  assessment : Option Realizations.NodeAssessment := none
 deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 
 /--
@@ -325,7 +330,8 @@ structure BlockData extends BlockMetadata, BlockPresentation where
 deriving FromJson, ToJson, Quote
 
 def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
-    (author : Option Data.AuthorInfo := none) : RenderNode := {
+    (author : Option Data.AuthorInfo := none)
+    (assessment : Option Realizations.NodeAssessment := none) : RenderNode := {
   label
   kind := node.kind
   initialCount := node.count
@@ -344,6 +350,7 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
   priority := node.priority
   prUrl := node.prUrl
   issueUrl := node.issueUrl
+  assessment
 }
 
 def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {

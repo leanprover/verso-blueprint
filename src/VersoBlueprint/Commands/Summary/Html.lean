@@ -27,7 +27,7 @@ open Informal Data Environment
 private def triageVisibleLimit : Nat := 10
 
 def statusCountsText (counts : EntryStatusCounts) : String :=
-  s!"completed: {counts.completed}; deps incomplete: {counts.completedDepsNo}; incomplete code: {counts.withIncompleteCode}; no proof: {counts.noProof}"
+  s!"completed: {counts.completed}; native checks complete, requirements incomplete: {counts.completedDepsNo}; incomplete code: {counts.withIncompleteCode}; no proof: {counts.noProof}"
 
 private def metadataPresentationOfPriorityItem (item : PriorityItem) : MetadataPresentation := {
   ownerText := item.ownerDisplayName

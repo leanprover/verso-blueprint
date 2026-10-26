@@ -4,17 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Data
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.PreviewKey
 import VersoBlueprint.PreviewCache
-import VersoBlueprint.CodeHealth
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.Realizations.Projection
 
 namespace Informal.Graph
 
 open Lean
-open Informal Data Environment
+open Informal Data
 
 /-!
 See `doc/DESIGN_RATIONALE.md` for the human-readable graph
@@ -23,6 +23,7 @@ status/completion and warning/color mapping rationale.
 
 /-- Upstream-aligned statement-track status (node border). -/
 inductive StatementStatus where
+  | unassessed
   | blocked
   | ready
   | formalized
@@ -31,6 +32,7 @@ deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
 /-- Upstream-aligned background status (proof-track for theorem-like nodes). -/
 inductive ProofStatus where
+  | unassessed
   | none
   | ready
   | incomplete
@@ -38,30 +40,8 @@ inductive ProofStatus where
   | formalizedWithAncestors
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
-/--
-The formalization track whose next step is currently actionable.
-
-For theorem-like nodes, ready or incomplete proof work takes precedence over a
-ready statement. Other node kinds expose only a ready statement step.
--/
-def actionableStageForStatuses? (kind : Data.NodeKind)
-    (statementStatus : StatementStatus) (proofStatus : ProofStatus) : Option String :=
-  if kind.isTheoremLike then
-    if proofStatus == .ready || proofStatus == .incomplete then
-      some "proof"
-    else if statementStatus == .ready then
-      some "statement"
-    else
-      none
-  else if statementStatus == .ready then
-    some "statement"
-  else
-    none
-
 structure WarningFlags where
   unknownRef : Bool := false
-  leanOnlyNoStatement : Bool := false
-  missingExternalDecl : Bool := false
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
 structure GraphNode (Ref : Type) where
@@ -273,10 +253,14 @@ structure NodeData where
   href : Option String := none
   /-- Selected manifest/cache-backed preview key for this node, if available. -/
   previewKey : Option PreviewKey := none
-  /-- Authoritative statement-side dependency data for this graph node. -/
+  /-- Deduplicated statement-axis topology; exact captured scopes and selectors are in `assessment.details`. -/
   statementUses : Array Data.UseRef := #[]
-  /-- Authoritative proof-side dependency data for this graph node. -/
+  /-- Deduplicated proof-axis topology; exact captured scopes and selectors are in `assessment.details`. -/
   proofUses : Array Data.UseRef := #[]
+  /-- The assessment produced from the same admitted capture as graph topology. -/
+  assessment : Option Realizations.NodeAssessment := none
+  /-- Canonical next step, omitted when a selected prerequisite blocks the relevant work. -/
+  actionableStage : Option String := none
   statementStatus : StatementStatus := .blocked
   proofStatus : ProofStatus := .none
   warnings : WarningFlags := {}
@@ -285,8 +269,7 @@ deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /-- The next actionable formalization stage represented by this finalized graph node. -/
 def NodeData.actionableStage? (node : NodeData) : Option String := do
-  let kind ← node.kind
-  actionableStageForStatuses? kind node.statementStatus node.proofStatus
+  node.actionableStage
 
 /-- Canonicalize duplicate dependency refs on each dependency axis. -/
 private def NodeData.normalizeDependencies (node : NodeData) : NodeData :=
@@ -311,7 +294,7 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 3
+private def graphDataSchemaVersion : Nat := 4
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -417,6 +400,7 @@ def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
   ]
 
 def statementBorderBlockedColor : String := "#f59e0b"
+def statementBorderUnassessedColor : String := "#6b7280"
 def statementBorderReadyColor : String := "#2563eb"
 def statementBorderFormalizedColor : String := "#16a34a"
 def statementBorderMathlibColor : String := "#14532d"
@@ -434,18 +418,18 @@ def unresolvedBorderColor : String := "#b91c1c"
 def unresolvedFontColor : String := "#7f1d1d"
 
 def statementStatusBlockedText : String := "blocked"
+def statementStatusUnassessedText : String := "unassessed"
 def statementStatusReadyText : String := "ready to formalize"
 def statementStatusFormalizedText : String := "formalized"
 def statementStatusMathlibText : String := "in Mathlib"
 
 def proofStatusNoneText : String := "not ready"
+def proofStatusUnassessedText : String := "unassessed"
 def proofStatusReadyText : String := "ready to formalize"
 def proofStatusIncompleteText : String := "Lean code incomplete"
 def proofStatusFormalizedText : String := "locally formalized"
 def proofStatusFormalizedAncestorsText : String := "locally formalized + dependencies complete"
 
-def warningLeanOnlyText : String := "Lean code present but informal statement is missing"
-def warningMissingExternalText : String := "Associated Lean declaration is missing from the current environment"
 def warningHiddenInGroupViewText : String := "Warning markers are not shown individually in Group View"
 def edgeMixedText : String := "Thicker solid/dashed: statement + proof deps"
 def groupEdgeMixedText : String := "Thicker solid: statement + proof deps"
@@ -458,6 +442,7 @@ private def legendItem (label : String) (swatch? : Option LegendSwatch := none) 
 def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
   let statementItems :=
     #[
+      legendItem "Unassessed" (some { borderColor := statementBorderUnassessedColor }),
       legendItem "Blocked" (some { borderColor := statementBorderBlockedColor }),
       legendItem "Ready to formalize" (some { borderColor := statementBorderReadyColor }),
       legendItem "Formalized" (some { borderColor := statementBorderFormalizedColor })
@@ -480,7 +465,7 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "statement"
       title := "Statement Border"
-      summary? := some "Border color tracks whether the statement is blocked, ready, or already formalized."
+      summary? := some "Border color tracks unassessed, blocked, ready, or natively checked statements."
       items := statementItems
     },
     {
@@ -488,6 +473,7 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
       title := "Proof Status"
       summary? := some "Fill color tracks proof readiness independently from statement progress."
       items := #[
+        legendItem proofStatusUnassessedText (some { background := proofBackgroundNeutralColor }),
         legendItem proofStatusNoneText (some { background := proofBackgroundNeutralColor }),
         legendItem proofStatusReadyText (some { background := proofBackgroundReadyColor }),
         legendItem proofStatusIncompleteText (some { background := proofBackgroundIncompleteColor }),
@@ -502,17 +488,7 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
       summary? := some "Border treatments flag missing references, missing declarations, or Lean-only nodes without an informal statement."
       items := #[
         legendItem "Unknown reference"
-          (some { background := unresolvedFillColor, borderColor := unresolvedBorderColor }),
-        legendItem "Lean code, informal statement missing"
-          (some {
-            background := definitionBackgroundColor
-            borderStyle := "dashed"
-          }),
-        legendItem "Missing external Lean declaration"
-          (some {
-            background := definitionBackgroundColor
-            borderStyle := "dotted"
-          })
+          (some { background := unresolvedFillColor, borderColor := unresolvedBorderColor })
       ]
     },
     {
@@ -555,133 +531,55 @@ def groupGraphLegendGroups : Array LegendGroup :=
     }
   ]
 
-def statementUses (node : Data.Node) : Array Data.UseRef :=
-  (node.statement.map (·.deps)).getD #[]
-
-def proofUses (node : Data.Node) : Array Data.UseRef :=
-  (node.proof.map (·.deps)).getD #[]
-
-def statementDeps (node : Data.Node) : Array Name :=
-  (statementUses node).map (fun useRef => (useRef.label : Name))
-
-def proofDeps (node : Data.Node) : Array Name :=
-  (proofUses node).map (fun useRef => (useRef.label : Name))
-
-def allDeps (node : Data.Node) : Array Name :=
-  statementDeps node ++ proofDeps node
-
-def nodeExternalDecls (node : Data.Node) : Array Data.ExternalRef :=
-  node.summaryExternalRefs
-
-def nodeHasAssociatedCode (node : Data.Node) : Bool :=
-  node.hasAssociatedCode
-
-def nodeHasMissingExternalDecls (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasMissingExternalDecls
-
-def nodeHasStatementBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasStatementGaps
-
-def nodeHasProofBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasAnyGaps
-
-def nodeHasIncompleteCode (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasAnyGaps
-
-def nodeLocalStatementFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localStatementFormalized
-
-def nodeLocalProofFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localProofFormalized
-
-def nodeLocalFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localFormalized node.kind
-
 def eraseDups (xs : Array Name) : Array Name :=
   xs.foldl (init := #[]) fun acc x => if acc.contains x then acc else acc.push x
 
-/-- Placeholder branch for future `(lean := "...")` Mathlib integration. -/
-def nodeInMathlib (_state : Environment.State) (_label : Name) (_node : Data.Node) : Bool :=
-  false
-
-inductive DepTraversal where
-  | statement
-  | proof
-  | both
-deriving Inhabited, Repr
-
-def depsForTraversal (mode : DepTraversal) (node : Data.Node) : Array Name :=
-  match mode with
-  | .statement => statementDeps node
-  | .proof => proofDeps node
-  | .both => allDeps node
-
-partial def depsClosureComplete (external : ExternalCodeStatus) (state : Environment.State) (mode : DepTraversal)
-    (roots : Array Name) (visited : NameSet := {}) : Bool :=
-  roots.all fun dep =>
-    if visited.contains dep then
-      true
-    else
-      match state.data.get? dep with
-      | none => false
-      | some node =>
-        if !nodeLocalFormalized external node then
-          false
-        else
-          let visited := visited.insert dep
-          depsClosureComplete external state mode (depsForTraversal mode node) visited
-
-def nodeAncestorsFormalized (external : ExternalCodeStatus) (state : Environment.State) (node : Data.Node) : Bool :=
-  depsClosureComplete external state .both (allDeps node)
-
-def statementStatus (external : ExternalCodeStatus) (state : Environment.State) (label : Name)
-    (node : Data.Node) : StatementStatus :=
-  if nodeInMathlib state label node then
-    .mathlib
-  else if nodeLocalStatementFormalized external node then
-    .formalized
-  else if depsClosureComplete external state .statement (statementDeps node) then
-    .ready
-  else
-    .blocked
-
-def proofStatus (external : ExternalCodeStatus) (state : Environment.State) (_label : Name)
-    (node : Data.Node) : ProofStatus :=
-  let health := nodeCodeHealth external node
-  if !node.kind.isTheoremLike then
-    if health.localStatementFormalized then
-      if nodeAncestorsFormalized external state node then .formalizedWithAncestors else .formalized
-    else if health.incompleteAssociatedCode then
-      .incomplete
-    else if depsClosureComplete external state .statement (statementDeps node) then
-      .ready
+/-- Project the captured realization assessment onto the compact graph statuses.
+The local native proof and selected Blueprint dependencies stay separate: a
+locally checked theorem remains visible as locally formalized when authored
+correspondence or another non-dependency requirement is still pending. -/
+def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.NodeAssessment) :
+    StatementStatus × ProofStatus := Id.run do
+  if !assessment.hasNativeDeclarations then
+    return (.unassessed, .unassessed)
+  let statement :=
+    if assessment.nativeStatementComplete then .formalized
+    else if assessment.statementDependenciesComplete then .ready
+    else .blocked
+  let proof :=
+    if assessment.nativeProofComplete then
+      if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
+        .formalizedWithAncestors
+      else
+        .formalized
+    else if kind.isTheoremLike then
+      if assessment.nativeStatementComplete && assessment.statementDependenciesComplete &&
+          assessment.proofDependenciesComplete then .ready else .incomplete
     else
       .none
-  else if health.localProofFormalized then
-    if nodeAncestorsFormalized external state node then .formalizedWithAncestors else .formalized
-  else if health.incompleteAssociatedCode then
-    .incomplete
-  else
-    let stmtDepsDone := depsClosureComplete external state .statement (statementDeps node)
-    let proofDepsDone := depsClosureComplete external state .proof (proofDeps node)
-    if stmtDepsDone && proofDepsDone then .ready else .none
+  return (statement, proof)
 
-def nodeWarnings (external : ExternalCodeStatus) (_state : Environment.State) (_label : Name)
-    (node : Data.Node) : WarningFlags :=
-  let health := nodeCodeHealth external node
-  {
-    unknownRef := false
-    leanOnlyNoStatement := health.hasAssociatedCode && node.statement.isNone
-    missingExternalDecl := health.hasAssociatedCode && health.hasMissingExternalDecls
-  }
+/-- A next step is available only after its captured prerequisites are complete.
+Prose/cross-language realizations without an authored native check remain
+unassessed and do not create an automatic task. -/
+def actionableStageForAssessment? (assessment : Realizations.NodeAssessment) : Option String :=
+  if !assessment.hasNativeDeclarations then none
+  else if !assessment.nativeStatementComplete then
+    if assessment.statementDependenciesComplete then some "statement" else none
+  else if !assessment.nativeProofComplete then
+    if assessment.proofDependenciesComplete then some "proof" else none
+  else
+    none
 
 def statementStatusBorderColor : StatementStatus → String
+  | .unassessed => statementBorderUnassessedColor
   | .blocked => statementBorderBlockedColor
   | .ready => statementBorderReadyColor
   | .formalized => statementBorderFormalizedColor
   | .mathlib => statementBorderMathlibColor
 
 def proofStatusFillColor (kind : Data.NodeKind) : ProofStatus → String
+  | .unassessed => proofBackgroundNeutralColor
   | .none =>
     if kind.isTheoremLike then proofBackgroundNeutralColor else definitionBackgroundColor
   | .ready => proofBackgroundReadyColor
@@ -697,34 +595,29 @@ def kindShape (kind : Data.NodeKind) : String :=
   if kind.isTheoremLike then "ellipse" else "box"
 
 def StatementStatus.toText : StatementStatus → String
+  | .unassessed => statementStatusUnassessedText
   | .blocked => statementStatusBlockedText
   | .ready => statementStatusReadyText
   | .formalized => statementStatusFormalizedText
   | .mathlib => statementStatusMathlibText
 
 def ProofStatus.toText : ProofStatus → String
+  | .unassessed => proofStatusUnassessedText
   | .none => proofStatusNoneText
   | .ready => proofStatusReadyText
   | .incomplete => proofStatusIncompleteText
   | .formalized => proofStatusFormalizedText
   | .formalizedWithAncestors => proofStatusFormalizedAncestorsText
 
-def warningTooltipParts (warnings : WarningFlags) : List String :=
-  (if warnings.leanOnlyNoStatement then [warningLeanOnlyText] else []) ++
-  (if warnings.missingExternalDecl then [warningMissingExternalText] else [])
+def warningTooltipParts (_warnings : WarningFlags) : List String := []
 
-private def styleTokensForWarnings (warnings : WarningFlags) : Array String :=
-  let tokens : Array String := #["filled"]
-  let tokens :=
-    if warnings.leanOnlyNoStatement then tokens.push "dashed" else tokens
-  let tokens :=
-    if warnings.missingExternalDecl then tokens.push "dotted" else tokens
-  tokens
+private def styleTokensForWarnings (_warnings : WarningFlags) : Array String :=
+  #["filled"]
 
 def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array Name)
     (parent? : Option Name)
     (statement : StatementStatus) (proof : ProofStatus) (warnings : WarningFlags)
-    (ref? : Option Ref) : GraphNode Ref :=
+    (ref? : Option Ref) (requirementsComplete? : Option Bool := none) : GraphNode Ref :=
   if warnings.unknownRef then
     {
       label
@@ -747,8 +640,13 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
     let baseFill := proofStatusFillColor kind proof
     let styleTokens := styleTokensForWarnings warnings
     let style := String.intercalate "," styleTokens.toList
+    let requirementTooltip := match requirementsComplete? with
+      | some true => ["Selected Lean requirements: complete"]
+      | some false => ["Selected Lean requirements: incomplete"]
+      | none => []
     let tooltipParts :=
-      [s!"Statement: {statement.toText}", s!"Proof: {proof.toText}"] ++ warningTooltipParts warnings
+      [s!"Statement: {statement.toText}", s!"Proof: {proof.toText}"] ++
+        requirementTooltip ++ warningTooltipParts warnings
     let tooltip? :=
       if tooltipParts.isEmpty then none else some (String.intercalate " | " tooltipParts)
     {
@@ -768,7 +666,12 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       ref?
     }
 
-def expandLabels (state : Environment.State) (roots : Array Name) : Array Name :=
+def capturedUses (snapshot : Realizations.Capture.Snapshot) (label facet : Name) :
+    Array Data.UseRef :=
+  Data.UseRef.mergeByLabel #[] <| (snapshot.uses.filter fun use =>
+    use.source == label && use.facet == facet).map (·.reference)
+
+private def expandLabels (snapshot : Realizations.Capture.Snapshot) (roots : Array Name) : Array Name :=
   Id.run <| do
     let mut queue : Array Name := eraseDups roots
     let mut enqueued : NameSet := queue.foldl (init := {}) fun acc label => acc.insert label
@@ -780,40 +683,35 @@ def expandLabels (state : Environment.State) (roots : Array Name) : Array Name :
       if seen.contains label then
         continue
       seen := seen.insert label
-      match state.data.get? label with
-      | none => pure ()
-      | some node =>
-        for dep in allDeps node do
+      for use in snapshot.uses do
+        if use.source == label then
+          let dep := use.reference.label
           if !enqueued.contains dep then
             queue := queue.push dep
             enqueued := enqueued.insert dep
     return queue
 
-def mkNode (external : ExternalCodeStatus) (state : Environment.State)
+def mkNode (snapshot : Realizations.Capture.Snapshot)
     (resolveRef? : Name → Option Ref) (label : Name) : GraphNode Ref :=
-  match state.data.get? label with
+  match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
-    let deps := statementDeps node
-    let nodeProofDeps := proofDeps node
-    let statement := statementStatus external state label node
-    let proof := proofStatus external state label node
-    let warnings := nodeWarnings external state label node
+    let deps := (capturedUses snapshot label `statement).map (·.label)
+    let nodeProofDeps := (capturedUses snapshot label `proof).map (·.label)
+    let assessment := snapshot.assessmentFor label
+    let (statement, proof) := statusesForAssessment node.kind assessment
+    let warnings : WarningFlags := {}
     let ref? := resolveRef? label
     mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
+      (some assessment.requiredComplete)
   | none =>
     let unresolvedWarnings : WarningFlags := { unknownRef := true }
-    mkStyledNode Data.NodeKind.definition label #[] #[] none .blocked .none unresolvedWarnings none
+    mkStyledNode Data.NodeKind.definition label #[] #[] none .unassessed .unassessed unresolvedWarnings none
 
-def build (state : Environment.State) (roots : Array Name) (resolveRef? : Name → Option Ref := fun _ => none) :
+def build (snapshot : Realizations.Capture.Snapshot) (roots : Array Name)
+    (resolveRef? : Name → Option Ref := fun _ => none) :
     Graph Ref :=
-  let labels := expandLabels state roots
-  let external : ExternalCodeStatus := {}
-  labels.map (mkNode external state resolveRef?)
-
-def buildWithExternal (state : Environment.State) (roots : Array Name)
-    (external : ExternalCodeStatus) (resolveRef? : Name → Option Ref := fun _ => none) : Graph Ref :=
-  let labels := expandLabels state roots
-  labels.map (mkNode external state resolveRef?)
+  let labels := expandLabels snapshot roots
+  labels.map (mkNode snapshot resolveRef?)
 
 private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   let axes := #[]
@@ -972,44 +870,47 @@ private def groupDataForGraphFromMetadata (graph : Graph Ref) (groups : Array Gr
     |>.qsort fun a b =>
       a.title < b.title || (a.title == b.title && a.label.toString < b.label.toString)
 
-private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) : String :=
+private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) (fallback : String) : String :=
   match resolveTitle? label with
   | some title =>
     let title := title.trimAscii.toString
-    if title.isEmpty then label.toString else title
-  | none => label.toString
+    if title.isEmpty then fallback else title
+  | none =>
+    let fallback := fallback.trimAscii.toString
+    if fallback.isEmpty then label.toString else fallback
 
-def nodeDataWithExternal
-    (external : ExternalCodeStatus)
-    (state : Environment.State)
+def nodeData
+    (snapshot : Realizations.Capture.Snapshot)
     (resolveHref? : Name → Option String)
     (resolveTitle? : Name → Option String)
     (graphNode : GraphNode String) : NodeData :=
   let label := graphNode.label
-  match state.data.get? label with
+  match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
-    let statement := statementStatus external state label node
-    let proof := proofStatus external state label node
-    let warnings := nodeWarnings external state label node
+    let assessment := snapshot.assessmentFor label
+    let (statement, proof) := statusesForAssessment node.kind assessment
+    let title := nodeTitle resolveTitle? label node.title
     {
       label
-      title := nodeTitle resolveTitle? label
-      displayLabel := graphNode.displayLabel
+      title
+      displayLabel := title
       kind := some node.kind
       parent := node.parent
       href := resolveHref? label
       previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
-      statementUses := statementUses node
-      proofUses := proofUses node
+      statementUses := capturedUses snapshot label `statement
+      proofUses := capturedUses snapshot label `proof
+      assessment := some assessment
+      actionableStage := actionableStageForAssessment? assessment
       statementStatus := statement
       proofStatus := proof
-      warnings
+      warnings := {}
       visual := NodeVisual.ofGraphNode graphNode
     }
   | none =>
     {
       label
-      title := nodeTitle resolveTitle? label
+      title := nodeTitle resolveTitle? label label.toString
       displayLabel := graphNode.displayLabel
       kind := none
       parent := none
@@ -1017,32 +918,25 @@ def nodeDataWithExternal
       previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
       statementUses := #[]
       proofUses := #[]
-      statementStatus := .blocked
-      proofStatus := .none
+      assessment := none
+      actionableStage := none
+      statementStatus := .unassessed
+      proofStatus := .unassessed
       warnings := { unknownRef := true }
       visual := NodeVisual.ofGraphNode graphNode
     }
 
-def buildModelWithExternal
-    (state : Environment.State)
+def buildModel
+    (snapshot : Realizations.Capture.Snapshot)
     (roots : Array Name)
-    (external : ExternalCodeStatus)
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
     (groupTitles : Array (Name × String) := #[]) : GraphModel :=
-  let graph := buildWithExternal state roots external resolveHref?
+  let graph := build snapshot roots resolveHref?
   {
-    nodes := graph.map (nodeDataWithExternal external state resolveHref? resolveTitle?)
+    nodes := graph.map (nodeData snapshot resolveHref? resolveTitle?)
     groupMetadata := groupMetadataFromTitles groupTitles
   }
-
-def buildModel
-    (state : Environment.State)
-    (roots : Array Name)
-    (resolveHref? : Name → Option String := fun _ => none)
-    (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
-  buildModelWithExternal state roots {} resolveHref? resolveTitle? groupTitles
 
 def escapeDotString (s : String) : String :=
   let s := s.replace "\\" "\\\\"

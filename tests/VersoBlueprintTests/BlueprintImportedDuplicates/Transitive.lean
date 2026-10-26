@@ -6,29 +6,27 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintImportedDuplicates.Reexport
 import VersoBlueprint
-import VersoManual
+import VersoBlueprint.Realizations.Capture
 
 open Lean
 open Informal
-open Verso
-open Verso.Genre.Manual
-
-set_option doc.verso true
+open Elab Command Term
+open Informal.Realizations
 
 namespace Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 
-/--
-error: Duplicate imported blueprint group label '«dup.imported.group»'
----
-error: Duplicate imported blueprint author id '«dup.imported.author»'
--/
-#guard_msgs in
-#docs (Genre.Manual) transitiveImportedDuplicateDoc "Transitive Imported Duplicates" :=
-:::::::
-{blueprint_summary}
-:::::::
-
-def transitiveImportedDuplicateDocBlueprint : Informal.BlueprintDocument := .capture transitiveImportedDuplicateDoc.toPart
+-- The public consumer now captures the imported source batch atomically. Group
+-- and author collisions reject the whole capture; no partial blueprint model
+-- is exposed from the otherwise readable document.
+run_cmd liftTermElabM do
+  match ← Capture.capture with
+  | .error diagnostics =>
+    unless diagnostics.any (fun diagnostic => diagnostic.code == "imported-conflict" &&
+        diagnostic.subject == (Name.mkSimple "dup.imported.group").toString) &&
+        diagnostics.any (fun diagnostic => diagnostic.code == "imported-conflict" &&
+          diagnostic.subject == (Name.mkSimple "dup.imported.author").toString) do
+      throwError "Atomic capture rejection omitted the imported group or author conflict: {repr diagnostics}"
+  | .ok _ => throwError "Conflicting imported author/group batch produced a Blueprint document"
 
 /-- info: true -/
 #guard_msgs in
