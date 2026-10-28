@@ -52,7 +52,11 @@ def parseSource (label : Name) (path text : String)
 
 private partial def declarations (command : Syntax) : Array Syntax :=
   if command.isOfKind ``Parser.Command.declaration then #[command]
-  else if command.isOfKind ``Parser.Command.«in» && command[0].isOfKind ``Parser.Command.set_option then
+  -- Lean's parser handles the scoped syntax of these command wrappers. Only
+  -- unwrap their enclosed command; do not search arbitrary syntax subtrees or
+  -- replace the declaration/name ranges with the enclosing wrapper's range.
+  else if command.isOfKind ``Parser.Command.«in» &&
+      (command[0].isOfKind ``Parser.Command.set_option || command[0].isOfKind ``Parser.Command.«open») then
     declarations command[2]
   else #[]
 

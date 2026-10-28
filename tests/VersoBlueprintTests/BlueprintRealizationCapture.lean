@@ -353,6 +353,66 @@ run_cmd liftTermElabM do
 -- Specifications remain independently authored, with all origin variants kept.
 def expectedTrue : Prop := True
 def expectedFalse : Prop := False
+
+namespace ScopedSource
+scoped notation "scopedSourceTruth" => True
+end ScopedSource
+
+open scoped _root_.RealizationCaptureFixture.ScopedSource in
+def expectedScoped : Prop := scopedSourceTruth
+
+set_option pp.universes true in
+def expectedOption : Prop := True
+
+open scoped _root_.RealizationCaptureFixture.ScopedSource in
+set_option pp.universes true in
+def expectedNested : Prop := scopedSourceTruth
+
+section
+open scoped _root_.RealizationCaptureFixture.ScopedSource
+def expectedModuleOpen : Prop := scopedSourceTruth
+end
+
+-- Actual owned propositions and native proof, through ordinary authoring and
+-- capture. Scoped syntax must preserve both original declaration/name ranges.
+run_cmd liftTermElabM do
+  let originalEnv ← getEnv
+  let text := (← getFileMap).source
+  for expected in #[``expectedTrue, ``expectedOption, ``expectedModuleOpen,
+      ``expectedScoped, ``expectedNested] do
+    try
+      Authoring.configureProject `blueprintFixtures
+      Authoring.expectNative `sourceWrapper (Name.mkSimple "capture.complete") expected
+      let snapshot ← obtain (← Capture.capture)
+      ensure ((snapshot.registry.resultForRequirement
+        (key "capture.complete" `RealizationCaptureFixture.complete `expectedProof)).complete)
+        s!"Owned expected proposition lost its exact source association: {expected}"
+      let some ranges ← findDeclarationRanges? expected
+        | throwError "Missing original expected-proposition ranges"
+      let commands ← obtain (← NativeSource.parseSource expected (← getFileName) text)
+      let declaration ← obtain (NativeSource.declarationAtRanges expected text
+        ranges.range ranges.selectionRange commands)
+      for (whole, selection) in #[
+          ({ ranges.range with charUtf16 := ranges.range.charUtf16 + 1 }, ranges.selectionRange),
+          (ranges.range, { ranges.selectionRange with charUtf16 := ranges.selectionRange.charUtf16 + 1 })] do
+        match NativeSource.declarationAtRanges expected text whole selection commands with
+        | .error issue =>
+          ensure (issue.code == "source-association-unavailable")
+            "Scoped lookup changed range-mismatch diagnostics"
+        | .ok _ => throwError "Scoped declaration bypassed exact original/name ranges"
+      match NativeSource.declarationAtRanges expected text ranges.range ranges.selectionRange
+          (commands ++ commands) with
+      | .error issue =>
+        ensure (issue.code == "ambiguous-docstring")
+          "Scoped lookup lost ambiguity rejection"
+      | .ok _ => throwError "Duplicated scoped declaration was accepted"
+      let synthetic := declaration.rewriteBottomUp fun stx =>
+        stx.setInfo (.synthetic (stx.getPos?.getD 0) (stx.getTailPos?.getD 0) true)
+      ensure (!(NativeSource.declarationAtRanges expected text ranges.range ranges.selectionRange
+        #[synthetic]).isOk) "Scoped declaration accepted synthetic source positions"
+    finally
+      setEnv originalEnv
+
 run_cmd liftCoreM <| Authoring.configureProject `blueprintFixtures
 run_cmd liftCoreM <| Authoring.expectNative `expectedComplete (Name.mkSimple "capture.complete") `RealizationCaptureFixture.expectedTrue
 
