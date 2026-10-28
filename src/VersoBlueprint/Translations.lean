@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Validation
+import VersoBlueprint.Util.Merkle
+import VersoBlueprint.Validation.BindingEncoding
 
 /-! Bounded pure registry/admission and one validation projection. This module is
 not installed into the existing Blueprint environment or graph. Its provider
@@ -279,53 +281,108 @@ private def Registry.subjectRealizations (r : Registry) (subject : Subject) : Ar
   | _, some key => (r.translation? key).map (fun t => (t.source ++ t.target).map (·.realization)) |>.getD #[]
   | _, _ => #[]
 
-/-- Exact canonical structured binding. Includes selected endpoint documents and
-the connected contracts/goals, never evidence, time, or producer replay order.
-Whole participating documents deliberately give conservative invalidation. -/
-private def Registry.computeBindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding := do
-  let _ ← r.requirement? key
-  let mut todo := #[key]
-  let mut seen : Std.HashSet RequirementKey := {}
-  while !todo.isEmpty do
-    let current := todo.back!
-    todo := todo.pop
-    if seen.contains current then continue
-    seen := seen.insert current
-    if let some req := r.requirement? current then
-      let parent := match req.key.subject.translation?, req.key.subject.realization? with
-        | some owner, _ => r.requiredFor (.translation owner)
-        | _, some owner => r.requiredFor (.realization owner)
-        | _, _ => #[]
-      todo := todo ++ req.prerequisites ++ r.requiredFor req.key.subject ++ parent
-  -- Preserve the existing canonical inventory order and exact binding semantics.
-  let requirements := r.requirements.filter (fun req => seen.contains req.key)
-  let subjects := canonical (requirements.map (·.key.subject))
-  let translationKeys := canonical (subjects.filterMap (·.translation?))
-  let realizationKeys := canonical (subjects.flatMap (r.subjectRealizations ·))
-  let realizations := r.realizations.filter (fun value => realizationKeys.contains value.key)
-  let witnesses := requirements.filterMap fun req => match req.expected with
-    | .proof _ witness => some witness
-    | _ => none
-  let objects := r.objects.filter fun object => witnesses.contains object.key ||
-    realizations.any (·.declarations.any (·.object == object.key))
-  let documentKeys := canonical <| realizations.flatMap (fun value => value.facets.flatMap (·.documents)) ++
-    objects.filterMap (·.document) ++ requirements.flatMap (fun req => match req.expected with
-      | .proof goal _ => goal.documents
-      | _ => #[])
-  let semanticInputs := r.bindingInputs.filter fun input =>
-    subjects.contains input.subject || input.subject.realization?.any realizationKeys.contains ||
-    input.subject.translation?.any translationKeys.contains ||
-    (match input.subject with
-      | .declaration _ object => objects.any (·.key == object)
-      | _ => false)
-  return (Json.mkObj [
-    ("requirement", toJson key), ("contracts", toJson requirements),
-    ("realizations", toJson realizations),
-    ("objects", toJson (objects.map fun o => (o.key, o.document))),
-    ("translations", toJson (r.translations.filter (fun t => translationKeys.contains t.key))),
-    ("claims", toJson (r.claims.filter (fun c => translationKeys.contains c.key.translation))),
-    ("documents", toJson (r.documents.filter (fun d => documentKeys.contains d.key))),
-    ("semanticInputs", toJson semanticInputs)]).compress
+private instance : Hashable (Sum RequirementKey Subject) where
+  hash
+    | .inl key => mixHash 0 (hash key)
+    | .inr subject => mixHash 1 (hash subject)
+
+private def fingerprint (domain : String) (value : Json) : String :=
+  SHA256.tagged domain #[value.compress]
+
+private def encodeEndpoint (value : Endpoint) : Json :=
+  toJson (BindingEncoding.realizationKey value.realization, value.facets.map Vir.nameKey)
+
+private def encodeTranslation (value : Translation) : Json :=
+  toJson (BindingEncoding.translationKey value.key, value.source.map encodeEndpoint,
+    value.target.map encodeEndpoint, value.required.map BindingEncoding.requirementKey)
+
+private def encodeClaim (value : Claim) : Json :=
+  toJson (BindingEncoding.claimKey value.key, value.interpretation, value.assumptions,
+    value.required.map BindingEncoding.requirementKey)
+
+private def bindingVertexIdentity : Sum RequirementKey Subject → String
+  | .inl key => (toJson ("requirement", BindingEncoding.requirementKey key)).compress
+  | .inr group => (toJson ("group", BindingEncoding.subject group)).compress
+
+private def setFingerprint (domain : String) (parts : Array String) : String :=
+  SHA256.tagged domain (canonical parts)
+
+/-- Merkle bindings retain the existing conservative selection: participating
+realizations, entire selected documents, witness/goal sources, connected parent
+contracts and prerequisites. Content is hashed once, never copied into closures.
+The representation is versioned and assumes SHA-256 collision resistance; old
+text bindings deliberately become stale. No evidence enters the digest graph. -/
+private def Registry.computeBindings (r : Registry) : Except String (Std.HashMap RequirementKey ContentBinding) := do
+  let documents := r.documents.foldl (fun out document =>
+    out.insert document.key (fingerprint "vbp.document.v1" (BindingEncoding.document document)))
+    ({} : Std.HashMap DocumentKey String)
+  let mut semanticRealizations : Std.HashMap RealizationKey (Array String) := {}
+  let mut semanticTranslations : Std.HashMap TranslationKey (Array String) := {}
+  let mut semanticObjects : Std.HashMap ObjectKey (Array String) := {}
+  for input in r.bindingInputs do
+    let digest := fingerprint "vbp.semantic-input.v1" (BindingEncoding.bindingInput input)
+    if let some key := input.subject.realization? then
+      semanticRealizations := semanticRealizations.insert key ((semanticRealizations[key]?.getD #[]).push digest)
+    if let some key := input.subject.translation? then
+      semanticTranslations := semanticTranslations.insert key ((semanticTranslations[key]?.getD #[]).push digest)
+    if let .declaration _ key := input.subject then
+      semanticObjects := semanticObjects.insert key ((semanticObjects[key]?.getD #[]).push digest)
+  let objects := r.objects.foldl (fun out object =>
+    out.insert object.key <| SHA256.tagged "vbp.bound-object.v1" <|
+      #[fingerprint "vbp.object-source.v1" (toJson (BindingEncoding.objectKey object.key, object.document.map BindingEncoding.documentKey)),
+        setFingerprint "vbp.object-semantics.v1" (semanticObjects[object.key]?.getD #[])] ++
+      object.document.toArray.map (fun key => documents[key]!))
+    ({} : Std.HashMap ObjectKey String)
+  let objectDigest (key : ObjectKey) := objects[key]?.getD (fingerprint "vbp.absent-object.v1" (BindingEncoding.objectKey key))
+  let realizations := r.realizations.foldl (fun out realization =>
+    out.insert realization.key <| SHA256.tagged "vbp.bound-realization.v1" #[
+      fingerprint "vbp.realization.v1" (BindingEncoding.realization realization),
+      setFingerprint "vbp.realization-semantics.v1" (semanticRealizations[realization.key]?.getD #[]),
+      setFingerprint "vbp.realization-documents.v1" (realization.facets.flatMap (·.documents) |>.map (documents[·]!)),
+      setFingerprint "vbp.realization-objects.v1" (realization.declarations.map (fun item => objectDigest item.object))])
+    ({} : Std.HashMap RealizationKey String)
+  let mut claims : Std.HashMap TranslationKey (Array String) := {}
+  for claim in r.claims do
+    claims := claims.insert claim.key.translation ((claims[claim.key.translation]?.getD #[]).push
+      (fingerprint "vbp.claim.v1" (encodeClaim claim)))
+  let translations := r.translations.foldl (fun out translation =>
+    out.insert translation.key <| SHA256.tagged "vbp.bound-translation.v1" #[
+      fingerprint "vbp.translation.v1" (encodeTranslation translation),
+      setFingerprint "vbp.translation-claims.v1" (claims[translation.key]?.getD #[]),
+      setFingerprint "vbp.translation-semantics.v1" (semanticTranslations[translation.key]?.getD #[])])
+    ({} : Std.HashMap TranslationKey String)
+  let mut payloads : Std.HashMap RequirementKey String := {}
+  -- Shared contract-group vertices avoid copying a parent's entire requirement
+  -- list onto every member. These cycles are binding scope, not proof cycles.
+  let mut groups : Std.HashSet Subject := {}
+  let mut edges : Std.HashMap (Sum RequirementKey Subject) (Array (Sum RequirementKey Subject)) := {}
+  for requirement in r.requirements do
+    let subject := requirement.key.subject
+    let mut parts := #[fingerprint "vbp.requirement.v1" (BindingEncoding.requirement requirement),
+      setFingerprint "vbp.requirement-realizations.v1" ((r.subjectRealizations subject).map (realizations[·]!))]
+    if let some key := subject.translation? then parts := parts.push translations[key]!
+    if let .proof goal witness := requirement.expected then
+      parts := parts ++ #[objectDigest witness,
+        setFingerprint "vbp.goal-documents.v1" (goal.documents.map (documents[·]!))]
+    payloads := payloads.insert requirement.key (SHA256.tagged "vbp.binding-local.v1" parts)
+    let parent : Option Subject := match subject.translation?, subject.realization? with
+      | some owner, _ => some (.translation owner)
+      | _, some owner => some (.realization owner)
+      | _, _ => none
+    groups := groups.insert subject
+    if let some parent := parent then groups := groups.insert parent
+    edges := edges.insert (.inl requirement.key)
+      (requirement.prerequisites.map Sum.inl ++ #[.inr subject] ++ parent.toArray.map Sum.inr)
+  for group in groups do
+    edges := edges.insert (.inr group) ((r.requiredFor group).map Sum.inl)
+  let vertices := r.requirements.map (fun req => Sum.inl req.key) ++ groups.toArray.map Sum.inr
+  let payload : Sum RequirementKey Subject → String
+    | .inl key => payloads[key]!
+    | .inr group => fingerprint "vbp.binding-group.v1" (BindingEncoding.subject group)
+  let graph ← Merkle.graph vertices bindingVertexIdentity payload (edges[·]!)
+  return graph.fold (init := {}) fun result key digest => match key with
+    | .inl key => result.insert key ("vbp-binding-sha256-v1:" ++ digest)
+    | .inr _ => result
 
 /-- Exact bindings are derived once from this immutable admitted input. No
 provider state, persistence or independent source of semantic truth is cached. -/
@@ -541,10 +598,9 @@ def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
   let requiredIndex := subjects.foldl (fun out subject => out.insert subject (r.computeRequiredFor subject))
     ({} : Std.HashMap Subject (Array RequirementKey))
   let r := { r with requiredIndex }
-  let bindings := r.requirements.foldl (fun out req =>
-    match r.computeBindingFor req.key with
-    | some binding => out.insert req.key binding
-    | none => out) ({} : Std.HashMap RequirementKey ContentBinding)
+  let bindings ← match r.computeBindings with
+    | .ok bindings => pure bindings
+    | .error message => return .error #[{ code := "invalid-binding-graph", subject := "Blueprint", message }]
   let r := { r with bindings }
   let localValues := r.requirements.foldl (fun out req => out.insert req.key (r.computeLocalResult req.key))
     ({} : Std.HashMap RequirementKey Result)

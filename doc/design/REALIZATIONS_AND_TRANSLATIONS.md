@@ -1336,3 +1336,80 @@ realizations, default-producer migration, and the narrow first-phase scope.
 Implementation and focused regression work can use Sol, with another independent
 review after the first complete vertical slice. Model choices are execution
 recommendations, not part of the public data contract.
+
+## Shared semantic fingerprints (bounded prototype)
+
+The FIR failure exposed a representation defect: serializing expression trees
+and copying a declaration closure into every binding destroys sharing. Replace
+that encoding with two Merkle graphs, without changing the authoring workflow,
+adding a store, persisting native success, or replacing the checker.
+
+| Input/change | Freshness rule |
+| --- | --- |
+| Checked imported type or available body changes | Invalidate dependent semantic fingerprints and selected evidence, even if local source is unchanged. |
+| Checked dependency body is hidden/unavailable | Report unavailable; an old fingerprint or footprint cannot establish current semantics. |
+| Selected source document changes | Invalidate conservatively on the entire participating document, as before. |
+| Expected goal, witness, endpoint, interpretation, assumptions, or selected prerequisite changes | Invalidate the connected requirement binding. |
+| Evidence, producer replay order, or unrelated declaration changes | Do not change the selected binding. |
+| Lean expression metadata changes | Ignore metadata for semantic identity: it is definitionally irrelevant and can contain source syntax. Independently bound source bytes still invalidate normally. |
+| Compiler or provider implementation changes | Invalidate through the compiler/provider fingerprint. |
+
+This first step retains conservative body-closure binding for native source and
+correspondence. It does not yet narrow statement-only reviews to fewer inputs.
+Native statement checks, completeness checks, independent expected-proposition
+checks, and prose reviews retain distinct requirements and outcomes. Native
+checks still execute afresh; a fingerprint never establishes a proof or review.
+
+Expression fingerprints hash constructor tags, scalar fields and child
+fingerprints. A pointer-keyed memo table retains each visited expression, so DAG
+sharing is preserved. Pointer identities never enter a digest, and different
+allocation/sharing produces the same digest. Open checked declarations fail
+closed. Binder names/annotations, universes, literals, projection indices and
+let flags are retained; expression metadata is the explicit normalization above.
+Expected-goal descriptors use this same structural fingerprint only after the
+provider's existing closedness, kernel and proposition checks. Actual expected
+versus witness matching remains Lean definitional equality plus kernel checking.
+
+Declaration fingerprints include checked type/body fingerprints, declaration
+shape, and named dependency edges. Strongly connected components handle mutual
+blocks and inductive/constructor back-links. An SCC hashes sorted member records
+and internal edges, plus external dependency fingerprints; each member receives
+its own identity-tagged digest. A session pins one checked environment and shares
+completed declaration/expression work across Capture jobs. It refuses reuse in a
+different environment snapshot (including extension-only changes). It is discarded after observation, with no
+cross-capture or persisted cache.
+
+Requirement bindings use the same SCC utility for the existing connected-contract
+graph (prerequisites, subject requirements and parent realization/translation
+requirements). Documents and semantic inputs are hashed once per admission;
+realization, object and translation records refer to their fingerprints. Evidence
+is excluded. Missing object observations remain missing rather than becoming a
+fabricated success or a fatal hash lookup. The two full admissions remain atomic.
+
+SHA-256 comes from the already pinned pure `Vir.Hash` module; no resource/runtime
+API, FFI, process or new package is introduced. Tagged JSON-array encodings delimit
+parts and domains unambiguously. Names within semantic records and binding
+payloads use the pinned `Vir.nameKey` structural encoding, not lossy display
+`Name.toString` or `Repr Name`. Binding records have explicit tagged encoders.
+Freshness explicitly assumes SHA-256 collision resistance; the kernel's proof
+checking does not rely on digest equality. Native semantic inputs become 64-byte
+hex digests and requirement bindings become `vbp-binding-sha256-v1:` plus 64 hex
+characters. Previous full-text bindings are intentionally stale; there is no
+compatibility fallback or historical receipt migration.
+
+The hashing pass retains storage proportional to visited expression DAG nodes,
+declarations/edges, input records and requirements/edges, plus original source
+bytes. SCC traversal is linear in graph size; canonical ordering adds sorting
+cost. Group vertices share a parent contract’s membership list rather than copying it
+onto every requirement. This is not a claim that all admission, source
+parsing or native checking is linear: existing canonicalization, full-source
+records and provider work remain separately measurable. No complete FIR resource
+or generation acceptance is inferred from this prototype.
+
+Validation proceeds under a verified whole-process-tree cgroup memory cap,
+zero swap and a wall-time cap, with serial experiments and retained logs. Known
+hash vectors, structural sharing, cycles, deterministic order, selected-input
+invalidation and ordinary imported type/body edit/rebuild/query controls precede
+larger workloads. A timeout or resource-limit event stops the experiment; it is
+not grounds to repeat it unchanged. Full FIR generation remains deferred until
+bounded evidence and independent review justify it.

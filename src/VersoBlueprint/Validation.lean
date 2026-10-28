@@ -113,8 +113,8 @@ def Observation.explanation : Observation → String
   | .review o => o.explanation
   | .check o => o.explanation
 
-/-- Exact canonical content/contract encoding returned by the registry. This is
-intentionally not a timestamp or a persistent artifact/snapshot identifier. -/
+/-- Versioned SHA-256 Merkle identity of the selected current inputs.
+Freshness assumes collision resistance; this string does not authenticate evidence. -/
 abbrev ContentBinding := String
 
 structure Evidence where

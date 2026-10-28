@@ -173,7 +173,8 @@ private def nativeDocstringFormat (name : Name) : CoreM (Except Diagnostic Name)
     | none, none => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
     | some _, some _ => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
-private def preparedAt (request : Request) (text : String) (ranges : DeclarationRanges) :
+private def preparedAt (request : Request) (text : String) (ranges : DeclarationRanges)
+    (semantics : NativeLean.SemanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   let some info := (← getEnv).checked.get.find? request.canonical
     | return .error <| issue "missing-declaration" request.canonical "Declaration is not in the current checked environment"
@@ -181,7 +182,7 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
   let kind : Data.NodeKind := match info with
     | .thmInfo _ => .theorem
     | _ => .definition
-  let semantics ← NativeLean.semanticContext request.project #[request.canonical]
+  let semantics ← semantics request.project #[request.canonical]
   return .ok {
     canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
     kind, moduleName := request.moduleName
@@ -190,7 +191,8 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
     semanticDiagnostics := match semantics with | .ok _ => #[] | .error issue => #[issue] }
 
 private def prepareSource (request : Request) (readSource : System.FilePath → IO String)
-    (wholeFile : Bool := true) :
+    (wholeFile : Bool := true)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic (Prepared × Array Syntax)) := do
   let name := request.canonical
   let ranges ← match checkedSourceRanges name request.range? request.selectionRange?
@@ -207,7 +209,7 @@ private def prepareSource (request : Request) (readSource : System.FilePath → 
   match declarationAtRanges name text ranges.range ranges.selectionRange commands with
   | .error diagnostic => return .error diagnostic
   | .ok _ => pure ()
-  return (← preparedAt request text ranges).map (·, commands)
+  return (← preparedAt request text ranges semantics).map (·, commands)
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a
 body-bearing definition. Source lookup neither checks proof validity nor asserts
@@ -215,10 +217,11 @@ a Blueprint association, expected goal or correspondence. Parsing stops after th
 checked declaration; unrelated later document syntax does not invalidate its
 association. Normal owning-module build remains a precondition, and both exact
 native ranges are still required. Documentation uses the stricter whole-file path. -/
-def prepare (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile) :
+def prepare (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
-  return (← prepareSource request readSource (wholeFile := false)).map (·.1)
+  return (← prepareSource request readSource (wholeFile := false) (semantics := semantics)).map (·.1)
 
 /-- Prepare a declaration from an original Blueprint Lean block. Reparse the
 original block contents with Verso's byte-preserving padding, then compare both
@@ -226,7 +229,8 @@ native ranges. Cached command syntax and rendered text cannot supply the source.
 The owning source must still equal the producer's original syntax input; ordinary
 source edits therefore require the normal owning-module rebuild. -/
 def prepareInline (request : Request) (code : Data.Code)
-    (readSource : System.FilePath → IO String := IO.FS.readFile) :
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   let name := request.canonical
@@ -263,18 +267,19 @@ def prepareInline (request : Request) (code : Data.Code)
     unless DeclarationRange.ofStringPositions map whole.start whole.stop == ranges.range &&
         DeclarationRange.ofStringPositions map selected.start selected.stop == ranges.selectionRange do
       return .error <| issue "source-association-unavailable" name "Inline native ranges disagree with the owning FileMap"
-  preparedAt request text ranges
+  preparedAt request text ranges semantics
 
 /-- Additionally require direct own native format metadata and one original
 modifier comment at the declaration's exact full/name ranges. Return raw authored
 bytes only; inherited/rendered text and nearby comments are not substitutes. -/
-def prepareDocumented (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile) :
+def prepareDocumented (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Documented) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   let format ← match ← nativeDocstringFormat request.canonical with
     | .ok format => pure format
     | .error diagnostic => return .error diagnostic
-  let (source, commands) ← match ← prepareSource request readSource with
+  let (source, commands) ← match ← prepareSource request readSource (semantics := semantics) with
     | .ok source => pure source
     | .error diagnostic => return .error diagnostic
   let rawDocstring ← match docCommentAtRanges request.canonical source.document.text

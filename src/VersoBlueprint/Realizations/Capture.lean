@@ -775,6 +775,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
       let text ← readFile physical
       snapshot.modify (·.push (physical, text))
       return text
+    let semantics ← NativeLean.newSemanticContext
     let results ← liftM <| IO.mkRef ({ } : Observations p)
     let providers : Providers TermElabM := {
       document := fun handle => do
@@ -785,7 +786,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         let job := p.native[handle]!
         let result ← match ← request job.context job.name (some job.association) none with
           | .error issue => pure (.error issue)
-          | .ok request => NativeSource.prepare request reader
+          | .ok request => NativeSource.prepare request reader semantics
         results.modify fun table => { table with native := table.native.push ⟨handle, result⟩ }
         return result
       inline := fun handle => do
@@ -794,7 +795,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
           | .leanInline code =>
             match ← request job.context job.name none (some job.source) with
             | .error issue => pure (.error issue)
-            | .ok request => NativeSource.prepareInline request code reader
+            | .ok request => NativeSource.prepareInline request code reader semantics
           | _ => pure (.error {
               code := "invalid-inline-request", subject := job.name.toString,
               message := "Inline request has no inline source payload" })
@@ -804,7 +805,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         let job := p.documented[handle]!
         let result ← match ← request job.context job.name (some job.association) none with
           | .error issue => pure (.error issue)
-          | .ok request => NativeSource.prepareDocumented request reader
+          | .ok request => NativeSource.prepareDocumented request reader semantics
         results.modify fun table => { table with documented := table.documented.push ⟨handle, result⟩ }
         return result
       check := fun handle => do
@@ -820,7 +821,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         return result
       expected := fun handle witness documents => do
         let job := p.expected[handle]!
-        let result ← NativeLean.check job.project witness (mkCIdent job.expected) documents
+        let result ← NativeLean.check job.project witness (mkCIdent job.expected) documents semantics
         results.modify fun table => { table with expected := table.expected.push ⟨handle, { witness, documents, result }⟩ }
         return result }
     -- Shared pure recipe resolves dependent arguments and ordered fatal checks.

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Check imported semantic invalidation through ordinary Lake builds.
 
-Only Runtime.lean receives a reversible byte edit; source/consumer bytes stay
-fixed. No mtimes/cache deletion, foreign artifacts or FIR changes are involved.
-Saved MOCK review bindings are temporary test controls, not a production API.
+Only Runtime.lean receives reversible body and type byte edits; source/consumer
+bytes stay fixed. No mtimes/cache deletion, foreign artifacts or FIR changes
+are involved. Saved MOCK review bindings are temporary test controls, not a
+production API.
 """
 
 import argparse
@@ -30,6 +31,8 @@ def main() -> None:
     marker = b"def runtimeMode : Nat := 0"
     if original.count(marker) != 1:
         raise RuntimeError("Runtime fixture is not at its exact baseline")
+    body_change = original.replace(marker, b"def runtimeMode : Nat := 1")
+    type_change = original.replace(marker, b"def runtimeMode : Int := 0")
     unchanged = {path: path.read_bytes() for path in (owner, consumer)}
     commands = []
 
@@ -60,19 +63,26 @@ def main() -> None:
             control = Path(temporary) / "mock-review-bindings.json"
             build("01-baseline-build")
             query("02-capture-current", "capture", control)
-            runtime.write_bytes(original.replace(marker, b"def runtimeMode : Nat := 1"))
+            restored_build = False
+            runtime.write_bytes(body_change)
             build("03-import-changed-build")
             query("04-saved-reviews-stale", "stale", control)
+            restored_build = False
+            runtime.write_bytes(type_change)
+            build("05-import-type-changed-build")
+            query("06-saved-reviews-stale-after-type-change", "stale", control)
+            restored_build = False
             runtime.write_bytes(original)
-            build("05-restored-build")
+            build("07-restored-build")
             restored_build = True
-            query("06-exact-inputs-current", "current", control)
+            query("08-exact-inputs-current", "current", control)
     finally:
         if runtime.read_bytes() != original:
             runtime.write_bytes(original)
         if not restored_build:
             # Restore both bytes and the normal owning build even on failure.
             build("recovery-restored-build")
+            restored_build = True
         receipt = {
             "runtime_restored": runtime.read_bytes() == original,
             "local_source_unchanged": all(path.read_bytes() == data for path, data in unchanged.items()),

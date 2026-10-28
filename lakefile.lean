@@ -72,6 +72,9 @@ lean_lib VersoBlueprintTests where
   -- Coarse test-library wiring keeps both non-Lean fixture inputs content tracked.
   needs := #[realizationFlagRocqSource, realizationFlagRocqProject]
   roots := #[
+    `VersoBlueprintTests.BlueprintSHA256,
+    `VersoBlueprintTests.BlueprintMerkle,
+    `VersoBlueprintTests.BlueprintSemanticFingerprint,
     `VersoBlueprintTests.BlueprintNativeFixture,
     `VersoBlueprintTests.ReferenceNameAdmission,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
