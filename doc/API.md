@@ -1892,6 +1892,11 @@ declarations. Progress counts are temporary work, not published evidence.
 Raw heartbeats use Lean's internal units (1,000 per user-facing heartbeat).
 This trace is independently opt-in; `trace.blueprint.capture` alone does not
 enable it. Tracing changes neither the budget nor rollback behavior.
+Observation converts ordinary exceptions to `capture-failed` diagnostics;
+Lean resource exceptions (including heartbeat exhaustion) and interrupts escape
+without returning partial observations. Its scope restores the environment,
+metavariables and info state on every exit, retaining traces for diagnosis.
+Providers share the caller's budget; observation does not reset it per request.
 The standard `BlueprintDocument` capture reuses this assessment for graph,
 summary, headings and manifest queries. `CodeHealth` is only declaration-panel
 inventory; its former completion helpers are removed.

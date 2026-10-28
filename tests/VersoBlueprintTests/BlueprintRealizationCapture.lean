@@ -599,4 +599,38 @@ run_cmd liftTermElabM do
   ensure (infoAfter.enabled == infoBefore.enabled && infoAfter.trees.size == infoBefore.trees.size)
     "Exception leaked info-state mutation"
 
+-- Inject Lean's runtime heartbeat exception: this tests the resource-failure
+-- boundary, not workload cost, and changes neither counters nor limits.
+run_cmd liftTermElabM do
+  let envBefore ← getEnv
+  let sentinel ← mkFreshExprMVar (mkConst ``True)
+  let metaBefore ← getMCtx
+  let infoBefore ← getInfoState
+  let tracesBefore ← getTraceState
+  let caught ← tryCatchRuntimeEx
+    (do
+      let _ : Except (Array Diagnostic) Unit ← Capture.withObservationState do
+        withOptions (·.setBool `trace.blueprint.capture.semantic true) do
+          withTraceNode `blueprint.capture.semantic (fun _ => pure "injected observation budget failure") do
+            modifyEnv (·.setMainModule `ObservationBudgetTemporary)
+            sentinel.mvarId!.assign (mkConst ``True.intro)
+            discard <| mkFreshExprMVar (mkConst ``True)
+            modifyInfoState fun state => { state with enabled := !state.enabled, trees := {} }
+            trace[blueprint.capture.semantic] "provider entered before injected resource exception"
+            Core.throwMaxHeartbeat `observationBudgetTest `maxHeartbeats 1000
+            return .ok ()
+      pure false)
+    (fun exception => do
+      ensure exception.isMaxHeartbeat "Wrong exception escaped observation"
+      pure true)
+  ensure caught "Observation converted a resource failure into provider output"
+  ensure (unsafe ptrEq envBefore (← getEnv)) "Resource failure leaked environment mutation"
+  ensure (!(← sentinel.mvarId!.isAssigned) && (← getMCtx).mvarCounter == metaBefore.mvarCounter)
+    "Resource failure leaked metavariable mutation"
+  let infoAfter ← getInfoState
+  ensure (infoAfter.enabled == infoBefore.enabled && infoAfter.trees.size == infoBefore.trees.size)
+    "Resource failure leaked info-state mutation"
+  ensure ((← getTraceState).traces.size > tracesBefore.traces.size)
+    "Resource failure restoration discarded diagnostic traces"
+
 end RealizationCaptureFixture

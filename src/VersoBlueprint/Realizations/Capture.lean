@@ -827,8 +827,10 @@ def evaluate (p : Plan) (observations : Observations p) : Except (Array Diagnost
   let collected ← (assemble providers p).run
   finish collected
 
-/-- Execute the observation phase with exception-to-diagnostic conversion and
-full elaborator-state restoration. This is also the scope used by `observe`. -/
+/-- Execute the observation phase, converting ordinary exceptions to diagnostics.
+Lean runtime resource exceptions and interrupts propagate; they cannot produce
+partial observations. Environment, metavariables and info state are restored on
+every exit, while traces are retained. This is also the scope used by `observe`. -/
 def withObservationState (action : TermElabM (Except (Array Diagnostic) α)) :
     TermElabM (Except (Array Diagnostic) α) := do
   let saved ← Term.saveState
