@@ -1885,6 +1885,13 @@ dependency. `Snapshot.diagnostics` is the aggregate view, including unused
 authored-document errors. Node assessments select errors by the originating
 node or complete document identity (language, project and path), never by
 matching diagnostic text. These diagnostics do not change completion policy.
+For bounded performance diagnosis, `set_option trace.blueprint.capture.semantic true`
+reports each semantic request's roots, elapsed time, raw heartbeat delta and
+committed cache sizes, with progress after the first and every 1,024 collected
+declarations. Progress counts are temporary work, not published evidence.
+Raw heartbeats use Lean's internal units (1,000 per user-facing heartbeat).
+This trace is independently opt-in; `trace.blueprint.capture` alone does not
+enable it. Tracing changes neither the budget nor rollback behavior.
 The standard `BlueprintDocument` capture reuses this assessment for graph,
 summary, headings and manifest queries. `CodeHealth` is only declaration-panel
 inventory; its former completion helpers are removed.

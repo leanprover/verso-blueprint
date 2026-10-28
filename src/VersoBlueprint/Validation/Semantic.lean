@@ -124,10 +124,10 @@ def Session.sizes (session : Session) : IO (Nat × Nat) := do
 private def unavailable (name : Name) (message : String) : Diagnostic :=
   { code := "semantic-context-unavailable", subject := name.toString, message }
 
-/-- Hash each newly reached declaration once. SCC condensation handles mutual
-blocks and inductive/constructor back-links. Missing/hidden bodies fail closed;
-no footprint or previous capture fills in unavailable semantics. -/
-def Session.context (session : Session) (project : Name) (roots : Array Name) :
+initialize registerTraceClass `blueprint.capture.semantic
+
+private def Session.collectContext (session : Session) (project : Name) (roots : Array Name)
+    (tracing : Bool) :
     CoreM (Except Diagnostic String) := do
   if project.isAnonymous || roots.isEmpty then
     return .error {
@@ -177,6 +177,9 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
       (body.map Expr.getUsedConstants).getD #[] ++ extra
     entries := entries.insert name (payload, dependencies)
     todo := todo ++ dependencies
+    if tracing && (entries.size == 1 || entries.size % 1024 == 0) then
+      trace[blueprint.capture.semantic]
+        "collected={entries.size} expressions={expressions.expressions.size} pending={todo.size} last={name}"
   if !entries.isEmpty then
     -- Pass only touched cached terminals, not the whole accumulated session.
     let terminals := entries.fold (init := {}) fun out _ (_, dependencies) =>
@@ -196,5 +199,29 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
   return .ok <| SHA256.tagged "lean.semantic-context.v1"
     (#[Vir.nameKey project, Lean.versionString, Lean.githash, session.provider] ++
       rootParts.map (fun (name, digest) => SHA256.tagged "lean.root.v1" #[name, digest]))
+
+/-- Hash each newly reached declaration once. SCC condensation handles mutual
+blocks and inductive/constructor back-links. Missing/hidden bodies fail closed;
+no footprint or previous capture fills in unavailable semantics. Optional tracing
+reports work and committed cache sizes, never source bytes or provider inputs. -/
+def Session.context (session : Session) (project : Name) (roots : Array Name) :
+    CoreM (Except Diagnostic String) := do
+  unless ← isTracingEnabledFor `blueprint.capture.semantic do
+    return ← session.collectContext project roots false
+  let before ← session.sizes
+  let started ← IO.monoMsNow
+  let heartbeats ← IO.getNumHeartbeats
+  letI : ExceptToTraceResult Exception (Except Diagnostic String) := ⟨fun
+    | .ok (.ok _) => .success
+    | .ok (.error _) => .failure
+    | .error _ => .error⟩
+  withTraceNode `blueprint.capture.semantic (fun result => do
+    let outcome := match result with
+      | .ok (.ok _) => "complete"
+      | .ok (.error _) => "unavailable"
+      | .error _ => "exception"
+    return m!"{roots}: {outcome}; elapsedMs={(← IO.monoMsNow) - started} rawHeartbeats={(← IO.getNumHeartbeats) - heartbeats}; committed (expressions,declarations) {before} -> {← session.sizes}") do
+    trace[blueprint.capture.semantic] "begin {roots}"
+    session.collectContext project roots true
 
 end Informal.Validation.NativeLean.Semantic

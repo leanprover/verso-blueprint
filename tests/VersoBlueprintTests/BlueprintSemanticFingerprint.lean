@@ -133,6 +133,11 @@ run_cmd liftCoreM do
   let firstSizes ← session.sizes
   ensure (firstSizes.1 > 0 && firstSizes.2 >= roots.size)
     "Semantic context did not memoize expression and declaration nodes"
+  let tracedSession ← Semantic.newSession provider
+  let traced ← withOptions (·.setBool `trace.blueprint.capture.semantic true) do
+    getContext tracedSession project roots
+  ensure (traced == first && (← tracedSession.sizes) == firstSizes)
+    "Optional semantic tracing changed the digest or committed memo tables"
   let repeated ← getContext session project #[diamond]
   let repeatedSizes ← session.sizes
   ensure (repeatedSizes == firstSizes)
@@ -201,6 +206,10 @@ run_cmd liftCoreM do
       "A failed warm session needs the ordinary unavailable diagnostic"
   ensure ((← failedSession.sizes) == warmSizes)
     "A failed extension changed previously committed semantic memo tables"
+  let tracedFailure ← withOptions (·.setBool `trace.blueprint.capture.semantic true) do
+    failedSession.context project #[`Missing.SemanticFingerprintRoot, tokenType]
+  ensure (!tracedFailure.isOk && (← failedSession.sizes) == warmSizes)
+    "Optional semantic tracing published entries from a failed extension"
   ensure ((← getContext failedSession project roots) == first)
     "Retrying a failed extension differs from a fresh successful semantic capture"
   match ← fresh.context project #[] with
