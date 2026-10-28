@@ -1870,6 +1870,12 @@ checks their native declarations, admits the full candidate, and binds fresh
 observations to that same snapshot. It returns an admitted registry, selected
 uses and diagnostics; structural/import conflicts reject the whole capture.
 `Snapshot.assessmentFor` projects the existing evaluator for public consumers.
+Source/provider errors in `Snapshot.sourceDiagnostics` retain typed node or
+document associations; their human-readable subjects can name a transitive
+dependency. `Snapshot.diagnostics` is the aggregate view, including unused
+authored-document errors. Node assessments select errors by the originating
+node or complete document identity (language, project and path), never by
+matching diagnostic text. These diagnostics do not change completion policy.
 The standard `BlueprintDocument` capture reuses this assessment for graph,
 summary, headings and manifest queries. `CodeHealth` is only declaration-panel
 inventory; its former completion helpers are removed.

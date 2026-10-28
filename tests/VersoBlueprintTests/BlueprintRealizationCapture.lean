@@ -87,7 +87,7 @@ run_cmd liftTermElabM do
     expected := observations.expected.reverse }
   let replay ← obtain (Capture.evaluate plan reversed)
   ensure (snapshot.registry.contributions == replay.registry.contributions &&
-    snapshot.diagnostics == replay.diagnostics && reprStr snapshot.uses == reprStr replay.uses)
+    snapshot.sourceDiagnostics == replay.sourceDiagnostics && reprStr snapshot.uses == reprStr replay.uses)
     "Observation insertion order changed exact contributions, bindings, diagnostics or selected-use metadata"
   let nativeInventory (s : Capture.Snapshot) := s.nativeChecks.map fun c =>
     (c.declaration, c.kind, c.statement, c.body, c.status)
@@ -296,7 +296,7 @@ run_cmd liftTermElabM do
   let after := Environment.informalExt.getState (← getEnv)
   ensure (reprStr before == reprStr after) "Capture mutated persistent Blueprint state"
 
--- Source-association diagnostics use structural facet identities. They appear
+-- Source-association diagnostics retain typed ownership and readable subjects. They appear
 -- on the owning non-Lean node's assessment and do not leak to another node.
 run_cmd liftTermElabM do
   let state := Environment.informalExt.getState (← getEnv)
@@ -326,6 +326,22 @@ run_cmd liftTermElabM do
     "Owning non-Lean node assessment dropped its unavailable source-location diagnostic"
   ensure (!(hasUnavailableSource (diagnostics unrelatedLabel)))
     "Unavailable non-Lean source diagnostic leaked to an unrelated node assessment"
+  ensure ((diagnostics label).any fun item =>
+    (item.getObjValAs? String "subject").toOption == some "«storage.source»/rocqTranslation/implementation")
+    "Source-association diagnostic exposed an opaque identity instead of its readable destination"
+  -- Injected diagnostic metadata only: the admitted registry and all actual
+  -- observations are unchanged. Equal paths in different contexts are distinct.
+  let documentIssue : Diagnostic := {
+    code := "test-document-failure", subject := "provider input", message := "Injected document failure" }
+  for (document, belongs) in #[(source.document, true),
+      ({ source.document with context := { source.document.context with project := `unrelatedProject } }, false)] do
+    let scopedSnapshot := { snapshot with sourceDiagnostics := { documents := #[(document, documentIssue)] } }
+    let details := (scopedSnapshot.assessmentFor label).details
+    let errors := (details.getObjValAs? (Array Json) "sourceDiagnostics").toOption.getD #[]
+    ensure (errors.contains (toJson documentIssue) == belongs)
+      "Document diagnostics did not use the full language/project/path identity"
+    ensure (scopedSnapshot.diagnostics.contains documentIssue)
+      "An unattached document error disappeared from the aggregate capture diagnostics"
 
 -- Original inline text, including a supplementary Unicode character before the
 -- declaration, is associated through its owning FileMap and native ranges.
@@ -436,7 +452,7 @@ run_cmd liftTermElabM do
   let originalChecked ← obtain expected.result.result
   let semanticDiagnostic : Diagnostic := {
     code := "semantic-context-unavailable"
-    subject := "RealizationCaptureFixture.complete"
+    subject := "Unrelated.TransitiveDependency"
     message := "Injected failure for diagnostic propagation control" }
   let failingSemantics : NativeLean.SemanticContext := fun _ _ => pure (.error semanticDiagnostic)
   let expectedName := plan.expected[expected.handle]!.expected
@@ -451,6 +467,27 @@ run_cmd liftTermElabM do
   let preserved ← obtain (Capture.evaluate plan failedSemantics)
   ensure (preserved.diagnostics.contains semanticDiagnostic)
     "Expected-proof semantic-context failure was dropped during capture evaluation"
+  let assertScoped (snapshot : Capture.Snapshot) (diagnostic : Diagnostic) : TermElabM Unit := do
+    for (label, belongs) in #[("capture.complete", true), ("capture.admitted", false)] do
+      let details := (snapshot.assessmentFor (Name.mkSimple label)).details
+      let errors := (details.getObjValAs? (Array Json) "sourceDiagnostics").toOption.getD #[]
+      ensure (errors.contains (toJson diagnostic) == belongs)
+        "Transitive semantic failure lost its owning node or leaked to a sibling in the same source file"
+  assertScoped preserved semanticDiagnostic
+  -- Generic provider subjects must be scoped by the request too. These are
+  -- injected failures, not fabricated successful validation observations.
+  let genericDiagnostic := { semanticDiagnostic with subject := "native" }
+  let genericFailure := { checkedWithoutContext with semanticDiagnostics := #[genericDiagnostic] }
+  let generic ← obtain (Capture.evaluate plan { observations with
+    expected := observations.expected.modify 0 fun entry =>
+      { entry with result := { entry.result with result := .ok genericFailure } } })
+  assertScoped generic genericDiagnostic
+  let nativeFailure := { observations with native := observations.native.map fun entry =>
+    if plan.native[entry.handle]!.name != ``complete then entry else
+      { entry with result := entry.result.map fun prepared => { prepared with
+        semanticContext := none, semanticDiagnostics := #[semanticDiagnostic] } } }
+  let native ← obtain (Capture.evaluate plan nativeFailure)
+  assertScoped native semanticDiagnostic
   rejects "duplicate-observation" { observations with expected := observations.expected.push expected }
   rejects "extraneous-observation" { observations with expected := observations.expected.push { expected with handle := plan.expected.size } }
   rejects "mismatched-observation" { observations with expected := observations.expected.modify 0 fun entry =>

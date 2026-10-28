@@ -51,13 +51,35 @@ structure SelectedUse where
   selected : Except Diagnostic (Array RequirementKey)
   deriving Repr
 
+/-- Provider errors retain their request's identity independently of the
+human-readable diagnostic subject, which may name a transitive dependency.
+Shared authored documents are associated after complete model collection. -/
+structure SourceDiagnostics where
+  nodes : Array (Name × Diagnostic) := #[]
+  documents : Array (DocumentKey × Diagnostic) := #[]
+  deriving Repr, BEq
+
+private def SourceDiagnostics.addNode (diagnostics : SourceDiagnostics) (label : Name)
+    (issues : Array Diagnostic) : SourceDiagnostics :=
+  { diagnostics with nodes := diagnostics.nodes ++ issues.map (label, ·) }
+
+private def canonicalDiagnostics [Ord α] [BEq α] (issues : Array (α × Diagnostic)) :
+    Array (α × Diagnostic) :=
+  letI : Ord (α × Diagnostic) := ⟨fun a b => (compare a.1 b.1).then (compare a.2 b.2)⟩
+  canonical issues
+
 structure Snapshot where
   registry : Registry
   uses : Array SelectedUse
   /-- Source/provider diagnostics are distinct from native proof outcomes. -/
-  diagnostics : Array Diagnostic
+  sourceDiagnostics : SourceDiagnostics := {}
   /-- Fresh native classification for inventory only; Registry remains completion authority. -/
   nativeChecks : Array NativeLean.CheckedDeclaration := #[]
+
+/-- Aggregate provider errors, including authored documents not used by a node.
+This is a view of the scoped errors, not a separately maintained inventory. -/
+def Snapshot.diagnostics (snapshot : Snapshot) : Array Diagnostic :=
+  canonical (snapshot.sourceDiagnostics.nodes.map (·.2) ++ snapshot.sourceDiagnostics.documents.map (·.2))
 
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
@@ -80,14 +102,16 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
       match use.selected with
       | .error _ => false
       | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
-  let sourceDocuments := (registry.realizations.filter (·.key.node == label)).flatMap (·.facets.flatMap (·.documents))
-  let sourceSubjects := (registry.realizations.filter (·.key.node == label)).flatMap fun realization =>
-    realization.facets.map fun facet =>
-      (BindingEncoding.subject (.facet realization.key facet.name)).compress
+  let documentDiagnostics := if snapshot.sourceDiagnostics.documents.isEmpty then #[] else Id.run do
+    let nodeModels := registry.realizations.filter (·.key.node == label)
+    let nodeObjects := nodeModels.flatMap (·.declarations.map (·.object))
+    let sourceDocuments := nodeModels.flatMap (·.facets.flatMap (·.documents)) ++
+      (registry.objects.filter (fun object => nodeObjects.contains object.key)).filterMap (·.document)
+    return (snapshot.sourceDiagnostics.documents.filter (fun (document, _) => sourceDocuments.contains document)).map (·.2)
   let objects := declarations.map (·.object)
-  let diagnostics := snapshot.diagnostics.filter fun diagnostic => diagnostic.subject == label.toString ||
-    objects.any (·.native == diagnostic.subject) || sourceDocuments.any (·.path == diagnostic.subject) ||
-    sourceSubjects.contains diagnostic.subject
+  let diagnostics := canonical (
+    (snapshot.sourceDiagnostics.nodes.filter (·.1 == label)).map (·.2) ++
+    documentDiagnostics)
   return {
     hasNativeDeclarations
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
@@ -108,7 +132,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
 private structure Collected where
   input : Input := {}
   observations : Array (Origin × RequirementKey × Observation) := #[]
-  diagnostics : Array Diagnostic := #[]
+  sourceDiagnostics : SourceDiagnostics := {}
   uses : Array UseDeclaration := #[]
   nativeChecks : Array NativeLean.CheckedDeclaration := #[]
 
@@ -419,10 +443,11 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         let (document, issues) ← providers.document sourceStep.document
         collected := { collected with
           input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey document.key) document)
-          diagnostics := collected.diagnostics ++ issues }
+          sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
         if let some reason := source.source.error then
-          collected := { collected with diagnostics := collected.diagnostics.push {
-            code := "source-association-unavailable", subject := (BindingEncoding.subject source.destination.subject).compress, message := reason } }
+          collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
+            code := "source-association-unavailable",
+            subject := s!"{label}/{key.name}/{source.destination.facet}", message := reason }] }
         if let some documented := sourceStep.documented then
             let proseKey : DocumentKey := ⟨source.context,
               source.document.path ++ "#docstring:" ++ (BindingEncoding.subject source.destination.subject).compress⟩
@@ -432,7 +457,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             let text ← match result with
               | .ok documented => pure documented.rawDocstring
               | .error diagnostic =>
-                collected := { collected with diagnostics := collected.diagnostics.push diagnostic }
+                collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
                 pure ""
             collected := { collected with
               input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey proseKey) { key := proseKey, text }) }
@@ -448,11 +473,11 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         let prepared ← prepareNative providers declarationStep
         let observation : ObjectObservation ← match prepared with
           | .error issues =>
-            collected := { collected with diagnostics := collected.diagnostics ++ issues }
+            collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
             pure { key := witness, resolution := if issues.any (·.code == "missing-declaration") then .missing else .unsupported, explanation := (toJson issues).compress }
           | .ok prepared =>
             collected := { collected with
-              diagnostics := collected.diagnostics ++ prepared.semanticDiagnostics
+              sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
               input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
               input.bindingInputs := collected.input.bindingInputs ++ prepared.semanticContext.toArray.map fun content =>
                 contribution `nativeContext (BindingEncoding.subject subject) { subject, name := NativeLean.sourceContext, content } }
@@ -474,7 +499,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           collected := (recordObservation collected statementKey (.check checked.statement))
             |> fun value => recordObservation value proofKey (.check checked.body)
         | .error diagnostic =>
-          collected := { collected with diagnostics := collected.diagnostics.push diagnostic }
+          collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
           for (key, validator) in #[(statementKey, NativeLean.statementValidator), (proofKey, NativeLean.bodyValidator)] do
             collected := recordObservation collected key (.check {
               validator, declaration := some witness, outcome := .unavailable, explanation := diagnostic.message })
@@ -533,7 +558,7 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
             subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content } }
       collected := { collected with
         input := input
-        diagnostics := collected.diagnostics ++ checked.semanticDiagnostics
+        sourceDiagnostics := collected.sourceDiagnostics.addNode node checked.semanticDiagnostics
         observations := collected.observations.push ((authoredContribution record.origin `expectedObservation index ()).origin,
           expectedKey, .proof checked.observation) }
     let batch := record.authored
@@ -541,7 +566,8 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let (document, issues) ← providers.document step.documents[index]!
       collected := { collected with
         input.documents := collected.input.documents.push (authoredContribution record.origin `document index document)
-        diagnostics := collected.diagnostics ++ issues }
+        sourceDiagnostics := { collected.sourceDiagnostics with
+          documents := collected.sourceDiagnostics.documents ++ issues.map (document.key, ·) } }
     collected := { collected with input := { collected.input with
       objects := collected.input.objects ++ batch.references.mapIdx (fun index (key, document) =>
         authoredContribution record.origin `reference index {
@@ -705,7 +731,10 @@ private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot 
     input := { input with evidence := input.evidence.push { origin, value := {
       id := origin.id, requirement := key, binding, observation } } }
   return {
-    registry := ← admit input, uses, diagnostics := canonical collected.diagnostics
+    registry := ← admit input, uses
+    sourceDiagnostics := {
+      nodes := canonicalDiagnostics collected.sourceDiagnostics.nodes
+      documents := canonicalDiagnostics collected.sourceDiagnostics.documents }
     nativeChecks := collected.nativeChecks }
 
 private def batchIssue (code family : String) (handle : Nat) : Array Diagnostic := #[{
