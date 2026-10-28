@@ -1362,6 +1362,37 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
 #guard_msgs in
 #eval
   show Bool from
+    let entry := sampleManifest.previews[0]!
+    let cacheEntry := sampleCache.entries[0]!
+    -- Even byte-identical duplicates violate the unique-key artifact contract.
+    let manifestCopies := #[entry, { entry with title := "conflicting title" }]
+    let cacheCopies := #[cacheEntry, { cacheEntry with html := "<p>conflicting body</p>" }]
+    manifestCopies.all (fun copy =>
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles
+        { sampleManifest with previews := sampleManifest.previews.push copy } sampleCache) ==
+          #[s!"duplicate manifest preview key: {entry.key}"]) &&
+    cacheCopies.all (fun copy =>
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest
+        { sampleCache with entries := sampleCache.entries.push copy }) ==
+          #[s!"duplicate HTML cache key: {cacheEntry.key}"])
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let entry := sampleManifest.previews[0]!
+    let cacheEntry := sampleCache.entries[0]!
+    let errors := VersoBlueprint.Vbp.checkGeneratedData (persistedFiles
+      { sampleManifest with previews := sampleManifest.previews.push entry }
+      { sampleCache with entries := sampleCache.entries.push { cacheEntry with html := " " } })
+    errors.contains s!"duplicate manifest preview key: {entry.key}" &&
+      errors.contains s!"duplicate HTML cache key: {cacheEntry.key}" &&
+      errors.contains s!"empty HTML cache body for key {cacheEntry.key}"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     let json := VersoBlueprint.Vbp.checkJson (persistedFiles sampleManifest sampleCache)
     jsonHasApiStability json &&
       jsonBoolField? json "ok" == some true &&

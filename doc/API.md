@@ -545,6 +545,9 @@ Persisted or externally supplied manifest/cache pairs enter maintainer audits
 as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each
 file cannot by itself establish their cross-artifact reference invariants;
 `vbp check` reports violations without repairing or promoting the decoded pair.
+Preview keys must be unique within each file: repeated manifest preview keys or
+HTML cache entry keys are audit errors, even when their payloads agree. Matching
+keys across the two files are expected and are not duplicates.
 A cache key with an empty or whitespace-only body is unavailable and receives an
 audit diagnostic even if nothing references it. Blank detection agrees with the
 browser's `String.trim()` contract, including Unicode whitespace.

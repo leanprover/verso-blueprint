@@ -540,10 +540,23 @@ private def checkManifestGroupIntegrity
             s!"{Informal.PreviewManifest.labelString member.label} has no matching manifest entry"
   return errors
 
+private def duplicateKeyErrors (kind : String) (keys : Array String) : Array String := Id.run do
+  let mut seen : Std.HashSet String := {}
+  let mut errors := #[]
+  for key in keys do
+    if seen.contains key then
+      errors := errors.push s!"duplicate {kind} key: {key}"
+    else
+      seen := seen.insert key
+  return errors
+
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
-  let cacheErrors := data.htmlCache.entries.foldl (init := #[]) fun errors entry =>
+  -- Membership indexes collapse duplicates; audit the original arrays as well.
+  let keyErrors := duplicateKeyErrors "manifest preview" (manifest.previews.map (·.key)) ++
+    duplicateKeyErrors "HTML cache" (data.htmlCache.entries.map (·.key))
+  let cacheErrors := data.htmlCache.entries.foldl (init := keyErrors) fun errors entry =>
     if entry.hasBody then errors else errors.push s!"empty HTML cache body for key {entry.key}"
   let errors := manifest.previews.foldl
     (fun errors entry =>
