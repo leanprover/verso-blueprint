@@ -284,9 +284,19 @@ private def parsePositiveNatOption (option raw : String) : Except String Nat :=
         .ok n
   | none => .error s!"invalid {option} value '{raw}'"
 
+private def parsePathOption (option raw : String) : Except String FilePath :=
+  if raw.trimAscii.isEmpty then
+    .error s!"empty path after {option}"
+  else if raw.startsWith "-" then
+    .error s!"expected a path after {option}, got option '{raw}'; use './' for paths beginning with '-'"
+  else
+    .ok (FilePath.mk raw)
+
 private partial def parseBuildOptionsCore : List String → BuildOptions → Except String BuildOptions
   | [], opts => .ok opts
-  | "--output" :: dir :: args, opts => parseBuildOptionsCore args { opts with output := FilePath.mk dir }
+  | "--output" :: dir :: args, opts => do
+      let output ← parsePathOption "--output" dir
+      parseBuildOptionsCore args { opts with output }
   | "--output" :: [], _ => .error "missing value after --output"
   | arg :: args, opts =>
       if arg == Informal.PreviewManifest.pdfFlag then
@@ -335,7 +345,9 @@ structure SiteOptions where
 
 partial def parseSiteOptions : List String → SiteOptions → Except String SiteOptions
   | [], opts => .ok { opts with rest := opts.rest.reverse }
-  | "--site" :: dir :: args, opts => parseSiteOptions args { opts with site := FilePath.mk dir }
+  | "--site" :: dir :: args, opts => do
+      let site ← parsePathOption "--site" dir
+      parseSiteOptions args { opts with site }
   | "--site" :: [], _ => .error "missing value after --site"
   | arg :: args, opts => parseSiteOptions args { opts with rest := arg :: opts.rest }
 
@@ -468,6 +480,9 @@ def check (args : List String) : IO UInt32 := do
       IO.eprintln err
       pure 2
   | .ok opts =>
+      unless opts.rest.isEmpty do
+        IO.eprintln s!"unexpected check argument '{opts.rest.head!}'; check accepts only --site <dir>"
+        return 2
       try
         let data ← VersoBlueprint.Vbp.readPersistedGeneratedData opts.site
         let errors := VersoBlueprint.Vbp.checkGeneratedData data

@@ -1967,7 +1967,12 @@ lake exe vbp build
 lake exe vbp build --serve
 ```
 
-It discovers the generator, then uses Lake to build its imports and execute it;
+Use `build --output <dir>` to choose a destination and `query --site <dir>` or
+`check --site <dir>` to read one. Paths must be nonempty; prefix a path beginning
+with `-` with `./`. Argument errors exit with code 2 before loading the project
+or generated data. `check` accepts only `--site <dir>` and rejects extra arguments.
+
+`build` discovers the generator, then uses Lake to build its imports and execute it;
 VBP can optionally serve the result. When a maintainer harness or advanced CI
 job cannot use `vbp`, the equivalent lower-level command is:
 

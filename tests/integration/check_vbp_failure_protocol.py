@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -95,6 +96,33 @@ def assert_build_failure(
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="verso-blueprint-vbp-failure-") as tmp:
         root = Path(tmp)
+        # Argument errors must precede workspace discovery and artifact reads.
+        # In particular, check must not silently audit the default site when a
+        # caller misspells an option. This directory has neither Lake nor a site.
+        cases = [
+            (["check", "--typo"], "unexpected check argument '--typo'"),
+            (["check", "--site", "missing", "extra"], "unexpected check argument 'extra'"),
+            (["check", "--site", "--typo"], "expected a path after --site"),
+            (["query", "--site", "", "labels"], "empty path after --site"),
+            (["build", "--output", "--serve"], "expected a path after --output"),
+            (["build", "--output", "  "], "empty path after --output"),
+        ]
+        for args, diagnostic in cases:
+            result = subprocess.run(
+                [str(VBP), *args], cwd=root, check=False, text=True,
+                capture_output=True, timeout=10,
+            )
+            if result.returncode != 2 or result.stdout or diagnostic not in result.stderr:
+                raise SystemExit(f"invalid CLI argument protocol for {args!r}: {result!r}")
+        result = subprocess.run(
+            [str(VBP), "query", "--site", "./-missing", "selectors"],
+            cwd=root, check=False, text=True, capture_output=True, timeout=10,
+        )
+        if result.returncode != 0 or result.stderr:
+            raise SystemExit(f"site-independent selector query failed: {result!r}")
+        if json.loads(result.stdout).get("apiStability") != "unstable":
+            raise SystemExit("selector query did not return the normal JSON protocol")
+
         # An invalid import reaches Lean, which returns a nonzero process exit code.
         missing_import = write_project(
             root,

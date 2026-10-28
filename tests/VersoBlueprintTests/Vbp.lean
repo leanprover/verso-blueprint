@@ -1633,4 +1633,29 @@ info: true -/
   let code ← VersoBlueprint.Vbp.Main.main ["discover", "extra"]
   pure (code == 2)
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let invalid := ["", "  ", "--serve", "-h"]
+    invalid.all (fun path =>
+      !(VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", path] {}).isOk &&
+      !(VersoBlueprint.Vbp.Main.parseSiteOptions ["--site", path] {}).isOk) &&
+    ["./-site", " output with spaces "].all (fun path =>
+      match VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", path] {},
+          VersoBlueprint.Vbp.Main.parseSiteOptions ["labels", "--site", path] {} with
+      | .ok build, .ok query =>
+          build.output.toString == path && query.site.toString == path && query.rest == ["labels"]
+      | _, _ => false)
+
+/-- info: unexpected check argument '--typo'; check accepts only --site <dir>
+---
+info: true -/
+#guard_msgs in
+#eval do
+  -- No generated site is needed to reject malformed arguments.
+  let site ← freshVbpFixtureRoot
+  let code ← VersoBlueprint.Vbp.Main.main ["check", "--site", site.toString, "--typo"]
+  pure (code == 2)
+
 end Verso.VersoBlueprintTests.Vbp
