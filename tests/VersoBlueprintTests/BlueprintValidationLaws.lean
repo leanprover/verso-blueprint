@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Validation.Laws
+import VersoBlueprint.Translations.Laws
 
 /-! Contract examples for supplied observations. These are explicitly synthetic
 checker/reviewer reports, not claims that this test invokes a native provider. -/
@@ -88,5 +89,68 @@ private def review : ReviewObservation := {
 example (e : Evidence) (r : Requirement) (binding : ContentBinding)
     (h : e.mismatch? r binding = none) : e.requirement = r.key ∧ e.binding = binding :=
   ⟨Evidence.accepted_requirement h, (Evidence.accepted_binding h).2⟩
+
+-- Canonicalization changes neither obligation membership nor emptiness.
+#guard canonical #[3, 1, 3, 2, 1] == #[1, 2, 3]
+example [BEq α] [LawfulBEq α] [Ord α] (xs : Array α) (x : α) :
+    x ∈ canonical xs ↔ x ∈ xs := mem_canonical xs x
+
+open Informal.Translations
+
+private def mockContribution (id : Name) (value : α) : Contribution α :=
+  { origin := { id, moduleName := `ValidationContractMock }, value }
+
+/-- Synthetic check observations pass through actual admission and binding.
+No compiler, native checker or human reviewer is invoked. -/
+private def admittedFixture (selected : Array Name) (second : Outcome) : IO Registry := do
+  let subject := Subject.realization realization
+  let keyFor := fun name => ({ subject, name } : RequirementKey)
+  let document : DocumentKey := ⟨context, "synthetic-source"⟩
+  let input : Input := {
+    nodes := #[mockContribution `node { label := realization.node, title := "Contract fixture" }]
+    documents := #[mockContribution `document { key := document, text := "MOCK source bytes" }]
+    realizations := #[mockContribution `realization {
+      key := realization, context, facets := #[{ name := `body, documents := #[document] }]
+      required := selected.map keyFor }]
+    requirements := #[`first, `second].map fun name => mockContribution (`requirement ++ name) {
+      key := keyFor name, expected := .check `syntheticCheck } }
+  let .ok baseline := admit input
+    | throw <| IO.userError "Synthetic contract input failed admission"
+  let mut evidence := #[]
+  for (name, outcome) in #[(`first, Outcome.passed), (`second, second)] do
+    let key := keyFor name
+    let some binding := baseline.bindingFor key
+      | throw <| IO.userError "Synthetic requirement has no binding"
+    evidence := evidence.push <| mockContribution (`evidence ++ name) {
+      id := name, requirement := key, binding
+      observation := Observation.check { validator := `syntheticCheck, outcome } }
+  let .ok completed := admit { input with evidence }
+    | throw <| IO.userError "Synthetic bound evidence failed admission"
+  return completed
+
+#eval show IO Unit from do
+  let subject := Subject.realization realization
+  let complete ← admittedFixture #[`second, `first, `second] .passed
+  unless (complete.resultFor subject).complete &&
+      (complete.requiredFor subject).size == 2 do
+    throw <| IO.userError "All selected contracts should complete, with duplicates collapsed"
+  let unfinished ← admittedFixture #[`first, `second] .failed
+  unless !(unfinished.resultFor subject).complete &&
+      (unfinished.resultForRequirement ⟨subject, `first⟩).complete do
+    throw <| IO.userError "A completed alternative hid an unfinished selected requirement"
+  let unselected ← admittedFixture #[`first] .failed
+  unless (unselected.resultFor subject).complete do
+    throw <| IO.userError "An unselected requirement changed the selected contract"
+  let empty ← admittedFixture #[] .passed
+  unless (empty.resultFor subject).status == .unassessed do
+    throw <| IO.userError "Empty requirements must not certify completion"
+  unless !(complete.resultFor (.realization ⟨`missing, `lean⟩)).complete do
+    throw <| IO.userError "An unknown subject acquired completion"
+
+example (r : Registry) (subject : Subject) (key : RequirementKey)
+    (selected : key ∈ r.requiredFor subject)
+    (complete : (r.resultFor subject).complete = true) :
+    (r.resultForRequirement key).complete = true :=
+  (r.complete_requires_all subject complete).2 key selected
 
 end VersoBlueprintTests.ValidationLaws
