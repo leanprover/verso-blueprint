@@ -191,6 +191,18 @@ run_cmd liftCoreM do
       "Missing checked roots need the ordinary unavailable diagnostic"
   ensure ((← failedSession.sizes) == beforeFailure)
     "Failed semantic graph capture retained partially collected cache entries"
+  ensure ((← getContext failedSession project #[diamond]) == repeated)
+    "A failed first capture changed a subsequent successful semantic digest"
+  let warmSizes ← failedSession.sizes
+  match ← failedSession.context project #[`Missing.SemanticFingerprintRoot, tokenType] with
+  | .ok _ => throwError "A missing root was accepted while extending a warm semantic session"
+  | .error diagnostic =>
+    ensure (diagnostic.code == "semantic-context-unavailable")
+      "A failed warm session needs the ordinary unavailable diagnostic"
+  ensure ((← failedSession.sizes) == warmSizes)
+    "A failed extension changed previously committed semantic memo tables"
+  ensure ((← getContext failedSession project roots) == first)
+    "Retrying a failed extension differs from a fresh successful semantic capture"
   match ← fresh.context project #[] with
   | .ok _ => throwError "An empty semantic root list was accepted"
   | .error diagnostic =>

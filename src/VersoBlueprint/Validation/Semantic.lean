@@ -139,7 +139,12 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
       code := "semantic-session-mismatch"
       subject := "native"
       message := "Semantic session belongs to another environment snapshot; create a fresh session" }
-  let mut state ← session.state.get
+  -- Transfer the growing expression table directly between encodings. Keeping
+  -- it inside a parent record needed for another field aliases it on every
+  -- declaration and forces repeated copy-on-write. Publish only after success.
+  let initial ← session.state.get
+  let mut expressions := initial.expressions
+  let mut declarations := initial.declarations
   let mut todo := roots
   let mut seen : NameSet := {}
   let mut entries : Std.HashMap Name (String × Array Name) := {}
@@ -147,7 +152,7 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
   while !todo.isEmpty do
     let name := todo.back!
     todo := todo.pop
-    if seen.contains name || state.declarations.contains name then continue
+    if seen.contains name || declarations.contains name then continue
     seen := seen.insert name
     let some info := env.checked.get.find? name
       | return .error <| unavailable name "Semantic dependency is not in the current checked environment"
@@ -166,8 +171,8 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
         | none => pure <| SHA256.tagged "lean.body.absent.v1" #[]
       return (SHA256.tagged "lean.declaration.v1"
         #[Vir.nameKey name, reprStr (info.levelParams.map Vir.nameKey), type, value, toString info.isUnsafe, kind], extra)
-    let ((payload, extra), expressions) := encode.run state.expressions
-    state := { state with expressions }
+    let ((payload, extra), updatedExpressions) := encode.run expressions
+    expressions := updatedExpressions
     let dependencies := info.type.getUsedConstants ++
       (body.map Expr.getUsedConstants).getD #[] ++ extra
     entries := entries.insert name (payload, dependencies)
@@ -175,18 +180,17 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
   if !entries.isEmpty then
     -- Pass only touched cached terminals, not the whole accumulated session.
     let terminals := entries.fold (init := {}) fun out _ (_, dependencies) =>
-      dependencies.foldl (fun out name => match state.declarations[name]? with
+      dependencies.foldl (fun out name => match declarations[name]? with
         | some digest => out.insert name digest
         | none => out) out
     let graph := Merkle.graph entries.keysArray Vir.nameKey
       (fun name => (entries[name]!).1) (fun name => (entries[name]!).2) terminals
-    let declarations ← match graph with
-      | .ok declarations => pure declarations
+    let computed ← match graph with
+      | .ok digests => pure digests
       | .error message => return .error { code := "invalid-semantic-graph", subject := "native", message }
-    let combined := declarations.fold (init := state.declarations) (fun out name digest => out.insert name digest)
-    state := { state with declarations := combined }
-  session.state.set state
-  let roots := (roots.map fun name => (Vir.nameKey name, state.declarations[name]!)).qsort (fun a b => a.1 < b.1)
+    declarations := computed.fold (init := declarations) (fun out name digest => out.insert name digest)
+  session.state.set { expressions, declarations }
+  let roots := (roots.map fun name => (Vir.nameKey name, declarations[name]!)).qsort (fun a b => a.1 < b.1)
   let rootParts := roots.foldl (fun out item => if out.back? == some item then out else out.push item)
     (#[] : Array (String × String))
   return .ok <| SHA256.tagged "lean.semantic-context.v1"
