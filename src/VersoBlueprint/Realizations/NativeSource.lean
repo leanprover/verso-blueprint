@@ -21,8 +21,9 @@ open Lean Validation Translations
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
 
-/-- Parse only; do not elaborate commands or mutate Blueprint state. Syntax
-requiring intervening elaboration is unsupported. Native declaration lookup can
+/-- Parse only in the current environment; do not elaborate commands or mutate
+Blueprint state. Syntax requiring intervening elaboration, or made incompatible
+by later imports reserving new keywords, is unsupported. Native declaration lookup can
 stop after its checked range; whole-file parsing remains required for docstrings
 so a later inheritance directive cannot be hidden. Original source is not sliced. -/
 def parseSource (label : Name) (path text : String)
@@ -39,7 +40,10 @@ def parseSource (label : Name) (path text : String)
       | fuel + 1 =>
         let (command, next, messages) := Parser.parseCommand input { env, options := {} } state messages
         if messages.hasErrors then
-          throw <| issue "source-parse-failed" label "Owning source could not be parsed without elaboration"
+          let location := (messages.toList.find? (·.severity == .error)).map
+            (fun message => s!" at {message.pos.line}:{message.pos.column}") |>.getD ""
+          throw <| issue "source-parse-failed" label
+            s!"Owning source could not be parsed{location} in the current syntax environment without elaboration"
         if command.isOfKind ``Parser.Command.eoi then return commands
         if Parser.isTerminalCommand command || next.pos <= state.pos then
           throw <| issue "source-parse-failed" label "Owning source parser stopped before end of file"

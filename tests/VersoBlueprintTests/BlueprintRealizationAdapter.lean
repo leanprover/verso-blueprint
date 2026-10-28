@@ -623,4 +623,28 @@ private unsafe def hiddenChecks : CoreM Bool := do
 #guard_msgs in
 #eval hiddenChecks
 
+-- Parse-only control for a later import reserving a previously valid field
+-- name. The source bytes stay identical; none of these results certify a proof.
+private def fieldSource : String := "def owned : Carrier where\n  map := 0\n"
+
+run_cmd liftTermElabM do
+  ensure ((← parseSource `owned "parser-control.lean" fieldSource).isOk)
+    "Unreserved field-name control did not parse"
+
+section
+local syntax:max "[capture-map " "map" "]" : term
+
+run_cmd liftTermElabM do
+  match ← parseSource `owned "parser-control.lean" fieldSource with
+  | .ok _ => throwError "A newly reserved field name unexpectedly parsed"
+  | .error diagnostic =>
+    ensure (diagnostic.code == "source-parse-failed" && diagnostic.subject == "owned" &&
+      diagnostic.message.contains "2:2" && diagnostic.message.contains "current syntax environment")
+      "Parser-context mismatch must retain its source position and unsupported diagnostic"
+end
+
+run_cmd liftTermElabM do
+  ensure ((← parseSource `owned "parser-control.lean" fieldSource).isOk)
+    "Restoring the parser context did not restore parsing of the same original bytes"
+
 end VersoBlueprintTests.BlueprintRealizationAdapter

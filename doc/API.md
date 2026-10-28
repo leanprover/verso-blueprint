@@ -443,6 +443,15 @@ explaining why correspondence is blocked. The `validate` convenience returns
 only the assembled `Input`; use `prepareValidation` when diagnostics are needed.
 Ordinary graph and query consumers should continue to use `Capture.capture`.
 
+Native source association parses original bytes using the current environment's
+syntax. It does not replay elaboration or reconstruct the owning module's parser
+environment. Later imports can reserve a name such as `map` that was a valid
+structure field in the owning module. Such input remains unsupported with
+`source-parse-failed` and the first parser-error position (Lean's one-based line,
+zero-based column), even if the declaration was successfully checked. Source
+association does not skip the failing prefix or substitute nearby text. Native
+proof checking and source-association availability remain separate observations.
+
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
 state and traversal domains. `HtmlDocument.traverse` runs Manual traversal and
