@@ -436,4 +436,48 @@ run_cmd liftTermElabM do
       snapshot.nativeChecks.any (fun result => result.declaration == witness && result.body.outcome == .passed))
       "Evaluated snapshot must retain the source diagnostic and independent real native check"
 
+-- F1: authored alternatives own their contracts. Conventional names do not
+-- opt a review (or an authored native check) into ordinary dependency wiring.
+run_cmd liftTermElabM do
+  let initialEnv ← getEnv
+  try
+    let baseline ← obtain (← Realizations.Capture.capture)
+    let base := baseline.registry.contributions
+    let moduleName ← getMainModule
+    for (contractName, expectation) in #[
+        (`proof, Expectation.review `independentReview),
+        (`proofReview, Expectation.review `independentReview),
+        (`proof, Expectation.check NativeLean.bodyValidator)] do
+      setEnv initialEnv
+      let alternative : RealizationKey := ⟨Owner.node, `reviewAlternative⟩
+      let key : RequirementKey := ⟨.declaration alternative Owner.native, contractName⟩
+      let model : Realization := {
+        key := alternative, context := Owner.native.context
+        declarations := #[{ object := Owner.native, required := #[key] }] }
+      let requirement : Requirement := {
+        key, expected := expectation, coverage := .dependencyClosure }
+      let pureInput := { base with
+        realizations := base.realizations.push {
+          origin := { id := `alternativeModelControl, moduleName }, value := model }
+        requirements := base.requirements.push {
+          origin := { id := `alternativeRequirementControl, moduleName }, value := requirement } }
+      let pureRegistry ← obtain (admit pureInput)
+      ensure ((pureRegistry.resultForRequirement key).status == .pending)
+        "Authored alternative contract must be admitted as pending before capture"
+      Authoring.configureProject Owner.projectName
+      Authoring.stage `alternativeContractControl {
+        realizations := #[model], requirements := #[requirement] }
+      let snapshot ← obtain (← Realizations.Capture.capture)
+      ensure (snapshot.registry.requirement? key == some requirement)
+        "Capture rewrote an authored alternative contract based on its name or validator"
+      ensure ((snapshot.registry.resultForRequirement key).status == .pending)
+        "A valid authored alternative contract must remain pending after capture"
+      ensure (!(snapshot.registry.requirements.any fun value =>
+        value.key.subject == key.subject && value.key != key))
+        "Capture invented sibling contracts or dependency-selection gates for an authored alternative"
+      ensure ((snapshot.registry.resultForRequirement Owner.proof).complete)
+        "Authored alternative must not change the real default native proof"
+  finally
+    setEnv initialEnv
+
 end VersoBlueprintTests.BlueprintRealizationAuthoring

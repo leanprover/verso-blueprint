@@ -609,6 +609,20 @@ actual selection computation can produce its observation. Target failures remain
 inspectable edge diagnostics; the gate makes them block the Blueprint closure
 without turning a missing edge into a nonexistent prerequisite key. -/
 private def connectUses (collected : Collected) (uses : Array SelectedUse) : Collected := Id.run do
+  -- Only ordinary capture owns automatic native prerequisite wiring. Authored
+  -- reviews/checks may use the same names and even the same native validators.
+  -- Index the generated contracts once, before adding any selection requirements.
+  let nativeContracts := collected.input.requirements.foldl
+    (init := ({} : Std.HashMap RequirementKey Name)) fun out record =>
+      if record.value.coverage == .dependencyClosure &&
+          record.origin == (contribution `requirement (BindingEncoding.requirementKey record.value.key) ()).origin then
+        match record.value.expected with
+        | .check validator =>
+          if validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator then
+            out.insert record.value.key validator
+          else out
+        | _ => out
+      else out
   let mut collected := collected
   for model in collected.input.realizations.map (·.value) do
     if model.context.language != `lean then continue
@@ -616,9 +630,10 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
       use.context == some model.context && use.realization.all (· == model.key.name)
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
-      for name in #[`statement, `proof] do
-        let edges := relevant.filter fun use => name == `proof || use.facet == `statement
+      for (name, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
         let key : RequirementKey := ⟨subject, name⟩
+        unless nativeContracts[key]? == some validator do continue
+        let edges := relevant.filter fun use => name == `proof || use.facet == `statement
         let mut prerequisites : Array RequirementKey := #[]
         if name == `proof then prerequisites := #[⟨subject, `statement⟩]
         if !edges.isEmpty then
