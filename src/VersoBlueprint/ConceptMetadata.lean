@@ -13,6 +13,9 @@ namespace Informal.Data
 
 open Lean
 
+/-- Structural ordering; display spelling is not an identity encoding for names. -/
+instance : Ord Name := ⟨Name.cmp⟩
+
 deriving instance Lean.ToJson for Lean.DeclarationRange
 deriving instance Lean.FromJson for Lean.DeclarationRange
 
@@ -41,7 +44,7 @@ set_option doc.verso true
 
 -- informal object labels are names for now, but that could change
 def Label := Name
-deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
+deriving Ord, Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
 /-- Append a Blueprint label only when it is not already present. -/
 def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
@@ -206,7 +209,7 @@ inductive NodeKind where
   | lemma
   | theorem
   | corollary
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+deriving Ord, Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 instance : ToString NodeKind where
   toString
@@ -239,7 +242,7 @@ structure NodeMetadata where
   effort : Option String := none
   prUrl : Option String := none
   issueUrl : Option String := none
-deriving Repr, Inhabited, BEq, DecidableEq, ToJson, FromJson
+deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson, FromJson
 
 /-- Concept metadata authored in one registration. Source and dependency inputs
 belong to explicit realization/facet destinations in that registration. -/

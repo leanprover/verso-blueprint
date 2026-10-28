@@ -485,6 +485,14 @@ run_cmd liftTermElabM do
   let initial ← obtain (admit p.input)
   ensure ((initial.resultFor (.realization p.informalKey)).status == .unassessed) "Prose is not proofread"
   let expected ← `(term| ∀ n : Nat, n = n)
+  let semanticDiagnostic : Diagnostic := {
+    code := "semantic-context-unavailable", subject := "standalone-check"
+    message := "Injected standalone semantic-context failure" }
+  let failingSemantics : NativeLean.SemanticContext := fun _ _ => pure (.error semanticDiagnostic)
+  let prepared ← p.prepareValidation expected #[] failingSemantics
+  let .ok (_, checked) := prepared | throwError "Standalone source validation unexpectedly failed"
+  ensure (checked.semanticContext.isNone && checked.semanticDiagnostics == #[semanticDiagnostic])
+    "Standalone source validation did not retain semantic-context diagnostics"
   let input ← obtain (← p.validate expected)
   let r ← obtain (admit input)
   ensure ((r.resultForRequirement (proofKey p)).complete) "Actual imported proof must complete"

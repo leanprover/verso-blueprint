@@ -46,7 +46,7 @@ def claimKey : ClaimKey := ⟨translationKey, `statement_correspondence⟩
 def reviewKey : RequirementKey := ⟨.claim claimKey, `correspondence_review⟩
 def goal : Goal := {
   context := leanContext
-  proposition := "forall flag : Fixture.Flag, Fixture.toggle (Fixture.toggle flag) = flag"
+  fingerprint := "forall flag : Fixture.Flag, Fixture.toggle (Fixture.toggle flag) = flag"
   documents := #[leanDoc] }
 
 def fixture : Input := {
@@ -152,7 +152,7 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
 
 -- P04/P06: expected proposition and project are independent of a candidate.
 #eval show IO Unit from do
-  let wrongGoal := { goal with proposition := "True" }
+  let wrongGoal := { goal with fingerprint := "True" }
   let wrong ← withMockEvidence fixture `wrong proofKey (mockProof wrongGoal)
   let r ← registry wrong
   expect "P04: unrelated complete theorem" (hasIssue (r.resultForRequirement proofKey) "wrong-proof")
@@ -230,7 +230,7 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
     requirements := fixture.requirements.map fun c =>
       if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[proofKey] } } else c }
   let input ← withMockEvidence withObligation `review reviewKey mockReview
-  let changedGoal : Goal := { goal with proposition := "Changed independently expected obligation" }
+  let changedGoal : Goal := { goal with fingerprint := "Changed independently expected obligation" }
   let changed : Input := { input with requirements := input.requirements.map fun c =>
     if c.value.key == proofKey then { c with value := { c.value with expected := .proof changedGoal leanObject } } else c }
   let r ← registry changed
@@ -317,3 +317,8 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
   expect "proof expected in selected realization context" (rejectsWith wrongContext "wrong-project")
 
 end VersoBlueprintTests.BlueprintRealizations
+
+#eval show IO Unit from do
+  let encoded := Lean.toJson VersoBlueprintTests.BlueprintRealizations.goal
+  unless (encoded.getObjVal? "fingerprint").isOk && !(encoded.getObjVal? "proposition").isOk do
+    throw <| IO.userError "Opaque goal identity must be exported as fingerprint, not proposition"

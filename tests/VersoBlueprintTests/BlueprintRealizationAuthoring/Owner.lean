@@ -25,7 +25,6 @@ def versoLink : TranslationKey := ⟨projectName, `versoToLean⟩
 def rocqLink : TranslationKey := ⟨projectName, `rocqToLean⟩
 
 run_cmd liftCoreM <| Realizations.Authoring.configureProject projectName
-run_cmd liftCoreM <| Realizations.Authoring.configureProject projectName
 
 set_option doc.verso true in
 /-- Toggling the two-state flag twice returns it; the off and on cases both reduce. -/

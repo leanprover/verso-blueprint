@@ -15,25 +15,26 @@ open Lean Realizations
 
 /-- An independently authored expected proposition in a selected formal context.
 The provider must elaborate it, check the witness's actual type against it, and
-report completeness. `proposition` is a provider-owned canonical goal description,
-including binders and selected package arguments, never a theorem-name shortcut. -/
+report completeness. `fingerprint` is an opaque provider-owned structural identity
+including binders and selected package arguments. It is neither readable proposition
+text nor a theorem-name shortcut. Native Lean uses a SHA-256 structural digest. -/
 structure Goal where
   context : Context
-  proposition : String
+  fingerprint : String
   documents : Array DocumentKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Source documents are provenance, not part of proposition equality. Actual
 definitional equality must be established by the provider before this boundary. -/
 def Goal.sameProposition (a b : Goal) : Bool :=
-  a.context == b.context && a.proposition == b.proposition
+  a.context == b.context && a.fingerprint == b.fingerprint
 
 /-- Proof checking, human review, and named executable checks remain distinct. -/
 inductive Expectation where
   | proof (goal : Goal) (witness : ObjectKey)
   | review (criterion : Name)
   | check (validator : Name)
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 namespace NativeLean
 
@@ -54,21 +55,21 @@ def Expectation.isNativeDeclarationCheck : Expectation → Bool
 inductive Coverage where
   | subject
   | dependencyClosure
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Requirement where
   key : RequirementKey
   expected : Expectation
   coverage : Coverage := .subject
   prerequisites : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 inductive Outcome where
   | passed
   | failed
   | unavailable
   | notApplicable
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Input from the owning checker, not an unchecked success flag on a realization.
 `actualType` must be obtained from the checked witness. Complete proof evidence
@@ -81,7 +82,7 @@ structure ProofObservation where
   coverage : Coverage := .subject
   assumptions : Array String := #[]
   explanation : String := ""
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure ReviewObservation where
   criterion : Name
@@ -89,7 +90,7 @@ structure ReviewObservation where
   outcome : Outcome
   coverage : Coverage := .subject
   explanation : String := ""
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure CheckObservation where
   validator : Name
@@ -100,13 +101,13 @@ structure CheckObservation where
   /-- Declared native assumptions remain inspectable; this is not an axiom policy. -/
   assumptions : Array String := #[]
   explanation : String := ""
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 inductive Observation where
   | proof (observation : ProofObservation)
   | review (observation : ReviewObservation)
   | check (observation : CheckObservation)
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 def Observation.explanation : Observation → String
   | .proof o => o.explanation
@@ -122,11 +123,11 @@ structure Evidence where
   requirement : RequirementKey
   binding : ContentBinding
   observation : Observation
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 def Expectation.valid : Expectation → Bool
   | .proof goal witness =>
-    goal.context.valid && !blank goal.proposition && witness.valid && witness.context == goal.context
+    goal.context.valid && !blank goal.fingerprint && witness.valid && witness.context == goal.context
   | .review criterion => !criterion.isAnonymous
   | .check validator => !validator.isAnonymous
 

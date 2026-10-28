@@ -31,14 +31,14 @@ private def full [Monad m] (result : Except (Array Diagnostic) α) : ExceptT (Ar
 
 /-- The collector is one producer, with unambiguous typed boundaries for each
 semantic slot. Query module/options and registration order are not identities. -/
-private def contribution [Repr κ] (family : Name) (key : κ) (value : α) : Contribution α :=
+private def contribution (family : Name) (key : Json) (value : α) : Contribution α :=
   { origin := {
-      id := Name.mkSimple (toJson (reprStr family, reprStr key)).compress
+      id := Name.mkSimple (toJson (Vir.nameKey family, key)).compress
       moduleName := `VersoBlueprint.Realizations.Capture
       source := "ordinary Blueprint source collection" }, value }
 
 private def authoredContribution (origin : Origin) (family : Name) (index : Nat) (value : α) : Contribution α :=
-  { origin := { origin with id := Name.mkSimple (toJson (reprStr origin.id, reprStr family, index)).compress }, value }
+  { origin := { origin with id := Name.mkSimple (toJson (Vir.nameKey origin.id, Vir.nameKey family, index)).compress }, value }
 
 /-- Resolution failure stays an edge diagnostic, never a manufactured theorem status. -/
 structure SelectedUse where
@@ -108,7 +108,7 @@ private structure Collected where
   nativeChecks : Array NativeLean.CheckedDeclaration := #[]
 
 private def recordObservation (collected : Collected) (key : RequirementKey) (observation : Observation) : Collected :=
-  { collected with observations := collected.observations.push ((contribution `observation key ()).origin, key, observation) }
+  { collected with observations := collected.observations.push ((contribution `observation (BindingEncoding.requirementKey key) ()).origin, key, observation) }
 
 /-- Lossless view of the fields consumed by capture; not another store. -/
 structure Raw where
@@ -226,7 +226,8 @@ def plan (raw : Raw) : Plan := Id.run do
           let owners := records.filter fun record => record.id.producer == `blueprint.attribute &&
             record.source.isSome && record.source == source.source.location
           if !owners.isEmpty then
-            let selected := canonical (owners.flatMap (·.nativeAssociations))
+            -- Only uniqueness matters here; ambiguous associations are rejected.
+            let selected := (owners.flatMap (·.nativeAssociations)).toList.eraseDups.toArray
             if selected.size != 1 then
               documented := some (.error {
                 code := "ambiguous-docstring", subject := label.toString,
@@ -382,7 +383,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       reject "producer-collision" label.toString (reprStr diagnostics)
     let uses := accepted.uses
     collected := { collected with
-      input.nodes := collected.input.nodes.push (contribution `node label
+      input.nodes := collected.input.nodes.push (contribution `node (toJson (Vir.nameKey label))
         (accepted.toNode.toConcept label label.toString))
       uses := collected.uses ++ uses }
     for step in node.realizations do
@@ -412,14 +413,14 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         let source := sourceStep.source
         let (document, issues) ← providers.document sourceStep.document
         collected := { collected with
-          input.documents := collected.input.documents.push (contribution `document document.key document)
+          input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey document.key) document)
           diagnostics := collected.diagnostics ++ issues }
         if let some reason := source.source.error then
           collected := { collected with diagnostics := collected.diagnostics.push {
-            code := "source-association-unavailable", subject := (toJson source.destination).compress, message := reason } }
+            code := "source-association-unavailable", subject := (BindingEncoding.subject source.destination.subject).compress, message := reason } }
         if let some documented := sourceStep.documented then
             let proseKey : DocumentKey := ⟨source.context,
-              source.document.path ++ "#docstring:" ++ (toJson source.destination).compress⟩
+              source.document.path ++ "#docstring:" ++ (BindingEncoding.subject source.destination.subject).compress⟩
             let result ← match documented with
               | .error issue => pure (.error issue)
               | .ok handle => providers.documented handle
@@ -429,7 +430,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                 collected := { collected with diagnostics := collected.diagnostics.push diagnostic }
                 pure ""
             collected := { collected with
-              input.documents := collected.input.documents.push (contribution `document proseKey { key := proseKey, text }) }
+              input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey proseKey) { key := proseKey, text }) }
             model := { model with facets := model.facets.map fun facet =>
               if facet.name != source.destination.facet then facet else
                 { facet with documents := canonical (facet.documents.push proseKey) } }
@@ -447,15 +448,15 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           | .ok prepared =>
             collected := { collected with
               diagnostics := collected.diagnostics ++ prepared.semanticDiagnostics
-              input.documents := collected.input.documents.push (contribution `document prepared.document.key prepared.document)
+              input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
               input.bindingInputs := collected.input.bindingInputs ++ prepared.semanticContext.toArray.map fun content =>
-                contribution `nativeContext subject { subject, name := NativeLean.sourceContext, content } }
+                contribution `nativeContext (BindingEncoding.subject subject) { subject, name := NativeLean.sourceContext, content } }
             pure { key := witness, resolution := .resolved, document := some prepared.document.key }
         collected := { collected with
-          input.objects := collected.input.objects.push (contribution `object witness observation)
+          input.objects := collected.input.objects.push (contribution `object (BindingEncoding.objectKey witness) observation)
           input.requirements := collected.input.requirements ++ #[
-            contribution `requirement statementKey { key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure },
-            contribution `requirement proofKey { key := proofKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
+            contribution `requirement (BindingEncoding.requirementKey statementKey) { key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure },
+            contribution `requirement (BindingEncoding.requirementKey proofKey) { key := proofKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
         model := { model with
           declarations := model.declarations.map fun declaration =>
             if declaration.object == witness then { declaration with required := #[proofKey] } else declaration
@@ -472,7 +473,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           for (key, validator) in #[(statementKey, NativeLean.statementValidator), (proofKey, NativeLean.bodyValidator)] do
             collected := recordObservation collected key (.check {
               validator, declaration := some witness, outcome := .unavailable, explanation := diagnostic.message })
-      collected := { collected with input.realizations := collected.input.realizations.push (contribution `realization key model) }
+      collected := { collected with input.realizations := collected.input.realizations.push (contribution `realization (BindingEncoding.realizationKey key) model) }
     let models := collected.input.realizations.map (·.value)
     let issues := uses.flatMap (·.issues label models)
     unless issues.isEmpty do full (.error issues)
@@ -527,6 +528,7 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
             subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content } }
       collected := { collected with
         input := input
+        diagnostics := collected.diagnostics ++ checked.semanticDiagnostics
         observations := collected.observations.push ((authoredContribution record.origin `expectedObservation index ()).origin,
           expectedKey, .proof checked.observation) }
     let batch := record.authored
@@ -622,9 +624,9 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
           prerequisites := prerequisites.push selectionKey ++ edges.flatMap fun edge =>
             match edge.selected with | .ok keys => keys | .error _ => #[]
           collected := { collected with input := { collected.input with
-            requirements := collected.input.requirements.push (contribution `requirement selectionKey {
+            requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
               key := selectionKey, expected := .check `blueprint.dependencySelection })
-            bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection selectionKey {
+            bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
               subject, name := name ++ `selectedUses
               content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
                 edge.facet, edge.reference, edge.selected))).compress }) } }

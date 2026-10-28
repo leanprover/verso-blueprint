@@ -161,6 +161,50 @@ run_cmd liftTermElabM do
   ensure (snapshot.uses.any fun use => use.reference.label == Name.mkSimple "capture.absent" &&
     match use.selected with | .error diagnostic => diagnostic.code == "missing-target" | _ => false)
     "Missing edge disappeared or became an invented target requirement"
+  let displayLeft := Name.mkSimple "foo.bar»"
+  let displayRight := Name.str (Name.mkSimple "foo") "bar»"
+  ensure (displayLeft != displayRight && reprStr displayLeft == reprStr displayRight)
+    "Producer-identity collision fixture no longer has equal display spellings"
+  let some (_, baseNode) := before.data.toArray[0]? | throwError "Missing node metadata fixture"
+  let accepted : Environment.RegisteredNode := { baseNode with toNode := {
+    baseNode.toNode with sources := #[], uses := #[], nativeAssociations := #[] } }
+  let pending : NameSet := (({} : NameSet).insert displayLeft).insert displayRight
+  let collisionRaw : Capture.Raw := {
+    nodes := #[(displayLeft, accepted), (displayRight, accepted)]
+    pending, facts := [], authored := #[], initialIssues := #[] }
+  let collisionPlan := Capture.plan collisionRaw
+  let collisionSnapshot ← obtain (Capture.evaluate collisionPlan {})
+  let generated := collisionSnapshot.registry.contributions.nodes
+  let generatedIds := generated.map (·.origin.id)
+  ensure (generated.size == 2 &&
+    generated.any (·.value.label == displayLeft) && generated.any (·.value.label == displayRight) &&
+    generatedIds[0]? != generatedIds[1]?)
+    "Distinct typed labels with equal display Repr must retain distinct producer identities and nodes"
+  ensure (toJson displayLeft == toJson displayRight)
+    "Docstring destination collision fixture must retain equal display JSON spellings"
+  let some (docLabel, docNode, docSource) := plan.ordinary.findSome? fun node =>
+      node.realizations.findSome? fun realization =>
+        realization.sources.findSome? fun sourceStep =>
+          match sourceStep.source.payload, sourceStep.documented with
+          | .prose _, some (.ok _) => some (node.label, node.accepted, sourceStep.source)
+          | _, _ => none
+    | throwError "Missing actual attribute-owned Verso source for destination identity control"
+  let docLeft := { docSource with destination := { docSource.destination with facet := displayLeft } }
+  let docRight := { docSource with destination := { docSource.destination with facet := displayRight } }
+  let docAccepted := { docNode with toNode := { docNode.toNode with sources := #[docLeft, docRight] } }
+  let docRaw : Capture.Raw := {
+    nodes := #[(docLabel, docAccepted)]
+    pending := ({} : NameSet).insert docLabel
+    facts := before.factRecords.filter (·.label == docLabel)
+    authored := #[]
+    initialIssues := #[] }
+  let docPlan := Capture.plan docRaw
+  let docObservations ← obtain (← Capture.observe docPlan)
+  let docSnapshot ← obtain (Capture.evaluate docPlan docObservations)
+  let generatedDocstrings := docSnapshot.registry.documents.filter (·.key.path.contains "#docstring:")
+  ensure (generatedDocstrings.size == 2 && !generatedDocstrings[0]!.text.trimAscii.isEmpty && generatedDocstrings[0]!.key != generatedDocstrings[1]!.key &&
+    generatedDocstrings[0]!.text == generatedDocstrings[1]!.text)
+    "Distinct typed docstring destinations must retain separate document identities with their actual equal text"
   let grouped : RealizationKey := ⟨Name.mkSimple "capture.grouped", `lean⟩
   let some groupedModel := registry.realization? grouped | throwError "Missing multi-declaration realization"
   ensure (groupedModel.declarations.size == 2 && !(registry.resultFor (.realization grouped)).complete &&
@@ -233,6 +277,24 @@ run_cmd liftTermElabM do
   rejects "missing-observation" { observations with specifications := #[] }
   rejects "missing-observation" { observations with expected := #[] }
   let some expected := observations.expected[0]? | throwError "Missing expected-goal result control"
+  let originalChecked ← obtain expected.result.result
+  let semanticDiagnostic : Diagnostic := {
+    code := "semantic-context-unavailable"
+    subject := "RealizationCaptureFixture.complete"
+    message := "Injected failure for diagnostic propagation control" }
+  let failingSemantics : NativeLean.SemanticContext := fun _ _ => pure (.error semanticDiagnostic)
+  let expectedName := plan.expected[expected.handle]!.expected
+  let checkedWithoutContext ← obtain (← NativeLean.check `blueprintFixtures
+    originalChecked.observation.witness (mkCIdent expectedName) expected.result.documents failingSemantics)
+  ensure (checkedWithoutContext.semanticContext.isNone &&
+    checkedWithoutContext.semanticDiagnostics == #[semanticDiagnostic])
+    "Native expected-goal check dropped its semantic-context failure"
+  let failedSemantics : Capture.Observations plan := { observations with
+    expected := observations.expected.modify 0 fun entry =>
+      { entry with result := { entry.result with result := .ok checkedWithoutContext } } }
+  let preserved ← obtain (Capture.evaluate plan failedSemantics)
+  ensure (preserved.diagnostics.contains semanticDiagnostic)
+    "Expected-proof semantic-context failure was dropped during capture evaluation"
   rejects "duplicate-observation" { observations with expected := observations.expected.push expected }
   rejects "extraneous-observation" { observations with expected := observations.expected.push { expected with handle := plan.expected.size } }
   rejects "mismatched-observation" { observations with expected := observations.expected.modify 0 fun entry =>

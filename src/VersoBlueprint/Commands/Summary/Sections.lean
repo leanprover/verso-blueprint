@@ -42,9 +42,9 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
             (toString data.coverageSplit.readyToFormalize)
             (Option.some actionableEntryDescription)}}
         {{summaryCard
-            "Fully closed"
+            "Lean requirements complete"
             (toString data.coverageSplit.fullyClosed)
-            (Option.some "Local code and prerequisite closure are both complete.")}}
+            (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
         {{summaryCard
             "Actionable priorities"
             (toString data.actionablePriorities.length)
@@ -338,9 +338,9 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (Option.some "Local Lean work is done, but prerequisite closure is still open.")}}
           {{summaryOptionalCard
               (data.coverageSplit.fullyClosed > 0)
-              "Fully closed"
+              "Lean requirements complete"
               (toString data.coverageSplit.fullyClosed)
-              (Option.some "Local code and ancestor closure are both complete.")}}
+              (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
           {{summaryOptionalWarnCard
               (data.coverageSplit.blockedOrIncomplete > 0)
               "Blocked or incomplete"

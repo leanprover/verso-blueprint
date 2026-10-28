@@ -16,38 +16,38 @@ open Lean
 structure Context where
   language : Name
   project : Name
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure ObjectKey where
   context : Context
   native : String
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure DocumentKey where
   context : Context
   path : String
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 /-- Current canonical bytes supplied by the owning source provider. -/
 structure Document where
   key : DocumentKey
   text : String
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure RealizationKey where
   node : Name
   name : Name
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure TranslationKey where
   project : Name
   name : Name
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure ClaimKey where
   translation : TranslationKey
   name : Name
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 /-- Statement/proof are named facets; declarations can have separate requirements. -/
 inductive Subject where
@@ -56,7 +56,7 @@ inductive Subject where
   | declaration (key : RealizationKey) (object : ObjectKey)
   | translation (key : TranslationKey)
   | claim (key : ClaimKey)
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 def Subject.realization? : Subject → Option RealizationKey
   | .realization key | .facet key _ | .declaration key _ => some key
@@ -70,12 +70,12 @@ def Subject.translation? : Subject → Option TranslationKey
 structure RequirementKey where
   subject : Subject
   name : Name
-  deriving Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 structure Node extends Data.NodeMetadata where
   label : Name
   title : String
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Facet where
   name : Name
@@ -84,13 +84,13 @@ structure Facet where
   existing associations. Sharing a declaration does not duplicate its validation. -/
   declarations : Array ObjectKey := #[]
   required : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Every listed declaration is required; alternatives belong in another realization. -/
 structure Declaration where
   object : ObjectKey
   required : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Realization where
   key : RealizationKey
@@ -98,7 +98,7 @@ structure Realization where
   facets : Array Facet := #[]
   declarations : Array Declaration := #[]
   required : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 def Realization.requirements (r : Realization) : Array RequirementKey :=
   (r.required ++ r.facets.flatMap (·.required) ++ r.declarations.flatMap (·.required)).toList.eraseDups.toArray
@@ -108,7 +108,7 @@ inductive Resolution where
   | missing
   | ambiguous
   | unsupported
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Source resolution is an observation, not proof/completeness evidence. -/
 structure ObjectObservation where
@@ -116,14 +116,14 @@ structure ObjectObservation where
   resolution : Resolution
   document : Option DocumentKey := none
   explanation : String := ""
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Immutable producer-site identity and diagnostic provenance, not a semantic key. -/
 structure Origin where
   id : Name
   moduleName : Name
   source : String := ""
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Contribution (α : Type) where
   origin : Origin
@@ -135,7 +135,7 @@ structure Diagnostic where
   subject : String
   message : String
   origins : Array Origin := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Current provider/build semantic inputs for a selected subject. These are
 materialized with current source, never exported by source authoring or reports. -/
@@ -143,22 +143,17 @@ structure BindingInput where
   subject : Subject
   name : Name
   content : String
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
-/-- Serialize each sort key once. Equality is checked within equal-JSON buckets;
-non-injective display JSON cannot erase distinct values. Structural Repr breaks
-sort ties for the pure record types used by the kernel. -/
-def canonical [BEq α] [ToJson α] [Repr α] (values : Array α) : Array α := Id.run do
-  let mut seen : Std.HashMap String (Array α) := {}
-  let mut keyed : Array (String × α) := #[]
-  for value in values do
-    let key := (toJson value).compress
-    let bucket := seen[key]?.getD #[]
-    unless bucket.contains value do
-      seen := seen.insert key (bucket.push value)
-      keyed := keyed.push (key, value)
-  return (keyed.qsort fun a b =>
-    if a.1 == b.1 then reprStr a.2 < reprStr b.2 else a.1 < b.1).map (·.2)
+/-- Canonical set order uses structural `Ord`, never display JSON or `Repr`.
+The supplied ordering must distinguish unequal values (as the derived instances
+for these records do). Deduplication still uses typed equality. -/
+def canonical [BEq α] [Ord α] (values : Array α) : Array α := Id.run do
+  let sorted := values.qsort (fun a b => compare a b == .lt)
+  let mut result := #[]
+  for value in sorted do
+    if result.back? != some value then result := result.push value
+  return result
 
 def blank (s : String) : Bool := s.trimAscii.isEmpty
 

@@ -7,9 +7,9 @@ import VersoBlueprint.Validation
 import VersoBlueprint.Util.Merkle
 import VersoBlueprint.Validation.BindingEncoding
 
-/-! Bounded pure registry/admission and one validation projection. This module is
-not installed into the existing Blueprint environment or graph. Its provider
-observations must come from real language checks before production use. -/
+/-! Pure admission and validation for canonical Blueprint capture. Admission
+checks supplied observations; it does not authenticate their providers. Production
+consumers obtain fresh observations through `Realizations.Capture`. -/
 
 namespace Informal.Translations
 
@@ -20,7 +20,7 @@ facet must exist. Selection is part of the reviewed correspondence contract. -/
 structure Endpoint where
   realization : RealizationKey
   facets : Array Name := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 instance : Coe RealizationKey Endpoint := ⟨fun key => { realization := key }⟩
 
@@ -30,7 +30,7 @@ structure Translation where
   target : Array Endpoint
   /-- Exact requirements, including selected target validation and obligations. -/
   required : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Claim where
   key : ClaimKey
@@ -39,7 +39,7 @@ structure Claim where
   /-- Validation of this claim itself. External mathematical obligations belong
   in these requirements' prerequisites and cannot replace claim-local evidence. -/
   required : Array RequirementKey := #[]
-  deriving Repr, Inhabited, BEq, DecidableEq, ToJson
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Collected before cross-record resolution, permitting forward references. -/
 structure Input where
@@ -82,7 +82,7 @@ structure Registry where
   private resultValues : Std.HashMap RequirementKey Result := {}
   deriving Repr
 
-private def values [BEq α] [ToJson α] [Repr α] (records : Array (Contribution α)) : Array α :=
+private def values [BEq α] [Ord α] (records : Array (Contribution α)) : Array α :=
   canonical (records.map (·.value))
 
 private def indexBy [BEq κ] [Hashable κ] (key : α → κ) (values : Array α) : Std.HashMap κ α :=
@@ -110,7 +110,7 @@ private def issue [ToJson α] (code : String) (subject : α) (message : String)
     (origins : Array Origin := #[]) : Diagnostic :=
   { code, subject := (toJson subject).compress, message, origins := canonical origins }
 
-private def familyIssues [BEq α] [ToJson α] [Repr α] [BEq κ] [Hashable κ] [ToJson κ]
+private def familyIssues [BEq α] [Ord α] [BEq κ] [Hashable κ] [ToJson κ]
     (family : String) (key : α → κ) (records : Array (Contribution α)) : Array Diagnostic := Id.run do
   let mut buckets : Std.HashMap κ (Array (Contribution α)) := {}
   for record in records do
@@ -123,10 +123,17 @@ private def familyIssues [BEq α] [ToJson α] [Repr α] [BEq κ] [Hashable κ] [
         s!"Incompatible {family} definitions" (bucket.map (·.origin))
   return diagnostics
 
-private def producerRecords [ToJson α] (tag : String) (records : Array (Contribution α)) :
-    Array (Name × String × Origin) :=
-  records.map fun record =>
-    (record.origin.id, (toJson (tag, record)).compress, record.origin)
+/-- Check same-family records by typed equality, not lossy display serialization.
+The tag below only distinguishes families sharing a producer id. -/
+private def producerRecords [BEq α] (tag : String) (records : Array (Contribution α)) :
+    Array (Name × String × Origin × Bool) := Id.run do
+  let mut seen : Std.HashMap Name (Contribution α) := {}
+  let mut result := #[]
+  for record in records do
+    let compatible :=  (seen[record.origin.id]?).all (· == record)
+    seen := seen.insert record.origin.id record
+    result := result.push (record.origin.id, tag, record.origin, compatible)
+  return result
 
 private def Input.producerIssues (input : Input) : Array Diagnostic := Id.run do
   let records := producerRecords "node" input.nodes ++ producerRecords "document" input.documents ++
@@ -134,15 +141,15 @@ private def Input.producerIssues (input : Input) : Array Diagnostic := Id.run do
     producerRecords "translation" input.translations ++ producerRecords "claim" input.claims ++
     producerRecords "requirement" input.requirements ++ producerRecords "evidence" input.evidence ++
     producerRecords "bindingInput" input.bindingInputs
-  let mut buckets : Std.HashMap Name (Array (String × Origin)) := {}
-  for (id, value, origin) in records do
-    buckets := buckets.insert id ((buckets[id]?.getD #[]).push (value, origin))
+  let mut buckets : Std.HashMap Name (Array (String × Origin × Bool)) := {}
+  for (id, family, origin, compatible) in records do
+    buckets := buckets.insert id ((buckets[id]?.getD #[]).push (family, origin, compatible))
   let mut diagnostics := #[]
   for (id, bucket) in buckets do
-    if id.isAnonymous || bucket.any (·.2.moduleName.isAnonymous) ||
+    if id.isAnonymous || bucket.any (·.2.1.moduleName.isAnonymous) || bucket.any (! ·.2.2) ||
         bucket.any (fun entry => entry.1 != bucket[0]!.1) then
       diagnostics := diagnostics.push <| issue "producer-collision" id
-        "Producer-site identity is empty or has incompatible records" (bucket.map (·.2))
+        "Producer-site identity is empty or has incompatible records" (bucket.map (·.2.1))
   return diagnostics
 
 def Registry.hasSubject (r : Registry) : Subject → Bool

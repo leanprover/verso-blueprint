@@ -92,7 +92,7 @@ private def checked (edges : Array (Array Nat)) (passed : Nat → Bool := fun _ 
 private inductive CollidingJson where
   | left
   | right
-  deriving BEq, Repr
+  deriving Ord, BEq, Repr
 
 private instance : ToJson CollidingJson where
   toJson _ := toJson "same display JSON"
@@ -101,7 +101,44 @@ private instance : ToJson CollidingJson where
   let a := canonical #[CollidingJson.left, .right, .left]
   let b := canonical #[CollidingJson.right, .left, .right]
   ensure (a.size == 2 && a == b)
-    "Canonicalization must retain distinct values and deterministically break display-JSON ties"
+    "Canonicalization must retain distinct values and order by structural identity independently of display JSON"
+
+-- These are valid typed names with identical display JSON AND Repr. Neither
+-- display representation may order identities or decide producer compatibility.
+#eval show IO Unit from do
+  let left := Name.mkSimple "foo.bar»"
+  let right := Name.str (Name.mkSimple "foo") "bar»"
+  ensure (left != right && toJson left == toJson right && reprStr left == reprStr right)
+    "Control must exercise a real display-name collision"
+  ensure (canonical #[left, right, left] == canonical #[right, left, right] &&
+    (canonical #[left, right]).size == 2)
+    "Distinct names must survive canonicalization in permutation-independent order"
+  let a : Node := { label := left, title := "same" }
+  let b : Node := { label := right, title := "same" }
+  let forward : Input := { nodes := #[contribution `left a, contribution `right b] }
+  let reverse : Input := { nodes := forward.nodes.reverse }
+  let first ← obtain (admit forward)
+  let second ← obtain (admit reverse)
+  ensure (first.nodes == second.nodes && first.nodes.size == 2)
+    "Admitted nodes must preserve structural names and replay order independence"
+  let collision : Input := { nodes := #[contribution `same a, contribution `same b] }
+  for records in #[collision.nodes, collision.nodes.reverse] do
+    match admit { collision with nodes := records } with
+    | .ok _ => throw <| IO.userError "Producer collision hidden by name display was accepted"
+    | .error issues => ensure (issues.any (·.code == "producer-collision")) "Typed producer collision must remain explicit"
+  -- Nested metadata and provenance names must be structural too.
+  let metadataA : Node := { label := `nested, title := "same", parent := some left }
+  let metadataB : Node := { metadataA with parent := some right }
+  ensure (canonical #[metadataA, metadataB] == canonical #[metadataB, metadataA] &&
+    (canonical #[metadataA, metadataB]).size == 2) "Nested metadata identity was lost"
+  let original := contribution `same a
+  let changed := { original with origin := { original.origin with moduleName := right } }
+  let original := { original with origin := { original.origin with moduleName := left } }
+  match admit { nodes := #[original, changed] } with
+  | .ok _ => throw <| IO.userError "Producer origin collision hidden by display was accepted"
+  | .error issues => ensure (issues.any (·.code == "producer-collision")) "Producer origin must use typed equality"
+  let replay ← obtain (admit { nodes := #[original, original] })
+  ensure (replay.nodes.size == 1) "Exact producer replay must remain idempotent"
 
 -- The reviewed explicit-requirement policy: displayed declarations and required
 -- validation subjects are distinct. A facet can require a mathematical check on

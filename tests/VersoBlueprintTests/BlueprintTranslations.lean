@@ -31,7 +31,7 @@ open BlueprintRealizations
 
 -- P05/P06: independent MaxNat-shaped goal descriptors, not actual project checks.
 #eval show IO Unit from do
-  let ownershipGoal := { goal with proposition :=
+  let ownershipGoal := { goal with fingerprint :=
     "forall k : Nat, MaxNatCoreRel.rel (uPredOwnM (M := natSI.maxNatUR) (MaxNat.mk k)) (UPred.ownM (M := Iris.MaxNat) (Iris.MaxNat.ofNat k)); packages=canonical; relation=x.car=xi.toNat" }
   let ownership : Input := { fixture with requirements := fixture.requirements.map fun c =>
     if c.value.key == proofKey then { c with value := { c.value with expected := .proof ownershipGoal leanObject } } else c }
@@ -41,11 +41,11 @@ open BlueprintRealizations
   let checked ← withMockEvidence checked `interpretation reviewKey mockReview
   let r ← registry checked
   expect "P05: selected ownership-shaped contract" ((r.resultFor (.translation translationKey)).complete)
-  let thresholdGoal := { ownershipGoal with proposition := "forall k, maxNatBupdThresholdRelated k" }
+  let thresholdGoal := { ownershipGoal with fingerprint := "forall k, maxNatBupdThresholdRelated k" }
   let wrong ← withMockEvidence full `threshold proofKey (mockProof thresholdGoal)
   let r ← registry wrong
   expect "P06: threshold is not ownership" (hasIssue (r.resultForRequirement proofKey) "wrong-proof")
-  let conditionalGoal := { ownershipGoal with proposition :=
+  let conditionalGoal := { ownershipGoal with fingerprint :=
     "forall B : ResourceBridge LM IM, B.rel a ai -> B.relPred (ownM a) (ownM ai)" }
   let wrong ← withMockEvidence full `conditional proofKey (mockProof conditionalGoal)
   let r ← registry wrong
@@ -55,7 +55,7 @@ open BlueprintRealizations
 #eval show IO Unit from do
   let otherObject := { leanObject with native := "Fixture.second_required_declaration" }
   let otherProof : RequirementKey := ⟨.declaration leanKey otherObject, `complete_proof⟩
-  let otherGoal := { goal with proposition := "Second independently expected proposition" }
+  let otherGoal := { goal with fingerprint := "Second independently expected proposition" }
   let alternativeKey : RealizationKey := ⟨leanKey.node, `alternative⟩
   let alternativeProof : RequirementKey := ⟨.facet alternativeKey `proof, `complete_proof⟩
   let alternative : Realization := {
@@ -266,7 +266,7 @@ open BlueprintRealizations
   let obligationObject : ObjectKey := ⟨obligationContext, "Fixture.external_preservation"⟩
   let obligationProof : RequirementKey := ⟨.facet obligationRealization `proof, `preservation⟩
   let obligationGoal : Goal := {
-    context := obligationContext, proposition := "Independently expected preservation relation"
+    context := obligationContext, fingerprint := "Independently expected preservation relation"
     documents := #[obligationDocument] }
   let input : Input := { fixture with
     nodes := fixture.nodes.push <| contribution `obligationNode {
@@ -304,7 +304,7 @@ are checked. The original proof requirement is shared by its facet/declaration. 
 def withMissingProofHelper : IO Input := do
   let helper := { leanObject with native := "Fixture.proof_only_helper" }
   let helperProof : RequirementKey := ⟨.declaration leanKey helper, `complete_proof⟩
-  let helperGoal : Goal := { goal with proposition := "Helper proposition" }
+  let helperGoal : Goal := { goal with fingerprint := "Helper proposition" }
   let input : Input := { fixture with
     realizations := fixture.realizations.map fun c =>
       if c.value.key == leanKey then { c with value := { c.value with
@@ -376,7 +376,7 @@ def withMissingProofHelper : IO Input := do
   let correspondenceDocument : DocumentKey := ⟨leanContext, "MockCorrespondence.lean"⟩
   let correspondenceObject : ObjectKey := ⟨leanContext, "Fixture.correspondence"⟩
   let correspondenceGoal : Goal := {
-    context := leanContext, proposition := "MOCK formal correspondence proposition"
+    context := leanContext, fingerprint := "MOCK formal correspondence proposition"
     documents := #[correspondenceDocument] }
   let proofContract : Input := { noStatements with
     documents := noStatements.documents.push <| contribution `correspondenceDocument {

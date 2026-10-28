@@ -439,13 +439,18 @@ package MyProject where
 ```
 
 Lean's `weak` prefix applies this setting where Blueprint is loaded and lets
-independent Lean-only modules ignore the unregistered option. Source producers
-require a configured project: attributes, prose directives, inline Lean/Rust and
-labeled external markup. The chosen project is stored with each source and native
-association; changing options in an importing query does not relabel that source.
-Metadata-only registrations require no source context. The realization authoring
-API also accepts explicit module configuration for source attachments and independent
-expected propositions.
+independent Lean-only modules ignore the unregistered option. Ordinary Blueprint
+attributes, prose directives, inline code and labeled markup enroll their source
+automatically; they need a logical project context so the recorded identity is
+stable. Changing options in an importing query does not relabel an existing
+source. Metadata-only registrations need no source context.
+
+`Informal.Realizations.Authoring.configureProject` configures the exact module
+that calls the authoring API; it does not enroll importers. Use it when that
+module calls `Authoring.stage` or `Authoring.expectNative` to attach source-authored
+realizations, translation claims, requirements, or an independently written
+expected proposition. It is not required as a separate opt-in for ordinary
+Blueprint attributes or directives.
 
 For Lean consumers, `Informal.Realizations.Capture.capture` collects ordinary
 Blueprint registrations after the owning modules have been built. Its successful

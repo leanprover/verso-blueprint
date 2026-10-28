@@ -5,7 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Translations
 
-/-! Opt-in, output-only inspection of supplied registry contracts. This is not
+/-! Output-only inspection of supplied registry contracts. This is not
 project readiness, omitted Blueprint dependency closure, provider authentication
 or a source/tool freshness check. All assessment delegates to existing rules. -/
 

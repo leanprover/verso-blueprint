@@ -58,7 +58,7 @@ def document (value : Document) : Json :=
   tagged "document" #[documentKey value.key, Json.str value.text]
 
 def goal (value : Goal) : Json :=
-  tagged "goal" #[context value.context, Json.str value.proposition,
+  tagged "goal" #[context value.context, Json.str value.fingerprint,
     Json.arr (value.documents.map documentKey)]
 
 def expectation : Expectation → Json

@@ -220,7 +220,8 @@ The current workflow is:
 flowchart TD
   source["Blueprint source modules<br/>informal directives, Lean code, citations, groups"]
   elab["Lean / Verso elaboration<br/>directive parsing and local semantic registration"]
-  env["Environment.State<br/>persistent semantic data in oleans"]
+  env["Environment.State<br/>persisted Blueprint source and authoring records"]
+  capture["Realizations.Capture<br/>collect, check, admit, and bind current inputs"]
   traverse["Verso traversal<br/>numbering, hrefs, anchors, local preview blocks"]
   indexes["TraversalIndex domains<br/>Nodes, InlineCode, RustInlineCode,<br/>TraversalPreviews, LeanCodePreviews,<br/>citations, external-decl anchors"]
   render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
@@ -232,6 +233,8 @@ flowchart TD
   source --> elab
   elab --> env
   env --> traverse
+  env --> capture
+  capture --> render
   traverse --> indexes
   indexes --> render
   indexes --> manifest
@@ -259,122 +262,61 @@ The same flow can be read as four contracts:
    the include path does not infer chapters by sorting labels or reparsing Lean
    source.
 
-   Node exports contain each module's local `NodeContribution` records and the
-   original identified external-association/priority facts. The fact identity is
-   assigned at its producer site and is preserved across imports; import replay
-   first collects the complete fact set, then resolves it once per affected
-   label. Replaying the same complete fact is idempotent. Replaying a changed
-   fact under one identity or combining conflicting priority values produces
-   structured diagnostics rather than an arrival-dependent accepted prefix.
-   Collision detection groups full records by identity once per resolver call
-   and examines only identities used by the requested label. Each bucket keeps
-   records from all labels, so cross-label collisions remain detectable. The
-   bucket lookup and linear representative comparison are proved equivalent to
-   the collision specification; that existential specification is not executed
-   as a global pair search. This index is transient, not another persisted store.
-   Pending evidence, contributor provenance, and authored-origin metadata stay
-   available for those diagnostics, but rejected input creates no accepted
-   `RegisteredNode` or declaration-index entry. Body/kind/markup policy remains
-   separate.
-   An imported authored-origin conflict also blocks later local registration:
-   elaboration recovery cannot turn its rejected evidence into an accepted node.
+   Blueprint's existing environment extension persists the authored source
+   inventory and producer records in compiled modules. `Data.Node` now stores
+   keyed source destinations, scoped uses, and typed native associations rather
+   than fixed statement/proof slots. Normal attributes and directives enroll
+   their sources through this path automatically. A logical project option
+   supplies stable source identity; explicit authoring modules use
+   `Realizations.Authoring.configureProject` before staging independently authored
+   realizations or expected propositions. Configuration sets identity; it is
+   not a switch that enables ordinary enrollment.
 
-   Node exports otherwise retain each module's local `NodeContribution` records,
-   together with the module that originally introduced the label and the module
-   supplying those contributions. `statementBody` and `proofBody` are separate
-   from `statementUses` and `proofUses`: dependency-only additions cannot be
-   mistaken for replacement bodies. Explicit statement kinds take precedence
-   over inferred Lean classifications. The field-by-field authoring contract is
-   documented in [the manual's labels section](MANUAL.md#labels-and-node-identity).
+   Import and local contribution remain one transaction boundary. Producer
+   records retain their full identity and provenance through import. The
+   collector rejects conflicting source destinations, identities, or semantic
+   metadata with diagnostics rather than retaining an arrival-dependent prefix.
+   Authored attachments are raw records in the same extension, not a second
+   persistent store. No imported record carries a validation result, admitted
+   registry, or proof evidence.
 
-   `NodeAssembly.assemble` is a pure checked reducer shared by local
-   registration and import replay. It combines the proved selected-fact resolver
-   with the body/kind/markup reducer, and returns either the accepted node or its
-   conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
-   its introducing module, and its contributing modules. Pending provenance is
-   intentionally retained even when assembly rejects an input, so provenance is
-   not itself accepted node data. The registered node, local exports, and
-   declaration-to-label index are committed together only after successful
-   assembly. Import diagnostics retain the reasons and contributing module
-   names. Equal scalar metadata is idempotent; competing bodies, attachment
-   slots, and equally authoritative dependency intents are errors.
+   A consumer calls `Realizations.Capture.capture` after the owning modules have
+   been built. Capture collects the complete ordinary and authored input,
+   performs the current Lean checks, admits the complete model, and binds fresh
+   observations to that exact model. A structural/import failure returns no
+   partial snapshot. Graphs, summaries, headings and CLI status queries use
+   `Snapshot.assessmentFor`; retained display snapshots are inventory only.
+   `Node.proseView`, `usesOn`, and `nativeRefsOn` are derived presentation
+   helpers, not alternate semantic storage or completion authority.
 
-   Custom registration code should call `Informal.Environment.contribute` with
-   a node payload whose type excludes external references and priority, rather than
-   updating and re-exporting a whole node. Registrations that supply either
-   selected field must call `Informal.Environment.contributeRecord` with a
-   `Contributions.Record`, which is the sole owner of its label, statement and proof references,
-   and priority; those fields do not exist in the node payload type. Its identity must be
-   stable at the producer site and slot. Each entry point returns `Option Node`, making
-   acceptance explicit. `withDirective` scopes
-   the one optional active directive and restores Blueprint state on rejection,
-   logged body errors, or exceptions, preserving other Lean state and diagnostics.
-   The completed directive contributes its body, metadata, and inferred edges
-   together. There is no separately committed dependency tail.
+   Pure `Validation` and `Translations` functions check contract shape, subject,
+   content binding and observation suitability. They do not authenticate who
+   supplied an observation or run a checker. The native capture path runs Lean's
+   provider, which checks the actual declaration and—when an independent
+   expectation is present—elaborates and kernel-checks that closed proposition,
+   checks definitional equality with the witness type, then checks native proof
+   completeness. The independently authored expectation is not inferred from
+   the witness or prose. Docstring presence alone does not create a review or
+   correspondence requirement.
 
-   The identified slice owns external references on both facets and priority.
-   `Record.references` and `Record.proofReferences` retain the authored facet;
-   resolution includes both in declaration membership and preserves complete
-   records as support. Assembly folds each facet's accepted snapshots separately
-   into `Node.externalRefs` and `Node.proofExternalRefs`. Both facets feed
-   declaration indexes, fallback kind inference, and shared completion status.
-   Facet ownership affects placement, not membership.
+   The completion view keeps separate results for the declaration's own native
+   statement and body checks, explicit requirements, and selected Blueprint
+   dependencies. Ordinary dependency edges select the target declaration's
+   existing native proof requirement; projects need not create a duplicate
+   proof specification. A passing local proof can therefore coexist with an
+   unfinished dependency or correspondence. Prose assessment is optional unless
+   an explicit review requirement is authored. Resolution failures remain
+   visible as diagnostics, not fabricated proof outcomes.
 
-   Automatic dependencies share one helper-aware declaration walker across
-   attributes, external-Lean statements, and inline Lean code. It follows
-   unassociated helpers to the first associated declarations on each path by
-   default; `verso.blueprint.autoDeps.expandUntagged` selects helper-aware or direct-only inference.
-   The option uses ordinary Lean scoping, with no custom configuration representation;
-   authoring adapters retain responsibility for axis and metadata precedence.
-   See the [LeanArchitect comparison and adaptation decisions](HELPER_DEPENDENCY_INFERENCE.md).
-
-   Nodes store external declarations and literate blocks in separate arrays.
-   External declarations are normalized by canonical name within each facet
-   during registration, preserving registration order and conservatively merging
-   status evidence. Both-facet views use the same canonical merge; raw facet
-   snapshots remain the input to the shared CodeHealth projection.
-   Body producers use `InformalBody`; the assembled `InformalData` additionally
-   retains one dependency declaration per label and authority in `useDeclarations`.
-   Its `deps` projection selects manual metadata for display without discarding
-   automatic evidence needed by future registrations. Equal-authority conflicts
-   remain errors even when another authority supplies the effective edge.
-   Fallback node classification is derived from all merged Lean associations;
-   contributors do not supply a separate inferred kind. See the
-   [API migration notes](API.md) when updating custom registration code.
-   A bodyless attribute association is an independent selected fact, not an
-   authored introduction. When no node has been accepted for a label, an
-   attribute may reuse its declaration's docstring as the initial informal
-   statement. Later attributes only contribute code and dependencies, even when
-   the shared node is bodyless. This keeps attachment producers independent of
-   accumulated body presence. Shared placeholders acquire prose through explicit
-   statement/proof directives; competing authored statement, proof, or
-   placeholder introductions are rejected.
-
-   The current proof boundary follows the production path. Collector laws cover
-   retention of complete records and replay of equal evidence; resolver laws
-   cover exact declaration membership across both facets, accepted supports, and
-   priority agreement; and assembly laws cover the accepted node's resolved
-   priority, exact supports, separate statement/proof snapshot folds, and the
-   `blueprintAttributeAttachments` capability projected from every accepted
-   support. These guarantees are conditional on successful assembly. They do
-   not prove confluence for body/kind/markup policies, choose among
-   conflicting provenance or render snapshots, prove the conservative status
-   projection, or make rejected
-   evidence accepted data. The payload reducer accepts body, dependency, metadata,
-   and literate-code inputs; identified association and priority records enter
-   through `contributeRecord`.
-
-   Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of
-   the Manual genre. Blueprint registers docstring handlers for `uses` and
-   `bpref` that store a typed reference plus readable fallback children. The
-   attribute converts the adopted statement once into Manual terms and
-   canonical `Data.UseRef` edges; it does not need a directive stack or replay
-   the docstring elaborators. The first adopted body owns its docstring edges,
-   so later discarded bodies cannot introduce dependencies. Link destinations
-   and automatic reference titles remain traversal facts. The static
-   declaration-panel renderer uses fallback children and stays independent of
-   the semantic adapter, avoiding a dependency cycle through `Data` and the
-   external declaration renderer.
+   Expression and declaration fingerprints use SHA-256 Merkle graphs to bind
+   observations to current semantic inputs, including transitive imported
+   declaration types/bodies and provider/compiler identity. Source documents
+   bind their current bytes. Fingerprints are freshness descriptors, not proof
+   certificates or authentication; Lean checks are performed afresh. The design
+   assumes SHA-256 collision resistance for freshness, ignores definitionally
+   irrelevant expression metadata while separately binding original source
+   bytes, and keeps memoization inside one capture. No proof-success cache or
+   historical receipt store is persisted.
 
 2. **Environment to traversal.**
    `blueprintMain` and `blueprintMainWithPreviewData` capture a `RenderModel`

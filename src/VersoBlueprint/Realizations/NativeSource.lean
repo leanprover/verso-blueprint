@@ -306,7 +306,7 @@ structure PreparedModel where
 private def sourceContribution (origin : Origin) (slot : Name) (value : α) : Contribution α :=
   { origin := { origin with
       -- Structured typed boundaries preserve the producer site and child slot.
-      id := Name.mkSimple (toJson (reprStr origin.id, reprStr slot)).compress }, value }
+      id := Name.mkSimple (toJson (Vir.nameKey origin.id, Vir.nameKey slot)).compress }, value }
 
 def PreparedModel.contribution (p : PreparedModel) (slot : Name) (value : α) : Contribution α :=
   sourceContribution p.origin slot value
@@ -360,14 +360,16 @@ def Documented.realize (source : Documented) (origin : Origin) (node : Realizati
         facets := #[{ name := `statement, documents := #[proseDoc] }] }) } }
 
 /-- Prepare source/contracts plus a fresh observation without admission or binding.
-The complete caller batch must supply any additional goal documents. -/
+The complete caller batch must supply any additional goal documents. The checked
+result retains semantic-context diagnostics even when the native proof passes. -/
 def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
-    (goalDocuments : Array DocumentKey := #[]) :
-    Elab.Term.TermElabM (Except Diagnostic (Input × ProofObservation)) := do
+    (goalDocuments : Array DocumentKey := #[])
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
+    Elab.Term.TermElabM (Except Diagnostic (Input × NativeLean.Checked)) := do
   let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key)
     (p.input.objects.filterMap (·.value.document))
-  let checked ← NativeLean.check p.witness.context.project p.witness expected docs
-  let .ok checked := checked | return checked.map (fun checked => (p.input, checked.observation))
+  let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
+  let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
   let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
   let input := { p.input with
     realizations := p.input.realizations.map fun record =>
@@ -381,13 +383,13 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
       coverage := .dependencyClosure }]
     bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
       p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) }
-  return .ok (input, checked.observation)
+  return .ok (input, checked)
 
 /-- Attach a freshly checked proof requirement/evidence to the returned input.
 Does not register anything in the existing Blueprint environment. -/
 def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.TermElabM (Except Diagnostic Input) := do
   let prepared ← p.prepareValidation expected
-  let .ok (input, observation) := prepared | return prepared.map (·.1)
+  let .ok (input, checked) := prepared | return prepared.map (·.1)
   let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
   let .ok registry := admit input
     | return .error <| issue "invalid-projection" p.leanKey.node "Projected input failed pure structural admission"
@@ -395,7 +397,7 @@ def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.T
     | return .error <| issue "missing-binding" p.leanKey.node "No binding for native proof requirement"
   return .ok { input with evidence := #[p.contribution `proofEvidence {
     id := p.leanKey.node ++ `nativeProof, requirement := key, binding
-    observation := .proof observation }] }
+    observation := .proof checked.observation }] }
 
 
 end Informal.Realizations.NativeSource

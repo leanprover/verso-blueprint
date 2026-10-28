@@ -22,6 +22,7 @@ structure Checked where
   observation : ProofObservation
   status : Option Data.ProvedStatus := none
   semanticContext : Option String := none
+  semanticDiagnostics : Array Diagnostic := #[]
 
 private def issue (code : String) (witness : ObjectKey) (message : String) : Diagnostic :=
   { code, subject := witness.native, message }
@@ -167,19 +168,22 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     unless inspection.isComplete do
       return .error <| issue "unverified-expectation" witness
         "Expected proposition has admitted or unavailable dependencies"
-    -- This is an exact structural descriptor, not the equality algorithm. It
+    -- This is an opaque structural fingerprint, not the equality algorithm. It
     -- comes from the independently checked expectation, never the witness type.
-    let goal : Goal := { context := witness.context, proposition := Semantic.fingerprint proposition, documents }
-    let context := (← semantics project (#[name] ++ proposition.getUsedConstants)).toOption
+    let goal : Goal := { context := witness.context, fingerprint := Semantic.fingerprint proposition, documents }
+    let semanticResult ← semantics project (#[name] ++ proposition.getUsedConstants)
+    let (context, semanticDiagnostics) := match semanticResult with
+      | .ok context => (some context, #[])
+      | .error diagnostic => (none, #[diagnostic])
     let some info := (← getEnv).checked.get.find? name
-      | return .ok { goal, semanticContext := context, observation := {
+      | return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
           witness, outcome := .unavailable
           explanation := "missing-witness: declaration not in checked environment" } }
     let constant ← mkConstWithFreshMVarLevels name
     Meta.check constant
     let actualType ← inferType constant
     unless ← isDefEq actualType proposition do
-      return .ok { goal, semanticContext := context, observation := {
+      return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
         witness, outcome := .failed
         explanation := "wrong-proposition: checked witness type is not definitionally equal to expectation" } }
     let constant ← instantiateMVars constant
@@ -191,7 +195,7 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     let status ← Data.analyzeDeclaration info.name
     let assumptions ← collectAxioms info.name
     return .ok {
-      goal, status := some status, semanticContext := context
+      goal, status := some status, semanticContext := context, semanticDiagnostics
       observation := {
         witness
         -- Normalize to the expected descriptor ONLY after actual Lean defeq.

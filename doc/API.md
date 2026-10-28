@@ -361,39 +361,57 @@ Regenerate old artifacts after changes to the generated-data contract. The
 reader's stale-artifact diagnostic supplies the required rebuild guidance;
 clients must not depend on the value of the internal schema marker.
 
-Custom registration calls to `Environment.contribute` return `Option Node`:
-`some` is the accepted node; `none` means diagnostics were logged and the
-registration was rejected. Combine dependent changes into one `NodeContribution`;
-discard the result only when no following operation depends on acceptance.
-External references on either facet and priority require
-`Environment.contributeRecord record payload`, with a stable producer identity.
-The record exclusively owns its label, priority, and associations.
-`NodeContribution` contains only body, dependency, metadata, and literate-code
-inputs; selected facts cannot be supplied through that payload type.
-`Record.references` carries statement associations; `Record.proofReferences`
-carries proof associations. Both are normal associations for membership and status,
-and both are supplied only through the identified record.
-Directive expanders use `Environment.withDirective` for scoped error recovery
-and atomic Blueprint-state updates. The unscoped push/pop API and attachment helpers that discarded rejection are
-removed. Standalone code and markup expanders must emit no semantic occurrence
-when registration fails. Required source identities must be checked before
-committing a contribution.
-`Node.externalRefs` and `Node.proofExternalRefs` retain the statement and proof
-facet snapshots; both contribute to the node. `Node.leanDecls` and accepted
-declaration indexing include both facets and literate declarations.
-`Node.associatedExternalRefs` and `Node.summaryExternalRefs` in
-`VersoBlueprint.Data` deduplicate canonical declarations and merge their status
-evidence conservatively. The same merge preserves evidence when repeated
-contributions occur on one facet. Rendering uses the original facet snapshots
-to retain the location of each annotation.
-`Node.summaryLiterateCodes` and `BlockCodeData.summaryLiterateDeclarations`
-prefer one inline display entry while retaining status evidence from every
-association of that canonical declaration, including external proof annotations.
-`NodeContribution.literateCodes : Array Code` supplies literate blocks. Migrate
-external groups and priority from the former mixed payload to `Record.references`,
-`Record.proofReferences`, and `Record.priority`. The mixed `CodeRef` type and
-`Record.toNodeContribution` adapter have been removed. Directive configuration
-and in-progress directives carry `externalRefs` directly.
+### Keyed source and realization data
+
+`Informal.Data.Node` is the accepted source inventory for one Blueprint label.
+It stores keyed `sources`, scoped `uses`, and typed `nativeAssociations`; it no
+longer stores a fixed statement/proof body or fixed external-reference arrays.
+Use `Node.proseView realization facet`, `usesOn facet`, `nativeRefsOn facet`,
+and the other `Node` helpers for display. These are derived views and must not be
+written back as semantic input: they intentionally omit some destination and
+scope information retained by the keyed arrays.
+
+Custom source producers submit an `Informal.SourceData.Registration` through
+`Informal.Environment.contribute`. The registration extends the shared node
+metadata and carries `SourceData.FacetSource` values with an explicit
+realization/facet destination, language/project context, document identity,
+source location, and typed payload. Each use also carries its facet and optional
+realization scope. A missing scope means a concept-level prerequisite, not an
+unknown or default realization.
+
+Identified records in `Informal.Contributions.Record` carry native declaration
+associations and priority. Call `Environment.contributeRecord` when supplying
+those selected facts; its producer-site identity must be stable across import
+replay. Ordinary directives and attributes already use the same environment
+admission path. A registration/import candidate is committed as a unit;
+capture rejects structural conflicts instead of returning a partial registry.
+
+Use `Informal.Realizations.Capture.capture` for consumer validation rather than
+assembling a `Registry` from display data. Capture gathers the ordinary source
+inventory and explicit authoring records, checks current Lean inputs, admits the
+complete model, and returns one snapshot for graph, summary, headings, and CLI
+queries. Pure `Validation`/`Translations` APIs can evaluate supplied contracts
+and observations, but a supplied `passed` observation is not authenticated or
+rechecked by those pure functions. Use the native capture/provider path when a
+real Lean check is required. See [Lean completeness and realization
+assessment](#lean-completeness-evidence) for the public query contract.
+
+Report JSON is an inspection projection, not a lossless import format for arbitrary
+Lean `Name` values: name fields retain Lean's display encoding. Internal admission,
+producer identities, and content bindings use structural identities instead.
+
+Native expected-goal results expose `Goal.fingerprint`, an opaque structural
+identity scoped by its context. This replaces `Goal.proposition`; it is not
+readable proposition text, and comparing fingerprints does not perform Lean
+conversion checking. The native provider still checks the independently authored
+expectation and witness using definitional equality and the kernel.
+
+For standalone source adapters, `PreparedModel.prepareValidation` returns
+`Input × NativeLean.Checked`. The checked result retains the observation and any
+semantic-context diagnostics; consumers must not discard those diagnostics when
+explaining why correspondence is blocked. The `validate` convenience returns
+only the assembled `Input`; use `prepareValidation` when diagnostics are needed.
+Ordinary graph and query consumers should continue to use `Capture.capture`.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
