@@ -396,6 +396,27 @@ rechecked by those pure functions. Use the native capture/provider path when a
 real Lean check is required. See [Lean completeness and realization
 assessment](#lean-completeness-evidence) for the public query contract.
 
+`Commands.CoverageSplit` uses `nativeCompleteRequirementsPending` and
+`requirementsComplete`, replacing `formalizedWithoutAncestors` and `fullyClosed`.
+A passing native proof can have an unfinished independent expected proposition or
+review even when all selected dependencies pass. These counts concern the default
+Lean realization, not optional prose assessment or overall project readiness.
+
+Node labels are stable global concept identifiers within the Blueprint.
+Realization keys are node-scoped selectors for current representations, with no
+cross-revision stability guarantee. Agent workflows should retain the node label
+and query its current realizations; persisted evidence must still match current
+content and requirements.
+
+Ordinary capture validates public labels before returning a snapshot: labels must
+be nonempty, round-trip through Lean name JSON, and have distinct readable CLI
+spellings. The same check includes unresolved dependency targets and parent group
+names (groups have their own namespace). For example, a simple string label
+`"A.b"` and the hierarchical Lean name `A.b` are individually supported but cannot
+identify different nodes in one capture because both query as `A.b`. Choose
+explicit distinct labels to resolve the diagnostic. Pure registries can still
+represent arbitrary typed names; they are not a bypass for public capture checks.
+
 Report JSON is an inspection projection, not a lossless import format for arbitrary
 Lean `Name` values: name fields retain Lean's display encoding. Internal admission,
 producer identities, and content bindings use structural identities instead.

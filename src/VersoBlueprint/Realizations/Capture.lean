@@ -81,9 +81,13 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
       | .error _ => false
       | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
   let sourceDocuments := (registry.realizations.filter (·.key.node == label)).flatMap (·.facets.flatMap (·.documents))
+  let sourceSubjects := (registry.realizations.filter (·.key.node == label)).flatMap fun realization =>
+    realization.facets.map fun facet =>
+      (BindingEncoding.subject (.facet realization.key facet.name)).compress
   let objects := declarations.map (·.object)
   let diagnostics := snapshot.diagnostics.filter fun diagnostic => diagnostic.subject == label.toString ||
-    objects.any (·.native == diagnostic.subject) || sourceDocuments.any (·.path == diagnostic.subject)
+    objects.any (·.native == diagnostic.subject) || sourceDocuments.any (·.path == diagnostic.subject) ||
+    sourceSubjects.contains diagnostic.subject
   return {
     hasNativeDeclarations
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
@@ -644,9 +648,35 @@ private def assemble [Monad m] (providers : Providers m) (p : Plan) : ExceptT (A
   unless p.raw.initialIssues.isEmpty do full (.error (canonical p.raw.initialIssues))
   collectOrdinary providers p >>= collectAuthored providers p
 
+/-- Ordinary captures feed graph JSON and readable CLI selectors. Validate the
+complete public label set once; pure registries may still use arbitrary Names. -/
+private def publicLabelIssues (labels : Array Name) : Array Diagnostic := Id.run do
+  let mut seen : Std.HashMap String Name := {}
+  let mut issues := #[]
+  for label in labels do
+    let spelling := Data.Label.publicString label
+    if label.isAnonymous || spelling.trimAscii.isEmpty || label.toString.toName != label then
+      issues := issues.push {
+        code := "unsupported-public-label", subject := label.toString
+        message := "Blueprint public labels must be nonempty and round-trip through Lean name JSON; choose an explicit string label" }
+    else
+      match seen[spelling]? with
+      | some previous =>
+        if previous != label then
+          issues := issues.push {
+            code := "ambiguous-public-label", subject := spelling
+            message := s!"Distinct labels '{previous}' and '{label}' share the public spelling '{spelling}'; use distinct explicit labels" }
+      | none => seen := seen.insert spelling label
+  return canonical issues
+
 /-- Complete candidate admission, same-candidate binding, and final admission.
 No caller can obtain an admitted fragment from this operation. -/
 private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot := do
+  let labels := collected.input.nodes.map (·.value.label) ++ collected.uses.map (fun use => (show Name from use.reference.label))
+  let groups := collected.input.nodes.filterMap fun record =>
+    record.value.parent.map (fun label => (show Name from label))
+  let labelIssues := publicLabelIssues labels ++ publicLabelIssues groups
+  unless labelIssues.isEmpty do throw labelIssues
   let uses := selectUses collected
   let collected := connectUses collected uses
   let candidate ← admit collected.input

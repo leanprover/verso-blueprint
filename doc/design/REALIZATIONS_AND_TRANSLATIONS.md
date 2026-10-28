@@ -34,7 +34,17 @@ blocked because Rocq resolution is unsupported.
 ### Node and realization
 
 A node identifies the mathematical concept, not a particular file or language.
-Its label, kind, grouping, and shared metadata belong to the node.
+Its label, kind, grouping, and shared metadata belong to the node. The node label
+is the stable global identifier within a Blueprint, independent of the language
+or current implementation; agents and external cross-references should anchor to it.
+
+Realization keys are scoped to a node and identify its current representations.
+They have no cross-revision stability promise. A representation can be replaced
+without renaming the mathematical node. Within a capture its key must still be
+unambiguous: authored translations must resolve their current endpoints, and
+validation must match the current bindings. Reusing a name does not make old
+evidence valid for a replacement. This does not introduce historical identities,
+redirects, or a second identifier store.
 
 A realization has a name, a source-language/project context, facets, documents,
 and declaration associations. Two Lean implementations of the same concept are
@@ -194,7 +204,10 @@ declarations have been built. `Realizations.Capture.capture` collects the
 ordinary keyed registrations and explicit authoring records, plans the native
 checks, runs the current Lean provider, admits the complete model, and binds
 fresh observations to that model. If structural admission fails, the caller
-gets diagnostics and no partial snapshot.
+gets diagnostics and no partial snapshot. Public node labels and dependency targets
+must round-trip through Lean name JSON and have unambiguous readable CLI spellings;
+parent groups are checked in their own namespace. Pure registries retain arbitrary
+typed names, while ordinary capture rejects unsupported or ambiguous public labels.
 
 `Snapshot.assessmentFor` is the shared projection used by graph, summary,
 heading, manifest, and CLI consumers. The status query distinguishes:

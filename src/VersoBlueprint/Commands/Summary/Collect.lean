@@ -566,9 +566,9 @@ private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
     if !assessment.hasNativeDeclarations then
       acc
     else if assessment.requiredComplete then
-      { acc with fullyClosed := acc.fullyClosed + 1 }
+      { acc with requirementsComplete := acc.requirementsComplete + 1 }
     else if assessment.nativeStatementComplete && assessment.nativeProofComplete then
-      { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
+      { acc with nativeCompleteRequirementsPending := acc.nativeCompleteRequirementsPending + 1 }
     else if (Informal.Graph.actionableStageForAssessment? assessment).isSome then
       { acc with readyToFormalize := acc.readyToFormalize + 1 }
     else

@@ -98,8 +98,10 @@ deriving Inhabited, FromJson, ToJson
 
 structure CoverageSplit where
   readyToFormalize : Nat := 0
-  formalizedWithoutAncestors : Nat := 0
-  fullyClosed : Nat := 0
+  /-- Local native checks pass, but a declared requirement or prerequisite is unfinished. -/
+  nativeCompleteRequirementsPending : Nat := 0
+  /-- All requirements of the default Lean realization and their prerequisites pass. -/
+  requirementsComplete : Nat := 0
   blockedOrIncomplete : Nat := 0
 deriving Inhabited, FromJson, ToJson
 

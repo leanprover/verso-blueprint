@@ -43,7 +43,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
             (Option.some actionableEntryDescription)}}
         {{summaryCard
             "Lean requirements complete"
-            (toString data.coverageSplit.fullyClosed)
+            (toString data.coverageSplit.requirementsComplete)
             (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
         {{summaryCard
             "Actionable priorities"
@@ -312,8 +312,8 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
   let showStructureCards :=
     data.informalOnlyEntries > 0 ||
     data.coverageSplit.readyToFormalize > 0 ||
-    data.coverageSplit.formalizedWithoutAncestors > 0 ||
-    data.coverageSplit.fullyClosed > 0 ||
+    data.coverageSplit.nativeCompleteRequirementsPending > 0 ||
+    data.coverageSplit.requirementsComplete > 0 ||
     data.coverageSplit.blockedOrIncomplete > 0
   if !(showStructureCards || showHeaviestPrerequisites || showNoPrerequisites ||
       showNoDependents || showProofDebtHotspots) then
@@ -332,14 +332,14 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (toString data.coverageSplit.readyToFormalize)
               (Option.some actionableEntryDescription)}}
           {{summaryOptionalCard
-              (data.coverageSplit.formalizedWithoutAncestors > 0)
-              "Formalized, ancestors open"
-              (toString data.coverageSplit.formalizedWithoutAncestors)
-              (Option.some "Local Lean work is done, but prerequisite closure is still open.")}}
+              (data.coverageSplit.nativeCompleteRequirementsPending > 0)
+              "Native checks complete, requirements pending"
+              (toString data.coverageSplit.nativeCompleteRequirementsPending)
+              (Option.some "Local native checks pass, but one or more declared requirements remain unfinished. This can include an expected proposition, a review, or selected prerequisites.")}}
           {{summaryOptionalCard
-              (data.coverageSplit.fullyClosed > 0)
+              (data.coverageSplit.requirementsComplete > 0)
               "Lean requirements complete"
-              (toString data.coverageSplit.fullyClosed)
+              (toString data.coverageSplit.requirementsComplete)
               (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
           {{summaryOptionalWarnCard
               (data.coverageSplit.blockedOrIncomplete > 0)

@@ -46,6 +46,12 @@ set_option doc.verso true
 def Label := Name
 deriving Ord, Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
 
+/-- Readable public spelling shared by manifest queries and capture validation.
+String-authored labels retain their original punctuation rather than Lean quotes. -/
+def Label.publicString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
+
 /-- Append a Blueprint label only when it is not already present. -/
 def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label

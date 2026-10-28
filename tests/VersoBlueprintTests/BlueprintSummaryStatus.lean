@@ -45,5 +45,15 @@ run_cmd liftTermElabM do
     "Native proof and its own realization closure should be counted complete"
   ensure (dependent.nativeProofComplete && !dependent.requiredComplete)
     "Native proof completion should remain separate from unfinished Blueprint dependencies"
+  let wrongExpected := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
+  ensure (wrongExpected.nativeStatementComplete && wrongExpected.nativeProofComplete &&
+    !wrongExpected.requiredComplete && wrongExpected.proofDependenciesComplete)
+    "Control should have complete native checks and dependencies with an unfinished independent expectation"
+  let localCompletePendingRequirements := snapshot.registry.nodes.foldl (init := 0) fun total node =>
+    let assessment := snapshot.assessmentFor node.label
+    if assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
+        assessment.nativeProofComplete && !assessment.requiredComplete then total + 1 else total
+  ensure (summary.coverageSplit.nativeCompleteRequirementsPending == localCompletePendingRequirements)
+    "The summary bucket should count local native completion with any unfinished declared requirement, not only open ancestors"
 
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

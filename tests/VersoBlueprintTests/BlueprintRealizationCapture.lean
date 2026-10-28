@@ -173,13 +173,45 @@ run_cmd liftTermElabM do
     nodes := #[(displayLeft, accepted), (displayRight, accepted)]
     pending, facts := [], authored := #[], initialIssues := #[] }
   let collisionPlan := Capture.plan collisionRaw
-  let collisionSnapshot ← obtain (Capture.evaluate collisionPlan {})
-  let generated := collisionSnapshot.registry.contributions.nodes
-  let generatedIds := generated.map (·.origin.id)
-  ensure (generated.size == 2 &&
-    generated.any (·.value.label == displayLeft) && generated.any (·.value.label == displayRight) &&
-    generatedIds[0]? != generatedIds[1]?)
-    "Distinct typed labels with equal display Repr must retain distinct producer identities and nodes"
+  match Capture.evaluate collisionPlan {} with
+  | .ok _ => throwError "Capture accepted names that cannot round-trip through public graph JSON"
+  | .error issues => ensure (issues.any (·.code == "unsupported-public-label")) "Unsupported public names need a specific capture diagnostic"
+  let flat := Name.mkSimple "public.dotted"
+  let hierarchical := Name.str `public "dotted"
+  ensure (flat != hierarchical && flat.toString.toName == flat && hierarchical.toString.toName == hierarchical &&
+    Data.Label.publicString flat == Data.Label.publicString hierarchical)
+    "Public spelling collision must be between individually round-tripping names"
+  let publicRaw : Capture.Raw := { collisionRaw with
+    nodes := #[(flat, accepted), (hierarchical, accepted)]
+    pending := (({} : NameSet).insert flat).insert hierarchical }
+  for nodes in #[publicRaw.nodes, publicRaw.nodes.reverse] do
+    let publicPlan := Capture.plan { publicRaw with nodes }
+    match Capture.evaluate publicPlan {} with
+    | .ok _ => throwError "Capture accepted ambiguous graph/CLI labels"
+    | .error issues => ensure (issues.any (·.code == "ambiguous-public-label")) "Public label collisions need a specific capture diagnostic"
+  for label in #[flat, hierarchical] do
+    let singlePlan := Capture.plan { publicRaw with nodes := #[(label, accepted)] }
+    let single ← obtain (Capture.evaluate singlePlan {})
+    ensure (single.registry.nodes.size == 1) "Either public spelling is supported when unambiguous"
+  -- Unresolved targets also enter the public graph, and must not alias a node.
+  let withUse : Environment.RegisteredNode := { accepted with toNode := {
+    accepted.toNode with uses := #[{
+      node := flat, facet := `statement, reference := { label := hierarchical } }] } }
+  let targetPlan := Capture.plan { publicRaw with nodes := #[(flat, withUse)] }
+  match Capture.evaluate targetPlan {} with
+  | .ok _ => throwError "Unresolved dependency target aliased a public node label"
+  | .error issues => ensure (issues.any (·.code == "ambiguous-public-label")) "Missing target alias diagnostic"
+  let withGroup (parent : Name) : Environment.RegisteredNode := { accepted with toNode := {
+    accepted.toNode with parent := some parent } }
+  let groupRaw : Capture.Raw := { publicRaw with
+    nodes := #[(`firstGroupNode, withGroup flat), (`secondGroupNode, withGroup hierarchical)]
+    pending := (({} : NameSet).insert `firstGroupNode).insert `secondGroupNode }
+  match Capture.evaluate (Capture.plan groupRaw) {} with
+  | .ok _ => throwError "Capture accepted ambiguous parent group labels"
+  | .error issues => ensure (issues.any (·.code == "ambiguous-public-label")) "Missing group alias diagnostic"
+  let separateNamespaces ← obtain (Capture.evaluate
+    (Capture.plan { publicRaw with nodes := #[(flat, withGroup hierarchical)] }) {})
+  ensure (separateNamespaces.registry.nodes.size == 1) "Node and group label namespaces must stay independent"
   ensure (toJson displayLeft == toJson displayRight)
     "Docstring destination collision fixture must retain equal display JSON spellings"
   let some (docLabel, docNode, docSource) := plan.ordinary.findSome? fun node =>
@@ -230,6 +262,37 @@ run_cmd liftTermElabM do
     "Capture invented independent expected propositions"
   let after := Environment.informalExt.getState (← getEnv)
   ensure (reprStr before == reprStr after) "Capture mutated persistent Blueprint state"
+
+-- Source-association diagnostics use structural facet identities. They appear
+-- on the owning non-Lean node's assessment and do not leak to another node.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let label := Name.mkSimple "storage.source"
+  let .some registered := state.data.get? label | throwError "Missing foreign-source diagnostic fixture"
+  let destination : SourceData.FacetDestination := ⟨⟨label, `rocqTranslation⟩, `implementation⟩
+  let .some source := registered.toNode.sources.find? (·.destination == destination)
+    | throwError "Missing arbitrary non-Lean source for diagnostic fixture"
+  let source := { source with source := Data.SourceLocationResult.unavailable "test source range unavailable" }
+  let selected : Environment.RegisteredNode := { registered with toNode := {
+    registered.toNode with sources := #[source], uses := #[], nativeAssociations := #[] } }
+  let unrelatedLabel := `capture.diagnosticUnrelated
+  let unrelated : Environment.RegisteredNode := { registered with toNode := {
+    registered.toNode with sources := #[], uses := #[], nativeAssociations := #[] } }
+  let pending := ({} : NameSet).insert label |>.insert unrelatedLabel
+  let raw : Capture.Raw := {
+    nodes := #[(label, selected), (unrelatedLabel, unrelated)]
+    pending, facts := [], authored := #[], initialIssues := #[] }
+  let plan := Capture.plan raw
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  let diagnostics (node : Name) :=
+    ((snapshot.assessmentFor node).details.getObjValAs? (Array Json) "sourceDiagnostics").toOption.getD #[]
+  let hasUnavailableSource (items : Array Json) := items.any fun item =>
+    (item.getObjValAs? String "code").toOption == some "source-association-unavailable"
+  ensure (hasUnavailableSource (diagnostics label))
+    "Owning non-Lean node assessment dropped its unavailable source-location diagnostic"
+  ensure (!(hasUnavailableSource (diagnostics unrelatedLabel)))
+    "Unavailable non-Lean source diagnostic leaked to an unrelated node assessment"
 
 -- Original inline text, including a supplementary Unicode character before the
 -- declaration, is associated through its owning FileMap and native ranges.

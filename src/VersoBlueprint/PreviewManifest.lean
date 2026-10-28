@@ -860,9 +860,7 @@ still use `Name`, but Lean's pretty printer quotes punctuation-heavy components.
 This projection keeps those authored labels usable by generated clients without
 requiring them to parse Lean pretty-name syntax.
 -/
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
+def labelString : Name → String := Data.Label.publicString
 
 /-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
 structure RelatedEntry where
