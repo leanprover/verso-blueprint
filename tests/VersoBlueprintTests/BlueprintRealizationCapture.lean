@@ -136,6 +136,39 @@ run_cmd liftTermElabM do
     "Public assessment omitted exact subjects and contracts"
   ensure (NodeAssessment.fromJsonString! (toJson completeView).compress == completeView)
     "Serializable captured assessment did not round-trip"
+  ensure (completeView.selectedLeanUseCount == 0 &&
+    completeView.leanDependencyMessage == "No Lean prerequisites selected")
+    "An empty Lean dependency selection was presented as completed work"
+  -- Projection-only edge controls reuse the actual registry/provider outcomes.
+  -- Foreign realizations, foreign contexts and failed native selections must
+  -- remain inspectable without confusing the selected native prerequisite set.
+  let label := Name.mkSimple "capture.complete"
+  let some failedUse := snapshot.uses.find? (·.source == Name.mkSimple "capture.missing")
+    | throwError "Missing actual unresolved selection control"
+  let nativeUse := { failedUse with source := label, realization := some `lean }
+  let foreignUse := { nativeUse with realization := some `rocqTranslation }
+  let foreignContext := { nativeUse with context := some ⟨`lean, `otherProject⟩ }
+  let completeUse := { nativeUse with
+    reference := { nativeUse.reference with label }
+    selected := .ok #[key "capture.complete" `RealizationCaptureFixture.complete] }
+  for (uses, count, message) in #[
+      (#[foreignUse], 0, "No Lean prerequisites selected"),
+      (#[foreignContext], 0, "No Lean prerequisites selected"),
+      (#[foreignUse, nativeUse], 1, "Selected Lean prerequisites unfinished"),
+      (#[foreignUse, completeUse], 1, "Selected Lean prerequisites complete")] do
+    let view := ({ snapshot with uses }).assessmentFor label
+    ensure (view.selectedLeanUseCount == count && view.leanDependencyMessage == message)
+      "Dependency message did not describe the selected Lean subset"
+    let inventory ← obtain (view.details.getObjValAs? (Array Json) "uses")
+    ensure (inventory.size == uses.size)
+      "Full edge inventory lost foreign or unresolved uses"
+    ensure (NodeAssessment.fromJsonString! (toJson view).compress == view)
+      "Selection count did not survive the public assessment round-trip"
+  let missingModel := `capture.noNativeModel
+  let view := ({ snapshot with uses := #[{ nativeUse with source := missingModel }] }).assessmentFor missingModel
+  ensure (!view.hasNativeDeclarations && view.selectedLeanUseCount == 0 &&
+    view.leanDependencyMessage == "No Lean prerequisites selected")
+    "A missing native realization was treated as selecting native prerequisites"
   let foreignKey : RealizationKey := ⟨Name.mkSimple "storage.source", `rocqTranslation⟩
   let some foreign := registry.realization? foreignKey | throwError "Imported named realization disappeared"
   ensure (foreign.context.language == `rocq && foreign.facets.any (·.name == `implementation) &&

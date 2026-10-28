@@ -191,7 +191,10 @@ function isNodeAssessment(value) {
     "statementDependenciesComplete",
     "proofDependenciesComplete"
   ];
-  return fields.every((field) => typeof value[field] === "boolean") && isRecord(value.details);
+  return fields.every((field) => typeof value[field] === "boolean") &&
+    typeof value.selectedLeanUseCount === "number" &&
+    Number.isSafeInteger(value.selectedLeanUseCount) && value.selectedLeanUseCount >= 0 &&
+    isRecord(value.details);
 }
 
 /** @param {unknown} value @returns {boolean} */

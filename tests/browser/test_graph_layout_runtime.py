@@ -354,9 +354,10 @@ class TestGraphLayoutRuntime:
                     nativeStatementComplete: true,
                     nativeProofComplete: false,
                     requiredComplete: false,
+                    selectedLeanUseCount: 0,
                     statementDependenciesComplete: true,
                     proofDependenciesComplete: true,
-                    details: { assessment: {}, selectedUses: [], sourceDiagnostics: [] }
+                    details: { assessment: {}, uses: [], sourceDiagnostics: [] }
                 };
                 const node = {
                     label: "node",
@@ -391,6 +392,10 @@ class TestGraphLayoutRuntime:
                                     ...completeRecord(4, "graph:missing-assessment", [fullVariant]),
                                     nodes: [{ ...node, assessment: undefined }]
                                 },
+                                ...[undefined, -1, 0.5, "1"].map((count, index) => ({
+                                    ...completeRecord(4, `graph:invalid-use-count-${index}`, [fullVariant]),
+                                    nodes: [{ ...node, assessment: { ...assessment, selectedLeanUseCount: count } }]
+                                })),
                                 {
                                     ...completeRecord(4, "graph:legacy-warning", [fullVariant]),
                                     nodes: [{ ...node, warnings: { unknownRef: false, missingExternalDecl: false } }]

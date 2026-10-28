@@ -502,12 +502,13 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
       nativeProofComplete
       requiredComplete
       hasAxiomLike := false
+      selectedLeanUseCount := 1
       statementDependenciesComplete := true
       proofDependenciesComplete := false
       details := Json.mkObj [
         ("fixture", Json.str "MOCK: transport only; not provider success"),
         ("assessment", Json.mkObj [("fixture", Json.str "MOCK")]),
-        ("selectedUses", Json.arr #[]),
+        ("uses", Json.arr #[]),
         ("sourceDiagnostics", Json.arr #[])] }
     let heading := Informal.CodeSummary.renderParts {
       kind, label := label "truth", count := 1, codeData := some source, assessment := some assessment }
@@ -535,14 +536,16 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
             jsonBoolField? validation "nativeStatementComplete" == some nativeStatementComplete,
             jsonBoolField? validation "nativeProofComplete" == some nativeProofComplete,
             jsonBoolField? validation "requiredComplete" == some requiredComplete,
+            (jsonField? validation "selectedLeanUseCount") == some (toJson (1 : Nat)),
             (jsonField? details "assessment").isSome,
             jsonStringField? details "fixture" == some "MOCK: transport only; not provider success",
-            (jsonField? details "selectedUses").isSome,
+            (jsonField? details "uses").isSome,
             (jsonField? details "sourceDiagnostics").isSome,
             rows.size == 2, rows.all (fun row =>
               (jsonField? row "sourceSnapshotStatus").isSome && (jsonField? row "status").isNone),
             (match heading.statusMark with
-             | some mark => mark.status == (if (if kind.isTheoremLike then nativeProofComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
+             | some mark => mark.title.contains "Selected Lean prerequisites unfinished" &&
+                 mark.status == (if (if kind.isTheoremLike then nativeProofComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
              | none => false),
             (match heading.statusMark with
              | some mark => mark.title.contains "Native statement: passed" == nativeStatementComplete

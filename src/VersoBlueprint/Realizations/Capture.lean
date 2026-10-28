@@ -74,7 +74,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
       (registry.localResult requirement).complete
   let uses := snapshot.uses.filter (·.source == label)
   let selected := uses.filter fun use => use.realization.all (· == `lean) &&
-    model.all (fun model => use.context == some model.context)
+    model.any (fun model => use.context == some model.context)
   let dependenciesComplete (statementOnly : Bool) :=
     (selected.filter fun use => !statementOnly || use.facet == `statement).all fun use =>
       match use.selected with
@@ -94,11 +94,12 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     nativeStatementComplete := locallyComplete `statement NativeLean.statementValidator
     nativeProofComplete := locallyComplete `proof NativeLean.bodyValidator
     requiredComplete := hasNativeDeclarations && (registry.resultFor (.realization key)).complete
+    selectedLeanUseCount := selected.size
     statementDependenciesComplete := dependenciesComplete true
     proofDependenciesComplete := dependenciesComplete false
     details := Json.mkObj [
       ("assessment", Report.ofNode registry label),
-      ("selectedUses", toJson (uses.map fun use => Json.mkObj [
+      ("uses", toJson (uses.map fun use => Json.mkObj [
         ("source", toJson use.source), ("targetContext", toJson use.context),
         ("realization", toJson use.realization), ("facet", toJson use.facet),
         ("reference", toJson use.reference), ("selection", toJson use.selected)])),

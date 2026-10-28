@@ -402,6 +402,15 @@ A passing native proof can have an unfinished independent expected proposition o
 review even when all selected dependencies pass. These counts concern the default
 Lean realization, not optional prose assessment or overall project readiness.
 
+`NodeAssessment.selectedLeanUseCount` counts the uses selected for that ordinary
+Lean realization in its exact context, including unresolved target selections.
+Its dependency-completion booleans assess that same subset. A zero count means
+no Lean prerequisites were selected, not that some prerequisites were checked
+successfully. `details.uses` retains the full edge inventory, including other
+realizations and contexts; it replaces the misleading `details.selectedUses`
+name. Widgets and code headings share `NodeAssessment.leanDependencyMessage`
+instead of inferring the selected subset from the JSON inventory.
+
 Node labels are stable global concept identifiers within the Blueprint.
 Realization keys are node-scoped selectors for current representations, with no
 cross-revision stability guarantee. Agent workflows should retain the node label

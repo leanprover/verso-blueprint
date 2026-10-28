@@ -365,13 +365,7 @@ private def statusMarkFromAssessment (kind : Data.NodeKind)
   let nativeProof := if assessment.hasNativeDeclarations then
     if assessment.nativeProofComplete then "passed" else "unfinished"
     else "unassessed"
-  let dependencies := match (assessment.details.getObjValAs? (Array Json) "selectedUses").toOption with
-    | none => "Lean dependency selection unavailable"
-    | some uses =>
-      if uses.isEmpty then "No dependencies selected"
-      else if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
-        "Selected Lean prerequisites complete"
-      else "Selected Lean prerequisites unfinished"
+  let dependencies := assessment.leanDependencyMessage
   let classification := if assessment.hasAxiomLike then "Axiom-like declarations present; " else ""
   return {
     status

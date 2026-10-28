@@ -361,6 +361,7 @@
  * @property {boolean} nativeStatementComplete Local native statement checks, before Blueprint prerequisites.
  * @property {boolean} nativeProofComplete Local native body checks, separate from expected-goal correspondence.
  * @property {boolean} requiredComplete Whether all explicit requirements of the selected Lean realization complete.
+ * @property {number} selectedLeanUseCount Nonnegative integer count of uses assessed for the default Lean realization in its exact context, including failed selections.
  * @property {boolean} statementDependenciesComplete Whether the selected statement-axis prerequisites complete.
  * @property {boolean} proofDependenciesComplete Whether the selected proof-axis prerequisites complete.
  * @property {Record<string, unknown>} details Safe current requirements, captured selected-use scopes/results, and diagnostics.

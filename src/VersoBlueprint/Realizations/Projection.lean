@@ -23,6 +23,10 @@ structure NodeAssessment where
   nativeProofComplete : Bool := false
   /-- All explicit requirements of the selected ordinary Lean realization. -/
   requiredComplete : Bool := false
+  /-- Uses selected for the ordinary Lean realization in its exact context,
+  including failed target selections. Other realization/context uses remain in
+  the full `details.uses` inventory but do not enter its completion checks. -/
+  selectedLeanUseCount : Nat := 0
   statementDependenciesComplete : Bool := false
   proofDependenciesComplete : Bool := false
   /-- Safe output only: no source bodies, raw contributions or content bindings. -/
@@ -31,6 +35,13 @@ structure NodeAssessment where
 
 instance : Repr NodeAssessment where
   reprPrec value _ := Std.Format.text (Lean.toJson value).compress
+
+/-- Shared wording for consumers of the typed selection/completion projection. -/
+def NodeAssessment.leanDependencyMessage (assessment : NodeAssessment) : String :=
+  if assessment.selectedLeanUseCount == 0 then "No Lean prerequisites selected"
+  else if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
+    "Selected Lean prerequisites complete"
+  else "Selected Lean prerequisites unfinished"
 
 def NodeAssessment.fromJsonString! (serialized : String) : NodeAssessment :=
   match Lean.Json.parse serialized >>= Lean.fromJson? with

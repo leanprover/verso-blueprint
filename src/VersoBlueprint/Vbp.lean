@@ -185,6 +185,7 @@ private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := 
         ("requiredComplete", toJson assessment.requiredComplete),
         ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),
         ("proofDependenciesComplete", toJson assessment.proofDependenciesComplete),
+        ("selectedLeanUseCount", toJson assessment.selectedLeanUseCount),
         ("details", assessment.details)]
   return responseJson [
     ("label", nameJson entry.label),
