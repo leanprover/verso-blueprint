@@ -3,8 +3,9 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Validation.Laws
-import VersoBlueprint.Translations.Laws
+import VersoBlueprint.Realizations.Capture.Laws
+import VersoBlueprint.Translations.SelectionLaws
+import VersoBlueprint.Environment.AdmissionLaws
 
 /-! Contract examples for supplied observations. These are explicitly synthetic
 checker/reviewer reports, not claims that this test invokes a native provider. -/
@@ -152,5 +153,17 @@ example (r : Registry) (subject : Subject) (key : RequirementKey)
     (complete : (r.resultFor subject).complete = true) :
     (r.resultForRequirement key).complete = true :=
   (r.complete_requires_all subject complete).2 key selected
+
+-- The capture bridge composes with prerequisite soundness without assuming a
+-- Registry invariant or correctness of the opaque component traversal.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (complete : (snapshot.assessmentFor label).requiredComplete = true)
+    (selected : key ∈ snapshot.registry.requiredFor (.realization ⟨label, `lean⟩))
+    (cycle : Relation.TransGen snapshot.registry.Prerequisite key key) : False := by
+  have required := (snapshot.registry.complete_requires_all _
+    (snapshot.assessment_complete_result complete)).2 key selected
+  have unfinished := admit_cycle_incomplete (Capture.evaluate_admitted evaluated) cycle
+  simp [unfinished] at required
 
 end VersoBlueprintTests.ValidationLaws

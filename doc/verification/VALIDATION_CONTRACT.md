@@ -84,21 +84,178 @@ empty contracts, unfinished selected versus unselected requirements, and missing
 subjects. These examples rule out vacuous coverage by an always-rejecting query;
 the new Registry theorems themselves are necessary-condition guarantees.
 
-The axiom audit now covers fifteen public theorems: eight evidence laws,
-three collection laws, and four public-query laws. All proof imports remain in
-the law/test layer. There are no production behavior changes.
+All proof imports remain in the law/test layer. There are no production behavior
+changes.
 
-## Next boundary: admission and cached prerequisite closure
+## Admission connects public completion to original evidence
 
-`requiredFor` is itself a derived index. The public-query theorem does not yet
-prove that it contains exactly the authored requirements. Similarly, a completed
-cached requirement result must still be connected to accepted local evidence and
-the closure of its prerequisites. Canonical membership removes one collection
-assumption from that future proof, but does not establish those cache invariants.
+`Translations/AdmissionLaws.lean` now proves the cache-construction bridges from
+successful production `admit`, rather than requiring callers to assume them.
+`admit_sources` preserves the original contributions and characterizes all nine
+canonical source arrays. Membership corollaries preserve whole requirement,
+evidence, realization, translation, and claim records.
 
-A next ticket should state the invariant over Registry values returned by successful
-`admit`, relate requirement/local/result lookups to the same admitted input, and
-then show that unmet or cyclic prerequisites prevent completion.
-Do not assume correctness of the cached maps or conflate provider-reported coverage
-with the Registry's own prerequisite graph. This is separate from proof of the
-native provider, content-fingerprint collision resistance, and capture completeness.
+The required-cache laws connect known subjects to their selected authored records:
+realization contracts include their own, facet, and declaration requirements;
+translation contracts include claim requirements. The conflict-check laws prove
+that accepted same-key source records agree, and the lookup iff laws establish
+exact membership against original contributions. The reference-check proof shows
+that authored realization contracts have collected definitions. Consequently,
+`admit_requiredFor_facet_mem_iff` proves that the facet cache preserves every
+authored requirement, despite its implementation using a lookup intersection.
+
+`admit_local_complete_evidence` connects a cached local success to an original
+input requirement and evidence record satisfying `Evidence.Fits` at the current
+binding. `admit_complete_requirement_local` proves that prerequisite evaluation
+cannot create local success. This latter result holds for any component list,
+so it does not assume correctness of the opaque Tarjan traversal.
+
+Together, `admit_complete_selected_evidence` gives the admission-to-query result:
+every contract selected by a completed public subject has original fitting
+evidence. `admit_stale_evidence_incomplete` shows that stale evidence cannot
+become complete through reindexing or completed prerequisites.
+
+`admit_complete_authored_realization_evidence` combines these guarantees for every
+original authored realization record: its own, facet, and declaration requirements
+all have fitting original evidence when the realization is complete. This does
+not depend on which same-key record happened to be inserted last.
+
+`admit_bindings_evidence` proves that changing only evidence preserves every
+content binding when both full inputs are admitted. Evidence cannot affect its
+own digest. This is equality of the actual computed bindings, with no hash
+injectivity or collision-resistance assumption.
+
+`admit_complete_proof_sources` follows the independent-proof availability gate:
+completion requires an original resolved witness observation, its original
+nonblank source document, and the exact expected-goal semantic-input identity.
+These are supplied records; the theorem does not assert that their text was read
+from a particular file or that the semantic input was produced by a trusted checker.
+
+The production admission module predates Lean's module system. A law-local
+name-resolution scope opens its imported private declarations for proofs; it
+exports no aliases and changes no production visibility. Proof terms reference
+the original declarations and remain kernel checked. The audit covers all public
+theorems, including these admission laws.
+
+## Prerequisite soundness without an SCC assumption
+
+The stronger `admit_complete_induction` proves a rule for actual completed results:
+any property preserved by local success plus already justified prerequisites holds
+for every completed requirement. Its proof follows the production evaluator's
+two loops and checks, for an arbitrary component sequence. A component may certify
+a member only when it is a singleton without a self-edge and all prerequisites
+already have completed entries. Other branches insert blocked results.
+
+This gives kernel-checked consequences about the actual admitted dependency graph:
+
+- `admit_complete_accessible`: completion has a well-founded prerequisite
+  justification (`Acc`), without assuming the graph is acyclic in advance.
+- `admit_complete_prerequisites_evidence`: every transitive prerequisite has its
+  own fitting original evidence at its own current binding.
+- `admit_cycle_incomplete` and `admit_reachable_cycle_incomplete`: a cycle cannot
+  certify itself or a consumer, even with individually suitable observations.
+
+The graph traversal remains a `partial` definition, opaque to kernel reduction.
+No theorem about its output or termination is assumed in these soundness proofs.
+They constrain what the consumer can certify regardless of the traversal's result.
+
+## Capture and rendering assessments
+
+`Realizations/Capture/Laws.lean` connects the real pure producer entry point to
+these laws. `evaluate_admitted` proves that successful `Capture.evaluate` returns
+a registry admitted from exactly its retained contributions. The proof follows
+the actual final admission in `finish`; it does not introduce another evaluator.
+
+The consumer bridge `evaluate_assessment_evidence` reaches the rendering
+`Snapshot.assessmentFor` view: its `requiredComplete` flag implies original fitting
+evidence for every selected requirement. A completed native assessment also
+requires a native realization with at least one declaration.
+
+The separate `evaluate_native_statement_evidence` and
+`evaluate_native_proof_evidence` theorems establish fitting observations for every
+selected declaration, with the exact statement/body validator and dependency
+coverage. These flags describe local native checks, not independent-goal proof or
+completion of Blueprint prerequisites. The distinction is retained in the proofs.
+
+`evaluate_valid_handles` proves successful evaluation checks all seven observation
+families for in-range, unique handles. Even repeated equal payloads are rejected
+when their handles repeat. The plan's type parameter alone does not enforce these
+properties; the proof covers the actual insertion checks. This is batch shape,
+not authenticity or completeness of the provider inventory.
+
+“Original” evidence at this capture boundary means the contributions retained by
+the captured registry. These theorems do not yet prove that every assembled record
+comes from a particular entry in the supplied observation batch. The real-provider
+capture tests exercise that connection, but it is a separate proof obligation.
+
+## Prerequisite selection is independent of completion
+
+`Translations/SelectionLaws.lean` gives the authored identity contract as
+`Selection.Matches`: exact node and formal context, validation name, and any
+explicit realization/facet restriction. Successful `selectRequirement` picks the
+unique matching collected requirement. `admit_selection_matches` transfers this
+to original input records; repeated identical contributions may share a match,
+but distinct matching requirements cannot be silently ranked.
+
+`admit_selection_sources` proves the selection result is unchanged when requirement
+and realization contributions are unchanged and both inputs are admitted. All
+other families—including evidence—and derived completion caches may differ.
+The equality includes failed selections: a complete alternative cannot make an
+ambiguous request succeed. No admission validity or source-index assumption is
+hidden in this statement; both follow from the actual successful admissions.
+
+## Pure environment admission
+
+`Environment/AdmissionLaws.lean` connects the environment's actual `State.addNode`
+transition to the existing proved assembler:
+
+- `addNode_success_iff` adds authored-origin validity to assembly acceptance,
+  in both directions. An always-rejecting transition would not satisfy this law.
+- `addNode_no_resurrection` proves that a retained authored-origin conflict blocks
+  every later registration, including compatible payloads.
+- `addNode_assembled` proves the stored and returned node is the assembler result
+  for the retained pending registrations and complete selected evidence.
+- `addNode_records` preserves exact whole-record membership in both complete and
+  module-local evidence. `addNode_nativeAssociations` carries this through to the
+  actual returned node's associations, including facets and provenance.
+- `addNode_other_labels`, `addNode_frame`, and `addNode_count` describe the update's
+  scope: other labels and all fields outside the six admission stores are unchanged;
+  numbering reserves the returned node without decreasing the prior count.
+- `addNode_declaration_index` characterizes incremental index membership exactly:
+  retained entries plus this node's declarations under the insertion function's
+  macro-scope erasure. It does not assume erasure is idempotent or that preexisting
+  index entries were already correct.
+
+`Util/NameMapLaws.lean` supplies the missing laws for Lean's real `Name.quickCmp`:
+transitivity and exact comparison equality. The proof relates its structural
+fallback to a lexicographic component sequence and then handles the hash prefix.
+No hash injectivity or map-correctness axiom is added. Standard TreeMap laws then
+establish exact NameMap lookup after insertion. The component sequence exists
+only in proofs; production still uses the original comparator and NameMap.
+
+These are proofs about the logical Lean implementations. They do not separately
+verify the compiler, runtime pointer-equality optimization, or persistence/IO
+mechanisms. As elsewhere, proof dependencies stay out of production imports.
+
+## Remaining boundary
+
+We have not proved completeness: every well-founded, locally satisfied contract
+is eventually recognized as complete. Nor have we proved that every prerequisite
+of a completed result retains a completed **final cached result**, as opposed to
+the established prerequisite evidence soundness. Those properties need facts about
+the component sequence, including coverage, ordering, and absence of repeated
+members. Proving the actual traversal total/correct remains a separate task.
+
+The source-index laws cover requirements, realizations, translations, and claims;
+they do not yet characterize every source-resolution or reference diagnostic.
+No theorem authenticates a provider, proves fingerprint collision resistance, or
+establishes completeness of source capture. Provider-reported closure coverage
+remains distinct from the Registry prerequisite guarantees proved above.
+
+The environment laws cover the pure local transition. Full import replay, CoreM
+commit/rollback, and preservation of a whole-state declaration-index invariant
+remain separate from these exact incremental update laws. In particular, a global
+invariant also needs the producer discipline that incoming selected records belong
+to the label being registered; the private transition accepts an arbitrary record
+list, whereas its public producer routes supply label-local records. The incremental
+index theorem deliberately preserves existing entries without assuming them valid.
