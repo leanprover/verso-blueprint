@@ -5,7 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Capture.Laws
 
-/-! Native provider provenance through the actual collection recipe and final
+/-! Native and authored provider provenance through the actual collection recipe and final
 admitted evidence. Provider authenticity and plan construction are separate. -/
 
 namespace Informal.Realizations.Capture
@@ -65,24 +65,29 @@ private def ChecksFrom (providers : Providers Id) (collected : Collected) : Prop
   ∀ checked ∈ Collected.nativeChecks collected,
     ∃ handle, (Providers.check providers handle).run = .ok (.ok checked)
 
-/-- Recipe-generated non-native checks and unavailable fallbacks are distinct
-from native provider observations. The successful-native case retains full fields. -/
-private def ObservationFrom (providers : Providers Id) : Observation → Prop
-  | .proof _ => True
+/-- Recipe-generated checks and unavailable fallbacks remain distinct from provider
+observations. Native checks and authored proofs retain their original full fields;
+authored proofs also retain the selected specification call and document. -/
+private def ObservationFrom (providers : Providers Id) (p : Plan) : Observation → Prop
+  | .proof observation => ∃ handle witness documents checked,
+      (Providers.expected providers handle witness documents).run = .ok (.ok checked) ∧
+      observation = checked.observation ∧
+      ∃ document, (Providers.specification providers p.expected[handle]!.specification document).run = .ok (.ok ()) ∧
+        document.key ∈ documents
   | .review _ => False
   | .check observation => observation.outcome = .unavailable ∨
       observation.validator = `blueprint.dependencySelection ∨
       ∃ handle checked, (Providers.check providers handle).run = .ok (.ok checked) ∧
         (observation = checked.statement ∨ observation = checked.body)
 
-private def CollectionFrom (providers : Providers Id) (collected : Collected) : Prop :=
+private def CollectionFrom (providers : Providers Id) (p : Plan) (collected : Collected) : Prop :=
   ChecksFrom providers collected ∧
-    (∀ entry ∈ Collected.observations collected, ObservationFrom providers entry.2.2) ∧
+    (∀ entry ∈ Collected.observations collected, ObservationFrom providers p entry.2.2) ∧
     (Collected.input collected).evidence = #[]
 
-private theorem recordObservation_from (prior : CollectionFrom providers collected)
-    (allowed : ObservationFrom providers observation) :
-    CollectionFrom providers (recordObservation collected key observation) := by
+private theorem recordObservation_from (prior : CollectionFrom providers p collected)
+    (allowed : ObservationFrom providers p observation) :
+    CollectionFrom providers p (recordObservation collected key observation) := by
   refine ⟨prior.1, ?_, prior.2.2⟩
   intro entry member
   simp only [recordObservation, Array.mem_push] at member
@@ -91,11 +96,11 @@ private theorem recordObservation_from (prior : CollectionFrom providers collect
   · exact allowed
 
 private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
-    (accepted : (collectOrdinary providers p).run = .ok collected) : CollectionFrom providers collected := by
+    (accepted : (collectOrdinary providers p).run = .ok collected) : CollectionFrom providers p collected := by
   simp only [collectOrdinary, exceptT_bind_ok_iff] at accepted
   obtain ⟨result, loop, finished⟩ := accepted
   cases finished
-  apply array_loop_invariant p.ordinary (CollectionFrom providers) _ (by simp [CollectionFrom, ChecksFrom]) ?_ loop
+  apply array_loop_invariant p.ordinary (CollectionFrom providers p) _ (by simp [CollectionFrom, ChecksFrom]) ?_ loop
   intro node member current result prior step
   by_cases absent : (!p.raw.pending.contains node.label) = true
   · rw [ite_eq_left absent] at step
@@ -113,8 +118,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
       rw [resolved] at step
       simp only [exceptT_bind_ok_iff] at step
       obtain ⟨next, realizations, finished⟩ := step
-      have nextValid : CollectionFrom providers next := by
-        refine array_loop_invariant node.realizations (CollectionFrom providers) _ ?_ ?_ realizations
+      have nextValid : CollectionFrom providers p next := by
+        refine array_loop_invariant node.realizations (CollectionFrom providers p) _ ?_ ?_ realizations
         · exact prior
         · intro realization member current result prior step
           -- Rewrite the outer guard without normalizing unrelated recipe branches.
@@ -126,8 +131,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
               rw [ite_eq_left sourcesValid] at step
               simp only [exceptT_bind_ok_iff] at step
               obtain ⟨sourced, sources, declared, declarations, finished⟩ := step
-              have sourceValid : CollectionFrom providers sourced.1 := by
-                refine array_loop_invariant realization.sources (fun pair => CollectionFrom providers pair.1) _ ?_ ?_ sources
+              have sourceValid : CollectionFrom providers p sourced.1 := by
+                refine array_loop_invariant realization.sources (fun pair => CollectionFrom providers p pair.1) _ ?_ ?_ sources
                 · exact prior
                 · intro source member pair result prior step
                   clear loop realizations sources declarations finished
@@ -135,8 +140,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                     | (cases step; exact prior)
                     | (simp only [exceptT_bind_ok_iff] at step; obtain ⟨value, returned, step⟩ := step)
                     | split at step
-              have declarationValid : CollectionFrom providers declared.1 := by
-                refine array_loop_invariant realization.declarations (fun pair => CollectionFrom providers pair.1) _ sourceValid ?_ declarations
+              have declarationValid : CollectionFrom providers p declared.1 := by
+                refine array_loop_invariant realization.declarations (fun pair => CollectionFrom providers p pair.1) _ sourceValid ?_ declarations
                 intro declaration member pair result prior step
                 clear loop realizations sources declarations finished
                 simp only [exceptT_bind_ok_iff] at step
@@ -160,8 +165,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                   | error diagnostic =>
                     simp only [exceptT_bind_ok_iff] at step
                     obtain ⟨next, unavailable, finished⟩ := step
-                    have valid : CollectionFrom providers next := by
-                      refine array_loop_invariant _ (CollectionFrom providers) _ ?_ ?_ unavailable
+                    have valid : CollectionFrom providers p next := by
+                      refine array_loop_invariant _ (CollectionFrom providers p) _ ?_ ?_ unavailable
                       · exact prior
                       · intro entry member current result prior step
                         cases step
@@ -188,20 +193,20 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
 
 
 private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
-    (initialValid : CollectionFrom providers initial)
+    (initialValid : CollectionFrom providers p initial)
     (accepted : (collectAuthored providers p initial).run = .ok collected) :
-    CollectionFrom providers collected := by
+    CollectionFrom providers p collected := by
   simp only [collectAuthored, exceptT_bind_ok_iff] at accepted
   obtain ⟨result, loop, finished⟩ := accepted
   cases finished
-  refine array_loop_invariant p.authored (CollectionFrom providers)
+  refine array_loop_invariant p.authored (CollectionFrom providers p)
     _ initialValid ?_ loop
   intro authored member current result prior step
   simp only [exceptT_bind_ok_iff] at step
   obtain ⟨goals, goalLoop, sourced, sourceLoop, finished⟩ := step
-  have goalsValid : CollectionFrom providers goals := by
+  have goalsValid : CollectionFrom providers p goals := by
     rw [Std.Legacy.Range.forIn_eq_forIn_range'] at goalLoop
-    refine list_loop_invariant _ (CollectionFrom providers)
+    refine list_loop_invariant _ (CollectionFrom providers p)
       _ prior ?_ goalLoop
     intro index member current result prior step
     clear loop goalLoop sourceLoop finished
@@ -214,14 +219,23 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
       · intro documentValid
         rw [ite_eq_left documentValid] at step
         simp only [exceptT_bind_ok_iff] at step
-        obtain ⟨_, _, _, _, _, _, _, _, finished⟩ := step
+        obtain ⟨specResult, specReturned, specUnit, specAccepted, expectedResult, expectedReturned, checked, checkedAccepted, finished⟩ := step
         cases finished
         refine ⟨prior.1, ?_, prior.2.2⟩
         intro entry member
         simp only [Array.mem_push] at member
         rcases member with original | rfl
         · exact prior.2.1 entry original
-        · trivial
+        · cases expectedResult with
+          | error diagnostic => cases checkedAccepted
+          | ok value =>
+            cases checkedAccepted
+            cases specResult with
+            | error diagnostics => cases specAccepted
+            | ok value =>
+              cases value
+              refine ⟨_, _, _, _, expectedReturned, rfl, document.1, specReturned, ?_⟩
+              exact (mem_canonical _ _).mpr (by simp)
       · intro documentInvalid
         rw [ite_eq_right documentInvalid] at step
         simp only [exceptT_bind_ok_iff] at step
@@ -232,9 +246,9 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
       simp only [exceptT_bind_ok_iff] at step
       obtain ⟨_, impossible, _⟩ := step
       cases impossible
-  have sourcesValid : CollectionFrom providers sourced := by
+  have sourcesValid : CollectionFrom providers p sourced := by
     rw [Std.Legacy.Range.forIn_eq_forIn_range'] at sourceLoop
-    refine list_loop_invariant _ (CollectionFrom providers)
+    refine list_loop_invariant _ (CollectionFrom providers p)
       _ goalsValid ?_ sourceLoop
     intro index member current result prior step
     simp only [exceptT_bind_ok_iff] at step
@@ -245,7 +259,7 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
   exact sourcesValid
 
 private theorem assemble_from (providers : Providers Id) (p : Plan)
-    (accepted : (assemble providers p).run = .ok collected) : CollectionFrom providers collected := by
+    (accepted : (assemble providers p).run = .ok collected) : CollectionFrom providers p collected := by
   simp only [assemble] at accepted
   split at accepted
   · simp only [exceptT_bind_ok_iff] at accepted
@@ -282,13 +296,13 @@ private theorem id_array_loop_invariant (entries : Array α) (property : β → 
 
 private theorem connectUses_properties (collected : Collected) (uses : Array SelectedUse) :
     Collected.nativeChecks (connectUses collected uses) = Collected.nativeChecks collected ∧
-      ∀ providers, CollectionFrom providers collected → CollectionFrom providers (connectUses collected uses) := by
+      ∀ providers p, CollectionFrom providers p collected → CollectionFrom providers p (connectUses collected uses) := by
   let invariant (current : Collected) : Prop :=
     Collected.nativeChecks current = Collected.nativeChecks collected ∧
-      ∀ providers, CollectionFrom providers collected → CollectionFrom providers current
+      ∀ providers p, CollectionFrom providers p collected → CollectionFrom providers p current
   unfold connectUses
   simp only [Id.run, bind, pure]
-  apply id_array_loop_invariant _ invariant _ ⟨rfl, fun _ valid => valid⟩
+  apply id_array_loop_invariant _ invariant _ ⟨rfl, fun _ _ valid => valid⟩
   intro model member current prior
   by_cases foreign : (model.context.language != `lean) = true
   · rw [ite_eq_left foreign]
@@ -308,8 +322,8 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
         · intro edges
           rw [ite_eq_left edges]
           refine ⟨prior.1, ?_⟩
-          intro providers valid
-          exact recordObservation_from (prior.2 providers valid) (Or.inr (Or.inl rfl))
+          intro providers p valid
+          exact recordObservation_from (prior.2 providers p valid) (Or.inr (Or.inl rfl))
         · intro edges; rw [ite_eq_right edges]; exact prior
     · intro foreign; rw [ite_eq_right foreign]; exact prior
 
@@ -319,9 +333,9 @@ private theorem connectUses_nativeChecks (collected : Collected) (uses : Array S
   (connectUses_properties collected uses).1
 
 private theorem connectUses_from (collected : Collected) (uses : Array SelectedUse)
-    (initialValid : CollectionFrom providers collected) :
-    CollectionFrom providers (connectUses collected uses) :=
-  (connectUses_properties collected uses).2 providers initialValid
+    (initialValid : CollectionFrom providers p collected) :
+    CollectionFrom providers p (connectUses collected uses) :=
+  (connectUses_properties collected uses).2 providers p initialValid
 
 /-- Final admission and dependency wiring preserve the complete native check
 inventory, independently of completion status and evidence canonicalization. -/
@@ -335,10 +349,10 @@ theorem finish_nativeChecks (accepted : finish collected = .ok snapshot) :
     exact connectUses_nativeChecks collected _
   · cases accepted
 
-private theorem finish_observations_from (initialValid : CollectionFrom providers collected)
+private theorem finish_observations_from (initialValid : CollectionFrom providers p collected)
     (accepted : finish collected = .ok snapshot)
     (member : record ∈ snapshot.registry.contributions.evidence) :
-    ObservationFrom providers record.value.observation := by
+    ObservationFrom providers p record.value.observation := by
   have linked := connectUses_from collected (selectUses collected) initialValid
   rw [finish_sources accepted] at member
   simp only [Array.mem_append, Array.mem_map] at member
@@ -425,5 +439,94 @@ theorem evaluate_native_evidence_source {p : Plan} {observations : Observations 
         (lookupResult_success_iff checksIndexed handle (.ok checked)).mp lookup
       exact ⟨entry, original, checked, resultEq,
         (indexResults_valid checksIndexed).1 entry original, field⟩
+
+/-- Every admitted independent-proof observation is unchanged from a successful
+expected-goal batch result. Its selected witness and documents pass the actual
+adapter checks, and its specification document belongs to that document inventory
+and has an original successful specification result. This preserves the full
+observation, including actual type, coverage, assumptions, and explanation;
+it does not authenticate the provider or assert that the observation passed. -/
+theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (accepted : evaluate p observations = .ok snapshot)
+    (member : record ∈ snapshot.registry.contributions.evidence)
+    (observed : record.value.observation = .proof observation) :
+    ∃ entry ∈ observations.expected, ∃ checked,
+      entry.result.result = .ok checked ∧ observation = checked.observation ∧
+      entry.handle < p.expected.size ∧
+      checked.observation.witness = entry.result.witness ∧
+      checked.goal.documents = entry.result.documents ∧
+      checked.goal.context = entry.result.witness.context ∧
+      ∃ specification ∈ observations.specifications,
+        specification.handle = p.expected[entry.handle]!.specification ∧
+        specification.result.result = .ok () ∧
+        specification.result.document.key ∈ entry.result.documents := by
+  simp only [evaluate, except_bind_ok_iff] at accepted
+  obtain ⟨documents, _, native, _, inline, _, documented, _, checks, _,
+    specifications, specificationsIndexed, expected, expectedIndexed, collected, assembled, finished⟩ := accepted
+  have source := finish_observations_from (assemble_from _ _ assembled) finished member
+  rw [observed] at source
+  obtain ⟨handle, witness, selectedDocuments, checked, supplied, observationEq,
+    document, specificationSupplied, documentMember⟩ := source
+  simp only [exceptT_bind_ok_iff] at supplied
+  obtain ⟨value, lookup, _, requestShape, returned⟩ := supplied
+  have requestShape := matching_success requestShape
+  have requestEq : value.witness = witness ∧ value.documents = selectedDocuments := by
+    simpa only [Bool.and_eq_true, beq_iff_eq] using requestShape
+  cases resultEq : value.result with
+  | error diagnostic => rw [resultEq] at returned; cases returned
+  | ok actual =>
+    rw [resultEq] at returned
+    simp only [exceptT_bind_ok_iff] at returned
+    obtain ⟨_, checkedShape, output⟩ := returned
+    cases output
+    have checkedShape := matching_success checkedShape
+    have checkedEq : checked.observation.witness = witness ∧
+        checked.goal.documents = selectedDocuments ∧ checked.goal.context = witness.context := by
+      simpa only [Bool.and_eq_true, beq_iff_eq, and_assoc] using checkedShape
+    obtain ⟨entry, original, handleEq, entryEq⟩ :=
+      (lookupResult_success_iff expectedIndexed handle value).mp lookup
+    refine ⟨entry, original, checked, ?_, observationEq,
+      (indexResults_valid expectedIndexed).1 entry original, ?_, ?_, ?_, ?_⟩
+    · rw [entryEq]; exact resultEq
+    · rw [entryEq, requestEq.1]; exact checkedEq.1
+    · rw [entryEq, requestEq.2]; exact checkedEq.2.1
+    · rw [entryEq, requestEq.1]; exact checkedEq.2.2
+    · simp only [exceptT_bind_ok_iff] at specificationSupplied
+      obtain ⟨specValue, specLookup, _, specShape, specOutput⟩ := specificationSupplied
+      have documentEq : specValue.document = document := by
+        simpa only [beq_iff_eq] using matching_success specShape
+      obtain ⟨specEntry, specOriginal, specHandle, specEq⟩ :=
+        (lookupResult_success_iff specificationsIndexed _ specValue).mp specLookup
+      refine ⟨specEntry, specOriginal, ?_, ?_, ?_⟩
+      · rw [handleEq]; exact specHandle
+      · rw [specEq]; exact Except.ok.inj specOutput
+      · rw [specEq, documentEq, entryEq, requestEq.2]; exact documentMember
+
+/-- End-to-end pure-capture soundness for an independent-proof requirement:
+public completion has an original successful expected-goal result whose unchanged
+observation satisfies the selected contract. This includes actual-type identity,
+passed outcome, and dependency-closure coverage, as specified by `Satisfies`.
+The supplier's report is justified here; its semantic truth is a separate boundary. -/
+theorem evaluate_complete_proof_provider {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (evaluated : evaluate p observations = .ok snapshot)
+    (found : snapshot.registry.requirement? key = some requirement)
+    (expected : requirement.expected = .proof goal witness)
+    (complete : (snapshot.registry.resultForRequirement key).complete = true) :
+    ∃ entry ∈ observations.expected, ∃ checked,
+      entry.result.result = .ok checked ∧
+      (Observation.proof checked.observation).Satisfies requirement := by
+  obtain ⟨originalRequirement, _, evidence, member, lookup, _, fits⟩ :=
+    admit_complete_requirement_evidence (evaluate_admitted evaluated) complete
+  have requirementEq := Option.some.inj (found.symm.trans lookup)
+  rw [← requirementEq] at fits
+  have suitable := fits.2.2.2
+  cases observed : evidence.value.observation with
+  | check observation => simp [Observation.Satisfies, observed, expected] at suitable
+  | review observation => simp [Observation.Satisfies, observed, expected] at suitable
+  | proof observation =>
+    obtain ⟨entry, original, checked, result, observationEq, _⟩ :=
+      evaluate_proof_evidence_source evaluated member observed
+    refine ⟨entry, original, checked, result, ?_⟩
+    rwa [observed, observationEq] at suitable
 
 end Informal.Realizations.Capture

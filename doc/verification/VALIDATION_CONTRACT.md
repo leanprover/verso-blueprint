@@ -197,7 +197,7 @@ the captured registry. These theorems do not yet prove that every assembled reco
 comes from a particular entry in the supplied observation batch. The real-provider
 capture tests exercise that connection, but it is a separate proof obligation.
 
-## Native observations through the collection recipe
+## Provider observations through the collection recipe
 
 `Realizations/Capture/RecipeLaws.lean` follows the actual ordinary, authored,
 dependency-wiring, and finalization functions. Its loop invariants establish that
@@ -223,9 +223,32 @@ completion claims to supplied provider results, without authenticating those res
 
 The theorem's plan is the exact value supplied to `evaluate`. It does not prove
 that every plan field was produced by `plan`, that its source inventory is complete,
-or that a provider honestly executed Lean. The corresponding source trace for
-authored expected-goal observations remains a separate obligation. No collector,
-provider adapter, or data store is duplicated in production for these proofs.
+or that a provider honestly executed Lean. No collector, provider adapter, or data
+store is duplicated in production for these proofs.
+
+`evaluate_proof_evidence_source` traces every admitted independent-proof observation
+to an original successful expected-goal result. The whole proof observation is
+preserved, including its reported actual type, coverage, assumptions, and
+explanation. The actual adapter checks tie the result to its selected witness,
+document inventory, and formal context. The specification handle comes from that
+same plan request; its original specification-batch result succeeds, and its
+document is included in the expected goal's document inventory. This theorem applies
+to failed proof observations too: successful provider execution alone does not
+imply proof completion.
+
+`evaluate_complete_proof_provider` composes that lineage with production admission
+and completion. A completed independent-proof requirement has an original successful
+expected-goal result whose unchanged observation satisfies the selected requirement.
+In particular, it reports the required witness, matching actual-goal context and
+fingerprint, passed outcome, and dependency-closure coverage. This is an end-to-end
+guarantee about the pure evaluator and its supplied observations, not proof of the
+reported mathematical proposition.
+
+The goal and observation in a supplied checked result are distinct fields. This
+checkpoint does not claim every assembled requirement or semantic binding input
+is projected from the same expected-goal result identified by the evidence theorem.
+That stronger joint projection property, including `semanticContext`, remains a
+separate obligation.
 
 ## Prerequisite selection is independent of completion
 
@@ -355,8 +378,9 @@ binding in the final registry, equal to the binding stored in its evidence. The
 specification's empty fallback cannot be used for an accepted observation. These
 laws concern the actual `finish` called by `evaluate`. Their input boundary is the
 collected recipe output after dependency wiring, not the original provider batch;
-the native check path is now covered above, while authored expected-goal provenance
-and exact generated policy outcomes remain separate.
+the native check and authored proof observation paths are now covered above.
+Joint requirement/semantic-input provenance and exact generated policy outcomes
+remain separate.
 
 ## Exact admission across registration histories
 
@@ -379,6 +403,37 @@ reconstruction, including the empty history. `State.LocalAdmission` names an act
 successful `State.addNode` call with label-local facts; it is a proposition about
 the production transition, not a replacement evaluator. The stronger invariant
 implies the earlier `NodesMatchAssembly` property.
+
+## Main theorem targets
+
+The main statements should describe production boundaries that users rely on,
+with the implementation lemmas serving those statements. Three theorem families
+provide a useful structure:
+
+| Contract | Current formal result | Remaining connection |
+| --- | --- | --- |
+| **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `admit_complete_selected_evidence`, `admit_complete_prerequisites_evidence`, and `admit_complete_accessible`; `evaluate_assessment_evidence` reaches the rendering assessment. | Final-cache closure and the converse completeness direction require separate traversal coverage/order proofs. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Joint requirement/semantic-input provenance, exact generated policy outcomes, plan construction, and the real provider interpreter. |
+
+These are complementary contracts, not one claim that the entire database is
+permutation-invariant or that all reported propositions are true. The first has an
+exact admission characterization. The second currently establishes soundness,
+not completeness. The third is relative to supplied observations and an exact
+supplied plan.
+
+A later semantic-soundness theorem should expose a provider correctness hypothesis
+as an explicit premise and discharge it for each supported interpreter where
+possible. It should not install a new global axiom saying that Lean APIs or all
+providers are trustworthy. For example, proving a reported witness type corresponds
+to the environment used by `observe` is a different task from proving that `evaluate`
+preserves that report. Keep those theorem boundaries visible.
+
+The next useful proof is the joint authored projection: relate the admitted
+expected requirement, proof observation, and semantic binding input to the same
+successful expected-goal result. After that, characterize generated dependency
+checks and connect the actual provider/transaction routes. Growing a list of local
+lemmas without strengthening one of these three contracts is not the objective.
 
 ## Remaining boundary
 

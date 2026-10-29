@@ -160,3 +160,7 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.finish_nativeChecks
 #print axioms Informal.Realizations.Capture.evaluate_nativeChecks_source
 #print axioms Informal.Realizations.Capture.evaluate_native_evidence_source
+
+-- Authored provider lineage and end-to-end completion suitability.
+#print axioms Informal.Realizations.Capture.evaluate_proof_evidence_source
+#print axioms Informal.Realizations.Capture.evaluate_complete_proof_provider
