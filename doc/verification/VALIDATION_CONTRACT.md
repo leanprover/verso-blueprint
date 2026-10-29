@@ -197,6 +197,36 @@ the captured registry. These theorems do not yet prove that every assembled reco
 comes from a particular entry in the supplied observation batch. The real-provider
 capture tests exercise that connection, but it is a separate proof obligation.
 
+## Native observations through the collection recipe
+
+`Realizations/Capture/RecipeLaws.lean` follows the actual ordinary, authored,
+dependency-wiring, and finalization functions. Its loop invariants establish that
+retained native checks come from successful provider results, and that collection
+does not inject pre-bound evidence into the input. Authored independent-proof
+observations, generated dependency-selection checks, and unavailable native
+fallbacks remain distinct cases.
+
+`evaluate_nativeChecks_source` reaches the public snapshot: each retained native
+check is exactly an original successful `observations.checks` result at an in-range
+handle. Both constituent observations identify the plan request's witness and use
+the exact statement/body validators. Whole checked records are preserved, including
+kind, status, coverage, assumptions, and explanations; the theorem does not merely compare
+outcome flags. `finish_nativeChecks` separately proves that dependency wiring and
+final admission preserve the complete native-check inventory.
+
+`evaluate_native_evidence_source` closes the native recipe-to-evidence connection:
+a passed native statement/body observation in the final registry's retained
+evidence is an unchanged field of an original successful check-batch result.
+Generated policy checks and unavailable fallbacks cannot supply such evidence.
+Combined with the earlier assessment and suitability laws, this connects native
+completion claims to supplied provider results, without authenticating those results.
+
+The theorem's plan is the exact value supplied to `evaluate`. It does not prove
+that every plan field was produced by `plan`, that its source inventory is complete,
+or that a provider honestly executed Lean. The corresponding source trace for
+authored expected-goal observations remains a separate obligation. No collector,
+provider adapter, or data store is duplicated in production for these proofs.
+
 ## Prerequisite selection is independent of completion
 
 `Translations/SelectionLaws.lean` gives the authored identity contract as
@@ -325,7 +355,8 @@ binding in the final registry, equal to the binding stored in its evidence. The
 specification's empty fallback cannot be used for an accepted observation. These
 laws concern the actual `finish` called by `evaluate`. Their input boundary is the
 collected recipe output after dependency wiring, not the original provider batch;
-proving all recipe paths preserve batch provenance remains separate.
+the native check path is now covered above, while authored expected-goal provenance
+and exact generated policy outcomes remain separate.
 
 ## Exact admission across registration histories
 

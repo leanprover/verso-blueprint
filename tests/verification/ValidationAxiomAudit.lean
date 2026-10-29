@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.Laws
+import VersoBlueprint.Realizations.Capture.RecipeLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -155,3 +155,8 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Environment.State.AdmissionCoherent.conflicted_absent
 #print axioms Informal.Environment.State.AdmissionCoherent.unknown_absent
 #print axioms Informal.Environment.State.admission_sequence_coherent
+
+-- Native provider results through the actual recipe and final admitted evidence.
+#print axioms Informal.Realizations.Capture.finish_nativeChecks
+#print axioms Informal.Realizations.Capture.evaluate_nativeChecks_source
+#print axioms Informal.Realizations.Capture.evaluate_native_evidence_source
