@@ -235,4 +235,149 @@ theorem evaluate_valid_handles {p : Plan} {observations : Observations p} {snaps
     indexResults_valid documented, indexResults_valid checks, indexResults_valid specifications,
     indexResults_valid expected⟩
 
+private theorem fresh_loop_membership (entries : List α) (key : α → Nat) (value : α → β)
+    (body : α → Std.HashMap Nat β → Except ε (ForInStep (Std.HashMap Nat β)))
+    (accepts : ∀ entry initial step, body entry initial = .ok step →
+      initial.contains (key entry) = false ∧ step = .yield (initial.insert (key entry) (value entry)))
+    (h : forIn entries initial body = .ok final) (query : Nat) (result : β) :
+    final[query]? = some result ↔ initial[query]? = some result ∨
+      ∃ entry ∈ entries, key entry = query ∧ value entry = result := by
+  induction entries generalizing initial with
+  | nil => cases h; simp
+  | cons entry entries ih =>
+    simp only [List.forIn_cons, except_bind_ok_iff] at h
+    obtain ⟨step, accepted, rest⟩ := h
+    obtain ⟨fresh, rfl⟩ := accepts entry initial step accepted
+    rw [ih rest, Std.HashMap.getElem?_insert]
+    have absent := Std.HashMap.getElem?_eq_none_of_contains_eq_false fresh
+    by_cases same : key entry = query
+    · rw [same] at absent
+      simp [same, absent]
+    · simp [same]
+
+/-- The actual observation index preserves exactly the supplied handle/result
+pairs. Even equal repeated entries must first pass its distinct-handle check;
+no accepted result can be invented or overwritten by the table construction. -/
+theorem indexResults_lookup_iff {p : Plan} {request : Type}
+    {entries : Array (ResultEntry p request α)}
+    (indexed : indexResults family size entries = .ok table) (handle : Nat) (result : α) :
+    table[handle]? = some result ↔
+      ∃ entry ∈ entries, entry.handle = handle ∧ entry.result = result := by
+  simp only [indexResults, except_bind_ok_iff] at indexed
+  obtain ⟨final, loop, same⟩ := indexed
+  cases same
+  rw [← Array.forIn_toList] at loop
+  have exactResult := fresh_loop_membership entries.toList (·.handle) (·.result) _ ?_ loop handle result
+  · simpa using exactResult
+  · intro entry initial step accepted
+    split at accepted
+    · simp [bind, Except.bind, throw] at accepted
+    · split at accepted
+      · simp [bind, Except.bind, throw] at accepted
+      · rename_i fresh
+        cases accepted
+        exact ⟨Bool.eq_false_iff.mpr fresh, rfl⟩
+
+private theorem fresh_loop_exists (entries : List α) (key : α → Nat) (value : α → β)
+    (body : α → Std.HashMap Nat β → Except ε (ForInStep (Std.HashMap Nat β)))
+    (accepts : ∀ entry initial, key entry < size → initial.contains (key entry) = false →
+      body entry initial = .ok (.yield (initial.insert (key entry) (value entry))))
+    (bounded : ∀ entry ∈ entries, key entry < size)
+    (distinct : (entries.map key).Nodup)
+    (fresh : ∀ entry ∈ entries, initial.contains (key entry) = false) :
+    ∃ final, forIn entries initial body = .ok final := by
+  induction entries generalizing initial with
+  | nil => exact ⟨initial, rfl⟩
+  | cons entry entries ih =>
+    have unique := List.nodup_cons.mp distinct
+    have safe := accepts entry initial (bounded entry (by simp)) (fresh entry (by simp))
+    obtain ⟨final, finished⟩ := ih (initial := initial.insert (key entry) (value entry))
+      (fun other member => bounded other (by simp [member])) unique.2 (by
+        intro other member
+        have different : key entry ≠ key other := by
+          intro same
+          exact unique.1 (List.mem_map.mpr ⟨other, member, same.symm⟩)
+        simp [Std.HashMap.contains_insert, different, fresh other (by simp [member])])
+    refine ⟨final, ?_⟩
+    simp only [List.forIn_cons, safe, bind, Except.bind]
+    exact finished
+
+/-- Table construction accepts exactly the bounded, unique-handle batches.
+This is the real evaluator's indexing gate in both directions, not an assumption
+about a prevalidated batch or the truth of a supplied observation. -/
+theorem indexResults_success_iff {p : Plan} {request : Type}
+    (entries : Array (ResultEntry p request α)) (family : String) (size : Nat) :
+    (∃ table, indexResults family size entries = .ok table) ↔ ResultEntry.ValidHandles size entries := by
+  constructor
+  · rintro ⟨table, indexed⟩
+    exact indexResults_valid indexed
+  · rintro ⟨bounded, distinct⟩
+    simp only [indexResults, ← Array.forIn_toList]
+    have constructed := fresh_loop_exists (ε := Array Diagnostic) entries.toList (·.handle) (·.result)
+      (fun entry table => do
+        if entry.handle >= size then throw (batchIssue "extraneous-observation" family entry.handle)
+        if table.contains entry.handle then throw (batchIssue "duplicate-observation" family entry.handle)
+        pure (.yield (table.insert entry.handle entry.result)))
+      (size := size) ?_ (fun entry member => bounded entry (by simpa using member)) distinct
+      (initial := {}) (by simp)
+    · obtain ⟨table, finished⟩ := constructed
+      simp only [bind, Except.bind, pure, Except.pure] at finished
+      exact ⟨table, by simp only [bind, Except.bind, pure, Except.pure, finished]⟩
+    · intro entry initial bound fresh
+      simp [fresh, Nat.not_le_of_gt bound, pure, Except.pure]
+
+/-- The provider adapter returns exactly an original result for the requested
+handle. A missing handle cannot silently acquire a default observation. -/
+theorem lookupResult_success_iff {p : Plan} {request : Type}
+    {entries : Array (ResultEntry p request α)}
+    (indexed : indexResults family size entries = .ok table) (handle : Nat) (result : α) :
+    (lookupResult family table handle).run = .ok result ↔
+      ∃ entry ∈ entries, entry.handle = handle ∧ entry.result = result := by
+  rw [← indexResults_lookup_iff indexed]
+  unfold lookupResult full
+  cases found : table[handle]? with
+  | none => simp [found, pure]
+  | some value =>
+    simp only [Std.HashMap.get?_eq_getElem?, found, Option.some.injEq]
+    change (Except.ok value : Except (Array Diagnostic) α) = .ok result ↔ value = result
+    simp only [Except.ok.injEq]
+
+/-- Observation order cannot change whether the actual indexing gate accepts.
+In-range uniqueness is preserved by permutations, including repeated payloads. -/
+theorem indexResults_success_permutation {p : Plan} {request : Type}
+    (left right : Array (ResultEntry p request α)) (order : left.toList.Perm right.toList)
+    (family : String) (size : Nat) :
+    (∃ table, indexResults family size left = .ok table) ↔
+      ∃ table, indexResults family size right = .ok table := by
+  rw [indexResults_success_iff, indexResults_success_iff]
+  unfold ResultEntry.ValidHandles
+  have bounded : (∀ entry ∈ left, entry.handle < size) ↔ ∀ entry ∈ right, entry.handle < size := by
+    constructor
+    · intro valid entry member
+      exact valid entry (by simpa using order.mem_iff.mpr (by simpa using member))
+    · intro valid entry member
+      exact valid entry (by simpa using order.mem_iff.mp (by simpa using member))
+  exact and_congr bounded (order.map (·.handle)).nodup_iff
+
+/-- Accepted permutations have identical observations at every handle. The law
+compares lookup results, not an order-sensitive internal hash-table layout. -/
+theorem indexResults_lookup_permutation {p : Plan} {request : Type}
+    {left right : Array (ResultEntry p request α)} (order : left.toList.Perm right.toList)
+    (acceptedLeft : indexResults family size left = .ok first)
+    (acceptedRight : indexResults family size right = .ok second) (handle : Nat) :
+    first[handle]? = second[handle]? := by
+  have same (value : α) : first[handle]? = some value ↔ second[handle]? = some value := by
+    rw [indexResults_lookup_iff acceptedLeft, indexResults_lookup_iff acceptedRight]
+    constructor
+    · rintro ⟨entry, member, rest⟩
+      exact ⟨entry, by simpa using order.mem_iff.mp (by simpa using member), rest⟩
+    · rintro ⟨entry, member, rest⟩
+      exact ⟨entry, by simpa using order.mem_iff.mpr (by simpa using member), rest⟩
+  cases firstFound : first[handle]? with
+  | none =>
+    cases secondFound : second[handle]? with
+    | none => rfl
+    | some value => have present := (same value).mpr secondFound; simp [firstFound] at present
+  | some value => exact ((same value).mp firstFound).symm
+
 end Informal.Realizations.Capture

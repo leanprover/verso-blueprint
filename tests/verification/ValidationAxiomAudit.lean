@@ -115,3 +115,28 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Environment.State.collectImportedEntry_registrations
 #print axioms Informal.Environment.State.collectImportedEntries_unpublished
 #print axioms Informal.Environment.State.reassembleImported_no_resurrection
+
+-- Observation-table acceptance and original-result provenance.
+#print axioms Informal.Realizations.Capture.indexResults_lookup_iff
+#print axioms Informal.Realizations.Capture.indexResults_success_iff
+#print axioms Informal.Realizations.Capture.lookupResult_success_iff
+#print axioms Informal.Realizations.Capture.indexResults_success_permutation
+#print axioms Informal.Realizations.Capture.indexResults_lookup_permutation
+
+-- Named index invariant and exact remaining local-update condition.
+#print axioms Informal.Environment.State.reassembleImported_index_coherent
+#print axioms Informal.Environment.State.addNode_index_coherent_iff
+
+-- Production source accumulation and supported-state coherence.
+#print axioms Informal.NodeAssembly.applyRegistrations_sources
+#print axioms Informal.NodeAssembly.applyRegistrations_source_mem
+#print axioms Informal.NodeAssembly.assemble_ok_source_inventory
+#print axioms Informal.NodeAssembly.assemble_ok_leanDecls_input
+#print axioms Informal.NodeAssembly.assemble_leanDecls_monotone
+#print axioms Informal.NameMapLaws.getD_of_get?_eq_some
+#print axioms Informal.Environment.State.reassembleImported_nodes_match
+#print axioms Informal.Environment.State.addNode_declarations_preserved
+#print axioms Informal.Environment.State.addNode_index_coherent
+#print axioms Informal.Environment.State.addNode_after_import_index_coherent
+#print axioms Informal.Environment.State.addNode_nodes_match
+#print axioms Informal.Environment.State.addNode_coherent

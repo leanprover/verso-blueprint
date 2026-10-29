@@ -183,6 +183,15 @@ when their handles repeat. The plan's type parameter alone does not enforce thes
 properties; the proof covers the actual insertion checks. This is batch shape,
 not authenticity or completeness of the provider inventory.
 
+The observation-table boundary now has positive and exact guarantees as well:
+`indexResults_success_iff` accepts precisely in-range, unique-handle batches;
+`indexResults_lookup_iff` preserves exactly their original handle/result pairs.
+`lookupResult_success_iff` transfers that guarantee through the actual provider
+adapter, ruling out a fabricated default for a missing handle. Permutation laws
+preserve acceptance and every lookup, without asserting equality of the internal
+hash-table layout. These proofs cover the real `indexResults` and `lookupResult`
+functions used by `evaluate`, for every result type and plan family.
+
 “Original” evidence at this capture boundary means the contributions retained by
 the captured registry. These theorems do not yet prove that every assembled record
 comes from a particular entry in the supplied observation batch. The real-provider
@@ -261,6 +270,42 @@ accepted nodes, their index, numbering, and local selected records remain untouc
 until the full-evidence assembly pass. These are proofs of the pure callbacks'
 operations, not assumptions about Lean's persistent-extension replay machinery.
 
+`State.DeclarationIndexCoherent` names this exact relation between the existing
+node and index stores. Reassembly establishes it unconditionally. For subsequent
+local updates, `addNode_index_coherent_iff` identifies the exact remaining condition:
+every name previously indexed for the updated label must remain in the returned
+node. The theorem proves both necessity and sufficiency, assuming a coherent
+prior state. The source-accumulation laws below now discharge that condition for
+nodes which match their retained-input assemblies.
+
+## Source accumulation and the local coherence induction step
+
+`NodeAssembly/SourceLaws.lean` proves the real payload reducer preserves the exact
+source array: the old inventory followed by each registration's source records.
+The proof follows the production `StateM` loops while separating accumulated
+diagnostics from source values. Successful assembly therefore retains exactly
+its original payload sources. No parallel evaluator or source store is introduced.
+
+`assemble_ok_leanDecls_input` connects the actual declaration inventory directly
+to original selected associations and inline sources in original registrations.
+It removes the need for a caller to supply an intermediate payload-node premise.
+`assemble_leanDecls_monotone` then proves that accepted growth of registrations
+and selected evidence cannot remove a declaration.
+
+`State.NodesMatchAssembly` states that each stored node agrees with assembly of
+its retained registrations and complete evidence. Import reconstruction establishes
+this property and the exact declaration-index invariant. Successful label-local
+registration preserves both (`addNode_coherent`), giving the induction step for
+supported registration sequences. The proof of the other-label frame accounts
+for cross-label identity collisions: a new collision involving an incoming record
+would also reject the registering label. It does not assume collisions are absent
+by construction or ignore other labels' identity buckets.
+
+The explicit producer premise is that every incoming selected record has the
+label being registered. There is no source-accumulation or declaration-monotonicity
+premise left. `addNode_after_import_index_coherent` gives a direct import-to-local
+index guarantee without a caller-supplied prior-state invariant.
+
 ## Remaining boundary
 
 We have not proved completeness: every well-founded, locally satisfied contract
@@ -278,10 +323,9 @@ remains distinct from the Registry prerequisite guarantees proved above.
 
 The environment laws cover local admission, raw import decoding, and complete
 imported-state reconstruction. Lean persistent-extension serialization/replay and
-CoreM commit/rollback remain separate. Preservation of the rebuilt global invariant
-through every local registration also needs further producer-facing properties.
-In particular, a global invariant also needs the producer discipline that incoming
-selected records belong
-to the label being registered; the private transition accepts an arbitrary record
-list, whereas its public producer routes supply label-local records. The incremental
-index theorem deliberately preserves existing entries without assuming them valid.
+CoreM commit/rollback remain separate. The local coherence induction step requires
+incoming selected records to belong to the label being registered. The pure theorem
+does not verify every `CoreM` producer route or commit/rollback mechanism. It also does not characterize
+all pending-label absence or diagnostic-reporting states. The incremental index
+law deliberately describes existing entries without assuming them valid; the
+coherence theorems supply the stronger invariant at their stated boundaries.

@@ -97,4 +97,13 @@ theorem mem_toArray (map : NameMap α) (key : Name) (value : α) :
     ({} : NameMap α).get? key = none := by
   rfl
 
+/-- A successful optional lookup determines the defaulted lookup as well. -/
+theorem getD_of_get?_eq_some (map : NameMap α) (key : Name) (value fallback : α)
+    (found : map.get? key = some value) : map.getD key fallback = value := by
+  unfold NameMap at map
+  rw [Std.TreeMap.getD_eq_getD_getElem?]
+  change (map.get? key).getD fallback = value
+  rw [found]
+  rfl
+
 end Informal.NameMapLaws
