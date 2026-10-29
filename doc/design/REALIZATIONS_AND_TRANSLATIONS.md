@@ -284,3 +284,106 @@ native proof versus optional prose assessment, explicit correspondences,
 dependency selection, atomic source/import rejection, semantic binding freshness,
 and Merkle cycles/sharing. These exercise the supported paths; they do not
 certify foreign-language checking or a general project-readiness analysis.
+
+## Consumer pilot contracts and pending extensions
+
+The Rocq-to-Lean pilot motivates the following contracts. These specify the
+intended boundaries before choosing additional schemas or UI. They do not adopt
+the pilot's receipt adapters, requirement-query patch, or its validation claims
+as production Blueprint behavior.
+
+### Document identity and relocation
+
+Today `DocumentKey` contains a language/project context and a path. That entire
+key participates in bindings. Relocating a selected path therefore invalidates
+old evidence even with identical source bytes. This means the evidence no longer
+matches the current binding; it does not establish a semantic regression.
+
+The intended extension separates a project/package-scoped logical source identity
+from its filesystem locator. Moving only the checkout root should preserve
+correspondence acceptance when logical identities, bytes, semantic dependencies,
+contracts and provider/compiler identities are unchanged. A renamed or replaced
+logical source remains a binding change unless an explicit identity is preserved.
+Do not infer identity by basename, content equality, or stripping path prefixes.
+Use the existing owning source registration for location; no second authoritative
+document database is needed. The precise field/API amendment is still pending.
+
+Identity migration must be explicit and fail closed: existing path-based bindings
+are not silently rewritten or accepted under a new encoding. Rebuild the captured
+model and reassess affected reviews. Native validation is rerun normally. This
+does not require a historical receipt store or a new completion status.
+
+Acceptance cases for that extension: identical bytes at another checkout root;
+changed bytes under one logical identity; equal relative names in distinct
+projects/packages; multiple locator aliases resolving to one identity; conflicting
+bytes for one identity; and old bindings after the encoding change. Equal repeated
+contributions may still deduplicate under ordinary admission. Conflicting owners
+or locator resolutions must produce diagnostics rather than choose a winner.
+The existing `BlueprintTranslations` pilot controls pin the current conservative
+path behavior and project separation; they do not test a locator-independent API.
+
+### Validation, correspondence, freshness, and readiness
+
+Keep provider outcome, current-binding suitability, local requirement completion,
+and prerequisite completion separate. Native checks can all pass while a local
+correspondence review is stale and pending. A second locally pending review can
+be blocked by the first correspondence. Task ownership/status does not discharge
+either requirement. A correspondence review does not establish a runtime result.
+
+The pure pilot regression uses explicitly mocked evidence to test this distinction:
+a path-only source relocation stales two reviews, leaves the unrelated native
+proof complete, and exposes only the upstream translation as actionable. This is
+not a foreign-provider or performance certification. Existing P02/P03 and P22
+controls cover native/correspondence separation and prerequisite readiness.
+
+Current binding mismatch diagnostics are conservative. Readable reasons should
+identify source, target, contract or dependency changes when supported by retained
+inputs; an opaque old hash alone cannot establish which component changed. Do not
+invent a semantic-change explanation when only a binding mismatch is known.
+
+### Shared blockers and typed queries
+
+The intended query identifies an exact typed requirement, its expected evidence,
+local result, prerequisite path and affected translations. Shared actionable work
+should appear once per requirement identity while retaining all affected
+translations. Complete and blocked requirements remain inspectable. A prose
+support node links to these obligations; its presence does not certify them.
+
+The pilot's structural identity query is a candidate, not yet an owner API.
+Required controls include same-display/different-structural Names, conflicting
+rows, malformed identities, obsolete report schemas and ambiguous display aliases.
+Invalid graph copies must not disappear when another copy looks valid.
+
+Distinguish a complete-capture unknown identity from an inconclusive miss in a
+partial exported view. This does **not** authorize partial registry admission:
+capture still admits one complete collected batch atomically. Export coverage
+must be explicit and cannot be inferred from graph presence or an empty array.
+An output reader inspects captured results; it does not authenticate providers,
+reevaluate proofs, or certify arbitrary edited JSON. Exact identities and display
+text should come from the same typed values without duplicating evaluation policy.
+
+### Rocq dependency scope
+
+Accept justified source/dependency scope as the criterion for future Rocq evidence
+binding. A source locator map is not a dependency closure. Retain conservative
+bindings until a provider can justify narrower coverage, including imported
+dependencies and assumptions. Mutation tests must invalidate relevant changes;
+only then may an unrelated-file change preserve a scoped claim. This work belongs
+at the provider boundary and does not make readable Rocq files proof evidence.
+
+### Natural alignment and workload comparison
+
+A correspondence can relate native representations without making them identical:
+for example Rocq positive/Z/N and Lean Positive/Int/Nat. Each authored relation
+must say what happens for empty and unsorted lists, duplicates, zero/negative
+coefficients, absent keys and out-of-range indices. Sorting or normalization is
+not an implicit precondition. An operational adaptation such as one comparator
+versus equality followed by numeric comparison is explicit.
+
+A separate workload contract binds endpoint variants, adapters, paired inputs,
+key sizes/equal-key distribution, output oracle and timing boundary. Endpoint,
+adapter or workload changes invalidate its benchmark evidence. A new comparator
+variant cannot inherit the baseline's result. Proof-build timing is not algorithm
+runtime evidence. These are consumer-authored contracts and future provider tests,
+not a reason to add benchmark policy to the core evaluator or infer performance
+readiness from completed correspondence.

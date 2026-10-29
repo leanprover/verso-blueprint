@@ -426,4 +426,62 @@ def withMissingProofHelper : IO Input := do
       if f.name == `statement then { f with declarations := #[unknown] } else f } } else c }
   expect "R2: selected declaration must belong to its realization" (rejectsWith bad "unknown-facet-declaration")
 
+-- Pilot relocation boundary: these are MOCK observations, not replayed Rocq or
+-- Lean checks. Today DocumentKey.path participates in identity and bindings.
+#eval show IO Unit from do
+  let downstream : TranslationKey := ⟨`fixture, `dependent_port⟩
+  let downstreamClaim : ClaimKey := ⟨downstream, `correspondence⟩
+  let downstreamReview : RequirementKey := ⟨.claim downstreamClaim, `correspondence_review⟩
+  let input : Input := { fixture with
+    translations := fixture.translations.push <| contribution `dependentTranslation {
+      key := downstream, source := #[rocqKey], target := #[leanKey] }
+    claims := fixture.claims.push <| contribution `dependentClaim {
+      key := downstreamClaim, interpretation := "Dependent MOCK relation", required := #[downstreamReview] }
+    requirements := fixture.requirements.push <| contribution `dependentReview {
+      key := downstreamReview, expected := .review `statement_correspondence, prerequisites := #[reviewKey] } }
+  let input ← withMockEvidence input `nativeProof proofKey mockProof
+  let input ← withMockEvidence input `upstreamReview reviewKey mockReview
+  let input ← withMockEvidence input `downstreamReview downstreamReview mockReview
+  let before ← registry input
+  expect "pilot: initial contracts complete"
+    ((before.resultFor (.translation translationKey)).complete && (before.resultFor (.translation downstream)).complete)
+  -- Change only the Rocq document key and every reference to it. Preserve bytes,
+  -- semantic inputs, authored relations, requirement identities and old evidence.
+  let moved := { rocqDoc with path := "relocated/MockFlag.v" }
+  let relocate (key : DocumentKey) := if key == rocqDoc then moved else key
+  let relocated : Input := { input with
+    documents := input.documents.map fun c => { c with value := { c.value with key := relocate c.value.key } }
+    objects := input.objects.map fun c => { c with value := { c.value with document := c.value.document.map relocate } }
+    realizations := input.realizations.map fun c => { c with value := { c.value with
+      facets := c.value.facets.map fun f => { f with documents := f.documents.map relocate } } } }
+  let after ← registry relocated
+  expect "pilot: untouched native proof remains complete" ((after.resultForRequirement proofKey).complete)
+  for key in #[reviewKey, downstreamReview] do
+    expect "pilot: changed identity makes old review locally stale"
+      (after.bindingFor key != before.bindingFor key &&
+        (after.localResult key).status == .pending && hasIssue (after.localResult key) "stale-content")
+  expect "pilot: upstream pending, downstream blocked"
+    ((after.resultFor (.translation translationKey)).status == .pending &&
+      (after.resultFor (.translation downstream)).status == .blocked)
+  expect "pilot: only upstream translation actionable"
+    (after.actionable.map (·.key) == #[translationKey])
+  -- Fresh provider output is not a replacement correspondence review.
+  let rechecked ← withMockEvidence relocated `freshNativeProof proofKey mockProof
+  let current ← registry rechecked
+  expect "pilot: native checking cannot renew reviews"
+    ((current.localResult reviewKey).status == .pending && (current.localResult downstreamReview).status == .pending)
+
+-- Logical project namespaces already distinguish equal document path spellings.
+#eval show IO Unit from do
+  let other := { leanDoc with context := { leanContext with project := `otherPackage } }
+  let input := { fixture with documents := fixture.documents.push <| contribution `otherPackageDoc {
+    key := other, text := "MOCK distinct project source" } }
+  let r ← registry input
+  expect "pilot: same path in different projects is distinct"
+    (other != leanDoc && r.documents.size == fixture.documents.size + 1)
+  let conflicting := { input with documents := input.documents.push <| contribution `conflictingDocument {
+    key := leanDoc, text := "MOCK changed bytes under the same identity" } }
+  expect "pilot: conflicting bytes under one identity reject atomically"
+    (rejectsWith conflicting "semantic-conflict")
+
 end VersoBlueprintTests.BlueprintTranslations
