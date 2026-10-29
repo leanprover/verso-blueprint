@@ -380,4 +380,118 @@ theorem indexResults_lookup_permutation {p : Plan} {request : Type}
     | some value => have present := (same value).mpr secondFound; simp [firstFound] at present
   | some value => exact ((same value).mp firstFound).symm
 
+
+/-- The record produced by binding one collected observation. This specification
+retains the whole origin and observation; it does not assert provider authenticity. -/
+def boundObservation (registry : Registry) (entry : Origin × RequirementKey × Observation) :
+    Contribution Evidence := {
+  origin := entry.1
+  value := {
+    id := entry.1.id, requirement := entry.2.1
+    binding := (registry.bindingFor entry.2.1).getD "", observation := entry.2.2 } }
+
+private theorem binding_loop (entries : List (Origin × RequirementKey × Observation))
+    (candidate : Registry) (initial : Input)
+    (body : (Origin × RequirementKey × Observation) → Input →
+      Except (Array Diagnostic) (ForInStep Input))
+    (step : ∀ entry input result, body entry input = .ok result →
+      (candidate.bindingFor entry.2.1).isSome = true ∧
+      result = .yield { input with evidence := input.evidence.push (boundObservation candidate entry) })
+    (accepted : forIn entries initial body = .ok final) :
+    final = { initial with evidence := initial.evidence ++ entries.toArray.map (boundObservation candidate) } ∧
+      ∀ entry ∈ entries, (candidate.bindingFor entry.2.1).isSome = true := by
+  induction entries generalizing initial with
+  | nil => cases accepted; simp
+  | cons entry entries ih =>
+    simp only [List.forIn_cons, except_bind_ok_iff] at accepted
+    obtain ⟨result, first, rest⟩ := accepted
+    obtain ⟨bound, rfl⟩ := step entry initial result first
+    obtain ⟨output, tail⟩ := ih _ rest
+    refine ⟨?_, ?_⟩
+    · rw [output]
+      congr 1
+      apply Array.toList_inj.mp
+      simp
+    · intro other member
+      rcases List.mem_cons.mp member with rfl | member
+      · exact bound
+      · exact tail other member
+
+private theorem finish_bound_input (accepted : finish collected = .ok snapshot) :
+    let linked := connectUses collected (selectUses collected)
+    ∃ candidate,
+      admit (Collected.input linked) = .ok candidate ∧
+      admit { (Collected.input linked) with
+        evidence := (Collected.input linked).evidence ++ (Collected.observations linked).map (boundObservation candidate) } = .ok snapshot.registry ∧
+      ∀ entry ∈ (Collected.observations linked), (candidate.bindingFor entry.2.1).isSome = true := by
+  simp only [finish] at accepted
+  split at accepted
+  · simp only [except_bind_ok_iff] at accepted
+    obtain ⟨candidate, admitted, input, loop, registry, finalAdmission, result⟩ := accepted
+    cases result
+    rw [← Array.forIn_toList] at loop
+    have projected := binding_loop _ candidate _ _ ?_ loop
+    · obtain ⟨output, bounded⟩ := projected
+      refine ⟨candidate, admitted, ?_, ?_⟩
+      · simpa only [output, Array.toArray_toList] using finalAdmission
+      · intro entry member
+        exact bounded entry (by simpa using member)
+    · intro entry input result step
+      rcases entry with ⟨origin, key, observation⟩
+      split at step
+      · rename_i binding found
+        cases step
+        exact ⟨by simp [found], by simp [boundObservation, found]⟩
+      · cases step
+  · simp [bind, Except.bind, throw] at accepted
+
+
+/-- Finalization first admits the complete candidate. Adding freshly bound
+observations cannot change that candidate's binding in the final admitted registry. -/
+theorem finish_binding_basis (accepted : finish collected = .ok snapshot) :
+    ∃ candidate, admit (Collected.input (connectUses collected (selectUses collected))) = .ok candidate ∧
+      ∀ key, candidate.bindingFor key = snapshot.registry.bindingFor key := by
+  obtain ⟨candidate, before, after, _⟩ := finish_bound_input accepted
+  exact ⟨candidate, before, admit_bindings_evidence before after⟩
+
+/-- The actual finalizer changes only evidence after prerequisite wiring. It
+appends exactly the collected observations, preserving their order, multiplicity,
+complete origins, and payloads, bound against the final admitted registry. -/
+theorem finish_sources (accepted : finish collected = .ok snapshot) :
+    let linked := connectUses collected (selectUses collected)
+    snapshot.registry.contributions = { (Collected.input linked) with
+      evidence := (Collected.input linked).evidence ++
+        (Collected.observations linked).map (boundObservation snapshot.registry) } := by
+  obtain ⟨candidate, before, after, _⟩ := finish_bound_input accepted
+  have bindings := admit_bindings_evidence before after
+  have same : boundObservation candidate = boundObservation snapshot.registry := by
+    funext entry
+    simp only [boundObservation, bindings]
+  simpa only [same] using (admit_sources after).contributions
+
+/-- Every final evidence record is either already part of the complete candidate
+or comes from one exact collected observation. Finalization invents no payloads. -/
+theorem finish_evidence_iff (accepted : finish collected = .ok snapshot) (record : Contribution Evidence) :
+    let linked := connectUses collected (selectUses collected)
+    record ∈ snapshot.registry.contributions.evidence ↔
+      record ∈ (Collected.input linked).evidence ∨
+      ∃ entry ∈ (Collected.observations linked), boundObservation snapshot.registry entry = record := by
+  rw [finish_sources accepted]
+  simp only [Array.mem_append, Array.mem_map]
+
+/-- Every observation bound by the finalizer has a real, current binding. The
+empty fallback in the specification is never used on an accepted observation. -/
+theorem finish_observation_current (accepted : finish collected = .ok snapshot)
+    (member : entry ∈ Collected.observations (connectUses collected (selectUses collected))) :
+    snapshot.registry.bindingFor entry.2.1 =
+      some (boundObservation snapshot.registry entry).value.binding ∧
+    boundObservation snapshot.registry entry ∈ snapshot.registry.contributions.evidence := by
+  obtain ⟨candidate, before, after, bounded⟩ := finish_bound_input accepted
+  have current := bounded entry member
+  rw [admit_bindings_evidence before after] at current
+  refine ⟨?_, (finish_evidence_iff accepted _).mpr (Or.inr ⟨entry, member, rfl⟩)⟩
+  cases found : snapshot.registry.bindingFor entry.2.1 with
+  | none => simp [found] at current
+  | some binding => simp [boundObservation, found]
+
 end Informal.Realizations.Capture

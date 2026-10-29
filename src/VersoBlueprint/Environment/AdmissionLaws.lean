@@ -641,34 +641,43 @@ private theorem noCollision_extend_other (before facts : List Record) (target ot
     exact newValid identity ⟨⟨first, firstMem, second, secondMem, firstId, secondId, distinct⟩,
       first, firstMem, firstId, labelLocal first added⟩
 
+private theorem assemble_same_label_records
+    (accepted : NodeAssembly.assemble label registrations previous = .ok assembled)
+    (same : recordsFor label records = recordsFor label previous)
+    (collisionFree : NoCollision records label) :
+    NodeAssembly.assemble label registrations records = .ok assembled := by
+  have resolved := NodeAssembly.assemble_ok_resolve accepted
+  have valid := (resolve_success label previous).mp ⟨assembled.view, resolved⟩
+  have priorityEq : priorityDisagrees label records = priorityDisagrees label previous := by
+    simp only [priorityDisagrees, priorityValues, same]
+  have priorityValid : ¬ PriorityDisagreement records label := by
+    intro disagreement
+    have failed := (priorityDisagrees_eq _ _).mpr disagreement
+    rw [priorityEq] at failed
+    exact valid.2 ((priorityDisagrees_eq _ _).mp failed)
+  have nextResolved := resolve_valid ⟨collisionFree, priorityValid⟩
+  have viewEq : view label records = view label previous := by
+    simp only [view, priorityValues, same]
+  rw [viewEq, ← resolve_ok resolved] at nextResolved
+  have resolveEq := nextResolved.trans resolved.symm
+  have sourceEq : NodeAssembly.sourceDestinationIssues label registrations records =
+      NodeAssembly.sourceDestinationIssues label registrations previous := by
+    simp only [NodeAssembly.sourceDestinationIssues, same]
+  have admissionEq : NodeAssembly.admissionErrors label registrations records =
+      NodeAssembly.admissionErrors label registrations previous := by
+    simp only [NodeAssembly.admissionErrors, sourceEq, NodeAssembly.referenceNameErrors, same]
+  simpa only [NodeAssembly.assemble, resolveEq, admissionEq] using accepted
+
 private theorem assemble_extend_other
     (accepted : NodeAssembly.assemble other registrations before.reverse = .ok assembled)
     (labelLocal : ∀ record ∈ facts, record.label = target) (different : target ≠ other)
     (newValid : NoCollision (collector.extend before facts).reverse target) :
     NodeAssembly.assemble other registrations (collector.extend before facts).reverse = .ok assembled := by
-  have previous := NodeAssembly.assemble_ok_resolve accepted
-  have oldValid := (resolve_success other before.reverse).mp ⟨assembled.view, previous⟩
-  have recordsEq := recordsFor_extend_other before facts target other labelLocal different
-  have priorityEq : priorityDisagrees other (collector.extend before facts).reverse =
-      priorityDisagrees other before.reverse := by simp only [priorityDisagrees, priorityValues, recordsEq]
-  have priorityValid : ¬ PriorityDisagreement (collector.extend before facts).reverse other := by
-    intro disagreement
-    have failed := (priorityDisagrees_eq _ _).mpr disagreement
-    rw [priorityEq] at failed
-    exact oldValid.2 ((priorityDisagrees_eq _ _).mp failed)
-  have resolved := resolve_valid ⟨noCollision_extend_other before facts target other labelLocal different oldValid.1 newValid,
-    priorityValid⟩
-  have viewEq : view other (collector.extend before facts).reverse = view other before.reverse := by
-    simp only [view, priorityValues, recordsEq]
-  rw [viewEq, ← resolve_ok previous] at resolved
-  have resolveEq := resolved.trans previous.symm
-  have sourceEq : NodeAssembly.sourceDestinationIssues other registrations (collector.extend before facts).reverse =
-      NodeAssembly.sourceDestinationIssues other registrations before.reverse := by
-    simp only [NodeAssembly.sourceDestinationIssues, recordsEq]
-  have admissionEq : NodeAssembly.admissionErrors other registrations (collector.extend before facts).reverse =
-      NodeAssembly.admissionErrors other registrations before.reverse := by
-    simp only [NodeAssembly.admissionErrors, sourceEq, NodeAssembly.referenceNameErrors, recordsEq]
-  simpa only [NodeAssembly.assemble, resolveEq, admissionEq] using accepted
+  have valid := (resolve_success other before.reverse).mp
+    ⟨assembled.view, NodeAssembly.assemble_ok_resolve accepted⟩
+  exact assemble_same_label_records accepted
+    (recordsFor_extend_other before facts target other labelLocal different)
+    (noCollision_extend_other before facts target other labelLocal different valid.1 newValid)
 
 /-- A label-local accepted registration preserves every stored node's agreement
 with its retained-input assembly. Any new cross-label identity collision would
@@ -704,5 +713,166 @@ theorem State.addNode_coherent
     after.NodesMatchAssembly ∧ after.DeclarationIndexCoherent :=
   ⟨State.addNode_nodes_match consistent accepted labelLocal,
     State.addNode_index_coherent indexed consistent accepted⟩
+
+
+private theorem assemble_before_extend_other
+    (accepted : NodeAssembly.assemble other registrations (collector.extend before facts).reverse = .ok assembled)
+    (labelLocal : ∀ record ∈ facts, record.label = target) (different : target ≠ other) :
+    NodeAssembly.assemble other registrations before.reverse = .ok assembled := by
+  have resolved := NodeAssembly.assemble_ok_resolve accepted
+  have valid := (resolve_success other (collector.extend before facts).reverse).mp ⟨assembled.view, resolved⟩
+  have retained (record : Record) (member : record ∈ before.reverse) :
+      record ∈ (collector.extend before facts).reverse :=
+    List.mem_reverse.mpr ((mem_extend before facts record).mpr (Or.inl (List.mem_reverse.mp member)))
+  have collisionFree : NoCollision before.reverse other := by
+    intro identity collision
+    obtain ⟨⟨first, firstMem, second, secondMem, firstId, secondId, distinct⟩,
+      witness, witnessMem, witnessId, witnessLabel⟩ := collision
+    exact valid.1 identity ⟨⟨first, retained first firstMem, second, retained second secondMem,
+      firstId, secondId, distinct⟩, witness, retained witness witnessMem, witnessId, witnessLabel⟩
+  exact assemble_same_label_records accepted
+    (recordsFor_extend_other before facts target other labelLocal different).symm collisionFree
+
+private theorem importedNode_extend_other (pending : PendingNode)
+    (labelLocal : ∀ record ∈ facts, record.label = target) (different : target ≠ other)
+    (valid : NoCollision (collector.extend before facts).reverse target) :
+    importedNode? (collector.extend before facts).reverse other pending =
+      importedNode? before.reverse other pending := by
+  unfold importedNode?
+  split
+  · rfl
+  · cases old : NodeAssembly.assemble other pending.registrations before.reverse with
+    | ok assembled =>
+      rw [assemble_extend_other old labelLocal different valid]
+    | error reasons =>
+      cases new : NodeAssembly.assemble other pending.registrations (collector.extend before facts).reverse with
+      | error _ => rfl
+      | ok assembled =>
+        have original := assemble_before_extend_other new labelLocal different
+        rw [old] at original
+        cases original
+
+/-- The published node table is exactly admission of retained pending entries.
+This includes rejected/absent labels and stored provenance, not only agreement
+for nodes that happen to be present. No extra runtime store is introduced. -/
+def State.AdmissionCoherent (state : State) : Prop :=
+  ∀ label : Name, state.data.get? label =
+    (state.pendingNodes.get? label).bind (importedNode? state.factRecords.reverse label)
+
+/-- Full import reconstruction establishes exact admission coherence even from
+an arbitrary stale published node table. -/
+theorem State.reassembleImported_admission_coherent (state : State) :
+    (State.reassembleImported state).AdmissionCoherent := by
+  intro label
+  have pending := congrArg State.pendingNodes (State.reassembleImported_frame state)
+  have facts := congrArg State.factRecords (State.reassembleImported_frame state)
+  change (State.reassembleImported state).pendingNodes = state.pendingNodes at pending
+  change (State.reassembleImported state).factRecords = state.factRecords at facts
+  rw [pending, facts]
+  exact reassembleImported_lookup state label
+
+/-- The exact accepted/absent-node invariant is preserved by the actual local
+transition. Label locality and successful admission rule out newly invalidating
+an unrelated node through a cross-label identity collision. -/
+theorem State.addNode_admission_coherent (coherent : before.AdmissionCoherent)
+    (accepted : State.addNode before label origin contributor incoming facts = .ok (after, node))
+    (labelLocal : ∀ record ∈ facts, record.label = label) : after.AdmissionCoherent := by
+  obtain ⟨originValid, assembled, assembledOk⟩ :=
+    (State.addNode_success_iff before incoming facts).mp ⟨after, node, accepted⟩
+  have valid := ((NodeAssembly.assemble_success_iff _ _ _).mp ⟨assembled, assembledOk⟩).2.1.1
+  have nodeEq : assembled.node = node := by
+    obtain ⟨actual, actualOk, same, _⟩ := State.addNode_assembled accepted
+    rw [State.addNode_effects accepted] at actualOk
+    simp only [NameMapLaws.getD_insert_self] at actualOk
+    rw [assembledOk] at actualOk
+    cases actualOk
+    exact same
+  intro other
+  rw [State.addNode_effects accepted]
+  simp only [NameMapLaws.get?_insert]
+  by_cases same : (label : Name) = other
+  · subst other
+    simp only [ite_true, Option.bind_some, importedNode?, originValid, Bool.false_eq_true,
+      ite_false, assembledOk, Except.toOption, Option.map_some, nodeEq]
+  · simp only [same, ite_false]
+    rw [coherent other]
+    cases found : before.pendingNodes.get? other with
+    | none => rfl
+    | some pending =>
+      exact (importedNode_extend_other pending labelLocal same valid).symm
+
+
+/-- Input-facing form of exact admission coherence, including the retained
+origin and contributing-module provenance of the accepted node. -/
+theorem State.AdmissionCoherent.node_iff {state : State} (coherent : state.AdmissionCoherent)
+    (label : Name) (registered : RegisteredNode) :
+    state.data.get? label = some registered ↔
+      ∃ pending, state.pendingNodes.get? label = some pending ∧
+        pending.authoredOriginConflict = false ∧
+        ∃ assembled, NodeAssembly.assemble label pending.registrations state.factRecords.reverse = .ok assembled ∧
+          ({ toNode := assembled.node
+             origin := pending.authoredOrigin?.getD pending.origin
+             modules := pending.contributors } : RegisteredNode) = registered := by
+  rw [coherent label]
+  cases found : state.pendingNodes.get? label with
+  | none => simp
+  | some pending =>
+    cases conflict : pending.authoredOriginConflict <;>
+      cases assembled : NodeAssembly.assemble label pending.registrations state.factRecords.reverse <;>
+      simp [importedNode?, conflict, assembled, Except.toOption]
+
+/-- Exact admission coherence implies the earlier, weaker accepted-node agreement. -/
+theorem State.AdmissionCoherent.nodes_match {state : State} (coherent : state.AdmissionCoherent) :
+    state.NodesMatchAssembly := by
+  intro label registered found
+  obtain ⟨pending, pendingFound, _, assembled, assembledOk, stored⟩ :=
+    (coherent.node_iff label registered).mp found
+  refine ⟨assembled, ?_, ?_⟩
+  · rw [NameMapLaws.getD_of_get?_eq_some _ _ _ _ pendingFound]
+    exact assembledOk
+  · cases stored
+    rfl
+
+/-- Every origin-conflicted label stays absent in a coherent published state. -/
+theorem State.AdmissionCoherent.conflicted_absent {state : State} (coherent : state.AdmissionCoherent)
+    (found : state.pendingNodes.get? label = some pending)
+    (conflicted : pending.authoredOriginConflict = true) : state.data.get? label = none := by
+  rw [coherent label, found]
+  simp [importedNode?, conflicted]
+
+/-- The existence of an empty-input assembly cannot invent a node whose label
+has no retained pending entry. -/
+theorem State.AdmissionCoherent.unknown_absent {state : State} (coherent : state.AdmissionCoherent)
+    (absent : state.pendingNodes.get? label = none) : state.data.get? label = none := by
+  rw [coherent label, absent]
+  rfl
+
+/-- A successful, label-local invocation of the actual registration transition.
+This relation describes existing code; it is not an alternative state machine. -/
+def State.LocalAdmission (before after : State) : Prop :=
+  ∃ label origin contributor incoming facts node,
+    State.addNode before label origin contributor incoming facts = .ok (after, node) ∧
+      ∀ record ∈ facts, record.label = label
+
+/-- Import reconstruction followed by any finite sequence of supported local
+registrations preserves exact admission and declaration-index coherence. -/
+theorem State.admission_sequence_coherent {initial final : State}
+    (steps : final = State.reassembleImported initial ∨
+      Relation.TransGen State.LocalAdmission (State.reassembleImported initial) final) :
+    final.AdmissionCoherent ∧ final.DeclarationIndexCoherent := by
+  have start := And.intro (State.reassembleImported_admission_coherent initial)
+    (State.reassembleImported_index_coherent initial)
+  have advance {before after : State}
+      (coherent : before.AdmissionCoherent ∧ before.DeclarationIndexCoherent)
+      (next : before.LocalAdmission after) :
+      after.AdmissionCoherent ∧ after.DeclarationIndexCoherent := by
+    obtain ⟨label, origin, contributor, incoming, facts, node, accepted, labelLocal⟩ := next
+    exact ⟨State.addNode_admission_coherent coherent.1 accepted labelLocal,
+      State.addNode_index_coherent coherent.2 coherent.1.nodes_match accepted⟩
+  rcases steps with rfl | steps
+  · exact start
+  · induction steps with
+    | single next => exact advance start next
+    | tail _ next ih => exact advance ih next
 
 end Informal.Environment

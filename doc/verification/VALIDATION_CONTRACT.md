@@ -306,6 +306,49 @@ label being registered. There is no source-accumulation or declaration-monotonic
 premise left. `addNode_after_import_index_coherent` gives a direct import-to-local
 index guarantee without a caller-supplied prior-state invariant.
 
+## Finalization preserves observation provenance and current bindings
+
+`finish_binding_basis` proves the real finalizer admits the complete candidate
+before binding observations, and that every candidate binding equals the final
+registry's binding. It uses `admit_bindings_evidence`; no assumption about hash
+collision resistance or a separate binding evaluator is needed.
+
+`finish_sources` states exactly what changes after prerequisite wiring: only
+input evidence, by appending the collected observations in order. Whole origins,
+requirement identities, observations, and multiplicity are preserved. The
+law-layer `boundObservation` record describes this projection; it does not run an
+alternative finalizer. `finish_evidence_iff` gives both directions of membership,
+including any evidence already present in the candidate.
+
+`finish_observation_current` proves every appended observation has an actual
+binding in the final registry, equal to the binding stored in its evidence. The
+specification's empty fallback cannot be used for an accepted observation. These
+laws concern the actual `finish` called by `evaluate`. Their input boundary is the
+collected recipe output after dependency wiring, not the original provider batch;
+proving all recipe paths preserve batch provenance remains separate.
+
+## Exact admission across registration histories
+
+`State.AdmissionCoherent` strengthens accepted-node agreement: for every label,
+node lookup is exactly admission of its retained pending entry against the whole
+evidence set. `AdmissionCoherent.node_iff` exposes the input-facing contract,
+including authored-origin validity, actual successful assembly, and exact stored
+origin/contributing-module provenance. Unknown and rejected labels are absent.
+The predicate describes the existing state; it adds no runtime store or certificate.
+
+Import reconstruction establishes this stronger invariant from arbitrary prior
+published data. A successful label-local registration preserves it. The proof
+covers both directions for unrelated labels: accepted evidence growth cannot
+resurrect a previously rejected unrelated entry, and success for the registering
+label prevents a new cross-label collision from invalidating another entry.
+
+`State.admission_sequence_coherent` combines this with exact declaration-index
+coherence for any finite successful registration history starting from import
+reconstruction, including the empty history. `State.LocalAdmission` names an actual
+successful `State.addNode` call with label-local facts; it is a proposition about
+the production transition, not a replacement evaluator. The stronger invariant
+implies the earlier `NodesMatchAssembly` property.
+
 ## Remaining boundary
 
 We have not proved completeness: every well-founded, locally satisfied contract
@@ -325,7 +368,8 @@ The environment laws cover local admission, raw import decoding, and complete
 imported-state reconstruction. Lean persistent-extension serialization/replay and
 CoreM commit/rollback remain separate. The local coherence induction step requires
 incoming selected records to belong to the label being registered. The pure theorem
-does not verify every `CoreM` producer route or commit/rollback mechanism. It also does not characterize
-all pending-label absence or diagnostic-reporting states. The incremental index
+does not verify every `CoreM` producer route or commit/rollback mechanism. Exact
+pending-label admission and absence are now covered by the history theorem;
+diagnostic-reporting states remain outside that invariant. The incremental index
 law deliberately describes existing entries without assuming them valid; the
 coherence theorems supply the stronger invariant at their stated boundaries.

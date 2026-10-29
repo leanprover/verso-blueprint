@@ -140,3 +140,18 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Environment.State.addNode_after_import_index_coherent
 #print axioms Informal.Environment.State.addNode_nodes_match
 #print axioms Informal.Environment.State.addNode_coherent
+
+-- Actual finalization provenance and same-candidate binding.
+#print axioms Informal.Realizations.Capture.finish_binding_basis
+#print axioms Informal.Realizations.Capture.finish_sources
+#print axioms Informal.Realizations.Capture.finish_evidence_iff
+#print axioms Informal.Realizations.Capture.finish_observation_current
+
+-- Exact admission, absence, and finite registration histories.
+#print axioms Informal.Environment.State.reassembleImported_admission_coherent
+#print axioms Informal.Environment.State.addNode_admission_coherent
+#print axioms Informal.Environment.State.AdmissionCoherent.node_iff
+#print axioms Informal.Environment.State.AdmissionCoherent.nodes_match
+#print axioms Informal.Environment.State.AdmissionCoherent.conflicted_absent
+#print axioms Informal.Environment.State.AdmissionCoherent.unknown_absent
+#print axioms Informal.Environment.State.admission_sequence_coherent
