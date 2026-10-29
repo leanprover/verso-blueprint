@@ -54,8 +54,8 @@ theorem admit_sources (h : admit input = .ok registry) : registry.SourcesMatch i
   · split at h
     · cases h
       exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-    · contradiction
-  · contradiction
+    · cases h
+  · cases h
 
 private def Registry.subjects (r : Registry) : Array Subject :=
   r.realizations.flatMap (fun value => #[Subject.realization value.key] ++
@@ -84,8 +84,8 @@ private theorem admit_indexes (h : admit input = .ok registry) : registry.Indexe
   · split at h
     · cases h
       exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-    · contradiction
-  · contradiction
+    · cases h
+  · cases h
 
 private theorem fold_insert_preserves [BEq κ] [LawfulBEq κ] [Hashable κ]
     (key : α → κ) (predicate : κ → α → Prop) (xs : List α) (initial : Std.HashMap κ α)
@@ -563,8 +563,8 @@ theorem admit_complete_induction (h : admit input = .ok registry)
     · cases h
       have justified := Registry.computeResults_apply _ predicate key _ rfl complete step
       exact justified
-    · contradiction
-  · contradiction
+    · cases h
+  · cases h
 
 /-- Prerequisite evaluation may withhold local success but cannot create it.
 This holds independently of the opaque component traversal's correctness. -/
@@ -680,7 +680,7 @@ private theorem admit_family_checks (h : admit input = .ok registry) :
   · rename_i valid
     simp only [Array.isEmpty_iff, Array.append_eq_empty_iff] at valid
     grind only
-  · contradiction
+  · cases h
 
 /-- Accepted same-key authored requirements agree as complete records. This
 comes from the production conflict check, not a caller's uniqueness assumption. -/
@@ -823,8 +823,8 @@ private theorem admit_references (h : admit input = .ok registry) :
     split at h
     · cases h
       exact valid.2
-    · contradiction
-  · contradiction
+    · cases h
+  · cases h
 
 /-- Every requirement authored by a collected realization has a real admitted
 definition. This includes contracts selected by facets and declarations. -/
@@ -952,10 +952,10 @@ theorem admit_bindings_evidence (before : admit input = .ok first)
           have same := boundBefore.symm.trans boundAfter
           cases same
           rfl
-        · contradiction
-      · contradiction
-    · contradiction
-  · contradiction
+        · cases after
+      · cases after
+    · cases before
+  · cases before
 
 private theorem Registry.computeLocalResult_proof_sources (r : Registry)
     (found : r.requirement? key = some requirement)

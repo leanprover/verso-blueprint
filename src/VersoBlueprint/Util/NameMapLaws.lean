@@ -87,4 +87,14 @@ theorem getD_insert_self (map : NameMap α) (key : Name) (value fallback : α) :
   unfold NameMap at map
   exact Std.TreeMap.getD_insert_self
 
+/-- Enumeration preserves exact key/value pairs from the actual NameMap. -/
+theorem mem_toArray (map : NameMap α) (key : Name) (value : α) :
+    (key, value) ∈ map.toArray ↔ map.get? key = some value := by
+  unfold NameMap at map
+  exact Std.TreeMap.mem_toArray_iff_getElem?_eq_some
+
+@[simp] theorem get?_empty (key : Name) :
+    ({} : NameMap α).get? key = none := by
+  rfl
+
 end Informal.NameMapLaws

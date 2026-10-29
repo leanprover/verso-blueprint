@@ -100,3 +100,18 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Environment.State.addNode_nativeAssociations
 #print axioms Informal.Environment.State.addNode_success_iff
 #print axioms Informal.Environment.State.addNode_declaration_index
+
+-- Complete imported-state rebuild and raw decoding.
+#print axioms Informal.NameMapLaws.mem_toArray
+#print axioms Informal.NameMapLaws.get?_empty
+#print axioms Informal.Environment.State.reassembleImported_node_iff
+#print axioms Informal.Environment.State.reassembleImported_conflicted_absent
+#print axioms Informal.Environment.State.reassembleImported_unknown_absent
+#print axioms Informal.Environment.State.reassembleImported_declaration_index
+#print axioms Informal.Environment.State.reassembleImported_conflicted_unindexed
+#print axioms Informal.Environment.State.reassembleImported_frame
+#print axioms Informal.Environment.State.collectImportedEntry_unpublished
+#print axioms Informal.Environment.State.collectImportedEntry_records
+#print axioms Informal.Environment.State.collectImportedEntry_registrations
+#print axioms Informal.Environment.State.collectImportedEntries_unpublished
+#print axioms Informal.Environment.State.reassembleImported_no_resurrection

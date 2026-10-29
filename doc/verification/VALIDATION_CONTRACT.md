@@ -237,6 +237,30 @@ These are proofs about the logical Lean implementations. They do not separately
 verify the compiler, runtime pointer-equality optimization, or persistence/IO
 mechanisms. As elsewhere, proof dependencies stay out of production imports.
 
+## Complete imported-state reconstruction
+
+The environment law module also covers the actual `State.reassembleImported`
+loop. `reassembleImported_node_iff` characterizes stored nodes in both directions:
+there is a retained pending entry with valid authored origins, and the production
+assembler accepts it against the complete selected evidence. The stored origin
+and contributing modules match that entry as well. Labels without pending entries
+are absent; assembling empty input does not invent arbitrary labels.
+
+`reassembleImported_declaration_index` establishes a full invariant at this
+boundary: an index entry exists iff an accepted node contains a declaration whose
+macro-scope erasure is the queried name. Unlike the incremental local-update law,
+this theorem allows arbitrary stale nodes or index entries in the input state;
+reassembly discards them. Origin-conflicted labels have neither accepted nodes
+nor index entries. `reassembleImported_no_resurrection` composes this with later
+local admission, using preservation of the retained pending evidence.
+
+The decoding laws show that individual imported entries preserve complete selected
+records and append raw registrations without exporting them as local registrations.
+`collectImportedEntries_unpublished` covers the actual nested module/entry fold:
+accepted nodes, their index, numbering, and local selected records remain untouched
+until the full-evidence assembly pass. These are proofs of the pure callbacks'
+operations, not assumptions about Lean's persistent-extension replay machinery.
+
 ## Remaining boundary
 
 We have not proved completeness: every well-founded, locally satisfied contract
@@ -252,10 +276,12 @@ No theorem authenticates a provider, proves fingerprint collision resistance, or
 establishes completeness of source capture. Provider-reported closure coverage
 remains distinct from the Registry prerequisite guarantees proved above.
 
-The environment laws cover the pure local transition. Full import replay, CoreM
-commit/rollback, and preservation of a whole-state declaration-index invariant
-remain separate from these exact incremental update laws. In particular, a global
-invariant also needs the producer discipline that incoming selected records belong
+The environment laws cover local admission, raw import decoding, and complete
+imported-state reconstruction. Lean persistent-extension serialization/replay and
+CoreM commit/rollback remain separate. Preservation of the rebuilt global invariant
+through every local registration also needs further producer-facing properties.
+In particular, a global invariant also needs the producer discipline that incoming
+selected records belong
 to the label being registered; the private transition accepts an arbitrary record
 list, whereas its public producer routes supply label-local records. The incremental
 index theorem deliberately preserves existing entries without assuming them valid.
