@@ -109,10 +109,114 @@ private theorem proofProjection_mono {origin : Origin} (extension : PreservesCon
   obtain ⟨record, member, same⟩ := semantic content someContent
   exact ⟨record, extension.2 record member, same⟩
 
+namespace DependencySelection
+
+/-- The edge scope used by the production selection gate. Proof gates include
+both facets; statement gates include only statement edges. -/
+def edges (uses : Array SelectedUse) (realization : RealizationKey) (context : Context)
+    (name : Name) : Array SelectedUse :=
+  (uses.filter fun use => use.source == realization.node &&
+    use.context == some context && use.realization.all (· == realization.name)).filter
+      fun use => name == `proof || use.facet == `statement
+
+/-- Exact source/context/realization/facet membership in a selection gate. -/
+theorem mem_edges (uses : Array SelectedUse) (realization : RealizationKey) (context : Context)
+    (name : Name) (edge : SelectedUse) :
+    edge ∈ edges uses realization context name ↔
+      edge ∈ uses ∧ edge.source = realization.node ∧ edge.context = some context ∧
+      (edge.realization = none ∨ edge.realization = some realization.name) ∧
+      (name = `proof ∨ edge.facet = `statement) := by
+  cases selected : edge.realization <;> simp [edges, selected, and_assoc, and_left_comm, and_comm]
+
+/-- The complete ordered diagnostic inventory examined by the gate. -/
+def failures (edges : Array SelectedUse) : Array Diagnostic :=
+  edges.filterMap fun edge => match edge.selected with | .error issue => some issue | .ok _ => none
+
+/-- Exact generation provenance, including identity, edge scope, result and
+explanation. This is a specification over existing output, not another evaluator. -/
+def Source (uses : Array SelectedUse) (origin : Origin) (key : RequirementKey)
+    (observation : CheckObservation) : Prop :=
+  ∃ realization context object name,
+    context.language = `lean ∧ (name = `statement ∨ name = `proof) ∧
+    key = ⟨.declaration realization object, name ++ `dependencySelection⟩ ∧
+    origin = (contribution `observation (BindingEncoding.requirementKey key) ()).origin ∧
+    (edges uses realization context name).isEmpty = false ∧
+    observation = {
+      validator := `blueprint.dependencySelection
+      outcome := if (failures (edges uses realization context name)).isEmpty then .passed else .unavailable
+      explanation := if (failures (edges uses realization context name)).isEmpty then
+        "Every dependency selected its exact current native contract"
+        else (toJson (failures (edges uses realization context name))).compress }
+
+/-- Generated selection checks cannot impersonate a native proof checker. -/
+theorem Source.validator {origin : Origin} (source : Source uses origin key observation) :
+    observation.validator = `blueprint.dependencySelection := by
+  obtain ⟨_, _, _, _, _, _, _, _, _, rfl⟩ := source
+  rfl
+
+/-- Success is exactly the absence of a failed selected edge; no requirement
+completion or alternative realization is consulted by this mechanical gate. -/
+theorem failures_empty_iff (selected : Array SelectedUse) :
+    (failures selected).isEmpty = true ↔
+      ∀ edge ∈ selected, ∃ keys, edge.selected = .ok keys := by
+  simp only [failures, Array.isEmpty_iff, Array.filterMap_eq_empty_iff]
+  constructor
+  · intro noFailures edge member
+    have noFailure := noFailures edge member
+    cases result : edge.selected with
+    | error diagnostic => simp [result] at noFailure
+    | ok keys => exact ⟨keys, rfl⟩
+  · intro success edge member
+    obtain ⟨keys, result⟩ := success edge member
+    simp [result]
+
+/-- Every reported failure is exactly an original selected-edge diagnostic. -/
+theorem mem_failures (selected : Array SelectedUse) (diagnostic : Diagnostic) :
+    diagnostic ∈ failures selected ↔ ∃ edge ∈ selected, edge.selected = .error diagnostic := by
+  simp only [failures, Array.mem_filterMap]
+  constructor
+  · rintro ⟨edge, member, found⟩
+    cases result : edge.selected with
+    | error issue => simp [result] at found; exact ⟨edge, member, found ▸ result⟩
+    | ok keys => simp [result] at found
+  · rintro ⟨edge, member, result⟩
+    exact ⟨edge, member, by simp [result]⟩
+
+/-- Exact outcome interpretation for the same scoped edges that generated the
+observation. An unavailable check has a concrete failed edge; a passed check has
+success for every edge. Neither conclusion asserts completion of target contracts. -/
+theorem Source.outcomes {origin : Origin} (source : Source uses origin key observation) :
+    ∃ realization context object name,
+      context.language = `lean ∧ (name = `statement ∨ name = `proof) ∧
+      key = ⟨.declaration realization object, name ++ `dependencySelection⟩ ∧
+      (edges uses realization context name).isEmpty = false ∧
+      (observation.outcome = .passed ↔
+        ∀ edge ∈ edges uses realization context name, ∃ keys, edge.selected = .ok keys) ∧
+      (observation.outcome = .unavailable ↔
+        ∃ edge ∈ edges uses realization context name, ∃ diagnostic, edge.selected = .error diagnostic) := by
+  obtain ⟨realization, context, object, name, native, facet, keyEq, _, nonempty, rfl⟩ := source
+  refine ⟨realization, context, object, name, native, facet, keyEq, nonempty, ?_, ?_⟩
+  · rw [← failures_empty_iff]
+    change (if _ then Outcome.passed else Outcome.unavailable) = .passed ↔ _
+    cases empty : (failures (edges uses realization context name)).isEmpty <;> simp
+  · have nonemptyFailures : (failures (edges uses realization context name)).isEmpty = false ↔
+        ∃ edge ∈ edges uses realization context name, ∃ diagnostic, edge.selected = .error diagnostic := by
+      rw [Array.isEmpty_eq_false_iff_exists_mem]
+      simp only [mem_failures]
+      constructor
+      · rintro ⟨diagnostic, edge, member, failure⟩; exact ⟨edge, member, diagnostic, failure⟩
+      · rintro ⟨edge, member, diagnostic, failure⟩; exact ⟨diagnostic, edge, member, failure⟩
+    rw [← nonemptyFailures]
+    change (if _ then Outcome.passed else Outcome.unavailable) = .unavailable ↔ _
+    cases empty : (failures (edges uses realization context name)).isEmpty <;> simp
+
+end DependencySelection
+
 /-- Recipe-generated checks and unavailable fallbacks remain distinct from provider
 observations. Native checks and authored proofs retain their original full fields;
 authored proofs also retain the selected specification call and document. -/
-private def ObservationFrom (providers : Providers Id) (p : Plan) (input : Input)
+private def ObservationFrom (providers : Providers Id) (p : Plan)
+    (policy : Origin → RequirementKey → CheckObservation → Prop) (input : Input)
     (origin : Origin) (key : RequirementKey) : Observation → Prop
   | .proof observation => ∃ handle witness documents checked,
       (Providers.expected providers handle witness documents).run = .ok (.ok checked) ∧
@@ -121,19 +225,21 @@ private def ObservationFrom (providers : Providers Id) (p : Plan) (input : Input
       ∃ document, (Providers.specification providers p.expected[handle]!.specification document).run = .ok (.ok ()) ∧
         document.key ∈ documents
   | .review _ => False
-  | .check observation => observation.outcome = .unavailable ∨
-      observation.validator = `blueprint.dependencySelection ∨
+  | .check observation => (observation.outcome = .unavailable ∧
+      (observation.validator = NativeLean.statementValidator ∨ observation.validator = NativeLean.bodyValidator)) ∨
+      policy origin key observation ∨
       ∃ handle checked, (Providers.check providers handle).run = .ok (.ok checked) ∧
         (observation = checked.statement ∨ observation = checked.body)
 
-private def CollectionFrom (providers : Providers Id) (p : Plan) (collected : Collected) : Prop :=
+private def CollectionFrom (providers : Providers Id) (p : Plan)
+    (policy : Origin → RequirementKey → CheckObservation → Prop) (collected : Collected) : Prop :=
   ChecksFrom providers collected ∧
-    (∀ entry ∈ Collected.observations collected, ObservationFrom providers p (Collected.input collected) entry.1 entry.2.1 entry.2.2) ∧
+    (∀ entry ∈ Collected.observations collected, ObservationFrom providers p policy (Collected.input collected) entry.1 entry.2.1 entry.2.2) ∧
     (Collected.input collected).evidence = #[]
 
 private theorem observationFrom_mono {origin : Origin} (extension : PreservesContracts before after)
-    (prior : ObservationFrom providers p before origin key observation) :
-    ObservationFrom providers p after origin key observation := by
+    (prior : ObservationFrom providers p policy before origin key observation) :
+    ObservationFrom providers p policy after origin key observation := by
   cases observation with
   | check observation => exact prior
   | review observation => exact prior
@@ -142,21 +248,21 @@ private theorem observationFrom_mono {origin : Origin} (extension : PreservesCon
     exact ⟨handle, witness, documents, checked, supplied, observed,
       proofProjection_mono extension projection, specification⟩
 
-private theorem collectionFrom_mono (prior : CollectionFrom providers p before)
+private theorem collectionFrom_mono (prior : CollectionFrom providers p policy before)
     (extension : PreservesContracts (Collected.input before) (Collected.input after))
     (checks : Collected.nativeChecks after = Collected.nativeChecks before)
     (observations : Collected.observations after = Collected.observations before)
-    (evidence : (Collected.input after).evidence = #[]) : CollectionFrom providers p after := by
+    (evidence : (Collected.input after).evidence = #[]) : CollectionFrom providers p policy after := by
   refine ⟨?_, ?_, evidence⟩
   · simpa only [ChecksFrom, checks] using prior.1
   · intro entry member
     rw [observations] at member
     exact observationFrom_mono extension (prior.2.1 entry member)
 
-private theorem recordObservation_from (prior : CollectionFrom providers p collected)
-    (allowed : ObservationFrom providers p (Collected.input collected)
+private theorem recordObservation_from (prior : CollectionFrom providers p policy collected)
+    (allowed : ObservationFrom providers p policy (Collected.input collected)
       (contribution `observation (BindingEncoding.requirementKey key) ()).origin key observation) :
-    CollectionFrom providers p (recordObservation collected key observation) := by
+    CollectionFrom providers p policy (recordObservation collected key observation) := by
   refine ⟨prior.1, ?_, prior.2.2⟩
   intro entry member
   simp only [recordObservation, Array.mem_push] at member
@@ -165,11 +271,11 @@ private theorem recordObservation_from (prior : CollectionFrom providers p colle
   · exact allowed
 
 private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
-    (accepted : (collectOrdinary providers p).run = .ok collected) : CollectionFrom providers p collected := by
+    (accepted : (collectOrdinary providers p).run = .ok collected) : CollectionFrom providers p policy collected := by
   simp only [collectOrdinary, exceptT_bind_ok_iff] at accepted
   obtain ⟨result, loop, finished⟩ := accepted
   cases finished
-  apply array_loop_invariant p.ordinary (CollectionFrom providers p) _ (by simp [CollectionFrom, ChecksFrom]) ?_ loop
+  apply array_loop_invariant p.ordinary (CollectionFrom providers p policy) _ (by simp [CollectionFrom, ChecksFrom]) ?_ loop
   intro node member current result prior step
   by_cases absent : (!p.raw.pending.contains node.label) = true
   · rw [ite_eq_left absent] at step
@@ -187,8 +293,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
       rw [resolved] at step
       simp only [exceptT_bind_ok_iff] at step
       obtain ⟨next, realizations, finished⟩ := step
-      have nextValid : CollectionFrom providers p next := by
-        refine array_loop_invariant node.realizations (CollectionFrom providers p) _ ?_ ?_ realizations
+      have nextValid : CollectionFrom providers p policy next := by
+        refine array_loop_invariant node.realizations (CollectionFrom providers p policy) _ ?_ ?_ realizations
         · exact prior
         · intro realization member current result prior step
           -- Rewrite the outer guard without normalizing unrelated recipe branches.
@@ -200,8 +306,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
               rw [ite_eq_left sourcesValid] at step
               simp only [exceptT_bind_ok_iff] at step
               obtain ⟨sourced, sources, declared, declarations, finished⟩ := step
-              have sourceValid : CollectionFrom providers p sourced.1 := by
-                refine array_loop_invariant realization.sources (fun pair => CollectionFrom providers p pair.1) _ ?_ ?_ sources
+              have sourceValid : CollectionFrom providers p policy sourced.1 := by
+                refine array_loop_invariant realization.sources (fun pair => CollectionFrom providers p policy pair.1) _ ?_ ?_ sources
                 · exact prior
                 · intro source member pair result prior step
                   clear loop realizations sources declarations finished
@@ -209,8 +315,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                     | (cases step; exact prior)
                     | (simp only [exceptT_bind_ok_iff] at step; obtain ⟨value, returned, step⟩ := step)
                     | split at step
-              have declarationValid : CollectionFrom providers p declared.1 := by
-                refine array_loop_invariant realization.declarations (fun pair => CollectionFrom providers p pair.1) _ sourceValid ?_ declarations
+              have declarationValid : CollectionFrom providers p policy declared.1 := by
+                refine array_loop_invariant realization.declarations (fun pair => CollectionFrom providers p policy pair.1) _ sourceValid ?_ declarations
                 intro declaration member pair result prior step
                 clear loop realizations sources declarations finished
                 simp only [exceptT_bind_ok_iff] at step
@@ -237,8 +343,8 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                   | error diagnostic =>
                     simp only [exceptT_bind_ok_iff] at step
                     obtain ⟨next, unavailable, finished⟩ := step
-                    have valid : CollectionFrom providers p next := by
-                      refine array_loop_invariant _ (CollectionFrom providers p) _ ?_ ?_ unavailable
+                    have valid : CollectionFrom providers p policy next := by
+                      refine array_loop_invariant _ (CollectionFrom providers p policy) _ ?_ ?_ unavailable
                       · refine collectionFrom_mono prior ?_ ?_ ?_ ?_
                         · apply preservesContracts_append <;> intro record member <;> simp [member]
                         · rfl
@@ -246,7 +352,10 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                         · exact prior.2.2
                       · intro entry member current result prior step
                         cases step
-                        exact recordObservation_from prior (Or.inl rfl)
+                        apply recordObservation_from prior
+                        refine Or.inl ⟨rfl, ?_⟩
+                        simp at member
+                        rcases member with rfl | rfl <;> simp
                     cases finished
                     exact valid
               cases finished
@@ -269,20 +378,20 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
 
 
 private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
-    (initialValid : CollectionFrom providers p initial)
+    (initialValid : CollectionFrom providers p policy initial)
     (accepted : (collectAuthored providers p initial).run = .ok collected) :
-    CollectionFrom providers p collected := by
+    CollectionFrom providers p policy collected := by
   simp only [collectAuthored, exceptT_bind_ok_iff] at accepted
   obtain ⟨result, loop, finished⟩ := accepted
   cases finished
-  refine array_loop_invariant p.authored (CollectionFrom providers p)
+  refine array_loop_invariant p.authored (CollectionFrom providers p policy)
     _ initialValid ?_ loop
   intro authored member current result prior step
   simp only [exceptT_bind_ok_iff] at step
   obtain ⟨goals, goalLoop, sourced, sourceLoop, finished⟩ := step
-  have goalsValid : CollectionFrom providers p goals := by
+  have goalsValid : CollectionFrom providers p policy goals := by
     rw [Std.Legacy.Range.forIn_eq_forIn_range'] at goalLoop
-    refine list_loop_invariant _ (CollectionFrom providers p)
+    refine list_loop_invariant _ (CollectionFrom providers p policy)
       _ prior ?_ goalLoop
     intro index member current result prior step
     clear loop goalLoop sourceLoop finished
@@ -328,9 +437,9 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
       simp only [exceptT_bind_ok_iff] at step
       obtain ⟨_, impossible, _⟩ := step
       cases impossible
-  have sourcesValid : CollectionFrom providers p sourced := by
+  have sourcesValid : CollectionFrom providers p policy sourced := by
     rw [Std.Legacy.Range.forIn_eq_forIn_range'] at sourceLoop
-    refine list_loop_invariant _ (CollectionFrom providers p)
+    refine list_loop_invariant _ (CollectionFrom providers p policy)
       _ goalsValid ?_ sourceLoop
     intro index member current result prior step
     simp only [exceptT_bind_ok_iff] at step
@@ -345,7 +454,7 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
   · exact sourcesValid.2.2
 
 private theorem assemble_from (providers : Providers Id) (p : Plan)
-    (accepted : (assemble providers p).run = .ok collected) : CollectionFrom providers p collected := by
+    (accepted : (assemble providers p).run = .ok collected) : CollectionFrom providers p policy collected := by
   simp only [assemble] at accepted
   split at accepted
   · simp only [exceptT_bind_ok_iff] at accepted
@@ -382,13 +491,17 @@ private theorem id_array_loop_invariant (entries : Array α) (property : β → 
 
 private theorem connectUses_properties (collected : Collected) (uses : Array SelectedUse) :
     Collected.nativeChecks (connectUses collected uses) = Collected.nativeChecks collected ∧
-      ∀ providers p, CollectionFrom providers p collected → CollectionFrom providers p (connectUses collected uses) := by
+      ∀ providers p policy,
+        (∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) →
+        CollectionFrom providers p policy collected → CollectionFrom providers p policy (connectUses collected uses) := by
   let invariant (current : Collected) : Prop :=
     Collected.nativeChecks current = Collected.nativeChecks collected ∧
-      ∀ providers p, CollectionFrom providers p collected → CollectionFrom providers p current
+      ∀ providers p policy,
+        (∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) →
+        CollectionFrom providers p policy collected → CollectionFrom providers p policy current
   unfold connectUses
   simp only [Id.run, bind, pure]
-  apply id_array_loop_invariant _ invariant _ ⟨rfl, fun _ _ valid => valid⟩
+  apply id_array_loop_invariant _ invariant _ ⟨rfl, fun _ _ _ _ valid => valid⟩
   intro model member current prior
   by_cases foreign : (model.context.language != `lean) = true
   · rw [ite_eq_left foreign]
@@ -397,7 +510,7 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
     apply id_array_loop_invariant _ invariant _ prior
     intro declaration member current prior
     apply id_array_loop_invariant _ invariant _ prior
-    intro entry member current prior
+    intro entry entryMember current prior
     apply Classical.byCases (p := _)
     · intro owns
       rw [ite_eq_left owns]
@@ -408,8 +521,8 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
         · intro edges
           rw [ite_eq_left edges]
           refine ⟨prior.1, ?_⟩
-          intro providers p valid
-          have original := prior.2 providers p valid
+          intro providers p policy allowed valid
+          have original := prior.2 providers p policy allowed valid
           refine ⟨original.1, ?_, original.2.2⟩
           intro item member
           change item ∈ (Collected.observations current).push _ at member
@@ -425,12 +538,18 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
             · intro record member
               simp only [recordObservation, Array.mem_push]
               exact Or.inl member
-          · exact Or.inr (Or.inl rfl)
+          · apply Or.inr ∘ Or.inl
+            apply allowed
+            refine ⟨model.key, model.context, declaration.object, entry.1, ?_, ?_, rfl, rfl, ?_, rfl⟩
+            · simpa using foreign
+            · simp at entryMember
+              rcases entryMember with rfl | rfl <;> simp
+            · simpa [DependencySelection.edges] using edges
         · intro edges
           rw [ite_eq_right edges]
           refine ⟨prior.1, ?_⟩
-          intro providers p valid
-          have original := prior.2 providers p valid
+          intro providers p policy allowed valid
+          have original := prior.2 providers p policy allowed valid
           refine collectionFrom_mono original ?_ ?_ ?_ ?_
           · refine ⟨?_, fun _ member => member⟩
             intro record member
@@ -447,9 +566,10 @@ private theorem connectUses_nativeChecks (collected : Collected) (uses : Array S
   (connectUses_properties collected uses).1
 
 private theorem connectUses_from (collected : Collected) (uses : Array SelectedUse)
-    (initialValid : CollectionFrom providers p collected) :
-    CollectionFrom providers p (connectUses collected uses) :=
-  (connectUses_properties collected uses).2 providers p initialValid
+    (initialValid : CollectionFrom providers p policy collected)
+    (allowed : ∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) :
+    CollectionFrom providers p policy (connectUses collected uses) :=
+  (connectUses_properties collected uses).2 providers p policy allowed initialValid
 
 /-- Final admission and dependency wiring preserve the complete native check
 inventory, independently of completion status and evidence canonicalization. -/
@@ -463,11 +583,26 @@ theorem finish_nativeChecks (accepted : finish collected = .ok snapshot) :
     exact connectUses_nativeChecks collected _
   · cases accepted
 
-private theorem finish_observations_from (initialValid : CollectionFrom providers p collected)
+/-- The public snapshot retains exactly the edge inventory used by final wiring. -/
+theorem finish_uses (accepted : finish collected = .ok snapshot) :
+    snapshot.uses = selectUses collected := by
+  simp only [finish] at accepted
+  split at accepted
+  · simp only [except_bind_ok_iff] at accepted
+    obtain ⟨_, _, _, _, _, _, result⟩ := accepted
+    cases result
+    rfl
+  · cases accepted
+
+private theorem finish_observations_from
+    (initialValid : CollectionFrom providers p (DependencySelection.Source snapshot.uses) collected)
     (accepted : finish collected = .ok snapshot)
     (member : record ∈ snapshot.registry.contributions.evidence) :
-    ObservationFrom providers p snapshot.registry.contributions record.origin record.value.requirement record.value.observation := by
-  have linked := connectUses_from collected (selectUses collected) initialValid
+    ObservationFrom providers p (DependencySelection.Source snapshot.uses) snapshot.registry.contributions record.origin record.value.requirement record.value.observation := by
+  have linked := connectUses_from collected (selectUses collected) initialValid (by
+    intro origin key observation source
+    rw [finish_uses accepted]
+    exact source)
   rw [finish_sources accepted] at member
   simp only [Array.mem_append, Array.mem_map] at member
   rcases member with previous | ⟨entry, original, rfl⟩
@@ -499,7 +634,7 @@ theorem evaluate_nativeChecks_source {p : Plan} {observations : Observations p} 
   obtain ⟨documents, _, native, _, inline, _, documented, _, checks, checksIndexed,
     specifications, _, expected, _, collected, assembled, finished⟩ := accepted
   rw [finish_nativeChecks finished] at member
-  obtain ⟨handle, supplied⟩ := (assemble_from _ _ assembled).1 checked member
+  obtain ⟨handle, supplied⟩ := (assemble_from (policy := fun _ _ _ => False) _ _ assembled).1 checked member
   simp only [exceptT_bind_ok_iff] at supplied
   obtain ⟨result, lookup, matched⟩ := supplied
   cases result with
@@ -536,9 +671,11 @@ theorem evaluate_native_evidence_source {p : Plan} {observations : Observations 
   have source := finish_observations_from (assemble_from _ _ assembled) finished member
   rw [observed] at source
   rcases source with unavailable | policy | ⟨handle, checked, supplied, field⟩
-  · rw [passed] at unavailable
-    cases unavailable
-  · rcases native with statement | body
+  · have impossible := unavailable.1
+    rw [passed] at impossible
+    cases impossible
+  · have policy := policy.validator
+    rcases native with statement | body
     · rw [statement] at policy
       exact False.elim ((by decide : NativeLean.statementValidator ≠ `blueprint.dependencySelection) policy)
     · rw [body] at policy
@@ -555,6 +692,75 @@ theorem evaluate_native_evidence_source {p : Plan} {observations : Observations 
         (lookupResult_success_iff checksIndexed handle (.ok checked)).mp lookup
       exact ⟨entry, original, checked, resultEq,
         (indexResults_valid checksIndexed).1 entry original, field⟩
+
+/-- Every admitted dependency-selection observation is generated by the actual
+wiring pass over the public snapshot's selected edges. Both passed and unavailable
+outcomes retain their exact scoped edge inventory and diagnostic explanation;
+supplied native observations cannot impersonate these generated checks. -/
+theorem evaluate_dependency_selection_source {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (accepted : evaluate p observations = .ok snapshot)
+    (member : record ∈ snapshot.registry.contributions.evidence)
+    (observed : record.value.observation = .check observation)
+    (validator : observation.validator = `blueprint.dependencySelection) :
+    DependencySelection.Source snapshot.uses record.origin record.value.requirement observation := by
+  simp only [evaluate, except_bind_ok_iff] at accepted
+  obtain ⟨documents, _, nativeTable, _, inline, _, documented, _, checks, _,
+    specifications, _, expected, _, collected, assembled, finished⟩ := accepted
+  have source := finish_observations_from (assemble_from _ _ assembled) finished member
+  rw [observed] at source
+  have notNative : ¬ (observation.validator = NativeLean.statementValidator ∨
+      observation.validator = NativeLean.bodyValidator) := by
+    rw [validator]
+    decide
+  rcases source with unavailable | policy | ⟨handle, checked, supplied, field⟩
+  · exact False.elim (notNative unavailable.2)
+  · exact policy
+  · simp only [exceptT_bind_ok_iff] at supplied
+    obtain ⟨result, _, matched⟩ := supplied
+    cases result with
+    | error diagnostic => cases matched
+    | ok value =>
+      simp only [exceptT_bind_ok_iff] at matched
+      obtain ⟨_, checkedShape, output⟩ := matched
+      cases output
+      have shape := matching_success checkedShape
+      simp only [Bool.and_eq_true, beq_iff_eq, and_assoc] at shape
+      apply False.elim ∘ notNative
+      rcases field with rfl | rfl
+      · exact Or.inl shape.2.2.2.1
+      · exact Or.inr shape.2.2.2.2
+
+/-- A completed generated selection requirement has a nonempty, precisely scoped
+edge inventory and every edge selected successfully. This connects the generated
+check to actual public completion without assuming provider authenticity or target
+completion. Target contracts remain independent prerequisite obligations. -/
+theorem evaluate_complete_dependency_selection {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (evaluated : evaluate p observations = .ok snapshot)
+    (found : snapshot.registry.requirement? key = some requirement)
+    (expected : requirement.expected = .check `blueprint.dependencySelection)
+    (complete : (snapshot.registry.resultForRequirement key).complete = true) :
+    ∃ realization context object name,
+      context.language = `lean ∧ (name = `statement ∨ name = `proof) ∧
+      key = ⟨.declaration realization object, name ++ `dependencySelection⟩ ∧
+      (DependencySelection.edges snapshot.uses realization context name).isEmpty = false ∧
+      ∀ edge ∈ DependencySelection.edges snapshot.uses realization context name,
+        ∃ keys, edge.selected = .ok keys := by
+  obtain ⟨originalRequirement, _, evidence, member, lookup, originalKey, fits⟩ :=
+    admit_complete_requirement_evidence (evaluate_admitted evaluated) complete
+  have requirementEq := Option.some.inj (found.symm.trans lookup)
+  rw [← requirementEq] at fits
+  have suitable := fits.2.2.2
+  cases observed : evidence.value.observation with
+  | proof observation => simp [Observation.Satisfies, observed, expected] at suitable
+  | review observation => simp [Observation.Satisfies, observed, expected] at suitable
+  | check observation =>
+    simp only [observed, Observation.Satisfies, expected] at suitable
+    have source := evaluate_dependency_selection_source evaluated member observed suitable.1
+    obtain ⟨realization, context, object, name, native, facet, keyEq, nonempty, passed, _⟩ := source.outcomes
+    have evidenceKey : evidence.value.requirement = key :=
+      fits.1.trans ((congrArg Requirement.key requirementEq).trans originalKey)
+    exact ⟨realization, context, object, name, native, facet,
+      evidenceKey.symm.trans keyEq, nonempty, passed.mp suitable.2.2.2⟩
 
 /-- Every admitted independent-proof observation is unchanged from a successful
 expected-goal batch result. Its selected witness and documents pass the actual

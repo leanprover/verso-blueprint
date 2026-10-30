@@ -168,3 +168,16 @@ import VersoBlueprint.Environment.AdmissionLaws
 -- Joint authored projections and the main pure-capture completion contract.
 #print axioms Informal.Realizations.Capture.AuthoredProofProjection
 #print axioms Informal.Realizations.Capture.evaluate_assessment_justified
+
+-- Generated dependency-selection provenance, exact scope, diagnostics and completion.
+#print axioms Informal.Realizations.Capture.DependencySelection.edges
+#print axioms Informal.Realizations.Capture.DependencySelection.mem_edges
+#print axioms Informal.Realizations.Capture.DependencySelection.failures
+#print axioms Informal.Realizations.Capture.DependencySelection.Source
+#print axioms Informal.Realizations.Capture.DependencySelection.Source.validator
+#print axioms Informal.Realizations.Capture.DependencySelection.failures_empty_iff
+#print axioms Informal.Realizations.Capture.DependencySelection.mem_failures
+#print axioms Informal.Realizations.Capture.DependencySelection.Source.outcomes
+#print axioms Informal.Realizations.Capture.finish_uses
+#print axioms Informal.Realizations.Capture.evaluate_dependency_selection_source
+#print axioms Informal.Realizations.Capture.evaluate_complete_dependency_selection

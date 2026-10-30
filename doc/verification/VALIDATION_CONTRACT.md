@@ -262,6 +262,37 @@ The separate availability theorem establishes that completed proof requirements
 have a retained semantic input; it does not by itself make that optional field
 present in every associated provider result.
 
+## Generated dependency-selection checks
+
+`evaluate_dependency_selection_source` proves that every admitted check with
+validator `blueprint.dependencySelection` comes from the actual wiring pass over
+`snapshot.uses`. It preserves the generated origin, requirement identity, nonempty
+edge scope, complete check payload, outcome, and diagnostic explanation. Native
+provider results and their unavailable fallbacks cannot impersonate these checks:
+the proof follows the actual adapter validator checks, rather than trusting a name
+on an arbitrary supplied observation. `finish_uses` ties the public edge inventory
+to the exact inventory used by final wiring.
+
+The law-only `DependencySelection.Source` states the generation contract, and
+`mem_edges` exposes its scope as logical equalities: exact source node and context,
+any explicit realization restriction, and statement-only edges for a statement
+gate versus both facets for a proof gate. `mem_failures` relates each diagnostic
+to an original selected-edge failure. The full ordered diagnostic array is used
+in the exact explanation retained by `Source`; no JSON injectivity is assumed.
+
+`Source.outcomes` characterizes both outcomes for that scope: passed iff every
+edge's `selected` result is successful, unavailable iff some edge has a concrete
+error. `evaluate_complete_dependency_selection` connects this to actual public
+requirement completion: the gate has a nonempty scoped edge set and every edge
+selected successfully.
+
+Selection success is not completion of the selected target requirements. Their
+validation and prerequisites remain covered by the separate completion-soundness
+laws. These results also do not yet characterize `selectTarget`'s returned key
+inventory, prove every intended authored use reaches `selectUses`, or show every
+generated gate is reachable from a native requirement. Those are subsequent
+selection/wiring obligations; no alternate selector or data store was introduced.
+
 ## Prerequisite selection is independent of completion
 
 `Translations/SelectionLaws.lean` gives the authored identity contract as
@@ -392,7 +423,8 @@ laws concern the actual `finish` called by `evaluate`. Their input boundary is t
 collected recipe output after dependency wiring, not the original provider batch;
 the native check and authored proof observation paths are now covered above.
 The joint authored requirement/semantic-input projection is preserved across this
-boundary. Exact generated policy outcomes remain separate.
+boundary. Generated dependency-selection provenance and outcomes are covered above;
+completeness of target selection and prerequisite wiring remain separate.
 
 ## Exact admission across registration histories
 
@@ -426,7 +458,7 @@ provide a useful structure:
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
 | **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` composes admission, selected-contract and prerequisite evidence soundness, and accessibility for the actual rendering assessment. | Final-cache closure and the converse completeness direction require separate traversal coverage/order proofs. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Exact generated policy outcomes, plan construction, and the real provider interpreter; authored joint projection is now included. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Target-selection/wiring completeness, plan construction, and the real provider interpreter; authored joint projection and generated-check provenance are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -448,7 +480,8 @@ prerequisite has original fitting evidence at its own current binding. It does
 not assert that every prerequisite still has a completed final cache entry or that
 the graph traversal recognizes every satisfiable contract.
 
-Next, characterize generated dependency-selection observations and connect actual
+Next, connect successful target selection to its exact returned native contract
+inventory, then account for the corresponding prerequisite wiring and actual
 provider/transaction routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.
