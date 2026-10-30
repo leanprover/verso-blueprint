@@ -244,11 +244,23 @@ fingerprint, passed outcome, and dependency-closure coverage. This is an end-to-
 guarantee about the pure evaluator and its supplied observations, not proof of the
 reported mathematical proposition.
 
-The goal and observation in a supplied checked result are distinct fields. This
-checkpoint does not claim every assembled requirement or semantic binding input
-is projected from the same expected-goal result identified by the evidence theorem.
-That stronger joint projection property, including `semanticContext`, remains a
-separate obligation.
+The goal and observation in a supplied checked result are distinct fields.
+`AuthoredProofProjection` now relates the observation to a retained requirement
+with that same result's expected goal, witness, and closure coverage. Their origins
+share one authored site and index; generated observation, requirement, and context
+identities remain separate. Any `semanticContext` payload reported by that result
+is retained unchanged under the requirement's semantic-input identity. The invariant
+survives later requirement additions and prerequisite wiring without requiring the
+prerequisite array to stay frozen.
+
+Consequently, `evaluate_complete_proof_provider` also identifies the exact expected
+goal and witness of the selected requirement, not merely an observation that happens
+to satisfy it. It proves retention of the same result's semantic context when one
+was supplied. It does not assert that every supplied result contains a context:
+`semanticContext` is optional, and the pure batch boundary does not authenticate it.
+The separate availability theorem establishes that completed proof requirements
+have a retained semantic input; it does not by itself make that optional field
+present in every associated provider result.
 
 ## Prerequisite selection is independent of completion
 
@@ -379,8 +391,8 @@ specification's empty fallback cannot be used for an accepted observation. These
 laws concern the actual `finish` called by `evaluate`. Their input boundary is the
 collected recipe output after dependency wiring, not the original provider batch;
 the native check and authored proof observation paths are now covered above.
-Joint requirement/semantic-input provenance and exact generated policy outcomes
-remain separate.
+The joint authored requirement/semantic-input projection is preserved across this
+boundary. Exact generated policy outcomes remain separate.
 
 ## Exact admission across registration histories
 
@@ -413,8 +425,8 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `admit_complete_selected_evidence`, `admit_complete_prerequisites_evidence`, and `admit_complete_accessible`; `evaluate_assessment_evidence` reaches the rendering assessment. | Final-cache closure and the converse completeness direction require separate traversal coverage/order proofs. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Joint requirement/semantic-input provenance, exact generated policy outcomes, plan construction, and the real provider interpreter. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` composes admission, selected-contract and prerequisite evidence soundness, and accessibility for the actual rendering assessment. | Final-cache closure and the converse completeness direction require separate traversal coverage/order proofs. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Exact generated policy outcomes, plan construction, and the real provider interpreter; authored joint projection is now included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -429,11 +441,17 @@ providers are trustworthy. For example, proving a reported witness type correspo
 to the environment used by `observe` is a different task from proving that `evaluate`
 preserves that report. Keep those theorem boundaries visible.
 
-The next useful proof is the joint authored projection: relate the admitted
-expected requirement, proof observation, and semantic binding input to the same
-successful expected-goal result. After that, characterize generated dependency
-checks and connect the actual provider/transaction routes. Growing a list of local
-lemmas without strengthening one of these three contracts is not the objective.
+`evaluate_assessment_justified` is the main pure-capture soundness statement: a
+completed rendering assessment selects a nonempty contract; each selected key has
+an accessible prerequisite relation; and the key itself plus every transitive
+prerequisite has original fitting evidence at its own current binding. It does
+not assert that every prerequisite still has a completed final cache entry or that
+the graph traversal recognizes every satisfiable contract.
+
+Next, characterize generated dependency-selection observations and connect actual
+provider/transaction routes. Preserve the joint authored projection as those routes
+evolve. Growing a list of local lemmas without strengthening one of these three
+contracts is not the objective.
 
 ## Remaining boundary
 

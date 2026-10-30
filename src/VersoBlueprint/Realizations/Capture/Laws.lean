@@ -87,6 +87,36 @@ theorem evaluate_assessment_evidence {p : Plan} {observations : Observations p} 
   admit_complete_selected_evidence (evaluate_admitted evaluated)
     (snapshot.assessment_complete_result complete) selected
 
+/-- Main pure-capture completion guarantee. A completed rendering assessment
+selects a nonempty contract. Every selected obligation has a well-founded
+prerequisite justification, and the obligation itself and every transitive
+prerequisite have original fitting evidence at their own current bindings.
+This is soundness of reported completion, not completeness of the graph traversal
+or authentication of the supplied observations. -/
+theorem evaluate_assessment_justified {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (evaluated : evaluate p observations = .ok snapshot)
+    (complete : (snapshot.assessmentFor label).requiredComplete = true) :
+    (snapshot.registry.requiredFor (.realization ⟨label, `lean⟩)).isEmpty = false ∧
+    ∀ key ∈ snapshot.registry.requiredFor (.realization ⟨label, `lean⟩),
+      Acc snapshot.registry.Prerequisite key ∧
+      ∀ dependency, dependency = key ∨ Relation.TransGen snapshot.registry.Prerequisite dependency key →
+        ∃ requirement ∈ snapshot.registry.contributions.requirements,
+          ∃ evidence ∈ snapshot.registry.contributions.evidence,
+            snapshot.registry.requirement? dependency = some requirement.value ∧
+            requirement.value.key = dependency ∧
+            evidence.value.Fits requirement.value ((snapshot.registry.bindingFor dependency).getD "") := by
+  have admitted := evaluate_admitted evaluated
+  have selected := snapshot.registry.complete_requires_all _
+    (snapshot.assessment_complete_result complete)
+  refine ⟨selected.1, ?_⟩
+  intro key member
+  have completed := selected.2 key member
+  refine ⟨admit_complete_accessible admitted completed, ?_⟩
+  intro dependency reachable
+  rcases reachable with rfl | path
+  · exact admit_complete_requirement_evidence admitted completed
+  · exact admit_complete_prerequisites_evidence admitted completed path
+
 private theorem local_check_complete (snapshot : Snapshot)
     (selected : snapshot.registry.realization? ⟨label, `lean⟩ = some realization)
     (native : realization.context.language = `lean)

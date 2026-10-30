@@ -164,3 +164,7 @@ import VersoBlueprint.Environment.AdmissionLaws
 -- Authored provider lineage and end-to-end completion suitability.
 #print axioms Informal.Realizations.Capture.evaluate_proof_evidence_source
 #print axioms Informal.Realizations.Capture.evaluate_complete_proof_provider
+
+-- Joint authored projections and the main pure-capture completion contract.
+#print axioms Informal.Realizations.Capture.AuthoredProofProjection
+#print axioms Informal.Realizations.Capture.evaluate_assessment_justified

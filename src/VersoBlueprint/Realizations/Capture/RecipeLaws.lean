@@ -65,13 +65,59 @@ private def ChecksFrom (providers : Providers Id) (collected : Collected) : Prop
   ∀ checked ∈ Collected.nativeChecks collected,
     ∃ handle, (Providers.check providers handle).run = .ok (.ok checked)
 
+/-- The fields a proof obligation consumes; prerequisite wiring may extend the
+prerequisite list without changing these fields or the contribution's origin. -/
+private def PreservesContracts (before after : Input) : Prop :=
+  (∀ record ∈ before.requirements, ∃ next ∈ after.requirements,
+    next.origin = record.origin ∧ next.value.key = record.value.key ∧
+    next.value.expected = record.value.expected ∧ next.value.coverage = record.value.coverage) ∧
+  (∀ record ∈ before.bindingInputs, record ∈ after.bindingInputs)
+
+private theorem preservesContracts_refl (input : Input) : PreservesContracts input input := by
+  exact ⟨fun record member => ⟨record, member, rfl, rfl, rfl, rfl⟩, fun _ member => member⟩
+
+private theorem preservesContracts_append (before after : Input)
+    (requirements : ∀ record ∈ before.requirements, record ∈ after.requirements)
+    (bindings : ∀ record ∈ before.bindingInputs, record ∈ after.bindingInputs) :
+    PreservesContracts before after :=
+  ⟨fun record member => ⟨record, requirements record member, rfl, rfl, rfl, rfl⟩, bindings⟩
+
+/-- Joint projection from one authored expected-goal result. Origins share the
+same authored site; wiring may extend prerequisites but preserves the obligation's
+identity, expectation and coverage. Every reported semantic context is retained. -/
+def AuthoredProofProjection (input : Input) (origin : Origin) (key : RequirementKey)
+    (checked : NativeLean.Checked) (witness : ObjectKey) : Prop :=
+  ∃ source index,
+    origin = (authoredContribution source `expectedObservation index ()).origin ∧
+    (∃ requirement ∈ input.requirements,
+      requirement.origin = (authoredContribution source `expectedRequirement index ()).origin ∧
+      requirement.value.key = key ∧ requirement.value.expected = .proof checked.goal witness ∧
+      requirement.value.coverage = .dependencyClosure) ∧
+    ∀ content, checked.semanticContext = some content →
+      ∃ semantic ∈ input.bindingInputs,
+        semantic = authoredContribution source `expectedContext index {
+          subject := key.subject, name := NativeLean.expectedContextFor key, content }
+
+private theorem proofProjection_mono {origin : Origin} (extension : PreservesContracts before after)
+    (prior : AuthoredProofProjection before origin key checked witness) :
+    AuthoredProofProjection after origin key checked witness := by
+  obtain ⟨source, index, originEq, ⟨requirement, member, own, keyEq, expectedEq, coverage⟩, semantic⟩ := prior
+  obtain ⟨next, nextMember, nextOrigin, nextKey, nextExpected, nextCoverage⟩ := extension.1 requirement member
+  refine ⟨source, index, originEq, ⟨next, nextMember, nextOrigin.trans own,
+    nextKey.trans keyEq, nextExpected.trans expectedEq, nextCoverage.trans coverage⟩, ?_⟩
+  intro content someContent
+  obtain ⟨record, member, same⟩ := semantic content someContent
+  exact ⟨record, extension.2 record member, same⟩
+
 /-- Recipe-generated checks and unavailable fallbacks remain distinct from provider
 observations. Native checks and authored proofs retain their original full fields;
 authored proofs also retain the selected specification call and document. -/
-private def ObservationFrom (providers : Providers Id) (p : Plan) : Observation → Prop
+private def ObservationFrom (providers : Providers Id) (p : Plan) (input : Input)
+    (origin : Origin) (key : RequirementKey) : Observation → Prop
   | .proof observation => ∃ handle witness documents checked,
       (Providers.expected providers handle witness documents).run = .ok (.ok checked) ∧
       observation = checked.observation ∧
+      AuthoredProofProjection input origin key checked witness ∧
       ∃ document, (Providers.specification providers p.expected[handle]!.specification document).run = .ok (.ok ()) ∧
         document.key ∈ documents
   | .review _ => False
@@ -82,11 +128,34 @@ private def ObservationFrom (providers : Providers Id) (p : Plan) : Observation 
 
 private def CollectionFrom (providers : Providers Id) (p : Plan) (collected : Collected) : Prop :=
   ChecksFrom providers collected ∧
-    (∀ entry ∈ Collected.observations collected, ObservationFrom providers p entry.2.2) ∧
+    (∀ entry ∈ Collected.observations collected, ObservationFrom providers p (Collected.input collected) entry.1 entry.2.1 entry.2.2) ∧
     (Collected.input collected).evidence = #[]
 
+private theorem observationFrom_mono {origin : Origin} (extension : PreservesContracts before after)
+    (prior : ObservationFrom providers p before origin key observation) :
+    ObservationFrom providers p after origin key observation := by
+  cases observation with
+  | check observation => exact prior
+  | review observation => exact prior
+  | proof observation =>
+    obtain ⟨handle, witness, documents, checked, supplied, observed, projection, specification⟩ := prior
+    exact ⟨handle, witness, documents, checked, supplied, observed,
+      proofProjection_mono extension projection, specification⟩
+
+private theorem collectionFrom_mono (prior : CollectionFrom providers p before)
+    (extension : PreservesContracts (Collected.input before) (Collected.input after))
+    (checks : Collected.nativeChecks after = Collected.nativeChecks before)
+    (observations : Collected.observations after = Collected.observations before)
+    (evidence : (Collected.input after).evidence = #[]) : CollectionFrom providers p after := by
+  refine ⟨?_, ?_, evidence⟩
+  · simpa only [ChecksFrom, checks] using prior.1
+  · intro entry member
+    rw [observations] at member
+    exact observationFrom_mono extension (prior.2.1 entry member)
+
 private theorem recordObservation_from (prior : CollectionFrom providers p collected)
-    (allowed : ObservationFrom providers p observation) :
+    (allowed : ObservationFrom providers p (Collected.input collected)
+      (contribution `observation (BindingEncoding.requirementKey key) ()).origin key observation) :
     CollectionFrom providers p (recordObservation collected key observation) := by
   refine ⟨prior.1, ?_, prior.2.2⟩
   intro entry member
@@ -154,12 +223,15 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                     cases step
                     apply recordObservation_from
                     · apply recordObservation_from
-                      · refine ⟨?_, prior.2.1, prior.2.2⟩
+                      · refine ⟨?_, ?_, prior.2.2⟩
                         intro item member
                         simp only [Array.mem_push] at member
                         rcases member with previous | rfl
                         · exact prior.1 item previous
                         · exact ⟨declaration.check, returned⟩
+                        intro entry member
+                        apply observationFrom_mono ?_ (prior.2.1 entry member)
+                        apply preservesContracts_append <;> intro record member <;> simp [member]
                       · exact Or.inr (Or.inr ⟨declaration.check, checked, returned, Or.inl rfl⟩)
                     · exact Or.inr (Or.inr ⟨declaration.check, checked, returned, Or.inr rfl⟩)
                   | error diagnostic =>
@@ -167,7 +239,11 @@ private theorem collectOrdinary_from (providers : Providers Id) (p : Plan)
                     obtain ⟨next, unavailable, finished⟩ := step
                     have valid : CollectionFrom providers p next := by
                       refine array_loop_invariant _ (CollectionFrom providers p) _ ?_ ?_ unavailable
-                      · exact prior
+                      · refine collectionFrom_mono prior ?_ ?_ ?_ ?_
+                        · apply preservesContracts_append <;> intro record member <;> simp [member]
+                        · rfl
+                        · rfl
+                        · exact prior.2.2
                       · intro entry member current result prior step
                         cases step
                         exact recordObservation_from prior (Or.inl rfl)
@@ -225,7 +301,8 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
         intro entry member
         simp only [Array.mem_push] at member
         rcases member with original | rfl
-        · exact prior.2.1 entry original
+        · apply observationFrom_mono ?_ (prior.2.1 entry original)
+          apply preservesContracts_append <;> intro record member <;> simp [member]
         · cases expectedResult with
           | error diagnostic => cases checkedAccepted
           | ok value =>
@@ -234,8 +311,13 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
             | error diagnostics => cases specAccepted
             | ok value =>
               cases value
-              refine ⟨_, _, _, _, expectedReturned, rfl, document.1, specReturned, ?_⟩
-              exact (mem_canonical _ _).mpr (by simp)
+              refine ⟨_, _, _, _, expectedReturned, rfl, ?_, document.1, specReturned, ?_⟩
+              · refine ⟨authored.record.origin, index, rfl, ?_, ?_⟩
+                · exact ⟨_, Array.mem_push_self, rfl, rfl, rfl, rfl⟩
+                · intro content someContent
+                  refine ⟨_, ?_, rfl⟩
+                  simp [someContent]
+              · exact (mem_canonical _ _).mpr (by simp)
       · intro documentInvalid
         rw [ite_eq_right documentInvalid] at step
         simp only [exceptT_bind_ok_iff] at step
@@ -256,7 +338,11 @@ private theorem collectAuthored_from (providers : Providers Id) (p : Plan)
     cases step
     exact prior
   cases finished
-  exact sourcesValid
+  refine collectionFrom_mono sourcesValid ?_ ?_ ?_ ?_
+  · apply preservesContracts_append <;> intro record member <;> simp [member]
+  · rfl
+  · rfl
+  · exact sourcesValid.2.2
 
 private theorem assemble_from (providers : Providers Id) (p : Plan)
     (accepted : (assemble providers p).run = .ok collected) : CollectionFrom providers p collected := by
@@ -323,8 +409,36 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
           rw [ite_eq_left edges]
           refine ⟨prior.1, ?_⟩
           intro providers p valid
-          exact recordObservation_from (prior.2 providers p valid) (Or.inr (Or.inl rfl))
-        · intro edges; rw [ite_eq_right edges]; exact prior
+          have original := prior.2 providers p valid
+          refine ⟨original.1, ?_, original.2.2⟩
+          intro item member
+          change item ∈ (Collected.observations current).push _ at member
+          simp only [Array.mem_push] at member
+          rcases member with previous | rfl
+          · apply observationFrom_mono ?_ (original.2.1 item previous)
+            refine ⟨?_, ?_⟩
+            · intro record member
+              refine ⟨_, Array.mem_map.mpr ⟨record, ?_, rfl⟩, ?_⟩
+              · simp only [recordObservation, Array.mem_push]
+                exact Or.inl member
+              · split <;> exact ⟨rfl, rfl, rfl, rfl⟩
+            · intro record member
+              simp only [recordObservation, Array.mem_push]
+              exact Or.inl member
+          · exact Or.inr (Or.inl rfl)
+        · intro edges
+          rw [ite_eq_right edges]
+          refine ⟨prior.1, ?_⟩
+          intro providers p valid
+          have original := prior.2 providers p valid
+          refine collectionFrom_mono original ?_ ?_ ?_ ?_
+          · refine ⟨?_, fun _ member => member⟩
+            intro record member
+            refine ⟨_, Array.mem_map.mpr ⟨record, member, rfl⟩, ?_⟩
+            split <;> exact ⟨rfl, rfl, rfl, rfl⟩
+          · rfl
+          · rfl
+          · exact original.2.2
     · intro foreign; rw [ite_eq_right foreign]; exact prior
 
 
@@ -352,14 +466,16 @@ theorem finish_nativeChecks (accepted : finish collected = .ok snapshot) :
 private theorem finish_observations_from (initialValid : CollectionFrom providers p collected)
     (accepted : finish collected = .ok snapshot)
     (member : record ∈ snapshot.registry.contributions.evidence) :
-    ObservationFrom providers p record.value.observation := by
+    ObservationFrom providers p snapshot.registry.contributions record.origin record.value.requirement record.value.observation := by
   have linked := connectUses_from collected (selectUses collected) initialValid
   rw [finish_sources accepted] at member
   simp only [Array.mem_append, Array.mem_map] at member
   rcases member with previous | ⟨entry, original, rfl⟩
   · rw [linked.2.2] at previous
     simp at previous
-  · exact linked.2.1 entry original
+  · apply observationFrom_mono ?_ (linked.2.1 entry original)
+    rw [finish_sources accepted]
+    exact preservesContracts_refl _
 
 private theorem matching_success
     (accepted : (matching family handle agrees).run = .ok result) : agrees = true := by
@@ -444,8 +560,10 @@ theorem evaluate_native_evidence_source {p : Plan} {observations : Observations 
 expected-goal batch result. Its selected witness and documents pass the actual
 adapter checks, and its specification document belongs to that document inventory
 and has an original successful specification result. This preserves the full
-observation, including actual type, coverage, assumptions, and explanation;
-it does not authenticate the provider or assert that the observation passed. -/
+observation, including actual type, coverage, assumptions, and explanation.
+The same result supplies the expected requirement and any semantic-context input,
+with a common authored-site origin. Prerequisite wiring may extend the contract.
+This does not authenticate the provider or assert that the observation passed. -/
 theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p} {snapshot : Snapshot}
     (accepted : evaluate p observations = .ok snapshot)
     (member : record ∈ snapshot.registry.contributions.evidence)
@@ -456,6 +574,8 @@ theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p
       checked.observation.witness = entry.result.witness ∧
       checked.goal.documents = entry.result.documents ∧
       checked.goal.context = entry.result.witness.context ∧
+      AuthoredProofProjection snapshot.registry.contributions record.origin record.value.requirement
+        checked entry.result.witness ∧
       ∃ specification ∈ observations.specifications,
         specification.handle = p.expected[entry.handle]!.specification ∧
         specification.result.result = .ok () ∧
@@ -465,7 +585,7 @@ theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p
     specifications, specificationsIndexed, expected, expectedIndexed, collected, assembled, finished⟩ := accepted
   have source := finish_observations_from (assemble_from _ _ assembled) finished member
   rw [observed] at source
-  obtain ⟨handle, witness, selectedDocuments, checked, supplied, observationEq,
+  obtain ⟨handle, witness, selectedDocuments, checked, supplied, observationEq, projection,
     document, specificationSupplied, documentMember⟩ := source
   simp only [exceptT_bind_ok_iff] at supplied
   obtain ⟨value, lookup, _, requestShape, returned⟩ := supplied
@@ -486,11 +606,12 @@ theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p
     obtain ⟨entry, original, handleEq, entryEq⟩ :=
       (lookupResult_success_iff expectedIndexed handle value).mp lookup
     refine ⟨entry, original, checked, ?_, observationEq,
-      (indexResults_valid expectedIndexed).1 entry original, ?_, ?_, ?_, ?_⟩
+      (indexResults_valid expectedIndexed).1 entry original, ?_, ?_, ?_, ?_, ?_⟩
     · rw [entryEq]; exact resultEq
     · rw [entryEq, requestEq.1]; exact checkedEq.1
     · rw [entryEq, requestEq.2]; exact checkedEq.2.1
     · rw [entryEq, requestEq.1]; exact checkedEq.2.2
+    · rw [entryEq, requestEq.1]; exact projection
     · simp only [exceptT_bind_ok_iff] at specificationSupplied
       obtain ⟨specValue, specLookup, _, specShape, specOutput⟩ := specificationSupplied
       have documentEq : specValue.document = document := by
@@ -506,16 +627,21 @@ theorem evaluate_proof_evidence_source {p : Plan} {observations : Observations p
 public completion has an original successful expected-goal result whose unchanged
 observation satisfies the selected contract. This includes actual-type identity,
 passed outcome, and dependency-closure coverage, as specified by `Satisfies`.
-The supplier's report is justified here; its semantic truth is a separate boundary. -/
+The exact expected goal and witness come from that same result, and any reported
+semantic context is retained under this requirement's binding-input identity.
+This justifies use of the supplier's report; its truth is a separate boundary. -/
 theorem evaluate_complete_proof_provider {p : Plan} {observations : Observations p} {snapshot : Snapshot}
     (evaluated : evaluate p observations = .ok snapshot)
     (found : snapshot.registry.requirement? key = some requirement)
     (expected : requirement.expected = .proof goal witness)
     (complete : (snapshot.registry.resultForRequirement key).complete = true) :
     ∃ entry ∈ observations.expected, ∃ checked,
-      entry.result.result = .ok checked ∧
-      (Observation.proof checked.observation).Satisfies requirement := by
-  obtain ⟨originalRequirement, _, evidence, member, lookup, _, fits⟩ :=
+      entry.result.result = .ok checked ∧ checked.goal = goal ∧ entry.result.witness = witness ∧
+      (Observation.proof checked.observation).Satisfies requirement ∧
+      ∀ content, checked.semanticContext = some content →
+        ∃ semantic ∈ snapshot.registry.contributions.bindingInputs,
+          semantic.value = { subject := key.subject, name := NativeLean.expectedContextFor key, content } := by
+  obtain ⟨originalRequirement, requirementMember, evidence, member, lookup, originalKey, fits⟩ :=
     admit_complete_requirement_evidence (evaluate_admitted evaluated) complete
   have requirementEq := Option.some.inj (found.symm.trans lookup)
   rw [← requirementEq] at fits
@@ -524,9 +650,22 @@ theorem evaluate_complete_proof_provider {p : Plan} {observations : Observations
   | check observation => simp [Observation.Satisfies, observed, expected] at suitable
   | review observation => simp [Observation.Satisfies, observed, expected] at suitable
   | proof observation =>
-    obtain ⟨entry, original, checked, result, observationEq, _⟩ :=
+    obtain ⟨entry, original, checked, result, observationEq, _, _, _, _, projection, _⟩ :=
       evaluate_proof_evidence_source evaluated member observed
-    refine ⟨entry, original, checked, result, ?_⟩
-    rwa [observed, observationEq] at suitable
+    obtain ⟨source, index, _, ⟨projected, projectedMember, _, projectedKey, projectedExpected, _⟩,
+      projectedSemantic⟩ := projection
+    have same := admit_requirements_agree (evaluate_admitted evaluated)
+      projectedMember requirementMember (projectedKey.trans (fits.1.trans (congrArg Requirement.key requirementEq)))
+    have expectedEq : Expectation.proof checked.goal entry.result.witness = .proof goal witness := by
+      rw [← projectedExpected, same, ← requirementEq, expected]
+    have parts := Expectation.proof.inj expectedEq
+    refine ⟨entry, original, checked, result, parts.1, parts.2, ?_, ?_⟩
+    · rwa [observed, observationEq] at suitable
+    · intro content someContent
+      obtain ⟨semantic, semanticMember, same⟩ := projectedSemantic content someContent
+      refine ⟨semantic, semanticMember, ?_⟩
+      have evidenceKey : evidence.value.requirement = key := fits.1.trans ((congrArg Requirement.key requirementEq).trans originalKey)
+      rw [same, evidenceKey]
+      rfl
 
 end Informal.Realizations.Capture
