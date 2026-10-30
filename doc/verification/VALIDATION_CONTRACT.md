@@ -288,10 +288,41 @@ selected successfully.
 
 Selection success is not completion of the selected target requirements. Their
 validation and prerequisites remain covered by the separate completion-soundness
-laws. These results also do not yet characterize `selectTarget`'s returned key
-inventory, prove every intended authored use reaches `selectUses`, or show every
-generated gate is reachable from a native requirement. Those are subsequent
-selection/wiring obligations; no alternate selector or data store was introduced.
+laws. The selector's returned inventory is now characterized below. We have not yet
+proved every intended authored use reaches `selectUses` or every generated gate
+is reachable from a native requirement. Those remain subsequent selection/wiring
+obligations; no alternate selector or data store was introduced.
+
+## Exact native target selection
+
+`Realizations/Capture/TargetLaws.lean` characterizes the production `selectTarget`
+function in both directions. `selectTarget_ok_iff` succeeds exactly when the target
+node exists, its ordinary native realization has one distinct canonical payload
+in the requested context, its selected declaration list is nonempty, and each
+declaration retains its exact native body-proof requirement with closure coverage.
+An always-rejecting selector would not satisfy this equivalence.
+
+The returned array is exactly the canonical concatenation of the selected
+declarations' `required` lists. This preserves additional authored declaration
+requirements. It does not aggregate arbitrary realization-level or facet-level
+requirements; the theorem follows the existing selector's declaration-contract
+policy. `selectTarget_membership` exposes both directions of membership, and
+`selectTarget_nonempty` rules out successful empty selections.
+
+`selectTarget_native_requirements` connects the selected model and every required
+native proof contract to original input contribution records. Their exact key,
+body validator, and dependency-closure coverage are retained. The proof keys belong
+to the returned array. `selectTarget_models_agree` also proves that all matching
+original model payloads agree when selection succeeds; their contribution origins
+may differ. Duplicate identical contributions are permitted.
+
+These laws do not assume global admission of the supplied input, completion of a
+target, or provider authenticity. The requested context is a parameter: the theorem
+proves exact context equality, while the Lean-context construction in `selectUses`
+belongs to the next bridge. The laws concern the real private selector, opened
+only in the law module; no production visibility or behavior changes were needed.
+The next bridge is from each actual `selectUses` result to this exact target
+contract, followed by preservation of those keys during prerequisite wiring.
 
 ## Prerequisite selection is independent of completion
 
@@ -480,9 +511,9 @@ prerequisite has original fitting evidence at its own current binding. It does
 not assert that every prerequisite still has a completed final cache entry or that
 the graph traversal recognizes every satisfiable contract.
 
-Next, connect successful target selection to its exact returned native contract
-inventory, then account for the corresponding prerequisite wiring and actual
-provider/transaction routes. Preserve the joint authored projection as those routes
+Next, connect `selectUses` results to the now-proved target-selector contract,
+then account for the corresponding prerequisite wiring and actual provider/transaction
+routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.
 

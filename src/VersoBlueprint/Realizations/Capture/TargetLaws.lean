@@ -1,0 +1,223 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+import VersoBlueprint.Realizations.Capture.Laws
+
+/-! Exact acceptance and returned contract inventory for the production native target
+selector. Selection is separate from completion and provider authenticity. -/
+
+namespace Informal.Realizations.Capture
+open Lean Validation Translations
+
+-- Proof-local access to the original implementation and shared law helpers.
+-- No aliases or visibility changes are exported to production consumers.
+run_cmd do
+  let env ← getEnv
+  let some captureOwner := env.getModuleIdxFor? ``evaluate
+    | throwError "Capture implementation must be imported"
+  let some lawsOwner := env.getModuleIdxFor? ``evaluate_admitted
+    | throwError "Capture law helpers must be imported"
+  for (name, _) in env.constants.toList do
+    if env.getModuleIdxFor? name == some captureOwner || env.getModuleIdxFor? name == some lawsOwner then
+      if let some user := privateToUserName? name then
+        if (`Informal.Realizations.Capture).isPrefixOf user then
+          Elab.Command.modifyScope fun scope => { scope with
+            openDecls := .explicit (user.replacePrefix `Informal.Realizations.Capture .anonymous) name :: scope.openDecls }
+
+namespace TargetSelection
+
+/-- A selected declaration retains its exact native body-proof obligation. Other
+required contracts remain part of the returned inventory as well. -/
+def DeclarationValid (input : Input) (target : Name) (declaration : Realizations.Declaration) : Prop :=
+  let proof : RequirementKey := ⟨.declaration ⟨target, `lean⟩ declaration.object, `proof⟩
+  ∃ requirement,
+    canonical ((input.requirements.filter (·.value.key == proof)).map (·.value)) = #[requirement] ∧
+    requirement.expected = .check NativeLean.bodyValidator ∧
+    requirement.coverage = .dependencyClosure ∧ proof ∈ declaration.required
+
+/-- The per-target checks performed by the selector, without assuming that the
+entire input has already been admitted or that any requirement is complete. -/
+def Contract (input : Input) (context : Context) (target : Name) (model : Realization) : Prop :=
+  (∃ node ∈ input.nodes, node.value.label = target) ∧
+  canonical ((input.realizations.filter (·.value.key == ⟨target, `lean⟩)).map (·.value)) = #[model] ∧
+  model.context = context ∧ model.declarations.isEmpty = false ∧
+  ∀ declaration ∈ model.declarations, DeclarationValid input target declaration
+
+private theorem declaration_guard_iff (input : Input) (target : Name) (declaration : Realizations.Declaration) :
+    (let proof : RequirementKey := ⟨.declaration ⟨target, `lean⟩ declaration.object, `proof⟩
+     let contracts := canonical ((input.requirements.filter (·.value.key == proof)).map (·.value))
+     contracts.size == 1 && contracts[0]!.expected == .check NativeLean.bodyValidator &&
+       contracts[0]!.coverage == .dependencyClosure && declaration.required.contains proof) = true ↔
+    DeclarationValid input target declaration := by
+  simp only [Bool.and_eq_true, beq_iff_eq, Array.contains_iff_mem, and_assoc]
+  constructor
+  · rintro ⟨size, expected, coverage, member⟩
+    obtain ⟨requirement, singleton⟩ := Array.size_eq_one_iff.mp size
+    refine ⟨requirement, singleton, ?_, ?_, member⟩
+    · simpa [singleton] using expected
+    · simpa [singleton] using coverage
+  · rintro ⟨requirement, singleton, expected, coverage, member⟩
+    simp [singleton, expected, coverage, member]
+
+private theorem list_collect_iff (entries : List α) (valid : α → Bool)
+    (fields : α → Array β) (failure : α → ε) (initial : Array β) (final : Option γ × Array β) :
+    (forIn entries (none, initial) fun entry current =>
+      if valid entry then (Except.ok (.yield (none, current.2 ++ fields entry)) : Except ε (ForInStep (Option γ × Array β)))
+      else .error (failure entry)) = .ok final ↔
+    (∀ entry ∈ entries, valid entry = true) ∧ final = (none, initial ++ entries.toArray.flatMap fields) := by
+  induction entries generalizing initial with
+  | nil => simp [pure, Except.pure]; exact eq_comm
+  | cons entry entries ih =>
+    by_cases accepted : valid entry = true
+    · simp only [List.forIn_cons, accepted, ↓reduceIte, bind, Except.bind]
+      rw [ih]
+      simp [accepted, Array.append_assoc, ← List.append_toArray]
+    · simp [List.forIn_cons, accepted, bind, Except.bind]
+
+private theorem array_collect_iff (entries : Array α) (valid : α → Bool)
+    (fields : α → Array β) (failure : α → ε) (initial : Array β) (final : Option γ × Array β) :
+    (forIn entries (none, initial) fun entry current =>
+      if valid entry then (Except.ok (.yield (none, current.2 ++ fields entry)) : Except ε (ForInStep (Option γ × Array β)))
+      else .error (failure entry)) = .ok final ↔
+    (∀ entry ∈ entries, valid entry = true) ∧ final = (none, initial ++ entries.flatMap fields) := by
+  rw [← Array.forIn_toList, list_collect_iff]
+  simp
+
+private theorem selectTarget_checks_iff (input : Input) (context : Context) (target : Name) (keys : Array RequirementKey) :
+    selectTarget input context target = .ok keys ↔
+    let models := canonical ((input.realizations.filter (·.value.key == ⟨target, `lean⟩)).map (·.value))
+    input.nodes.any (·.value.label == target) = true ∧ models.size = 1 ∧
+    models[0]!.context = context ∧ models[0]!.declarations.isEmpty = false ∧
+    (∀ declaration ∈ models[0]!.declarations, DeclarationValid input target declaration) ∧
+    keys = canonical (models[0]!.declarations.flatMap (·.required)) := by
+  unfold selectTarget
+  dsimp only
+  split
+  · rename_i targetPresent
+    split
+    · rename_i singleton
+      split
+      · rename_i contextMatches
+        split
+        · rename_i hasDeclarations
+          simp only [except_bind_ok_iff]
+          simp only [pure, Except.pure, bind, Except.bind]
+          simp only [array_collect_iff]
+          simp only [declaration_guard_iff, and_assoc, exists_and_left, exists_eq_left,
+            Array.empty_append, Except.ok.injEq]
+          simp only [beq_iff_eq] at singleton contextMatches
+          simp only [Bool.not_eq_true'] at hasDeclarations
+          simp only [targetPresent, singleton, contextMatches, hasDeclarations, true_and]
+          constructor <;> rintro ⟨valid, equal⟩ <;> exact ⟨valid, equal.symm⟩
+        · rename_i noDeclarations
+          constructor
+          · intro impossible; cases impossible
+          · rintro ⟨_, _, _, nonempty, _⟩
+            exact False.elim (noDeclarations (by simp only [nonempty, Bool.not_false]))
+      · rename_i contextMismatch
+        simp only [beq_iff_eq] at contextMismatch
+        simp [targetPresent, contextMismatch]
+    · rename_i notSingleton
+      simp only [beq_iff_eq] at notSingleton
+      simp [targetPresent, notSingleton]
+  · rename_i targetAbsent
+    simp [targetAbsent]
+
+end TargetSelection
+/-- Exact acceptance and output of the production native target selector.
+The selected model's complete declaration contracts are returned in canonical
+order. This includes additional authored declaration requirements, not just native
+body-proof keys. No completion or provider-authenticity premise is assumed. -/
+theorem selectTarget_ok_iff (input : Input) (context : Context) (target : Name)
+    (keys : Array RequirementKey) :
+    selectTarget input context target = .ok keys ↔
+      ∃ model, TargetSelection.Contract input context target model ∧
+        keys = canonical (model.declarations.flatMap (·.required)) := by
+  rw [TargetSelection.selectTarget_checks_iff]
+  constructor
+  · rintro ⟨present, size, contextEq, nonempty, valid, output⟩
+    obtain ⟨model, singleton⟩ := Array.size_eq_one_iff.mp size
+    have rest : model.context = context ∧ model.declarations.isEmpty = false ∧
+        (∀ declaration ∈ model.declarations, TargetSelection.DeclarationValid input target declaration) ∧
+        keys = canonical (model.declarations.flatMap (·.required)) := by
+      simpa [singleton] using And.intro contextEq (And.intro nonempty (And.intro valid output))
+    refine ⟨model, ⟨?_, singleton, rest.1, rest.2.1, rest.2.2.1⟩, rest.2.2.2⟩
+    simpa only [Array.any_eq_true', beq_iff_eq] using present
+  · rintro ⟨model, ⟨present, singleton, contextEq, nonempty, valid⟩, output⟩
+    have presentBool : input.nodes.any (·.value.label == target) = true := by
+      simpa only [Array.any_eq_true', beq_iff_eq] using present
+    simpa [singleton] using And.intro presentBool
+      (And.intro (by decide : (1 : Nat) = 1) (And.intro contextEq (And.intro nonempty (And.intro valid output))))
+
+/-- Returned keys have exactly the membership of the selected declarations'
+required lists; canonicalization cannot drop an additional obligation. -/
+theorem selectTarget_membership (accepted : selectTarget input context target = .ok keys) :
+    ∃ model, TargetSelection.Contract input context target model ∧
+      ∀ key, key ∈ keys ↔ ∃ declaration ∈ model.declarations, key ∈ declaration.required := by
+  obtain ⟨model, contract, rfl⟩ := (selectTarget_ok_iff _ _ _ _).mp accepted
+  refine ⟨model, contract, ?_⟩
+  intro key
+  rw [mem_canonical]
+  exact Array.mem_flatMap
+
+/-- Matching original model payloads agree whenever target selection succeeds.
+Repeated identical contributions are permitted; competing definitions are not. -/
+theorem selectTarget_models_agree (accepted : selectTarget input context target = .ok keys)
+    (aMember : a ∈ input.realizations) (bMember : b ∈ input.realizations)
+    (aKey : a.value.key = ⟨target, `lean⟩) (bKey : b.value.key = ⟨target, `lean⟩) :
+    a.value = b.value := by
+  obtain ⟨model, contract, _⟩ := (selectTarget_ok_iff _ _ _ _).mp accepted
+  have only (record : Contribution Realization) (member : record ∈ input.realizations)
+      (keyEq : record.value.key = ⟨target, `lean⟩) : record.value = model := by
+    apply Array.mem_singleton.mp
+    rw [← contract.2.1, mem_canonical]
+    refine Array.mem_map.mpr ⟨record, Array.mem_filter.mpr ⟨member, ?_⟩, rfl⟩
+    simpa only [beq_iff_eq] using keyEq
+  exact (only a aMember aKey).trans (only b bMember bKey).symm
+
+/-- A selected native target always contributes an obligation. Empty contracts
+cannot accidentally count as successful dependency selection. -/
+theorem selectTarget_nonempty (accepted : selectTarget input context target = .ok keys) :
+    keys.isEmpty = false := by
+  obtain ⟨model, contract, membership⟩ := selectTarget_membership accepted
+  obtain ⟨declaration, member⟩ := Array.isEmpty_eq_false_iff_exists_mem.mp contract.2.2.2.1
+  obtain ⟨requirement, _, _, _, proofMember⟩ := contract.2.2.2.2 declaration member
+  exact Array.isEmpty_eq_false_iff_exists_mem.mpr
+    ⟨_, (membership _).mpr ⟨declaration, member, proofMember⟩⟩
+
+/-- The model and each native proof requirement are original input records.
+This links the selector's canonical views back to retained contribution payloads. -/
+theorem selectTarget_native_requirements (accepted : selectTarget input context target = .ok keys) :
+    ∃ model ∈ input.realizations,
+      model.value.key = ⟨target, `lean⟩ ∧ model.value.context = context ∧
+      model.value.declarations.isEmpty = false ∧
+      ∀ declaration ∈ model.value.declarations,
+        let proof : RequirementKey := ⟨.declaration ⟨target, `lean⟩ declaration.object, `proof⟩
+        proof ∈ keys ∧ ∃ requirement ∈ input.requirements,
+          requirement.value.key = proof ∧
+          requirement.value.expected = .check NativeLean.bodyValidator ∧
+          requirement.value.coverage = .dependencyClosure := by
+  obtain ⟨model, contract, membership⟩ := selectTarget_membership accepted
+  have modelMember : model ∈ canonical
+      ((input.realizations.filter (·.value.key == ⟨target, `lean⟩)).map (·.value)) := by
+    rw [contract.2.1]
+    simp
+  rw [mem_canonical] at modelMember
+  simp only [Array.mem_map, Array.mem_filter, beq_iff_eq] at modelMember
+  obtain ⟨original, ⟨originalMember, modelKey⟩, rfl⟩ := modelMember
+  refine ⟨original, originalMember, modelKey, contract.2.2.1, contract.2.2.2.1, ?_⟩
+  intro declaration member
+  obtain ⟨requirement, singleton, expected, coverage, proofMember⟩ := contract.2.2.2.2 declaration member
+  refine ⟨(membership _).mpr ⟨declaration, member, proofMember⟩, ?_⟩
+  have requirementMember : requirement ∈ canonical
+      ((input.requirements.filter (·.value.key == ⟨.declaration ⟨target, `lean⟩ declaration.object, `proof⟩)).map (·.value)) := by
+    rw [singleton]
+    simp
+  rw [mem_canonical] at requirementMember
+  simp only [Array.mem_map, Array.mem_filter, beq_iff_eq] at requirementMember
+  obtain ⟨originalRequirement, ⟨originalMember, proofKey⟩, rfl⟩ := requirementMember
+  exact ⟨originalRequirement, originalMember, proofKey, expected, coverage⟩
+
+end Informal.Realizations.Capture

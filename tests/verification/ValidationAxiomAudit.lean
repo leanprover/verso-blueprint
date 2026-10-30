@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Capture.RecipeLaws
+import VersoBlueprint.Realizations.Capture.TargetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -181,3 +182,12 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.finish_uses
 #print axioms Informal.Realizations.Capture.evaluate_dependency_selection_source
 #print axioms Informal.Realizations.Capture.evaluate_complete_dependency_selection
+
+-- Exact native target-selector acceptance and original contract membership.
+#print axioms Informal.Realizations.Capture.TargetSelection.DeclarationValid
+#print axioms Informal.Realizations.Capture.TargetSelection.Contract
+#print axioms Informal.Realizations.Capture.selectTarget_ok_iff
+#print axioms Informal.Realizations.Capture.selectTarget_membership
+#print axioms Informal.Realizations.Capture.selectTarget_models_agree
+#print axioms Informal.Realizations.Capture.selectTarget_nonempty
+#print axioms Informal.Realizations.Capture.selectTarget_native_requirements

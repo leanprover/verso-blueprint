@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.Capture.RecipeLaws
+import VersoBlueprint.Realizations.Capture.TargetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
