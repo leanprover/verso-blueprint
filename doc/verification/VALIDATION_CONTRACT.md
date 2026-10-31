@@ -342,10 +342,45 @@ edge's returned array.
 `finish_use_success_contract` reaches the public snapshot's edges through the
 existing exact `finish_uses` equation. Its target-contract statement is still about
 the collection **before dependency wiring**. No global admission premise is added
-for that collection. Preserving those contracts in the final registry, proving
-that wiring retains their prerequisite keys, and showing every intended authored
-use produces an edge remain separate obligations. These are forward guarantees
-for emitted edges, not an edge-inventory completeness theorem.
+for that collection. The following results extend this connection to the final
+registry. These remain forward guarantees for emitted edges, not an edge-inventory
+completeness theorem.
+
+## Selected contracts survive wiring and final admission
+
+`finish_preserves_selection` strengthens the existing wiring-loop invariant.
+Finalization preserves the complete original node and realization contributions,
+including origins. For every original requirement, the final retained sources
+contain a requirement with the same origin, key, expectation and coverage.
+Prerequisites may have been extended, so whole-requirement equality is deliberately
+not part of this statement. The earlier observation-provenance proof reuses the
+same per-step preservation argument.
+
+`TargetSelection.Retained` describes a contract using the final registry's actual
+`realization?` and `requirement?` lookups. `finish_use_target_retained` and the public
+`evaluate_use_target_retained` establish it for every successful emitted edge:
+
+- The ordinary target model is present in the edge's exact Lean context, with a
+  nonempty declaration inventory.
+- The returned keys are exactly the canonical declaration requirements of that
+  retained model.
+- Every returned key has a definition in the final registry, including additional
+  authored requirements beyond the native body-proof keys.
+- Each declaration's body-proof key belongs to the returned inventory and resolves
+  to a requirement with the native body validator and dependency-closure coverage.
+
+The third guarantee uses **final admission**. Raw target selection alone does not
+establish definitions for arbitrary additional keys. No global admission premise
+is imposed on the collection before wiring, and no alternate lookup or store is
+used to state the result.
+
+`evaluate_complete_dependency_targets` composes retention with the generated-gate
+soundness theorem: a completed dependency-selection gate has a nonempty, precisely
+scoped edge set, and every edge's target contract remains available in the same
+final registry and context. This does not assert that those target requirements
+are themselves complete. Proving that native prerequisite lists include the
+selected keys, and proving that every intended authored use produces an edge,
+remain distinct next obligations.
 
 ## Prerequisite selection is independent of completion
 
@@ -534,8 +569,8 @@ prerequisite has original fitting evidence at its own current binding. It does
 not assert that every prerequisite still has a completed final cache entry or that
 the graph traversal recognizes every satisfiable contract.
 
-Successful emitted edges are now connected to the target-selector contract.
-Next, account for final contract retention, prerequisite wiring, and actual provider/transaction
+Successful emitted edges are now connected to the target-selector contract and
+its retention in the final registry. Next, account for prerequisite wiring and actual provider/transaction
 routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.

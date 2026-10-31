@@ -198,3 +198,10 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.selectUses_success_nonempty
 #print axioms Informal.Realizations.Capture.selectUses_success_native_requirements
 #print axioms Informal.Realizations.Capture.finish_use_success_contract
+
+-- Selected contracts survive actual wiring and final admission into real lookups.
+#print axioms Informal.Realizations.Capture.finish_preserves_selection
+#print axioms Informal.Realizations.Capture.TargetSelection.Retained
+#print axioms Informal.Realizations.Capture.finish_use_target_retained
+#print axioms Informal.Realizations.Capture.evaluate_use_target_retained
+#print axioms Informal.Realizations.Capture.evaluate_complete_dependency_targets

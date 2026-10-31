@@ -76,6 +76,16 @@ private def PreservesContracts (before after : Input) : Prop :=
 private theorem preservesContracts_refl (input : Input) : PreservesContracts input input := by
   exact ⟨fun record member => ⟨record, member, rfl, rfl, rfl, rfl⟩, fun _ member => member⟩
 
+private theorem preservesContracts_trans (first : PreservesContracts before middle)
+    (second : PreservesContracts middle after) : PreservesContracts before after := by
+  constructor
+  · intro record member
+    obtain ⟨next, nextMember, origin, key, expected, coverage⟩ := first.1 record member
+    obtain ⟨last, lastMember, lastOrigin, lastKey, lastExpected, lastCoverage⟩ := second.1 next nextMember
+    exact ⟨last, lastMember, lastOrigin.trans origin, lastKey.trans key,
+      lastExpected.trans expected, lastCoverage.trans coverage⟩
+  · exact fun record member => second.2 record (first.2 record member)
+
 private theorem preservesContracts_append (before after : Input)
     (requirements : ∀ record ∈ before.requirements, record ∈ after.requirements)
     (bindings : ∀ record ∈ before.bindingInputs, record ∈ after.bindingInputs) :
@@ -491,17 +501,23 @@ private theorem id_array_loop_invariant (entries : Array α) (property : β → 
 
 private theorem connectUses_properties (collected : Collected) (uses : Array SelectedUse) :
     Collected.nativeChecks (connectUses collected uses) = Collected.nativeChecks collected ∧
+      ((Collected.input (connectUses collected uses)).nodes = (Collected.input collected).nodes ∧
+       (Collected.input (connectUses collected uses)).realizations = (Collected.input collected).realizations ∧
+       PreservesContracts (Collected.input collected) (Collected.input (connectUses collected uses))) ∧
       ∀ providers p policy,
         (∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) →
         CollectionFrom providers p policy collected → CollectionFrom providers p policy (connectUses collected uses) := by
   let invariant (current : Collected) : Prop :=
     Collected.nativeChecks current = Collected.nativeChecks collected ∧
+      ((Collected.input current).nodes = (Collected.input collected).nodes ∧
+       (Collected.input current).realizations = (Collected.input collected).realizations ∧
+       PreservesContracts (Collected.input collected) (Collected.input current)) ∧
       ∀ providers p policy,
         (∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) →
         CollectionFrom providers p policy collected → CollectionFrom providers p policy current
   unfold connectUses
   simp only [Id.run, bind, pure]
-  apply id_array_loop_invariant _ invariant _ ⟨rfl, fun _ _ _ _ valid => valid⟩
+  apply id_array_loop_invariant _ invariant _ ⟨rfl, ⟨rfl, rfl, preservesContracts_refl _⟩, fun _ _ _ _ valid => valid⟩
   intro model member current prior
   by_cases foreign : (model.context.language != `lean) = true
   · rw [ite_eq_left foreign]
@@ -520,44 +536,46 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
         apply Classical.byCases (p := _)
         · intro edges
           rw [ite_eq_left edges]
-          refine ⟨prior.1, ?_⟩
-          intro providers p policy allowed valid
-          have original := prior.2 providers p policy allowed valid
-          refine ⟨original.1, ?_, original.2.2⟩
-          intro item member
-          change item ∈ (Collected.observations current).push _ at member
-          simp only [Array.mem_push] at member
-          rcases member with previous | rfl
-          · apply observationFrom_mono ?_ (original.2.1 item previous)
-            refine ⟨?_, ?_⟩
-            · intro record member
-              refine ⟨_, Array.mem_map.mpr ⟨record, ?_, rfl⟩, ?_⟩
-              · simp only [recordObservation, Array.mem_push]
-                exact Or.inl member
-              · split <;> exact ⟨rfl, rfl, rfl, rfl⟩
-            · intro record member
-              simp only [recordObservation, Array.mem_push]
+          suffices extension : PreservesContracts (Collected.input current) _ by
+            refine ⟨prior.1, ⟨prior.2.1.1, prior.2.1.2.1,
+              preservesContracts_trans prior.2.1.2.2 extension⟩, ?_⟩
+            intro providers p policy allowed valid
+            have original := prior.2.2 providers p policy allowed valid
+            refine ⟨original.1, ?_, original.2.2⟩
+            intro item member
+            change item ∈ (Collected.observations current).push _ at member
+            simp only [Array.mem_push] at member
+            rcases member with previous | rfl
+            · exact observationFrom_mono extension (original.2.1 item previous)
+            · apply Or.inr ∘ Or.inl
+              apply allowed
+              refine ⟨model.key, model.context, declaration.object, entry.1, ?_, ?_, rfl, rfl, ?_, rfl⟩
+              · simpa using foreign
+              · simp at entryMember
+                rcases entryMember with rfl | rfl <;> simp
+              · simpa [DependencySelection.edges] using edges
+          constructor
+          · intro record member
+            refine ⟨_, Array.mem_map.mpr ⟨record, ?_, rfl⟩, ?_⟩
+            · simp only [recordObservation, Array.mem_push]
               exact Or.inl member
-          · apply Or.inr ∘ Or.inl
-            apply allowed
-            refine ⟨model.key, model.context, declaration.object, entry.1, ?_, ?_, rfl, rfl, ?_, rfl⟩
-            · simpa using foreign
-            · simp at entryMember
-              rcases entryMember with rfl | rfl <;> simp
-            · simpa [DependencySelection.edges] using edges
+            · split <;> exact ⟨rfl, rfl, rfl, rfl⟩
+          · intro record member
+            simp only [recordObservation, Array.mem_push]
+            exact Or.inl member
         · intro edges
           rw [ite_eq_right edges]
-          refine ⟨prior.1, ?_⟩
-          intro providers p policy allowed valid
-          have original := prior.2 providers p policy allowed valid
-          refine collectionFrom_mono original ?_ ?_ ?_ ?_
-          · refine ⟨?_, fun _ member => member⟩
-            intro record member
+          suffices extension : PreservesContracts (Collected.input current) _ by
+            refine ⟨prior.1, ⟨prior.2.1.1, prior.2.1.2.1,
+              preservesContracts_trans prior.2.1.2.2 extension⟩, ?_⟩
+            intro providers p policy allowed valid
+            have original := prior.2.2 providers p policy allowed valid
+            exact collectionFrom_mono original extension rfl rfl original.2.2
+          constructor
+          · intro record member
             refine ⟨_, Array.mem_map.mpr ⟨record, member, rfl⟩, ?_⟩
             split <;> exact ⟨rfl, rfl, rfl, rfl⟩
-          · rfl
-          · rfl
-          · exact original.2.2
+          · exact fun _ member => member
     · intro foreign; rw [ite_eq_right foreign]; exact prior
 
 
@@ -569,7 +587,7 @@ private theorem connectUses_from (collected : Collected) (uses : Array SelectedU
     (initialValid : CollectionFrom providers p policy collected)
     (allowed : ∀ origin key observation, DependencySelection.Source uses origin key observation → policy origin key observation) :
     CollectionFrom providers p policy (connectUses collected uses) :=
-  (connectUses_properties collected uses).2 providers p policy allowed initialValid
+  (connectUses_properties collected uses).2.2 providers p policy allowed initialValid
 
 /-- Final admission and dependency wiring preserve the complete native check
 inventory, independently of completion status and evidence canonicalization. -/
@@ -593,6 +611,20 @@ theorem finish_uses (accepted : finish collected = .ok snapshot) :
     cases result
     rfl
   · cases accepted
+
+/-- Wiring and final admission preserve complete node/model contributions and
+each original requirement's origin, identity, expectation and coverage.
+Prerequisites may be extended; equality of whole requirements is not claimed. -/
+theorem finish_preserves_selection (accepted : finish collected = .ok snapshot) :
+    snapshot.registry.contributions.nodes = (Collected.input collected).nodes ∧
+    snapshot.registry.contributions.realizations = (Collected.input collected).realizations ∧
+    ∀ record ∈ (Collected.input collected).requirements,
+      ∃ retained ∈ snapshot.registry.contributions.requirements,
+        retained.origin = record.origin ∧ retained.value.key = record.value.key ∧
+        retained.value.expected = record.value.expected ∧ retained.value.coverage = record.value.coverage := by
+  rw [finish_sources accepted]
+  have preserved := (connectUses_properties collected (selectUses collected)).2.1
+  exact ⟨preserved.1, preserved.2.1, preserved.2.2.1⟩
 
 private theorem finish_observations_from
     (initialValid : CollectionFrom providers p (DependencySelection.Source snapshot.uses) collected)

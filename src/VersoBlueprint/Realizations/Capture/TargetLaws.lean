@@ -320,4 +320,106 @@ theorem finish_use_success_contract (accepted : finish collected = .ok snapshot)
   rw [finish_uses accepted] at member
   exact selectUses_success_contract member selected
 
+namespace TargetSelection
+
+/-- The selected target contract is available through the final registry's real
+lookups. Every returned key has a definition, including additional authored keys.
+Native body contracts retain their validator and coverage; their prerequisites
+may have grown during wiring. No completion status is required. -/
+def Retained (registry : Registry) (context : Context) (target : Name)
+    (keys : Array RequirementKey) : Prop :=
+  ∃ model, registry.realization? ⟨target, `lean⟩ = some model ∧
+    model.context = context ∧ model.declarations.isEmpty = false ∧
+    keys = canonical (model.declarations.flatMap (·.required)) ∧
+    (∀ key ∈ keys, ∃ requirement, registry.requirement? key = some requirement) ∧
+    ∀ declaration ∈ model.declarations,
+      let proof : RequirementKey := ⟨.declaration ⟨target, `lean⟩ declaration.object, `proof⟩
+      proof ∈ keys ∧ ∃ requirement, registry.requirement? proof = some requirement ∧
+        requirement.expected = .check NativeLean.bodyValidator ∧
+        requirement.coverage = .dependencyClosure
+
+end TargetSelection
+
+/-- Successful finalization retains each selected target's exact declaration
+inventory and native proof contracts in the admitted registry. Additional keys
+also have actual definitions; this uses final admission, not an assumption that
+the pre-wiring collection was globally admitted. -/
+theorem finish_use_target_retained (accepted : finish collected = .ok snapshot)
+    (member : edge ∈ snapshot.uses) (selected : edge.selected = .ok keys) :
+    ∃ context, edge.context = some context ∧ context.language = `lean ∧
+      TargetSelection.Retained snapshot.registry context edge.reference.label keys := by
+  have emitted : edge ∈ selectUses collected := by rwa [← finish_uses accepted]
+  obtain ⟨context, source, contextEq, _, _, _, native, target⟩ :=
+    selectUses_success_source emitted selected
+  obtain ⟨model, modelMember, modelKey, modelContext, nonempty, proofs⟩ :=
+    selectTarget_native_requirements target
+  obtain ⟨selectedModel, contract, inventory⟩ := (selectTarget_ok_iff _ _ _ _).mp target
+  have same : model.value = selectedModel := by
+    apply Array.mem_singleton.mp
+    rw [← contract.2.1, mem_canonical]
+    exact Array.mem_map.mpr ⟨model, Array.mem_filter.mpr ⟨modelMember, by simpa using modelKey⟩, rfl⟩
+  rw [← same] at inventory
+  have retained := finish_preserves_selection accepted
+  have modelRetained : model ∈ snapshot.registry.contributions.realizations := by
+    rwa [retained.2.1]
+  have admitted : admit snapshot.registry.contributions = .ok snapshot.registry := by
+    obtain ⟨input, admitted⟩ := finish_admitted accepted
+    rw [(admit_sources admitted).contributions]
+    exact admitted
+  refine ⟨context, contextEq, by simp [native], model.value, ?_, modelContext, nonempty,
+    inventory, ?_, ?_⟩
+  · exact (admit_realization_lookup_iff admitted).mpr ⟨model, modelRetained, rfl, modelKey⟩
+  · intro key keyMember
+    have required : key ∈ model.value.requirements := by
+      rw [inventory, mem_canonical] at keyMember
+      simp only [Realization.requirements, List.mem_toArray, List.mem_eraseDups,
+        Array.mem_toList_iff, Array.mem_append]
+      exact Or.inr keyMember
+    have present := (admit_realization_mem admitted _).mpr ⟨model, modelRetained, rfl⟩
+    obtain ⟨record, recordMember, keyEq⟩ := admit_realization_requirement_exists admitted present required
+    exact ⟨record.value, (admit_requirement_lookup_iff admitted).mpr ⟨record, recordMember, rfl, keyEq⟩⟩
+  · intro declaration declarationMember
+    obtain ⟨proofMember, requirement, requirementMember, keyEq, expected, coverage⟩ := proofs declaration declarationMember
+    obtain ⟨final, finalMember, _, finalKey, finalExpected, finalCoverage⟩ := retained.2.2 requirement requirementMember
+    exact ⟨proofMember, final.value,
+      (admit_requirement_lookup_iff admitted).mpr ⟨final, finalMember, rfl, finalKey.trans keyEq⟩,
+      finalExpected.trans expected, finalCoverage.trans coverage⟩
+
+/-- The pure capture entry point exposes the same retained target contract for
+each successful public dependency edge. This is a contract-retention guarantee,
+not target completion or completeness of the authored edge inventory. -/
+theorem evaluate_use_target_retained {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (accepted : evaluate p observations = .ok snapshot)
+    (member : edge ∈ snapshot.uses) (selected : edge.selected = .ok keys) :
+    ∃ context, edge.context = some context ∧ context.language = `lean ∧
+      TargetSelection.Retained snapshot.registry context edge.reference.label keys := by
+  simp only [evaluate, except_bind_ok_iff] at accepted
+  obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, collected, _, finished⟩ := accepted
+  exact finish_use_target_retained finished member selected
+
+/-- Completing a generated selection gate requires a nonempty scoped edge set
+whose exact target contracts remain available in the same final registry.
+The target requirements' own completion remains a separate obligation. -/
+theorem evaluate_complete_dependency_targets {p : Plan} {observations : Observations p} {snapshot : Snapshot}
+    (evaluated : evaluate p observations = .ok snapshot)
+    (found : snapshot.registry.requirement? key = some requirement)
+    (expected : requirement.expected = .check `blueprint.dependencySelection)
+    (complete : (snapshot.registry.resultForRequirement key).complete = true) :
+    ∃ realization context object name,
+      context.language = `lean ∧ (name = `statement ∨ name = `proof) ∧
+      key = ⟨.declaration realization object, name ++ `dependencySelection⟩ ∧
+      (DependencySelection.edges snapshot.uses realization context name).isEmpty = false ∧
+      ∀ edge ∈ DependencySelection.edges snapshot.uses realization context name,
+        ∃ keys, edge.selected = .ok keys ∧
+          TargetSelection.Retained snapshot.registry context edge.reference.label keys := by
+  obtain ⟨realization, context, object, name, native, facet, keyEq, nonempty, passed⟩ :=
+    evaluate_complete_dependency_selection evaluated found expected complete
+  refine ⟨realization, context, object, name, native, facet, keyEq, nonempty, ?_⟩
+  intro edge member
+  obtain ⟨keys, selected⟩ := passed edge member
+  have scopeFacts := (DependencySelection.mem_edges _ _ _ _ _).mp member
+  obtain ⟨edgeContext, contextEq, _, retained⟩ := evaluate_use_target_retained evaluated scopeFacts.1 selected
+  have same : edgeContext = context := Option.some.inj (contextEq.symm.trans scopeFacts.2.2.1)
+  exact ⟨keys, selected, same ▸ retained⟩
+
 end Informal.Realizations.Capture
