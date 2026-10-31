@@ -351,8 +351,8 @@ completeness theorem.
 `finish_preserves_selection` strengthens the existing wiring-loop invariant.
 Finalization preserves the complete original node and realization contributions,
 including origins. For every original requirement, the final retained sources
-contain a requirement with the same origin, key, expectation and coverage.
-Prerequisites may have been extended, so whole-requirement equality is deliberately
+contain a requirement with the same origin, key, expectation and coverage, retaining
+every original prerequisite. Prerequisites may have been extended, so whole-requirement equality is deliberately
 not part of this statement. The earlier observation-provenance proof reuses the
 same per-step preservation argument.
 
@@ -378,9 +378,41 @@ used to state the result.
 soundness theorem: a completed dependency-selection gate has a nonempty, precisely
 scoped edge set, and every edge's target contract remains available in the same
 final registry and context. This does not assert that those target requirements
-are themselves complete. Proving that native prerequisite lists include the
-selected keys, and proving that every intended authored use produces an edge,
-remain distinct next obligations.
+are themselves complete. The wiring guarantees for actual generated gates are
+described next; completeness of the intended edge and gate inventories remains
+separate.
+
+## Generated gates are wired to their native owner
+
+`evaluate_dependency_selection_wired` reaches every dependency-selection observation
+in the final retained evidence, whether passed or unavailable. Each observation is
+generated at one exact source/context/realization/facet scope, and its collector-owned
+native parent retains the gate key and every successfully selected target key as
+prerequisites. Statement gates use statement edges; proof gates use both facets.
+
+The proof follows the production ownership-index lookup and the existing wiring
+loops. Ownership requires the collector's complete origin, dependency-closure
+coverage, and the matching native validator. An authored check does not acquire
+this guarantee merely by reusing a validator or requirement name. Lawful equality
+of origins is derived in the law layer, without an added domain assumption.
+
+`DependencySelection.GeneratedAt` is the shared specification for the observation's
+identity, exact edge scope, outcome and explanation. `Source` existentially selects
+that scope; `Wired` keeps the **same scope** alongside the parent and its prerequisites.
+The earlier provenance theorem now follows from the stronger wiring theorem, so
+the provider-adapter exclusion argument is not duplicated.
+
+`evaluate_complete_dependency_wiring` connects completion to the final registry's
+actual parent lookup. Its nonempty scoped edge set selected successfully, and both
+the gate and all selected keys occur in that parent's prerequisites. This is still
+not a claim that the parent or targets are complete. The preservation invariant
+also establishes that later wiring iterations cannot remove previously retained
+prerequisites.
+
+These are forward guarantees for **generated gates**. They do not yet show that
+every eligible native contract with authored uses generates a gate, or that every
+intended authored use reaches the selected edge inventory. Proving that creation
+coverage, then composing it with prerequisite evidence soundness, is the next step.
 
 ## Prerequisite selection is independent of completion
 
@@ -570,7 +602,9 @@ not assert that every prerequisite still has a completed final cache entry or th
 the graph traversal recognizes every satisfiable contract.
 
 Successful emitted edges are now connected to the target-selector contract and
-its retention in the final registry. Next, account for prerequisite wiring and actual provider/transaction
+its retention in the final registry; generated gates and their selected keys are
+wired into native-parent prerequisites. Next, account for gate/edge creation coverage
+and actual provider/transaction
 routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.

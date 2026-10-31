@@ -205,3 +205,12 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.finish_use_target_retained
 #print axioms Informal.Realizations.Capture.evaluate_use_target_retained
 #print axioms Informal.Realizations.Capture.evaluate_complete_dependency_targets
+
+-- Generated gates and selected keys are prerequisites of their native owner.
+#print axioms Informal.Realizations.Capture.instReflBEqOrigin
+#print axioms Informal.Realizations.Capture.instLawfulBEqOrigin
+#print axioms Informal.Realizations.Capture.DependencySelection.GeneratedAt
+#print axioms Informal.Realizations.Capture.DependencySelection.Wired
+#print axioms Informal.Realizations.Capture.DependencySelection.Wired.source
+#print axioms Informal.Realizations.Capture.evaluate_dependency_selection_wired
+#print axioms Informal.Realizations.Capture.evaluate_complete_dependency_wiring

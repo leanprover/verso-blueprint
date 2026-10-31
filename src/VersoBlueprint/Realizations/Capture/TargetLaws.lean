@@ -380,7 +380,7 @@ theorem finish_use_target_retained (accepted : finish collected = .ok snapshot)
     exact ⟨record.value, (admit_requirement_lookup_iff admitted).mpr ⟨record, recordMember, rfl, keyEq⟩⟩
   · intro declaration declarationMember
     obtain ⟨proofMember, requirement, requirementMember, keyEq, expected, coverage⟩ := proofs declaration declarationMember
-    obtain ⟨final, finalMember, _, finalKey, finalExpected, finalCoverage⟩ := retained.2.2 requirement requirementMember
+    obtain ⟨final, finalMember, _, finalKey, finalExpected, finalCoverage, _⟩ := retained.2.2 requirement requirementMember
     exact ⟨proofMember, final.value,
       (admit_requirement_lookup_iff admitted).mpr ⟨final, finalMember, rfl, finalKey.trans keyEq⟩,
       finalExpected.trans expected, finalCoverage.trans coverage⟩
