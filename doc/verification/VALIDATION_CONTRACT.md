@@ -318,11 +318,34 @@ may differ. Duplicate identical contributions are permitted.
 
 These laws do not assume global admission of the supplied input, completion of a
 target, or provider authenticity. The requested context is a parameter: the theorem
-proves exact context equality, while the Lean-context construction in `selectUses`
-belongs to the next bridge. The laws concern the real private selector, opened
+proves exact context equality. The laws concern the real private selector, opened
 only in the law module; no production visibility or behavior changes were needed.
-The next bridge is from each actual `selectUses` result to this exact target
-contract, followed by preservation of those keys during prerequisite wiring.
+
+## Successful dependency edges use the exact target contract
+
+`selectUses_success_source` follows the production selector's nested loops.
+Every emitted edge with a successful result has a nonmissing context constructed
+from an original source realization: its language is Lean, its project is the
+source model's project, its node is the edge's source, and any explicit realization
+restriction matches the source model's name. The edge's result is the actual
+`selectTarget` call on that context and its exact reference label. An edge emitted
+without a source context cannot count as successful selection.
+
+`selectUses_success_contract` composes this provenance with `selectTarget_ok_iff`:
+the target satisfies the native contract and the returned keys are exactly its
+canonical declaration requirements. `selectUses_success_nonempty` excludes an
+empty successful result. `selectUses_success_native_requirements` traces every
+target declaration's body-proof key to an original requirement contribution with
+the native validator and dependency-closure coverage; each such key is in the
+edge's returned array.
+
+`finish_use_success_contract` reaches the public snapshot's edges through the
+existing exact `finish_uses` equation. Its target-contract statement is still about
+the collection **before dependency wiring**. No global admission premise is added
+for that collection. Preserving those contracts in the final registry, proving
+that wiring retains their prerequisite keys, and showing every intended authored
+use produces an edge remain separate obligations. These are forward guarantees
+for emitted edges, not an edge-inventory completeness theorem.
 
 ## Prerequisite selection is independent of completion
 
@@ -511,8 +534,8 @@ prerequisite has original fitting evidence at its own current binding. It does
 not assert that every prerequisite still has a completed final cache entry or that
 the graph traversal recognizes every satisfiable contract.
 
-Next, connect `selectUses` results to the now-proved target-selector contract,
-then account for the corresponding prerequisite wiring and actual provider/transaction
+Successful emitted edges are now connected to the target-selector contract.
+Next, account for final contract retention, prerequisite wiring, and actual provider/transaction
 routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.

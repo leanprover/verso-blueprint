@@ -191,3 +191,10 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.selectTarget_models_agree
 #print axioms Informal.Realizations.Capture.selectTarget_nonempty
 #print axioms Informal.Realizations.Capture.selectTarget_native_requirements
+
+-- Successful emitted edges use the actual selector and source-owned Lean context.
+#print axioms Informal.Realizations.Capture.selectUses_success_source
+#print axioms Informal.Realizations.Capture.selectUses_success_contract
+#print axioms Informal.Realizations.Capture.selectUses_success_nonempty
+#print axioms Informal.Realizations.Capture.selectUses_success_native_requirements
+#print axioms Informal.Realizations.Capture.finish_use_success_contract

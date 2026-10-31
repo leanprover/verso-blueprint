@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.Laws
+import VersoBlueprint.Realizations.Capture.RecipeLaws
 
 /-! Exact acceptance and returned contract inventory for the production native target
 selector. Selection is separate from completion and provider authenticity. -/
@@ -19,8 +19,11 @@ run_cmd do
     | throwError "Capture implementation must be imported"
   let some lawsOwner := env.getModuleIdxFor? ``evaluate_admitted
     | throwError "Capture law helpers must be imported"
+  let some recipeOwner := env.getModuleIdxFor? ``finish_uses
+    | throwError "Capture recipe helpers must be imported"
   for (name, _) in env.constants.toList do
-    if env.getModuleIdxFor? name == some captureOwner || env.getModuleIdxFor? name == some lawsOwner then
+    if env.getModuleIdxFor? name == some captureOwner || env.getModuleIdxFor? name == some lawsOwner ||
+        env.getModuleIdxFor? name == some recipeOwner then
       if let some user := privateToUserName? name then
         if (`Informal.Realizations.Capture).isPrefixOf user then
           Elab.Command.modifyScope fun scope => { scope with
@@ -219,5 +222,102 @@ theorem selectTarget_native_requirements (accepted : selectTarget input context 
   simp only [Array.mem_map, Array.mem_filter, beq_iff_eq] at requirementMember
   obtain ⟨originalRequirement, ⟨originalMember, proofKey⟩, rfl⟩ := requirementMember
   exact ⟨originalRequirement, originalMember, proofKey, expected, coverage⟩
+
+/-- Every successful emitted edge uses the exact native target selector in a
+Lean context constructed from an original, scope-matching source model. No
+global admission assumption is needed for the collection being selected. -/
+theorem selectUses_success_source (member : edge ∈ selectUses collected)
+    (selected : edge.selected = .ok keys) :
+    ∃ context, ∃ source : Contribution Realization,
+      edge.context = some context ∧ source ∈ (Collected.input collected).realizations ∧
+      source.value.key.node = edge.source ∧
+      (∀ name, edge.realization = some name → name = source.value.key.name) ∧
+      context = { language := `lean, project := source.value.context.project } ∧
+      selectTarget (Collected.input collected) context edge.reference.label = .ok keys := by
+  let property (edges : Array SelectedUse) : Prop := ∀ edge ∈ edges, ∀ keys,
+    edge.selected = .ok keys →
+    ∃ context, ∃ source : Contribution Realization,
+      edge.context = some context ∧ source ∈ (Collected.input collected).realizations ∧
+      source.value.key.node = edge.source ∧
+      (∀ name, edge.realization = some name → name = source.value.key.name) ∧
+      context = { language := `lean, project := source.value.context.project } ∧
+      selectTarget (Collected.input collected) context edge.reference.label = .ok keys
+  suffices valid : property (selectUses collected) from valid edge member keys selected
+  unfold selectUses
+  simp only [Id.run, bind, pure]
+  apply id_array_loop_invariant _ property _ (by simp [property])
+  intro scope scopeMember current prior
+  rcases scope with ⟨source, realization, facet⟩
+  apply id_array_loop_invariant _ property _ prior
+  intro reference referenceMember current prior
+  apply Classical.byCases (p := _)
+  · intro empty
+    rw [ite_eq_left empty]
+    intro edge member keys success
+    simp only [Array.mem_push] at member
+    rcases member with previous | rfl
+    · exact prior edge previous keys success
+    · cases success
+  · intro nonempty
+    rw [ite_eq_right nonempty]
+    apply id_array_loop_invariant _ property _ prior
+    intro context contextMember current prior
+    intro edge member keys success
+    simp only [Array.mem_push] at member
+    rcases member with previous | rfl
+    · exact prior edge previous keys success
+    · rw [mem_canonical] at contextMember
+      simp only [Array.mem_map, Array.mem_filter, Bool.and_eq_true, beq_iff_eq] at contextMember
+      obtain ⟨model, ⟨original, nodeEq, scopeEq⟩, contextEq⟩ := contextMember
+      refine ⟨context, model, rfl, original, nodeEq, ?_, contextEq.symm, success⟩
+      simpa only [Option.all_eq_true, beq_iff_eq] using scopeEq
+
+/-- Successful edge selection returns precisely its target's declaration
+contracts in the constructed Lean context, including additional authored keys. -/
+theorem selectUses_success_contract (member : edge ∈ selectUses collected)
+    (selected : edge.selected = .ok keys) :
+    ∃ context, edge.context = some context ∧ context.language = `lean ∧
+      ∃ model, TargetSelection.Contract (Collected.input collected) context edge.reference.label model ∧
+        keys = canonical (model.declarations.flatMap (·.required)) := by
+  obtain ⟨context, source, contextEq, _, _, _, native, target⟩ :=
+    selectUses_success_source member selected
+  exact ⟨context, contextEq, by simp [native], (selectTarget_ok_iff _ _ _ _).mp target⟩
+
+/-- An emitted successful edge cannot carry an empty selection. Missing source
+contexts and invalid target contracts never supply vacuous success. -/
+theorem selectUses_success_nonempty (member : edge ∈ selectUses collected)
+    (selected : edge.selected = .ok keys) : keys.isEmpty = false := by
+  obtain ⟨_, _, _, _, _, _, _, target⟩ := selectUses_success_source member selected
+  exact selectTarget_nonempty target
+
+/-- Every declaration in a successfully selected target has its original native
+body-proof requirement among the edge's returned keys. These are contributions
+in the collection before wiring; completion and final retention are separate. -/
+theorem selectUses_success_native_requirements (member : edge ∈ selectUses collected)
+    (selected : edge.selected = .ok keys) :
+    ∃ context, edge.context = some context ∧ context.language = `lean ∧
+      ∃ model ∈ (Collected.input collected).realizations,
+        model.value.key = ⟨edge.reference.label, `lean⟩ ∧ model.value.context = context ∧
+        model.value.declarations.isEmpty = false ∧
+        ∀ declaration ∈ model.value.declarations,
+          let proof : RequirementKey := ⟨.declaration ⟨edge.reference.label, `lean⟩ declaration.object, `proof⟩
+          proof ∈ keys ∧ ∃ requirement ∈ (Collected.input collected).requirements,
+            requirement.value.key = proof ∧
+            requirement.value.expected = .check NativeLean.bodyValidator ∧
+            requirement.value.coverage = .dependencyClosure := by
+  obtain ⟨context, source, contextEq, _, _, _, native, target⟩ :=
+    selectUses_success_source member selected
+  exact ⟨context, contextEq, by simp [native], selectTarget_native_requirements target⟩
+
+/-- Finalization retains the same selected edges: a successful public snapshot
+edge has the exact target contract selected from the pre-wiring collection.
+This does not yet assert preservation of those contracts in the final registry. -/
+theorem finish_use_success_contract (accepted : finish collected = .ok snapshot)
+    (member : edge ∈ snapshot.uses) (selected : edge.selected = .ok keys) :
+    ∃ context, edge.context = some context ∧ context.language = `lean ∧
+      ∃ model, TargetSelection.Contract (Collected.input collected) context edge.reference.label model ∧
+        keys = canonical (model.declarations.flatMap (·.required)) := by
+  rw [finish_uses accepted] at member
+  exact selectUses_success_contract member selected
 
 end Informal.Realizations.Capture
