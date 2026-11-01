@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.DependencyLaws
+import VersoBlueprint.Realizations.Capture.UseLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -226,3 +226,14 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_local_dependency_selection_for_contract
 #print axioms Informal.Realizations.Capture.evaluate_native_dependencies_justified
 #print axioms Informal.Realizations.Capture.evaluate_failed_native_dependency_incomplete
+
+-- Every collected use reaches its actual context-specific selection or diagnostic.
+#print axioms Informal.Realizations.Capture.useRef_mergeByLabel_labels
+#print axioms Informal.Realizations.Capture.UseSelection.Matches
+#print axioms Informal.Realizations.Capture.UseSelection.ContextFor
+#print axioms Informal.Realizations.Capture.selectUses_in_context
+#print axioms Informal.Realizations.Capture.selectUses_without_context
+#print axioms Informal.Realizations.Capture.finish_use_in_context
+#print axioms Informal.Realizations.Capture.finish_use_without_context
+#print axioms Informal.Realizations.Capture.finish_use_in_native_scope
+#print axioms Informal.Realizations.Capture.finish_collected_use_justified

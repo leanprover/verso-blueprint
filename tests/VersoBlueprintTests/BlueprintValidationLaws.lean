@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.DependencyLaws
+import VersoBlueprint.Realizations.Capture.UseLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -233,3 +233,74 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
     exact False.elim (unsupported requirement requirementMember evidence evidenceMember key fits)
 
 end VersoBlueprintTests.ValidationLaws
+
+namespace VersoBlueprintTests.CaptureUseCoverage
+open Lean Informal Informal.Realizations Informal.Translations Informal.SourceData
+
+-- Exercise the real private selector with synthetic collected input. No provider
+-- reports are fabricated as facts about actual source files or declarations.
+run_cmd do
+  let env ← getEnv
+  let some owner := env.getModuleIdxFor? ``Capture.evaluate
+    | throwError "Capture implementation must be imported"
+  for (name, _) in env.constants.toList do
+    if env.getModuleIdxFor? name == some owner then
+      if let some user := privateToUserName? name then
+        if (`Informal.Realizations.Capture.Collected).isPrefixOf user ||
+            user == `Informal.Realizations.Capture.selectUses then
+          Elab.Command.modifyScope fun scope => { scope with
+            openDecls := .explicit (user.replacePrefix `Informal.Realizations.Capture .anonymous) name :: scope.openDecls }
+
+private def reference : Data.UseRef := { label := `target }
+private def automatic : Data.UseRef := { reference with origin := .automatic, intent := .technical }
+private def authoredUse : UseDeclaration := {
+  node := `source, facet := `statement, reference }
+private def model (name language project : Name) : Contribution Realization := {
+  origin := { id := name, moduleName := `UseCoverageFixture }
+  value := { key := ⟨`source, name⟩, context := ⟨language, project⟩ } }
+
+-- Both orderings preserve the target while manual metadata supersedes automatic
+-- metadata. The coverage theorem deliberately does not promise payload equality.
+#guard Data.UseRef.mergeByLabel #[] #[automatic, reference] == #[reference]
+#guard Data.UseRef.mergeByLabel #[] #[reference, automatic] == #[reference]
+
+private def collection (uses : Array UseDeclaration) : Collected :=
+  Collected.mk { realizations := #[model `first `lean `projectA,
+    model `second `rust `projectB, model `third `lean `projectA] } #[] {} uses #[]
+
+#eval show IO Unit from do
+  let collected := collection #[{ authoredUse with reference := automatic }, authoredUse, authoredUse]
+  let edges := selectUses collected
+  unless edges.size == 2 &&
+      (edges.map (·.context)).contains (some ⟨`lean, `projectA⟩) &&
+      (edges.map (·.context)).contains (some ⟨`lean, `projectB⟩) do
+    throw <| IO.userError "A collected use lost a project or duplicated its scope/context"
+  for edge in edges do
+    unless edge.source == `source && edge.realization == none &&
+        edge.facet == `statement && edge.reference == reference do
+      throw <| IO.userError "Selection changed the source scope, target, or manual metadata"
+    match edge.selected with
+    | .ok _ => throw <| IO.userError "An absent target acquired a contract"
+    | .error diagnostic =>
+      unless diagnostic.code == "missing-target" do
+        throw <| IO.userError "An actual target selection failure was dropped"
+  let restricted := selectUses (collection #[{ authoredUse with realization := some `second, facet := `proof }])
+  let some restrictedEdge := restricted[0]?
+    | throw <| IO.userError "The restricted use disappeared"
+  unless restricted.size == 1 && restrictedEdge.context == some ⟨`lean, `projectB⟩ &&
+      restrictedEdge.realization == some `second && restrictedEdge.facet == `proof do
+    throw <| IO.userError "Explicit realization/facet selection changed its scope"
+  let missing := selectUses (collection #[{ authoredUse with realization := some `absent }])
+  let some missingEdge := missing[0]?
+    | throw <| IO.userError "The missing-context use disappeared"
+  unless missing.size == 1 && missingEdge.context == none &&
+      missingEdge.reference == reference do
+    throw <| IO.userError "A use without a matching source context disappeared"
+  match missingEdge.selected with
+  | .ok _ => throw <| IO.userError "Missing source context acquired a contract"
+  | .error diagnostic =>
+    unless diagnostic.code == "missing-source-context" && diagnostic.subject == "source" &&
+        diagnostic.message == "Dependency has no stored source project context" do
+      throw <| IO.userError "Missing source context lost its diagnostic"
+
+end VersoBlueprintTests.CaptureUseCoverage

@@ -343,8 +343,8 @@ edge's returned array.
 existing exact `finish_uses` equation. Its target-contract statement is still about
 the collection **before dependency wiring**. No global admission premise is added
 for that collection. The following results extend this connection to the final
-registry. These remain forward guarantees for emitted edges, not an edge-inventory
-completeness theorem.
+registry. These selector laws alone are forward guarantees for emitted edges,
+not an edge-inventory completeness theorem.
 
 ## Selected contracts survive wiring and final admission
 
@@ -439,9 +439,9 @@ adds no runtime state or alternative identity scheme. The lower-level
 The proof test composes the public evaluator theorem with a failed scoped edge to
 obtain actual unavailable evidence, without assuming that any gate already exists.
 
-Creation coverage now starts at the selected edge inventory. Showing that every
-intended authored use reaches that inventory, and connecting ordinary provider
-collection to all eligible native contracts, remain separate. The composition below
+Creation coverage starts at the selected edge inventory. The collected-use laws
+below establish that every collected use reaches that inventory. Earlier producer
+collection and ordinary-contract coverage remain separate. The composition below
 combines creation and wiring with prerequisite evidence soundness,
 keeping selection success distinct from completion of the selected targets.
 
@@ -482,6 +482,50 @@ This is a conditional soundness theorem for the real pure evaluator and its acce
 selected-edge inventory. It does not prove authored-use inventory completeness,
 provider authenticity, mathematical truth of reported proofs, or final cached
 completion of every prerequisite. Production behavior and stores are unchanged.
+
+## Every collected use reaches selection
+
+`Realizations/Capture/UseLaws.lean` proves positive coverage through the production
+`selectUses` loops. `useRef_mergeByLabel_labels` establishes exact target-label
+union: reference merging can replace automatic metadata with manual metadata,
+but cannot lose a target or add an unrelated one. This is a label-membership law,
+not a promise to retain every duplicate reference payload.
+
+`selectUses_in_context` starts with a member of the original collected-use array.
+For every matching source model's project it yields an actual selected edge with
+the same node, optional realization restriction, facet, and target label. Its
+result is exactly the production `selectTarget` result, including failures. Scope
+deduplication and context canonicalization cannot erase this coverage. The context
+is explicitly the source model's **project projected into Lean**; it need not be
+the source model's original language context. `UseSelection.ContextFor` records
+that policy and the optional realization restriction.
+
+`selectUses_without_context` proves that a use with no matching source model still
+emits an edge, with no context and the exact `missing-source-context` diagnostic.
+The tests exercise duplicate automatic/manual references, duplicate scopes and
+projects, two distinct projects, a non-Lean source language, realization/facet
+restrictions, target failure, and missing source context.
+
+`finish_use_in_context` and `finish_use_without_context` retain these edges in the
+successful final snapshot. Model matching may be checked against that snapshot;
+the selection result remains the original pre-wiring selector result. The proof
+does not silently rerun selection against the finalized input.
+
+`finish_use_in_native_scope` places a collected use in the exact edge scope of an
+accepted native contract. Statement scopes consume statement uses; proof scopes
+consume both facets. `finish_collected_use_justified` composes this existence result
+with `evaluate_native_dependencies_justified`: if that native parent is complete,
+the use has a successful, retained target selection and every returned obligation
+is a prerequisite of that parent with fitting original evidence at its current
+binding. It assumes neither an emitted edge, a nonempty selected scope, nor an
+existing gate. It relates successful finalization of the supplied collection to
+the actual successful pure evaluator's output.
+
+The earlier boundary remains explicit: these laws start with **collected** uses.
+They do not yet show that every use in the producer's accepted source inventory is
+collected, nor that every eligible ordinary native contract is collected. Those
+connections belong to `collectOrdinary` and plan construction. No production store,
+evaluator, identity scheme, or behavior was added for these proofs.
 
 ## Prerequisite selection is independent of completion
 
@@ -614,8 +658,9 @@ collected recipe output after dependency wiring, not the original provider batch
 the native check and authored proof observation paths are now covered above.
 The joint authored requirement/semantic-input projection is preserved across this
 boundary. Generated dependency-selection provenance, outcomes, wiring, and positive
-gate creation from the selected edge inventory are covered above. Completeness of
-the authored-use inventory and ordinary provider collection remains separate.
+gate creation and collected-use selection coverage are covered above. Completeness
+of producer-to-collected-use inventory and ordinary provider collection remains
+separate.
 
 ## Exact admission across registration histories
 
@@ -648,8 +693,8 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` additionally connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence. | Authored-use inventory coverage, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Authored-use and ordinary collection coverage, plan construction, and the real provider interpreter; exact target selection, wiring and gate creation from selected edges are included. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `finish_collected_use_justified` starts from collected uses. | Producer-to-collected-use inventory coverage, final-cache closure and the converse completeness direction remain separate. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Producer-to-collected-use and ordinary-contract coverage, plan construction, and the real provider interpreter; collected-use selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -675,10 +720,12 @@ Successful emitted edges are now connected to the target-selector contract and
 its retention in the final registry; generated gates and their selected keys are
 wired into native-parent prerequisites. Eligible native contracts now produce gates
 for every nonempty selected edge scope. Their completed parents now justify every
-selected target obligation by fitting original evidence. Next, account for
-authored-edge inventory and actual provider/transaction routes. Preserve the joint
-authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these three
-contracts is not the objective.
+selected target obligation by fitting original evidence. Every collected use now
+reaches its matching selection contexts or an explicit missing-context diagnostic.
+Next, connect the accepted source-use inventory to collection and account for
+actual provider/transaction routes. Preserve the joint authored projection as those
+routes evolve. Growing a list of local lemmas without strengthening one of these
+three contracts is not the objective.
 
 ## Remaining boundary
 
