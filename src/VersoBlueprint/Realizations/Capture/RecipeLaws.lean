@@ -168,12 +168,14 @@ def Source (uses : Array SelectedUse) (origin : Origin) (key : RequirementKey)
   ∃ realization context object name, GeneratedAt uses realization context object name origin key observation
 
 /-- A generated selection gate is a prerequisite of its collector-owned native
-contract, alongside every successfully selected key in its exact edge scope. -/
+contract, alongside every successfully selected key in its exact edge scope.
+The retained model supplies that scope's context. -/
 def Wired (input : Input) (uses : Array SelectedUse) (origin : Origin) (gate : RequirementKey)
     (observation : CheckObservation) : Prop :=
   ∃ realization context object name validator,
     GeneratedAt uses realization context object name origin gate observation ∧
     (name, validator) ∈ #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] ∧
+    (∃ model ∈ input.realizations.map (·.value), model.key = realization ∧ model.context = context) ∧
     ∃ parent ∈ input.requirements,
       parent.value.key = ⟨.declaration realization object, name⟩ ∧
       parent.origin = (contribution `requirement (BindingEncoding.requirementKey parent.value.key) ()).origin ∧
@@ -183,11 +185,12 @@ def Wired (input : Input) (uses : Array SelectedUse) (origin : Origin) (gate : R
         ∀ key ∈ keys, key ∈ parent.value.prerequisites
 
 private theorem wired_mono {origin : Origin} (extension : PreservesContracts before after)
+    (models : after.realizations = before.realizations)
     (wired : Wired before uses origin gate observation) : Wired after uses origin gate observation := by
-  obtain ⟨realization, context, object, name, validator, generated, facet,
+  obtain ⟨realization, context, object, name, validator, generated, facet, model,
     parent, member, keyEq, origin, expected, coverage, gateMember, selected⟩ := wired
   obtain ⟨next, nextMember, nextOrigin, nextKey, nextExpected, nextCoverage, prerequisites⟩ := extension.1 parent member
-  refine ⟨realization, context, object, name, validator, generated, facet,
+  refine ⟨realization, context, object, name, validator, generated, facet, by simpa only [models] using model,
     next, nextMember, nextKey.trans keyEq, ?_, nextExpected.trans expected,
     nextCoverage.trans coverage, prerequisites gate gateMember, ?_⟩
   · simpa only [nextKey] using nextOrigin.trans origin
@@ -625,7 +628,7 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
   unfold connectUses
   simp only [Id.run, bind, pure]
   apply id_array_loop_invariant _ invariant _ ⟨rfl, ⟨rfl, rfl, preservesContracts_refl _⟩, fun _ _ _ _ valid => valid, ⟨rfl, fun _ member => Or.inl member⟩⟩
-  intro model member current prior
+  intro model modelMember current prior
   by_cases foreign : (model.context.language != `lean) = true
   · rw [ite_eq_left foreign]
     exact prior
@@ -669,7 +672,7 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
               · rcases prior.2.2.2.2 item previous with original | wired
                 · exact Or.inl original
                 · obtain ⟨observation, observed, wired⟩ := wired
-                  exact Or.inr ⟨observation, observed, DependencySelection.wired_mono extension wired⟩
+                  exact Or.inr ⟨observation, observed, DependencySelection.wired_mono extension rfl wired⟩
               · refine Or.inr ⟨_, rfl, ?_⟩
                 obtain ⟨record, recordMember, recordKey, recordOrigin, recordExpected, recordCoverage⟩ :=
                   nativeContracts_source (Collected.input collected) (by exact (beq_iff_eq.mp owns))
@@ -678,9 +681,13 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
                 have sameKey := parentKey.trans recordKey
                 refine ⟨model.key, model.context, declaration.object, entry.1, entry.2,
                   ⟨by simpa using foreign, ?_, rfl, rfl, by simpa [DependencySelection.edges] using edges, rfl⟩,
-                  entryMember, _, Array.mem_map.mpr ⟨parent, ?_, rfl⟩, ?_⟩
+                  entryMember, ?_, _, Array.mem_map.mpr ⟨parent, ?_, rfl⟩, ?_⟩
                 · simp at entryMember
                   rcases entryMember with rfl | rfl <;> simp
+                · refine ⟨model, ?_, rfl, rfl⟩
+                  change model ∈ (Collected.input current).realizations.map (·.value)
+                  rw [prior.2.1.2.1]
+                  exact modelMember
                 · simp only [recordObservation, Array.mem_push]
                   exact Or.inl parentMember
                 · simp only [sameKey, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte]
@@ -718,7 +725,7 @@ private theorem connectUses_properties (collected : Collected) (uses : Array Sel
               rcases prior.2.2.2.2 item member with original | wired
               · exact Or.inl original
               · obtain ⟨observation, observed, wired⟩ := wired
-                exact Or.inr ⟨observation, observed, DependencySelection.wired_mono extension wired⟩
+                exact Or.inr ⟨observation, observed, DependencySelection.wired_mono extension rfl wired⟩
           constructor
           · intro record member
             refine ⟨_, Array.mem_map.mpr ⟨record, member, rfl⟩, ?_⟩
@@ -1020,7 +1027,7 @@ theorem evaluate_complete_dependency_wiring {p : Plan} {observations : Observati
   | check observation =>
     simp only [observed, Observation.Satisfies, expected] at suitable
     obtain ⟨realization, context, object, name, validator,
-      ⟨native, _, gateEq, _, nonempty, observationEq⟩, facet,
+      ⟨native, _, gateEq, _, nonempty, observationEq⟩, facet, _,
       parent, parentMember, parentKey, _, parentExpected, parentCoverage, gateMember, selected⟩ :=
       evaluate_dependency_selection_wired evaluated member observed suitable.1
     have passed := suitable.2.2.2

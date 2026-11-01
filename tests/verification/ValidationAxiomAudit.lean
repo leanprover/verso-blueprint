@@ -3,8 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.CreationLaws
-import VersoBlueprint.Realizations.Capture.TargetLaws
+import VersoBlueprint.Realizations.Capture.DependencyLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -221,3 +220,9 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.finish_native_dependency_gate_created
 #print axioms Informal.Realizations.Capture.finish_closure_contract_source
 #print axioms Informal.Realizations.Capture.evaluate_native_dependency_gate_created
+
+-- Completed native parents justify exact scoped target obligations.
+#print axioms Informal.Realizations.Capture.DependencySelection.Wired.for_contract
+#print axioms Informal.Realizations.Capture.evaluate_local_dependency_selection_for_contract
+#print axioms Informal.Realizations.Capture.evaluate_native_dependencies_justified
+#print axioms Informal.Realizations.Capture.evaluate_failed_native_dependency_incomplete

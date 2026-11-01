@@ -3,8 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.CreationLaws
-import VersoBlueprint.Realizations.Capture.TargetLaws
+import VersoBlueprint.Realizations.Capture.DependencyLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -169,7 +168,8 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
 
 -- A failed selected edge cannot disappear as an absent gate. The positive
 -- theorem supplies real retained evidence even without any successful selection.
--- This consumer uses public output fields, not collection-loop witnesses.
+-- This consumer uses public output fields, not collection-loop witnesses, and
+-- checks that the unavailable dependency blocks the owning native contract.
 example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
     (evaluated : Capture.evaluate p observations = .ok snapshot)
     (modelMember : model ∈ snapshot.registry.contributions.realizations.map (·.value))
@@ -183,9 +183,12 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
     (coverage : record.value.coverage = .dependencyClosure)
     (edgeMember : edge ∈ Capture.DependencySelection.edges snapshot.uses model.key model.context name)
     (failed : edge.selected = .error diagnostic) :
+    (snapshot.registry.resultForRequirement record.value.key).complete = false ∧
     ∃ evidence ∈ snapshot.registry.contributions.evidence, ∃ observation,
       evidence.value.requirement = ⟨.declaration model.key declaration.object, name ++ `dependencySelection⟩ ∧
       evidence.value.observation = .check observation ∧ observation.outcome = .unavailable := by
+  refine ⟨Capture.evaluate_failed_native_dependency_incomplete evaluated modelMember nativeContext
+    declarationMember facet recordMember key origin expected coverage edgeMember failed, ?_⟩
   have nonempty := Array.isEmpty_eq_false_iff_exists_mem.mpr ⟨edge, edgeMember⟩
   obtain ⟨_, _, _, _, evidence, member, observation, gate, observed, generated, _⟩ :=
     Capture.evaluate_native_dependency_gate_created evaluated modelMember nativeContext
@@ -195,5 +198,38 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
   refine ⟨evidence, member, observation, gate, observed, ?_⟩
   rw [generated.2.2.2.2.2, unavailable]
   rfl
+
+-- Successful selection is not enough: a selected obligation without fitting
+-- original evidence blocks its native parent even if a selection gate can pass.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (modelMember : model ∈ snapshot.registry.contributions.realizations.map (·.value))
+    (nativeContext : model.context.language = `lean)
+    (declarationMember : declaration ∈ model.declarations)
+    (facet : (name, validator) ∈ #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)])
+    (parentMember : parent ∈ snapshot.registry.contributions.requirements)
+    (parentKey : parent.value.key = ⟨.declaration model.key declaration.object, name⟩)
+    (origin : Capture.DependencySelection.CollectorOwned parent.origin parent.value.key)
+    (expected : parent.value.expected = .check validator)
+    (coverage : parent.value.coverage = .dependencyClosure)
+    (edgeMember : edge ∈ Capture.DependencySelection.edges snapshot.uses model.key model.context name)
+    (success : edge.selected = .ok keys) (selectedMember : selected ∈ keys)
+    (unsupported : ∀ requirement ∈ snapshot.registry.contributions.requirements,
+      ∀ evidence ∈ snapshot.registry.contributions.evidence,
+        requirement.value.key = selected →
+        ¬ evidence.value.Fits requirement.value ((snapshot.registry.bindingFor selected).getD "")) :
+    (snapshot.registry.resultForRequirement parent.value.key).complete = false := by
+  cases complete : (snapshot.registry.resultForRequirement parent.value.key).complete with
+  | false => rfl
+  | true =>
+    obtain ⟨_, _, _, _, _, justified⟩ := Capture.evaluate_native_dependencies_justified evaluated
+      modelMember nativeContext declarationMember facet parentMember parentKey origin expected coverage
+      (Array.isEmpty_eq_false_iff_exists_mem.mpr ⟨edge, edgeMember⟩) complete
+    obtain ⟨actual, selectedOk, _, obligations⟩ := justified edge edgeMember
+    have same := Except.ok.inj (selectedOk.symm.trans success)
+    rw [same] at obligations
+    obtain ⟨_, requirement, requirementMember, evidence, evidenceMember, _, key, fits⟩ :=
+      obligations selected selectedMember
+    exact False.elim (unsupported requirement requirementMember evidence evidenceMember key fits)
 
 end VersoBlueprintTests.ValidationLaws
