@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RecipeLaws
+import VersoBlueprint.Realizations.Capture.CreationLaws
 import VersoBlueprint.Realizations.Capture.TargetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
@@ -214,3 +214,10 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.DependencySelection.Wired.source
 #print axioms Informal.Realizations.Capture.evaluate_dependency_selection_wired
 #print axioms Informal.Realizations.Capture.evaluate_complete_dependency_wiring
+
+-- Positive creation, including unavailable gates; raw input need not be admitted.
+#print axioms Informal.Realizations.Capture.DependencySelection.CollectorOwned
+#print axioms Informal.Realizations.Capture.finish_original_expectations_agree
+#print axioms Informal.Realizations.Capture.finish_native_dependency_gate_created
+#print axioms Informal.Realizations.Capture.finish_closure_contract_source
+#print axioms Informal.Realizations.Capture.evaluate_native_dependency_gate_created

@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RecipeLaws
+import VersoBlueprint.Realizations.Capture.CreationLaws
 import VersoBlueprint.Realizations.Capture.TargetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
@@ -166,5 +166,34 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
     (snapshot.assessment_complete_result complete)).2 key selected
   have unfinished := admit_cycle_incomplete (Capture.evaluate_admitted evaluated) cycle
   simp [unfinished] at required
+
+-- A failed selected edge cannot disappear as an absent gate. The positive
+-- theorem supplies real retained evidence even without any successful selection.
+-- This consumer uses public output fields, not collection-loop witnesses.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (modelMember : model ∈ snapshot.registry.contributions.realizations.map (·.value))
+    (nativeContext : model.context.language = `lean)
+    (declarationMember : declaration ∈ model.declarations)
+    (facet : (name, validator) ∈ #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)])
+    (recordMember : record ∈ snapshot.registry.contributions.requirements)
+    (key : record.value.key = ⟨.declaration model.key declaration.object, name⟩)
+    (origin : Capture.DependencySelection.CollectorOwned record.origin record.value.key)
+    (expected : record.value.expected = .check validator)
+    (coverage : record.value.coverage = .dependencyClosure)
+    (edgeMember : edge ∈ Capture.DependencySelection.edges snapshot.uses model.key model.context name)
+    (failed : edge.selected = .error diagnostic) :
+    ∃ evidence ∈ snapshot.registry.contributions.evidence, ∃ observation,
+      evidence.value.requirement = ⟨.declaration model.key declaration.object, name ++ `dependencySelection⟩ ∧
+      evidence.value.observation = .check observation ∧ observation.outcome = .unavailable := by
+  have nonempty := Array.isEmpty_eq_false_iff_exists_mem.mpr ⟨edge, edgeMember⟩
+  obtain ⟨_, _, _, _, evidence, member, observation, gate, observed, generated, _⟩ :=
+    Capture.evaluate_native_dependency_gate_created evaluated modelMember nativeContext
+      declarationMember facet recordMember key origin expected coverage nonempty
+  have failure := Capture.DependencySelection.mem_failures _ diagnostic |>.mpr ⟨edge, edgeMember, failed⟩
+  have unavailable := Array.isEmpty_eq_false_iff_exists_mem.mpr ⟨diagnostic, failure⟩
+  refine ⟨evidence, member, observation, gate, observed, ?_⟩
+  rw [generated.2.2.2.2.2, unavailable]
+  rfl
 
 end VersoBlueprintTests.ValidationLaws

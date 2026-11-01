@@ -409,10 +409,41 @@ not a claim that the parent or targets are complete. The preservation invariant
 also establishes that later wiring iterations cannot remove previously retained
 prerequisites.
 
-These are forward guarantees for **generated gates**. They do not yet show that
-every eligible native contract with authored uses generates a gate, or that every
-intended authored use reaches the selected edge inventory. Proving that creation
-coverage, then composing it with prerequisite evidence soundness, is the next step.
+## Eligible native contracts produce their gates
+
+`Realizations/Capture/CreationLaws.lean` adds the positive direction.
+`evaluate_native_dependency_gate_created` starts from an accepted snapshot's native
+model, one of its declarations, and a collector-owned statement/proof contract with
+dependency-closure coverage. If the exact selected edge scope is nonempty, the final
+registry contains the corresponding dependency-selection requirement and retained
+observation at its current binding. Gate existence is a conclusion, not a premise.
+
+The observation satisfies `DependencySelection.GeneratedAt` for that same model,
+declaration and facet: successful selection produces a passed check; any failed
+selection produces an unavailable check. An unavailable edge therefore cannot
+silently become an absent gate. This does not certify the native parent or targets,
+and an empty edge scope does not require a gate.
+
+The proof follows the actual ownership-index fold and nested model/declaration/facet
+loops. `finish_original_expectations_agree` derives the consistency needed by the
+index from successful final admission; it does not require the raw collection to
+be admitted before wiring. `finish_closure_contract_source` proves that every final
+closure contract comes from the original collection with origin, identity and
+expectation preserved. Newly generated gates have subject coverage, so they cannot
+satisfy that source premise accidentally. These facts lift the creation theorem
+through the real `evaluate` call without exposing private loop witnesses to callers.
+
+`DependencySelection.CollectorOwned` names the existing complete-origin test; it
+adds no runtime state or alternative identity scheme. The lower-level
+`finish_native_dependency_gate_created` remains available for finalizer reasoning.
+The proof test composes the public evaluator theorem with a failed scoped edge to
+obtain actual unavailable evidence, without assuming that any gate already exists.
+
+Creation coverage now starts at the selected edge inventory. Showing that every
+intended authored use reaches that inventory, and connecting ordinary provider
+collection to all eligible native contracts, remain separate. The next composition
+should combine creation and wiring with prerequisite evidence soundness, keeping
+selection success distinct from completion of the selected targets.
 
 ## Prerequisite selection is independent of completion
 
@@ -544,8 +575,9 @@ laws concern the actual `finish` called by `evaluate`. Their input boundary is t
 collected recipe output after dependency wiring, not the original provider batch;
 the native check and authored proof observation paths are now covered above.
 The joint authored requirement/semantic-input projection is preserved across this
-boundary. Generated dependency-selection provenance and outcomes are covered above;
-completeness of target selection and prerequisite wiring remain separate.
+boundary. Generated dependency-selection provenance, outcomes, wiring, and positive
+gate creation from the selected edge inventory are covered above. Completeness of
+the authored-use inventory and ordinary provider collection remains separate.
 
 ## Exact admission across registration histories
 
@@ -579,7 +611,7 @@ provide a useful structure:
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
 | **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` composes admission, selected-contract and prerequisite evidence soundness, and accessibility for the actual rendering assessment. | Final-cache closure and the converse completeness direction require separate traversal coverage/order proofs. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Target-selection/wiring completeness, plan construction, and the real provider interpreter; authored joint projection and generated-check provenance are included. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Authored-use and ordinary collection coverage, plan construction, and the real provider interpreter; exact target selection, wiring and gate creation from selected edges are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -603,9 +635,10 @@ the graph traversal recognizes every satisfiable contract.
 
 Successful emitted edges are now connected to the target-selector contract and
 its retention in the final registry; generated gates and their selected keys are
-wired into native-parent prerequisites. Next, account for gate/edge creation coverage
-and actual provider/transaction
-routes. Preserve the joint authored projection as those routes
+wired into native-parent prerequisites. Eligible native contracts now produce gates
+for every nonempty selected edge scope. Next, compose these guarantees with
+prerequisite evidence soundness, then account for authored-edge inventory and actual
+provider/transaction routes. Preserve the joint authored projection as those routes
 evolve. Growing a list of local lemmas without strengthening one of these three
 contracts is not the objective.
 
