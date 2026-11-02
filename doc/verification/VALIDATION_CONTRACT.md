@@ -444,8 +444,8 @@ Creation coverage starts at the selected edge inventory. The collected-use laws
 below establish that every collected use reaches that inventory, and the collection
 laws connect those uses to accepted ordinary plan entries. The planner laws then
 preserve the raw node/use inventory. The native-contract laws below establish
-positive requirement coverage; provider-request correctness and final-model
-coverage remain separate. The composition below
+positive requirement coverage, and the model laws connect the planned source
+inventory to final model membership. Provider-request correctness remains separate. The composition below
 combines creation and wiring with prerequisite evidence soundness,
 keeping selection success distinct from completion of the selected targets.
 
@@ -598,8 +598,9 @@ from the generated plan.
 
 The raw-use theorem retains explicit model/declaration/parent eligibility
 premises. The following checkpoint derives parent-contract existence directly
-from the declaration plan. Model coverage, provider-request correctness, provider
-authenticity and the environment transaction interpreter remain separate.
+from the declaration plan. The model-coverage checkpoint then removes final
+model/declaration premises. Provider-request correctness, provider authenticity
+and the environment transaction interpreter remain separate.
 
 ## Ordinary native requirements are created and retained
 
@@ -631,7 +632,7 @@ use/completion theorem. It no longer asks the caller for a parent record, its
 membership, collector origin, validator or coverage. It derives that parent and
 returns its retained target obligations and fitting original evidence. It still
 assumes the final model/declaration and their correspondence with the plan. The
-next step is positive model/declaration coverage, including authored enrichment.
+following model-coverage theorem discharges those output-facing premises.
 
 The proof test consumes the public creation theorem without private witnesses.
 Executable regressions run the actual planner/evaluator with two declarations,
@@ -639,6 +640,46 @@ both declaration orders, authored additions, and all four combinations of
 available/unavailable source preparation and checking. Both contracts survive
 all combinations; completion requires both source and check availability in this
 fixture. Supplied reports are explicitly synthetic, not authenticated Lean facts.
+
+## Planned model identities reach public lookup
+
+`Realizations/Capture/ModelLaws.lean` proves `collectOrdinary_modelInventory`:
+ordinary collection emits exactly the joint inventory prescribed by its planned
+realizations. Each entry keeps the producer origin, realization key, source context,
+and declaration-object array together. Model order and multiplicity are retained;
+declaration objects follow the actual `nativeNames` source union, which already
+removes repeated typed names. Documents and required-key arrays are deliberately
+outside this identity projection because later stages enrich them.
+
+The proof follows both source enrichment and native-check result branches.
+`collectAuthored_modelInventory` preserves every prior joint entry while authored
+expected goals extend required arrays and authored batches add other models.
+`assemble_modelInventory` and `evaluate_modelInventory` carry that inclusion through
+finalization. `evaluate_model_created` exposes the final original contribution,
+exact key/context/object array, and the matching **public registry lookup**.
+No unrelated model can supply a declaration merely because its name matches.
+
+`evaluate_declared_use_justified` composes model coverage with native-parent
+creation and dependency completion. It assumes no final model, declaration,
+parent requirement or selected edge. Starting with a declaration in the supplied
+plan's source union and declaration steps, successful evaluation and parent
+completion yield the parent contract, matching selected edge, retained target
+obligations, prerequisite membership and fitting original evidence.
+
+The remaining input-side premises are explicit: source contexts agree, the
+context is Lean, the use is in scope, and the declaration occurs both in the
+source union and declaration-step array. This theorem does not yet prove that
+`plan` constructs that correspondence from every raw accepted source. Nor does
+identity preservation alone prove required-key membership for every declaration
+or facet; native/expected-key retention is exercised by regression tests, with
+its general positive-coverage theorem still a separate target.
+
+Tests cover single and multiple declarations, reversed source order, all four
+source/check availability combinations, additional authored foreign models, and
+an authored expected goal that extends the ordinary declaration. They check the
+public lookup's exact key, context and declaration objects, plus retained native
+and expected required keys. The symbolic completion consumer supplies no final
+output-membership witnesses. All supplied provider results remain synthetic.
 
 ## Prerequisite selection is independent of completion
 
@@ -773,8 +814,9 @@ The joint authored requirement/semantic-input projection is preserved across thi
 boundary. Generated dependency-selection provenance, outcomes, wiring, and positive
 gate creation and ordinary-plan-use collection/selection coverage are covered above.
 Positive ordinary native-requirement collection and retention, and raw node/use
-preservation, are covered above. Provider-request construction and final
-model/declaration coverage remain separate.
+preservation, are covered above, along with final model/declaration identity.
+Planner source/declaration correspondence, selected required-key coverage and
+provider-request correctness remain separate.
 
 ## Exact admission across registration histories
 
@@ -807,8 +849,8 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_planned_use_justified` derives the parent requirement from a planned declaration. | Positive final-model/declaration coverage, provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction, final-model/declaration coverage and the real provider interpreter; ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_declared_use_justified` derives final model/declaration membership and the parent requirement from the supplied source/declaration plan. | Planner source/declaration correspondence, selected required-key coverage, provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction and the real provider interpreter; model/declaration identity preservation, ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -838,9 +880,11 @@ selected target obligation by fitting original evidence. Every ordinary plan use
 survives collection and reaches its matching selection contexts or an explicit
 missing-context diagnostic. The actual planner now preserves raw accepted nodes
 and their uses. Planned declarations create the exact ordinary native requirements,
-which survive authored enrichment and finalization. Next, connect planned
-realizations/declarations to final model membership, then account for provider-request
-correctness and actual provider/transaction routes.
+which survive authored enrichment and finalization. Joint model identity now
+reaches the final public lookup, including after authored enrichment. Next, connect
+the actual planner's source and declaration-step inventories, prove selected
+required-key coverage, and account for provider-request correctness and actual
+provider/transaction routes.
 Preserve the joint authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these
 three contracts is not the objective.
 

@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.NativeContractLaws
+import VersoBlueprint.Realizations.Capture.ModelLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -263,3 +263,11 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_nativeRequirements
 #print axioms Informal.Realizations.Capture.evaluate_native_contract_created
 #print axioms Informal.Realizations.Capture.evaluate_planned_use_justified
+
+-- Joint model inventory, authored enrichment and final membership creation.
+#print axioms Informal.Realizations.Capture.collectOrdinary_modelInventory
+#print axioms Informal.Realizations.Capture.collectAuthored_modelInventory
+#print axioms Informal.Realizations.Capture.assemble_modelInventory
+#print axioms Informal.Realizations.Capture.evaluate_modelInventory
+#print axioms Informal.Realizations.Capture.evaluate_model_created
+#print axioms Informal.Realizations.Capture.evaluate_declared_use_justified

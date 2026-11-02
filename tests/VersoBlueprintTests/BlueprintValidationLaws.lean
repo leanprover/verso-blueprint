@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.NativeContractLaws
+import VersoBlueprint.Realizations.Capture.ModelLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -451,21 +451,34 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
     realization, context, facets := #[`statement, `proof]
     reference := { written := name, canonical := name } }
   let extra : Requirement := { key := ⟨.realization realization, `authoredExtra⟩, expected := .check `extraValidator }
-  for associations in #[associations, associations.reverse] do
+  for associations in #[associations, associations.reverse, associations.extract 0 1] do
+    let expectedGoal := associations.size == 1
+    let specification : Document := { key := ⟨context, "MOCK-specification.lean"⟩, text := "MOCK specification" }
+    let extraModel : Realization := { key := ⟨realization.node, `foreign⟩, context := ⟨`rust, `foreignProject⟩ }
     let accepted : Environment.RegisteredNode := {
       origin := `ContractFixture, modules := #[`ContractFixture], nativeAssociations := associations }
     let raw : Capture.Raw := {
       nodes := #[(realization.node, accepted)], pending := ({} : NameSet).insert realization.node
       facts := [], initialIssues := #[]
       authored := #[{
-        origin := { id := `authoredExtra, moduleName := `ContractFixture }
-        project := context.project, authored := { requirements := #[extra] } }] }
+        origin := { id := `authoredExtra, moduleName := `ContractFixture, source := specification.key.path }
+        project := context.project, authored := { requirements := #[extra], realizations := #[extraModel] }
+        nativeGoals := if expectedGoal then #[(realization.node, `mockExpected)] else #[] }] }
     let p := Capture.plan raw
-    unless p.native.size == 2 && p.checks.size == 2 do
+    unless p.native.size == associations.size && p.checks.size == associations.size &&
+        p.expected.size == (if expectedGoal then 1 else 0) do
       throw <| IO.userError "Native contract fixture has the wrong request inventory"
     for sourceAvailable in #[true, false] do
       for checkAvailable in #[true, false] do
+        let witness : ObjectKey := ⟨context, associations[0]!.reference.canonical.toString⟩
+        let goalDocuments := canonical ((if sourceAvailable then #[({ context, path := witness.native ++ ".lean" } : DocumentKey)] else #[]).push specification.key)
+        let goal : Goal := { context, fingerprint := "MOCK expected proposition", documents := goalDocuments }
         let observations : Capture.Observations p := {
+          documents := p.documents.mapIdx fun handle _ => ⟨handle, (specification, #[])⟩
+          specifications := p.specifications.mapIdx fun handle _ => ⟨handle, { document := specification, result := .ok () }⟩
+          expected := p.expected.mapIdx fun handle _ => ⟨handle, {
+            witness, documents := goalDocuments, result := .ok {
+              goal, observation := { witness, actualType := some goal, outcome := .passed, coverage := .dependencyClosure } } }⟩
           native := p.native.mapIdx fun handle request => ⟨handle,
             if !sourceAvailable then .error issue else .ok {
               canonical := request.name, declaration := ⟨context, request.name.toString⟩
@@ -483,9 +496,21 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
                 outcome := .passed, coverage := .dependencyClosure } }⟩ }
         let .ok snapshot := Capture.evaluate p observations
           | throw <| IO.userError "Native contract fixture failed evaluation"
-        unless snapshot.registry.contributions.requirements.size == 5 &&
+        unless snapshot.registry.contributions.requirements.size == 2 * associations.size + 1 + p.expected.size &&
             snapshot.registry.requirement? extra.key == some extra do
           throw <| IO.userError "Authored enrichment replaced an ordinary contract"
+        let some model := snapshot.registry.realization? realization
+          | throw <| IO.userError "Ordinary model disappeared during authored enrichment"
+        unless model.key == realization && model.context == context &&
+            model.declarations.map (·.object) == associations.map (fun association => ⟨context, association.reference.canonical.toString⟩) &&
+            snapshot.registry.realization? extraModel.key == some extraModel do
+          throw <| IO.userError "Model inventory changed or mixed ordinary and authored identities"
+        for declaration in model.declarations do
+          let proof : RequirementKey := ⟨.declaration realization declaration.object, `proof⟩
+          let expected : RequirementKey := ⟨.declaration realization declaration.object, `expectedProof⟩
+          unless declaration.required.contains proof &&
+              declaration.required.contains expected == expectedGoal do
+            throw <| IO.userError "Authored goal enrichment lost the ordinary required key"
         for association in associations do
           for (facet, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
             let key : RequirementKey := ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩, facet⟩
@@ -496,5 +521,27 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
               throw <| IO.userError "Native contract changed identity, validator or coverage"
             unless (snapshot.registry.resultForRequirement key).complete == (sourceAvailable && checkAvailable) do
               throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
+
+-- The composed guarantee consumes source-side plan facts. No final model,
+-- declaration, requirement or selected edge is an assumption in this example.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (useMember : use ∈ p.ordinary.flatMap (·.accepted.uses))
+    (nodeMember : node ∈ p.ordinary) (stepMember : step ∈ node.realizations)
+    (plannedDeclaration : planned ∈ step.declarations)
+    (sourceDeclaration : planned.name ∈ nativeNames step.associations (step.sources.map (·.source)))
+    (contextAgrees : canonical (step.sources.map (·.source.context) ++ step.associations.map (·.context)) = #[context])
+    (native : context.language = `lean)
+    (source : use.node = step.key.node)
+    (restriction : ∀ realization, use.realization = some realization → realization = step.key.name)
+    (complete : (snapshot.registry.resultForRequirement
+      ⟨.declaration step.key ⟨context, planned.name.toString⟩, `proof⟩).complete = true) :
+    ∃ edge ∈ snapshot.uses, Capture.UseSelection.Matches use edge ∧ edge.context = some context ∧
+      ∃ keys, edge.selected = .ok keys ∧ Capture.TargetSelection.Retained snapshot.registry context use.reference.label keys := by
+  obtain ⟨_, _, _, _, _, _, edge, member, aligned, context, keys, selected, retained, _⟩ :=
+    Capture.evaluate_declared_use_justified evaluated useMember nodeMember stepMember plannedDeclaration
+      sourceDeclaration contextAgrees native (name := `proof) (validator := NativeLean.bodyValidator)
+      (by simp) source restriction (Or.inl rfl) complete
+  exact ⟨edge, member, aligned, context, keys, selected, retained⟩
 
 end VersoBlueprintTests.NativeContractCreation
