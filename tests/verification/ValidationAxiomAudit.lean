@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.CollectionLaws
+import VersoBlueprint.Realizations.Capture.PlanLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -246,3 +246,12 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_use_in_context
 #print axioms Informal.Realizations.Capture.evaluate_use_without_context
 #print axioms Informal.Realizations.Capture.evaluate_ordinary_use_justified
+
+-- Actual raw-to-plan preservation and accepted-node lookup connection.
+#print axioms Informal.Realizations.Capture.plan_raw
+#print axioms Informal.Realizations.Capture.plan_ordinary_nodes
+#print axioms Informal.Realizations.Capture.plan_ordinary_uses
+#print axioms Informal.Realizations.Capture.Raw.ofState_use_iff
+#print axioms Informal.Realizations.Capture.evaluate_raw_use_in_context
+#print axioms Informal.Realizations.Capture.evaluate_raw_use_without_context
+#print axioms Informal.Realizations.Capture.evaluate_raw_use_justified

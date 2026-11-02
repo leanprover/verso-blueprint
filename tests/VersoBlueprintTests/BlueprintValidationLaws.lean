@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.CollectionLaws
+import VersoBlueprint.Realizations.Capture.PlanLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -337,36 +337,85 @@ private def providers : Providers Id := Providers.mk
 
 #eval show IO Unit from do
   for nodes in #[usePlan.ordinary, usePlan.ordinary.reverse] do
-    let p := { usePlan with ordinary := nodes }
-    let .ok collected := (assemble providers p).run
-      | throw <| IO.userError "The source-use collection fixture was rejected"
-    unless Collected.uses collected == nodes.flatMap (·.accepted.uses) do
-      throw <| IO.userError "Collection changed original use order, duplicates or metadata"
-    let .ok snapshot := Capture.evaluate p { documents := #[{ handle := 0, result := (document, #[]) }] }
-      | throw <| IO.userError "The ordinary/authored evaluator fixture was rejected"
-    unless snapshot.uses.size == 2 && snapshot.registry.documents.contains document do
-      throw <| IO.userError "Authored source collection dropped a document or changed use scopes"
-    for edge in snapshot.uses do
-      unless edge.reference == reference do
-        throw <| IO.userError "Original manual target metadata did not reach selection"
-      match edge.source, edge.selected with
-      | `source, .error diagnostic =>
-        unless edge.context == some ⟨`lean, `projectB⟩ && edge.facet == `statement &&
-            diagnostic.code == "missing-target" do
-          throw <| IO.userError "Authored model context failed to select the original ordinary use"
-      | `other, .error diagnostic =>
-        unless edge.context == none && edge.facet == `proof &&
-            diagnostic.code == "missing-source-context" do
-          throw <| IO.userError "A context-free ordinary use disappeared"
-      | _, _ => throw <| IO.userError "A use gained an unexpected source or successful selection"
-
--- A consumer starts with an ordinary entry and its accepted source use. No
--- private collection or selection witness is needed in the public statement.
-example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
-    (evaluated : Capture.evaluate p observations = .ok snapshot)
-    (nodeMember : node ∈ p.ordinary) (useMember : use ∈ node.accepted.uses)
+    let generated := Capture.plan { usePlan.raw with
+      nodes := nodes.map (fun step => (step.label, step.accepted))
+      authored := usePlan.authored.map (·.record) }
+    for p in #[{ usePlan with ordinary := nodes }, generated] do
+      let .ok collected := (assemble providers p).run
+        | throw <| IO.userError "The source-use collection fixture was rejected"
+      unless Collected.uses collected == nodes.flatMap (·.accepted.uses) do
+        throw <| IO.userError "Collection changed original use order, duplicates or metadata"
+      let .ok snapshot := Capture.evaluate p { documents := #[{ handle := 0, result := (document, #[]) }] }
+        | throw <| IO.userError "The ordinary/authored evaluator fixture was rejected"
+      unless snapshot.uses.size == 2 && snapshot.registry.documents.contains document do
+        throw <| IO.userError "Authored source collection dropped a document or changed use scopes"
+      for edge in snapshot.uses do
+        unless edge.reference == reference do
+          throw <| IO.userError "Original manual target metadata did not reach selection"
+        match edge.source, edge.selected with
+        | `source, .error diagnostic =>
+          unless edge.context == some ⟨`lean, `projectB⟩ && edge.facet == `statement &&
+              diagnostic.code == "missing-target" do
+            throw <| IO.userError "Authored model context failed to select the original ordinary use"
+        | `other, .error diagnostic =>
+          unless edge.context == none && edge.facet == `proof &&
+              diagnostic.code == "missing-source-context" do
+            throw <| IO.userError "A context-free ordinary use disappeared"
+        | _, _ => throw <| IO.userError "A use gained an unexpected source or successful selection"
+-- A consumer can start at the actual accepted-node lookup. Raw extraction and
+-- planning supply the ordinary-entry/use membership; no private witnesses occur.
+example {state : Environment.State} {observations : Capture.Observations (Capture.plan (Capture.Raw.ofState state))}
+    {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate (Capture.plan (Capture.Raw.ofState state)) observations = .ok snapshot)
+    (found : state.data.get? label = some node) (useMember : use ∈ node.uses)
     (available : Capture.UseSelection.ContextFor snapshot.registry.contributions use context) :
     ∃ edge ∈ snapshot.uses, Capture.UseSelection.Matches use edge ∧ edge.context = some context :=
-  Capture.evaluate_use_in_context evaluated (Array.mem_flatMap.mpr ⟨node, nodeMember, useMember⟩) available
+  Capture.evaluate_raw_use_in_context evaluated
+    ((Capture.Raw.ofState_use_iff state use).mpr ⟨label, node, found, useMember⟩) available
+
+-- Planner-only synthetic sources exercise prose, native and inline requests,
+-- plus authored expected goals. They are never presented as checked source code.
+#eval show IO Unit from do
+  let context : Context := ⟨`lean, `plannerProject⟩
+  let location : Data.SourceLocation := { path := "synthetic-planner-source", range := default }
+  let source : FacetSource := {
+    destination := ⟨⟨`source, `lean⟩, `statement⟩, context
+    document := ⟨context, location.path⟩, source := .found location
+    payload := .prose { stx := .missing } }
+  let association : NativeAssociation := {
+    realization := ⟨`source, `lean⟩, context, facets := #[`statement, `proof]
+    reference := { written := `fixtureDeclaration, canonical := `fixtureDeclaration } }
+  let owner : Contributions.Record := {
+    id := ⟨`PlannerFixture, `blueprint.attribute, `source, 7, 0⟩, label := `source
+    nativeAssociations := #[association], priority := some "high", source := some location }
+  let some first := usePlan.ordinary[0]?
+    | throw <| IO.userError "Missing first planner fixture node"
+  let some second := usePlan.ordinary[1]?
+    | throw <| IO.userError "Missing second planner fixture node"
+  let rich : Environment.RegisteredNode := { first.accepted with
+    origin := `PlannerOrigin, modules := #[`PlannerOrigin, `PlannerContributor]
+    sources := #[source, { source with payload := .leanInline {
+      stx := .missing, definedTheorems := #[{ name := `fixtureDeclaration }] } }]
+    nativeAssociations := #[association] }
+  let base : Capture.Raw := { usePlan.raw with
+    nodes := #[(`source, rich), (`other, second.accepted)]
+    authored := usePlan.authored.map fun (step : Capture.AuthoredStep) => { step.record with nativeGoals := #[(`source, `Expected)] }
+    initialIssues := #[{ code := "stored-issue", subject := "planner", message := "Preserve for evaluation" }] }
+  let competing := { association with reference := { association.reference with canonical := `anotherDeclaration } }
+  for facts in #[[], [owner], [{ owner with nativeAssociations := #[association, competing] }]] do
+    for nodes in #[base.nodes, base.nodes.reverse, base.nodes.push (`source, rich)] do
+      let raw := { base with nodes, facts }
+      let p := Capture.plan raw
+      let rawView (value : Capture.Raw) :=
+        (reprStr value.nodes, value.pending.toArray, value.facts, value.authored, value.initialIssues)
+      unless rawView p.raw == rawView raw &&
+          reprStr (p.ordinary.map fun step => (step.label, step.accepted)) == reprStr nodes do
+        throw <| IO.userError "Planning changed raw data or mixed labels with accepted records"
+      unless p.ordinary.flatMap (·.accepted.uses) == nodes.flatMap (·.2.uses) do
+        throw <| IO.userError "Planning changed source-use order or duplicate metadata"
+      unless !p.native.isEmpty && !p.inline.isEmpty && !p.checks.isEmpty && !p.expected.isEmpty do
+        throw <| IO.userError "Planner fixture did not exercise every intended request family"
+      unless p.documented.size == (if facts == [owner] then nodes.filter (·.1 == `source) |>.size else 0) do
+        throw <| IO.userError "Planner fixture did not distinguish missing, exact and ambiguous prose owners"
 
 end VersoBlueprintTests.CaptureUseCoverage

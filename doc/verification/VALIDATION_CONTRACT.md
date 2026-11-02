@@ -222,9 +222,10 @@ Combined with the earlier assessment and suitability laws, this connects native
 completion claims to supplied provider results, without authenticating those results.
 
 The theorem's plan is the exact value supplied to `evaluate`. It does not prove
-that every plan field was produced by `plan`, that its source inventory is complete,
-or that a provider honestly executed Lean. No collector, provider adapter, or data
-store is duplicated in production for these proofs.
+that every plan field was produced correctly or that a provider honestly executed
+Lean. The planner laws below establish exact raw node/use inventory preservation;
+request construction and other source-coverage guarantees remain separate. No
+collector, provider adapter, or data store is duplicated in production for these proofs.
 
 `evaluate_proof_evidence_source` traces every admitted independent-proof observation
 to an original successful expected-goal result. The whole proof observation is
@@ -441,8 +442,9 @@ obtain actual unavailable evidence, without assuming that any gate already exist
 
 Creation coverage starts at the selected edge inventory. The collected-use laws
 below establish that every collected use reaches that inventory, and the collection
-laws connect those uses to accepted ordinary plan entries. Raw plan construction
-and ordinary-contract coverage remain separate. The composition below
+laws connect those uses to accepted ordinary plan entries. The planner laws then
+preserve the raw node/use inventory. Provider request correctness and positive
+ordinary-contract coverage remain separate. The composition below
 combines creation and wiring with prerequisite evidence soundness,
 keeping selection success distinct from completion of the selected targets.
 
@@ -556,12 +558,47 @@ that parent with fitting original evidence at its own current binding. It derive
 collection and selected-edge existence, gate creation and wiring. It does not
 assume any of those intermediate witnesses from the caller.
 
-This checkpoint starts with the accepted source records **inside the supplied
-plan**. Proving `plan` preserves the raw accepted node inventory is still separate,
-as is positive coverage of ordinary native-contract collection. Supplied provider
-observations are not authenticated by these laws, and completion still does not
-claim mathematical truth of the reported proofs or final cached prerequisite
+These collection laws start with accepted source records **inside the supplied
+plan**. The following planner laws connect them to raw accepted records. Supplied
+provider observations are not authenticated by these laws, and completion still
+does not claim mathematical truth of reported proofs or final cached prerequisite
 completion.
+
+## Raw accepted nodes survive planning
+
+`Realizations/Capture/PlanLaws.lean` proves `plan_ordinary_nodes`: mapping the actual
+planner's ordinary entries to `(label, acceptedRecord)` yields exactly `raw.nodes`.
+The statement keeps each label paired with its entire record, including sources,
+uses, metadata and module provenance. It preserves input order and multiplicity,
+without assuming the input is already valid or labels are unique. `plan_raw`
+retains the full raw input, including facts, pending registrations, authored
+records and initial diagnostics; planning cannot erase later rejection evidence.
+
+The proof follows the real ordinary-node, realization, source, declaration and
+authored-request loops. Inner loops preserve the joint raw/node projection while
+updating request arrays. It introduces no replacement planner. These projection
+laws do not establish that every generated provider handle or request is correct.
+
+`plan_ordinary_uses` derives exact use-array preservation. `Raw.ofState_use_iff`
+connects it to the actual accepted-node map: a raw use comes from a record returned
+by `state.data.get?`, and every use of such a record is included. Pending entries
+absent from that lookup do not contribute uses. This uses the proved structural
+NameMap enumeration law, with no name-hash injectivity assumption.
+
+`evaluate_raw_use_in_context` and `evaluate_raw_use_without_context` therefore
+start from raw accepted uses and execute the actual planner. The composed
+`evaluate_raw_use_justified` reaches retained target obligations and fitting
+original evidence when the eligible native parent is complete. Callers no longer
+assume the planner produced the right node/use inventory. The public proof test
+starts directly from an accepted-node lookup; executable tests cover reordered and
+duplicate raw entries, complete record preservation, missing/exact/ambiguous prose
+owners, native and inline requests, authored expected goals, and evaluator output
+from the generated plan.
+
+Positive ordinary native-contract creation remains separate: the completion
+theorem still assumes the eligible native model, declaration and parent contract
+exist in the admitted output. Provider-request correctness, provider authenticity
+and the actual environment transaction interpreter also remain outside this claim.
 
 ## Prerequisite selection is independent of completion
 
@@ -695,7 +732,8 @@ the native check and authored proof observation paths are now covered above.
 The joint authored requirement/semantic-input projection is preserved across this
 boundary. Generated dependency-selection provenance, outcomes, wiring, and positive
 gate creation and ordinary-plan-use collection/selection coverage are covered above.
-Raw plan construction and ordinary native-contract collection remain separate.
+Provider-request construction and positive ordinary native-contract collection
+remain separate; raw node/use preservation is covered above.
 
 ## Exact admission across registration histories
 
@@ -728,14 +766,14 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_ordinary_use_justified` starts from accepted source uses in the supplied plan. | Raw-to-plan use coverage, ordinary native-contract coverage, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Raw plan construction, ordinary-contract coverage and the real provider interpreter; ordinary-plan-use collection/selection, exact targets, wiring and gate creation are included. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner. | Positive ordinary native-contract coverage, provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction, positive ordinary-contract coverage and the real provider interpreter; raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
 exact admission characterization. The second currently establishes soundness,
 not completeness. The third is relative to supplied observations and an exact
-supplied plan.
+supplied plan, with raw node/use preservation proved for plans from `plan`.
 
 A later semantic-soundness theorem should expose a provider correctness hypothesis
 as an explicit premise and discharge it for each supported interpreter where
@@ -757,8 +795,9 @@ wired into native-parent prerequisites. Eligible native contracts now produce ga
 for every nonempty selected edge scope. Their completed parents now justify every
 selected target obligation by fitting original evidence. Every ordinary plan use
 survives collection and reaches its matching selection contexts or an explicit
-missing-context diagnostic. Next, connect raw accepted nodes to the plan and
-account for ordinary contract coverage and actual provider/transaction routes.
+missing-context diagnostic. The actual planner now preserves raw accepted nodes
+and their uses. Next, prove positive ordinary contract coverage and account for
+provider-request correctness and actual provider/transaction routes.
 Preserve the joint authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these
 three contracts is not the objective.
 
