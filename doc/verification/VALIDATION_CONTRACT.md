@@ -443,8 +443,9 @@ obtain actual unavailable evidence, without assuming that any gate already exist
 Creation coverage starts at the selected edge inventory. The collected-use laws
 below establish that every collected use reaches that inventory, and the collection
 laws connect those uses to accepted ordinary plan entries. The planner laws then
-preserve the raw node/use inventory. Provider request correctness and positive
-ordinary-contract coverage remain separate. The composition below
+preserve the raw node/use inventory. The native-contract laws below establish
+positive requirement coverage; provider-request correctness and final-model
+coverage remain separate. The composition below
 combines creation and wiring with prerequisite evidence soundness,
 keeping selection success distinct from completion of the selected targets.
 
@@ -595,10 +596,49 @@ duplicate raw entries, complete record preservation, missing/exact/ambiguous pro
 owners, native and inline requests, authored expected goals, and evaluator output
 from the generated plan.
 
-Positive ordinary native-contract creation remains separate: the completion
-theorem still assumes the eligible native model, declaration and parent contract
-exist in the admitted output. Provider-request correctness, provider authenticity
-and the actual environment transaction interpreter also remain outside this claim.
+The raw-use theorem retains explicit model/declaration/parent eligibility
+premises. The following checkpoint derives parent-contract existence directly
+from the declaration plan. Model coverage, provider-request correctness, provider
+authenticity and the environment transaction interpreter remain separate.
+
+## Ordinary native requirements are created and retained
+
+`Realizations/Capture/NativeContractLaws.lean` proves
+`collectOrdinary_requirements`: successful ordinary collection has exactly two
+requirements for every planned declaration, one statement check and one body
+check. Each has the prescribed subject/key, validator, collector origin and
+`dependencyClosure` coverage. The statement preserves array order and multiplicity,
+without assuming the raw input is globally admissible. It follows the production
+loops, including source preparation and check failures; unavailable observations
+cannot erase the obligations they fail to satisfy.
+
+`RealizationStep.nativeRequirements` is a proof-layer projection used to state
+that equality. It creates no runtime store or replacement evaluator. Its context
+is the collector's selected stored context; `evaluate_native_contract_created`
+uses an explicit singleton-context premise to expose that context to callers.
+Correctness of planner-generated source/declaration requests is not inferred from
+this projection.
+
+`collectAuthored_requirements` proves that authored enrichment retains each
+ordinary requirement unchanged. `assemble_nativeRequirements` and
+`evaluate_nativeRequirements` carry these obligations through complete collection,
+dependency wiring and final admission. The final record preserves origin, key,
+expectation and coverage; wiring may extend prerequisites. Whole-record equality
+is deliberately confined to the pre-wiring stage.
+
+`evaluate_planned_use_justified` composes positive parent creation with the prior
+use/completion theorem. It no longer asks the caller for a parent record, its
+membership, collector origin, validator or coverage. It derives that parent and
+returns its retained target obligations and fitting original evidence. It still
+assumes the final model/declaration and their correspondence with the plan. The
+next step is positive model/declaration coverage, including authored enrichment.
+
+The proof test consumes the public creation theorem without private witnesses.
+Executable regressions run the actual planner/evaluator with two declarations,
+both declaration orders, authored additions, and all four combinations of
+available/unavailable source preparation and checking. Both contracts survive
+all combinations; completion requires both source and check availability in this
+fixture. Supplied reports are explicitly synthetic, not authenticated Lean facts.
 
 ## Prerequisite selection is independent of completion
 
@@ -732,8 +772,9 @@ the native check and authored proof observation paths are now covered above.
 The joint authored requirement/semantic-input projection is preserved across this
 boundary. Generated dependency-selection provenance, outcomes, wiring, and positive
 gate creation and ordinary-plan-use collection/selection coverage are covered above.
-Provider-request construction and positive ordinary native-contract collection
-remain separate; raw node/use preservation is covered above.
+Positive ordinary native-requirement collection and retention, and raw node/use
+preservation, are covered above. Provider-request construction and final
+model/declaration coverage remain separate.
 
 ## Exact admission across registration histories
 
@@ -766,8 +807,8 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner. | Positive ordinary native-contract coverage, provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction, positive ordinary-contract coverage and the real provider interpreter; raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_planned_use_justified` derives the parent requirement from a planned declaration. | Positive final-model/declaration coverage, provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction, final-model/declaration coverage and the real provider interpreter; ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -796,8 +837,10 @@ for every nonempty selected edge scope. Their completed parents now justify ever
 selected target obligation by fitting original evidence. Every ordinary plan use
 survives collection and reaches its matching selection contexts or an explicit
 missing-context diagnostic. The actual planner now preserves raw accepted nodes
-and their uses. Next, prove positive ordinary contract coverage and account for
-provider-request correctness and actual provider/transaction routes.
+and their uses. Planned declarations create the exact ordinary native requirements,
+which survive authored enrichment and finalization. Next, connect planned
+realizations/declarations to final model membership, then account for provider-request
+correctness and actual provider/transaction routes.
 Preserve the joint authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these
 three contracts is not the objective.
 

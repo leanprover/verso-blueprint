@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.PlanLaws
+import VersoBlueprint.Realizations.Capture.NativeContractLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -419,3 +419,82 @@ example {state : Environment.State} {observations : Capture.Observations (Captur
         throw <| IO.userError "Planner fixture did not distinguish missing, exact and ambiguous prose owners"
 
 end VersoBlueprintTests.CaptureUseCoverage
+
+namespace VersoBlueprintTests.NativeContractCreation
+open Lean Informal Informal.Realizations Informal.Translations Informal.SourceData Informal.Validation
+
+-- Public consumers need plan membership and agreed context, not a final parent
+-- requirement or any of the private collector witnesses.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (nodeMember : node ∈ p.ordinary) (stepMember : step ∈ node.realizations)
+    (declarationMember : declaration ∈ step.declarations)
+    (contextAgrees : canonical (step.sources.map (·.source.context) ++ step.associations.map (·.context)) = #[context]) :
+    ∃ requirement ∈ snapshot.registry.contributions.requirements,
+      requirement.value.key = ⟨.declaration step.key ⟨context, declaration.name.toString⟩, `proof⟩ ∧
+      requirement.value.expected = .check NativeLean.bodyValidator ∧
+      requirement.value.coverage = .dependencyClosure := by
+  obtain ⟨requirement, member, _, key, expected, coverage⟩ :=
+    Capture.evaluate_native_contract_created evaluated nodeMember stepMember declarationMember
+      contextAgrees (name := `proof) (validator := NativeLean.bodyValidator) (by simp)
+  exact ⟨requirement, member, key, expected, coverage⟩
+
+-- Synthetic sources/checks exercise all four preparation/check-result branches
+-- through the actual planner and evaluator. These reports are not authenticated
+-- compiler results. Both facets must survive failure, authored additions, and
+-- reversed declaration order; failed checks cannot certify their contracts.
+#eval show IO Unit from do
+  let context : Context := ⟨`lean, `nativeContractFixture⟩
+  let realization : RealizationKey := ⟨`contractNode, `lean⟩
+  let issue : Diagnostic := { code := "source-association-unavailable", subject := "fixture", message := "MOCK unavailable" }
+  let associations : Array NativeAssociation := #[`firstWitness, `secondWitness].map fun name => {
+    realization, context, facets := #[`statement, `proof]
+    reference := { written := name, canonical := name } }
+  let extra : Requirement := { key := ⟨.realization realization, `authoredExtra⟩, expected := .check `extraValidator }
+  for associations in #[associations, associations.reverse] do
+    let accepted : Environment.RegisteredNode := {
+      origin := `ContractFixture, modules := #[`ContractFixture], nativeAssociations := associations }
+    let raw : Capture.Raw := {
+      nodes := #[(realization.node, accepted)], pending := ({} : NameSet).insert realization.node
+      facts := [], initialIssues := #[]
+      authored := #[{
+        origin := { id := `authoredExtra, moduleName := `ContractFixture }
+        project := context.project, authored := { requirements := #[extra] } }] }
+    let p := Capture.plan raw
+    unless p.native.size == 2 && p.checks.size == 2 do
+      throw <| IO.userError "Native contract fixture has the wrong request inventory"
+    for sourceAvailable in #[true, false] do
+      for checkAvailable in #[true, false] do
+        let observations : Capture.Observations p := {
+          native := p.native.mapIdx fun handle request => ⟨handle,
+            if !sourceAvailable then .error issue else .ok {
+              canonical := request.name, declaration := ⟨context, request.name.toString⟩
+              kind := .«theorem», moduleName := `ContractFixture
+              document := { key := ⟨context, request.name.toString ++ ".lean"⟩, text := "MOCK source" }
+              ranges := default }⟩
+          checks := p.checks.mapIdx fun handle request => ⟨handle,
+            if !checkAvailable then .error issue else .ok {
+              declaration := request.witness, status := .proved
+              statement := {
+                validator := NativeLean.statementValidator, declaration := some request.witness
+                outcome := .passed, coverage := .dependencyClosure }
+              body := {
+                validator := NativeLean.bodyValidator, declaration := some request.witness
+                outcome := .passed, coverage := .dependencyClosure } }⟩ }
+        let .ok snapshot := Capture.evaluate p observations
+          | throw <| IO.userError "Native contract fixture failed evaluation"
+        unless snapshot.registry.contributions.requirements.size == 5 &&
+            snapshot.registry.requirement? extra.key == some extra do
+          throw <| IO.userError "Authored enrichment replaced an ordinary contract"
+        for association in associations do
+          for (facet, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
+            let key : RequirementKey := ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩, facet⟩
+            let some contract := snapshot.registry.requirement? key
+              | throw <| IO.userError "Unavailable source/check erased a native contract"
+            unless contract.key == key && contract.expected == .check validator &&
+                contract.coverage == .dependencyClosure do
+              throw <| IO.userError "Native contract changed identity, validator or coverage"
+            unless (snapshot.registry.resultForRequirement key).complete == (sourceAvailable && checkAvailable) do
+              throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
+
+end VersoBlueprintTests.NativeContractCreation

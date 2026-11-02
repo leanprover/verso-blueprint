@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.PlanLaws
+import VersoBlueprint.Realizations.Capture.NativeContractLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -255,3 +255,11 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_raw_use_in_context
 #print axioms Informal.Realizations.Capture.evaluate_raw_use_without_context
 #print axioms Informal.Realizations.Capture.evaluate_raw_use_justified
+
+-- Exact ordinary contract creation and retention through public evaluation.
+#print axioms Informal.Realizations.Capture.collectOrdinary_requirements
+#print axioms Informal.Realizations.Capture.collectAuthored_requirements
+#print axioms Informal.Realizations.Capture.assemble_nativeRequirements
+#print axioms Informal.Realizations.Capture.evaluate_nativeRequirements
+#print axioms Informal.Realizations.Capture.evaluate_native_contract_created
+#print axioms Informal.Realizations.Capture.evaluate_planned_use_justified
