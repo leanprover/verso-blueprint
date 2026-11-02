@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.UseLaws
+import VersoBlueprint.Realizations.Capture.CollectionLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -247,6 +247,8 @@ run_cmd do
     if env.getModuleIdxFor? name == some owner then
       if let some user := privateToUserName? name then
         if (`Informal.Realizations.Capture.Collected).isPrefixOf user ||
+            (`Informal.Realizations.Capture.Providers).isPrefixOf user ||
+            user == `Informal.Realizations.Capture.assemble ||
             user == `Informal.Realizations.Capture.selectUses then
           Elab.Command.modifyScope fun scope => { scope with
             openDecls := .explicit (user.replacePrefix `Informal.Realizations.Capture .anonymous) name :: scope.openDecls }
@@ -302,5 +304,69 @@ private def collection (uses : Array UseDeclaration) : Collected :=
     unless diagnostic.code == "missing-source-context" && diagnostic.subject == "source" &&
         diagnostic.message == "Dependency has no stored source project context" do
       throw <| IO.userError "Missing source context lost its diagnostic"
+
+private def document : Document := {
+  key := ⟨⟨`rust, `projectB⟩, "synthetic-use-source"⟩, text := "MOCK authored source" }
+private def usePlan : Capture.Plan := {
+  raw := {
+    nodes := #[], pending := (({} : NameSet).insert `source).insert `other
+    facts := [], authored := #[], initialIssues := #[] }
+  documents := #[document.key]
+  ordinary := #[{
+    label := `source, realizations := #[]
+    accepted := {
+      origin := `UseCoverageFixture
+      uses := #[{ authoredUse with reference := automatic }, authoredUse, authoredUse] } }, {
+    label := `other, realizations := #[]
+    accepted := {
+      origin := `UseCoverageFixture
+      uses := #[{ authoredUse with node := `other, facet := `proof }] } }]
+  authored := #[{
+    record := {
+      origin := { id := `authored, moduleName := `UseCoverageFixture }, project := `projectB
+      authored := { sources := #[document.key], realizations := #[(model `alternate `rust `projectB).value] } }
+    goals := #[], documents := #[0] }] }
+
+-- Only a synthetic document provider is needed. Any accidental new provider
+-- invocation fails, rather than manufacturing a successful native observation.
+private def unexpected {α} : ExceptT (Array Diagnostic) Id α :=
+  .error #[{ code := "unexpected-provider", subject := "fixture", message := "No native requests" }]
+private def providers : Providers Id := Providers.mk
+  (fun _ => pure (document, #[])) (fun _ => unexpected) (fun _ => unexpected)
+  (fun _ => unexpected) (fun _ => unexpected) (fun _ _ => unexpected) (fun _ _ _ => unexpected)
+
+#eval show IO Unit from do
+  for nodes in #[usePlan.ordinary, usePlan.ordinary.reverse] do
+    let p := { usePlan with ordinary := nodes }
+    let .ok collected := (assemble providers p).run
+      | throw <| IO.userError "The source-use collection fixture was rejected"
+    unless Collected.uses collected == nodes.flatMap (·.accepted.uses) do
+      throw <| IO.userError "Collection changed original use order, duplicates or metadata"
+    let .ok snapshot := Capture.evaluate p { documents := #[{ handle := 0, result := (document, #[]) }] }
+      | throw <| IO.userError "The ordinary/authored evaluator fixture was rejected"
+    unless snapshot.uses.size == 2 && snapshot.registry.documents.contains document do
+      throw <| IO.userError "Authored source collection dropped a document or changed use scopes"
+    for edge in snapshot.uses do
+      unless edge.reference == reference do
+        throw <| IO.userError "Original manual target metadata did not reach selection"
+      match edge.source, edge.selected with
+      | `source, .error diagnostic =>
+        unless edge.context == some ⟨`lean, `projectB⟩ && edge.facet == `statement &&
+            diagnostic.code == "missing-target" do
+          throw <| IO.userError "Authored model context failed to select the original ordinary use"
+      | `other, .error diagnostic =>
+        unless edge.context == none && edge.facet == `proof &&
+            diagnostic.code == "missing-source-context" do
+          throw <| IO.userError "A context-free ordinary use disappeared"
+      | _, _ => throw <| IO.userError "A use gained an unexpected source or successful selection"
+
+-- A consumer starts with an ordinary entry and its accepted source use. No
+-- private collection or selection witness is needed in the public statement.
+example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate p observations = .ok snapshot)
+    (nodeMember : node ∈ p.ordinary) (useMember : use ∈ node.accepted.uses)
+    (available : Capture.UseSelection.ContextFor snapshot.registry.contributions use context) :
+    ∃ edge ∈ snapshot.uses, Capture.UseSelection.Matches use edge ∧ edge.context = some context :=
+  Capture.evaluate_use_in_context evaluated (Array.mem_flatMap.mpr ⟨node, nodeMember, useMember⟩) available
 
 end VersoBlueprintTests.CaptureUseCoverage

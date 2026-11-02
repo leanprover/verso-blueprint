@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.UseLaws
+import VersoBlueprint.Realizations.Capture.CollectionLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -237,3 +237,12 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.finish_use_without_context
 #print axioms Informal.Realizations.Capture.finish_use_in_native_scope
 #print axioms Informal.Realizations.Capture.finish_collected_use_justified
+
+-- Exact ordinary source-use inventory through collection and public evaluation.
+#print axioms Informal.Realizations.Capture.collectOrdinary_uses
+#print axioms Informal.Realizations.Capture.collectAuthored_uses
+#print axioms Informal.Realizations.Capture.assemble_uses
+#print axioms Informal.Realizations.Capture.evaluate_use_collection
+#print axioms Informal.Realizations.Capture.evaluate_use_in_context
+#print axioms Informal.Realizations.Capture.evaluate_use_without_context
+#print axioms Informal.Realizations.Capture.evaluate_ordinary_use_justified
