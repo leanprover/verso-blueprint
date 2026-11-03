@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.ModelLaws
+import VersoBlueprint.Realizations.Capture.DeclarationPlanLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -392,11 +392,19 @@ example {state : Environment.State} {observations : Capture.Observations (Captur
     | throw <| IO.userError "Missing first planner fixture node"
   let some second := usePlan.ordinary[1]?
     | throw <| IO.userError "Missing second planner fixture node"
+  let alternative : NativeAssociation := { association with
+    realization := ⟨`source, `alternative⟩, context := ⟨`lean, `otherProject⟩
+    reference := { written := `alternativeOnly, canonical := `alternativeOnly } }
   let rich : Environment.RegisteredNode := { first.accepted with
     origin := `PlannerOrigin, modules := #[`PlannerOrigin, `PlannerContributor]
     sources := #[source, { source with payload := .leanInline {
-      stx := .missing, definedTheorems := #[{ name := `fixtureDeclaration }] } }]
-    nativeAssociations := #[association] }
+      stx := .missing, definedDefs := #[{ name := `inlineDefinition }]
+      definedTheorems := #[{ name := `fixtureDeclaration }, { name := `inlineOnly }] } },
+      { source with
+        destination := ⟨alternative.realization, `statement⟩, context := alternative.context
+        document := ⟨alternative.context, location.path⟩
+        payload := .leanInline { stx := .missing, definedTheorems := #[{ name := `alternativeInline }] } }]
+    nativeAssociations := #[association, association, alternative] }
   let base : Capture.Raw := { usePlan.raw with
     nodes := #[(`source, rich), (`other, second.accepted)]
     authored := usePlan.authored.map fun (step : Capture.AuthoredStep) => { step.record with nativeGoals := #[(`source, `Expected)] }
@@ -417,6 +425,18 @@ example {state : Environment.State} {observations : Capture.Observations (Captur
         throw <| IO.userError "Planner fixture did not exercise every intended request family"
       unless p.documented.size == (if facts == [owner] then nodes.filter (·.1 == `source) |>.size else 0) do
         throw <| IO.userError "Planner fixture did not distinguish missing, exact and ambiguous prose owners"
+      for node in p.ordinary do
+        if node.label == `source then
+          unless node.realizations.map (·.key) == canonical #[association.realization, alternative.realization] do
+            throw <| IO.userError "Planning lost a realization or duplicated its source key"
+          for step in node.realizations do
+            let expected := if step.key == association.realization then
+                #[`fixtureDeclaration, `inlineDefinition, `inlineOnly]
+              else #[`alternativeOnly, `alternativeInline]
+            unless step.declarations.map (·.name) == expected &&
+                reprStr (step.sources.map (·.source)) == reprStr (rich.sources.filter (·.destination.realization == step.key)) &&
+                decide (step.associations = rich.nativeAssociations.filter (·.realization == step.key)) do
+              throw <| IO.userError "Planning mixed realization sources or changed declaration order/overlap"
 
 end VersoBlueprintTests.CaptureUseCoverage
 
@@ -522,24 +542,31 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
             unless (snapshot.registry.resultForRequirement key).complete == (sourceAvailable && checkAvailable) do
               throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
 
--- The composed guarantee consumes source-side plan facts. No final model,
--- declaration, requirement or selected edge is an assumption in this example.
-example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : Capture.Snapshot}
-    (evaluated : Capture.evaluate p observations = .ok snapshot)
-    (useMember : use ∈ p.ordinary.flatMap (·.accepted.uses))
-    (nodeMember : node ∈ p.ordinary) (stepMember : step ∈ node.realizations)
-    (plannedDeclaration : planned ∈ step.declarations)
-    (sourceDeclaration : planned.name ∈ nativeNames step.associations (step.sources.map (·.source)))
-    (contextAgrees : canonical (step.sources.map (·.source.context) ++ step.associations.map (·.context)) = #[context])
+-- The composed guarantee starts at an accepted environment lookup. No plan
+-- step, final model/declaration/parent, or selected edge is assumed by the caller.
+example {state : Environment.State} {observations : Capture.Observations (Capture.plan (Capture.Raw.ofState state))}
+    {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate (Capture.plan (Capture.Raw.ofState state)) observations = .ok snapshot)
+    (found : state.data.get? label = some accepted) (useMember : use ∈ accepted.uses)
+    (keyMember : key ∈ canonical (accepted.sources.map (·.destination.realization) ++
+      accepted.nativeAssociations.map (·.realization)))
+    (sourceDeclaration : declarationName ∈ nativeNames
+      (accepted.nativeAssociations.filter (·.realization == key))
+      (accepted.sources.filter (·.destination.realization == key)))
+    (contextAgrees : canonical ((accepted.sources.filter (·.destination.realization == key)).map (·.context) ++
+      (accepted.nativeAssociations.filter (·.realization == key)).map (·.context)) = #[context])
     (native : context.language = `lean)
-    (source : use.node = step.key.node)
-    (restriction : ∀ realization, use.realization = some realization → realization = step.key.name)
+    (source : use.node = key.node)
+    (restriction : ∀ realization, use.realization = some realization → realization = key.name)
     (complete : (snapshot.registry.resultForRequirement
-      ⟨.declaration step.key ⟨context, planned.name.toString⟩, `proof⟩).complete = true) :
+      ⟨.declaration key ⟨context, declarationName.toString⟩, `proof⟩).complete = true) :
     ∃ edge ∈ snapshot.uses, Capture.UseSelection.Matches use edge ∧ edge.context = some context ∧
       ∃ keys, edge.selected = .ok keys ∧ Capture.TargetSelection.Retained snapshot.registry context use.reference.label keys := by
+  have rawMember : (label, accepted) ∈ (Capture.Raw.ofState state).nodes := by
+    simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
+  have rawUse := (Capture.Raw.ofState_use_iff state use).mpr ⟨label, accepted, found, useMember⟩
   obtain ⟨_, _, _, _, _, _, edge, member, aligned, context, keys, selected, retained, _⟩ :=
-    Capture.evaluate_declared_use_justified evaluated useMember nodeMember stepMember plannedDeclaration
+    Capture.evaluate_raw_source_use_justified evaluated rawUse rawMember keyMember
       sourceDeclaration contextAgrees native (name := `proof) (validator := NativeLean.bodyValidator)
       (by simp) source restriction (Or.inl rfl) complete
   exact ⟨edge, member, aligned, context, keys, selected, retained⟩
