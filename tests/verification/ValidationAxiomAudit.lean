@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.FacetLaws
+import VersoBlueprint.Realizations.Capture.ExpectedLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -301,3 +301,13 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_native_facet_selected
 #print axioms Informal.Realizations.Capture.evaluate_raw_native_facet_selected
 #print axioms Informal.Realizations.Capture.evaluate_raw_facet_declaration_justified
+
+-- Authored goal selection from raw retained records through public completion.
+#print axioms Informal.Translations.Input.ExpectedSelected
+#print axioms Informal.Realizations.Capture.collectAuthored_expectedSelected
+#print axioms Informal.Realizations.Capture.assemble_expectedSelected
+#print axioms Informal.Realizations.Capture.evaluate_expectedSelected
+#print axioms Informal.Realizations.Capture.evaluate_expected_selected
+#print axioms Informal.Realizations.Capture.plan_authored_record_mem_iff
+#print axioms Informal.Realizations.Capture.evaluate_raw_expected_selected
+#print axioms Informal.Realizations.Capture.evaluate_raw_assessment_expected_justified

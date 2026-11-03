@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.FacetLaws
+import VersoBlueprint.Realizations.Capture.ExpectedLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -488,91 +488,107 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
         project := context.project, authored := { requirements := #[extra], realizations := #[extraModel] }
         nativeGoals := if expectedGoal then #[(realization.node, `mockExpected)] else #[] }] }
     let p := Capture.plan raw
+    let replayed := Capture.plan { raw with authored := raw.authored ++ raw.authored }
+    let distinct := { raw.authored[0]! with origin.id := `anotherAuthoredOrigin }
+    let extended := Capture.plan { raw with authored := raw.authored.push distinct ++ raw.authored }
+    unless decide (replayed.authored.map (·.record) = raw.authored) &&
+        decide (extended.authored.map (·.record) = raw.authored.push distinct) &&
+        replayed.expected.size == p.expected.size do
+      throw <| IO.userError "Authored planning lost provenance or replayed an exact duplicate"
     unless p.native.size == associations.size && p.checks.size == associations.size &&
         p.expected.size == (if expectedGoal then 1 else 0) do
       throw <| IO.userError "Native contract fixture has the wrong request inventory"
     for sourceAvailable in #[true, false] do
       for checkAvailable in #[true, false] do
         for failingName in #[(none : Option String), some "firstWitness", some "secondWitness"] do
-          let witness : ObjectKey := ⟨context, associations[0]!.reference.canonical.toString⟩
-          let goalDocuments := canonical ((if sourceAvailable then #[({ context, path := witness.native ++ ".lean" } : DocumentKey)] else #[]).push specification.key)
-          let goal : Goal := { context, fingerprint := "MOCK expected proposition", documents := goalDocuments }
-          let observations : Capture.Observations p := {
-            documents := p.documents.mapIdx fun handle _ => ⟨handle, (specification, #[])⟩
-            specifications := p.specifications.mapIdx fun handle _ => ⟨handle, { document := specification, result := .ok () }⟩
-            expected := p.expected.mapIdx fun handle _ => ⟨handle, {
-              witness, documents := goalDocuments, result := .ok {
-                goal, semanticContext := some "MOCK provider/build context"
-                observation := { witness, actualType := some goal, outcome := .passed, coverage := .dependencyClosure } } }⟩
-            native := p.native.mapIdx fun handle request => ⟨handle,
-              if !sourceAvailable then .error issue else .ok {
-                canonical := request.name, declaration := ⟨context, request.name.toString⟩
-                kind := .«theorem», moduleName := `ContractFixture
-                document := { key := ⟨context, request.name.toString ++ ".lean"⟩, text := "MOCK source" }
-                ranges := default }⟩
-            checks := p.checks.mapIdx fun handle request => ⟨handle,
-              if !checkAvailable then .error issue else .ok {
-                declaration := request.witness
-                status := if failingName == some request.witness.native then .incomplete {} else .proved
-                statement := {
-                  validator := NativeLean.statementValidator, declaration := some request.witness
-                  outcome := .passed, coverage := .dependencyClosure }
-                body := {
-                  validator := NativeLean.bodyValidator, declaration := some request.witness
-                  outcome := if failingName == some request.witness.native then .failed else .passed, coverage := .dependencyClosure } }⟩ }
-          let .ok snapshot := Capture.evaluate p observations
-            | throw <| IO.userError "Native contract fixture failed evaluation"
-          unless snapshot.registry.contributions.requirements.size == 2 * associations.size + 1 + p.expected.size &&
-              snapshot.registry.requirement? extra.key == some extra do
-            throw <| IO.userError "Authored enrichment replaced an ordinary contract"
-          let some model := snapshot.registry.realization? realization
-            | throw <| IO.userError "Ordinary model disappeared during authored enrichment"
-          unless model.key == realization && model.context == context &&
-              model.declarations.map (·.object) == associations.map (fun association => ⟨context, association.reference.canonical.toString⟩) &&
-              snapshot.registry.realization? extraModel.key == some extraModel do
-            throw <| IO.userError "Model inventory changed or mixed ordinary and authored identities"
-          for declaration in model.declarations do
-            let proof : RequirementKey := ⟨.declaration realization declaration.object, `proof⟩
-            let expected : RequirementKey := ⟨.declaration realization declaration.object, `expectedProof⟩
-            unless declaration.required.contains proof &&
-                (snapshot.registry.requiredFor (.realization realization)).contains proof &&
-                (snapshot.registry.requiredFor (.declaration realization declaration.object)).contains proof &&
-                declaration.required.contains expected == expectedGoal do
-              throw <| IO.userError "Authored goal enrichment lost the ordinary required key"
-            if expectedGoal then
-              unless (snapshot.registry.resultForRequirement expected).complete == sourceAvailable do
-                throw <| IO.userError "Expected-proof fixture did not isolate native check failure"
-          for association in associations do
-            for (facet, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
-              let key : RequirementKey := ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩, facet⟩
-              let some contract := snapshot.registry.requirement? key
-                | throw <| IO.userError "Unavailable source/check erased a native contract"
-              unless contract.key == key && contract.expected == .check validator &&
-                  contract.coverage == .dependencyClosure do
-                throw <| IO.userError "Native contract changed identity, validator or coverage"
-              let shouldComplete := sourceAvailable && checkAvailable &&
-                (facet != `proof || failingName != some association.reference.canonical.toString)
-              unless (snapshot.registry.resultForRequirement key).complete == shouldComplete do
-                throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
+          for expectedOutcome in (if expectedGoal then #[(.passed : Outcome), .failed, .unavailable] else #[.passed]) do
+            let witness : ObjectKey := ⟨context, associations[0]!.reference.canonical.toString⟩
+            let goalDocuments := canonical ((if sourceAvailable then #[({ context, path := witness.native ++ ".lean" } : DocumentKey)] else #[]).push specification.key)
+            let goal : Goal := { context, fingerprint := "MOCK expected proposition", documents := goalDocuments }
+            let observations : Capture.Observations p := {
+              documents := p.documents.mapIdx fun handle _ => ⟨handle, (specification, #[])⟩
+              specifications := p.specifications.mapIdx fun handle _ => ⟨handle, { document := specification, result := .ok () }⟩
+              expected := p.expected.mapIdx fun handle _ => ⟨handle, {
+                witness, documents := goalDocuments, result := .ok {
+                  goal, semanticContext := some "MOCK provider/build context"
+                  observation := { witness, actualType := some goal, outcome := expectedOutcome, coverage := .dependencyClosure } } }⟩
+              native := p.native.mapIdx fun handle request => ⟨handle,
+                if !sourceAvailable then .error issue else .ok {
+                  canonical := request.name, declaration := ⟨context, request.name.toString⟩
+                  kind := .«theorem», moduleName := `ContractFixture
+                  document := { key := ⟨context, request.name.toString ++ ".lean"⟩, text := "MOCK source" }
+                  ranges := default }⟩
+              checks := p.checks.mapIdx fun handle request => ⟨handle,
+                if !checkAvailable then .error issue else .ok {
+                  declaration := request.witness
+                  status := if failingName == some request.witness.native then .incomplete {} else .proved
+                  statement := {
+                    validator := NativeLean.statementValidator, declaration := some request.witness
+                    outcome := .passed, coverage := .dependencyClosure }
+                  body := {
+                    validator := NativeLean.bodyValidator, declaration := some request.witness
+                    outcome := if failingName == some request.witness.native then .failed else .passed, coverage := .dependencyClosure } }⟩ }
+            let .ok snapshot := Capture.evaluate p observations
+              | throw <| IO.userError "Native contract fixture failed evaluation"
+            unless snapshot.registry.contributions.requirements.size == 2 * associations.size + 1 + p.expected.size &&
+                snapshot.registry.requirement? extra.key == some extra do
+              throw <| IO.userError "Authored enrichment replaced an ordinary contract"
+            let some model := snapshot.registry.realization? realization
+              | throw <| IO.userError "Ordinary model disappeared during authored enrichment"
+            unless model.key == realization && model.context == context &&
+                model.declarations.map (·.object) == associations.map (fun association => ⟨context, association.reference.canonical.toString⟩) &&
+                snapshot.registry.realization? extraModel.key == some extraModel do
+              throw <| IO.userError "Model inventory changed or mixed ordinary and authored identities"
+            for declaration in model.declarations do
+              let proof : RequirementKey := ⟨.declaration realization declaration.object, `proof⟩
+              let expected : RequirementKey := ⟨.declaration realization declaration.object, `expectedProof⟩
+              unless declaration.required.contains proof &&
+                  (snapshot.registry.requiredFor (.realization realization)).contains proof &&
+                  (snapshot.registry.requiredFor (.declaration realization declaration.object)).contains proof &&
+                  declaration.required.contains expected == expectedGoal &&
+                  (snapshot.registry.requiredFor (.declaration realization declaration.object)).contains expected == expectedGoal &&
+                  (snapshot.registry.requiredFor (.realization realization)).contains expected == expectedGoal do
+                throw <| IO.userError "Authored goal enrichment lost the ordinary required key"
+              let declarationComplete := sourceAvailable && checkAvailable &&
+                failingName != some declaration.object.native && (!expectedGoal || expectedOutcome == .passed)
+              unless (snapshot.registry.resultFor (.declaration realization declaration.object)).complete == declarationComplete do
+                throw <| IO.userError "Declaration completion ignored native or expected obligations"
+              if expectedGoal then
+                unless (snapshot.registry.resultForRequirement expected).complete ==
+                    (sourceAvailable && expectedOutcome == .passed) do
+                  throw <| IO.userError "Expected-proof completion ignored its outcome or source availability"
+            for association in associations do
+              for (facet, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
+                let key : RequirementKey := ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩, facet⟩
+                let some contract := snapshot.registry.requirement? key
+                  | throw <| IO.userError "Unavailable source/check erased a native contract"
+                unless contract.key == key && contract.expected == .check validator &&
+                    contract.coverage == .dependencyClosure do
+                  throw <| IO.userError "Native contract changed identity, validator or coverage"
+                let shouldComplete := sourceAvailable && checkAvailable &&
+                  (facet != `proof || failingName != some association.reference.canonical.toString)
+                unless (snapshot.registry.resultForRequirement key).complete == shouldComplete do
+                  throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
 
-          for facet in model.facets do
-            let selectedAssociations := associations.filter (·.facets.contains facet.name)
-            let expectedKeys : Array RequirementKey := selectedAssociations.map fun association =>
-              ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩,
-                if facet.name == `statement then `statement else `proof⟩
-            unless canonical (snapshot.registry.requiredFor (.facet realization facet.name)) == canonical expectedKeys do
-              throw <| IO.userError "Facet query lost, invented, or mixed declaration obligations"
-            let facetComplete := sourceAvailable && checkAvailable &&
-              selectedAssociations.all (fun association => facet.name == `statement ||
-                failingName != some association.reference.canonical.toString)
-            unless (snapshot.registry.resultFor (.facet realization facet.name)).complete == facetComplete do
-              throw <| IO.userError s!"Facet completion crossed a source boundary: facet={facet.name}, failing={reprStr failingName}"
+            for facet in model.facets do
+              let selectedAssociations := associations.filter (·.facets.contains facet.name)
+              let expectedKeys : Array RequirementKey := selectedAssociations.map fun association =>
+                ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩,
+                  if facet.name == `statement then `statement else `proof⟩
+              unless canonical (snapshot.registry.requiredFor (.facet realization facet.name)) == canonical expectedKeys do
+                throw <| IO.userError "Facet query lost, invented, or mixed declaration obligations"
+              let facetComplete := sourceAvailable && checkAvailable &&
+                selectedAssociations.all (fun association => facet.name == `statement ||
+                  failingName != some association.reference.canonical.toString)
+              unless (snapshot.registry.resultFor (.facet realization facet.name)).complete == facetComplete do
+                throw <| IO.userError s!"Facet completion crossed a source boundary: facet={facet.name}, failing={reprStr failingName}"
 
-          let allComplete := sourceAvailable && checkAvailable &&
-            associations.all (fun association => failingName != some association.reference.canonical.toString)
-          unless (snapshot.registry.resultFor (.realization realization)).complete == allComplete &&
-              (snapshot.assessmentFor realization.node).requiredComplete == allComplete do
-            throw <| IO.userError s!"Unexpected assessment: expected={allComplete}, source={sourceAvailable}, check={checkAvailable}, failing={reprStr failingName}, associations={associations.size}, public={reprStr (snapshot.registry.resultFor (.realization realization))}, assessmentComplete={(snapshot.assessmentFor realization.node).requiredComplete}"
+            let allComplete := sourceAvailable && checkAvailable &&
+              associations.all (fun association => failingName != some association.reference.canonical.toString) &&
+              (!expectedGoal || expectedOutcome == .passed)
+            unless (snapshot.registry.resultFor (.realization realization)).complete == allComplete &&
+                (snapshot.assessmentFor realization.node).requiredComplete == allComplete do
+              throw <| IO.userError s!"Unexpected assessment: expected={allComplete}, source={sourceAvailable}, check={checkAvailable}, failing={reprStr failingName}, associations={associations.size}, public={reprStr (snapshot.registry.resultFor (.realization realization))}, assessmentComplete={(snapshot.assessmentFor realization.node).requiredComplete}"
 
 -- The composed guarantee starts at an accepted environment lookup. No plan
 -- step, final model/declaration/parent, or selected edge is assumed by the caller.
@@ -659,5 +675,27 @@ example {state : Environment.State}
   obtain ⟨finished, _, justified⟩ := Capture.evaluate_raw_facet_declaration_justified
     evaluated rawMember keyMember sourceDeclaration contextAgrees complete
   exact ⟨finished, justified _ (Or.inl rfl)⟩
+
+-- A retained authored goal reaches completion without a caller-supplied model,
+-- declaration, plan entry or selected expected key.
+example {state : Environment.State}
+    {observations : Capture.Observations (Capture.plan (Capture.Raw.ofState state))}
+    {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate (Capture.plan (Capture.Raw.ofState state)) observations = .ok snapshot)
+    (recordMember : record ∈ state.authoringRecords)
+    (goalMember : (node, expectation) ∈ record.nativeGoals)
+    (complete : (snapshot.assessmentFor node).requiredComplete = true) :
+    ∃ model declaration, snapshot.registry.realization? ⟨node, `lean⟩ = some model ∧
+      model.context = ⟨`lean, record.project⟩ ∧ model.declarations = #[declaration] ∧
+      let required : RequirementKey := ⟨.declaration ⟨node, `lean⟩ declaration.object, `expectedProof⟩
+      (snapshot.registry.resultForRequirement required).complete = true ∧
+        ∃ requirement ∈ snapshot.registry.contributions.requirements,
+          ∃ evidence ∈ snapshot.registry.contributions.evidence,
+            snapshot.registry.requirement? required = some requirement.value ∧
+            requirement.value.key = required ∧
+            evidence.value.Fits requirement.value ((snapshot.registry.bindingFor required).getD "") := by
+  obtain ⟨model, declaration, lookup, context, singleton, completed, _, justified⟩ :=
+    Capture.evaluate_raw_assessment_expected_justified evaluated recordMember goalMember complete
+  exact ⟨model, declaration, lookup, context, singleton, completed, justified _ (Or.inl rfl)⟩
 
 end VersoBlueprintTests.NativeContractCreation
