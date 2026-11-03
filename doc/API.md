@@ -437,10 +437,13 @@ conversion checking. The native provider still checks the independently authored
 expectation and witness using definitional equality and the kernel.
 
 `Validation.Requirement.scope` explicitly selects `.statement` or
-`.implementation` (the default). Facets choose content members, not the scope.
-For a correspondence review that should survive proof edits, author
-`scope := .statement`. Statement bindings cover types and computational semantic
-dependencies, excluding proof bodies. Implementation bindings also include the
+`.implementation`; `.statement` is the default. Facets choose content members,
+not the scope. A review with no scope written survives proof-only edits, including
+when a translation endpoint selects a facet named `proof`: it reviews that
+facet's declarations as statements and does not assess their Lean proof bodies.
+Opt into `scope := .implementation` to review the proof itself, for example whether
+the Lean proof follows an informal or Rocq proof. Statement bindings cover types
+and computational semantic dependencies, excluding proof bodies. Implementation bindings also include the
 selected declaration's own body. Native checks still run afresh, so a preserved
 statement review cannot make an admitted proof complete. Explicit prerequisites
 contribute statement contracts to freshness and retain their separate completion

@@ -69,7 +69,7 @@ structure Requirement where
   key : RequirementKey
   expected : Expectation
   coverage : Coverage := .subject
-  scope : ContentScope := .implementation
+  scope : ContentScope := .statement
   prerequisites : Array RequirementKey := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 

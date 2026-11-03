@@ -86,12 +86,18 @@ def fixture : Input := {
     contribution `mockLeanSemantics {
       subject := .declaration leanKey leanObject
       name := NativeLean.sourceContext, content := "MOCK current Lean semantic closure/provider context" },
+    contribution `mockLeanStatementSemantics {
+      subject := .declaration leanKey leanObject
+      name := NativeLean.statementContext, content := "MOCK current Lean statement semantics" },
     contribution `mockRocqSemantics {
       subject := .declaration rocqKey rocqObject
       name := NativeLean.sourceContext, content := "MOCK current Rocq semantic closure/provider context" },
     contribution `mockExpectedSemantics {
       subject := proofKey.subject, name := NativeLean.expectedContextFor proofKey
-      content := "MOCK independently expected proposition semantic closure/provider context" }]
+      content := "MOCK independently expected proposition semantic closure/provider context" },
+    contribution `mockExpectedStatementSemantics {
+      subject := proofKey.subject, name := NativeLean.expectedStatementContextFor proofKey
+      content := "MOCK independently expected proposition statement semantics" }]
 }
 
 /-- Explicit mock of a trusted language boundary. It does not check a Lean term. -/

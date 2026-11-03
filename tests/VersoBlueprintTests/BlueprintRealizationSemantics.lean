@@ -68,4 +68,4 @@ run_cmd liftTermElabM do
     ensure (!(reviewed.resultFor (.translation correspondence)).complete &&
       keys.all (fun key => !(reviewed.resultForRequirement key).complete))
       "Current local reviews cannot bypass an unfinished proof prerequisite"
-  logInfo m!"Semantic binding control {mode}: nativeComplete={(reviewed.resultForRequirement proofKey).complete}; both review scopes checked"
+  logInfo m!"Semantic binding control {mode}: nativeComplete={(reviewed.resultForRequirement proofKey).complete}; both review coverage contracts checked"

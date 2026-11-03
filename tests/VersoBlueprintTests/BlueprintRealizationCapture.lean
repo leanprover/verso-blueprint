@@ -485,7 +485,7 @@ run_cmd liftTermElabM do
   let nativeFailure := { observations with native := observations.native.map fun entry =>
     if plan.native[entry.handle]!.name != ``complete then entry else
       { entry with result := entry.result.map fun prepared => { prepared with
-        semanticContext := none, semanticDiagnostics := #[semanticDiagnostic] } } }
+        semanticContext := none, statementContext := none, semanticDiagnostics := #[semanticDiagnostic] } } }
   let native ← obtain (Capture.evaluate plan nativeFailure)
   assertScoped native semanticDiagnostic
   rejects "duplicate-observation" { observations with expected := observations.expected.push expected }

@@ -248,8 +248,12 @@ recheck source files.
 Content bindings use the versioned `vbp-binding-sha256-v2` encoding. A requirement
 has an explicit `scope`: `.statement` reviews mathematical content;
 `.implementation` also binds the selected declaration's own implementation. The
-default is `.implementation`. Facets select documents/declarations, not scope:
-calling a facet `statement` does not silently narrow a review.
+default is `.statement`. Facets select documents/declarations, not scope.
+A default review of a translation selecting a `proof` facet ignores the Lean
+proof body: it assesses the statements of the selected declarations. Reviewing
+whether the Lean proof follows the informal or Rocq proof requires explicit
+`scope := .implementation`. Neither scope infers proof correspondence from the
+facet's name; implementation identity concerns the elaborated body, not formatting.
 
 For Lean, statement identity includes declaration types and transitive
 computational definitions, inductives and recursors. It excludes proof bodies,

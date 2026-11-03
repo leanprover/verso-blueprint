@@ -489,9 +489,15 @@ def withMissingProofHelper : IO Input := do
 -- All facts below are MOCK provider inputs; actual proof edits are covered by
 -- BlueprintRealizationSemantics and its ordinary-import mutation runner.
 #eval show IO Unit from do
-  let statementInput : Input := { fixture with requirements := fixture.requirements.map fun c =>
-    if c.value.key == reviewKey then { c with value := { c.value with
-      scope := .statement, prerequisites := #[proofKey] } } else c }
+  -- No scope on this review: the default must preserve statement assessment,
+  -- even when a translation endpoint selects a facet named `proof`.
+  let statementInput : Input := { fixture with
+    translations := fixture.translations.map fun c => { c with value := { c.value with
+      target := #[{ realization := leanKey, facets := #[`proof] }] } }
+    requirements := fixture.requirements.map fun c =>
+      if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[proofKey] } }
+      else if c.value.key == proofKey then { c with value := { c.value with scope := .implementation } }
+      else c }
   let input ← withMockEvidence statementInput `scopeProof proofKey mockProof
   let input ← withMockEvidence input `scopeReview reviewKey mockReview
   let before ← registry input
@@ -525,7 +531,7 @@ def withMissingProofHelper : IO Input := do
   -- A Lean-language document alone is not a semantic descriptor. Keep its bytes.
   let proseOnly : Input := { input with realizations := input.realizations.map fun c =>
     if c.value.key == leanKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
-      if f.name == `statement then { f with declarations := #[] } else f } } else c }
+      if f.name == `proof then { f with declarations := #[] } else f } } else c }
   let proseBefore ← registry proseOnly
   let proseAfter ← registry { proseOnly with documents := proseOnly.documents.map fun c =>
     if c.value.key == leanDoc then { c with value := { c.value with text := "MOCK changed document-only source" } } else c }
@@ -533,7 +539,7 @@ def withMissingProofHelper : IO Input := do
     (proseBefore.bindingFor reviewKey != proseAfter.bindingFor reviewKey)
   -- Unknown provider facts stay conservative, including selected facet/parent
   -- facts reached through endpoints rather than the requirement's own subject.
-  for subject in #[Subject.declaration leanKey leanObject, .facet leanKey `statement, .realization leanKey] do
+  for subject in #[Subject.declaration leanKey leanObject, .facet leanKey `proof, .realization leanKey] do
     let custom := contribution `customProviderInput {
       subject, name := `customProvider.policy, content := "MOCK policy A" }
     let withCustom : Input := { input with bindingInputs := input.bindingInputs.push custom }
@@ -556,11 +562,19 @@ def withMissingProofHelper : IO Input := do
   let unselected ← registry unselected
   expect "scope: unselected facet metadata does not disturb endpoint review"
     (unselected.bindingFor reviewKey == before.bindingFor reviewKey)
-  let implementation : Input := { input with requirements := input.requirements.map fun c =>
+  let implementationInput : Input := { input with requirements := input.requirements.map fun c =>
     if c.value.key == reviewKey then { c with value := { c.value with scope := .implementation } } else c }
-  let implementation ← registry implementation
+  let implementation ← registry implementationInput
   expect "scope: changing the review contract invalidates its old evidence"
     (implementation.bindingFor reviewKey != before.bindingFor reviewKey &&
       hasIssue (implementation.localResult reviewKey) "stale-content")
+  let reviewedImplementation ← withMockEvidence implementationInput `implementationReview reviewKey mockReview
+  let implementationBefore ← registry reviewedImplementation
+  let implementationAfter ← registry { reviewedImplementation with bindingInputs := proofOnly.bindingInputs }
+  expect "scope: explicit implementation review is current before an own-proof edit"
+    ((implementationBefore.localResult reviewKey).complete)
+  expect "scope: explicit implementation review goes stale on an own-proof edit"
+    (implementationBefore.bindingFor reviewKey != implementationAfter.bindingFor reviewKey &&
+      hasIssue (implementationAfter.localResult reviewKey) "stale-content")
 
 end VersoBlueprintTests.BlueprintTranslations

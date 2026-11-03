@@ -290,7 +290,7 @@ run_cmd liftTermElabM do
     "Ordinary escaped dotted witness remains supported"
   let noExpectedContext ← obtain (admit { escapedInput with
     bindingInputs := escapedInput.bindingInputs.filter (·.value.name !=
-      NativeLean.expectedContextFor (proofKey escapedProjection)) })
+      NativeLean.expectedStatementContextFor (proofKey escapedProjection)) })
   ensure ((noExpectedContext.localResult (proofKey escapedProjection)).diagnostics.any
       (·.code == "semantic-context-unavailable")) "Selected source alone cannot bind unknown expected-goal semantics"
   let unusual := Name.str `RealizationAdapterFixture "bad»name"

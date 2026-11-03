@@ -40,8 +40,8 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `correspondence {
     { key := ⟨correspondence, `closure⟩, interpretation := "The selected runtime account retains required obligations"
       required := #[closureReview] }]
   requirements := #[
-    { key := subjectReview, expected := .review `runtimeMeaning, scope := .statement, prerequisites := #[proofKey] },
+    { key := subjectReview, expected := .review `runtimeMeaning, prerequisites := #[proofKey] },
     { key := closureReview, expected := .review `runtimeMeaning, coverage := .dependencyClosure
-      scope := .statement, prerequisites := #[proofKey] }] }
+      prerequisites := #[proofKey] }] }
 
 end FIRSemanticFixture

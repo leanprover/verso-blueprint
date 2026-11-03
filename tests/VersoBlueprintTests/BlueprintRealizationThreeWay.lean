@@ -134,8 +134,8 @@ run_cmd liftTermElabM do
         interpretation := "Relate Rocq off/on to Lean off/on; this relation preserves toggle and the universal two-state involution statement"
         required := #[rocqReview] }]
     requirements := native.requirements ++ #[
-      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence, scope := .statement },
-      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence, scope := .statement }] }
+      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence },
+      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence }] }
   let r ← obtain (admit input)
   ensure (r.nodes.size == 1 && r.realizations.size == 3 && r.translations.size == 2)
     "One node has three realizations and exactly two explicit translations"
@@ -239,8 +239,8 @@ run_cmd liftTermElabM do
   -- Synthetic semantic-input mutation, retaining the actual native observation.
   -- Raw Lean file bytes are provenance, not proof content.
   let staleInput := { input with bindingInputs := input.bindingInputs.map fun record =>
-    if record.value.name == NativeLean.sourceContext then
-      { record with value := { record.value with content := record.value.content ++ "-changed-implementation" } }
+    if record.value.name == NativeLean.statementContext then
+      { record with value := { record.value with content := record.value.content ++ "-changed-statement" } }
     else record }
   let staleRegistry ← obtain (admit staleInput)
   let staleReport := Report.ofRegistry staleRegistry

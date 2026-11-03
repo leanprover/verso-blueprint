@@ -329,8 +329,8 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
       declarations := #[{ object := clean.witness, required := #[alternativeKey] }] })
     requirements := input.requirements.push (authored `alternativeRequirement {
       key := alternativeKey, expected := .proof fresh.goal clean.witness, coverage := .dependencyClosure })
-    bindingInputs := input.bindingInputs ++ fresh.semanticContext.toArray.map (fun content => authored `alternativeContext {
-      subject := alternativeKey.subject, name := NativeLean.expectedContextFor alternativeKey, content }) }
+    bindingInputs := input.bindingInputs ++ fresh.statementContext.toArray.map (fun content => authored `alternativeContext {
+      subject := alternativeKey.subject, name := NativeLean.expectedStatementContextFor alternativeKey, content }) }
   let alternativeRegistry ← obtain (admit withAlternative)
   let some alternativeBinding := alternativeRegistry.bindingFor alternativeKey | throwError "Missing alternative binding"
   let withAlternative := { withAlternative with evidence := withAlternative.evidence.push (authored `alternativeEvidence {
