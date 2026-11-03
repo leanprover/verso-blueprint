@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.DeclarationPlanLaws
+import VersoBlueprint.Realizations.Capture.RequiredLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -279,3 +279,13 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.plan_declaration_mem_iff
 #print axioms Informal.Realizations.Capture.plan_raw_realization
 #print axioms Informal.Realizations.Capture.evaluate_raw_source_use_justified
+
+-- Source-facing proof-key coverage through the actual public assessment.
+#print axioms Informal.Translations.Input.DeclarationRequires
+#print axioms Informal.Realizations.Capture.collectOrdinary_declarationRequired
+#print axioms Informal.Realizations.Capture.collectAuthored_declarationRequired
+#print axioms Informal.Realizations.Capture.assemble_declarationRequired
+#print axioms Informal.Realizations.Capture.evaluate_declarationRequired
+#print axioms Informal.Realizations.Capture.evaluate_native_proof_selected
+#print axioms Informal.Realizations.Capture.evaluate_raw_native_proof_selected
+#print axioms Informal.Realizations.Capture.evaluate_raw_assessment_declaration_justified
