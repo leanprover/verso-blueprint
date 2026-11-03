@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.AuthoredRequestLaws
+import VersoBlueprint.Realizations.Capture.NativeRequestLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -324,3 +324,10 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.plan_authored_goal_request
 #print axioms Informal.Realizations.Capture.AuthoredRequestChain.jobs
 #print axioms Informal.Realizations.Capture.plan_raw_authored_goal_request
+
+-- Native source positions preserve full associations at bounded observer jobs.
+#print axioms Informal.Realizations.Capture.NativeRequestSequence
+#print axioms Informal.Realizations.Capture.NativeRequestSequence.job
+#print axioms Informal.Realizations.Capture.plan_native_request_sequence
+#print axioms Informal.Realizations.Capture.plan_native_requests
+#print axioms Informal.Realizations.Capture.plan_raw_native_request

@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.AuthoredRequestLaws
+import VersoBlueprint.Realizations.Capture.NativeRequestLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -704,6 +704,7 @@ namespace VersoBlueprintTests.CheckRequestPlanning
 open Lean Informal Informal.Realizations Informal.Translations Informal.SourceData Informal.Validation
 
 -- Repeated names across nodes and realization projects must not alias handles.
+-- Equal canonical names retain distinct origins/snapshots and exact source replay.
 -- These are planner-only synthetic sources, not authenticated native declarations.
 #eval show IO Unit from do
   let makeNode (label project : Name) (reverse : Bool) : Environment.RegisteredNode := Id.run do
@@ -711,9 +712,21 @@ open Lean Informal Informal.Realizations Informal.Translations Informal.SourceDa
     let alternativeContext : Context := ⟨`lean, project ++ `alternative⟩
     let key : RealizationKey := ⟨label, `lean⟩
     let alternative : RealizationKey := ⟨label, `alternative⟩
-    let associations : Array NativeAssociation := #[`sharedWitness, `nativeOnly].map fun name => {
+    let shared : NativeAssociation := {
+      realization := key, context, facets := #[`statement, `proof]
+      reference := {
+        written := `SharedAlias, canonical := `sharedWitness, origin := .blueprintAttr
+        provenance := .inWorkspace `RequestFixture "MOCK-attribute.lean"
+        kind := .theorem, sourceHref? := some "MOCK-attribute.lean#sharedWitness" } }
+    let distinct : NativeAssociation := { shared with
+      facets := #[`proof]
+      reference := { shared.reference with
+        written := `OtherAlias, origin := .directiveLean, present := false, provedStatus := .missing
+        provenance := .outWorkspace `OtherFixture (some "MOCK-directive.lean")
+        sourceHref? := none } }
+    let associations : Array NativeAssociation := #[shared, {
       realization := key, context, facets := #[`proof]
-      reference := { written := name, canonical := name } }
+      reference := { written := `nativeOnly, canonical := `nativeOnly } }, distinct, shared]
     let names := if reverse then #[`inlineOnly, `sharedWitness] else #[`sharedWitness, `inlineOnly]
     let source : FacetSource := {
       destination := ⟨key, `proof⟩, context, document := ⟨context, "MOCK-request-source.lean"⟩
@@ -741,11 +754,32 @@ open Lean Informal Informal.Realizations Informal.Translations Informal.SourceDa
           authored := if withAuthored then #[record, record] else #[] }
         let p := Capture.plan raw
         let mut handles : Array Nat := #[]
+        let mut nativeHandles : Array Nat := #[]
         for node in p.ordinary do
           let project := if node.label == `first then `firstProject else `secondProject
           for step in node.realizations do
             let context : Context := ⟨`lean, if step.key.name == `lean then project else project ++ `alternative⟩
+            let associations := node.accepted.nativeAssociations.filter (·.realization == step.key)
+            unless decide (step.associations = associations) do
+              throw <| IO.userError "Planning changed retained association records"
             for declaration in step.declarations do
+              let selected := associations.filter (·.reference.canonical == declaration.name)
+              unless declaration.native.size == selected.size do
+                throw <| IO.userError "Native handles lost or invented association positions"
+              for index in [:selected.size] do
+                let association := selected[index]!
+                let some handle := declaration.native[index]?
+                  | throw <| IO.userError "Native association has no request handle"
+                let some request := p.native[handle]?
+                  | throw <| IO.userError "Native source handle is out of bounds"
+                unless request.context == context && request.name == declaration.name &&
+                    decide (request.association = association) do
+                  throw <| IO.userError "Native request changed source order, provenance, facets or snapshot"
+                let job := p.native[declaration.native[index]!]!
+                unless declaration.native[index]! < p.native.size && job.context == context &&
+                    job.name == declaration.name && decide (job.association = association) do
+                  throw <| IO.userError "Native observer job disagrees with its original association"
+                nativeHandles := nativeHandles.push handle
               let some request := p.checks[declaration.check]?
                 | throw <| IO.userError "Planner produced an out-of-bounds check handle"
               unless request.project == context.project &&
@@ -759,6 +793,8 @@ open Lean Informal Informal.Realizations Informal.Translations Informal.SourceDa
         unless handles == (List.range (5 * nodes.size)).toArray &&
             p.checks.size == handles.size && p.expected.size == (if withAuthored then 1 else 0) do
           throw <| IO.userError "Planning reused a handle, lost a check, or replayed authored work"
+        unless nativeHandles == (List.range (5 * nodes.size)).toArray && p.native.size == nativeHandles.size do
+          throw <| IO.userError "Planning aliased native handles or erased duplicate source associations"
 
 -- The production environment lookup and accepted sources suffice. This consumer
 -- assumes no planned declaration, valid handle or matching provider request.
@@ -777,6 +813,22 @@ example {state : Environment.State} (found : state.data.get? label = some accept
           declaration.check < p.checks.size ∧ p.checks[declaration.check]? =
             some { project := context.project, witness := ⟨context, name.toString⟩ } := by
   apply Capture.plan_raw_declaration_check _ _ keyMember sourceDeclaration contextAgrees
+  simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
+
+-- A retained raw association suffices; realization/declaration membership and
+-- the bounded native observer lookup are all derived from production planning.
+example {state : Environment.State} (found : state.data.get? label = some accepted)
+    (associationMember : association ∈ accepted.nativeAssociations)
+    (contextAgrees : canonical ((accepted.sources.filter (·.destination.realization == association.realization)).map (·.context) ++
+      (accepted.nativeAssociations.filter (·.realization == association.realization)).map (·.context)) = #[context]) :
+    let p := Capture.plan (Capture.Raw.ofState state)
+    ∃ node ∈ p.ordinary, node.label = label ∧ node.accepted = accepted ∧
+      ∃ step ∈ node.realizations, step.key = association.realization ∧
+        ∃ declaration ∈ step.declarations, declaration.name = association.reference.canonical ∧
+          ∃ index, index < declaration.native.size ∧ declaration.native[index]! < p.native.size ∧
+            p.native[declaration.native[index]!]! =
+              { context, name := association.reference.canonical, association } := by
+  apply Capture.plan_raw_native_request _ _ associationMember contextAgrees
   simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
 
 end VersoBlueprintTests.CheckRequestPlanning
