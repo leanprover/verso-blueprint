@@ -33,6 +33,11 @@ def main() -> None:
         raise RuntimeError("Runtime fixture is not at its exact baseline")
     body_change = original.replace(marker, b"def runtimeMode : Nat := 1")
     type_change = original.replace(marker, b"def runtimeMode : Int := 0")
+    proof_marker = b"theorem runtimeFact : True := True.intro"
+    if original.count(proof_marker) != 1:
+        raise RuntimeError("Expected the exact imported proof control")
+    proof_change = original.replace(proof_marker, b"theorem runtimeFact : True := (fun h : True => h) True.intro")
+    proof_hole = original.replace(proof_marker, b"theorem runtimeFact : True := by sorry")
     unchanged = {path: path.read_bytes() for path in (owner, consumer)}
     commands = []
 
@@ -48,8 +53,8 @@ def main() -> None:
             if path.read_bytes() != data:
                 raise RuntimeError(f"Local source changed during the control: {path}")
 
-    def build(step: str) -> None:
-        run(step, ["build", "+VersoBlueprintTests.BlueprintRealizationSemantics:olean"])
+    def build(step: str, environment=None) -> None:
+        run(step, ["build", "+VersoBlueprintTests.BlueprintRealizationSemantics:olean"], environment)
 
     def query(step: str, mode: str, control: Path) -> None:
         environment = dict(os.environ)
@@ -63,6 +68,19 @@ def main() -> None:
             control = Path(temporary) / "mock-review-bindings.json"
             build("01-baseline-build")
             query("02-capture-current", "capture", control)
+            for step, content, mode in [
+                ("proof-edit", proof_change, "current"),
+                ("proof-hole", proof_hole, "proof-hole"),
+                ("comment-edit", original + b"\n-- unrelated source comment\n", "current"),
+            ]:
+                restored_build = False
+                runtime.write_bytes(content)
+                environment = dict(os.environ)
+                if mode == "proof-hole":
+                    environment["VBP_SEMANTIC_REVIEW_MODE"] = mode
+                    environment["VBP_SEMANTIC_REVIEW_CONTROL"] = str(control)
+                build(step + "-build", environment)
+                query(step + "-reviews", mode, control)
             restored_build = False
             runtime.write_bytes(body_change)
             build("03-import-changed-build")

@@ -479,13 +479,15 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
               input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
-              input.bindingInputs := collected.input.bindingInputs ++ prepared.semanticContext.toArray.map fun content =>
-                contribution `nativeContext (BindingEncoding.subject subject) { subject, name := NativeLean.sourceContext, content } }
+              input.bindingInputs := collected.input.bindingInputs ++ (prepared.semanticContext.toArray.map fun content =>
+                contribution `nativeContext (BindingEncoding.subject subject) { subject, name := NativeLean.sourceContext, content }) ++
+                (prepared.statementContext.toArray.map fun content => contribution `nativeStatementContext
+                  (BindingEncoding.subject subject) { subject, name := NativeLean.statementContext, content }) }
             pure { key := witness, resolution := .resolved, document := some prepared.document.key }
         collected := { collected with
           input.objects := collected.input.objects.push (contribution `object (BindingEncoding.objectKey witness) observation)
           input.requirements := collected.input.requirements ++ #[
-            contribution `requirement (BindingEncoding.requirementKey statementKey) { key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure },
+            contribution `requirement (BindingEncoding.requirementKey statementKey) { key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure, scope := .statement },
             contribution `requirement (BindingEncoding.requirementKey proofKey) { key := proofKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
         model := { model with
           declarations := model.declarations.map fun declaration =>
@@ -553,9 +555,11 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
               { declaration with required := canonical (declaration.required.push expectedKey) } } }
         requirements := collected.input.requirements.push (authoredContribution record.origin `expectedRequirement index {
           key := expectedKey, expected := .proof checked.goal witness, coverage := .dependencyClosure })
-        bindingInputs := collected.input.bindingInputs ++ checked.semanticContext.toArray.map fun content =>
+        bindingInputs := collected.input.bindingInputs ++ (checked.semanticContext.toArray.map fun content =>
           authoredContribution record.origin `expectedContext index {
-            subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content } }
+            subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content }) ++
+          (checked.statementContext.toArray.map fun content => authoredContribution record.origin `expectedStatementContext index {
+            subject := expectedKey.subject, name := NativeLean.expectedStatementContextFor expectedKey, content }) }
       collected := { collected with
         input := input
         sourceDiagnostics := collected.sourceDiagnostics.addNode node checked.semanticDiagnostics

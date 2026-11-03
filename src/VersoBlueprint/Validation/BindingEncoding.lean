@@ -72,25 +72,9 @@ private def coverage : Coverage → Json
 
 def requirement (value : Requirement) : Json :=
   tagged "requirement" #[requirementKey value.key, expectation value.expected,
-    coverage value.coverage, Json.arr (value.prerequisites.map requirementKey)]
+    coverage value.coverage, toJson value.scope, Json.arr (value.prerequisites.map requirementKey)]
 
 def bindingInput (value : BindingInput) : Json :=
   tagged "binding-input" #[subject value.subject, name value.name, Json.str value.content]
-
-def facet (value : Facet) : Json :=
-  tagged "facet" #[name value.name,
-    Json.arr (value.documents.map documentKey),
-    Json.arr (value.declarations.map objectKey),
-    Json.arr (value.required.map requirementKey)]
-
-def declaration (value : Realizations.Declaration) : Json :=
-  tagged "declaration" #[objectKey value.object,
-    Json.arr (value.required.map requirementKey)]
-
-def realization (value : Realization) : Json :=
-  tagged "realization" #[realizationKey value.key, context value.context,
-    Json.arr (value.facets.map facet),
-    Json.arr (value.declarations.map declaration),
-    Json.arr (value.required.map requirementKey)]
 
 end Informal.Validation.BindingEncoding

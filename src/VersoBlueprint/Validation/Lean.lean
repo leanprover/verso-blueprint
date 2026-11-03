@@ -22,6 +22,7 @@ structure Checked where
   observation : ProofObservation
   status : Option Data.ProvedStatus := none
   semanticContext : Option String := none
+  statementContext : Option String := none
   semanticDiagnostics : Array Diagnostic := #[]
 
 private def issue (code : String) (witness : ObjectKey) (message : String) : Diagnostic :=
@@ -35,35 +36,18 @@ private def nativeName (project : Name) (witness : ObjectKey) : Except Diagnosti
     throw <| issue "unsupported-identity" witness "Native object spelling is not a supported canonical Lean name"
   return name
 
--- Compile-time source of the actual provider build, not an independently
--- versioned artifact. All included files are already module dependencies.
-private def providerSources : Array (String × String) := #[
-  ("Validation/Lean.lean", include_str "Lean.lean"),
-  ("Validation/Semantic.lean", include_str "Semantic.lean"),
-  ("Validation/BindingEncoding.lean", include_str "BindingEncoding.lean"),
-  ("Util/Merkle.lean", include_str "../Util/Merkle.lean"),
-  ("Util/SHA256.lean", include_str "../Util/SHA256.lean"),
-  ("Validation.lean", include_str "../Validation.lean"),
-  ("ProvedStatus.lean", include_str "../ProvedStatus.lean"),
-  ("SorryAnalysis.lean", include_str "../SorryAnalysis.lean"),
-  ("Data.lean", include_str "../Data.lean"),
-  ("ConceptMetadata.lean", include_str "../ConceptMetadata.lean"),
-  ("SourcePayload.lean", include_str "../SourcePayload.lean")]
+/-- A provider tied to one immutable checked environment. Scope is explicit. -/
+abbrev SemanticContext := ContentScope → Name → Array Name → CoreM (Except Diagnostic String)
 
-/-- A provider tied to one immutable checked environment. -/
-abbrev SemanticContext := Name → Array Name → CoreM (Except Diagnostic String)
-
-/-- Share expression/declaration fingerprints only within this observation. -/
+/-- Share structural fingerprints only within this observation. -/
 def newSemanticContext : CoreM SemanticContext := do
-  let session ← Semantic.newSession (SHA256.tagged "lean.provider.v1"
-    (providerSources.map fun (path, source) => SHA256.tagged "lean.provider-file.v1" #[path, SHA256.text source]))
-  return session.context
+  let session ← Semantic.newSession
+  return fun scope project roots => session.context project roots scope
 
-/-- Standalone callers get a fresh session; Capture shares one across its jobs.
-Imported type/body changes still invalidate bindings. Metadata is omitted from
-semantic identity; original source bytes are bound independently. -/
-def semanticContext (project : Name) (roots : Array Name) : CoreM (Except Diagnostic String) := do
-  (← newSemanticContext) project roots
+/-- Standalone callers get a fresh session. Compiler/source provenance is not
+statement content; native checking remains fresh on each capture. -/
+def semanticContext (scope : ContentScope) (project : Name) (roots : Array Name) : CoreM (Except Diagnostic String) := do
+  (← newSemanticContext) scope project roots
 
 /-- Current native checking of a declaration's own statement/body. These are
 named checks, not proof observations for an independently specified proposition
@@ -171,19 +155,23 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     -- This is an opaque structural fingerprint, not the equality algorithm. It
     -- comes from the independently checked expectation, never the witness type.
     let goal : Goal := { context := witness.context, fingerprint := Semantic.fingerprint proposition, documents }
-    let semanticResult ← semantics project (#[name] ++ proposition.getUsedConstants)
+    let semanticResult ← semantics .implementation project (#[name] ++ proposition.getUsedConstants)
     let (context, semanticDiagnostics) := match semanticResult with
       | .ok context => (some context, #[])
       | .error diagnostic => (none, #[diagnostic])
+    let statementResult ← semantics .statement project (#[name] ++ proposition.getUsedConstants)
+    let statementContext := statementResult.toOption
+    let semanticDiagnostics := (semanticDiagnostics ++ (match statementResult with
+      | .ok _ => #[] | .error diagnostic => #[diagnostic])).toList.eraseDups.toArray
     let some info := (← getEnv).checked.get.find? name
-      | return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
+      | return .ok { goal, semanticContext := context, statementContext, semanticDiagnostics, observation := {
           witness, outcome := .unavailable
           explanation := "missing-witness: declaration not in checked environment" } }
     let constant ← mkConstWithFreshMVarLevels name
     Meta.check constant
     let actualType ← inferType constant
     unless ← isDefEq actualType proposition do
-      return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
+      return .ok { goal, semanticContext := context, statementContext, semanticDiagnostics, observation := {
         witness, outcome := .failed
         explanation := "wrong-proposition: checked witness type is not definitionally equal to expectation" } }
     let constant ← instantiateMVars constant
@@ -195,7 +183,7 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     let status ← Data.analyzeDeclaration info.name
     let assumptions ← collectAxioms info.name
     return .ok {
-      goal, status := some status, semanticContext := context, semanticDiagnostics
+      goal, status := some status, semanticContext := context, statementContext, semanticDiagnostics
       observation := {
         witness
         -- Normalize to the expected descriptor ONLY after actual Lean defeq.

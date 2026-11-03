@@ -43,8 +43,10 @@ named `proof`, or a proof of an independently specified proposition. -/
 def statementValidator : Name := `lean.declarationStatement
 def bodyValidator : Name := `lean.declarationCompleteness
 def sourceContext : Name := `source.semanticContext
+def statementContext : Name := `source.statementContext
 def expectedContext : Name := `lean.expectedContext
 def expectedContextFor (key : RequirementKey) : Name := expectedContext ++ key.name
+def expectedStatementContextFor (key : RequirementKey) : Name := `lean.expectedStatementContext ++ key.name
 
 end NativeLean
 
@@ -57,10 +59,17 @@ inductive Coverage where
   | dependencyClosure
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
+/-- Content assessed by a requirement, independent of facet display names. -/
+inductive ContentScope where
+  | statement
+  | implementation
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+
 structure Requirement where
   key : RequirementKey
   expected : Expectation
   coverage : Coverage := .subject
+  scope : ContentScope := .implementation
   prerequisites : Array RequirementKey := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 

@@ -436,6 +436,28 @@ readable proposition text, and comparing fingerprints does not perform Lean
 conversion checking. The native provider still checks the independently authored
 expectation and witness using definitional equality and the kernel.
 
+`Validation.Requirement.scope` explicitly selects `.statement` or
+`.implementation` (the default). Facets choose content members, not the scope.
+For a correspondence review that should survive proof edits, author
+`scope := .statement`. Statement bindings cover types and computational semantic
+dependencies, excluding proof bodies. Implementation bindings also include the
+selected declaration's own body. Native checks still run afresh, so a preserved
+statement review cannot make an admitted proof complete. Explicit prerequisites
+contribute statement contracts to freshness and retain their separate completion
+gate. The `vbp-binding-sha256-v2` encoding makes old bindings stale; rebuild
+captures and reassess affected reviews. See the [freshness contract](design/REALIZATIONS_AND_TRANSLATIONS.md#freshness-and-trust-boundary)
+for source identity and migration limits. The former whole-record
+`BindingEncoding.facet`, `declaration` and `realization` helpers are removed;
+bindings now project selected content and the local contract explicitly.
+
+`NativeLean.SemanticContext` takes `ContentScope`, project and roots. Create it
+with `NativeLean.newSemanticContext` within one immutable checked environment;
+reuse it sequentially within that capture only. `NativeLean.Checked` and
+`NativeSource.Prepared` expose implementation `semanticContext` and
+`statementContext` descriptors separately. These opaque descriptors are freshness
+inputs, never proof certificates. Ordinary consumers should use capture rather
+than assemble provider descriptors themselves.
+
 For standalone source adapters, `PreparedModel.prepareValidation` returns
 `Input × NativeLean.Checked`. The checked result retains the observation and any
 semantic-context diagnostics; consumers must not discard those diagnostics when
@@ -1889,7 +1911,7 @@ authored-document errors. Node assessments select errors by the originating
 node or complete document identity (language, project and path), never by
 matching diagnostic text. These diagnostics do not change completion policy.
 For bounded performance diagnosis, `set_option trace.blueprint.capture.semantic true`
-reports each semantic request's roots, elapsed time, raw heartbeat delta and
+reports each semantic request's roots, content scope, elapsed time, raw heartbeat delta and
 committed cache sizes, with progress after the first and every 1,024 collected
 declarations. Progress counts are temporary work, not published evidence.
 Raw heartbeats use Lean's internal units (1,000 per user-facing heartbeat).

@@ -110,12 +110,24 @@ def withMockEvidence (input : Input) (id : Name) (key : RequirementKey) (observa
   for record in input.requirements do
     if let .proof .. := record.value.expected then
       let proof := record.value.key
-      unless input.bindingInputs.any (fun record => record.value.subject == proof.subject &&
-          record.value.name == NativeLean.expectedContextFor proof) do
-        let context := contribution (id ++ `mockExpectedContext ++ Name.num .anonymous input.bindingInputs.size) {
-          subject := proof.subject, name := NativeLean.expectedContextFor proof
-          content := "MOCK expected-goal semantic context" }
-        input := { input with bindingInputs := input.bindingInputs.push context }
+      for tag in #[NativeLean.expectedContextFor proof, NativeLean.expectedStatementContextFor proof] do
+        unless input.bindingInputs.any (fun record => record.value.subject == proof.subject &&
+            record.value.name == tag) do
+          let context := contribution (id ++ `mockExpectedContext ++ Name.num .anonymous input.bindingInputs.size) {
+            subject := proof.subject, name := tag
+            content := "MOCK expected-goal semantic context" }
+          input := { input with bindingInputs := input.bindingInputs.push context }
+  for record in input.objects do
+    let object := record.value.key
+    if object.context.language == `lean then
+      for realization in input.realizations do
+        if realization.value.declarations.any (·.object == object) then
+          let subject := Subject.declaration realization.value.key object
+          unless input.bindingInputs.any (fun record => record.value.subject == subject &&
+              record.value.name == NativeLean.statementContext) do
+            let context := contribution (id ++ `mockStatementContext ++ Name.num .anonymous input.bindingInputs.size) {
+              subject, name := NativeLean.statementContext, content := "MOCK declaration statement semantics" }
+            input := { input with bindingInputs := input.bindingInputs.push context }
   let r ← registry input
   let some binding := r.bindingFor key | throw <| IO.userError "Missing test requirement"
   return { input with evidence := input.evidence.push <| contribution id { id, requirement := key, binding, observation } }
@@ -205,7 +217,8 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
     let changed : Input := { input with documents := input.documents.map fun c =>
       if c.value.key == document then { c with value := { c.value with text := c.value.text ++ " changed" } } else c }
     let changedRegistry ← registry changed
-    expect "P10: endpoint bytes changed" (hasIssue (changedRegistry.resultForRequirement reviewKey) "stale-content")
+    expect "P10: only foreign endpoint bytes bind; Lean uses checked semantics"
+      (hasIssue (changedRegistry.resultForRequirement reviewKey) "stale-content" == (document == rocqDoc))
   let changedClaim : Input := { input with claims := input.claims.map fun c =>
     { c with value := { c.value with assumptions := #["new assumption"] } } }
   let changedRegistry ← registry changedClaim

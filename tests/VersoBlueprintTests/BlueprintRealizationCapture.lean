@@ -454,7 +454,7 @@ run_cmd liftTermElabM do
     code := "semantic-context-unavailable"
     subject := "Unrelated.TransitiveDependency"
     message := "Injected failure for diagnostic propagation control" }
-  let failingSemantics : NativeLean.SemanticContext := fun _ _ => pure (.error semanticDiagnostic)
+  let failingSemantics : NativeLean.SemanticContext := fun _ _ _ => pure (.error semanticDiagnostic)
   let expectedName := plan.expected[expected.handle]!.expected
   let checkedWithoutContext ← obtain (← NativeLean.check `blueprintFixtures
     originalChecked.observation.witness (mkCIdent expectedName) expected.result.documents failingSemantics)

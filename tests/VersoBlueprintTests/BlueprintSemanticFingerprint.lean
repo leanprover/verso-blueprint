@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import Lean
 import VersoBlueprint.Validation.Semantic
+import VersoBlueprint.Validation.Lean
 import VersoBlueprint.Translations
 
 /-! Structural Merkle fingerprint controls. These test deterministic structure,
@@ -111,8 +112,7 @@ run_cmd liftCoreM do
   ensure (Semantic.fingerprint sharedSmall == Semantic.fingerprint duplicate)
     "Fingerprint must depend on expression structure, not allocation sharing"
 
-  let provider := "semantic-fingerprint-test-provider"
-  let session ← Semantic.newSession provider
+  let session ← Semantic.newSession
   let project := `semanticFingerprintProject
   let graphNamespace := Name.str (← getMainModule) "GraphFixture"
   let diamond := Name.str graphNamespace "diamond"
@@ -133,7 +133,7 @@ run_cmd liftCoreM do
   let firstSizes ← session.sizes
   ensure (firstSizes.1 > 0 && firstSizes.2 >= roots.size)
     "Semantic context did not memoize expression and declaration nodes"
-  let tracedSession ← Semantic.newSession provider
+  let tracedSession ← Semantic.newSession
   let traced ← withOptions (·.setBool `trace.blueprint.capture.semantic true) do
     getContext tracedSession project roots
   ensure (traced == first && (← tracedSession.sizes) == firstSizes)
@@ -142,17 +142,14 @@ run_cmd liftCoreM do
   let repeatedSizes ← session.sizes
   ensure (repeatedSizes == firstSizes)
     "Repeated root lookup grew the capture-local semantic memo tables"
-  let fresh ← Semantic.newSession provider
+  let fresh ← Semantic.newSession
   ensure ((← getContext fresh project roots) == first)
     "A fresh session over the same checked environment changed the semantic digest"
-  let reversedFresh ← Semantic.newSession provider
+  let reversedFresh ← Semantic.newSession
   ensure ((← getContext reversedFresh project roots.reverse) == first)
     "A fresh traversal with reversed roots changed the semantic digest"
   ensure ((← getContext session `anotherSemanticFingerprintProject roots) != first)
     "Project identity was omitted from the semantic context"
-  let differentProvider ← Semantic.newSession "another-semantic-provider"
-  ensure ((← getContext differentProvider project roots) != first)
-    "Provider identity was omitted from the semantic context"
 
   let currentEnvironment ← getEnv
   try
@@ -167,7 +164,7 @@ run_cmd liftCoreM do
     | .ok _ => throwError "A semantic session was reused across checked environments"
     | .error diagnostic =>
       ensure (diagnostic.code == "semantic-session-mismatch") "Wrong stale-session diagnostic"
-    let newEnvironmentSession ← Semantic.newSession provider
+    let newEnvironmentSession ← Semantic.newSession
     ensure ((← getContext newEnvironmentSession project roots) == first)
       "An unrelated declaration changed the selected semantic digest"
   finally
@@ -178,16 +175,16 @@ run_cmd liftCoreM do
     | .ok _ => throwError "A semantic session was reused after extension-only mutation"
     | .error diagnostic =>
       ensure (diagnostic.code == "semantic-session-mismatch") "Wrong extension-session diagnostic"
-    let metadataSession ← Semantic.newSession provider
+    let metadataSession ← Semantic.newSession
     ensure ((← getContext metadataSession project roots) == first)
       "Unrelated environment metadata changed the semantic digest"
   finally
     setEnv currentEnvironment
-  let singletonSession ← Semantic.newSession provider
+  let singletonSession ← Semantic.newSession
   ensure ((← getContext singletonSession project #[diamond]) == repeated)
     "Incremental known-terminal hashing differs from a fresh singleton closure"
 
-  let failedSession ← Semantic.newSession provider
+  let failedSession ← Semantic.newSession
   let beforeFailure ← failedSession.sizes
   match ← failedSession.context project #[`Missing.SemanticFingerprintRoot, diamond] with
   | .ok _ => throwError "A missing checked semantic root was accepted"
@@ -217,5 +214,87 @@ run_cmd liftCoreM do
   | .error diagnostic =>
     ensure (diagnostic.code == "invalid-semantic-context")
       "Empty root list needs the invalid semantic context diagnostic"
+
+-- Real checked declarations in separate environment snapshots. Review content
+-- and native proof checking must respond independently to a proof-only edit.
+run_cmd liftTermElabM do
+  let base ← getEnv
+  let name := `StatementBindingOwnProof
+  let proof := mkConst ``True.intro
+  let rewritten := mkApp (mkLambda `h BinderInfo.default (mkConst ``True) (.bvar 0)) proof
+  let admitted ← Lean.Meta.mkSorry (mkConst ``True) true
+  let mut identities : Array (String × String) := #[]
+  try
+    for (body, expectedComplete) in #[(proof, true), (rewritten, true), (admitted, false)] do
+      setEnv base
+      addDecl <| .thmDecl { name, levelParams := [], type := mkConst ``True, value := body }
+      let session ← Semantic.newSession
+      let statement ← session.context `statementScope #[name] .statement
+      let implementation ← session.context `statementScope #[name] .implementation
+      let .ok statement := statement | throwError "Statement identity unavailable"
+      let .ok implementation := implementation | throwError "Own proof identity unavailable"
+      let reverse ← Semantic.newSession
+      let reversedImplementation ← reverse.context `statementScope #[name] .implementation
+      let reversedStatement ← reverse.context `statementScope #[name] .statement
+      ensure (reversedImplementation.toOption == some implementation && reversedStatement.toOption == some statement)
+        "Statement and implementation cache reuse depends on request order"
+      let checked ← checkDeclaration `statementScope ⟨⟨`lean, `statementScope⟩, name.toString⟩
+      let .ok checked := checked | throwError "Native checking failed"
+      ensure ((checked.body.outcome == .passed) == expectedComplete)
+        "Proof fingerprint policy altered actual native completeness checking"
+      identities := identities.push (statement, implementation)
+    ensure (identities.all (·.1 == identities[0]!.1))
+      "Statement identity changed with its own proof or admission"
+    ensure (identities[0]!.2 != identities[1]!.2 && identities[0]!.2 != identities[2]!.2)
+      "Implementation review failed to bind the selected own proof"
+    -- A proof stored as a definition is still a proof, unlike a definition of Prop.
+    let mut definitionStatements : Array String := #[]
+    for body in #[proof, rewritten] do
+      setEnv base
+      addDecl <| .defnDecl {
+        name := `StatementBindingProofDefinition, levelParams := []
+        type := mkConst ``True, value := body, hints := .abbrev, safety := .safe }
+      let session ← Semantic.newSession
+      let .ok digest ← session.context `statementScope #[`StatementBindingProofDefinition] .statement
+        | throwError "Proof-valued definition statement unavailable"
+      definitionStatements := definitionStatements.push digest
+    ensure (definitionStatements[0]! == definitionStatements[1]!)
+      "A proof-valued definition leaked its body into statement identity"
+    let mut opaqueStatements : Array String := #[]
+    for body in #[proof, rewritten] do
+      setEnv base
+      addDecl <| .opaqueDecl {
+        name := `StatementBindingOpaqueProof, levelParams := [], isUnsafe := false
+        type := mkConst ``True, value := body }
+      let session ← Semantic.newSession
+      let .ok digest ← session.context `statementScope #[`StatementBindingOpaqueProof] .statement
+        | throwError "Opaque proof statement unavailable"
+      opaqueStatements := opaqueStatements.push digest
+    ensure (opaqueStatements[0]! == opaqueStatements[1]!)
+      "An opaque proof leaked its body into statement identity"
+    setEnv base
+    addDecl <| .thmDecl {
+      name, levelParams := [], type := mkConst ``True, value := proof
+      all := [name, `DifferentProofAuxiliaryGroup] }
+    let grouped ← Semantic.newSession
+    let .ok groupedStatement ← grouped.context `statementScope #[name] .statement
+      | throwError "Proof grouping prevented statement identity"
+    ensure (groupedStatement == identities[0]!.1)
+      "Proof-only auxiliary grouping leaked into statement identity"
+    -- A changed elaborated type remains a statement edit, even when its proof
+    -- subterms are definitionally irrelevant. We do not normalize types here.
+    let mut typeStatements : Array String := #[]
+    for body in #[proof, rewritten] do
+      setEnv base
+      addDecl <| .thmDecl {
+        name, levelParams := [], value := proof
+        type := mkLet `h (mkConst ``True) body (mkConst ``True) }
+      let session ← Semantic.newSession
+      let .ok digest ← session.context `statementScope #[name] .statement
+        | throwError "Checked type with a proof subterm unavailable"
+      typeStatements := typeStatements.push digest
+    ensure (typeStatements[0]! != typeStatements[1]!)
+      "Structural type edits must not be confused with changes to a theorem's body"
+  finally setEnv base
 
 end VersoBlueprintTests.BlueprintSemanticFingerprint

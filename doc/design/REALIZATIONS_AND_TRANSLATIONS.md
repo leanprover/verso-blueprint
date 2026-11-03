@@ -245,20 +245,46 @@ recheck source files.
 
 ## Freshness and trust boundary
 
-Content bindings are versioned SHA-256 Merkle fingerprints. Native semantic
-fingerprints cover the checked declaration shape, types, available bodies, and
-transitive dependencies, so a changed imported definition or type invalidates
-dependent evidence even when local source bytes are unchanged. Missing or hidden
-bodies fail closed. Authored source documents bind their current bytes, and
-changes to a witness, expected goal, endpoint, assumption, interpretation,
-selected requirement, provider, or compiler identity invalidate the connected
-binding.
+Content bindings use the versioned `vbp-binding-sha256-v2` encoding. A requirement
+has an explicit `scope`: `.statement` reviews mathematical content;
+`.implementation` also binds the selected declaration's own implementation. The
+default is `.implementation`. Facets select documents/declarations, not scope:
+calling a facet `statement` does not silently narrow a review.
 
-Expression fingerprints preserve semantic constructor data and sharing without
-including allocation addresses. Expression metadata is ignored because it is
-definitionally irrelevant; original source bytes are bound separately. Merkle
-memoization is scoped to one capture. Native checks are rerun on every capture;
-there is no persisted proof-success cache or historical receipt store.
+For Lean, statement identity includes declaration types and transitive
+computational definitions, inductives and recursors. It excludes proof bodies,
+including proofs stored as proposition-valued definitions or opaque constants.
+A definition *of* a proposition remains computational content. Implementation
+identity adds the selected declaration's own body and the statement identities
+of its dependencies; it does not recursively hash other proofs. A changed imported
+definition or type therefore invalidates dependent reviews even when local
+source is unchanged. A proof rewrite, or replacing that proof with `sorry`,
+does not invalidate its statement review. Fresh native checking still detects
+that admission and keeps proof-dependent completion unfinished.
+
+Bindings contain the selected endpoints, interpretation, assumptions and local
+requirement contract. Explicit prerequisites contribute statement contracts and
+content, and current prerequisite completion remains a separate evaluator gate.
+Unrelated sibling obligations and unselected facets do not change a local review.
+Missing required semantic descriptors block acceptance. Source association still
+requires current original source, but declaration-backed Lean file bytes and
+locators are not review content. Document-only Lean content, prose and foreign
+sources remain conservatively byte-bound.
+
+Expression fingerprints preserve structural constructor data without including
+allocation addresses or source metadata. They are not normalized modulo
+alpha-renaming or definitional equality, so some equivalent statement edits can
+invalidate reviews. This includes rewriting proof subterms inside the elaborated
+type itself; the proof-body guarantee concerns the declaration value, not arbitrary
+normalization of its type. Capture-local Merkle memoization shares statement descriptors
+between scopes. Native checks run again on every capture; no native success is
+persisted. Provider implementation bytes, query-site options and compiler version
+strings are not mathematical review identity. A future incompatible interpretation
+of these descriptors must bump the encoding, rather than quietly retain evidence.
+
+Old v1 bindings are stale under v2. Rebuild captures and reassess affected reviews;
+there is no automatic receipt rewrite or historical receipt store. Source
+registrations and global node labels retain their existing identities.
 
 Freshness relies on SHA-256 collision resistance. Fingerprints are not proof
 certificates, do not authenticate provider observations, and do not replace
@@ -294,15 +320,17 @@ as production Blueprint behavior.
 
 ### Document identity and relocation
 
-Today `DocumentKey` contains a language/project context and a path. That entire
-key participates in bindings. Relocating a selected path therefore invalidates
-old evidence even with identical source bytes. This means the evidence no longer
+`DocumentKey` contains a language/project context and a path. For prose,
+foreign source and document-only content, that entire key participates in
+bindings. Relocating a selected path therefore invalidates old evidence even
+with identical bytes. Declaration-backed Lean content instead uses its native
+semantic descriptor as described above. This means the evidence no longer
 matches the current binding; it does not establish a semantic regression.
 
 The intended extension separates a project/package-scoped logical source identity
 from its filesystem locator. Moving only the checkout root should preserve
 correspondence acceptance when logical identities, bytes, semantic dependencies,
-contracts and provider/compiler identities are unchanged. A renamed or replaced
+contracts and their interpretation are unchanged. A renamed or replaced
 logical source remains a binding change unless an explicit identity is preserved.
 Do not infer identity by basename, content equality, or stripping path prefixes.
 Use the existing owning source registration for location; no second authoritative

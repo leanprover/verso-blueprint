@@ -47,7 +47,7 @@ run_cmd liftTermElabM do
   let source ← obtain (← NativeSource.prepare request)
   let changedQueryOptions ← withOptions (fun options =>
       (options.set `maxHeartbeats (123456 : Nat)).setBool `pp.universes true) <|
-    NativeLean.semanticContext request.project #[request.canonical]
+    NativeLean.semanticContext .implementation request.project #[request.canonical]
   let changedQueryOptions ← obtain changedQueryOptions
   ensure (source.semanticContext == some changedQueryOptions)
     "Query-site display/budget options cannot change the meaning of an already checked declaration"
@@ -488,7 +488,7 @@ run_cmd liftTermElabM do
   let semanticDiagnostic : Diagnostic := {
     code := "semantic-context-unavailable", subject := "standalone-check"
     message := "Injected standalone semantic-context failure" }
-  let failingSemantics : NativeLean.SemanticContext := fun _ _ => pure (.error semanticDiagnostic)
+  let failingSemantics : NativeLean.SemanticContext := fun _ _ _ => pure (.error semanticDiagnostic)
   let prepared ← p.prepareValidation expected #[] failingSemantics
   let .ok (_, checked) := prepared | throwError "Standalone source validation unexpectedly failed"
   ensure (checked.semanticContext.isNone && checked.semanticDiagnostics == #[semanticDiagnostic])
@@ -597,6 +597,12 @@ private unsafe def hiddenChecks : CoreM Bool := do
     let hidden ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportHiddenHelper) goal)
     let admitted ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportAdmitted) goal)
     let axiomResult ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportAxiom) goal)
+    let semantics ← NativeLean.newSemanticContext
+    let hiddenStatement ← semantics .statement `adapterFixture #[`sorryImportComplete]
+    let hiddenImplementation ← semantics .implementation `adapterFixture #[`sorryImportComplete]
+    let hiddenDefinition ← semantics .statement `adapterFixture #[`sorryImportSpec]
+    ensure (hiddenStatement.isOk && !hiddenImplementation.isOk && !hiddenDefinition.isOk)
+      "Hidden proof bodies permit statement identity; hidden computational content does not"
     let ownComplete ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportComplete))
     let ownHidden ← obtain (← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportHiddenHelper))
     ensure (ownComplete.body.outcome == .unavailable && ownHidden.body.outcome == .unavailable &&

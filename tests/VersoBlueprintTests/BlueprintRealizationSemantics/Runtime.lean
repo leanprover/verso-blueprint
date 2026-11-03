@@ -8,6 +8,8 @@ namespace FIRSemanticFixture
 -- The integration test changes this one body by bytes, then rebuilds normally.
 def runtimeMode : Nat := 0
 
+theorem runtimeFact : True := True.intro
+
 def RefinedReturnPost : Prop := runtimeMode = runtimeMode
 
 end FIRSemanticFixture

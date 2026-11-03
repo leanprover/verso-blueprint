@@ -308,15 +308,20 @@ The same flow can be read as four contracts:
    an explicit review requirement is authored. Resolution failures remain
    visible as diagnostics, not fabricated proof outcomes.
 
-   Expression and declaration fingerprints use SHA-256 Merkle graphs to bind
-   observations to current semantic inputs, including transitive imported
-   declaration types/bodies and provider/compiler identity. Source documents
-   bind their current bytes. Fingerprints are freshness descriptors, not proof
-   certificates or authentication; Lean checks are performed afresh. The design
-   assumes SHA-256 collision resistance for freshness, ignores definitionally
-   irrelevant expression metadata while separately binding original source
-   bytes, and keeps memoization inside one capture. No proof-success cache or
-   historical receipt store is persisted.
+   Review bindings explicitly select statement or implementation content.
+   Statement identity follows types and computational dependencies, excluding
+   proof bodies; implementation identity also includes the selected declaration's
+   own body. Prerequisite completion remains a separate gate, so a proof becoming
+   admitted preserves its statement review without completing a proof-dependent
+   claim. Selected prose and foreign sources remain conservatively byte-bound.
+   The [freshness contract](design/REALIZATIONS_AND_TRANSLATIONS.md#freshness-and-trust-boundary)
+   specifies exact scope, structural-equality limits and binding migration.
+
+   SHA-256 Merkle fingerprints are freshness descriptors, not proof certificates
+   or provider authentication. Native checks run afresh. Memoization is local to
+   one immutable capture environment; no proof-success cache or historical receipt
+   store is persisted. Compiler version strings and provider implementation bytes
+   are not mathematical review content.
 
 2. **Environment to traversal.**
    `blueprintMain` and `blueprintMainWithPreviewData` capture a `RenderModel`

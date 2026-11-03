@@ -37,8 +37,8 @@ private partial def levelDigest (level : Level) : StateM Expressions String := d
 private partial def expressionDigest (expression : Expr) : StateM Expressions String := do
   if let some digest := (← get).expressions[(⟨expression⟩ : Meta.Sym.ExprPtr)]? then return digest
   let digest ← match expression with
-    -- Metadata (including source syntax) is definitionally irrelevant. Original
-    -- source bytes are bound separately; never expand metadata syntax here.
+    -- Metadata (including source syntax) is definitionally irrelevant. Keep
+    -- source locations and formatting outside semantic review identity.
     | .mdata _ body => expressionDigest body
     | other => do
       let (tag, parts) ← match other with
@@ -109,12 +109,11 @@ reused. Calls within a session are sequential. -/
 structure Session where
   private mk ::
   private environment : Environment
-  private provider : String
   private state : IO.Ref State
 
-/-- Pin exactly the current checked environment and provider identity. -/
-def newSession (provider : String) : CoreM Session := do
-  return ⟨← getEnv, provider, ← IO.mkRef {}⟩
+/-- Pin exactly the current checked environment. -/
+def newSession : CoreM Session := do
+  return ⟨← getEnv, ← IO.mkRef {}⟩
 
 /-- Inspectable size counters for bounded regression tests, not a persistence API. -/
 def Session.sizes (session : Session) : IO (Nat × Nat) := do
@@ -127,7 +126,7 @@ private def unavailable (name : Name) (message : String) : Diagnostic :=
 initialize registerTraceClass `blueprint.capture.semantic
 
 private def Session.collectContext (session : Session) (project : Name) (roots : Array Name)
-    (tracing : Bool) :
+    (scope : ContentScope) (tracing : Bool) :
     CoreM (Except Diagnostic String) := do
   if project.isAnonymous || roots.isEmpty then
     return .error {
@@ -146,9 +145,22 @@ private def Session.collectContext (session : Session) (project : Name) (roots :
   let mut expressions := initial.expressions
   let mut declarations := initial.declarations
   let mut todo := roots
+  let env := session.environment
+  let mut ownBodies : Array (Name × Expr) := #[]
+  if scope == .implementation then
+    for name in roots do
+      let some info := env.checked.get.find? name
+        | return .error <| unavailable name "Selected implementation is not in the checked environment"
+      match Data.ConstantInfo.blueprintBodyAccess env info with
+      | .unavailable => return .error <| unavailable name "Selected implementation body is unavailable"
+      | .absent => pure ()
+      | .available body =>
+        if body.hasFVar || body.hasMVar || body.hasLevelMVar then
+          return .error <| unavailable name "Selected implementation contains unresolved variables"
+        ownBodies := ownBodies.push (name, body)
+        todo := todo ++ body.getUsedConstants
   let mut seen : NameSet := {}
   let mut entries : Std.HashMap Name (String × Array Name) := {}
-  let env := session.environment
   while !todo.isEmpty do
     let name := todo.back!
     todo := todo.pop
@@ -156,7 +168,13 @@ private def Session.collectContext (session : Session) (project : Name) (roots :
     seen := seen.insert name
     let some info := env.checked.get.find? name
       | return .error <| unavailable name "Semantic dependency is not in the current checked environment"
-    let body ← match Data.ConstantInfo.blueprintBodyAccess env info with
+    -- Proof-valued definitions/opaque constants have the same statement boundary
+    -- as theorems. Definitions *of propositions* are computational content.
+    let proofValued ← match info with
+      | .thmInfo _ => pure true
+      | .defnInfo _ | .opaqueInfo _ | .axiomInfo _ => Meta.MetaM.run' (Meta.isProp info.type)
+      | _ => pure false
+    let body ← match (if proofValued then Data.BodyAccess.absent else Data.ConstantInfo.blueprintBodyAccess env info) with
       | .available value => pure (some value)
       | .absent => pure none
       | .unavailable => return .error <| unavailable name "Imported semantic dependency body is unavailable"
@@ -164,12 +182,12 @@ private def Session.collectContext (session : Session) (project : Name) (roots :
         body.any (fun value => value.hasFVar || value.hasMVar || value.hasLevelMVar) then
       return .error <| unavailable name "Checked semantic declaration contains unresolved variables"
     let encode : StateM Expressions (String × Array Name) := do
-      let (kind, extra) ← shape info
+      let (kind, extra) ← if proofValued then pure ("proof-type-v2", #[]) else shape info
       let type ← expressionDigest info.type
       let value ← match body with
         | some value => pure <| SHA256.tagged "lean.body.present.v1" #[← expressionDigest value]
         | none => pure <| SHA256.tagged "lean.body.absent.v1" #[]
-      return (SHA256.tagged "lean.declaration.v1"
+      return (SHA256.tagged "lean.statement.v2"
         #[Vir.nameKey name, reprStr (info.levelParams.map Vir.nameKey), type, value, toString info.isUnsafe, kind], extra)
     let ((payload, extra), updatedExpressions) := encode.run expressions
     expressions := updatedExpressions
@@ -192,22 +210,39 @@ private def Session.collectContext (session : Session) (project : Name) (roots :
       | .ok digests => pure digests
       | .error message => return .error { code := "invalid-semantic-graph", subject := "native", message }
     declarations := computed.fold (init := declarations) (fun out name digest => out.insert name digest)
-  session.state.set { expressions, declarations }
-  let roots := (roots.map fun name => (Vir.nameKey name, declarations[name]!)).qsort (fun a b => a.1 < b.1)
-  let rootParts := roots.foldl (fun out item => if out.back? == some item then out else out.push item)
+  let mut rootParts : Array (String × String) := #[]
+  for name in roots do
+    let statement := declarations[name]!
+    let digest ← if scope == .statement then pure statement else do
+      let body := ownBodies.find? (·.1 == name) |>.map (·.2)
+      let (bodyDigest, updated) := (do
+        match body with
+        | none => pure <| SHA256.tagged "lean.implementation.absent.v2" #[]
+        | some value =>
+          let expression ← expressionDigest value
+          let dependencies := value.getUsedConstants.map fun n =>
+            SHA256.tagged "lean.dependency.v2" #[Vir.nameKey n, declarations[n]!]
+          pure <| SHA256.tagged "lean.implementation.body.v2" (#[expression] ++ dependencies)
+        : StateM Expressions String).run expressions
+      expressions := updated
+      pure <| SHA256.tagged "lean.implementation.v2" #[statement, bodyDigest]
+    rootParts := rootParts.push (Vir.nameKey name, digest)
+  let orderedRoots := rootParts.qsort (fun a b => a.1 < b.1) |>.foldl
+    (fun out item => if out.back? == some item then out else out.push item)
     (#[] : Array (String × String))
-  return .ok <| SHA256.tagged "lean.semantic-context.v1"
-    (#[Vir.nameKey project, Lean.versionString, Lean.githash, session.provider] ++
-      rootParts.map (fun (name, digest) => SHA256.tagged "lean.root.v1" #[name, digest]))
+  session.state.set { expressions, declarations }
+  return .ok <| SHA256.tagged "lean.semantic-context.v2"
+    (#[Vir.nameKey project, if scope == .statement then "statement" else "implementation"] ++
+      orderedRoots.map (fun (name, digest) => SHA256.tagged "lean.root.v2" #[name, digest]))
 
 /-- Hash each newly reached declaration once. SCC condensation handles mutual
 blocks and inductive/constructor back-links. Missing/hidden bodies fail closed;
 no footprint or previous capture fills in unavailable semantics. Optional tracing
 reports work and committed cache sizes, never source bytes or provider inputs. -/
-def Session.context (session : Session) (project : Name) (roots : Array Name) :
+def Session.context (session : Session) (project : Name) (roots : Array Name) (scope : ContentScope := .implementation) :
     CoreM (Except Diagnostic String) := do
   unless ← isTracingEnabledFor `blueprint.capture.semantic do
-    return ← session.collectContext project roots false
+    return ← session.collectContext project roots scope false
   let before ← session.sizes
   let started ← IO.monoMsNow
   let heartbeats ← IO.getNumHeartbeats
@@ -220,8 +255,8 @@ def Session.context (session : Session) (project : Name) (roots : Array Name) :
       | .ok (.ok _) => "complete"
       | .ok (.error _) => "unavailable"
       | .error _ => "exception"
-    return m!"{roots}: {outcome}; elapsedMs={(← IO.monoMsNow) - started} rawHeartbeats={(← IO.getNumHeartbeats) - heartbeats}; committed (expressions,declarations) {before} -> {← session.sizes}") do
+    return m!"{roots} ({repr scope}): {outcome}; elapsedMs={(← IO.monoMsNow) - started} rawHeartbeats={(← IO.getNumHeartbeats) - heartbeats}; committed (expressions,declarations) {before} -> {← session.sizes}") do
     trace[blueprint.capture.semantic] "begin {roots}"
-    session.collectContext project roots true
+    session.collectContext project roots scope true
 
 end Informal.Validation.NativeLean.Semantic

@@ -134,8 +134,8 @@ run_cmd liftTermElabM do
         interpretation := "Relate Rocq off/on to Lean off/on; this relation preserves toggle and the universal two-state involution statement"
         required := #[rocqReview] }]
     requirements := native.requirements ++ #[
-      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence },
-      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence }] }
+      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence, scope := .statement },
+      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence, scope := .statement }] }
   let r ← obtain (admit input)
   ensure (r.nodes.size == 1 && r.realizations.size == 3 && r.translations.size == 2)
     "One node has three realizations and exactly two explicit translations"
@@ -236,12 +236,11 @@ run_cmd liftTermElabM do
   for name in #["nodes", "documents", "objects", "realizations", "translations", "claims", "requirements", "evidence", "unfinished", "actionable"] do
     ensure ((← entries emptyReport name).isEmpty) "An empty registry invents no report assessment"
 
-  -- Synthetic selected-source mutation, using the existing actual native
-  -- observation unchanged. Provider passed is not current suitability.
-  let nativeDoc := (native.objects[0]!.value.document).get!
-  let staleInput := { input with documents := input.documents.map fun record =>
-    if record.value.key == nativeDoc then
-      { record with value := { record.value with text := record.value.text ++ "\nstale native source control\n" } }
+  -- Synthetic semantic-input mutation, retaining the actual native observation.
+  -- Raw Lean file bytes are provenance, not proof content.
+  let staleInput := { input with bindingInputs := input.bindingInputs.map fun record =>
+    if record.value.name == NativeLean.sourceContext then
+      { record with value := { record.value with content := record.value.content ++ "-changed-implementation" } }
     else record }
   let staleRegistry ← obtain (admit staleInput)
   let staleReport := Report.ofRegistry staleRegistry

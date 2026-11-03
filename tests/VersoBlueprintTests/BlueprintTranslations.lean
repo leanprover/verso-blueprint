@@ -293,10 +293,11 @@ open BlueprintRealizations
     ((r.resultFor (.facet obligationRealization `proof)).complete &&
       (r.resultFor (.declaration obligationRealization obligationObject)).complete &&
       (r.evidence.filter fun e => match e.observation with | .proof _ => true | _ => false).size == 1)
-  let changedDocument : Input := { proved with documents := proved.documents.map fun c =>
-    if c.value.key == obligationDocument then { c with value := { c.value with text := c.value.text ++ " changed" } } else c }
-  let current ← registry changedDocument
-  expect "R1/P10: changed external obligation invalidates linked local review"
+  let changedContract : Input := { proved with requirements := proved.requirements.map fun c =>
+    if c.value.key == obligationProof then { c with value := { c.value with
+      expected := .proof { obligationGoal with fingerprint := "Changed preservation proposition" } obligationObject } } else c }
+  let current ← registry changedContract
+  expect "R1/P10: changed external mathematical obligation invalidates linked local review"
     (hasIssue (current.localResult reviewKey) "stale-content" && !(current.resultFor (.translation translationKey)).complete)
 
 /-- MOCK inputs reproducing the proof-only missing helper. No canonical sources
@@ -483,5 +484,83 @@ def withMissingProofHelper : IO Input := do
     key := leanDoc, text := "MOCK changed bytes under the same identity" } }
   expect "pilot: conflicting bytes under one identity reject atomically"
     (rejectsWith conflicting "semantic-conflict")
+
+-- Explicit review scope, not the facet's spelling, controls content identity.
+-- All facts below are MOCK provider inputs; actual proof edits are covered by
+-- BlueprintRealizationSemantics and its ordinary-import mutation runner.
+#eval show IO Unit from do
+  let statementInput : Input := { fixture with requirements := fixture.requirements.map fun c =>
+    if c.value.key == reviewKey then { c with value := { c.value with
+      scope := .statement, prerequisites := #[proofKey] } } else c }
+  let input ← withMockEvidence statementInput `scopeProof proofKey mockProof
+  let input ← withMockEvidence input `scopeReview reviewKey mockReview
+  let before ← registry input
+  expect "scope: initial statement correspondence completes" ((before.resultForRequirement reviewKey).complete)
+  let changeInput (matchesName : Name → Bool) : Input := { input with bindingInputs := input.bindingInputs.map fun c =>
+    if (matchesName c.value.name) then { c with value := { c.value with content := c.value.content ++ " changed" } } else c }
+  let proofChanged ← registry <| changeInput fun name =>
+    name == NativeLean.sourceContext || name == NativeLean.expectedContextFor proofKey
+  -- The Rocq provider has no S/P split: preserve its conservative content.
+  let proofOnly : Input := { input with bindingInputs := input.bindingInputs.map fun c =>
+    if c.value.name == NativeLean.expectedContextFor proofKey ||
+        (c.value.subject == .declaration leanKey leanObject && c.value.name == NativeLean.sourceContext) then
+      { c with value := { c.value with content := c.value.content ++ " own proof changed" } } else c }
+  let after ← registry proofOnly
+  expect "scope: proof-only change preserves local statement review"
+    (after.bindingFor reviewKey == before.bindingFor reviewKey && (after.localResult reviewKey).complete)
+  expect "scope: proof check must be refreshed and still gates completion"
+    (!(after.resultForRequirement reviewKey).complete && !(after.localResult proofKey).complete)
+  expect "scope: foreign source remains conservatively bound"
+    (proofChanged.bindingFor reviewKey != before.bindingFor reviewKey)
+  let statementChanged ← registry <| changeInput (· == NativeLean.statementContext)
+  expect "scope: statement edit invalidates review"
+    (statementChanged.bindingFor reviewKey != before.bindingFor reviewKey &&
+      hasIssue (statementChanged.localResult reviewKey) "stale-content")
+  let missing : Input := { input with
+    bindingInputs := input.bindingInputs.filter (·.value.name != NativeLean.expectedStatementContextFor proofKey) }
+  let missing ← registry missing
+  expect "scope: missing prerequisite statement context cannot accept review"
+    ((missing.localResult reviewKey).status == .blocked &&
+      hasIssue (missing.localResult reviewKey) "semantic-context-unavailable")
+  -- A Lean-language document alone is not a semantic descriptor. Keep its bytes.
+  let proseOnly : Input := { input with realizations := input.realizations.map fun c =>
+    if c.value.key == leanKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
+      if f.name == `statement then { f with declarations := #[] } else f } } else c }
+  let proseBefore ← registry proseOnly
+  let proseAfter ← registry { proseOnly with documents := proseOnly.documents.map fun c =>
+    if c.value.key == leanDoc then { c with value := { c.value with text := "MOCK changed document-only source" } } else c }
+  expect "scope: document-only Lean content remains conservatively byte-bound"
+    (proseBefore.bindingFor reviewKey != proseAfter.bindingFor reviewKey)
+  -- Unknown provider facts stay conservative, including selected facet/parent
+  -- facts reached through endpoints rather than the requirement's own subject.
+  for subject in #[Subject.declaration leanKey leanObject, .facet leanKey `statement, .realization leanKey] do
+    let custom := contribution `customProviderInput {
+      subject, name := `customProvider.policy, content := "MOCK policy A" }
+    let withCustom : Input := { input with bindingInputs := input.bindingInputs.push custom }
+    let customBefore ← registry withCustom
+    for replacement in #[{ custom.value with content := "MOCK policy B" },
+        { custom.value with name := `customProvider.otherPolicy }] do
+      let changed := { input with bindingInputs := input.bindingInputs.push { custom with value := replacement } }
+      let customAfter ← registry changed
+      expect "scope: selected custom provider facts and their names remain bound"
+        (customBefore.bindingFor reviewKey != customAfter.bindingFor reviewKey)
+  let sibling : RequirementKey := ⟨.claim claimKey, `independent_review⟩
+  let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent }
+  let withSibling : Input := { input with requirements := input.requirements.push siblingContract }
+  let siblingRegistry ← registry withSibling
+  expect "scope: unrelated sibling obligation does not disturb a local review"
+    (siblingRegistry.bindingFor reviewKey == before.bindingFor reviewKey)
+  let unselected : Input := { input with realizations := input.realizations.map fun c =>
+    if c.value.key == leanKey then { c with value := { c.value with
+      facets := c.value.facets.push { name := `unselected_notes, documents := #[leanDoc] } } } else c }
+  let unselected ← registry unselected
+  expect "scope: unselected facet metadata does not disturb endpoint review"
+    (unselected.bindingFor reviewKey == before.bindingFor reviewKey)
+  let implementation : Input := { input with requirements := input.requirements.map fun c =>
+    if c.value.key == reviewKey then { c with value := { c.value with scope := .implementation } } else c }
+  let implementation ← registry implementation
+  expect "scope: changing the review contract invalidates its old evidence"
+    (implementation.bindingFor reviewKey != before.bindingFor reviewKey &&
+      hasIssue (implementation.localResult reviewKey) "stale-content")
 
 end VersoBlueprintTests.BlueprintTranslations

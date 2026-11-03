@@ -150,6 +150,7 @@ structure Prepared where
   document : Document
   ranges : DeclarationRanges
   semanticContext : Option String := none
+  statementContext : Option String := none
   semanticDiagnostics : Array Diagnostic := #[]
 
 structure Documented extends Prepared where
@@ -190,13 +191,15 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
   let kind : Data.NodeKind := match info with
     | .thmInfo _ => .theorem
     | _ => .definition
-  let semantics ← semantics request.project #[request.canonical]
+  let statement ← semantics .statement request.project #[request.canonical]
+  let semantics ← semantics .implementation request.project #[request.canonical]
   return .ok {
     canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
     kind, moduleName := request.moduleName
     document := { key := ⟨context, request.sourcePath⟩, text }, ranges
-    semanticContext := semantics.toOption
-    semanticDiagnostics := match semantics with | .ok _ => #[] | .error issue => #[issue] }
+    semanticContext := semantics.toOption, statementContext := statement.toOption
+    semanticDiagnostics := canonical ((match semantics with | .ok _ => #[] | .error issue => #[issue]) ++
+      (match statement with | .ok _ => #[] | .error issue => #[issue])) }
 
 private def prepareSource (request : Request) (readSource : System.FilePath → IO String)
     (wholeFile : Bool := true)
@@ -340,8 +343,10 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
       key, context := witness.context
       facets := #[{ name := `statement, declarations := #[witness] },
         { name := bodyFacet, declarations := #[witness] }], declarations := #[{ object := witness }] }]
-    bindingInputs := source.semanticContext.toArray.map fun content => sourceContribution origin `nativeSourceContext {
-      subject := .declaration key witness, name := NativeLean.sourceContext, content } }
+    bindingInputs := (source.semanticContext.toArray.map fun content => sourceContribution origin `nativeSourceContext {
+      subject := .declaration key witness, name := NativeLean.sourceContext, content }) ++
+      (source.statementContext.toArray.map fun content => sourceContribution origin `nativeStatementContext {
+        subject := .declaration key witness, name := NativeLean.statementContext, content }) }
 
 /-- Materialize two explicitly named source representations of the same concept,
 without observations or fragment admission. The native source identity comes
@@ -390,7 +395,9 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
       key, expected := .proof checked.goal p.witness
       coverage := .dependencyClosure }]
     bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
-      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) }
+      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) ++
+      checked.statementContext.toArray.map (fun content => p.contribution `nativeExpectedStatementContext {
+        subject := key.subject, name := NativeLean.expectedStatementContextFor key, content }) }
   return .ok (input, checked)
 
 /-- Attach a freshly checked proof requirement/evidence to the returned input.

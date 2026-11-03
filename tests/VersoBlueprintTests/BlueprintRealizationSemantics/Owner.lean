@@ -25,7 +25,8 @@ run_cmd liftCoreM <| Realizations.Authoring.configureProject `firSemanticFixture
 
 /-- The native runtime statement is reflexive under the selected runtime semantics. -/
 @[blueprint "fir.semanticWitness"]
-theorem semanticWitness : RefinedReturnPost := by rfl
+theorem semanticWitness : RefinedReturnPost :=
+  (fun (_ : True) => Eq.refl runtimeMode) runtimeFact
 
 run_cmd liftCoreM <| Realizations.Authoring.stage `correspondence {
   translations := #[{
@@ -39,8 +40,8 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `correspondence {
     { key := ⟨correspondence, `closure⟩, interpretation := "The selected runtime account retains required obligations"
       required := #[closureReview] }]
   requirements := #[
-    { key := subjectReview, expected := .review `runtimeMeaning, prerequisites := #[proofKey] },
+    { key := subjectReview, expected := .review `runtimeMeaning, scope := .statement, prerequisites := #[proofKey] },
     { key := closureReview, expected := .review `runtimeMeaning, coverage := .dependencyClosure
-      prerequisites := #[proofKey] }] }
+      scope := .statement, prerequisites := #[proofKey] }] }
 
 end FIRSemanticFixture
