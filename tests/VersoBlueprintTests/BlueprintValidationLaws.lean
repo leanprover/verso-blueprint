@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RequestLaws
+import VersoBlueprint.Realizations.Capture.AuthoredRequestLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -780,3 +780,99 @@ example {state : Environment.State} (found : state.data.get? label = some accept
   simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
 
 end VersoBlueprintTests.CheckRequestPlanning
+
+namespace VersoBlueprintTests.AuthoredRequestPlanning
+open Lean Informal Informal.Realizations Informal.Translations Informal.SourceData Informal.Validation
+
+-- Multiple goals, including equal goal values, retain their own request positions.
+-- Shared names and source paths across projects must preserve exact record origins.
+-- These fixtures inspect planning only, not native checker authenticity.
+#eval show IO Unit from do
+  let first : Environment.AuthoringRecord := {
+    origin := { id := `first, moduleName := `FirstModule, source := "MOCK-shared-spec.lean" }
+    project := `firstProject
+    nativeGoals := #[(`firstNode, `SharedExpected), (`secondNode, `OtherExpected), (`firstNode, `SharedExpected)]
+    authored := { sources := #[⟨⟨`lean, `firstProject⟩, "MOCK-extra-one.lean"⟩,
+      ⟨⟨`lean, `firstProject⟩, "MOCK-extra-two.lean"⟩] } }
+  let second : Environment.AuthoringRecord := {
+    origin := { id := `second, moduleName := `SecondModule, source := "MOCK-shared-spec.lean" }
+    project := `secondProject, nativeGoals := #[(`firstNode, `SharedExpected), (`thirdNode, `SharedExpected)] }
+  let empty : Environment.AuthoringRecord := {
+    origin := { id := `empty, moduleName := `OtherModule, source := "MOCK-empty-spec.lean" }
+    project := `otherProject
+    authored := { sources := #[⟨⟨`lean, `otherProject⟩, "MOCK-extra-three.lean"⟩] } }
+  let context : Context := ⟨`lean, `ordinaryProject⟩
+  let ordinary : Environment.RegisteredNode := {
+    origin := `OrdinaryModule, modules := #[`OrdinaryModule]
+    sources := #[{
+      destination := ⟨⟨`ordinary, `lean⟩, `statement⟩, context
+      document := ⟨context, "MOCK-ordinary.lean"⟩
+      source := .found { path := "MOCK-ordinary.lean", range := default }
+      payload := .prose { stx := .missing } }] }
+  for reverseGoals in #[false, true] do
+    let first := if reverseGoals then { first with nativeGoals := first.nativeGoals.reverse } else first
+    let second := if reverseGoals then { second with nativeGoals := second.nativeGoals.reverse } else second
+    let distinct := { first with origin := { first.origin with id := `distinct, moduleName := `DistinctModule } }
+    for (records, count) in #[
+        (#[first, second, empty], 5), (#[empty, second, first], 5),
+        (#[first, first, empty, second, first, second], 5),
+        (#[first, distinct, empty, second], 8), (#[empty], 0)] do
+      for withOrdinary in #[false, true] do
+        let raw : Capture.Raw := {
+          nodes := if withOrdinary then #[(`ordinary, ordinary)] else #[]
+          pending := {}, facts := [], initialIssues := #[], authored := records }
+        let p := Capture.plan raw
+        let mut handles : Array Nat := #[]
+        for step in p.authored do
+          unless records.any (fun record => decide (record = step.record)) &&
+              step.goals.size == step.record.nativeGoals.size do
+            throw <| IO.userError "Authored planning invented a record or lost a goal position"
+          for index in [:step.record.nativeGoals.size] do
+            let (node, expected) := step.record.nativeGoals[index]!
+            let some handle := step.goals[index]?
+              | throw <| IO.userError "Authored goal has no request handle"
+            let some request := p.expected[handle]?
+              | throw <| IO.userError "Authored goal handle is out of bounds"
+            let some specification := p.specifications[request.specification]?
+              | throw <| IO.userError "Expected request has no specification"
+            let some document := p.documents[specification.document]?
+              | throw <| IO.userError "Specification document handle is out of bounds"
+            unless request.node == node && request.expected == expected &&
+                request.project == step.record.project && request.origin == step.record.origin &&
+                specification.expected == expected && specification.origin == step.record.origin &&
+                document == (⟨⟨`lean, step.record.project⟩, step.record.origin.source⟩ : DocumentKey) do
+              throw <| IO.userError "Authored request chain mixed goal, project, provenance or document"
+            let job := p.expected[step.goals[index]!]!
+            let specJob := p.specifications[job.specification]!
+            unless job.node == node && job.expected == expected && job.project == step.record.project &&
+                job.origin == step.record.origin && specJob.expected == expected &&
+                specJob.origin == step.record.origin && p.documents[specJob.document]! == document do
+              throw <| IO.userError "Collector/observer lookups disagree with the bounded request chain"
+            handles := handles.push handle
+        unless handles == (List.range count).toArray &&
+            p.expected.size == count && p.specifications.size == count do
+          throw <| IO.userError "Authored planning lost/aliased a goal or replayed an exact record"
+
+-- The raw state supplies only the retained record and indexed goal. The planner
+-- supplies every handle and the whole project/origin/document chain.
+example {state : Environment.State} {index : Nat}
+    (recordMember : record ∈ state.authoringRecords)
+    (goalFound : record.nativeGoals[index]? = some goal) :
+    let p := Capture.plan (Capture.Raw.ofState state)
+    ∃ step ∈ p.authored, step.record = record ∧ index < step.goals.size ∧
+      Capture.AuthoredRequestChain p record goal step.goals[index]! :=
+  Capture.plan_raw_authored_goal_request _ recordMember goalFound
+
+-- The same chain identifies the concrete interpreter arguments and derives bounds.
+example (chain : Capture.AuthoredRequestChain p record goal handle) :
+    handle < p.expected.size ∧
+      let job := p.expected[handle]!
+      job.node = goal.1 ∧ job.expected = goal.2 ∧ job.project = record.project ∧
+      job.origin = record.origin ∧ job.specification < p.specifications.size ∧
+        let specification := p.specifications[job.specification]!
+        specification.expected = goal.2 ∧ specification.origin = record.origin ∧
+        specification.document < p.documents.size ∧
+        p.documents[specification.document]! = ⟨⟨`lean, record.project⟩, record.origin.source⟩ :=
+  chain.jobs
+
+end VersoBlueprintTests.AuthoredRequestPlanning

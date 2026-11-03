@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RequestLaws
+import VersoBlueprint.Realizations.Capture.AuthoredRequestLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -317,3 +317,10 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.plan_declaration_check
 #print axioms Informal.Realizations.Capture.plan_declaration_check_job
 #print axioms Informal.Realizations.Capture.plan_raw_declaration_check
+
+-- Authored goal positions retain their expected/specification/document chain.
+#print axioms Informal.Realizations.Capture.AuthoredRequestChain
+#print axioms Informal.Realizations.Capture.plan_authored_goal_handles
+#print axioms Informal.Realizations.Capture.plan_authored_goal_request
+#print axioms Informal.Realizations.Capture.AuthoredRequestChain.jobs
+#print axioms Informal.Realizations.Capture.plan_raw_authored_goal_request

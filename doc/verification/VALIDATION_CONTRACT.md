@@ -859,9 +859,9 @@ This proves selection and evidence justification relative to supplied observatio
 It does not authenticate the expected proposition or prove that request handles
 refer to the intended authored goal. Nor does the shape check alone establish
 that a model came from an ordinary native producer rather than an earlier authored
-batch. Native check-request correspondence is established below; authored request
-correspondence, provider correctness, mathematical truth, final-cache closure and
-converse completeness remain separate.
+batch. Native check-request and authored identity-chain correspondence are
+established below. Dependent request inventories, provider correctness, mathematical
+truth, final-cache closure and converse completeness remain separate.
 
 ## Generated declaration checks point to the intended job
 
@@ -896,10 +896,50 @@ names, duplicate raw nodes, and authored additions/replay. They check actual
 request identities and observer job lookups, as well as the concrete handle
 inventory. These synthetic sources are never presented as authenticated Lean code.
 
-Native source-preparation handles, authored expected/specification/document request
-correspondence, and actual provider execution remain separate. In particular,
-correct request construction alone does not authenticate a supplied observation.
-The next bounded step is the authored goal-to-expected/specification request chain.
+The authored goal-to-expected/specification/document identity chain is established
+below. Native source-preparation handles and actual provider execution remain
+separate. Correct request construction alone does not authenticate an observation.
+
+## Authored goals retain their request and specification identities
+
+`Realizations/Capture/AuthoredRequestLaws.lean` follows each indexed authored goal
+through the production planner. The law-only `AuthoredRequestChain` pairs its
+expected-request lookup with its node, expected name, project and complete origin,
+then follows that same request's specification handle to the matching expected
+name/origin and the authored source document in its Lean project context. It is a
+proposition about the existing arrays, not a replacement record or evaluator.
+
+`plan_authored_goal_handles` proves that a step's handle array has the same length
+as its goal array. `plan_authored_goal_request` strengthens this to position-wise
+correspondence: every original goal index selects a handle with the matching chain.
+Equal goal values still occupy their original positions. A reusable loop-history
+lemma tracks processed entries alongside appended handles, and lookup-preservation
+lemmas retain established chains through later goals, extra source-document jobs,
+and later authored records.
+
+`plan_raw_authored_goal_request` begins with a raw authored record and indexed goal.
+The earlier exact-record membership theorem supplies a planned step despite replay
+deduplication. The new theorem derives the goal-handle bound and identifies the
+chain at the actual `step.goals[index]!` lookup used by the collector.
+
+`AuthoredRequestChain.jobs` derives the remaining expected, specification and
+document handle bounds, then identifies the exact `!` lookups used by the collector
+and observer. None can take its default fallback. Callers supply neither a valid
+handle nor a correctly paired request as an independent premise.
+
+Twenty planner-only scenarios cover multiple goals and records, repeated equal
+goals, shared names and paths across projects, reversed order, exact-record replay,
+distinct origins, records without goals, and ordinary document jobs preceding the
+authored pass. They check the whole chain and concrete handle inventories. Symbolic
+consumers start at retained `Environment.State.authoringRecords` and apply the
+same interpreter-lookup corollary. The fixture sources remain synthetic.
+
+This establishes request identities and specification-source addressing. It does
+not establish correctness of `nativeSources`, `inlineSources`, `priorAuthoredRecords`,
+the separate authored source-document handle array, or the provider interpreter.
+Those are different links in the dependent observation recipe. The next bounded
+connection is native source-preparation request correspondence, preserving each
+external association's identity and provenance alongside its declaration/project.
 
 ## Prerequisite selection is independent of completion
 
@@ -1037,8 +1077,9 @@ Positive ordinary native-requirement collection and retention, and raw node/use
 preservation, are covered above, along with final model/declaration identity.
 Planner source/declaration correspondence, native declaration proof-key and
 facet-key coverage and positive authored expected-key creation are covered as well.
-Native check-request correspondence is established above. Other request families
-and provider correctness remain separate.
+Native check-request and authored identity-chain correspondence are established
+above. Dependent request inventories, other request families and provider
+correctness remain separate.
 
 ## Exact admission across registration histories
 
@@ -1072,7 +1113,7 @@ provide a useful structure:
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
 | **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_raw_source_use_justified` derives the plan entries, final model/declaration membership and parent requirement from raw source facts; `evaluate_raw_assessment_declaration_justified` covers every accepted native source declaration directly from rendering completion; `evaluate_raw_facet_declaration_justified` covers each public facet from its source union; `evaluate_raw_assessment_expected_justified` covers each retained authored native goal. | Other provider-request families and interpreter correctness, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability; `plan_raw_declaration_check` and `plan_declaration_check_job` connect native check requests to accepted sources and the observer lookup. | Other request families and the real provider interpreter; raw source/declaration enumeration, model/declaration identity preservation, ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability; `plan_raw_declaration_check` and `plan_declaration_check_job` connect native check requests to accepted sources and the observer lookup; `plan_raw_authored_goal_request` and `AuthoredRequestChain.jobs` connect authored goals to the expected/specification/document identity chain. | Dependent request inventories, other request families and the real provider interpreter; raw source/declaration enumeration, model/declaration identity preservation, ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -1111,8 +1152,10 @@ Each native source declaration now contributes its proof key to the public
 assessment. Public facets now select their appropriate native contracts, and each
 retained authored native goal selects its expected-proof obligation. Native check
 handles now resolve to the correct declaration and project, including in the exact
-observer lookup. Next, prove authored expected/specification request correspondence,
-then connect the remaining request families and actual provider/transaction routes.
+observer lookup. Authored goal positions now retain the expected/specification/
+document identity chain and all lookup bounds. Next, connect native source requests
+to their associations, then the remaining request inventories and actual
+provider/transaction routes.
 Preserve the joint authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these
 three contracts is not the objective.
 
