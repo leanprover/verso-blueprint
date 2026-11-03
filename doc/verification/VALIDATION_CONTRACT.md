@@ -223,9 +223,10 @@ completion claims to supplied provider results, without authenticating those res
 
 The theorem's plan is the exact value supplied to `evaluate`. It does not prove
 that every plan field was produced correctly or that a provider honestly executed
-Lean. The planner laws below establish exact raw node/use inventory preservation;
-request construction and other source-coverage guarantees remain separate. No
-collector, provider adapter, or data store is duplicated in production for these proofs.
+Lean. The planner laws below establish raw source/declaration coverage and exact
+native check-request correspondence. Other request families and provider execution
+remain separate. No collector, provider adapter, or data store is duplicated in
+production for these proofs.
 
 `evaluate_proof_evidence_source` traces every admitted independent-proof observation
 to an original successful expected-goal result. The whole proof observation is
@@ -858,9 +859,47 @@ This proves selection and evidence justification relative to supplied observatio
 It does not authenticate the expected proposition or prove that request handles
 refer to the intended authored goal. Nor does the shape check alone establish
 that a model came from an ordinary native producer rather than an earlier authored
-batch. Provider-request correspondence is the next bounded connection; provider
-correctness, mathematical truth, final-cache closure and converse completeness
-remain separate.
+batch. Native check-request correspondence is established below; authored request
+correspondence, provider correctness, mathematical truth, final-cache closure and
+converse completeness remain separate.
+
+## Generated declaration checks point to the intended job
+
+`Realizations/Capture/RequestLaws.lean` establishes the first provider-request
+correspondence result. `plan_declaration_check_request` follows the actual planner:
+every declaration step's check handle resolves to the exact `CheckRequest` for its
+name and the context selected from its accepted realization sources. This is
+unconditional on evaluation success. For mixed or empty context inventories, it
+states the planner's first-or-default selection policy; it does not certify those
+inputs as admissible.
+
+`plan_declaration_check` specializes that result to an agreed source context and
+proves both the handle bound and exact request lookup. The request's project and
+witness context remain paired. The proof tracks existing indexed lookups through
+appends, source preparation, declaration and realization loops, later nodes and
+authored planning. It neither assumes a valid final handle nor replaces the planner.
+
+`plan_declaration_check_job` reaches the exact `checks[handle]!` expression used
+by `observe` before calling `NativeLean.checkDeclaration`. The bounds and successful
+lookup rule out a default job. This proves the identity of the arguments supplied
+by that lookup, not the correctness or authenticity of the native checker execution.
+
+`plan_raw_declaration_check` starts with an accepted raw node, a realization key,
+a name in its native/inline source union, and an agreed context. Existing planner
+membership laws supply the node, realization and declaration steps; the new result
+supplies the in-bounds handle and matching request. The symbolic consumer starts
+at `Environment.State.data.get?`, without an already-resolved provider request.
+
+Twelve planner-only regression scenarios check repeated declaration names across
+nodes and realization projects, source-order changes, overlapping native/inline
+names, duplicate raw nodes, and authored additions/replay. They check actual
+request identities and observer job lookups, as well as the concrete handle
+inventory. These synthetic sources are never presented as authenticated Lean code.
+
+Native source-preparation handles, authored expected/specification/document request
+correspondence, and actual provider execution remain separate. In particular,
+correct request construction alone does not authenticate a supplied observation.
+The next bounded step is the authored goal-to-expected/specification request chain.
 
 ## Prerequisite selection is independent of completion
 
@@ -998,7 +1037,8 @@ Positive ordinary native-requirement collection and retention, and raw node/use
 preservation, are covered above, along with final model/declaration identity.
 Planner source/declaration correspondence, native declaration proof-key and
 facet-key coverage and positive authored expected-key creation are covered as well.
-Provider-request correctness remains separate.
+Native check-request correspondence is established above. Other request families
+and provider correctness remain separate.
 
 ## Exact admission across registration histories
 
@@ -1031,8 +1071,8 @@ provide a useful structure:
 | Contract | Current formal result | Remaining connection |
 | --- | --- | --- |
 | **Coherent admitted database**: accepted nodes are exactly the permitted assemblies of retained evidence, and declaration indexes are exact. | `State.admission_sequence_coherent`, with `AdmissionCoherent.node_iff`, proves this after import reconstruction and any finite successful label-local registration history. | Show actual producer routes and persistent-extension/transaction execution satisfy the history premises. |
-| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_raw_source_use_justified` derives the plan entries, final model/declaration membership and parent requirement from raw source facts; `evaluate_raw_assessment_declaration_justified` covers every accepted native source declaration directly from rendering completion; `evaluate_raw_facet_declaration_justified` covers each public facet from its source union; `evaluate_raw_assessment_expected_justified` covers each retained authored native goal. | Provider-request correctness, final-cache closure and the converse completeness direction remain separate. |
-| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability. | Provider-request construction and the real provider interpreter; raw source/declaration enumeration, model/declaration identity preservation, ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
+| **Justified public completion**: every selected obligation, and every reachable prerequisite, has fitting original evidence at its own current binding; circular justification cannot certify completion. | `evaluate_assessment_justified` covers selected obligations and accessibility in rendering assessments; `evaluate_native_dependencies_justified` connects native dependency selection, gate creation, wiring to the same parent, and fitting target evidence; `evaluate_raw_use_justified` starts from raw accepted source uses through the actual planner; `evaluate_raw_source_use_justified` derives the plan entries, final model/declaration membership and parent requirement from raw source facts; `evaluate_raw_assessment_declaration_justified` covers every accepted native source declaration directly from rendering completion; `evaluate_raw_facet_declaration_justified` covers each public facet from its source union; `evaluate_raw_assessment_expected_justified` covers each retained authored native goal. | Other provider-request families and interpreter correctness, final-cache closure and the converse completeness direction remain separate. |
+| **Capture preserves evidence provenance**: completion evidence comes from the appropriate original provider result or an explicitly characterized generated check, with identities and binding preserved. | `evaluate_native_evidence_source`, `evaluate_proof_evidence_source`, `finish_observation_current`; `evaluate_complete_proof_provider` composes authored provenance with completion suitability; `plan_raw_declaration_check` and `plan_declaration_check_job` connect native check requests to accepted sources and the observer lookup. | Other request families and the real provider interpreter; raw source/declaration enumeration, model/declaration identity preservation, ordinary native-requirement creation, raw node/use preservation, collection/selection, exact targets, wiring and gate creation are included. |
 
 These are complementary contracts, not one claim that the entire database is
 permutation-invariant or that all reported propositions are true. The first has an
@@ -1069,8 +1109,10 @@ reaches the final public lookup, including after authored enrichment. Actual
 planning now connects each raw source realization to its exact declaration steps.
 Each native source declaration now contributes its proof key to the public
 assessment. Public facets now select their appropriate native contracts, and each
-retained authored native goal selects its expected-proof obligation. Next, prove
-provider-request correspondence, then connect actual provider/transaction routes.
+retained authored native goal selects its expected-proof obligation. Native check
+handles now resolve to the correct declaration and project, including in the exact
+observer lookup. Next, prove authored expected/specification request correspondence,
+then connect the remaining request families and actual provider/transaction routes.
 Preserve the joint authored projection as those routes evolve. Growing a list of local lemmas without strengthening one of these
 three contracts is not the objective.
 

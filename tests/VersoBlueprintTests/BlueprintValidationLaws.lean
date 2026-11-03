@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.ExpectedLaws
+import VersoBlueprint.Realizations.Capture.RequestLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -699,3 +699,84 @@ example {state : Environment.State}
   exact ⟨model, declaration, lookup, context, singleton, completed, justified _ (Or.inl rfl)⟩
 
 end VersoBlueprintTests.NativeContractCreation
+
+namespace VersoBlueprintTests.CheckRequestPlanning
+open Lean Informal Informal.Realizations Informal.Translations Informal.SourceData Informal.Validation
+
+-- Repeated names across nodes and realization projects must not alias handles.
+-- These are planner-only synthetic sources, not authenticated native declarations.
+#eval show IO Unit from do
+  let makeNode (label project : Name) (reverse : Bool) : Environment.RegisteredNode := Id.run do
+    let context : Context := ⟨`lean, project⟩
+    let alternativeContext : Context := ⟨`lean, project ++ `alternative⟩
+    let key : RealizationKey := ⟨label, `lean⟩
+    let alternative : RealizationKey := ⟨label, `alternative⟩
+    let associations : Array NativeAssociation := #[`sharedWitness, `nativeOnly].map fun name => {
+      realization := key, context, facets := #[`proof]
+      reference := { written := name, canonical := name } }
+    let names := if reverse then #[`inlineOnly, `sharedWitness] else #[`sharedWitness, `inlineOnly]
+    let source : FacetSource := {
+      destination := ⟨key, `proof⟩, context, document := ⟨context, "MOCK-request-source.lean"⟩
+      source := .found { path := "MOCK-request-source.lean", range := default }
+      payload := .leanInline { stx := .missing, definedTheorems := names.map fun name => { name } } }
+    return {
+      origin := `RequestFixture, modules := #[`RequestFixture]
+      sources := #[source, { source with
+        destination := ⟨alternative, `proof⟩, context := alternativeContext
+        document := ⟨alternativeContext, source.document.path⟩ }]
+      nativeAssociations := (if reverse then associations.reverse else associations) ++ #[{
+        realization := alternative, context := alternativeContext, facets := #[`proof]
+        reference := { written := `sharedWitness, canonical := `sharedWitness } }] }
+  for reverse in #[false, true] do
+    let first := (`first, makeNode `first `firstProject reverse)
+    let second := (`second, makeNode `second `secondProject reverse)
+    for nodes in #[#[first, second], #[second, first], #[first, second, first]] do
+      for withAuthored in #[false, true] do
+        let record : Environment.AuthoringRecord := {
+          origin := { id := `authored, moduleName := `RequestFixture, source := "MOCK-specification.lean" }
+          project := `firstProject, nativeGoals := #[(`first, `Expected)]
+          authored := { sources := #[⟨⟨`lean, `firstProject⟩, "MOCK-authored.lean"⟩] } }
+        let raw : Capture.Raw := {
+          nodes, pending := {}, facts := [], initialIssues := #[]
+          authored := if withAuthored then #[record, record] else #[] }
+        let p := Capture.plan raw
+        let mut handles : Array Nat := #[]
+        for node in p.ordinary do
+          let project := if node.label == `first then `firstProject else `secondProject
+          for step in node.realizations do
+            let context : Context := ⟨`lean, if step.key.name == `lean then project else project ++ `alternative⟩
+            for declaration in step.declarations do
+              let some request := p.checks[declaration.check]?
+                | throw <| IO.userError "Planner produced an out-of-bounds check handle"
+              unless request.project == context.project &&
+                  request.witness == (⟨context, declaration.name.toString⟩ : ObjectKey) do
+                throw <| IO.userError "Check handle selected another declaration or project"
+              unless declaration.check < p.checks.size &&
+                  p.checks[declaration.check]!.project == request.project &&
+                  p.checks[declaration.check]!.witness == request.witness do
+                throw <| IO.userError "Observer job lookup disagrees with the bounded request"
+              handles := handles.push declaration.check
+        unless handles == (List.range (5 * nodes.size)).toArray &&
+            p.checks.size == handles.size && p.expected.size == (if withAuthored then 1 else 0) do
+          throw <| IO.userError "Planning reused a handle, lost a check, or replayed authored work"
+
+-- The production environment lookup and accepted sources suffice. This consumer
+-- assumes no planned declaration, valid handle or matching provider request.
+example {state : Environment.State} (found : state.data.get? label = some accepted)
+    (keyMember : key ∈ canonical (accepted.sources.map (·.destination.realization) ++
+      accepted.nativeAssociations.map (·.realization)))
+    (sourceDeclaration : name ∈ nativeNames
+      (accepted.nativeAssociations.filter (·.realization == key))
+      (accepted.sources.filter (·.destination.realization == key)))
+    (contextAgrees : canonical ((accepted.sources.filter (·.destination.realization == key)).map (·.context) ++
+      (accepted.nativeAssociations.filter (·.realization == key)).map (·.context)) = #[context]) :
+    let p := Capture.plan (Capture.Raw.ofState state)
+    ∃ node ∈ p.ordinary, node.label = label ∧ node.accepted = accepted ∧
+      ∃ step ∈ node.realizations, step.key = key ∧
+        ∃ declaration ∈ step.declarations, declaration.name = name ∧
+          declaration.check < p.checks.size ∧ p.checks[declaration.check]? =
+            some { project := context.project, witness := ⟨context, name.toString⟩ } := by
+  apply Capture.plan_raw_declaration_check _ _ keyMember sourceDeclaration contextAgrees
+  simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
+
+end VersoBlueprintTests.CheckRequestPlanning
