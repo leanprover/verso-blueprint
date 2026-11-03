@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RequiredLaws
+import VersoBlueprint.Realizations.Capture.FacetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -472,7 +472,9 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
     realization, context, facets := #[`statement, `proof]
     reference := { written := name, canonical := name } }
   let extra : Requirement := { key := ⟨.realization realization, `authoredExtra⟩, expected := .check `extraValidator }
-  for associations in #[associations, associations.reverse, associations.extract 0 1] do
+  let partitioned := associations.map fun association => { association with
+    facets := if association.reference.canonical == `firstWitness then #[`statement, `body] else #[`proof, `custom] }
+  for associations in #[associations, associations.reverse, associations.extract 0 1, partitioned, partitioned.reverse] do
     let expectedGoal := associations.size == 1
     let specification : Document := { key := ⟨context, "MOCK-specification.lean"⟩, text := "MOCK specification" }
     let extraModel : Realization := { key := ⟨realization.node, `foreign⟩, context := ⟨`rust, `foreignProject⟩ }
@@ -553,6 +555,19 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
               unless (snapshot.registry.resultForRequirement key).complete == shouldComplete do
                 throw <| IO.userError s!"Native result disagreed with source/check availability: source={sourceAvailable}, check={checkAvailable}, facet={facet}, result={reprStr (snapshot.registry.resultForRequirement key)}"
 
+          for facet in model.facets do
+            let selectedAssociations := associations.filter (·.facets.contains facet.name)
+            let expectedKeys : Array RequirementKey := selectedAssociations.map fun association =>
+              ⟨.declaration realization ⟨context, association.reference.canonical.toString⟩,
+                if facet.name == `statement then `statement else `proof⟩
+            unless canonical (snapshot.registry.requiredFor (.facet realization facet.name)) == canonical expectedKeys do
+              throw <| IO.userError "Facet query lost, invented, or mixed declaration obligations"
+            let facetComplete := sourceAvailable && checkAvailable &&
+              selectedAssociations.all (fun association => facet.name == `statement ||
+                failingName != some association.reference.canonical.toString)
+            unless (snapshot.registry.resultFor (.facet realization facet.name)).complete == facetComplete do
+              throw <| IO.userError s!"Facet completion crossed a source boundary: facet={facet.name}, failing={reprStr failingName}"
+
           let allComplete := sourceAvailable && checkAvailable &&
             associations.all (fun association => failingName != some association.reference.canonical.toString)
           unless (snapshot.registry.resultFor (.realization realization)).complete == allComplete &&
@@ -613,6 +628,35 @@ example {state : Environment.State}
   have rawMember : (label, accepted) ∈ (Capture.Raw.ofState state).nodes := by
     simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
   obtain ⟨finished, _, justified⟩ := Capture.evaluate_raw_assessment_declaration_justified
+    evaluated rawMember keyMember sourceDeclaration contextAgrees complete
+  exact ⟨finished, justified _ (Or.inl rfl)⟩
+
+-- Facet completion justifies its own source declarations, with no final facet
+-- lookup or selected-key witness supplied by the consumer.
+example {state : Environment.State}
+    {observations : Capture.Observations (Capture.plan (Capture.Raw.ofState state))}
+    {snapshot : Capture.Snapshot}
+    (evaluated : Capture.evaluate (Capture.plan (Capture.Raw.ofState state)) observations = .ok snapshot)
+    (found : state.data.get? label = some accepted)
+    (keyMember : key ∈ canonical (accepted.sources.map (·.destination.realization) ++
+      accepted.nativeAssociations.map (·.realization)))
+    (sourceDeclaration : declarationName ∈ nativeNames
+      ((accepted.nativeAssociations.filter (·.realization == key)).filter (·.facets.contains name))
+      ((accepted.sources.filter (·.destination.realization == key)).filter (·.destination.facet == name)))
+    (contextAgrees : canonical ((accepted.sources.filter (·.destination.realization == key)).map (·.context) ++
+      (accepted.nativeAssociations.filter (·.realization == key)).map (·.context)) = #[context])
+    (complete : (snapshot.registry.resultFor (.facet key name)).complete = true) :
+    let required : RequirementKey := ⟨.declaration key ⟨context, declarationName.toString⟩,
+      if name == `statement then `statement else `proof⟩
+    (snapshot.registry.resultForRequirement required).complete = true ∧
+      ∃ requirement ∈ snapshot.registry.contributions.requirements,
+        ∃ evidence ∈ snapshot.registry.contributions.evidence,
+          snapshot.registry.requirement? required = some requirement.value ∧
+          requirement.value.key = required ∧
+          evidence.value.Fits requirement.value ((snapshot.registry.bindingFor required).getD "") := by
+  have rawMember : (label, accepted) ∈ (Capture.Raw.ofState state).nodes := by
+    simpa only [Capture.Raw.ofState, NameMapLaws.mem_toArray] using found
+  obtain ⟨finished, _, justified⟩ := Capture.evaluate_raw_facet_declaration_justified
     evaluated rawMember keyMember sourceDeclaration contextAgrees complete
   exact ⟨finished, justified _ (Or.inl rfl)⟩
 

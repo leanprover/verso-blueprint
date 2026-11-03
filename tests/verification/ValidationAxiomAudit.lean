@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.Capture.RequiredLaws
+import VersoBlueprint.Realizations.Capture.FacetLaws
 import VersoBlueprint.Translations.SelectionLaws
 import VersoBlueprint.Environment.AdmissionLaws
 
@@ -289,3 +289,15 @@ import VersoBlueprint.Environment.AdmissionLaws
 #print axioms Informal.Realizations.Capture.evaluate_native_proof_selected
 #print axioms Informal.Realizations.Capture.evaluate_raw_native_proof_selected
 #print axioms Informal.Realizations.Capture.evaluate_raw_assessment_declaration_justified
+
+-- Facet source union and selected contracts through the actual public queries.
+#print axioms Informal.Translations.Input.FacetRequires
+#print axioms Informal.Realizations.Capture.nativeNames_mem_iff
+#print axioms Informal.Realizations.Capture.nativeNames_filter_subset
+#print axioms Informal.Realizations.Capture.collectOrdinary_facetRequired
+#print axioms Informal.Realizations.Capture.collectAuthored_facetRequired
+#print axioms Informal.Realizations.Capture.assemble_facetRequired
+#print axioms Informal.Realizations.Capture.evaluate_facetRequired
+#print axioms Informal.Realizations.Capture.evaluate_native_facet_selected
+#print axioms Informal.Realizations.Capture.evaluate_raw_native_facet_selected
+#print axioms Informal.Realizations.Capture.evaluate_raw_facet_declaration_justified
