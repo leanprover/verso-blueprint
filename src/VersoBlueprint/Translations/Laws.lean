@@ -18,7 +18,7 @@ private theorem Registry.complete_requires_canonical (registry : Registry) (subj
     (canonical (registry.requiredFor subject)).isEmpty = false ∧
       ∀ key ∈ canonical (registry.requiredFor subject),
         (registry.resultForRequirement key).complete = true := by
-  cases subject <;> simp [Registry.resultFor, Result.complete, Id.run, pure] at h
+  cases subject <;> simp [Registry.resultFor, Subject.translation?, Result.complete, Id.run, pure] at h
   all_goals repeat (first | split at h | simp_all [Result.complete, Array.mem_iff_getElem])
   all_goals try simp_all [Result.complete, Array.mem_iff_getElem]
   all_goals try (split at h <;> simp_all)

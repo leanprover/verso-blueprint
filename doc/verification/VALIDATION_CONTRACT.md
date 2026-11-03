@@ -127,7 +127,10 @@ injectivity or collision-resistance assumption.
 
 `admit_complete_proof_sources` follows the independent-proof availability gate:
 completion requires an original resolved witness observation, its original
-nonblank source document, and the exact expected-goal semantic-input identity.
+nonblank source document, and the exact expected-goal semantic-input identity
+selected by the requirement's content scope: statement context for `.statement`,
+implementation context for `.implementation`. This does not assert that a
+statement-scoped binding changes when only the witness's proof body changes.
 These are supplied records; the theorem does not assert that their text was read
 from a particular file or that the semantic input was produced by a trusted checker.
 
@@ -615,7 +618,9 @@ loops, including source preparation and check failures; unavailable observations
 cannot erase the obligations they fail to satisfy.
 
 `RealizationStep.nativeRequirements` is a proof-layer projection used to state
-that equality. It creates no runtime store or replacement evaluator. Its context
+that equality, including statement scope for the native statement check and
+implementation scope for the native body check. It creates no runtime store or
+replacement evaluator. Its context
 is the collector's selected stored context; `evaluate_native_contract_created`
 uses an explicit singleton-context premise to expose that context to callers.
 Correctness of provider request handles and job arguments is not inferred from

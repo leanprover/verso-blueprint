@@ -510,12 +510,15 @@ example {p : Capture.Plan} {observations : Capture.Observations p} {snapshot : C
               specifications := p.specifications.mapIdx fun handle _ => ⟨handle, { document := specification, result := .ok () }⟩
               expected := p.expected.mapIdx fun handle _ => ⟨handle, {
                 witness, documents := goalDocuments, result := .ok {
-                  goal, semanticContext := some "MOCK provider/build context"
+                  goal, semanticContext := some "MOCK implementation context"
+                  statementContext := some "MOCK statement context"
                   observation := { witness, actualType := some goal, outcome := expectedOutcome, coverage := .dependencyClosure } } }⟩
               native := p.native.mapIdx fun handle request => ⟨handle,
                 if !sourceAvailable then .error issue else .ok {
                   canonical := request.name, declaration := ⟨context, request.name.toString⟩
                   kind := .«theorem», moduleName := `ContractFixture
+                  semanticContext := some "MOCK implementation context"
+                  statementContext := some "MOCK statement context"
                   document := { key := ⟨context, request.name.toString ++ ".lean"⟩, text := "MOCK source" }
                   ranges := default }⟩
               checks := p.checks.mapIdx fun handle request => ⟨handle,

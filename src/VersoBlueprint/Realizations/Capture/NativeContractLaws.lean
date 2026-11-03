@@ -34,7 +34,8 @@ def RealizationStep.nativeRequirements (step : RealizationStep) : Array (Contrib
     #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)].map fun (facet, validator) =>
       let key : RequirementKey := ⟨subject, facet⟩
       contribution `requirement (BindingEncoding.requirementKey key)
-        { key, expected := .check validator, coverage := .dependencyClosure }
+        { key, expected := .check validator, coverage := .dependencyClosure,
+          scope := if facet == `statement then .statement else .implementation }
 
 /-- Every successful ordinary collection contains exactly the two native
 requirements per declaration step, including unavailable source/check branches.
@@ -240,7 +241,8 @@ theorem evaluate_native_contract_created {p : Plan} {observations : Observations
       retained.value.expected = .check validator ∧ retained.value.coverage = .dependencyClosure := by
   let key : RequirementKey := ⟨.declaration step.key ⟨context, declaration.name.toString⟩, name⟩
   let record : Contribution Requirement := contribution `requirement (BindingEncoding.requirementKey key)
-    { key, expected := .check validator, coverage := .dependencyClosure }
+    { key, expected := .check validator, coverage := .dependencyClosure,
+      scope := if name == `statement then .statement else .implementation }
   have member : record ∈ p.ordinary.flatMap (fun node => node.realizations.flatMap (·.nativeRequirements)) := by
     apply Array.mem_flatMap.mpr
     refine ⟨node, nodeMember, Array.mem_flatMap.mpr ⟨step, stepMember, ?_⟩⟩

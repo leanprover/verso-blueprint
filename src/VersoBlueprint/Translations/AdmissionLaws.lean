@@ -15,7 +15,7 @@ These laws concern supplied observations, not authentication of their providers.
 namespace Informal.Translations
 open Lean Realizations Validation
 
-deriving instance ReflBEq, LawfulBEq for DocumentKey, Goal, Expectation, Requirement,
+deriving instance ReflBEq, LawfulBEq for ContentScope, DocumentKey, Goal, Expectation, Requirement,
   ProofObservation, ReviewObservation, CheckObservation, Observation, Evidence,
   Facet, Realizations.Declaration, Realization, Endpoint, Translation, Claim,
   Resolution, Document, ObjectObservation, BindingInput
@@ -368,6 +368,27 @@ private theorem Registry.localResult_eq (r : Registry) (hi : r.IndexesMatch)
   rw [lookup]
   split <;> rfl
 
+private theorem array_forIn_preserves_mem (xs : Array α) (initial : β)
+    (body : α → β → Id (ForInStep β)) (predicate : β → Prop)
+    (start : predicate initial)
+    (step : ∀ a ∈ xs, ∀ b, predicate b → predicate (body a b).run.value) :
+    predicate (forIn xs initial body).run := by
+  rw [← Array.forIn_toList]
+  have loop (as : List α) (b : β) (hb : predicate b) (subset : ∀ a ∈ as, a ∈ xs) :
+      predicate (forIn as b body).run := by
+    induction as generalizing b with
+    | nil => exact hb
+    | cons a as ih =>
+      have next := step a (subset a (by simp)) b hb
+      simp only [List.forIn_cons, bind, Id.run, pure]
+      cases h : body a b with
+      | done result => simpa [h, Id.run, ForInStep.value] using next
+      | yield result =>
+        apply ih result (by simpa [h, Id.run, ForInStep.value] using next)
+        intro a ha
+        exact subset a (by simp [ha])
+  exact loop xs.toList initial start (by simp)
+
 private theorem Registry.computeLocalResult_complete (r : Registry) (key : RequirementKey)
     (h : (Registry.computeLocalResult r key).complete = true) :
     ∃ requirement, r.requirement? key = some requirement ∧
@@ -386,9 +407,26 @@ private theorem Registry.computeLocalResult_complete (r : Registry) (key : Requi
       obtain ⟨i, hi, hm⟩ := Array.any_eq_true.mp accepted
       apply noEvidence ⟨_, Array.getElem_mem hi, ?_⟩
       simpa using hm
-    cases expected : requirement.expected <;>
-      simp [Registry.computeLocalResult, found, expected, candidates, Result.complete] at h
-    all_goals repeat (first | (solve | simp [Id.run, pure] at h) | split at h)
+    simp only [Registry.computeLocalResult, found, Id.run, bind, pure] at h
+    generalize loopEq : forIn (m := Id) requirement.prerequisites
+      ((none, ()) : Option Result × Unit) _ = visited at h
+    have rejected : ∀ result, visited.1 = some result → result.complete = false := by
+      rw [← loopEq]
+      apply array_forIn_preserves_mem _ _ _
+        (fun pair : Option Result × Unit => ∀ result : Result, pair.1 = some result → result.complete = false) (by simp)
+      intro prerequisite member pair prior
+      repeat' split
+      all_goals simp [Id.run, ForInStep.value, Result.complete]
+    cases selected : visited.1 with
+    | none =>
+      cases expected : requirement.expected <;>
+        simp [expected, candidates, selected, Result.complete] at h
+      all_goals repeat (first | (solve | simp at h) | split at h)
+    | some result =>
+      have incomplete := rejected result selected
+      cases expected : requirement.expected <;>
+        simp [expected, selected, Result.complete] at h
+      all_goals repeat (first | (solve | simp_all [Result.complete]) | split at h)
 
 
 /-- Cached local completion is backed by an original admitted requirement and
@@ -422,27 +460,6 @@ private theorem eq_of_mem_size_le_one (xs : Array α) (ha : a ∈ xs) (hb : b �
   have hij : i = j := by omega
   subst j
   exact he.symm.trans hjEq
-
-private theorem array_forIn_preserves_mem (xs : Array α) (initial : β)
-    (body : α → β → Id (ForInStep β)) (predicate : β → Prop)
-    (start : predicate initial)
-    (step : ∀ a ∈ xs, ∀ b, predicate b → predicate (body a b).run.value) :
-    predicate (forIn xs initial body).run := by
-  rw [← Array.forIn_toList]
-  have loop (as : List α) (b : β) (hb : predicate b) (subset : ∀ a ∈ as, a ∈ xs) :
-      predicate (forIn as b body).run := by
-    induction as generalizing b with
-    | nil => exact hb
-    | cons a as ih =>
-      have next := step a (subset a (by simp)) b hb
-      simp only [List.forIn_cons, bind, Id.run, pure]
-      cases h : body a b with
-      | done result => simpa [h, Id.run, ForInStep.value] using next
-      | yield result =>
-        apply ih result (by simpa [h, Id.run, ForInStep.value] using next)
-        intro a ha
-        exact subset a (by simp [ha])
-  exact loop xs.toList initial start (by simp)
 
 private theorem hashSet_fold_mem [BEq α] [LawfulBEq α] [Hashable α]
     (values : Array α) (value : α) :
@@ -963,24 +980,25 @@ private theorem Registry.computeLocalResult_proof_sources (r : Registry)
     (complete : (Registry.computeLocalResult r key).complete = true) :
     Registry.objectIssues r witness = #[] ∧
       ∃ semantic ∈ r.bindingInputs, semantic.subject = key.subject ∧
-        semantic.name = NativeLean.expectedContextFor key := by
+        semantic.name = (if requirement.scope == .statement then
+          NativeLean.expectedStatementContextFor key else NativeLean.expectedContextFor key) := by
   have available : (Registry.objectIssues r witness).isEmpty = true := by
     apply Classical.byContradiction
     intro unavailable
     simp only [Array.isEmpty_iff] at unavailable
-    simp [Registry.computeLocalResult, found, expected, unavailable, Result.complete] at complete
+    simp [Registry.computeLocalResult, found, expected, unavailable, Result.complete, Id.run, pure] at complete
   have empty := Array.isEmpty_iff.mp available
   refine ⟨empty, ?_⟩
   apply Classical.byContradiction
   intro absent
   have noSemantic : (r.bindingInputs.any (fun input => input.subject == key.subject &&
-      input.name == NativeLean.expectedContextFor key)) = false := by
+      input.name == expectedTag requirement.scope key)) = false := by
     apply Bool.eq_false_iff.mpr
     intro present
     apply absent
-    simpa only [Array.any_eq_true', Bool.and_eq_true, beq_iff_eq] using present
-  simp [Registry.computeLocalResult, found, expected, empty, noSemantic, Result.complete] at complete
-  all_goals repeat (first | (solve | simp [Id.run, pure] at complete) | split at complete)
+    simpa only [Array.any_eq_true', Bool.and_eq_true, beq_iff_eq, expectedTag] using present
+  simp [Registry.computeLocalResult, found, expected, empty, noSemantic, Result.complete, Id.run, pure] at complete
+  all_goals repeat (first | (solve | simp at complete) | split at complete)
 
 private theorem admit_object_sources (admitted : admit input = .ok registry)
     (available : Registry.objectIssues registry key = #[]) :
@@ -1024,7 +1042,8 @@ theorem admit_complete_proof_sources (admitted : admit input = .ok registry)
       ∃ document ∈ input.documents, object.value.document = some document.value.key ∧
         blank document.value.text = false) ∧
     ∃ semantic ∈ input.bindingInputs, semantic.value.subject = key.subject ∧
-      semantic.value.name = NativeLean.expectedContextFor key := by
+      semantic.value.name = (if requirement.scope == .statement then
+        NativeLean.expectedStatementContextFor key else NativeLean.expectedContextFor key) := by
   have localComplete := admit_complete_requirement_local admitted complete
   rw [registry.localResult_eq (admit_indexes admitted)] at localComplete
   split at localComplete
