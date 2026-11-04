@@ -46,13 +46,29 @@ gate is necessary but not sufficient for a completed public realization.
 `BlueprintValidationLaws` is a normal Lake test root with explicitly synthetic
 observation examples. It checks successful proof/review/native/generic contracts
 and stale, cross-project, wrong-kind, missing-object, and insufficient-coverage
-cases. `tests/verification/ValidationAxiomAudit.lean` prints the public theorem
-dependency sets; inspection must reject `sorryAx` or added domain assumptions.
+cases. `tests/verification/ValidationAxiomAudit.lean` enforces the dependency policy
+for one reviewed inventory of 255 declarations, including the main theorem
+endpoints below. It queries `Lean.collectAxioms` directly and allows only
+`propext`, `Classical.choice`, and `Quot.sound` for the pinned toolchain. It fails
+on `sorryAx`, other axioms, unknown targets, duplicate targets, an empty inventory,
+or a target count different from the reviewed count. Quoted endpoint names also
+fail elaboration if a declaration is renamed or removed. The same inventory
+produces the printed dependency report; output parsing never decides acceptance.
+
+CI runs this policy check separately from the Lean test suite. Its rejection
+controls import deliberately axiom-dependent and sorry-dependent theorems from
+an isolated test module, exercising Lean's exported dependency information as
+well as inventory failures. Those fixtures are not imported by the real audit or
+production. An inventory/count change is an explicit review decision: the count
+guard detects accidental deletion, not every possible same-size substitution or
+an omitted future theorem. This audit checks assumptions of compiled declarations;
+it is not an independent kernel checker or a proof of the checker implementation.
 
 Validation commands:
 
 ```sh
 scripts/lean-low-priority lake build +VersoBlueprintTests.BlueprintValidationLaws
+scripts/lean-low-priority lake lean tests/verification/AxiomPolicyTests.lean
 scripts/lean-low-priority lake lean tests/verification/ValidationAxiomAudit.lean
 ```
 
