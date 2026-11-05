@@ -4,6 +4,12 @@ from playwright.sync_api import Page, expect
 
 from support import assert_no_runtime_errors, record_runtime_errors
 
+LABEL_PIXELS = """() => {
+  const label = document.querySelector('.bp_graph_canvas svg g.node text');
+  return label ? label.getBoundingClientRect().height : 0;
+}"""
+
+
 def heading_status(page: Page, label: str) -> tuple[str, str]:
     link = page.locator(f'.bp_wrapper[title="{label}"] .bp_extra_slot_code .bp_code_link').first
     symbol = link.locator(".bp_code_status_symbol").inner_text().strip()
@@ -46,3 +52,27 @@ def test_empty_relation_chips_are_hidden_but_keep_their_column(named_site, page:
     assert abs(hub_uses.bounding_box()["x"] - user_uses.bounding_box()["x"]) < 1
     assert_no_runtime_errors(errors)
 
+
+def test_large_graph_opens_with_readable_labels(named_site, page: Page):
+    errors = record_runtime_errors(page)
+    page.goto(f"{named_site('visual_inspection')}/Dependency-Graph/")
+    toggle = page.locator(".bp_graph_controls .bp_graph_zoom_toggle")
+    expect(toggle).to_have_text("Show whole graph", timeout=30000)
+    assert page.evaluate(LABEL_PIXELS) >= 7.5
+
+    toggle.click()
+    expect(toggle).to_have_text("Zoom to readable size")
+    page.wait_for_function(f"({LABEL_PIXELS})() < 7.5")
+
+    toggle.click()
+    expect(toggle).to_have_text("Show whole graph")
+    page.wait_for_function(f"({LABEL_PIXELS})() >= 7.5")
+    assert_no_runtime_errors(errors)
+
+
+def test_graph_explains_when_its_libraries_fail_to_load(named_site, page: Page):
+    page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+    page.goto(f"{named_site('visual_inspection')}/Dependency-Graph/")
+    message = page.locator(".bp_graph_canvas .bp_graph_load_error")
+    expect(message).to_be_visible()
+    expect(message).to_contain_text("could not be drawn")

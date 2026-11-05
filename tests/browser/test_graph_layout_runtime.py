@@ -204,9 +204,21 @@ def assert_graph_is_well_placed(page: Page):
 
 
 def first_preview_node(page: Page):
-    node = page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first
-    node.wait_for()
-    return node
+    """The first previewable node inside the visible canvas; large graphs open zoomed in."""
+    page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first.wait_for()
+    index = page.evaluate(
+        """() => {
+          const canvas = document.querySelector(".bp_graph_canvas").getBoundingClientRect();
+          const nodes = [...document.querySelectorAll(".bp_graph_canvas svg g.node[tabindex='0']")];
+          return nodes.findIndex((node) => {
+            const box = node.getBoundingClientRect();
+            return box.left >= canvas.left && box.right <= canvas.right &&
+              box.top >= canvas.top && box.bottom <= canvas.bottom;
+          });
+        }"""
+    )
+    assert index >= 0, "no previewable graph node is visible in the canvas"
+    return page.locator(".bp_graph_canvas svg g.node[tabindex='0']").nth(index)
 
 
 def preview_node_by_label(page: Page, label: str):

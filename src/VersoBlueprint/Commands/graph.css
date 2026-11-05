@@ -28,6 +28,16 @@
   overflow: hidden;
 }
 
+.bp_graph_zoom_toggle[hidden] {
+  display: none;
+}
+
+.bp_graph_load_error {
+  margin: 1rem;
+  max-width: 40rem;
+  color: var(--bp-color-status-error-text);
+}
+
 .bp_graph_fullwidth[data-bp-graph-layout="fill"] {
   height: 100%;
   min-height: 0;
