@@ -57,7 +57,7 @@ import VersoBlueprint.Graft
 import VersoBlueprint.ModuleInclude
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.PageBehavior
 import VersoBlueprint.Profiling
 
 set_option doc.verso true

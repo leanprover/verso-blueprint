@@ -7,7 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Macros
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.PageBehavior
 
 namespace Informal.Block.Assets
 
@@ -15,6 +15,10 @@ def css : String := r##"
 .bp_wrapper {
   scroll-margin-top: 1rem;
   margin: 0.85rem 0;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  padding: 0.45rem 0.6rem 0.55rem;
+  background: var(--bp-color-surface);
 }
 
 /* Leave scroll room for relation panels opened near the end of a page. */
@@ -29,6 +33,8 @@ def css : String := r##"
   flex-wrap: wrap;
   font-style: normal;
   font-weight: bold;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  padding-bottom: 0.35rem;
 }
 
 .bp_heading_title_row {
@@ -74,8 +80,8 @@ span[class$="_thmlabel"]::after {
   --bp-extra-uses-col: minmax(5.2rem, max-content);
   --bp-extra-used-by-col: minmax(7.2rem, max-content);
   --bp-extra-markup-col: max-content;
-  --bp-extra-code-col: max-content;
-  --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
+  /* The minimum keeps proof rows, which have no code slot, aligned in any font. */
+  --bp-extra-code-col: minmax(3.6rem, max-content);
   display: inline-grid;
   align-items: baseline;
   justify-content: end;
@@ -98,7 +104,7 @@ span[class$="_thmlabel"]::after {
   grid-template-columns:
     var(--bp-extra-uses-col)
     var(--bp-extra-used-by-col)
-    var(--bp-extra-code-placeholder-col);
+    var(--bp-extra-code-col);
   grid-template-areas: "uses . .";
 }
 
@@ -1734,7 +1740,8 @@ a.bp_external_decl_source_path:hover {
 }
 
 .bp_content {
-  padding-left: 0.65rem;
+  margin-top: 0.35rem;
+  padding-left: 0.45rem;
 }
 
 .bp_content > :first-child {
@@ -1796,27 +1803,27 @@ div.theorem-style-definition div[class$="_thmheading"] {
 
 .bp_kind_theorem_content,
 div.theorem_thmcontent {
-  border-left: 0.15rem solid black;
+  border-left: 0.15rem solid var(--bp-color-text-muted);
 }
 
 .bp_kind_proposition_content,
 div.proposition_thmcontent {
-  border-left: 0.15rem solid black;
+  border-left: 0.15rem solid var(--bp-color-text-muted);
 }
 
 .bp_kind_lemma_content,
 div.lemma_thmcontent {
-  border-left: 0.1rem solid black;
+  border-left: 0.1rem solid var(--bp-color-text-muted);
 }
 
 .bp_kind_corollary_content,
 div.corollary_thmcontent {
-  border-left: 0.1rem solid black;
+  border-left: 0.1rem solid var(--bp-color-text-muted);
 }
 
 .bp_kind_proof_content,
 div.proof_content {
-  border-left: 0.08rem solid grey;
+  border-left: 0.08rem solid var(--bp-color-text-muted);
 }
 
 .bp_wrapper:target {
@@ -1842,8 +1849,8 @@ def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.previewPanelInlinePreviewAssetBundle
-    (cssExtras := [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle])
-    (jsAfter := [Informal.Macros.blueprintMathJs, Informal.StyleSwitcher.jsInteractive])
+    (cssExtras := [css, Verso.Genre.Manual.docstringStyle])
+    (jsAfter := [Informal.Macros.blueprintMathJs, Informal.PageBehavior.jsInteractive])
 
 def codeCssAssets : List String :=
   codeAssetBundle.css

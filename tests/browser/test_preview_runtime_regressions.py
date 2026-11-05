@@ -31,6 +31,23 @@ def assert_source_location_error(result: dict, needle: str):
     assert needle in source_location["error"]
 
 
+def text_baseline(locator: Locator) -> float:
+    """Return the y of an element's first text baseline, which holds in any font."""
+    return locator.evaluate(
+        """element => {
+          const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+          const line = document.createElement("span");
+          const probe = document.createElement("span");
+          probe.style.cssText = "display: inline-block; width: 0; height: 0;";
+          text.replaceWith(line);
+          line.append(text, probe);
+          const baseline = probe.getBoundingClientRect().bottom;
+          line.replaceWith(text);
+          return baseline;
+        }"""
+    )
+
+
 class TestPreviewRuntimeRegressions:
     def test_html_cache_rejects_blank_bodies(self, server: str, page: Page):
         page.goto(server)
@@ -2888,10 +2905,9 @@ class TestPreviewRuntimeRegressions:
         chip = wrap.locator("button.bp_relation_chip").first
         expect(chip).to_have_text("uses 2")
         statement_uses_box = require_box(statement_uses_chip)
-        caption_box = require_box(proof.locator(".bp_caption").first)
         chip_box = require_box(chip)
         assert abs(statement_uses_box["x"] - chip_box["x"]) < 1
-        assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
+        assert abs(text_baseline(proof.locator(".bp_caption").first) - text_baseline(chip)) < 1
         chip.hover()
 
         expect(wrap.locator(".bp_relation_panel .bp_relation_panel_title")).to_have_text(
@@ -2959,15 +2975,11 @@ class TestPreviewRuntimeRegressions:
         statement_uses_box = require_box(statement_uses_chip)
         used_by_box = require_box(statement.locator(".bp_extra_slot_used_by").first)
         code_box = require_box(statement.locator(".bp_extra_slot_code").first)
-        proof_caption_box = require_box(proof.locator(".bp_caption").first)
         proof_uses_box = require_box(chip)
 
         assert group_box["x"] < statement_uses_box["x"] < used_by_box["x"] < code_box["x"]
         assert abs(statement_uses_box["x"] - proof_uses_box["x"]) < 1
-        assert abs(
-            (proof_caption_box["y"] + proof_caption_box["height"])
-            - (proof_uses_box["y"] + proof_uses_box["height"])
-        ) < 1
+        assert abs(text_baseline(proof.locator(".bp_caption").first) - text_baseline(chip)) < 1
 
         assert_no_runtime_errors(errors)
 

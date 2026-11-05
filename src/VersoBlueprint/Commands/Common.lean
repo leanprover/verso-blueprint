@@ -20,10 +20,8 @@ def blueprintTokensCss : String := r##"
   --bp-color-surface: #ffffff;
   --bp-color-surface-muted: #f8fafc;
   --bp-color-surface-subtle: #f9fafb;
-  --bp-color-surface-modern: #f8fbff;
   --bp-color-surface-warn: #fff7ed;
   --bp-color-surface-warn-soft: #ffedd5;
-  --bp-color-surface-note: #fffbeb;
   --bp-color-border: #cbd5e1;
   --bp-color-border-soft: #e2e8f0;
   --bp-color-border-muted: #d1d5db;
@@ -46,8 +44,6 @@ def blueprintTokensCss : String := r##"
   --bp-color-status-error-text: #b91c1c;
   --bp-color-status-error-strong: #991b1b;
   --bp-color-status-error-border-soft: #fecaca;
-  --bp-color-status-note-border: #fcd34d;
-  --bp-color-status-note-text: #92400e;
   --bp-color-focus-border: #93c5fd;
   --bp-color-focus-surface: #eff6ff;
   --bp-color-focus-ring: rgba(59, 130, 246, 0.12);
@@ -62,13 +58,6 @@ def blueprintTokensCss : String := r##"
   --bp-color-target-ring: rgba(37, 99, 235, 0.22);
   --bp-color-target-surface: rgba(37, 99, 235, 0.14);
   --bp-color-target-ring-strong: rgba(37, 99, 235, 0.28);
-  --bp-color-modern-border: #d6deea;
-  --bp-color-modern-surface-alt: #f5f9ff;
-  --bp-color-modern-caption: #e0ecff;
-  --bp-color-bold-surface-glow-1: rgba(251, 191, 36, 0.2);
-  --bp-color-bold-surface-glow-2: rgba(16, 185, 129, 0.2);
-  --bp-color-bold-link: #7c2d12;
-  --bp-color-bold-label: #f59e0b;
   --bp-color-biblio-border: #d6ccff;
   --bp-color-biblio-surface: #faf7ff;
   --bp-color-biblio-border-soft: #e9ddff;
@@ -78,15 +67,15 @@ def blueprintTokensCss : String := r##"
   --bp-radius-md: 0.45rem;
   --bp-radius-lg: 0.5rem;
   --bp-radius-xl: 0.55rem;
-  --bp-radius-2xl: 0.7rem;
-  --bp-radius-3xl: 0.85rem;
   --bp-radius-pill: 999px;
   --bp-shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.1);
   --bp-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.16);
   --bp-shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.18);
-  --bp-shadow-modern: 0 6px 18px rgba(15, 23, 42, 0.08);
-  --bp-shadow-bold: 0 7px 0 var(--bp-color-text-strong);
-  --bp-shadow-bold-lg: 0 9px 0 var(--bp-color-text-strong);
+}
+
+/* Verso sets no body font, so Blueprint chrome would fall back to the browser default. */
+body {
+  font-family: var(--verso-structure-font-family, sans-serif);
 }
 "##
 
