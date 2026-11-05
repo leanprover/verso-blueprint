@@ -29,9 +29,10 @@ status signals that disagree with each other.
 
 ## Roadmap Decision
 
-Do now, in priority order, the open items marked P1 to P4 below. Defer dark
-mode, serif prose, a Blueprint-owned landing page, and realization display.
-Revisit the deferred items after P1 to P4 land.
+Do now the open items below, in rank order. Defer dark mode, serif prose, a
+Blueprint-owned landing page, and realization display. Revisit the deferred
+items once the open items land. P5 needs a design for the side-by-side feature
+before implementation; do not polish the current layout.
 
 ## Reproduction Status
 
@@ -39,6 +40,9 @@ Current repros are the starter `project-template` reference blueprint, the
 `preview_runtime_showcase` test blueprint, and the published v4.35.0 FLT
 reference blueprint. Unless noted, measurements come from the
 `feat/visual-design` build at 8d4269f6 in headless Chromium at 1440x900.
+
+The `visual_inspection` test blueprint is the primary repro: each chapter
+isolates one part of the generated pages and lists what to check.
 
 ## Preliminary Analysis
 
@@ -51,6 +55,8 @@ Fixed on `feat/visual-design`:
 | The `bold` style clipped kind labels (`DEFINITIC`) under the label number | `modern` and `bold` removed |
 | The floating style switcher covered code at phone width | Switcher removed |
 | Proof rows aligned with statement rows only under Times metrics | Shared minimum code column; test measures baselines |
+| Headings showed the same ⚠ for unfinished code, code waiting on prerequisites, and a missing declaration, and an error-like ✗ for blocks with no Lean code yet | Distinct marks with plain-language tooltips: ✓ complete, ◐ own code complete with requirements open, ⚠ unfinished, ! declaration not found, A axiom, ○ no Lean code yet |
+| Empty relation chips such as "uses 0" added noise to every header | Hidden, keeping their column so other chips stay aligned; undeclared-group warnings stay visible |
 
 Open, ranked:
 
@@ -58,9 +64,7 @@ Open, ranked:
 | --- | --- | --- | --- |
 | P1 | The dependency graph is unreadable when it opens on large projects | FLT's 243 nodes fit to width as a thin strip | Open at a readable zoom; related to UPC-0003 |
 | P2 | The graph page is blank, with no message, when jsDelivr is unreachable | Reproduced with the network blocked: `d3` and `d3-graphviz` fail to load | Show an error state; later, bundle the libraries |
-| P3 | A heading warns while its Lean panel shows complete | Starter Theorem 1.2 (`addition_right_identity`) shows a warning above a full green bar | One mapping from the captured assessment to heading, panel, and graph visuals |
-| P4 | Block headers are noisy | Six zero-count chips on the starter Addition page; fixed columns reserve space for absent slots | Hide `bp_relation_chip_empty` and let columns collapse |
-| P5 | Side-by-side cards overflow and clip | Six header classes overflow the card on Side-by-Side Views; Lean code is clipped | Let the header wrap inside narrow cards |
+| P5 | Side-by-side cards overflow and clip | Six header classes overflow the card on Side-by-Side Views; Lean code is clipped; two `visual_inspection` pages scroll horizontally at phone width | Redesign the side-by-side feature; overflow and clipping are symptoms, so patching them alone is not enough |
 | P6 | The graph legend covers the sidebar and the left of the graph | Legend popover on the starter graph page | Anchor the popover inside the graph area |
 | P7 | Too many type sizes | 16 font and size combinations in non-code text on the starter Addition page | A small type scale as tokens |
 | P8 | Pages carry Blueprint CSS twice | Starter Addition page grew from 210 KB to 268 KB | Remove the re-emission once UPC-0022 lands |
@@ -95,6 +99,8 @@ phone width.
 - A computed-style diff of 21 starter and showcase pages after the fixed items
   shows only the intended font change and the auto-margin shifts it causes.
 - The browser suite has no new failures against the unmodified base.
+- `tests/browser/test_visual_inspection.py` pins the heading marks and the
+  hidden empty chips on the `visual_inspection` test blueprint.
 
 ## Current Workaround
 

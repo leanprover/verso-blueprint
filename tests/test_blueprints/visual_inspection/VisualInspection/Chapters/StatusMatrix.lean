@@ -34,6 +34,15 @@ Condition: complete Lean code and no prerequisites.
 def statusBase : Nat := 1
 ```
 
+:::definition "status_definition_body_sorry" (parent := "status_group")
+Condition: the definition's statement checks, but its body uses `sorry`.
+:::
+
+```lean "status_definition_body_sorry"
+def statusUnfinishedValue : Nat := by
+  sorry
+```
+
 :::theorem "status_ready" (parent := "status_group")
 Condition: no Lean code yet, and every prerequisite is finished. It uses
 {uses "status_definition_complete"}[].

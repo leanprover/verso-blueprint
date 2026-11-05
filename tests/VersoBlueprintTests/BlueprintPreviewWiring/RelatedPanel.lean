@@ -302,7 +302,7 @@ private def cachedStatement
       hasSubstr out "bp_code_link_status_absent" &&
       hasSubstr out "bp_code_link_empty" &&
       hasSubstr out "No associated Lean declarations" &&
-      hasSubstr out ">X</span>" &&
+      hasSubstr out ">○</span>" &&
       hasSubstr out ">L∃∀N</span>" &&
       hasSubstr out "class=\"bp_relation_chip bp_relation_chip_empty\"" &&
       hasSubstr out "class=\"bp_inline_preview_ref\"" &&

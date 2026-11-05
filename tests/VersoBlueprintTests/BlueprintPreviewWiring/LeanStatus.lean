@@ -48,7 +48,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       ("incomplete glyph", hasSubstr out ">⚠</span>"),
       ("completed native validation glyph", hasSubstr out ">✓</span>"),
       ("axiom classification glyph", hasSubstr out ">A</span>"),
-      ("absent glyph", hasSubstr out ">X</span>"),
+      ("absent glyph", hasSubstr out ">○</span>"),
       ("preview CSS", hasExtraCss st ".bp_code_summary_preview_panel"),
       ("preview descriptor", hasTemplatePreviewDescriptor out
         ".bp_code_summary_preview_panel"

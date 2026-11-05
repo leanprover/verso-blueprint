@@ -239,7 +239,9 @@ deriving Inhabited
 
 private def codeEntryVisual (hasSource : Bool) (statusMark : BlockStatusMark) : CodeEntryVisual :=
   if !hasSource then
-    { classSuffix := "absent", symbol := "X", absent := true }
+    { classSuffix := "absent", symbol := "○", absent := true }
+  else if statusMark.requirementsOpen then
+    { classSuffix := "requirements_open", symbol := "◐" }
   else
     let view := statusMark.status.presentation
     { classSuffix := view.codeEntryClassSuffix
@@ -318,24 +320,39 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
 
 /-- Heading completion is read only from the admitted realization assessment.
 Declaration snapshots remain useful for the code panel, but are not a fallback
-source of proof or dependency completion. -/
-private def statusMarkFromAssessment (assessment? : Option Realizations.NodeAssessment) : BlockStatusMark := Id.run do
+source of proof or dependency completion. `missingDeclaration` is a resolution fact,
+not completion: it reports a named declaration that does not exist, which the
+assessment cannot tell apart from an unfinished statement, and it never marks a
+heading complete. -/
+private def statusMarkFromAssessment (missingDeclaration : Bool)
+    (assessment? : Option Realizations.NodeAssessment) : BlockStatusMark := Id.run do
   let some assessment := assessment?
     | return {
         status := .incomplete {}
         title := "Validation unavailable: this occurrence has no captured realization assessment"
         symbolOverride? := some "?" }
+  let details := assessment.nativeStatusMessage
+  if missingDeclaration then
+    return { status := .missing, title := "Lean declaration not found. " ++ details }
   if !assessment.hasNativeDeclarations then
     return {
       status := .incomplete {}
       title := assessment.leanRequirementMessage
       symbolOverride? := some "?" }
   let complete := assessment.nativeLocallyComplete && assessment.requiredComplete && !assessment.hasAxiomLike
+  let requirementsOpen := assessment.nativeLocallyComplete && !assessment.hasAxiomLike &&
+    !assessment.requiredComplete
+  let lead :=
+    if assessment.hasAxiomLike then "Uses an axiom-like declaration, so it is assumed, not proved. "
+    else if complete then "Complete: this block's Lean code and its requirements check. "
+    else if requirementsOpen then "Lean code complete; prerequisites or other requirements unfinished. "
+    else "Lean code unfinished. "
   let status := if assessment.hasAxiomLike then .axiomLike else if complete then .proved else .incomplete {}
   return {
     status
-    title := assessment.nativeStatusMessage
-    symbolOverride? := if complete || assessment.hasAxiomLike then none else some "⚠" }
+    title := lead ++ details
+    symbolOverride? := if complete || assessment.hasAxiomLike || requirementsOpen then none else some "⚠"
+    requirementsOpen }
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
   decls.qsort (fun a b =>
@@ -583,7 +600,8 @@ def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Opt
   if data.isProof then {} else
   let source := cdata.source.getD {}
   let renderHealth := externalRenderHealth source.externalDecls
-  let statusMark := statusMarkFromAssessment data.assessment
+  let missingDeclaration := source.externalDecls.any fun decl => !decl.present || decl.provedStatus.any (·.isMissing)
+  let statusMark := statusMarkFromAssessment missingDeclaration data.assessment
   let title := if source.isEmpty then "No associated Lean declarations" else
     appendRenderHealthSummary (statusMark.title) renderHealth
   { statusMark := if source.isEmpty then none else some statusMark

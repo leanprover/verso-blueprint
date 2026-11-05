@@ -451,8 +451,12 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-accent-danger);
 }
 
+.bp_code_link_status_requirements_open .bp_code_status_symbol {
+  color: var(--bp-color-status-success-text);
+}
+
 .bp_code_link_status_absent .bp_code_status_symbol {
-  color: inherit;
+  color: var(--bp-color-text-faint);
 }
 
 .bp_render_warning_badge {
@@ -900,6 +904,12 @@ span[class$="_thmlabel"]::after {
 .bp_relation_chip_empty {
   color: var(--bp-color-text-faint);
   font-weight: 500;
+}
+
+/* An empty relation keeps its column, so chips stay aligned across blocks, but shows
+   nothing. An undeclared group is a warning and stays visible. */
+.bp_relation_chip_empty:not(.bp_relation_chip_warn) {
+  visibility: hidden;
 }
 
 .bp_relation_chip_warn {

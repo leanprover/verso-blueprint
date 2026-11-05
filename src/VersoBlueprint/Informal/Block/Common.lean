@@ -54,6 +54,8 @@ structure BlockStatusMark where
   status : Data.ProvedStatus := .incomplete {}
   title : String
   symbolOverride? : Option String := none
+  /-- Own Lean code checks, but other required validation, such as a prerequisite, is unfinished. -/
+  requirementsOpen : Bool := false
 deriving Repr, Inhabited
 
 def BlockStatusMark.text (s : BlockStatusMark) : String :=
