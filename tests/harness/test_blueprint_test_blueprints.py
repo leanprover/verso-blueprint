@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -30,6 +32,11 @@ VBP_BUILD_OUTPUT_COMMAND = ("lake", "exe", "vbp", "build", "--output", "{output_
 
 
 class StandaloneTestBlueprintTests(unittest.TestCase):
+    def test_visual_inspection_large_graph_chapter_is_current(self) -> None:
+        script = PACKAGE_ROOT / "tests" / "test_blueprints" / "visual_inspection" / "scripts" / "generate_large_graph.py"
+        result = subprocess.run([sys.executable, str(script), "--check"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_every_standalone_fixture_is_toolchain_managed(self) -> None:
         manifest = default_test_blueprint_manifest(PACKAGE_ROOT)
         roots = {PACKAGE_ROOT / fixture.project_root for fixture in load_test_blueprints_manifest(manifest)}
@@ -43,7 +50,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
 
         self.assertEqual(
             categories,
-            ("Code", "Preview", "Relationships", "Summary", "Metadata", "Imports", "Graph", "Runtime"),
+            ("Code", "Preview", "Relationships", "Summary", "Metadata", "Imports", "Graph", "Runtime", "Inspection"),
         )
         self.assertEqual(fixture.slug, "preview_runtime_showcase")
         self.assertEqual(fixture.kind, "standalone_project")
