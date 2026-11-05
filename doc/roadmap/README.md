@@ -84,6 +84,7 @@ one exists.
 | Manual emission | [`UPC-0015 Single-Owner Compact Xref Emission`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md) | Verso | high |
 | HTML serialization | [`UPC-0016 One-Pass HTML Escaping`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Verso | high |
 | Manual layout | [`UPC-0003 Wide Content Page Mode`](./cards/UPC-0003-wide-content-page-mode/README.md) | Verso | medium |
+| Manual emission | [`UPC-0022 Ordered Manual Inline Stylesheets`](./cards/UPC-0022-ordered-manual-inline-stylesheets/README.md) | Verso | medium |
 | Browser assets | [`UPC-0004 Structured Runtime Assets`](./cards/UPC-0004-structured-runtime-assets/README.md) | Verso | high |
 | Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-verso-slides-pipeline-hooks/README.md) | verso-slides | medium |
 | Highlighted code | [`UPC-0008 Highlighted Docstring Performance`](./cards/UPC-0008-highlighted-docstring-performance/README.md) | Verso | high |
