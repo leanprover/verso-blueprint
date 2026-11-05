@@ -1,39 +1,185 @@
 # Realizations, relations, and assessment
 
-Design seed, 2026-11-05. This describes the intended model and the use cases that
-should determine its remaining rules. The assessment rules below specify the
-initial contract; richer completion requests remain deferred. The [current implementation](REALIZATIONS_AND_TRANSLATIONS.md)
-uses semantic facets; the replacement below is not implemented yet.
+Design basis, updated 2026-11-06. Version one is a document compiler producing an immutable
+assessment snapshot. Its replacement data model is not implemented yet; see the
+[current implementation](REALIZATIONS_AND_TRANSLATIONS.md). Examples and planned
+regressions below are not claims of newly executed validation.
 
-## Purpose and objects
+## 1. Version-one contract
 
-Blueprint connects mathematical ideas expressed in different languages and records
-what has been established about them. Source code and authored text remain canonical.
+Given the current authored blueprint, its selected sources, and observations from
+the current checking environment, produce a self-consistent snapshot of claims,
+assessments and their reasons. Preserve the existing `plan → observe → evaluate`
+boundary. The semantic core evaluates supplied observations; production capture
+obtains them freshly. This distinction does not authenticate arbitrary supplied facts.
+
+| Information | Authority and lifetime |
+| --- | --- |
+| Authored facts | Source-canonical nodes, realizations, selections, relation claims, contracts and explicit current-review selections. |
+| Current observations | Source resolution, native checks, target matching and availability from this capture/context. |
+| Derived assessments | Bindings, evidence eligibility, local results and prerequisite completion, computed from those inputs. |
+| Indexes and consumers | Derived lookup maps, reports and presentation views of the immutable snapshot. |
+
+Raw contributions, resolved records and indexes are legitimate representations.
+They must be derived through one construction boundary, not independently writable
+semantic authorities. Preserve atomic collection/admission, Lean/Lake incrementality
+and safe capture-local memoization. Persist authored facts, not native validation
+success. Make assessment reproducible from the same
+captured input; measure before adding caching or a new incremental engine.
+
+### Objects and supported content
 
 | Object | Responsibility |
 | --- | --- |
-| Node | Stable, globally labeled mathematical home, independent of language or implementation. |
-| Realization | Independently addressable statement, proof, definition, or prose account in a language/project context. |
-| Source association | Exact content selected for a realization, with its owner and semantic or byte-bound interpretation. Several realizations may reference one canonical declaration. |
-| Relation | Explicit claim between realizations, with a kind, selected endpoints, and optional tags identifying strategy or other authored classifications. |
-| Validation contract | Requirements for accepting a particular realization or relation. Completion follows this contract, not a node color or naming convention. |
-| Evidence | Current observations supporting or rejecting specific requirements: native checks, tests, or reviews with explicit criteria and provenance. |
+| Node | Stable globally labeled mathematical home, independent of language or implementation. |
+| Realization | Independently addressable statement, proof or definition/account in a language/project context. |
+| Source association | Exact semantic owner, source identity, selection, interpretation and context together. Shared source does not merge owners. |
+| Relation | An independently keyed claim with kind/direction, exact endpoint roles, joint interpretation/mapping, assumptions/domain restrictions, contract and optional classificatory tags. |
+| Validation contract | Explicit requirements for accepting a realization or relation. |
+| Evidence | Supplied observations about a requirement's selected content. A proof artifact is not evidence that it establishes a statement. |
 
-These are responsibilities, not a commitment to six new record types. Reuse the
-existing requirement/evidence machinery and one authoritative collected model.
-A proof artifact is distinct from the evidence that it establishes a statement.
-A review may assess mathematical correctness, correspondence, or exposition;
-those criteria are not interchangeable with one another or with kernel checking.
-Mathematical role and representation medium are independent: a prose argument can
-be a proof, and a Lean definition can supply either a proposition or its witness.
+These are responsibilities, not a demand for one new record per row. Use typed
+records/references; do not force source associations, mathematical claims
+and validation prerequisites into one generic edge type. Role and medium differ:
+Verso can contain a proof; a Lean `def` can define a proposition or contain its witness.
+Role comes from explicit data/interpretation, never a name such as `lean` or `proof`.
+Realization/relation keys address current objects without a cross-revision stability
+promise. Source locators and unchanged keys are not content freshness.
 
-Relations support open-ended tags alongside their kind. For example, a translation
-can be tagged `rocq-faithful` to identify a one-to-one alignment strategy. This
-keeps strategy vocabulary extensible without making every strategy a new relation
-kind. The tag does not itself establish faithfulness or supply validation evidence.
-What is preserved remains explicit in the relation's contract.
+Support exact native declaration selections and well-defined authored text selections.
+Lean statement meaning includes relevant computational definitions; selected proof
+implementation includes its own body and explicitly selected helpers. Authored text
+is byte-bound. Other sources use documented conservative selection or report unsupported/
+unavailable; there is no universal selection language. Semantic content and byte text
+sharing a file remain independently selected. Retire semantic facets and
+`Requirement.scope` once explicit selections carry their responsibilities.
 
-## Use cases that determine the rules
+### Assessment rules
+
+1. **Owned content.** Multiple selections jointly constitute one assessed object;
+   alternatives are separate realizations. Preserve ordered composition; canonicalize
+   only set-like membership. Source reassignment cannot hide in a secondary map.
+2. **Local bindings.** Bind each judgment to its own subject, selected content and
+   interpretation, criterion, reviewer, coverage and validation conditions. A relation
+   judgment also binds its exact mathematical claim: endpoints, mapping and assumptions.
+   Changing Bob's sibling obligation to Carol's leaves Alice's unchanged judgment current.
+3. **Prerequisites are gates.** Requiring another obligation does not implicitly select
+   its proof body. Proof-only edits preserve a statement judgment when its selected
+   content/interpretation is unchanged; `sorry` can still break dependent completion.
+   Explicitly selected proof content remains bound regardless of the criterion's name.
+4. **No circular binding.** Evidence records, current-review selections, lifecycle state,
+   prerequisite outcomes and completion results do not enter assessed-content bindings.
+   Recording or withdrawing an approval changes eligibility, not its assessed binding.
+5. **Joint claims.** Grouped endpoints assert one interpreted claim, not all pairwise
+   claims or automatic composition. Claim meaning is explicit even if initially textual.
+   Tags such as `rocq-faithful` classify; they do not generate evidence or validation
+   policy. Retagging may change a query's membership without staling mathematical evidence.
+6. **Meaningful support.** Built-in `proves(P,S)` needs exact formal target matching
+   and native completeness, or required mathematical review of that connection.
+   Lint/testing alone cannot supply it. Enforce this in evaluation, not just constructors;
+   inadequate support remains unestablished with a reason. Custom kinds report only
+   contract-relative success. Every other required condition still applies: native
+   success cannot override a required rejection or vice versa.
+7. **Exact resolution.** Resolve the selected source or report missing, unsupported or
+   ambiguous selection; never substitute another passage. Broad byte selections can
+   invalidate conservatively. Structural identity conflicts reject the batch; unavailable
+   material and legitimate negative judgments do not erase unrelated assessments.
+8. **Explicit dependencies.** Preserve authored mathematical uses and observed native
+   references, source role and local/shared scope. Select exact targets, or diagnose
+   ambiguity under a documented deterministic shorthand. Completion must not choose the
+   target. Alternative proofs never repair the native closure of code using an admission.
+9. **Derived views.** Publish labeled realization/relation results, local evidence and
+   prerequisite reasons. No universal node-completion Boolean or hidden `lean`-name
+   policy. Graph filtering, significance and display grouping cannot alter validation.
+
+### Native support boundary
+
+Generated own-type support selects a declaration's checked proof value and its
+checked proposition type in the same compatible context/parameter interpretation.
+A well-typed `Nat` value is not a proof. Independent support requires kernel
+conversion of the complete selected propositions; logical equivalence needs a
+checked adapter. Target universes stay rigid under bound-name renaming; retain the
+full term telescope and use named wrappers for specialization. Unsupported matching
+must diagnose instead of silently instantiating away a general target.
+Distinguish proposition definitions from proof-valued definitions consistently in
+selection, fingerprints and native reporting, not by declaration command spelling.
+
+Keep formal hypotheses, used native axioms and authored correspondence assumptions
+separate. Expose native assumptions or enforce an explicit allowed-assumptions
+requirement; a passed observation is not an axiom-free claim. Capture-local native
+facts may be shared after checking applicability to each receiving edge and binding
+its evidence locally. Bound evidence/completed results cannot be copied between edges.
+A proof review includes only its declared bodies/scripts/prose/helpers; fresh native
+completeness independently inspects required dependencies.
+
+### Reviews are explicitly selected current authored state
+
+A required-review slot specifies the reviewer and criterion. Its source explicitly
+selects one current judgment identifier, or none. Competing effective selections
+are unresolved. Multiple required reviewers are separate conjunctive requirements.
+These are symbolic authored identities, not an authentication service.
+
+Resolve that selection first, then check the selected judgment's reviewer, criterion,
+exact subject, binding, coverage and approval outcome. A missing, stale, rejected,
+unavailable or unsuitable selection supplies no approval; never search older records
+for one that fits. Withdrawal selects none; supersession selects a replacement.
+Neither operation resurrects an unselected judgment. Older judgments may remain as
+unselected records or only in Git history. No lifecycle traversal engine, event log,
+timestamp arbitration, reviewer discovery or quorum mechanism is needed.
+
+Required-review rejection prevents completion; optional exposition rejection does not
+veto unrelated mathematical obligations. Conflicting payloads for one immutable
+evidence identity are structural errors, unlike well-formed disagreement. Failure
+of an assessment does not generally establish mathematical falsity. A build must
+never silently renew a stale human judgment.
+
+### Conjunctive completion and reference semantics
+
+Compute local results from current eligible evidence. Starting with no completed
+requirements, add a locally successful requirement when all its prerequisites are
+complete; continue to a fixed point. This gives a reference meaning, not a mandate
+for an inefficient implementation or replacement of the existing graph algorithm.
+Two positive local judgments in a prerequisite cycle cannot bootstrap completion.
+The local judgments remain visible even when final completion fails. Such cycles
+differ from legitimate semantic cycles, for example in mutually defined source.
+
+A realization/relation completes only under a meaningful declared contract, its
+kind's applicable minimum support, and all required obligations with finite
+prerequisite justification. Missing contracts remain unassessed. Deleting the last
+obligation cannot manufacture success. Aggregate requests are outside version one.
+
+## 2. Examples and counterexamples
+
+### First end-to-end milestone
+
+Use the real authoring/import, capture, evaluation and report path:
+
+- One Lean declaration supplies statement S and proof P; prose supplies statement T.
+- `proves(P,S)` requires native mathematical support.
+- Correspondence between T and S requires Alice's mathematical review and, for this
+  example's contract, successful completion of `proves(P,S)`.
+- The report shows Alice's local review and the proof prerequisite separately.
+
+| Source change | Required result |
+| --- | --- |
+| Rewrite P without changing selected statement meaning | Alice's judgment remains current; native checking uses the current capture. |
+| Replace P with `sorry` | Local review can remain current; proof and dependent completion become unfinished. |
+| Change S or the correspondence mapping | The old judgment is stale. |
+| Withdraw Alice's selected approval | No approval; no fallback to an older matching record. |
+| Add an unfinished alternative proof | Keep individual results; invent no node-wide completion rule. |
+
+The implementation owner makes this path work. Verification connects the production
+selection/binding interfaces, original suitable evidence and finite prerequisite
+justification to their laws. Keep obligations in production, not assumptions about
+an ideal model. Additional abstractions must simplify this example or enable the
+next concrete case. This milestone is a planned test, not completed validation.
+Record resource cost under a bounded run, separating normal build/setup from capture.
+Immutable snapshots simplify authority; they do not by themselves ensure scalability.
+
+### Use-case catalog
+
+The wider cases guide the model; they do not activate every provider or workflow
+for the first milestone. Unknown providers remain explicit and non-certifying.
 
 ### 1. A formal proof of a statement
 
@@ -52,8 +198,8 @@ statement under the declared assumptions and checking requirements.
 `proves(P1, S)` and `proves(P2, S)` have separate contracts and results. One may be
 complete while the other contains an admission. Both facts must remain visible.
 Finishing P2, obtaining a suitable proof of S, and finishing both developments are
-different requested outcomes. We have not chosen a universal node-completion rule
-or a representation for these aggregate requests.
+different requested outcomes. Version one has no universal node-completion rule;
+aggregate requests are deferred.
 
 An alternative proof never repairs the native dependency chain of code that still
 references an admitted declaration. Mere name differences do not establish that
@@ -68,7 +214,7 @@ is a different assessment and may be optional.
 
 A negative mathematical review prevents completion when the contract requires
 that review to pass. The initial policy names each required reviewer and uses
-explicit current judgments, as specified below. A review of exposition should
+explicit current judgments, as specified above. A review of exposition should
 not silently veto unrelated mathematical validation.
 
 ### 4. Source/PDF, Verso, and Lean documents
@@ -178,9 +324,10 @@ needs a stated policy; a label alone does not choose a language or a proof.
 Distinguish three facts: C's authored mathematical dependency, the selected target
 realization, and the exact Lean declaration referenced by C's code. If the code
 uses an admitted `substitution_v1`, a complete `substitution_v2` does not make C
-natively complete. Whether a Blueprint-level dependency can be satisfied by the
-alternative is still open. Dependencies needed to formulate a statement also
-differ from dependencies used only in one proof; proof-local uses must stay local.
+natively complete. Version one does not automatically substitute a different proof
+for an exact selected prerequisite; aggregate alternative-proof requests are deferred.
+Dependencies needed to formulate a statement also differ from dependencies used only
+in one proof; proof-local uses must stay local.
 
 ### 9. Presenting a theorem gradually
 
@@ -201,225 +348,10 @@ references and completeness limits. These are projections of the same richer mod
 Hiding an inferred dependency from an overview must not remove it from native checks.
 Graph-library choice and richer significance/order conventions can follow later.
 
-## Decisions and invariants
+### Regression controls
 
-- Replace semantic facets with direct owned content and explicit relation endpoints.
-  Role comes from data/provenance, never names such as `lean` or `proof`.
-- Retire `Requirement.scope` when selecting statement versus proof content fully
-  determines assessment. An edit confined to proof content preserves a statement
-  binding when selected statement content and interpretation are unchanged.
-  Changes to computational meaning may invalidate dependent statement assessments.
-- Preserve owner, source selection, content interpretation, and endpoint roles
-  together. Moving content between semantic owners changes the assessed object;
-  an invisible secondary membership map must not retain the old assessment.
-  Native semantic content must not erase byte-bound prose sharing its source file.
-- Proof checking and review share an assessment framework with distinct typed
-  expectations, criteria, assumptions and outcomes. A passed observation alone is
-  insufficient: it must satisfy the exact current obligation.
-- Keep source collection and full-batch admission atomic. Persist authored facts,
-  not native validation success. Reuse native observations only within the same
-  fresh capture and context; source association alone establishes no validation.
-- Consumers display derived views. Presentation grouping and graph layout have no
-  authority over binding, admission or completion.
-- Preserve authored dependency assertions and tool-observed references separately.
-  Deduplicated display edges, visibility, and significance never replace their
-  semantic provenance or change validation obligations.
-- Source provenance, attachment, alignment and validated correspondence are
-  distinct. Relations may cross nodes and connect selected groups of realizations;
-  neither three-language layouts nor one-to-one translation are imposed.
-- Relation tags identify authored strategies and classifications. They do not
-  manufacture requirements, evidence, or completion merely by their spelling.
-
-## Normative assessment semantics
-
-### Owned selections and claim identity
-
-Each association preserves its semantic owner, exact source identity, selection,
-interpretation and context together. The semantic owner is the realization being
-assessed, not an exclusive owner of the source artifact. Sharing a declaration
-does not merge associations or transfer evidence. Multiple selections jointly
-constitute one assessed object; alternatives are separate realizations. Preserve
-order where composition is ordered; normalize only explicitly set-like collections.
-
-Logical address, assessed content and source locator are distinct. Global node
-labels are stable; realization/relation keys address current objects without a
-cross-revision stability promise. Neither an unchanged key nor a page/range/URL
-establishes freshness. Relocation may preserve content when resolution is exact.
-
-A relation owns one unambiguous claim: kind/direction, endpoint identities and
-roles, joint interpretation or mapping, assumptions/domain restrictions, and
-validation contract. Identical endpoints can support different claims. Grouped
-endpoints assert only that joint claim, not pairwise claims or automatic composition.
-Authored interpretation text suffices initially and participates in binding. Tags
-are classificatory: retagging changes tag-filtered query membership, not the
-individual mathematical judgment. A semantic strategy change must edit the claim.
-
-### Assessed content versus completion prerequisites
-
-Each required assessment has its own binding: its assessed subject/connection,
-selected content and interpretation, criterion, reviewer where applicable, coverage,
-and own validation conditions. A relation judgment also binds the mathematical
-claim it assesses, including exact endpoints, mapping and assumptions. It does not
-bind the containing relation's entire conjunction of sibling requirements.
-Changing only Bob's exposition-review obligation to Carol's therefore preserves
-Alice's unchanged mathematical judgment, while relation completion waits for Carol.
-
-Requiring another obligation to succeed does not, by itself, include that
-obligation's implementation content in the current assessment. Explicit assessed
-content and its semantic dependencies determine freshness; validation prerequisites
-gate current completion. Keep both in the same authoritative model without
-recursively binding a statement review to every prerequisite's proof body.
-
-A correspondence judgment can remain current after its required proof is rewritten,
-while replacement with `sorry` makes the combined outcome incomplete. Changes to
-the assessed contract, interpretation or selected computational meaning remain
-binding-relevant. Local evidence and prerequisite success must be reported separately.
-
-Conversely, explicitly selected proof content stays bound. Rewriting P affects a
-proof-structure judgment that selects P, even if another criterion is called
-`statementCorrespondence`. A narrower judgment requires a narrower declared
-subject or selection; criterion names cannot discard selected endpoints.
-
-Evidence records, effective-review selection, supersession/withdrawal state,
-prerequisite outcomes and derived completion results do not enter this binding.
-They determine eligibility and completion. Changing the required reviewer changes
-the assessment policy; selecting that reviewer's current judgment does not. This
-excludes self-invalidating bindings that change when their approval is recorded.
-
-Whole-file byte selections conservatively include every selected byte. PDF reflow
-may make a region ambiguous. Preserve the proof-edit guarantee for unchanged exact
-statement selections; do not claim fine independence for broader or unresolved
-selections. A native semantic selection cannot suppress unrelated prose bytes.
-
-Proof-review coverage identifies actual content: the selected proof, optionally
-named helper proofs, and semantic or authored-script/prose interpretation. Helpers'
-proof bodies are not implicitly included. A transitive proof-body review needs an
-explicit supported selection policy. Fresh native completeness still inspects
-required dependencies, even when a human review selected narrower content.
-
-### Mathematical support for `proves`
-
-Built-in `proves(P, S)` requires a mathematical support route for its exact endpoints:
-formal target matching and native completeness, or a required mathematical review
-of that P-to-S connection. Lint, exposition or testing alone cannot establish it.
-Enforce this at contract validation/evaluation, not only in authoring helpers.
-An inadequate support contract remains unestablished with an explicit reason;
-custom relation kinds report only their declared contract-relative result.
-
-The alternative support routes describe permitted contracts, not an escape from
-conjunction. Native support cannot override another required review's rejection;
-a passing review cannot override a failing required native check. Changing the
-authored contract explicitly is different from satisfying its current requirements.
-
-A generated own-type route requires P to select the checked proof value and S its
-checked proposition type from the same declaration/context with compatible parameters.
-Shared names/files are insufficient; a checked value of type `Nat` is not a proof.
-Independent targets require kernel conversion of the complete selected propositions;
-logical equivalence requires a checked adapter or another witness. Distinguish a
-Prop-valued definition supplying a statement from a proof-valued definition supplying
-a witness consistently in selection, fingerprinting and native reporting.
-
-Preserve target universe parameters rigidly, allowing bound-name renaming but not
-solving a general target to a concrete universe. Retain the full term-parameter
-telescope. Use named wrappers for specialization initially; implicit applications
-and typeclass-selected arguments are outside this first interface. Unsupported
-matching must diagnose, never silently specialize the claim.
-
-Keep proposition hypotheses, native axioms used, and authored correspondence
-assumptions distinct. Expose native assumptions or apply an explicit allowed-
-assumptions requirement; a passed check does not mean axiom-free. Within the same
-fresh capture/context, native facts may be reused after checking applicability to
-each receiving edge's exact selected endpoints and binding its evidence to that
-edge's own current assessment contract. Separately owned statements selecting the
-same checked proposition can thus share one native check. An edge's bound evidence
-or completed result cannot simply be copied to another edge.
-
-### Required reviews: initial policy
-
-Each required review specifies the criterion, exact assessed subject/connection,
-and symbolic reviewer identity. A requirement named `aliceReview` does not itself
-select Alice. Two required reviewers are two conjunctive requirements; quorums and
-reviewer-discovery policies are deferred. This is not reviewer authentication.
-
-Each review obligation has one effective current judgment. Selection/supersession
-and withdrawal are explicit; source order and timestamps cannot select a winner.
-Competing current judgments without an unambiguous effective selection are unresolved.
-Withdrawal does not revive a superseded approval. Only current, eligible evidence
-matching the assessed binding can discharge the requirement.
-
-Resolve the effective judgment from explicitly scoped lifecycle facts before
-checking outcome or binding suitability. A stale, withdrawn, unavailable or
-unsuitable effective judgment cannot trigger fallback to superseded evidence.
-In particular, if J2 supersedes approval J1 and content later returns to J1's
-binding, J1 remains superseded even when J2 is now stale.
-
-| Effective situation | Required-review result |
-| --- | --- |
-| Required reviewer approves current content/criterion | Can discharge the requirement. |
-| Another reviewer approves | Does not discharge this reviewer's requirement. |
-| Required reviewer rejects | Unsatisfied; retain the rejection and reason. |
-| No judgment, or a judgment is withdrawn | No current approval; withdrawing rejection is not approval. |
-| Relevant content/contract changed | Old judgment is stale. |
-| Conflicting active judgments | Unresolved until explicitly resolved. |
-| Assessment cannot be performed | Unavailable, distinct from rejection. |
-
-Optional reviews do not gate unrelated contracts. Well-formed disagreement is
-assessment data, not a reason to reject the entire collected model. Incompatible
-payloads for the same immutable evidence identity remain a structural conflict.
-A failed requirement does not generally establish that its statement is false.
-
-### Completion results and dependency selection
-
-Version one reports labeled realization/relation assessments under explicit
-conjunctive contracts. Final completion requires a meaningful declared contract,
-the relation kind's applicable minimum support rule, and every required obligation
-with justified prerequisites. Local approval remains reportable if prerequisites
-fail. Absent meaningful contracts remain unassessed; deleting the last obligation
-must not create success. Do not publish an unlabeled node-wide
-completion Boolean or select a default policy from a realization named `lean`.
-Consumer semantics must migrate even while graph layout work is deferred.
-
-Aggregate requests are deferred. Their eventual meaning must distinguish these
-cases when `R1 = proves(P1, S)` succeeds and `R2 = proves(P2, S)` is unfinished:
-
-| Requested outcome | Meaning |
-| --- | --- |
-| Finish P2 | Incomplete. |
-| Obtain some acceptable proof of S | Can succeed through R1 if its assurance/assumptions meet the request. |
-| Finish both developments | Incomplete. |
-| Obtain two independent proofs | Needs an additional independence criterion. |
-
-Any future aggregate result identifies its request, exact target, eligibility policy,
-and satisfying relation identities. Empty candidates report no candidates, not
-vacuous success. Reviewed and kernel-checked support count together only if the
-request explicitly permits both; unfinished alternatives remain visible.
-
-Use exact dependency targets where possible. A label shorthand needs an explicit
-deterministic resolution rule; diagnose ambiguity instead of choosing the candidate
-that happens to be complete. Selecting an alternative proof never rewrites native
-code dependencies. Keep proof-local uses local. Definitions needed to interpret a
-statement contribute to its content dependencies. Semantic cycles such as mutual
-definitions differ from validation cycles, which cannot bootstrap their own success.
-If A and B both have passing local evidence but require each other, neither obtains
-final completion through that cycle; both local observations remain visible. Final
-completion requires finite prerequisite justification, without prescribing a graph
-algorithm here.
-
-### Source resolution and admission
-
-A selector resolves the intended current content or reports missing, unsupported
-or ambiguous selection. Never substitute a nearby passage or an OCR account for
-the original. Conservative binding to a larger region/container plus selector is
-allowed when documented; unchanged locators do not establish unchanged content.
-
-Structural identity conflicts reject the candidate batch atomically. Unavailable
-content instead leaves the affected assessment unavailable: a missing PDF does
-not erase an unrelated native proof from the same admitted snapshot. Negative
-judgments, unavailable observations and malformed records remain distinguishable.
-
-## Acceptance and bounded follow-up
-
-These are implementation targets, not newly executed results:
+The following are implementation targets, not newly executed results. Extend the
+first milestone with these controls as the corresponding supported path is connected.
 
 | Control | Required distinction |
 | --- | --- |
@@ -443,18 +375,33 @@ These are implementation targets, not newly executed results:
 | One compatible native fact supports two edges | Recheck applicability and bind evidence separately for each edge. |
 | A and B pass locally but require each other | Preserve local results; prohibit circular final completion. |
 
-The detailed record/API shape for current-review selection and dependency shorthand
-resolution must implement these rules; it must not introduce timestamp arbitration,
-a second evidence store, or completion-dependent target selection.
+## 3. Deferred extensions
 
-The first model should support relation kinds, tags, explicit endpoints and validation
-requirements. Refine strategy vocabulary, richer alignment conventions and examples
-against the real blueprints after that model lands. A complete strategy taxonomy or
-specialized mapping language is not a prerequisite for the first model. Mappings and
-assumptions that affect a current claim must still be stated explicitly; their later
-refinement must not introduce a second authoritative mapping store.
+Version one does not include arbitrary completion predicates, automatic discovery
+of acceptable alternative proofs, or automatic composition of correspondence.
+Future aggregate requests must identify exact targets, eligibility/assumption policy
+and satisfying relation IDs. “Finish P2,” “obtain a suitable proof of S,” and “finish
+both developments” differ; two independent proofs additionally need an independence
+criterion. Empty requests must not become vacuous success.
 
-Graph redesign, richer presentation groups, foreign checking providers, arbitrary
-completion predicates, review quorums, and publication/integration ordering remain
-separate work. Binding laws concern the actual normalized representation; general
-hash injectivity and provider authenticity are not claimed.
+Defer review history/authentication services, quorums, implicit term applications,
+a general source-selection or alignment DSL, transitive proof-body review policy,
+new foreign checking providers, graph-library replacement and richer significance/
+ordering conventions. Strategy tags and explicit claim interpretations suffice to
+start; refine them against real blueprints. Publication/#499 ordering and source-
+ownership repairs remain separate work, not consequences of this document.
+
+A durable multi-project catalog or independently edited review service could later
+justify storage infrastructure. Any such backend belongs behind the snapshot
+boundary and must not become a second assessment interpreter. Yesterday's stored
+native result does not certify today's capture. No SQL engine, generic incremental
+database or rule framework is part of the first implementation.
+
+The useful precedents are the input/derived-model boundary in
+[rust-analyzer](https://rust-analyzer.github.io/book/contributing/architecture.html)
+and the distinction between rebuilding and scheduling in
+[Build Systems à la Carte](https://blogs.ncl.ac.uk/andreymokhov/build-systems-a-la-carte/).
+They motivate boundaries, not adoption of their machinery. SQLite's documented
+[application storage and querying uses](https://www.sqlite.org/whentouse.html)
+are relevant only if a future storage workload calls for them. General hash
+injectivity and provider authenticity remain outside the proof claims.
