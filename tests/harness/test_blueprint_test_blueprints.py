@@ -21,6 +21,7 @@ from scripts.blueprint_test_blueprints import (
 )
 from scripts.blueprint_harness_utils import StepFailure
 import scripts.blueprint_harness_validation as validation_mod
+import scripts.blueprint_harness_toolchains as toolchains_mod
 import scripts.blueprint_test_blueprints as test_blueprints_mod
 
 
@@ -29,6 +30,11 @@ VBP_BUILD_OUTPUT_COMMAND = ("lake", "exe", "vbp", "build", "--output", "{output_
 
 
 class StandaloneTestBlueprintTests(unittest.TestCase):
+    def test_every_standalone_fixture_is_toolchain_managed(self) -> None:
+        manifest = default_test_blueprint_manifest(PACKAGE_ROOT)
+        roots = {PACKAGE_ROOT / fixture.project_root for fixture in load_test_blueprints_manifest(manifest)}
+        self.assertEqual(roots, set(toolchains_mod.standalone_test_blueprint_dirs(PACKAGE_ROOT)))
+
     def test_default_manifest_contains_preview_runtime_showcase(self) -> None:
         manifest = default_test_blueprint_manifest(PACKAGE_ROOT)
         categories = load_test_blueprint_categories(manifest)
