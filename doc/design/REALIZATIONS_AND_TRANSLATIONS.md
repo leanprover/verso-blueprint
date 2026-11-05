@@ -1,5 +1,9 @@
 # Realizations and translations
 
+The [next-model design seed](REALIZATION_MODEL.md) describes the proposed removal
+of semantic facets and the use cases guiding completion and dependency policy.
+It is a design discussion; the model documented below remains implemented today.
+
 ## Current model
 
 Blueprint uses one model for concepts represented in different languages. A node
