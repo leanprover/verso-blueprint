@@ -190,27 +190,161 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     return null;
   }
 
-  export function positionAnchoredPanel(panel, anchor, margin, offset) {
-    if (!(panel instanceof HTMLElement)) return;
+  // Anchored panel placement. Every anchored panel goes through placeAnchoredPanel.
+  // A placed panel is tracked until it is placed with no anchor: it is placed again
+  // when its own size changes, such as when its content arrives, and when the page
+  // scrolls or resizes. Measuring once on open is what misplaced panels before.
+
+  /** @type {Map<HTMLElement, { anchor: unknown, options: Record<string, unknown> }>} */
+  const placedPanels = new Map();
+  /** @type {ResizeObserver | null} */
+  let placedPanelObserver = null;
+  let placedPanelWindowBound = false;
+
+  function placementBounds(boundary, margin) {
+    let left = 0;
+    let top = 0;
+    let right = window.innerWidth;
+    let bottom = window.innerHeight;
+    if (boundary instanceof Element) {
+      const rect = boundary.getBoundingClientRect();
+      left = Math.max(left, rect.left);
+      top = Math.max(top, rect.top);
+      right = Math.min(right, rect.right);
+      bottom = Math.min(bottom, rect.bottom);
+    }
+    return { left: left + margin, top: top + margin, right: right - margin, bottom: bottom - margin };
+  }
+
+  /** Viewport coordinates of the box that the panel's `left` and `top` are relative to. */
+  function placementOrigin(panel) {
+    if (getComputedStyle(panel).position === "fixed") return { left: 0, top: 0 };
+    const parent = panel.offsetParent;
+    if (!(parent instanceof Element)) return { left: 0, top: 0 };
+    const rect = parent.getBoundingClientRect();
+    return {
+      left: rect.left + parent.clientLeft - parent.scrollLeft,
+      top: rect.top + parent.clientTop - parent.scrollTop
+    };
+  }
+
+  /** Padding and border, which a content-box maximum size does not include. */
+  function boxFrame(style, vertical) {
+    if (style.boxSizing === "border-box") return 0;
+    const keys = vertical
+      ? ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"]
+      : ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"];
+    return keys.reduce(function (sum, key) { return sum + (parseFloat(style[key]) || 0); }, 0);
+  }
+
+  function capPanelSize(panel, vertical, limit) {
+    const frame = boxFrame(getComputedStyle(panel), vertical);
+    if (vertical) {
+      panel.style.maxHeight = Math.max(0, limit - frame) + "px";
+      panel.style.overflowY = "auto";
+    } else {
+      panel.style.maxWidth = Math.max(0, limit - frame) + "px";
+    }
+    return panel.getBoundingClientRect();
+  }
+
+  function clearPanelSizeCaps(panel) {
+    panel.style.maxWidth = "";
+    panel.style.maxHeight = "";
+    panel.style.overflowY = "";
+  }
+
+  function computePlacement(panel, anchor, options) {
     const rect = readAnchorRect(anchor);
-    if (!rect) return;
-    const safeMargin = Number.isFinite(margin) ? margin : 12;
-    const safeOffset = Number.isFinite(offset) ? offset : 10;
-    const panelRect = panel.getBoundingClientRect();
-    const panelWidth = panelRect.width || Math.min(520, window.innerWidth - safeMargin * 2);
-    const panelHeight = panelRect.height || Math.min(420, window.innerHeight - safeMargin * 2);
-    let left = rect.left;
-    if (left + panelWidth > window.innerWidth - safeMargin) {
-      left = window.innerWidth - panelWidth - safeMargin;
+    if (!rect) return null;
+    const margin = Number.isFinite(options.margin) ? Number(options.margin) : 12;
+    const offset = Number.isFinite(options.offset) ? Number(options.offset) : 8;
+    const bounds = placementBounds(options.boundary, margin);
+    // Size caps apply only when the panel's own CSS size does not fit.
+    clearPanelSizeCaps(panel);
+    let size = panel.getBoundingClientRect();
+    if (size.width > bounds.right - bounds.left) size = capPanelSize(panel, false, bounds.right - bounds.left);
+    if (!(size.width > 0) || !(size.height > 0)) return null;
+    // The panel sits next to the anchor along the main axis and never covers it: it
+    // takes the side with room, or else the roomier side, capped to fit there.
+    const vertical = options.side !== "beside";
+    const start = vertical ? rect.top : rect.left;
+    const end = vertical ? rect.bottom : rect.right;
+    const after = (vertical ? bounds.bottom : bounds.right) - end - offset;
+    const before = start - (vertical ? bounds.top : bounds.left) - offset;
+    const mainSize = function () { return vertical ? size.height : size.width; };
+    const useAfter = mainSize() <= after || after >= before;
+    const room = Math.max(0, useAfter ? after : before);
+    if (mainSize() > room) size = capPanelSize(panel, vertical, room);
+    if (!vertical && size.height > bounds.bottom - bounds.top) size = capPanelSize(panel, true, bounds.bottom - bounds.top);
+    const main = useAfter ? end + offset : start - offset - mainSize();
+    let left;
+    let top;
+    if (vertical) {
+      top = main;
+      left = Math.max(bounds.left, Math.min(rect.left, bounds.right - size.width));
+    } else {
+      left = main;
+      top = Math.max(bounds.top, Math.min(rect.top, bounds.bottom - size.height));
     }
-    left = Math.max(safeMargin, left);
-    let top = rect.bottom + safeOffset;
-    if (top + panelHeight > window.innerHeight - safeMargin) {
-      top = rect.top - panelHeight - safeOffset;
+    const origin = placementOrigin(panel);
+    panel.style.left = Math.round(left - origin.left) + "px";
+    panel.style.top = Math.round(top - origin.top) + "px";
+    panel.setAttribute("data-bp-placed", "1");
+    return { left: left, top: top };
+  }
+
+  function placeTrackedPanel(panel) {
+    const placement = placedPanels.get(panel);
+    if (!placement || !panel.isConnected || panel.hidden) return;
+    computePlacement(panel, placement.anchor, placement.options);
+  }
+
+  function trackPlacedPanel(panel) {
+    if (!placedPanelObserver && typeof ResizeObserver === "function") {
+      placedPanelObserver = new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) { placeTrackedPanel(/** @type {HTMLElement} */ (entry.target)); });
+      });
     }
-    top = Math.max(safeMargin, top);
-    panel.style.left = left + "px";
-    panel.style.top = top + "px";
+    if (placedPanelObserver) placedPanelObserver.observe(panel);
+    if (!placedPanelWindowBound) {
+      placedPanelWindowBound = true;
+      const placeAll = function () { placedPanels.forEach(function (_placement, tracked) { placeTrackedPanel(tracked); }); };
+      window.addEventListener("resize", placeAll);
+      window.addEventListener("scroll", placeAll, true);
+    }
+  }
+
+  /**
+   * Place a panel next to an anchor, inside the viewport or an optional boundary
+   * element. With `side: "below"` (the default) it opens under the anchor and flips
+   * above when there is more room there; with `side: "beside"` it opens to the right
+   * and flips left. The panel never covers its anchor: when neither side has room, it
+   * takes the roomier side and is capped to fit there, scrolling its content. Its width
+   * is likewise capped to the available width. Placing with no anchor stops tracking
+   * the panel and clears its position and caps.
+   *
+   * @param {HTMLElement} panel
+   * @param {unknown} anchor an element, or a rectangle with left, right, top, and bottom
+   * @param {Record<string, unknown>} [options] side, boundary, offset, and margin
+   * @returns {{ left: number, top: number } | null} the viewport position, or null
+   *   until the panel has a size
+   */
+  export function placeAnchoredPanel(panel, anchor, options) {
+    if (!(panel instanceof HTMLElement)) return null;
+    if (!readAnchorRect(anchor)) {
+      placedPanels.delete(panel);
+      if (placedPanelObserver) placedPanelObserver.unobserve(panel);
+      panel.style.left = "";
+      panel.style.top = "";
+      panel.removeAttribute("data-bp-placed");
+      clearPanelSizeCaps(panel);
+      return null;
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    placedPanels.set(panel, { anchor: anchor, options: opts });
+    trackPlacedPanel(panel);
+    return computePlacement(panel, anchor, opts);
   }
 
   export function bindPanelRepositioner(options) {
@@ -514,7 +648,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     bindDismissHandlers,
     bindAnchoredPopover,
     readAnchorRect,
-    positionAnchoredPanel,
+    placeAnchoredPanel,
     bindPanelRepositioner,
     shouldKeepOpen,
     bindPreviewTriggers

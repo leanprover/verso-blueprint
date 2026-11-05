@@ -21,11 +21,6 @@ def css : String := r##"
   background: var(--bp-color-surface);
 }
 
-/* Leave scroll room for relation panels opened near the end of a page. */
-.content-wrapper > section:has(.bp_relation_panel) {
-  padding-bottom: min(18rem, 42vh);
-}
-
 .bp_heading {
   display: flex;
   align-items: center;
@@ -920,7 +915,7 @@ span[class$="_thmlabel"]::after {
   position: absolute;
   top: 100%;
   right: 0;
-  min-width: 26rem;
+  min-width: min(26rem, calc(100vw - 1.5rem));
   width: min(50rem, 92vw);
   z-index: 26;
   border: 1px solid var(--bp-color-border);
@@ -930,6 +925,18 @@ span[class$="_thmlabel"]::after {
   display: none;
   font-style: normal;
   font-weight: 400;
+}
+
+/* Placed by the runtime next to its chip, inside the viewport. Until it is placed,
+   the panel would sit over its own chip, so it stays invisible. */
+.bp_relation_panel.bp_relation_panel_placed {
+  position: fixed;
+  top: auto;
+  right: auto;
+}
+
+.bp_relation_panel.bp_relation_panel_placed:not([data-bp-placed]) {
+  visibility: hidden;
 }
 
 .bp_relation_wrap:is(:hover, :focus-within) > .bp_relation_panel {

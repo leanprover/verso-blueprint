@@ -1,5 +1,8 @@
 """Regressions for BPC-0001 on the `visual_inspection` test Blueprint."""
 
+import json
+
+import pytest
 from playwright.sync_api import Page, expect
 
 from support import assert_no_runtime_errors, record_runtime_errors
@@ -76,3 +79,46 @@ def test_graph_explains_when_its_libraries_fail_to_load(named_site, page: Page):
     message = page.locator(".bp_graph_canvas .bp_graph_load_error")
     expect(message).to_be_visible()
     expect(message).to_contain_text("could not be drawn")
+
+
+VISIBLE_PANEL_RECT = """(selector) => {
+  const panel = [...document.querySelectorAll(selector)].find((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== "hidden";
+  });
+  if (!panel) return null;
+  const rect = panel.getBoundingClientRect();
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}"""
+
+
+@pytest.mark.parametrize("width,height", [(1440, 900), (390, 844)])
+def test_block_popups_stay_inside_the_viewport(named_site, page: Page, width: int, height: int):
+    errors = record_runtime_errors(page)
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(f"{named_site('visual_inspection')}/Block-Anatomy/Kinds/")
+    theorem = '.bp_wrapper[title="anatomy_theorem"]'
+    popups = [
+        (f"{theorem} .bp_extra_slot_code .bp_code_link", ".bp_code_summary_preview_panel"),
+        (f"{theorem} .bp_extra_slot_uses .bp_relation_chip", ".bp_relation_panel_placed"),
+        (f"{theorem} .bp_extra_slot_group .bp_relation_chip", ".bp_relation_panel_placed"),
+    ]
+    for trigger_selector, panel_selector in popups:
+        trigger = page.locator(trigger_selector).first
+        trigger.scroll_into_view_if_needed()
+        trigger.hover()
+        query = f"({VISIBLE_PANEL_RECT})({json.dumps(panel_selector)})"
+        page.wait_for_function(f"{query} !== null")
+        page.wait_for_timeout(200)
+        rect = page.evaluate(query)
+        assert rect["left"] >= 0 and rect["top"] >= 0, (trigger_selector, rect)
+        assert rect["right"] <= width and rect["bottom"] <= height, (trigger_selector, rect)
+        box = trigger.bounding_box()
+        covers_trigger = (
+            rect["left"] < box["x"] + box["width"] and box["x"] < rect["right"]
+            and rect["top"] < box["y"] + box["height"] and box["y"] < rect["bottom"]
+        )
+        assert not covers_trigger, (trigger_selector, rect, box)
+        page.mouse.move(1, 1)
+        page.wait_for_function(f"{query} === null")
+    assert_no_runtime_errors(errors)

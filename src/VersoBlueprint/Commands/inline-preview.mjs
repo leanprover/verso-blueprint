@@ -139,24 +139,7 @@ export function bindInlinePreview(previewUtils) {
 
   function positionDockedPanel(hostInfo) {
     if (!hostInfo || !(hostInfo.element instanceof Element)) return;
-    const margin = 12;
-    const gap = 12;
-    const hostRect = hostInfo.element.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const panelWidth = panelRect.width || Math.min(520, window.innerWidth - margin * 2);
-    const panelHeight = panelRect.height || Math.min(420, window.innerHeight - margin * 2);
-    let left = hostRect.right + gap;
-    if (left + panelWidth > window.innerWidth - margin) {
-      left = hostRect.left - panelWidth - gap;
-    }
-    left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
-    let top = hostRect.top;
-    if (top + panelHeight > window.innerHeight - margin) {
-      top = window.innerHeight - panelHeight - margin;
-    }
-    top = Math.max(margin, top);
-    panel.style.left = left + "px";
-    panel.style.top = top + "px";
+    previewUtils.placeAnchoredPanel(panel, hostInfo.element, { side: "beside", offset: 12 });
   }
 
   function applyBehavior(nextBehavior, hostInfo) {
@@ -364,17 +347,6 @@ export function bindInlinePreview(previewUtils) {
     return childSurface.pointerWithin(ev);
   }
 
-  function repositionPanels() {
-    if (behavior.isAnchored && activeTrigger && !panel.hidden) {
-      mainSurface.position(activeTrigger, behavior);
-    } else if (behavior.isDocked && activeHost && !panel.hidden) {
-      positionDockedPanel(activeHost);
-    }
-    if (childActiveTrigger && !childPanel.hidden) {
-      childSurface.position(childActiveTrigger, childBehavior);
-    }
-  }
-
   applyBehavior(behavior, null);
   mainLifecycle = mainSurface.bindTriggers({
     triggerRoot: document,
@@ -401,12 +373,6 @@ export function bindInlinePreview(previewUtils) {
     bindEscape: false,
     bindWindow: false
   });
-  mainSurface.bindRepositioner({
-    owner: document.body,
-    boundAttr: "data-bp-inline-panel-reposition-bound",
-    reposition: repositionPanels
-  });
-
   previewUtils.registerPreviewHydrator("inline", refresh);
 
   refresh(document);

@@ -279,7 +279,7 @@ private def cachedStatement
       !hasSubstr out "bp_uses_chip" &&
       !hasSubstr out "bp_uses_origin_badge" &&
       !hasSubstr out "bp_uses_intent_badge" &&
-      hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
+      hasExtraCss st ".bp_relation_panel.bp_relation_panel_placed" &&
       hasExtraCss st ".bp_preview_header_label" &&
       hasExtraCss st ".bp_relation_badge_origin::before" &&
       hasExtraCss st ".bp_relation_badge_intent_technical" &&

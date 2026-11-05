@@ -1,6 +1,6 @@
 import { escapeHtml, normalizePanelBehavior, normalizePreviewMode, normalizePreviewPlacement, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readStringOption } from "./preview-runtime-base.mjs";
 import { renderHtmlInto, resolveBlueprintPreview } from "./preview-runtime-render.mjs";
-import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewTriggers, positionAnchoredPanel, readAnchorRect, shouldKeepOpen } from "./preview-runtime-lifecycle.mjs";
+import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewTriggers, placeAnchoredPanel, readAnchorRect, shouldKeepOpen } from "./preview-runtime-lifecycle.mjs";
 
   /**
    * @typedef {Object} PreviewTriggerLifecycle
@@ -65,9 +65,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
   // and runtime diagnostic markup for bundled clients.
 
   export function resetPanelPosition(panel) {
-    if (!(panel instanceof HTMLElement)) return;
-    panel.style.left = "";
-    panel.style.top = "";
+    placeAnchoredPanel(panel, null);
   }
 
   export function hidePreviewSurfaces(root) {
@@ -143,6 +141,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const defaults = readObjectOption(opts, "defaults", {});
     const margin = readNumberOption(opts, "margin", 12);
     const offset = readNumberOption(opts, "offset", 10);
+    const side = readStringOption(opts, "side", "below");
     const footerHtmlAttr = readStringOption(opts, "footerHtmlAttr", "");
     const renderFooter = readFunctionOption(opts, "renderFooter", null);
     const onClose = readFunctionOption(opts, "onClose", null);
@@ -306,12 +305,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         if (positionPanel) {
           positionPanel(panel, anchor, surface);
         } else if (behavior && behavior.isAnchored && readAnchorRect(anchor)) {
-          positionAnchoredPanel(
-            panel,
-            anchor,
-            Number.isFinite(opts.margin) ? opts.margin : margin,
-            Number.isFinite(opts.offset) ? opts.offset : offset
-          );
+          placeAnchoredPanel(panel, anchor, { side: side, margin: margin, offset: offset });
         } else {
           resetPanelPosition(panel);
         }

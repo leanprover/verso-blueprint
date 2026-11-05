@@ -18,8 +18,7 @@ const {
   ensureGraphBlockState,
   rememberGraphLayoutMeasurements,
   resizeRenderedGraphToCanvas,
-  resetGraphvizForVariant,
-  makeGroupPanelPositioner
+  resetGraphvizForVariant
 } = graphRuntimeCoreModule;
 
 function dotWithGraphAttribute(dot, name, value) {
@@ -777,9 +776,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             .height(height)
             .renderDot(dotForVariantOptions(variant, getActiveOptions()));
         },
-        positionPanel: makeGroupPanelPositioner(graphBlock, function () {
-          return groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
-        }),
+        positionPanel: function (panel, anchorNode) {
+          const behavior = groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
+          const anchored = behavior && behavior.isAnchored && anchorNode instanceof Element;
+          previewUtils.placeAnchoredPanel(panel, anchored ? anchorNode : null, {
+            side: "beside",
+            boundary: graphBlock,
+            margin: 10,
+            offset: 10
+          });
+        },
         onHide: function () {
           graphState.groupHoverAnchorNode = null;
           graphState.groupHoverShownKey = "";
@@ -805,30 +811,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const lifecycleSurface = previewController || groupHoverController;
       if (!graphState.windowHandlersBound && lifecycleSurface) {
         graphState.windowHandlersBound = true;
+        // Anchored preview panels are kept in place by placeAnchoredPanel; the toolbar
+        // popovers are positioned relative to the graph block and follow it here.
         const repositionPanels = function () {
           if (legendPopover && legendPopover.isOpen()) {
             legendPopover.position();
           }
           if (optionsPopover && optionsPopover.isOpen()) {
             optionsPopover.position();
-          }
-          if (
-            graphState.previewController &&
-            graphState.previewController.behavior &&
-            graphState.previewController.behavior.isAnchored &&
-            graphState.previewActiveNode &&
-            !graphState.previewController.panel.hidden
-          ) {
-            graphState.previewController.position(graphState.previewActiveNode);
-          }
-          if (
-            graphState.groupHoverController &&
-            graphState.groupHoverController.behavior &&
-            graphState.groupHoverController.behavior.isAnchored &&
-            graphState.groupHoverAnchorNode &&
-            !graphState.groupHoverController.panel.hidden
-          ) {
-            graphState.groupHoverController.position(graphState.groupHoverAnchorNode);
           }
         };
         lifecycleSurface.bindDismissal({

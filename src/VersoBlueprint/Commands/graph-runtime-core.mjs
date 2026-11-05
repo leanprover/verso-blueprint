@@ -320,39 +320,6 @@
     return behaviorSource && typeof behaviorSource === "object" ? behaviorSource : null;
   }
 
-  function resetPanelPosition(panel) {
-    if (!(panel instanceof Element)) return;
-    panel.style.left = "";
-    panel.style.top = "";
-  }
-
-  export function makeGroupPanelPositioner(graphBlock, behaviorSource) {
-    return function (panel, anchorNode) {
-      const behavior = readBehaviorSource(behaviorSource);
-      if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
-      if (!behavior || !behavior.isAnchored) {
-        resetPanelPosition(panel);
-        return;
-      }
-      if (!(anchorNode instanceof Element)) return;
-      const blockRect = graphBlock.getBoundingClientRect();
-      const nodeRect = anchorNode.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const gap = 10;
-
-      let left = nodeRect.right - blockRect.left + gap;
-      if (left + panelRect.width > blockRect.width - gap) {
-        left = nodeRect.left - blockRect.left - panelRect.width - gap;
-      }
-      let top = nodeRect.top - blockRect.top + (nodeRect.height - panelRect.height) / 2;
-
-      left = Math.max(gap, Math.min(left, blockRect.width - panelRect.width - gap));
-      top = Math.max(gap, Math.min(top, blockRect.height - panelRect.height - gap));
-      panel.style.left = left + "px";
-      panel.style.top = top + "px";
-    };
-  }
-
   export const graphRuntimeCore = {
     debounce,
     normalizeGraphOptions,
@@ -367,8 +334,7 @@
     ensureGraphBlockState,
     rememberGraphLayoutMeasurements,
     resizeRenderedGraphToCanvas,
-    resetGraphvizForVariant,
-    makeGroupPanelPositioner
+    resetGraphvizForVariant
   };
 
 export default graphRuntimeCore;

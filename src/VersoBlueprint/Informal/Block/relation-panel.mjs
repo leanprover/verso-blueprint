@@ -71,6 +71,11 @@
       defaults: { mode: "hover", placement: "anchored" }
     });
     if (!surface || !(surface.headerLabel instanceof Element)) return;
+    // Outside slides, the panel is placed next to its chip and kept inside the viewport.
+    // It stays tracked while closed: CSS hover can still show it, and the placement
+    // engine places it again whenever it is displayed.
+    const placed = chip instanceof Element && !panel.closest(".bp_slide_node");
+    if (placed) panel.classList.add("bp_relation_panel_placed");
 
     const defaultTitle = (surface.title.textContent || "").trim() || "Relation preview";
     const initialLoadingHtml = (surface.body.innerHTML || "").trim();
@@ -217,6 +222,7 @@
       if (wrap instanceof Element) {
         wrap.classList.add("bp_relation_wrap_open");
       }
+      if (placed) surface.position(chip);
       setExpanded(true);
       if (opts.loadPreview !== false) {
         loadActivePreview();
