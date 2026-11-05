@@ -256,6 +256,14 @@ individual mathematical judgment. A semantic strategy change must edit the claim
 
 ### Assessed content versus completion prerequisites
 
+Each required assessment has its own binding: its assessed subject/connection,
+selected content and interpretation, criterion, reviewer where applicable, coverage,
+and own validation conditions. A relation judgment also binds the mathematical
+claim it assesses, including exact endpoints, mapping and assumptions. It does not
+bind the containing relation's entire conjunction of sibling requirements.
+Changing only Bob's exposition-review obligation to Carol's therefore preserves
+Alice's unchanged mathematical judgment, while relation completion waits for Carol.
+
 Requiring another obligation to succeed does not, by itself, include that
 obligation's implementation content in the current assessment. Explicit assessed
 content and its semantic dependencies determine freshness; validation prerequisites
@@ -266,6 +274,17 @@ A correspondence judgment can remain current after its required proof is rewritt
 while replacement with `sorry` makes the combined outcome incomplete. Changes to
 the assessed contract, interpretation or selected computational meaning remain
 binding-relevant. Local evidence and prerequisite success must be reported separately.
+
+Conversely, explicitly selected proof content stays bound. Rewriting P affects a
+proof-structure judgment that selects P, even if another criterion is called
+`statementCorrespondence`. A narrower judgment requires a narrower declared
+subject or selection; criterion names cannot discard selected endpoints.
+
+Evidence records, effective-review selection, supersession/withdrawal state,
+prerequisite outcomes and derived completion results do not enter this binding.
+They determine eligibility and completion. Changing the required reviewer changes
+the assessment policy; selecting that reviewer's current judgment does not. This
+excludes self-invalidating bindings that change when their approval is recorded.
 
 Whole-file byte selections conservatively include every selected byte. PDF reflow
 may make a region ambiguous. Preserve the proof-edit guarantee for unchanged exact
@@ -287,6 +306,11 @@ Enforce this at contract validation/evaluation, not only in authoring helpers.
 An inadequate support contract remains unestablished with an explicit reason;
 custom relation kinds report only their declared contract-relative result.
 
+The alternative support routes describe permitted contracts, not an escape from
+conjunction. Native support cannot override another required review's rejection;
+a passing review cannot override a failing required native check. Changing the
+authored contract explicitly is different from satisfying its current requirements.
+
 A generated own-type route requires P to select the checked proof value and S its
 checked proposition type from the same declaration/context with compatible parameters.
 Shared names/files are insufficient; a checked value of type `Nat` is not a proof.
@@ -303,9 +327,12 @@ matching must diagnose, never silently specialize the claim.
 
 Keep proposition hypotheses, native axioms used, and authored correspondence
 assumptions distinct. Expose native assumptions or apply an explicit allowed-
-assumptions requirement; a passed check does not mean axiom-free. Reuse native
-observations only within the same fresh capture/context and exact compatible
-selection. A matching observation for one authored edge cannot certify another.
+assumptions requirement; a passed check does not mean axiom-free. Within the same
+fresh capture/context, native facts may be reused after checking applicability to
+each receiving edge's exact selected endpoints and binding its evidence to that
+edge's own current assessment contract. Separately owned statements selecting the
+same checked proposition can thus share one native check. An edge's bound evidence
+or completed result cannot simply be copied to another edge.
 
 ### Required reviews: initial policy
 
@@ -319,6 +346,12 @@ and withdrawal are explicit; source order and timestamps cannot select a winner.
 Competing current judgments without an unambiguous effective selection are unresolved.
 Withdrawal does not revive a superseded approval. Only current, eligible evidence
 matching the assessed binding can discharge the requirement.
+
+Resolve the effective judgment from explicitly scoped lifecycle facts before
+checking outcome or binding suitability. A stale, withdrawn, unavailable or
+unsuitable effective judgment cannot trigger fallback to superseded evidence.
+In particular, if J2 supersedes approval J1 and content later returns to J1's
+binding, J1 remains superseded even when J2 is now stale.
 
 | Effective situation | Required-review result |
 | --- | --- |
@@ -338,8 +371,11 @@ A failed requirement does not generally establish that its statement is false.
 ### Completion results and dependency selection
 
 Version one reports labeled realization/relation assessments under explicit
-conjunctive contracts. Absent meaningful contracts remain unassessed; deleting the
-last obligation must not create success. Do not publish an unlabeled node-wide
+conjunctive contracts. Final completion requires a meaningful declared contract,
+the relation kind's applicable minimum support rule, and every required obligation
+with justified prerequisites. Local approval remains reportable if prerequisites
+fail. Absent meaningful contracts remain unassessed; deleting the last obligation
+must not create success. Do not publish an unlabeled node-wide
 completion Boolean or select a default policy from a realization named `lean`.
 Consumer semantics must migrate even while graph layout work is deferred.
 
@@ -364,6 +400,10 @@ that happens to be complete. Selecting an alternative proof never rewrites nativ
 code dependencies. Keep proof-local uses local. Definitions needed to interpret a
 statement contribute to its content dependencies. Semantic cycles such as mutual
 definitions differ from validation cycles, which cannot bootstrap their own success.
+If A and B both have passing local evidence but require each other, neither obtains
+final completion through that cycle; both local observations remain visible. Final
+completion requires finite prerequisite justification, without prescribing a graph
+algorithm here.
 
 ### Source resolution and admission
 
@@ -394,6 +434,14 @@ These are implementation targets, not newly executed results:
 | Mapping/assumptions change with unchanged code | Correspondence evidence stales; mere retagging is not a mathematical change. |
 | PDF absent or selector ambiguous, transcription available | No substitution; unrelated assessments remain available. |
 | Empty contract or future empty aggregate | No accidental completion. |
+| Change only a sibling review's required reviewer | Preserve unchanged local judgments; recompute the containing conjunction. |
+| Record/select an approval, then withdraw it | Binding stays unchanged; eligibility and completion change. |
+| Rewrite P as a prerequisite only versus explicitly selected proof content | Only the latter edit changes the otherwise unchanged judgment's binding. |
+| J2 supersedes J1, then J2 becomes stale while J1 matches | No resurrection of J1; a withdrawn effective successor likewise supplies no approval. |
+| Competing approval/rejection successors in either input order | Unresolved without explicit selection; ordering never arbitrates. |
+| Native support passes, but another required review rejects (and conversely) | No bypass of conjunction or implicit downgrade of the contract. |
+| One compatible native fact supports two edges | Recheck applicability and bind evidence separately for each edge. |
+| A and B pass locally but require each other | Preserve local results; prohibit circular final completion. |
 
 The detailed record/API shape for current-review selection and dependency shorthand
 resolution must implement these rules; it must not introduce timestamp arbitration,
