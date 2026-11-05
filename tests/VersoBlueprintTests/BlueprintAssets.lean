@@ -10,6 +10,7 @@ import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Cite
 import VersoBlueprint.Graft
 import VersoBlueprint.Informal.RustBlock
+import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Informal.Uses
 import VersoBlueprint.Slides
 
@@ -117,5 +118,17 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   Informal.Slides.blueprintSlidesCss ==
       String.intercalate "\n\n" Informal.Slides.blueprintSlidesAssetBundle.css &&
     Informal.Slides.blueprintSlidesAssetBundle.js == []
+
+/-- Blueprint's cascade is fixed, whatever order the stylesheets arrive in. -/
+private def cascadeFixture : String :=
+  ".bp_block {}\n\n:root { --bp-token: 0; }"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  Informal.PreviewManifest.blueprintCascadeCss
+      #[":root { --bp-token: 0; }", ".verso {}", ".bp_block {}"] == cascadeFixture &&
+    Informal.PreviewManifest.blueprintCascadeCss
+      #[".bp_block {}", ":root { --bp-token: 0; }", ".verso {}"] == cascadeFixture
 
 end Verso.VersoBlueprintTests.BlueprintAssets

@@ -1420,6 +1420,10 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-text-strong);
 }
 
+.bp_external_decl_stmt.bp_code_hover_none {
+  color: var(--bp-color-text-faint);
+}
+
 .bp_external_decl_rendered {
   margin: 0.35rem 0 0;
   border: 0;

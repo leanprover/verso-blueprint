@@ -2765,11 +2765,26 @@ def handleCliFlags
     else
       pure (none, options, externalMarkupConfig)
 
+/--
+Blueprint's stylesheets in a fixed order. Emitted last, these win specificity ties
+against Verso's rules.
+
+Verso keeps `extraCss` in a `HashSet` and emits it in hash order, so without this the
+content of one stylesheet decides the cascade order of all the others. `extraCss` cannot
+be rewritten here, so each page carries these rules twice until Verso orders it.
+-/
+def blueprintCascadeCss (blocks : Array String) : String :=
+  let isBlueprint (css : String) := css.contains "bp_" || css.contains "--bp-"
+  "\n\n".intercalate ((blocks.filter isBlueprint).qsort (· < ·)).toList
+
 /-- Emit only the document/layout pair admitted by the checked boundary. -/
 private def PreparedRendererState.emit (prepared : PreparedRendererState) : EmitM Unit := do
+  let stylesheet := blueprintCascadeCss (prepared.state.extraCss.toArray.map (·.css))
+  let styleTag := Verso.Output.Html.tag "style" #[] (.text false stylesheet)
+  let config := { prepared.config with extraHead := prepared.config.extraHead.push styleTag }
   match prepared.mode with
-  | .single => emitHtmlSingle prepared.config prepared.text prepared.state
-  | .multi => emitHtmlMulti prepared.config prepared.text prepared.state
+  | .single => emitHtmlSingle config prepared.text prepared.state
+  | .multi => emitHtmlMulti config prepared.text prepared.state
 
 private def emitBlueprintHtml
     (extraSteps : List BlueprintExtraStep)
