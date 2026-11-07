@@ -60,6 +60,10 @@ structure PanelEntry where
   /-- The row's Lean status mark, when the block's assessment is known. -/
   status? : Option CodeSummary.StatusVisual := none
 
+/-- Finds a related block's heading status mark. Renderers without traversal state
+derive it from the related block's own manifest entry, so the mark has one source. -/
+abbrev StatusLookup := Data.Label → Option CodeSummary.StatusVisual
+
 /-- The block or group a related-entry panel belongs to, named in its header. -/
 structure PanelOwner where
   title : String

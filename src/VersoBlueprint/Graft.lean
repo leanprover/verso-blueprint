@@ -161,6 +161,8 @@ private def renderManualGraftNode
           entry
           content
           (Informal.PreviewManifest.groupRelationForEntry? state entry)
+          (fun label => (Informal.TraversalIndex.Nodes.capturedData? state label).map
+            Informal.CodeSummary.blockStatusVisual)
 
 /- A placement registers only destinations emitted by its visible renderer. -/
 open Verso Doc Elab Genre Manual in

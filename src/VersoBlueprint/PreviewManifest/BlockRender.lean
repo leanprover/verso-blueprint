@@ -87,10 +87,11 @@ private def renderRelatedPanel
     (owner : Informal.RelatedPanel.PanelOwner)
     (entries : Array RelatedEntry)
     (entry : Entry)
-    (currentLabel : Name) :
+    (currentLabel : Name)
+    (statusOf : Informal.RelatedPanel.StatusLookup) :
     Html :=
-  let panelEntries :=
-    Informal.PreviewManifest.relatedPanelEntries entries currentLabel (cfg.idPrefix kind entry)
+  let panelEntries := Informal.PreviewManifest.relatedPanelEntries
+    entries currentLabel (cfg.idPrefix kind entry) statusOf
   Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) owner panelEntries
 
 private def entryOwner (entry : Entry) : Informal.RelatedPanel.PanelOwner :=
@@ -99,19 +100,20 @@ private def entryOwner (entry : Entry) : Informal.RelatedPanel.PanelOwner :=
 private def renderGroupExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry)
-    (group? : Option GroupRelation) : Option Informal.HeaderExtra := do
+    (group? : Option GroupRelation)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Option Informal.HeaderExtra := do
   let group ← group?
   if group.declared && group.entries.isEmpty then none else
     some <| Informal.HeaderExtra.group <| renderRelatedPanel cfg .group
       (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
       { title := group.title, label := group.label }
-      group.entries entry entry.label
+      group.entries entry entry.label statusOf
 
-private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry) :
-    Informal.HeaderExtra :=
+private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Informal.HeaderExtra :=
   Informal.HeaderExtra.uses <| renderRelatedPanel cfg .uses
     (Informal.RelatedPanel.usesPanelConfigForBlock entry.blockData)
-    (entryOwner entry) entry.usesForFacet entry Name.anonymous
+    (entryOwner entry) entry.usesForFacet entry Name.anonymous statusOf
 
 private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
     Informal.HeaderExtra :=
@@ -119,22 +121,23 @@ private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
     blockData { source := entry.codeData } (fun _ => none) (title? := some entry.title)
   Informal.HeaderExtra.code parts.codeEntry
 
-private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry) :
-    Informal.HeaderExtra :=
+private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Informal.HeaderExtra :=
   Informal.HeaderExtra.usedBy <| renderRelatedPanel cfg .usedBy
     (Informal.RelatedPanel.usedByPanelConfig (some entry.label))
-    (entryOwner entry) entry.usedBy entry Name.anonymous
+    (entryOwner entry) entry.usedBy entry Name.anonymous statusOf
 
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
     (entry : Entry)
     (blockData : Informal.BlockData)
-    (group? : Option GroupRelation) :
+    (group? : Option GroupRelation)
+    (statusOf : Informal.RelatedPanel.StatusLookup) :
     Informal.HeaderExtras :=
-  Informal.HeaderExtras.forFacet blockData.isProof (renderUsesExtra cfg entry) fun _ => {
-    group? := renderGroupExtra? cfg entry group?
+  Informal.HeaderExtras.forFacet blockData.isProof (renderUsesExtra cfg entry statusOf) fun _ => {
+    group? := renderGroupExtra? cfg entry group? statusOf
     code? := some (renderCodeExtra entry blockData)
-    usedBy? := some (renderUsedByExtra cfg entry)
+    usedBy? := some (renderUsedByExtra cfg entry statusOf)
     markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
   }
 
@@ -162,13 +165,22 @@ private def renderCodePanel
       body
       (folded := entry.blockData.foldCodeBlock)
 
-/-- Render a Blueprint block shell from semantic entry data and rendered content. -/
+/-- Related blocks' status marks, read from their own manifest entries: the same
+assessment and Lean code their headings are drawn from. -/
+def _root_.Informal.PreviewManifest.Index.statusOf (index : Informal.PreviewManifest.Index) :
+    Informal.RelatedPanel.StatusLookup := fun label =>
+  (index.findEntry? (PreviewCache.statementKey label)).map
+    (Informal.CodeSummary.blockStatusVisual ·.blockData)
+
+/-- Render a Blueprint block shell from semantic entry data and rendered content.
+`statusOf` gives related blocks' status marks for relation popups. -/
 def renderWithRenderedContent
     (cfg : RenderConfig)
     (entry : Entry)
     (content : RenderedContent)
     (group? : Option GroupRelation := none)
-    (opts : RenderOptions := {}) :
+    (opts : RenderOptions := {})
+    (statusOf : Informal.RelatedPanel.StatusLookup := fun _ => none) :
     Html :=
     let blockData := entry.blockData content.assessment
     let title := entry.heading opts.displayLabelOverride?
@@ -185,7 +197,7 @@ def renderWithRenderedContent
         (statementCaption? := some title.caption)
         (proofCaption? := some entry.title)
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
-        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group?)
+        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group? statusOf)
         (sourceRefs := entry.sources)
         (folded := blockData.foldInformalShell)
       content := #[content.body]

@@ -406,6 +406,9 @@ private def writeSlidesPreviewDataFiles
         hasSubstr rendered "bp_slide_used-by_wrap" &&
         hasSubstr rendered "data-bp-relation-eyebrow=\"Group · 2 blocks\"" &&
         hasSubstr rendered "data-bp-relation-title=\"Preview group title.\"" &&
+        -- Rows carry their blocks' status marks, read from the manifest entries;
+        -- a row without one would end `...,null,<current>]`.
+        !hasSubstr rendered ",null,false]" && !hasSubstr rendered ",null,true]" &&
         hasSubstr rendered "class=\"bp-relation-entries\"" &&
         !hasSubstr rendered "bp_relation_item_active" &&
         !hasSubstr rendered "Loading Blueprint node"
