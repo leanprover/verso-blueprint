@@ -21,9 +21,10 @@ structure NodeAssessment where
   nativeStatementComplete : Bool := false
   /-- Local own-declaration body checks, not proof of an independent expected goal. -/
   nativeProofComplete : Bool := false
-  /-- All explicit requirements of the selected ordinary Lean realization. -/
+  /-- Generated native requirements with their selected prerequisites. This
+  summary does not aggregate correspondence reviews or alternative proofs. -/
   requiredComplete : Bool := false
-  /-- Uses selected for the ordinary Lean realization in its exact context,
+  /-- Uses selected for ordinary native realizations in their exact contexts,
   including failed target selections. Other realization/context uses remain in
   the full `details.uses` inventory but do not enter its completion checks. -/
   selectedLeanUseCount : Nat := 0

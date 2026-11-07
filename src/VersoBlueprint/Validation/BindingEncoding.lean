@@ -45,7 +45,6 @@ def claimKey (value : ClaimKey) : Json :=
 
 def subject : Subject → Json
   | .realization key => tagged "realization-subject" #[realizationKey key]
-  | .facet key facetName => tagged "facet-subject" #[realizationKey key, name facetName]
   | .declaration key object =>
     tagged "declaration-subject" #[realizationKey key, objectKey object]
   | .translation key => tagged "translation-subject" #[translationKey key]
@@ -63,7 +62,8 @@ def goal (value : Goal) : Json :=
 
 def expectation : Expectation → Json
   | .proof expected witness => tagged "proof-expectation" #[goal expected, objectKey witness]
-  | .review criterion => tagged "review-expectation" #[name criterion]
+  | .proves witness => tagged "own-type-expectation" #[objectKey witness]
+  | .review criterion reviewer => tagged "review-expectation" #[name criterion, name reviewer]
   | .check validator => tagged "check-expectation" #[name validator]
 
 private def coverage : Coverage → Json
@@ -72,7 +72,7 @@ private def coverage : Coverage → Json
 
 def requirement (value : Requirement) : Json :=
   tagged "requirement" #[requirementKey value.key, expectation value.expected,
-    coverage value.coverage, toJson value.scope, Json.arr (value.prerequisites.map requirementKey)]
+    coverage value.coverage, Json.arr ((canonical value.prerequisites).map requirementKey)]
 
 def bindingInput (value : BindingInput) : Json :=
   tagged "binding-input" #[subject value.subject, name value.name, Json.str value.content]

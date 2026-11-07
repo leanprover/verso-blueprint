@@ -32,7 +32,9 @@ def Goal.sameProposition (a b : Goal) : Bool :=
 /-- Proof checking, human review, and named executable checks remain distinct. -/
 inductive Expectation where
   | proof (goal : Goal) (witness : ObjectKey)
-  | review (criterion : Name)
+  /-- Exact own-type support; the registry checks the receiving P/S selections. -/
+  | proves (witness : ObjectKey)
+  | review (criterion : Name) (reviewer : Name)
   | check (validator : Name)
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
@@ -42,6 +44,7 @@ namespace NativeLean
 named `proof`, or a proof of an independently specified proposition. -/
 def statementValidator : Name := `lean.declarationStatement
 def bodyValidator : Name := `lean.declarationCompleteness
+def ownTypeValidator : Name := `lean.ownTypeProof
 def sourceContext : Name := `source.semanticContext
 def statementContext : Name := `source.statementContext
 def expectedContext : Name := `lean.expectedContext
@@ -59,17 +62,10 @@ inductive Coverage where
   | dependencyClosure
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
-/-- Content assessed by a requirement, independent of facet display names. -/
-inductive ContentScope where
-  | statement
-  | implementation
-  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
-
 structure Requirement where
   key : RequirementKey
   expected : Expectation
   coverage : Coverage := .subject
-  scope : ContentScope := .statement
   prerequisites : Array RequirementKey := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
@@ -105,6 +101,8 @@ structure CheckObservation where
   validator : Name
   /-- Required for native declaration checks; generic joint tests may omit it. -/
   declaration : Option ObjectKey := none
+  /-- The checked declaration type is a proposition, not merely a well-typed value. -/
+  proposition : Bool := false
   outcome : Outcome
   coverage : Coverage := .subject
   /-- Declared native assumptions remain inspectable; this is not an axiom policy. -/
@@ -134,10 +132,27 @@ structure Evidence where
   observation : Observation
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
+/-- Authored current selection, distinct from assessed content. Multiple distinct
+selections for one slot are unresolved; none explicitly withdraws approval. -/
+structure ReviewSelection where
+  requirement : RequirementKey
+  judgment : Option Name := none
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
+
+/-- Only human review observations may be source-authored. Native facts enter
+through fresh capture, never through this persisted record. -/
+structure ReviewJudgment where
+  id : Name
+  requirement : RequirementKey
+  binding : ContentBinding
+  observation : ReviewObservation
+  deriving Repr, Inhabited, BEq, DecidableEq
+
 def Expectation.valid : Expectation → Bool
   | .proof goal witness =>
     goal.context.valid && !blank goal.fingerprint && witness.valid && witness.context == goal.context
-  | .review criterion => !criterion.isAnonymous
+  | .proves witness => witness.valid && witness.context.language == `lean
+  | .review criterion reviewer => !criterion.isAnonymous && !reviewer.isAnonymous
   | .check validator => !validator.isAnonymous
 
 def Coverage.covers (actual required : Coverage) : Bool :=
@@ -158,8 +173,16 @@ def Evidence.mismatch? (evidence : Evidence) (requirement : Requirement)
     if observation.coverage != .dependencyClosure then return "insufficient-coverage"
     if observation.outcome != .passed then return "proof-not-complete"
     none
-  | .review criterion, .review observation =>
-    if observation.criterion != criterion || observation.reviewer.isAnonymous then return "wrong-review"
+  | .proves witness, .check observation =>
+    if observation.validator != NativeLean.ownTypeValidator || observation.declaration != some witness then
+      return "wrong-proof"
+    if observation.outcome == .unavailable then return "validation-unavailable"
+    if observation.outcome != .passed then return "proof-not-complete"
+    if !observation.proposition then return "non-proposition"
+    if observation.coverage != .dependencyClosure then return "insufficient-coverage"
+    none
+  | .review criterion reviewer, .review observation =>
+    if observation.criterion != criterion || observation.reviewer != reviewer then return "wrong-review"
     if observation.outcome == .unavailable then return "validation-unavailable"
     if !observation.coverage.covers requirement.coverage then return "insufficient-coverage"
     if observation.outcome != .passed then return "review-not-accepted"

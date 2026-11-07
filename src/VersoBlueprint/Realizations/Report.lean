@@ -20,9 +20,6 @@ private def realization (registry : Registry) (value : Realization) : Json :=
   Json.mkObj [
     ("value", toJson value),
     ("result", toJson (registry.resultFor (.realization value.key))),
-    ("facets", toJson (value.facets.map fun facet => Json.mkObj [
-      ("value", toJson facet), ("subject", toJson (Subject.facet value.key facet.name)),
-      ("result", toJson (registry.resultFor (.facet value.key facet.name)))])),
     ("declarations", toJson (value.declarations.map fun declaration => Json.mkObj [
       ("value", toJson declaration), ("subject", toJson (Subject.declaration value.key declaration.object)),
       ("result", toJson (registry.resultFor (.declaration value.key declaration.object)))]))]
@@ -45,20 +42,22 @@ private def evidence (registry : Registry) (value : Evidence) : Json := Id.run d
       ("mismatch", toJson mismatch)]
   return Json.mkObj [
     ("id", toJson value.id), ("requirement", toJson value.requirement),
-    ("observation", toJson value.observation), ("suitability", toJson suitability)]
+    ("observation", toJson value.observation), ("suitability", toJson suitability),
+    ("selectedCurrentReview", toJson (match registry.selectedReview value.requirement with
+      | .ok selected => selected == some value.id | .error _ => false))]
 
 private def selectedReport (registry : Registry) (node : Option Name) : Json := Id.run do
   let models := registry.realizations.filter fun value => node.all (· == value.key.node)
   let translations := registry.translations.filter fun value => node.all fun node =>
     (value.source ++ value.target).any (·.realization.node == node)
   let selected (subject : Subject) : Bool := match subject with
-    | .realization key | .facet key _ | .declaration key _ => node.all (· == key.node)
+    | .realization key | .declaration key _ => node.all (· == key.node)
     | .translation key => translations.any (·.key == key)
     | .claim key => translations.any (·.key == key.translation)
   let requirements := registry.requirements.filter (selected ·.key.subject)
   let objects := registry.objects.filter fun value => node.isNone || models.any fun model =>
     model.declarations.any (·.object == value.key)
-  let documents := models.flatMap (·.facets.flatMap (·.documents)) ++ objects.filterMap (·.document) ++
+  let documents := models.flatMap (·.documents) ++ objects.filterMap (·.document) ++
     requirements.flatMap fun value => match value.expected with | .proof goal _ => goal.documents | _ => #[]
   return Json.mkObj [
     ("nodes", toJson (registry.nodes.filter fun value => node.all (· == value.label))),
@@ -70,6 +69,7 @@ private def selectedReport (registry : Registry) (node : Option Name) : Json := 
     ("claims", toJson (registry.claims.filter (fun value => selected (.claim value.key)) |>.map fun value =>
       assessed value (registry.resultFor (.claim value.key)))),
     ("requirements", toJson (requirements.map (requirement registry))),
+    ("reviewSelections", toJson (registry.reviewSelections.filter (selected ·.requirement.subject))),
     ("evidence", toJson (registry.evidence.filter (selected ·.requirement.subject) |>.map (evidence registry))),
     ("unfinished", toJson (registry.unfinished.filter (fun value => selected (.translation value.key)) |>.map (·.key))),
     ("actionable", toJson (registry.actionable.filter (fun value => selected (.translation value.key)) |>.map (·.key)))]

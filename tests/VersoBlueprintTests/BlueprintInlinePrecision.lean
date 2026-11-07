@@ -50,9 +50,10 @@ theorem inline_main_complete : True := by
             proofRefs > 0
       pure <|
         node.kind == .theorem &&
-        -- The helper is a definition: its value is part of its statement.
-        -- The complete theorem cannot lend that helper a successful check.
-        !assessment.nativeStatementComplete &&
+        -- Checked proposition-valued definitions have separate statement and
+        -- proof selections, just like theorems. The complete sibling cannot
+        -- lend this helper a successful proof check.
+        assessment.nativeStatementComplete &&
         !assessment.nativeProofComplete && !assessment.requiredComplete &&
         helperProofGapOnly
 

@@ -37,23 +37,33 @@ run_cmd liftTermElabM do
 
   let complete := snapshot.assessmentFor (Name.mkSimple "capture.complete")
   let dependent := snapshot.assessmentFor (Name.mkSimple "capture.dependent")
-  let missingProse := snapshot.registry.resultFor
-    (.realization ⟨Name.mkSimple "capture.complete", `verso⟩)
-  ensure (missingProse.status == .unassessed)
-    "Missing prose is an unassessed optional realization, separate from coverage inventory"
+  let proseStatement := (⟨Name.mkSimple "capture.complete", `verso⟩ : RealizationKey).forRole `statement
+  ensure ((snapshot.registry.realization? proseStatement).isSome &&
+    (snapshot.registry.resultFor (.realization proseStatement)).status == .unassessed)
+    "The real docstring must remain present and unassessed without an authored review"
+  let missingProse := snapshot.registry.realization?
+    ((⟨Name.mkSimple "capture.complete", `verso⟩ : RealizationKey).forRole `proof)
+  ensure missingProse.isNone
+    "Missing optional prose argument must not manufacture a realization or a validation obligation"
   ensure (complete.nativeProofComplete && complete.requiredComplete)
     "Native proof and its own realization closure should be counted complete"
   ensure (dependent.nativeProofComplete && !dependent.requiredComplete)
     "Native proof completion should remain separate from unfinished Blueprint dependencies"
   let wrongExpected := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
   ensure (wrongExpected.nativeStatementComplete && wrongExpected.nativeProofComplete &&
-    !wrongExpected.requiredComplete && wrongExpected.proofDependenciesComplete)
-    "Control should have complete native checks and dependencies with an unfinished independent expectation"
+    wrongExpected.requiredComplete && wrongExpected.proofDependenciesComplete)
+    "The native summary must remain independent of a separately authored expected proposition"
+  let expectedKey : RequirementKey := ⟨.declaration
+    ((⟨Name.mkSimple "capture.wrongExpected", `lean⟩ : RealizationKey).forRole `proof)
+    ⟨⟨`lean, `blueprintFixtures⟩, "RealizationCaptureFixture.wrongExpected"⟩, `expectedProof⟩
+  ensure ((snapshot.registry.requirement? expectedKey).isSome &&
+    !(snapshot.registry.resultForRequirement expectedKey).complete)
+    "The exact independent expectation must remain present and unfinished"
   let localCompletePendingRequirements := snapshot.registry.nodes.foldl (init := 0) fun total node =>
     let assessment := snapshot.assessmentFor node.label
     if assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
         assessment.nativeProofComplete && !assessment.requiredComplete then total + 1 else total
   ensure (summary.coverageSplit.nativeCompleteRequirementsPending == localCompletePendingRequirements)
-    "The summary bucket should count local native completion with any unfinished declared requirement, not only open ancestors"
+    "The summary bucket must count unfinished ordinary native requirements"
 
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

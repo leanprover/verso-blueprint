@@ -74,7 +74,7 @@ def AttributeLabelCatalog.insert (catalog : AttributeLabelCatalog) (label : Labe
   if catalog.members.contains label then catalog
   else { labels := catalog.labels.push label, members := catalog.members.insert label }
 
-/-- Source-authored attachments only. No nodes, provider observations or evidence. -/
+/-- Source-authored attachments and explicit human judgments. No nodes or native validation observations. -/
 structure AuthoredBatch where
   sources : Array Realizations.DocumentKey := #[]
   references : Array (Realizations.ObjectKey × Option Realizations.DocumentKey) := #[]
@@ -82,6 +82,8 @@ structure AuthoredBatch where
   translations : Array Translations.Translation := #[]
   claims : Array Translations.Claim := #[]
   requirements : Array Validation.Requirement := #[]
+  reviews : Array Validation.ReviewJudgment := #[]
+  reviewSelections : Array Validation.ReviewSelection := #[]
 deriving Inhabited, Repr, DecidableEq
 
 /-- Persisted source recipe, never an admitted or checked model. -/

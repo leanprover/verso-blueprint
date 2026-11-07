@@ -38,6 +38,7 @@
     "BlueprintManifestEntry",
     "BlueprintHtmlCacheEntry",
     "BlueprintGraphWarningFlags",
+    "BlueprintNodeAssessment",
     "BlueprintGraphNodeVisual",
     "BlueprintGraphEdge",
     "BlueprintGraphGroup",

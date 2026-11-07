@@ -56,7 +56,12 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   match value with | .ok value => pure value | .error issues => throwError "{repr issues}"
 
 private def key (label : String) (declaration : Name) (name : Name := `proof) : RequirementKey :=
-  ⟨.declaration ⟨Name.mkSimple label, `lean⟩ ⟨⟨`lean, `blueprintFixtures⟩, declaration.toString⟩, name⟩
+  ⟨.declaration ((⟨Name.mkSimple label, `lean⟩ : RealizationKey).forRole `proof)
+    ⟨⟨`lean, `blueprintFixtures⟩, declaration.toString⟩, name⟩
+
+private def implementationKey (label : String) (declaration : Name) : RequirementKey :=
+  ⟨.declaration ((⟨Name.mkSimple label, `lean⟩ : RealizationKey).forRole `implementation)
+    ⟨⟨`lean, `blueprintFixtures⟩, declaration.toString⟩, `implementation⟩
 
 -- Real imported sources and fresh kernel observations; no mocked provider facts.
 run_cmd liftTermElabM do
@@ -169,13 +174,14 @@ run_cmd liftTermElabM do
   ensure (!view.hasNativeDeclarations && view.selectedLeanUseCount == 0 &&
     view.leanDependencyMessage == "No Lean prerequisites selected")
     "A missing native realization was treated as selecting native prerequisites"
-  let foreignKey : RealizationKey := ⟨Name.mkSimple "storage.source", `rocqTranslation⟩
+  let foreignKey := (⟨Name.mkSimple "storage.source", `rocqTranslation⟩ : RealizationKey).forRole `implementation
   let some foreign := registry.realization? foreignKey | throwError "Imported named realization disappeared"
-  ensure (foreign.context.language == `rocq && foreign.facets.any (·.name == `implementation) &&
+  ensure (foreign.context.language == `rocq && foreign.role == `implementation &&
       foreign.declarations.isEmpty && (registry.resultFor (.realization foreignKey)).status == .unassessed)
     "Foreign source borrowed a native declaration or validation"
   ensure (before.data.get? (Name.mkSimple "storage.source") |>.any fun node =>
-      node.sources.any fun source => source.destination == ⟨foreignKey, `implementation⟩)
+      node.sources.any fun source => source.destination.realization == ⟨Name.mkSimple "storage.source", `rocqTranslation⟩ &&
+        source.destination.facet == `implementation)
     "Accepted source inventory flattened the imported named destination"
   ensure snapshot.diagnostics.isEmpty s!"Unexpected source/provider diagnostics: {repr snapshot.diagnostics}"
   ensure (registry.nodes.size == before.data.size) "Capture omitted ordinary accepted concepts"
@@ -246,7 +252,7 @@ run_cmd liftTermElabM do
     (Capture.plan { publicRaw with nodes := #[(flat, withGroup hierarchical)] }) {})
   ensure (separateNamespaces.registry.nodes.size == 1) "Node and group label namespaces must stay independent"
   ensure (toJson displayLeft == toJson displayRight)
-    "Docstring destination collision fixture must retain equal display JSON spellings"
+    "Realization identity collision fixture must retain equal display JSON spellings"
   let some (docLabel, docNode, docSource) := plan.ordinary.findSome? fun node =>
       node.realizations.findSome? fun realization =>
         realization.sources.findSome? fun sourceStep =>
@@ -254,8 +260,10 @@ run_cmd liftTermElabM do
           | .prose _, some (.ok _) => some (node.label, node.accepted, sourceStep.source)
           | _, _ => none
     | throwError "Missing actual attribute-owned Verso source for destination identity control"
-  let docLeft := { docSource with destination := { docSource.destination with facet := displayLeft } }
-  let docRight := { docSource with destination := { docSource.destination with facet := displayRight } }
+  let docLeft := { docSource with destination := { docSource.destination with
+    realization := { docSource.destination.realization with name := displayLeft } } }
+  let docRight := { docSource with destination := { docSource.destination with
+    realization := { docSource.destination.realization with name := displayRight } } }
   let docAccepted := { docNode with toNode := { docNode.toNode with sources := #[docLeft, docRight] } }
   let docRaw : Capture.Raw := {
     nodes := #[(docLabel, docAccepted)]
@@ -266,27 +274,61 @@ run_cmd liftTermElabM do
   let docPlan := Capture.plan docRaw
   let docObservations ← obtain (← Capture.observe docPlan)
   let docSnapshot ← obtain (Capture.evaluate docPlan docObservations)
-  let generatedDocstrings := docSnapshot.registry.documents.filter (·.key.path.contains "#docstring:")
-  ensure (generatedDocstrings.size == 2 && !generatedDocstrings[0]!.text.trimAscii.isEmpty && generatedDocstrings[0]!.key != generatedDocstrings[1]!.key &&
-    generatedDocstrings[0]!.text == generatedDocstrings[1]!.text)
-    "Distinct typed docstring destinations must retain separate document identities with their actual equal text"
-  let grouped : RealizationKey := ⟨Name.mkSimple "capture.grouped", `lean⟩
+  let generatedSelections := docSnapshot.registry.documents.filter (·.key.path.contains "#selection:")
+  let leftSelectionKey := docLeft.selectedDocumentKey
+  let rightSelectionKey := docRight.selectedDocumentKey
+  let docSourceSteps := docPlan.ordinary.flatMap fun node =>
+    node.realizations.flatMap (·.sources)
+  let some leftStep := docSourceSteps.find? (·.source.selectedDocumentKey == leftSelectionKey)
+    | throwError "Missing planned source step for the first typed docstring owner"
+  let some (.ok leftHandle) := leftStep.documented
+    | throwError "Expected a current documented-provider request for the first owner"
+  let some leftProvider := docObservations.documented.find? (·.handle == leftHandle)
+    | throwError "Missing native docstring provider observation"
+  let expectedDocText ← match leftProvider.result with
+    | .ok documented => pure documented.rawDocstring
+    | .error issue => throwError "Native docstring provider failed: {repr issue}"
+  ensure (generatedSelections.size == 2 && !expectedDocText.trimAscii.isEmpty &&
+    leftSelectionKey != rightSelectionKey &&
+    generatedSelections.any (·.key == leftSelectionKey) &&
+    generatedSelections.any (·.key == rightSelectionKey) &&
+    generatedSelections.all (·.text == expectedDocText))
+    "Distinct typed realization owners must retain separate selection identities and the exact equal source text"
+  let grouped := (⟨Name.mkSimple "capture.grouped", `lean⟩ : RealizationKey).forRole `proof
   let some groupedModel := registry.realization? grouped | throwError "Missing multi-declaration realization"
   ensure (groupedModel.declarations.size == 2 && !(registry.resultFor (.realization grouped)).complete &&
     (registry.resultForRequirement (key "capture.grouped" `RealizationCaptureFixture.groupedComplete)).complete &&
     !(registry.resultForRequirement (key "capture.grouped" `RealizationCaptureFixture.groupedAdmitted)).complete)
     "Complete sibling lent its native validity to an admitted declaration"
-  let inlineKey := key "storage.source" `storedInline
+  let inlineKey := implementationKey "storage.source" `storedInline
   ensure ((registry.localResult inlineKey).complete && !(registry.resultForRequirement inlineKey).complete)
     "Real imported inline definition must check locally despite its missing shared dependencies"
-  for name in #[`verso, `rust, Name.str `tex "body.with.dot", Name.str `markdown "body.with.dot"] do
-    let model : RealizationKey := ⟨Name.mkSimple "storage.source", name⟩
-    ensure (registry.realization? model |>.isSome) s!"Missing ordinary realization {name}"
+  let some acceptedSources := before.data.get? (Name.mkSimple "storage.source")
+    | throwError "Missing accepted heterogeneous-source fixture"
+  let allSourceSteps := plan.ordinary.flatMap fun node => node.realizations.flatMap (·.sources)
+  for source in acceptedSources.sources do
+    if let .leanInline _ := source.payload then continue
+    let model := source.destination.realization.forRole (SourceData.selectedRole source.destination.facet)
+    ensure (registry.realization? model |>.isSome) s!"Missing ordinary source role {model.name}"
     ensure ((registry.resultFor (.realization model)).status == .unassessed)
-      s!"Source presence invented validation for {name}"
+      s!"Source presence invented validation for {model.name}"
   for document in registry.documents do
-    if document.key.path.contains "#docstring:" then
-      ensure (document.text.startsWith " " && document.text.endsWith " ") "Raw own-comment whitespace was lost"
+    if document.key.path.contains "#selection:" then
+      let some sourceStep := allSourceSteps.find? (·.source.selectedDocumentKey == document.key)
+        | throwError "Selected prose document lost its source owner"
+      let expectedText ← match sourceStep.documented with
+        | some (.ok handle) =>
+          let some provider := observations.documented.find? (·.handle == handle)
+            | throwError "Selected native docstring lost its provider observation"
+          match provider.result with
+          | .ok documented => pure documented.rawDocstring
+          | .error issue => throwError "Selected native docstring provider failed: {repr issue}"
+        | some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
+        | none =>
+          let some owningDocument := registry.documents.find? (·.key == sourceStep.source.document)
+            | throwError "Selected prose lost its canonical owner bytes"
+          obtain (sourceStep.source.selectedText owningDocument)
+      ensure (document.text == expectedText) "Selected prose document differs from exact original source bytes"
     else
       ensure (document.text == (← IO.FS.readFile document.key.path)) "Canonical document is not original source bytes"
   for evidence in registry.evidence do
@@ -569,8 +611,8 @@ run_cmd liftTermElabM do
   let snapshot ← obtain (← Capture.capture)
   let assessment := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
   ensure (assessment.nativeStatementComplete && assessment.nativeProofComplete &&
-    !assessment.requiredComplete && assessment.proofDependenciesComplete)
-    "Native proof success concealed an independently authored wrong proposition"
+    assessment.requiredComplete && assessment.proofDependenciesComplete)
+    "The native-only summary must remain distinct from an independently authored wrong proposition"
   ensure (!(snapshot.registry.resultForRequirement
     (key "capture.wrongExpected" `RealizationCaptureFixture.wrongExpected `expectedProof)).complete)
     "Wrong expected proposition acquired a completed proof"

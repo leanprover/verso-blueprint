@@ -22,7 +22,18 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .ok value => pure value
   | .error issues => throwError "Unexpected rejection: {repr issues}"
 
-/-- info: Authoring/import: native proof complete; prose unassessed; Verso link pending; Rocq link blocked -/
+private def unassessedProofKey : RealizationKey :=
+  (⟨Name.mkSimple "authoring.unassessed", `lean⟩ : RealizationKey).forRole `proof
+
+private def unassessedWitness : ObjectKey := ⟨⟨`lean, Owner.projectName⟩,
+  "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩
+
+private def unassessedProofKeyRequirement : RequirementKey :=
+  ⟨.declaration unassessedProofKey
+    ⟨⟨`lean, Owner.projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩,
+    `proof⟩
+
+/-- info: Authoring/import: native proof complete; prose unassessed; Verso link complete under explicit MOCK review; Rocq link blocked -/
 #guard_msgs in
 run_cmd liftTermElabM do
   let before := Environment.informalExt.getState (← getEnv)
@@ -30,13 +41,34 @@ run_cmd liftTermElabM do
   let r ← obtain ((← Realizations.Capture.capture).map (·.registry))
   ensure ((r.resultForRequirement Owner.proof).complete &&
     (r.resultFor (.realization Owner.proseKey)).status == .unassessed &&
-    (r.resultFor (.translation Owner.versoLink)).status == .pending &&
+    (r.resultFor (.translation Owner.versoLink)).complete &&
     (r.resultFor (.translation Owner.rocqLink)).status == .blocked)
-    "Actual imported contracts retain independent native/prose/correspondence outcomes"
-  ensure ((r.resultFor (.realization ⟨Name.mkSimple "authoring.unassessed", `lean⟩)).complete)
+    s!"Imported outcomes: native={repr (r.resultForRequirement Owner.proof)}, prose={repr (r.resultFor (.realization Owner.proseKey))}, Verso={repr (r.resultFor (.translation Owner.versoLink))}, Rocq={repr (r.resultFor (.translation Owner.rocqLink))}"
+  ensure ((r.resultFor (.realization unassessedProofKey)).complete)
     "A real native check supplies proof validity without a duplicate independent specification"
-  ensure (r.nodes.size == 5 && r.realizations.size == 11 && r.translations.size == 2 && r.evidence.size == 15)
-    "Actual diamond imports and exact replay duplicate no semantic values or evidence"
+  ensure (r.nodes.size == 5 && r.realizations.size == 16 && r.translations.size == 2)
+    s!"Imported diamond inventory has unexpected cardinality: nodes={r.nodes.size}, realizations={r.realizations.size}, translations={r.translations.size}"
+  ensure (r.evidence.any (fun evidence => evidence.requirement == Owner.proof &&
+      r.bindingFor Owner.proof == some evidence.binding &&
+      (match evidence.observation with
+      | .check observation => observation.outcome == .passed
+      | _ => false)) &&
+    r.evidence.any (fun evidence => evidence.requirement == unassessedProofKeyRequirement &&
+      r.bindingFor unassessedProofKeyRequirement == some evidence.binding &&
+      (match evidence.observation with
+      | .check observation => observation.outcome == .passed
+      | _ => false)))
+    "Imported theorem bodies retain current, actual native proof checks"
+  ensure (r.reviewSelections.any (fun selection => selection.requirement == Owner.versoReview &&
+      selection.judgment == some `mockVersoCorrespondence) &&
+    (r.evidence.filter fun evidence => evidence.requirement == Owner.versoReview).size == 1 &&
+    r.evidence.any (fun evidence => evidence.requirement == Owner.versoReview &&
+      r.bindingFor Owner.versoReview == some evidence.binding &&
+      (match evidence.observation with
+      | .review judgment => judgment.criterion == `statementCorrespondence &&
+          judgment.reviewer == `MockReviewer && judgment.outcome == .passed
+      | _ => false)))
+    "The completed Verso link must be supported by the explicitly selected, current MOCK review"
   for (consumer, target, complete) in #[("authoring.nativeDependent", "authoring.unassessed", true),
       ("authoring.admittedDependent", "authoring.nativeAdmitted", false)] do
     let uses ← obtain (← Realizations.Dependencies.selectUses r ⟨`lean, Owner.projectName⟩ (Name.mkSimple consumer))
@@ -83,7 +115,7 @@ run_cmd liftTermElabM do
     before.authoringProject? == after.authoringProject?) "Query persists no evidence or authoring changes"
   ensure ((← obtain (Json.parse (Report.ofRegistry r).compress)) == Report.ofRegistry r)
     "Normal consumer reports its combined imported model without assembling Input/admit"
-  logInfo "Authoring/import: native proof complete; prose unassessed; Verso link pending; Rocq link blocked"
+  logInfo "Authoring/import: native proof complete; prose unassessed; Verso link complete under explicit MOCK review; Rocq link blocked"
 
 -- Independent consumer-owned contracts. The axiom is deliberately not a
 -- definition and must never supply a validated expected proposition.
@@ -160,7 +192,7 @@ private def rejected (code : String) (result : Except (Array Diagnostic) α) : T
   match result with
   | .ok _ => throwError "Unexpected partial/successful model; expected {code}"
   | .error issues => do
-    ensure (issues.any (·.code == code)) s!"Wrong rejection: {repr issues}"
+    ensure (issues.any (·.code == code)) s!"Expected rejection {code}, got: {repr issues}"
     return issues
 
 run_cmd liftCoreM <| Realizations.Authoring.configureProject Owner.projectName
@@ -170,14 +202,20 @@ run_cmd liftCoreM <| Realizations.Authoring.expectNative `consumerProof (Name.mk
 
 run_cmd liftTermElabM do
   let r ← obtain (← query)
-  let key : RealizationKey := ⟨Name.mkSimple "authoring.unassessed", `lean⟩
-  ensure ((r.resultFor (.realization key)).complete && r.evidence.size == 16)
-    "A separately authored consumer specification can validate an imported default"
+  let key := unassessedProofKey
+  ensure ((r.resultFor (.realization key)).complete)
+    s!"A separately authored consumer specification can validate an imported default: {repr (r.resultFor (.realization key))}"
   let some requirement := r.requirements.find? (fun requirement => requirement.key.name == `expectedProof &&
-      requirement.key.subject == .declaration key
-        ⟨⟨`lean, Owner.projectName⟩, "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩)
+      requirement.key.subject == .declaration key unassessedWitness)
     | throwError "Missing consumer-owned native requirement"
   let .proof goal _ := requirement.expected | throwError "Wrong requirement"
+  ensure ((r.resultForRequirement requirement.key).complete &&
+    r.evidence.any (fun evidence => evidence.requirement == requirement.key &&
+      r.bindingFor requirement.key == some evidence.binding &&
+      (match evidence.observation with
+      | .proof observation => observation.outcome == .passed
+      | _ => false)))
+    "The independently authored proposition must have a current passing native proof observation"
   ensure (goal.documents.any (·.path.endsWith "/Owner.lean") &&
     goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean"))
     "Binding must include both canonical witness and independently authored specification source"
@@ -190,7 +228,11 @@ run_cmd liftTermElabM do
     | .proof observation => ensure (observation.outcome == .passed) "Actual independent-goal proof did not pass"
     | .check observation =>
       ensure (observation.validator == `blueprint.dependencySelection || observation.declaration.isSome) "A native check must retain its own declaration identity"
-    | .review _ => throwError "Unexpected manufactured review evidence"
+    | .review observation =>
+      ensure (evidence.requirement == Owner.versoReview &&
+        observation.criterion == `statementCorrespondence && observation.reviewer == `MockReviewer &&
+        observation.outcome == .passed)
+        "The only review evidence in this imported model must be its explicit MOCK correspondence control"
   let env ← getEnv
   ensure (((Environment.informalExt.getState env).authoringRecords.filter
       (fun record => record.origin.moduleName == env.mainModule)).size == 2)
@@ -218,8 +260,22 @@ run_cmd liftTermElabM do
     let r ← obtain (← query)
     let specs := r.contributions.requirements.filter (fun record =>
       record.origin.moduleName == `VersoBlueprintTests.BlueprintRealizationAuthoring)
-    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id && r.evidence.size == 17)
-      "Equivalent expectations must retain both specification origins and current observations"
+    let expectedKey : RequirementKey := ⟨.declaration unassessedProofKey unassessedWitness, `expectedProof⟩
+    let authoredSpecs := r.requirements.filter fun requirement =>
+      requirement.key == expectedKey &&
+        (match requirement.expected with
+        | .proof _ witness => witness == unassessedWitness
+        | _ => false)
+    let currentSpecs := r.evidence.filter fun evidence =>
+        evidence.requirement == expectedKey && r.bindingFor expectedKey == some evidence.binding &&
+        (match evidence.observation with
+        | .proof observation => observation.outcome == .passed && observation.witness == unassessedWitness
+        | _ => false)
+    ensure (specs.size == 2 && specs[0]!.origin.id != specs[1]!.origin.id &&
+      specs.all (·.value.key == expectedKey) && authoredSpecs.size == 1 &&
+      (r.resultForRequirement expectedKey).complete && currentSpecs.size == 2 &&
+      currentSpecs[0]!.id != currentSpecs[1]!.id)
+      s!"Equivalent expectations must retain both specification origins and current observations: origins={repr (specs.map (·.origin))}, requirements={repr authoredSpecs}, current={repr currentSpecs}"
   isolated do
     Realizations.Authoring.stage `sameProducer {}
     let before := Environment.informalExt.getState (← getEnv)
@@ -255,7 +311,11 @@ run_cmd liftTermElabM do
     Environment.modify fun state => { state with data := state.data.modify Owner.node fun node =>
       { node with nativeAssociations := node.nativeAssociations.map fun association =>
         { association with reference := { association.reference with canonical := `Wrong.subject } } } }
-    discard <| rejected "unknown-requirement" (← query)
+    -- The expectation cannot borrow the original theorem after its accepted
+    -- source association changes: exact proof selection fails before admission.
+    let issues ← rejected "ambiguous-native-expectation" (← query)
+    ensure (issues.any (fun issue => issue.code == "ambiguous-native-expectation" &&
+      issue.subject == Owner.node.toString)) "Wrong native expectation subject"
   let conflict (reverse : Bool) := isolated do
     let a : Environment.AuthoredBatch := {
       realizations := #[{ key := ⟨Owner.node, `conflict⟩, context := ⟨`lean, Owner.projectName⟩ }] }
@@ -445,15 +505,15 @@ run_cmd liftTermElabM do
     let base := baseline.registry.contributions
     let moduleName ← getMainModule
     for (contractName, expectation) in #[
-        (`proof, Expectation.review `independentReview),
-        (`proofReview, Expectation.review `independentReview),
+        (`proof, Expectation.review `independentReview `MockReviewer),
+        (`proofReview, Expectation.review `independentReview `MockReviewer),
         (`proof, Expectation.check NativeLean.bodyValidator)] do
       setEnv initialEnv
-      let alternative : RealizationKey := ⟨Owner.node, `reviewAlternative⟩
+      let alternative : RealizationKey := (⟨Owner.node, `reviewAlternative⟩ : RealizationKey).forRole `proof
       let key : RequirementKey := ⟨.declaration alternative Owner.native, contractName⟩
       let model : Realization := {
-        key := alternative, context := Owner.native.context
-        declarations := #[{ object := Owner.native, required := #[key] }] }
+        key := alternative, context := Owner.native.context, role := `proof
+        declarations := #[{ object := Owner.native, projection := .implementation, required := #[key] }] }
       let requirement : Requirement := {
         key, expected := expectation, coverage := .dependencyClosure }
       let pureInput := { base with
@@ -462,21 +522,37 @@ run_cmd liftTermElabM do
         requirements := base.requirements.push {
           origin := { id := `alternativeRequirementControl, moduleName }, value := requirement } }
       let pureRegistry ← obtain (admit pureInput)
-      ensure ((pureRegistry.resultForRequirement key).status == .pending)
-        "Authored alternative contract must be admitted as pending before capture"
+      let isReview := match expectation with
+        | .review .. => true
+        | _ => false
+      let expectedStatus := if isReview then Status.blocked else Status.pending
+      ensure ((pureRegistry.resultForRequirement key).status == expectedStatus)
+        s!"Authored alternative contract must retain its pre-capture status: {repr (pureRegistry.resultForRequirement key)}"
+      if isReview then
+        ensure ((pureRegistry.resultForRequirement key).diagnostics.any
+          (·.code == "semantic-context-unavailable"))
+          "A review alternative without its own semantic descriptor must report unavailable context"
       Authoring.configureProject Owner.projectName
       Authoring.stage `alternativeContractControl {
         realizations := #[model], requirements := #[requirement] }
       let snapshot ← obtain (← Realizations.Capture.capture)
       ensure (snapshot.registry.requirement? key == some requirement)
         "Capture rewrote an authored alternative contract based on its name or validator"
-      ensure ((snapshot.registry.resultForRequirement key).status == .pending)
-        "A valid authored alternative contract must remain pending after capture"
+      ensure ((snapshot.registry.resultForRequirement key).status == expectedStatus)
+        s!"A valid authored alternative contract must retain its selected-evidence state after capture: {repr (snapshot.registry.resultForRequirement key)}"
+      if isReview then
+        ensure ((snapshot.registry.resultForRequirement key).diagnostics.any
+          (·.code == "semantic-context-unavailable"))
+          "Capture must not borrow another realization's descriptor for this review"
+      else
+        ensure ((snapshot.registry.resultForRequirement key).diagnostics.isEmpty)
+          "An authored native check without an observation remains pending without invented diagnostics"
       ensure (!(snapshot.registry.requirements.any fun value =>
         value.key.subject == key.subject && value.key != key))
         "Capture invented sibling contracts or dependency-selection gates for an authored alternative"
-      ensure ((snapshot.registry.resultForRequirement Owner.proof).complete)
-        "Authored alternative must not change the real default native proof"
+      let defaultAssessment := snapshot.assessmentFor Owner.node
+      ensure (defaultAssessment.nativeProofComplete && defaultAssessment.requiredComplete)
+        "An unfinished authored alternative must not change the default proof summary"
   finally
     setEnv initialEnv
 

@@ -57,12 +57,35 @@ structure CheckedDeclaration where
   declaration : ObjectKey
   /-- Current checked declaration kind; missing declarations have no inferred kind. -/
   kind : Option Data.NodeKind := none
+  /-- Direct content roles derived from the checked declaration type. A theorem
+  or proof-valued definition supplies a statement and proof; a definition whose
+  value is itself a proposition supplies a statement; computational definitions
+  supply only an implementation. -/
+  roles : Array Name := #[]
   statement : CheckObservation
   body : CheckObservation
   status : Data.ProvedStatus
 
 def CheckedDeclaration.assumptions (checked : CheckedDeclaration) : Array String :=
   checked.body.assumptions
+
+/-- Classify native declaration content from the original checked type. This is
+shared by capture and source projection so proof-valued definitions cannot be
+mistaken for ordinary computations, and definitions of propositions do not
+acquire fictitious proof roles. -/
+def declarationRoles (info : Lean.ConstantInfo) : CoreM (Array Name) := do
+  let (proofValued, propositionValued) ← Meta.MetaM.run' do
+    let proofValued ← Meta.isProp info.type
+    let type ← Meta.whnf info.type
+    let propositionValued := match type with
+      | .sort .zero => true
+      | _ => false
+    pure (proofValued, propositionValued)
+  if proofValued then
+    if info.isAxiom then return #[`statement]
+    return #[`statement, `proof]
+  if propositionValued then return #[`statement]
+  return #[`implementation]
 
 /-- Check the original checked environment, including declaration universes and
 conservative reachable-body coverage. No expected goal is synthesized from the
@@ -91,14 +114,15 @@ def checkDeclaration (project : Name) (witness : ObjectKey) :
     let status ← Data.analyzeDeclaration name
     let assumptions ← collectAxioms name
     let assumptions := assumptions.map Name.toString
-    let kind : Data.NodeKind := match info with
-      | .thmInfo _ => .theorem
-      | _ => .definition
+    let roles ← liftM <| declarationRoles info
+    let proposition := roles.contains `proof
+    let kind : Data.NodeKind := if proposition || (info.isAxiom && roles.contains `statement) then
+        .theorem else .definition
     let statementUnknown := status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
     let statementGap := status.hasTypeGap || status.hasUnlocalizedSorry ||
       (kind == .definition && status.hasProofGap)
     return .ok {
-      declaration := witness, kind := some kind
+      declaration := witness, kind := some kind, roles
       statement := {
         validator := statementValidator
         declaration := some witness
@@ -110,6 +134,7 @@ def checkDeclaration (project : Name) (witness : ObjectKey) :
       body := {
         validator := bodyValidator
         declaration := some witness
+        proposition
         assumptions
         outcome := if status.isProved then .passed else if status.isUnverified then .unavailable else .failed
         coverage := if status.hasUnverifiedCoverage then .subject else .dependencyClosure

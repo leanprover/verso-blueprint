@@ -81,48 +81,92 @@ This is a view of the scoped errors, not a separately maintained inventory. -/
 def Snapshot.diagnostics (snapshot : Snapshot) : Array Diagnostic :=
   canonical (snapshot.sourceDiagnostics.nodes.map (·.2) ++ snapshot.sourceDiagnostics.documents.map (·.2))
 
+/-- Ordinary native models retain their generated origin; authored alternatives
+do not silently join the default native summary or dependency contract. -/
+private def ordinaryNativeRealizations (input : Input) (label : Name) : Array Realization :=
+  canonical ((input.realizations.filter fun record =>
+    record.value.key.node == label && record.value.context.language == `lean &&
+      record.origin == (contribution `realization (BindingEncoding.realizationKey record.value.key) ()).origin).map (·.value))
+
+/-- The ordinary source producer's native models, derived from the admitted
+contributions. Full authored alternatives remain available in `registry`. -/
+def Snapshot.nativeRealizationsFor (snapshot : Snapshot) (label : Name) : Array Realization :=
+  ordinaryNativeRealizations snapshot.registry.contributions label
+
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
 def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
   let registry := snapshot.registry
-  let key : RealizationKey := ⟨label, `lean⟩
-  let model := (registry.realization? key).filter (·.context.language == `lean)
-  let declarations := model.map (·.declarations) |>.getD #[]
+  let nativeModels := snapshot.nativeRealizationsFor label
+  let declarations := canonical (nativeModels.flatMap (·.declarations))
   let hasNativeDeclarations := !declarations.isEmpty
-  let locallyComplete (name validator : Name) := hasNativeDeclarations && declarations.all fun declaration =>
-    let requirement : RequirementKey := ⟨.declaration key declaration.object, name⟩
-    (registry.requirement? requirement).any (fun value =>
-      value.expected == .check validator && value.coverage == .dependencyClosure) &&
-      (registry.localResult requirement).complete
+  let statementDeclarations := (nativeModels.filter (·.role == `statement)).flatMap fun model =>
+    model.declarations.map (fun declaration => (model.key, declaration))
+  let proofDeclarations := (nativeModels.filter (·.role == `proof)).flatMap fun model =>
+    model.declarations.map (fun declaration => (model.key, declaration))
+  let implementationDeclarations := (nativeModels.filter (·.role == `implementation)).flatMap fun model =>
+    model.declarations.map (fun declaration => (model.key, declaration))
+  let locallyComplete (role validator : Name) (selected : Array (RealizationKey × Declaration)) :=
+    !selected.isEmpty && selected.all fun (owner, declaration) =>
+      let requirement : RequirementKey := ⟨.declaration owner declaration.object, role⟩
+      (registry.realization? owner).any (fun model => model.role == role &&
+        model.declarations.any (·.object == declaration.object)) &&
+        (registry.requirement? requirement).any (fun value =>
+          value.expected == .check validator && value.coverage == .dependencyClosure) &&
+        (registry.localResult requirement).complete
+  -- The legacy summary's proof field means native body completeness. A
+  -- computational definition supplies a value, not a mathematical proof edge.
+  let implementationComplete := locallyComplete `implementation NativeLean.bodyValidator implementationDeclarations
+  let statementComplete := !(statementDeclarations.isEmpty && implementationDeclarations.isEmpty) &&
+    (statementDeclarations.isEmpty || locallyComplete `statement NativeLean.statementValidator statementDeclarations) &&
+    (implementationDeclarations.isEmpty || implementationComplete)
+  let bodyComplete := !(proofDeclarations.isEmpty && implementationDeclarations.isEmpty) &&
+    (proofDeclarations.isEmpty || locallyComplete `proof NativeLean.bodyValidator proofDeclarations) &&
+    (implementationDeclarations.isEmpty || implementationComplete)
+  let nativeRequirementKeys := canonical (nativeModels.flatMap (·.requirements)) |>.filter fun key =>
+    match registry.requirement? key with
+    | none => false
+    | some requirement =>
+      requirement.coverage == .dependencyClosure && (match requirement.expected with
+        | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
+        | _ => false)
+  let nativeLocalComplete := hasNativeDeclarations && !nativeRequirementKeys.isEmpty &&
+    nativeRequirementKeys.all fun key => (registry.resultForRequirement key).complete
   let uses := snapshot.uses.filter (·.source == label)
-  let selected := uses.filter fun use => use.realization.all (· == `lean) &&
-    model.any (fun model => use.context == some model.context)
+  let selected := uses.filter fun use => nativeModels.any fun model =>
+    use.context == some model.context &&
+      useSelectsRealization use.source use.realization use.facet model
   let dependenciesComplete (statementOnly : Bool) :=
-    (selected.filter fun use => !statementOnly || use.facet == `statement).all fun use =>
+    (selected.filter fun use => !statementOnly || selectedRole use.facet == `statement).all fun use =>
       match use.selected with
       | .error _ => false
       | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
   let documentDiagnostics := if snapshot.sourceDiagnostics.documents.isEmpty then #[] else Id.run do
     let nodeModels := registry.realizations.filter (·.key.node == label)
     let nodeObjects := nodeModels.flatMap (·.declarations.map (·.object))
-    let sourceDocuments := nodeModels.flatMap (·.facets.flatMap (·.documents)) ++
+    let sourceDocuments := nodeModels.flatMap (·.documents) ++
       (registry.objects.filter (fun object => nodeObjects.contains object.key)).filterMap (·.document)
     return (snapshot.sourceDiagnostics.documents.filter (fun (document, _) => sourceDocuments.contains document)).map (·.2)
-  let objects := declarations.map (·.object)
+  let objects := canonical (declarations.map (·.object))
   let diagnostics := canonical (
     (snapshot.sourceDiagnostics.nodes.filter (·.1 == label)).map (·.2) ++
     documentDiagnostics)
   return {
     hasNativeDeclarations
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
-    nativeStatementComplete := locallyComplete `statement NativeLean.statementValidator
-    nativeProofComplete := locallyComplete `proof NativeLean.bodyValidator
-    requiredComplete := hasNativeDeclarations && (registry.resultFor (.realization key)).complete
+    nativeStatementComplete := statementComplete
+    nativeProofComplete := bodyComplete
+    requiredComplete := nativeLocalComplete
     selectedLeanUseCount := selected.size
     statementDependenciesComplete := dependenciesComplete true
     proofDependenciesComplete := dependenciesComplete false
     details := Json.mkObj [
       ("assessment", Report.ofNode registry label),
+      ("nativeLocalSummary", Json.mkObj [
+        ("declarations", toJson objects),
+        ("statementComplete", toJson statementComplete),
+        ("bodyComplete", toJson bodyComplete),
+        ("requiredComplete", toJson nativeLocalComplete)]),
       ("uses", toJson (uses.map fun use => Json.mkObj [
         ("source", toJson use.source), ("targetContext", toJson use.context),
         ("realization", toJson use.realization), ("facet", toJson use.facet),
@@ -203,6 +247,11 @@ structure DeclarationStep where
   inline : Array Nat := #[]
   check : Nat
   deriving Inhabited
+
+private structure NativeDeclarationResult where
+  name : Name
+  prepared : Except (Array Diagnostic) NativeSource.Prepared
+  checked : Except Diagnostic NativeLean.CheckedDeclaration
 
 structure RealizationStep where
   key : RealizationKey
@@ -416,99 +465,184 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         (accepted.toNode.toConcept label label.toString))
       uses := collected.uses ++ uses }
     for step in node.realizations do
-      let key := step.key
+      let base := step.key
       let sources := step.sources.map (·.source)
       let associations := step.associations
       let contexts := canonical (sources.map (·.context) ++ associations.map (·.context))
       unless contexts.size == 1 do
         reject "source-context-mismatch" label.toString "A realization requires one agreed stored source context"
       let context := contexts[0]!
-      let names := nativeNames associations sources
       let object (name : Name) : ObjectKey := ⟨context, name.toString⟩
-      let facets := canonical (sources.map (·.destination.facet) ++ associations.flatMap (·.facets) ++
-        (uses.filter (·.realization == some key.name)).map (·.facet))
-      let mut model : Realization := {
-        key, context
-        facets := facets.map fun facet => {
-          name := facet
-          documents := canonical ((sources.filter (·.destination.facet == facet)).map (·.document))
-          declarations := canonical ((nativeNames (associations.filter (·.facets.contains facet))
-            (sources.filter (·.destination.facet == facet))).map object) }
-        declarations := names.map fun name => { object := object name } }
-      let issues := if context.language == `lean then nativeMembershipIssues label model associations sources
-        else sources.flatMap (·.issues label model)
-      unless issues.isEmpty do full (.error issues)
+      let mut declarationResults : Array NativeDeclarationResult := #[]
+      for declarationStep in step.declarations do
+        let prepared ← prepareNative providers declarationStep
+        let checked ← providers.check declarationStep.check
+        if let .ok checked := checked then
+          collected := { collected with nativeChecks := collected.nativeChecks.push checked }
+        if let (.ok prepared, .ok checked) := (prepared, checked) then
+          if prepared.roles != checked.roles then
+            collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
+                code := "native-role-disagreement", subject := declarationStep.name.toString,
+                message := "Owning-source and native-check classifications disagree" }] }
+        declarationResults := declarationResults.push {
+          name := declarationStep.name, prepared, checked }
+      let checkedRoles := declarationResults.filterMap fun declaration =>
+        match declaration.checked, declaration.prepared with
+        | .ok checked, _ => some (declaration.name, checked.roles)
+        | .error _, .ok prepared => some (declaration.name, prepared.roles)
+        | _, _ => none
+      let rolesForName (name : Name) : Array Name :=
+        (checkedRoles.find? (·.1 == name)).map (·.2) |>.getD #[]
+      let rawSlotsForName (name : Name) : Array Name := Id.run do
+        let mut slots := associations.filter (·.reference.canonical == name) |>.flatMap (·.facets)
+        for source in sources do
+          if let .leanInline code := source.payload then
+            if code.definedDeclNames.contains name then slots := slots.push source.destination.facet
+        return slots
+      let selectedNativeRoles (name : Name) : Array Name := Id.run do
+        let roles := rolesForName name
+        let slots := rawSlotsForName name
+        if roles.isEmpty then return canonical (slots.map selectedRole)
+        return SourceData.selectedNativeRoles slots roles
+      let mut sourceRoleNames := sources.filterMap fun source =>
+        match source.payload with
+        | .leanInline _ => none
+        | _ => some (selectedRole source.destination.facet)
+      let roleNames := canonical (sourceRoleNames ++ declarationResults.flatMap fun declaration =>
+        selectedNativeRoles declaration.name)
+      let mut sourceDocs : Array (Name × DocumentKey) := #[]
       for sourceStep in step.sources do
         let source := sourceStep.source
-        let (document, issues) ← providers.document sourceStep.document
+        let (document, readIssues) ← providers.document sourceStep.document
         collected := { collected with
-          input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey document.key) document)
-          sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
+          input.documents := collected.input.documents.push
+            (contribution `document (BindingEncoding.documentKey document.key) document)
+          sourceDiagnostics := { collected.sourceDiagnostics with
+            documents := collected.sourceDiagnostics.documents ++ readIssues.map (document.key, ·) } }
         if let some reason := source.source.error then
           collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
-            code := "source-association-unavailable",
-            subject := s!"{label}/{key.name}/{source.destination.facet}", message := reason }] }
-        if let some documented := sourceStep.documented then
-            let proseKey : DocumentKey := ⟨source.context,
-              source.document.path ++ "#docstring:" ++ (BindingEncoding.subject source.destination.subject).compress⟩
-            let result ← match documented with
-              | .error issue => pure (.error issue)
-              | .ok handle => providers.documented handle
-            let text ← match result with
-              | .ok documented => pure documented.rawDocstring
+            code := "source-association-unavailable", subject := s!"{label}/{base.name}/{source.destination.facet}", message := reason }] }
+        if let .prose _ := source.payload then
+          let selectedKey := source.selectedDocumentKey
+          let selectedText ← match sourceStep.documented with
+            | none => pure (source.selectedText document)
+            | some (.error diagnostic) =>
+              collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
+              pure (.error diagnostic)
+            | some (.ok handle) => do
+              match ← providers.documented handle with
               | .error diagnostic =>
                 collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
-                pure ""
-            collected := { collected with
-              input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey proseKey) { key := proseKey, text }) }
-            model := { model with facets := model.facets.map fun facet =>
-              if facet.name != source.destination.facet then facet else
-                { facet with documents := canonical (facet.documents.push proseKey) } }
-      for declarationStep in step.declarations do
-        let name := declarationStep.name
-        let witness := object name
-        let subject := Subject.declaration key witness
-        let statementKey : RequirementKey := ⟨subject, `statement⟩
-        let proofKey : RequirementKey := ⟨subject, `proof⟩
-        let prepared ← prepareNative providers declarationStep
-        let observation : ObjectObservation ← match prepared with
-          | .error issues =>
+                pure (.error diagnostic)
+              | .ok documented =>
+                if documented.format != source.context.language then
+                  let diagnostic : Diagnostic := {
+                    code := "source-format-unavailable"
+                    subject := (toJson source.destination.subject).compress
+                    message := "Direct native docstring format does not match its authored realization context" }
+                  collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
+                  pure (.error diagnostic)
+                else if documented.document.key.path != source.document.path ||
+                    documented.document.text != document.text ||
+                    documented.document.key.context.project != source.context.project then
+                  pure (.error {
+                    code := "source-selection-unavailable"
+                    subject := (toJson source.destination.subject).compress
+                    message := "Native doc comment does not belong to the selected owning source" })
+                else
+                  -- Attribute syntax locates the producer, not the comment body.
+                  -- The native provider has already checked the unique declaration
+                  -- and original comment against exact owning-file ranges.
+                  pure (.ok documented.rawDocstring)
+          let selectedValue ← match selectedText with
+            | .ok text => pure text
+            | .error diagnostic => do
+              collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
+              pure ""
+          let selectedDocument : Document := { key := selectedKey, text := selectedValue }
+          let selectedContribution := contribution `document
+            (BindingEncoding.documentKey selectedKey) selectedDocument
+          collected := { collected with input := { collected.input with
+            documents := collected.input.documents.push selectedContribution } }
+          sourceDocs := sourceDocs.push (selectedRole source.destination.facet, selectedKey)
+        else
+          match source.payload with
+          | .leanInline _ => pure ()
+          | _ => sourceDocs := sourceDocs.push (selectedRole source.destination.facet, source.selectedDocumentKey)
+      let mut roleModels : Array Realization := #[]
+      for role in roleNames do
+        let declarations := declarationResults.filterMap fun result => Id.run do
+          let roles := selectedNativeRoles result.name
+          unless roles.contains role do return none
+          let witness := object result.name
+          let nativeRoles := rolesForName result.name
+          let requirement : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
+          let selected := !nativeRoles.isEmpty && nativeRoles.contains role
+          let required := if selected then #[requirement] else #[]
+          return some {
+            object := witness,
+            projection := if role == `statement then .statement else .implementation,
+            required }
+        let documents := canonical (sourceDocs.filterMap fun (sourceRole, document) =>
+          if sourceRole == role then some document else none)
+        roleModels := roleModels.push {
+          key := base.forRole role, context, role, documents, declarations }
+      let issues := if context.language == `lean then
+          roleModels.flatMap fun model => nativeMembershipIssues label model associations sources checkedRoles
+        else roleModels.flatMap fun model =>
+          (sources.filter (fun source => selectedRole source.destination.facet == model.role)).flatMap (·.issues label model)
+      unless issues.isEmpty do full (.error issues)
+      for declaration in declarationResults do
+        let witness := object declaration.name
+        let nativeRoles := selectedNativeRoles declaration.name
+        let objectObservation : ObjectObservation ← match declaration.prepared with
+          | .error issues => do
             collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
-            pure { key := witness, resolution := if issues.any (·.code == "missing-declaration") then .missing else .unsupported, explanation := (toJson issues).compress }
-          | .ok prepared =>
+            pure {
+              key := witness
+              resolution := if issues.any (·.code == "missing-declaration") then .missing else .unsupported
+              explanation := (toJson issues).compress }
+          | .ok prepared => do
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
-              input.documents := collected.input.documents.push (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
-              input.bindingInputs := collected.input.bindingInputs ++ (prepared.semanticContext.toArray.map fun content =>
-                contribution `nativeContext (BindingEncoding.subject subject) { subject, name := NativeLean.sourceContext, content }) ++
-                (prepared.statementContext.toArray.map fun content => contribution `nativeStatementContext
-                  (BindingEncoding.subject subject) { subject, name := NativeLean.statementContext, content }) }
+              input.documents := collected.input.documents.push
+                (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
+              input.bindingInputs := collected.input.bindingInputs ++ nativeRoles.flatMap fun role =>
+                if role == `statement then
+                  prepared.statementContext.toArray.map fun content => contribution `nativeStatementContext
+                    (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
+                      subject := .declaration (base.forRole role) witness,
+                      name := NativeLean.statementContext, content }
+                else prepared.semanticContext.toArray.map fun content => contribution `nativeContext
+                  (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
+                    subject := .declaration (base.forRole role) witness,
+                    name := NativeLean.sourceContext, content } }
             pure { key := witness, resolution := .resolved, document := some prepared.document.key }
         collected := { collected with
-          input.objects := collected.input.objects.push (contribution `object (BindingEncoding.objectKey witness) observation)
-          input.requirements := collected.input.requirements ++ #[
-            contribution `requirement (BindingEncoding.requirementKey statementKey) { key := statementKey, expected := .check NativeLean.statementValidator, coverage := .dependencyClosure, scope := .statement },
-            contribution `requirement (BindingEncoding.requirementKey proofKey) { key := proofKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
-        model := { model with
-          declarations := model.declarations.map fun declaration =>
-            if declaration.object == witness then { declaration with required := #[proofKey] } else declaration
-          facets := model.facets.map fun facet =>
-            if !facet.declarations.contains witness then facet else
-              { facet with required := facet.required.push (if facet.name == `statement then statementKey else proofKey) } }
-        match ← providers.check declarationStep.check with
-        | .ok checked =>
-          collected := { collected with nativeChecks := collected.nativeChecks.push checked }
-          collected := (recordObservation collected statementKey (.check checked.statement))
-            |> fun value => recordObservation value proofKey (.check checked.body)
-        | .error diagnostic =>
-          collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
-          for (key, validator) in #[(statementKey, NativeLean.statementValidator), (proofKey, NativeLean.bodyValidator)] do
+          input.objects := collected.input.objects.push
+            (contribution `object (BindingEncoding.objectKey witness) objectObservation) }
+        for role in nativeRoles do
+          unless (rolesForName declaration.name).contains role do continue
+          let key : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
+          let validator := if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+          let prerequisites := if role == `proof then
+            #[⟨.declaration (base.forRole `statement) witness, `statement⟩] else #[]
+          collected := { collected with
+            input.requirements := collected.input.requirements.push
+              (contribution `requirement (BindingEncoding.requirementKey key) {
+                key, expected := .check validator, coverage := .dependencyClosure, prerequisites }) }
+          match declaration.checked with
+          | .ok checked =>
+            collected := recordObservation collected key
+              (.check (if role == `statement then checked.statement else checked.body))
+          | .error diagnostic =>
             collected := recordObservation collected key (.check {
-              validator, declaration := some witness, outcome := .unavailable, explanation := diagnostic.message })
-      collected := { collected with input.realizations := collected.input.realizations.push (contribution `realization (BindingEncoding.realizationKey key) model) }
-    let models := collected.input.realizations.map (·.value)
-    let issues := uses.flatMap (·.issues label models)
-    unless issues.isEmpty do full (.error issues)
+              validator, declaration := some witness, outcome := .unavailable,
+              explanation := diagnostic.message })
+      for model in roleModels do
+        collected := { collected with
+          input.realizations := collected.input.realizations.push
+            (contribution `realization (BindingEncoding.realizationKey model.key) model) }
   return collected
 
 private def ownedDefinition (name : Name) (origin : Origin) (source : Document) : CaptureM Unit := do
@@ -533,10 +667,11 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
     for index in [:record.nativeGoals.size] do
       let (node, _) := record.nativeGoals[index]!
       let key : RealizationKey := ⟨node, `lean⟩
+      let key := key.forRole `proof
       let models := canonical ((collected.input.realizations.filter (·.value.key == key)).map (·.value))
       unless models.size == 1 && models[0]!.context == ⟨`lean, record.project⟩ && models[0]!.declarations.size == 1 do
         reject "ambiguous-native-expectation" node.toString
-          "Node-level expectation requires one ordinary native declaration in its exact stored context" #[record.origin]
+          "Expected proposition requires one exact ordinary proof realization in its stored context" #[record.origin]
       let witness := models[0]!.declarations[0]!.object
       let expectedKey : RequirementKey := ⟨.declaration key witness, `expectedProof⟩
       let handle := step.goals[index]!
@@ -579,35 +714,79 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       realizations := collected.input.realizations ++ batch.realizations.mapIdx (authoredContribution record.origin `realization)
       translations := collected.input.translations ++ batch.translations.mapIdx (authoredContribution record.origin `translation)
       claims := collected.input.claims ++ batch.claims.mapIdx (authoredContribution record.origin `claim)
-      requirements := collected.input.requirements ++ batch.requirements.mapIdx (authoredContribution record.origin `requirement) } }
+      requirements := collected.input.requirements ++ batch.requirements.mapIdx (authoredContribution record.origin `requirement)
+      evidence := collected.input.evidence ++ batch.reviews.mapIdx (fun index judgment =>
+        authoredContribution record.origin `review index {
+          id := judgment.id, requirement := judgment.requirement, binding := judgment.binding,
+          observation := .review judgment.observation })
+      reviewSelections := collected.input.reviewSelections ++
+        batch.reviewSelections.mapIdx (authoredContribution record.origin `reviewSelection) } }
   return collected
 
 /-- Select the complete ordinary native contract, independently of its outcome.
 Alternatives are explicit realizations and cannot rescue the default. -/
-private def selectTarget (input : Input) (context : Context) (target : Name) :
+private def selectTarget (collected : Collected) (context : Context) (target : Name) :
     Except Diagnostic (Array RequirementKey) := do
+  let input := collected.input
   let fail (code message : String) : Except Diagnostic (Array RequirementKey) := .error {
     code, subject := target.toString, message }
   unless input.nodes.any (·.value.label == target) do
     return ← fail "missing-target" "No accepted dependency target"
-  let key : RealizationKey := ⟨target, `lean⟩
-  let models := canonical ((input.realizations.filter (·.value.key == key)).map (·.value))
-  unless models.size == 1 do
-    return ← fail (if models.isEmpty then "missing-native-contract" else "ambiguous-native-contract")
-      "Dependency requires one ordinary native realization"
-  let model := models[0]!
-  unless model.context == context do
+  let candidates := (ordinaryNativeRealizations input target).filter fun model =>
+    model.context == context &&
+      (model.role == `proof || model.role == `implementation || model.role == `statement)
+  let proofs := candidates.filter (·.role == `proof)
+  let implementations := candidates.filter (·.role == `implementation)
+  let statements := candidates.filter (·.role == `statement)
+  if proofs.size > 1 || implementations.size > 1 || (proofs.isEmpty && statements.size > 1) then
+    return ← fail "ambiguous-native-contract"
+      "Dependency has multiple ordinary native developments and no unique target contract"
+  let failModel (code message : String) : Except Diagnostic (Array Realization) := .error {
+    code, subject := target.toString, message }
+  let proofObjects := proofs.flatMap (·.declarations.map (·.object))
+  let extraStatements := (statements.flatMap (·.declarations.map (·.object))).any
+    (fun object => !proofObjects.contains object)
+  let propositionDefinitions := statements.all fun model => model.declarations.all fun declaration =>
+    (collected.nativeChecks.find? (·.declaration == declaration.object)).any (·.roles == #[`statement])
+  let modelSelection : Except Diagnostic (Array Realization) :=
+    if !proofs.isEmpty && implementations.isEmpty then
+      if extraStatements then failModel "ambiguous-native-contract"
+        "Dependency includes a proposition definition in addition to its proof target"
+      else .ok proofs
+    else if proofs.isEmpty && !implementations.isEmpty && statements.isEmpty then .ok implementations
+    else if proofs.isEmpty && implementations.isEmpty && !statements.isEmpty then
+      if propositionDefinitions then .ok statements
+      else failModel "missing-native-contract"
+        "A native statement without a proof role is a dependency target only when its checked declaration defines a proposition"
+    else failModel (if candidates.isEmpty then "missing-native-contract" else "ambiguous-native-contract")
+      "Dependency needs one unambiguous direct native proof, implementation, or proposition definition"
+  let models ← modelSelection
+  unless !models.isEmpty && models.all (·.context == context) do
     return ← fail "wrong-default-context" "Dependency belongs to another project context"
-  unless !model.declarations.isEmpty do
-    return ← fail "missing-native-contract" "Dependency has no selected native declarations"
   let mut required := #[]
-  for declaration in model.declarations do
-    let proof : RequirementKey := ⟨.declaration key declaration.object, `proof⟩
-    let contracts := canonical ((input.requirements.filter (·.value.key == proof)).map (·.value))
-    unless contracts.size == 1 && contracts[0]!.expected == .check NativeLean.bodyValidator &&
-        contracts[0]!.coverage == .dependencyClosure && declaration.required.contains proof do
-      return ← fail "invalid-native-contract" "Dependency requires its exact native completeness contract"
-    required := required ++ declaration.required
+  for model in models do
+    unless !model.declarations.isEmpty do
+      return ← fail "missing-native-contract" "Dependency has no selected native declarations"
+    let validator := if model.role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+    for declaration in model.declarations do
+      let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
+      let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
+      let expectedProjection := if model.role == `statement then .statement else .implementation
+      let roleMatches := (collected.nativeChecks.find? (·.declaration == declaration.object)).any
+        (·.roles.contains model.role)
+      unless roleMatches && declaration.projection == expectedProjection && contracts.size == 1 &&
+          contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
+          declaration.required.contains key do
+        return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
+      if model.role == `proof then
+        let hasStatement := contracts[0]!.prerequisites.any fun prerequisite =>
+          statements.any fun statementModel =>
+            prerequisite == ⟨.declaration statementModel.key declaration.object, `statement⟩ &&
+            statementModel.declarations.any (·.object == declaration.object)
+        unless hasStatement do
+          return ← fail "invalid-native-contract" "A proof role must depend on its selected proposition type"
+      required := required ++ declaration.required
+    required := required ++ model.required
   return canonical required
 
 private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
@@ -618,7 +797,7 @@ private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
     let uses := Data.UseRef.mergeByLabel #[] <| (collected.uses.filter fun use =>
       use.node == source && use.realization == realization && use.facet == facet).map (·.reference)
     let models := collected.input.realizations.filter fun contribution =>
-      contribution.value.key.node == source && realization.all (· == contribution.value.key.name)
+      useSelectsRealization source realization facet contribution.value
     let contexts := canonical (models.map fun contribution =>
       ({ language := `lean, project := contribution.value.context.project } : Context))
     for reference in uses do
@@ -632,7 +811,7 @@ private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
         for context in contexts do
           selected := selected.push {
             source, realization, facet, reference, context := some context
-            selected := selectTarget collected.input context reference.label }
+            selected := selectTarget collected context reference.label }
   return selected
 
 /-- A mechanical check of contract selection, not a proof checker. Only this
@@ -656,43 +835,68 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
       else out
   let mut collected := collected
   for model in collected.input.realizations.map (·.value) do
-    if model.context.language != `lean then continue
-    let relevant := uses.filter fun use => use.source == model.key.node &&
-      use.context == some model.context && use.realization.all (· == model.key.name)
+    if model.context.language != `lean ||
+        (model.role != `statement && model.role != `proof && model.role != `implementation) then continue
+    let relevant := uses.filter fun use => use.context == some model.context &&
+      useSelectsRealization use.source use.realization use.facet model
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
-      for (name, validator) in #[(`statement, NativeLean.statementValidator), (`proof, NativeLean.bodyValidator)] do
-        let key : RequirementKey := ⟨subject, name⟩
-        unless nativeContracts[key]? == some validator do continue
-        let edges := relevant.filter fun use => name == `proof || use.facet == `statement
-        let mut prerequisites : Array RequirementKey := #[]
-        if name == `proof then prerequisites := #[⟨subject, `statement⟩]
-        if !edges.isEmpty then
-          let selectionKey : RequirementKey := ⟨subject, name ++ `dependencySelection⟩
-          let failures := edges.filterMap fun edge => match edge.selected with
-            | .error diagnostic => some diagnostic | .ok _ => none
-          prerequisites := prerequisites.push selectionKey ++ edges.flatMap fun edge =>
-            match edge.selected with | .ok keys => keys | .error _ => #[]
-          collected := { collected with input := { collected.input with
-            requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
-              key := selectionKey, expected := .check `blueprint.dependencySelection })
-            bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
-              subject, name := name ++ `selectedUses
-              content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
-                edge.facet, edge.reference, edge.selected))).compress }) } }
-          collected := recordObservation collected selectionKey (.check {
-            validator := `blueprint.dependencySelection
-            outcome := if failures.isEmpty then .passed else .unavailable
-            explanation := if failures.isEmpty then "Every dependency selected its exact current native contract"
-              else (toJson failures).compress })
-        collected := { collected with input.requirements := collected.input.requirements.map fun contribution =>
-          if contribution.value.key != key then contribution else { contribution with value := {
-            contribution.value with prerequisites := canonical (contribution.value.prerequisites ++ prerequisites) } } }
+      let name := model.role
+      let validator := if name == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+      let key : RequirementKey := ⟨subject, name⟩
+      unless nativeContracts[key]? == some validator do continue
+      let edges := relevant
+      let mut prerequisites : Array RequirementKey := #[]
+      if !edges.isEmpty then
+        let selectionKey : RequirementKey := ⟨subject, name ++ `dependencySelection⟩
+        let failures := edges.filterMap fun edge => match edge.selected with
+          | .error diagnostic => some diagnostic | .ok _ => none
+        prerequisites := prerequisites.push selectionKey ++ edges.flatMap fun edge =>
+          match edge.selected with | .ok keys => keys | .error _ => #[]
+        collected := { collected with input := { collected.input with
+          requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
+            key := selectionKey, expected := .check `blueprint.dependencySelection })
+          bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
+            subject, name := name ++ `selectedUses
+            content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
+              edge.facet, edge.reference, edge.selected))).compress }) } }
+        collected := recordObservation collected selectionKey (.check {
+          validator := `blueprint.dependencySelection
+          outcome := if failures.isEmpty then .passed else .unavailable
+          explanation := if failures.isEmpty then "Every dependency selected its exact current native contract"
+            else (toJson failures).compress })
+      collected := { collected with input.requirements := collected.input.requirements.map fun contribution =>
+        if contribution.value.key != key then contribution else { contribution with value := {
+          contribution.value with prerequisites := canonical (contribution.value.prerequisites ++ prerequisites) } } }
+  return collected
+
+/-- Derive edge-local own-type observations from the real native declaration
+checks already run for this capture. This reuses only the underlying checked
+fact; `finish later binds each copy to its exact `proves contract. -/
+private def attachOwnTypeObservations (collected : Collected) : Collected := Id.run do
+  let mut collected := collected
+  for requirement in collected.input.requirements do
+    let .proves witness := requirement.value.expected | continue
+    let observation := match collected.nativeChecks.find? (·.declaration == witness) with
+      | some checked =>
+        .check { checked.body with validator := NativeLean.ownTypeValidator }
+      | none =>
+        .check {
+          validator := NativeLean.ownTypeValidator
+          declaration := some witness
+          outcome := .unavailable
+          explanation := "No native declaration check in this capture applies to the selected witness" }
+    collected := recordObservation collected requirement.value.key observation
   return collected
 
 private def assemble [Monad m] (providers : Providers m) (p : Plan) : ExceptT (Array Diagnostic) m Collected := do
   unless p.raw.initialIssues.isEmpty do full (.error (canonical p.raw.initialIssues))
-  collectOrdinary providers p >>= collectAuthored providers p
+  let collected ← collectOrdinary providers p >>= collectAuthored providers p
+  let models := collected.input.realizations.map (·.value)
+  for node in p.ordinary do
+    let issues := node.accepted.uses.flatMap (·.issues node.label models)
+    unless issues.isEmpty do full (.error (canonical issues))
+  return collected
 
 /-- Ordinary captures feed graph JSON and readable CLI selectors. Validate the
 complete public label set once; pure registries may still use arbitrary Names. -/
@@ -725,6 +929,7 @@ private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot 
   unless labelIssues.isEmpty do throw labelIssues
   let uses := selectUses collected
   let collected := connectUses collected uses
+  let collected := attachOwnTypeObservations collected
   let candidate ← admit collected.input
   let mut input := collected.input
   for (origin, key, observation) in collected.observations do
@@ -776,7 +981,7 @@ private def associatedMatches (request : NativeRequest) (prepared : NativeSource
 /-- Pure policy evaluation against exactly the plan that indexes these results.
 Table insertion order has no meaning. Duplicate/extra handles are rejected;
 missing and mismatched results fail at their recipe checkpoint. The supplied
-facts are not authenticated here: production must call `observe` freshly. -/
+facts are not authenticated here: production must call `observe freshly. -/
 def evaluate (p : Plan) (observations : Observations p) : Except (Array Diagnostic) Snapshot := do
   let documents ← indexResults "document" p.documents.size observations.documents
   let native ← indexResults "native" p.native.size observations.native
@@ -834,7 +1039,7 @@ def evaluate (p : Plan) (observations : Observations p) : Except (Array Diagnost
 /-- Execute the observation phase, converting ordinary exceptions to diagnostics.
 Lean runtime resource exceptions and interrupts propagate; they cannot produce
 partial observations. Environment, metavariables and info state are restored on
-every exit, while traces are retained. This is also the scope used by `observe`. -/
+every exit, while traces are retained. This is also the scope used by `observe. -/
 def withObservationState (action : TermElabM (Except (Array Diagnostic) α)) :
     TermElabM (Except (Array Diagnostic) α) := do
   let saved ← Term.saveState

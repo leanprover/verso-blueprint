@@ -47,16 +47,11 @@ private def selectTarget (registry : Registry) (context : Context) (label : Name
   let canonical ← match canonicalTheorem "target" label node with
     | .ok name => pure name
     | .error diagnostic => return .error diagnostic
-  let realizationKey : RealizationKey := ⟨label, `lean⟩
+  let realizationKey := (⟨label, `lean⟩ : RealizationKey).forRole `proof
   if (registry.realization? realizationKey).any (·.context != context) then
-    return .error <| issue "wrong-default-context" label "Default Lean realization belongs to a different project context"
-  let key ← match registry.selectRequirement {
-      node := label, context, realization := some `lean, requirement := `proof } with
-    | .ok key => pure key
-    | .error diagnostic => return .error diagnostic
+    return .error <| issue "wrong-default-context" label "Selected Lean proof realization belongs to a different project context"
   let witness : ObjectKey := ⟨context, canonical.toString⟩
-  unless key.subject == .declaration realizationKey witness do
-    return .error <| issue "wrong-default-subject" label "Selected proof must name this accepted canonical declaration"
+  let key : RequirementKey := ⟨.declaration realizationKey witness, `proof⟩
   let some requirement := registry.requirement? key
     | return .error <| issue "missing-prerequisite" label "Selected contract is missing"
   match requirement.expected with
@@ -75,10 +70,20 @@ private def selectTarget (registry : Registry) (context : Context) (label : Name
     return .error <| issue "insufficient-coverage" label "Default theorem policy requires dependency-closure coverage"
   let some realization := registry.realization? realizationKey
     | return .error <| issue "missing-prerequisite" label "Default Lean realization is missing"
-  unless realization.declarations.size == 1 && realization.declarations[0]!.object == witness do
-    return .error <| issue "unsupported-default-association" label "Default realization must contain exactly the accepted theorem"
+  unless realization.role == `proof && realization.declarations.size == 1 &&
+      realization.declarations[0]!.object == witness &&
+      realization.declarations[0]!.projection == .implementation do
+    return .error <| issue "unsupported-default-association" label "Selected proof realization must contain exactly its accepted theorem implementation"
   unless realization.declarations[0]!.required.contains key do
     return .error <| issue "unrequired-default-proof" label "Selected contract is not required by the default declaration"
+  let statementKey := (⟨label, `lean⟩ : RealizationKey).forRole `statement
+  let some statement := registry.realization? statementKey
+    | return .error <| issue "missing-statement-realization" label "The selected proof has no corresponding statement realization"
+  unless statement.role == `statement && statement.context == realization.context &&
+      statement.declarations.size == 1 && statement.declarations[0]!.object == witness &&
+      statement.declarations[0]!.projection == .statement do
+    return .error <| issue "wrong-proof-statement-selection" label
+      "Native own-type support requires the proof value and selected statement type of this exact declaration"
   return .ok key
 
 /-- Read accepted effective uses, without suppressing self/duplicate labels or

@@ -73,7 +73,7 @@ private def statusText (result : Result) : String :=
   | .pending => "pending"
   | .blocked => "blocked"
 
-/-- info: Flag: Lean proof=complete; Verso=unassessed; Verso-to-Lean=pending; Rocq-to-Lean=blocked; realizations=3; translations=2 -/
+/-- info: Flag: Lean proof=complete; Verso=unassessed; Verso-to-Lean=pending; Rocq-to-Lean=blocked; realizations=4; translations=2 -/
 #guard_msgs in
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.flag.involutive"
@@ -84,7 +84,9 @@ run_cmd liftTermElabM do
   let expected ← `(term| ∀ flag : RealizationAdapterFixture.Flag,
     RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)
   let native ← obtain (← p.validate expected)
-  let proof : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+  let proofRealization := p.leanKey.forRole `proof
+  let statementRealization := p.leanKey.forRole `statement
+  let proof : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
   let nativeRegistry ← obtain (admit native)
   let nativeBinding ← binding nativeRegistry proof
   ensure ((nativeRegistry.resultForRequirement proof).complete) "Actual native proof must complete"
@@ -115,16 +117,15 @@ run_cmd liftTermElabM do
       explanation := "Authored Rocq reference only: source-native resolver/checker is not connected" })
     realizations := native.realizations.push (authored `rocqRealization {
       key := rocqKey, context := rocqContext
-      facets := #[{ name := `statement, documents := #[sourceDoc, configDoc], declarations := #[rocqObject] },
-        { name := `proof, documents := #[sourceDoc, configDoc], declarations := #[rocqObject] }]
-      declarations := #[{ object := rocqObject }] })
+      role := `statement, documents := #[sourceDoc, configDoc]
+      declarations := #[{ object := rocqObject, projection := .statement }] })
     translations := #[
       authored `versoTranslation {
-        key := versoTranslation, source := #[{ realization := p.informalKey, facets := #[`statement] }]
-        target := #[{ realization := p.leanKey, facets := #[`statement] }], required := #[proof] },
+        key := versoTranslation, source := #[{ realization := p.informalKey }]
+        target := #[{ realization := statementRealization }], required := #[proof] },
       authored `rocqTranslation {
-        key := rocqTranslation, source := #[{ realization := rocqKey, facets := #[`statement] }]
-        target := #[{ realization := p.leanKey, facets := #[`statement] }], required := #[proof] }]
+        key := rocqTranslation, source := #[{ realization := rocqKey }]
+        target := #[{ realization := statementRealization }], required := #[proof] }]
     claims := #[
       authored `versoClaim {
         key := versoClaim, interpretation := "The Verso two-case account states toggle involution"
@@ -134,16 +135,20 @@ run_cmd liftTermElabM do
         interpretation := "Relate Rocq off/on to Lean off/on; this relation preserves toggle and the universal two-state involution statement"
         required := #[rocqReview] }]
     requirements := native.requirements ++ #[
-      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence },
-      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence }] }
+      authored `versoReview { key := versoReview, expected := .review `statementCorrespondence `MockReviewer },
+      authored `rocqReview { key := rocqReview, expected := .review `statementCorrespondence `MockReviewer }] }
   let r ← obtain (admit input)
-  ensure (r.nodes.size == 1 && r.realizations.size == 3 && r.translations.size == 2)
-    "One node has three realizations and exactly two explicit translations"
-  ensure ((r.realization? p.informalKey).isSome && (r.realization? p.leanKey).isSome &&
+  ensure (r.nodes.size == 1 && r.realizations.size == 4 && r.translations.size == 2)
+    "One node has separate statement, proof, prose and Rocq realizations with two explicit translations"
+  ensure ((r.realization? p.informalKey).isSome && (r.realization? statementRealization).isSome &&
+    (r.realization? proofRealization).isSome &&
     (r.realization? rocqKey).isSome) "Existing identities remain discoverable"
   ensure ((← binding r proof) == nativeBinding && (r.resultForRequirement proof).complete)
     "Adding a blocked source does not stale independent actual native proof evidence"
-  ensure ((r.resultFor (.realization p.informalKey)).status == .unassessed)
+  ensure ((r.resultFor (.realization p.informalKey)).status == .unassessed &&
+      (r.resultFor (.realization proofRealization)).complete &&
+      (r.realization? p.informalKey).any (fun model =>
+        model.role == `statement && model.context.language == `verso))
     "Readable Verso source is not proofreading"
   ensure ((r.resultFor (.translation versoTranslation)).status == .pending &&
     (r.resultForRequirement versoReview).status == .pending) "Verso correspondence awaits its own review"
@@ -177,23 +182,19 @@ run_cmd liftTermElabM do
     (← field report "documents") == toJson (r.documents.map (·.key)) &&
     (← field report "objects") == toJson r.objects)
     "Full authored source identity and resolution inventory is retained without document bytes"
-  let leanEntry ← reportEntry report "realizations" (toJson p.leanKey)
-  ensure ((← field leanEntry "value") == toJson ((r.realization? p.leanKey).get!) &&
+  let leanEntry ← reportEntry report "realizations" (toJson proofRealization)
+  ensure ((← field leanEntry "value") == toJson ((r.realization? proofRealization).get!) &&
     (← reportStatus leanEntry) == toJson Status.complete)
-    "Qualified realization and declaration associations retain native completion"
+    "The proof realization and its exact declaration selection retain native completion"
   let declarationEntries ← entries leanEntry "declarations"
   ensure (declarationEntries.size == 1 &&
-    (← field declarationEntries[0]! "subject") == toJson (Subject.declaration p.leanKey p.witness) &&
+    (← field declarationEntries[0]! "subject") == toJson (Subject.declaration proofRealization p.witness) &&
     (← reportStatus declarationEntries[0]!) == toJson Status.complete)
     "Selected declaration result is independently inspectable"
-  let facetEntries ← entries leanEntry "facets"
-  ensure (facetEntries.size == 2 && facetEntries.any fun entry =>
-    entry.getObjValD "subject" == toJson (Subject.facet p.leanKey `statement))
-    "Typed facet identity is retained"
   for key in #[versoTranslation, rocqTranslation] do
     let entry ← reportEntry report "translations" (toJson key)
     ensure ((← field entry "value") == toJson ((r.translation? key).get!))
-      "Endpoint facets, required proof and semantic context are exported without widening"
+      "Direct endpoints, required native proof obligations and semantic context are exported without widening"
   for key in #[versoClaim, rocqClaim] do
     let entry ← reportEntry report "claims" (toJson key)
     ensure ((← field entry "value") == toJson ((r.claim? key).get!))
@@ -237,9 +238,11 @@ run_cmd liftTermElabM do
     ensure ((← entries emptyReport name).isEmpty) "An empty registry invents no report assessment"
 
   -- Synthetic semantic-input mutation, retaining the actual native observation.
-  -- Raw Lean file bytes are provenance, not proof content.
+  -- Raw Lean file bytes are provenance, not the selected proposition's content.
+  -- Change the exact expected-goal descriptor owned by this proof requirement.
   let staleInput := { input with bindingInputs := input.bindingInputs.map fun record =>
-    if record.value.name == NativeLean.statementContext then
+    if record.value.subject == proof.subject &&
+        record.value.name == NativeLean.expectedContextFor proof then
       { record with value := { record.value with content := record.value.content ++ "-changed-statement" } }
     else record }
   let staleRegistry ← obtain (admit staleInput)
@@ -315,9 +318,10 @@ run_cmd liftTermElabM do
   match admit wrongProject with
   | .error issues => ensure (issues.any (·.code == "wrong-project")) "Wrong project must be explicit"
   | .ok _ => throwError "Same-spelled source reference must not be silently rebound to another project"
-  let alternative : RealizationKey := ⟨label, `alternativeSource⟩
+  let alternative := (⟨label, `alternativeSource⟩ : RealizationKey).forRole `statement
   let withAlternative := { input with realizations := input.realizations.push (authored `alternative {
-    key := alternative, context := rocqContext, facets := #[{ name := `statement, documents := #[sourceDoc, configDoc] }] }) }
+    key := alternative, context := rocqContext, role := `statement,
+    documents := #[sourceDoc, configDoc] }) }
   let alternativeRegistry ← obtain (admit withAlternative)
   let _ ← checkReport alternativeRegistry
   ensure ((alternativeRegistry.resultFor (.realization alternative)).status == .unassessed &&

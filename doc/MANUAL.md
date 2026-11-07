@@ -1527,6 +1527,10 @@ The graph uses two orthogonal status tracks:
 
 This split is intentional. For theorem-like nodes, the statement can already be
 formalized while the proof still remains unstarted, in progress, or complete.
+These labels summarize the node's selected native Lean checks and dependency
+axes. They do not summarize every realization, correspondence relation, or
+human review in the assessment snapshot; inspect those results separately in
+the captured assessment details.
 
 Read the proof fill states as:
 

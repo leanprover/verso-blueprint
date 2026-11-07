@@ -22,18 +22,22 @@ private def obtain [Repr ε] : Except ε α → IO α
 private def contribution (id : Name) (value : α) : Contribution α :=
   { origin := { id, moduleName := `MOCK_GRAPH, source := "synthetic" }, value }
 
-private def context : Context := ⟨`lean, `mockGraph⟩
+private def context : Context := ⟨`mockGraph, `mockGraph⟩
 private def key : RealizationKey := ⟨`graph, `implementation⟩
 private def document : DocumentKey := ⟨context, "MOCK.lean"⟩
-private def requirement (n : Nat) : RequirementKey := ⟨.facet key (.num `facet n), `check⟩
+private def realizationKey (n : Nat) : RealizationKey :=
+  { key with name := .num `realization n }
+private def requirement (n : Nat) : RequirementKey :=
+  ⟨.realization (realizationKey n), `check⟩
 
 private def input (edges : Array (Array Nat)) : Input := {
   nodes := #[contribution `node { label := key.node, title := "MOCK graph" }]
-  documents := #[contribution `document { key := document, text := "MOCK source" }]
-  realizations := #[contribution `realization {
-    key, context
-    facets := edges.mapIdx fun n _ => {
-      name := .num `facet n, documents := #[document], required := #[requirement n] } }]
+  documents := #[contribution `source { key := document, text := "MOCK selected content" }]
+  -- Independently owned mock content keeps these graph controls focused on
+  -- prerequisite evaluation without bypassing source availability.
+  realizations := edges.mapIdx fun n _ => contribution (.num `realization n) {
+    key := realizationKey n, context, role := .num `mockRole n, documents := #[document],
+    required := #[requirement n] }
   requirements := edges.mapIdx fun n prerequisites => contribution (.num `requirement n) {
     key := requirement n, expected := .check `MOCK_CHECK
     prerequisites := prerequisites.map requirement } }
@@ -140,35 +144,57 @@ private instance : ToJson CollidingJson where
   let replay ← obtain (admit { nodes := #[original, original] })
   ensure (replay.nodes.size == 1) "Exact producer replay must remain idempotent"
 
--- The reviewed explicit-requirement policy: displayed declarations and required
--- validation subjects are distinct. A facet can require a mathematical check on
--- A while displaying B; this cannot certify declaration B or the whole group.
+-- Each declaration selection has one owner and its own exact requirement.
+-- A check on A cannot be borrowed by B, even when the declarations share a
+-- source document or belong to the same Blueprint node.
 #eval show IO Unit from do
   let a : ObjectKey := ⟨context, "MOCK.a"⟩
   let b : ObjectKey := ⟨context, "MOCK.b"⟩
-  let qa : RequirementKey := ⟨.declaration key a, `proof⟩
-  let qb : RequirementKey := ⟨.declaration key b, `proof⟩
+  let statementOwner := key.forRole `statement
+  let proofOwner := key.forRole `proof
+  let qa : RequirementKey := ⟨.declaration statementOwner a, `proof⟩
+  let qb : RequirementKey := ⟨.declaration proofOwner b, `proof⟩
   let raw : Input := {
     nodes := #[contribution `node { label := key.node, title := "Explicit requirements" }]
     documents := #[contribution `document { key := document, text := "MOCK source" }]
     objects := #[contribution `objectA { key := a, resolution := .resolved, document := some document },
       contribution `objectB { key := b, resolution := .resolved, document := some document }]
-    realizations := #[contribution `realization {
-      key, context
-      facets := #[{ name := `proof, declarations := #[b], required := #[qa] }]
-      declarations := #[{ object := a, required := #[qa] }, { object := b, required := #[qb] }] }]
+    realizations := #[
+      contribution `statementOwner {
+        key := statementOwner, context, role := `statement,
+        declarations := #[{ object := a, projection := .statement, required := #[qa] }] },
+      contribution `proofOwner {
+        key := proofOwner, context, role := `proof,
+        declarations := #[{ object := b, projection := .implementation, required := #[qb] }] }]
     requirements := #[contribution `requirementA {
-      key := qa, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure },
-      contribution `requirementB { key := qb, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
+      key := qa, expected := .check `MOCK_CHECK, coverage := .dependencyClosure },
+      contribution `requirementB { key := qb, expected := .check `MOCK_CHECK, coverage := .dependencyClosure }] }
+
+  -- Reassigning A's requirement to B is rejected at the ownership boundary,
+  -- rather than being hidden by a flattened document inventory.
+  let borrowed : Input := { raw with realizations := #[
+    contribution `statementOwner {
+      key := statementOwner, context, role := `statement,
+      declarations := #[{ object := a, projection := .statement, required := #[qa] }] },
+    contribution `proofOwner {
+      key := proofOwner, context, role := `proof,
+      declarations := #[{ object := b, projection := .implementation, required := #[qa, qb] }] }] }
+  match admit borrowed with
+  | .ok _ => throw <| IO.userError "A's requirement was borrowed by B's realization"
+  | .error issues =>
+      ensure (issues.any (·.code == "wrong-subject"))
+        "Cross-owner requirement borrowing must be diagnosed explicitly"
+
   let r ← obtain (admit raw)
   let some binding := r.bindingFor qa | throw <| IO.userError "Missing exact A binding"
   let r ← obtain (admit { raw with evidence := #[contribution `evidenceA {
     id := `MOCK_CHECK_A_ONLY, requirement := qa, binding
     observation := .check {
-      validator := NativeLean.bodyValidator, declaration := some a, outcome := .passed, coverage := .dependencyClosure } }] })
-  ensure ((r.resultFor (.facet key `proof)).complete &&
-    !(r.resultFor (.declaration key b)).complete && !(r.resultFor (.realization key)).complete &&
-    r.requiredFor (.facet key `proof) == #[qa])
-    "Facet success establishes its explicit A requirement, not displayed B or whole-realization validity"
+      validator := `MOCK_CHECK, outcome := .passed, coverage := .dependencyClosure } }] })
+  ensure ((r.resultFor (.declaration statementOwner a)).complete &&
+    !(r.resultFor (.declaration proofOwner b)).complete &&
+    r.requiredFor (.realization statementOwner) == #[qa] &&
+    r.requiredFor (.realization proofOwner) == #[qb])
+    "A's result must remain local to its realization and cannot certify B"
 
 end VersoBlueprintTests.BlueprintRealizationKernelGraph

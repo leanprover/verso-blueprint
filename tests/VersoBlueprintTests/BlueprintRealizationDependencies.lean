@@ -65,14 +65,64 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .ok value => pure value
   | .error error => throwError "Unexpected rejection: {repr error}"
 
-private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+private def proofKey (p : PreparedModel) : RequirementKey :=
+  ⟨.declaration (p.leanKey.forRole `proof) p.witness, `proof⟩
+
+private def statementKey (p : PreparedModel) : RequirementKey :=
+  ⟨.declaration (p.leanKey.forRole `statement) p.witness, `statement⟩
 
 private def join (a b : Input) : Input := {
   nodes := a.nodes ++ b.nodes, documents := a.documents ++ b.documents
   objects := a.objects ++ b.objects, realizations := a.realizations ++ b.realizations
   translations := a.translations ++ b.translations, claims := a.claims ++ b.claims
   requirements := a.requirements ++ b.requirements, evidence := a.evidence ++ b.evidence
+  reviewSelections := a.reviewSelections ++ b.reviewSelections
   bindingInputs := a.bindingInputs ++ b.bindingInputs }
+
+/-! This selector fixture assembles only the ordinary native requirements the
+ordinary capture producer emits. The source projection itself remains
+source-only; both observations below come from the current checked Lean
+declaration. The separate BlueprintAssessmentSnapshot fixture covers the
+complete consumer path through real capture. -/
+private def withNativeChecks (p : PreparedModel) : TermElabM Input := do
+  ensure p.input.requirements.isEmpty "Native source projection unexpectedly supplied validation contracts"
+  ensure p.input.evidence.isEmpty "Native source projection unexpectedly supplied observations"
+  let statementRole := p.leanKey.forRole `statement
+  let proofRole := p.leanKey.forRole `proof
+  unless p.input.realizations.any (·.value.key == statementRole) &&
+      p.input.realizations.any (·.value.key == proofRole) do
+    throwError "Selector fixture requires separate native statement and proof roles"
+  let checked ← obtain (← NativeLean.checkDeclaration p.witness.context.project p.witness)
+  let statementKey := statementKey p
+  let proofKey := proofKey p
+  let input := { p.input with
+    realizations := p.input.realizations.map fun record =>
+      if record.value.key == statementRole then
+        { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+          { decl with required := canonical (decl.required.push statementKey) } } }
+      else if record.value.key == proofRole then
+        { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+          { decl with required := canonical (decl.required.push proofKey) } } }
+      else record
+    requirements := p.input.requirements ++ #[
+      p.contribution `nativeStatementRequirement {
+        key := statementKey, expected := .check NativeLean.statementValidator,
+        coverage := .dependencyClosure },
+      p.contribution `nativeBodyRequirement {
+        key := proofKey, expected := .check NativeLean.bodyValidator,
+        coverage := .dependencyClosure, prerequisites := #[statementKey] }] }
+  let candidate ← obtain (admit input)
+  let some statementBinding := candidate.bindingFor statementKey
+    | throwError "Missing exact native statement binding"
+  let some proofBinding := candidate.bindingFor proofKey
+    | throwError "Missing exact native body binding"
+  return { input with evidence := #[
+    p.contribution `nativeStatementEvidence {
+      id := p.leanKey.node ++ `nativeStatement, requirement := statementKey,
+      binding := statementBinding, observation := .check checked.statement },
+    p.contribution `nativeBodyEvidence {
+      id := p.leanKey.node ++ `nativeBody, requirement := proofKey,
+      binding := proofBinding, observation := .check checked.body }] }
 
 private def edge (axis : Array SelectedUse) (name : Name) : TermElabM (Except Diagnostic RequirementKey) := do
   let some (_, result) := axis.find? (fun e => e.1.label == name) | throwError "Missing effective edge {name}"
@@ -128,8 +178,7 @@ private def rekey (input : Input) (old new : RequirementKey) : Input := Id.run d
   return { input with
     realizations := input.realizations.map fun record => { record with value := { record.value with
       required := keys record.value.required
-      declarations := record.value.declarations.map fun decl => { decl with required := keys decl.required }
-      facets := record.value.facets.map fun facet => { facet with required := keys facet.required } } }
+      declarations := record.value.declarations.map fun decl => { decl with required := keys decl.required } } }
     requirements := input.requirements.map fun record => { record with value := { record.value with
       key := if record.value.key == old then new else record.value.key
       prerequisites := keys record.value.prerequisites } }
@@ -146,12 +195,11 @@ private def authored (id : Name) (value : α) : Contribution α := {
 -- Real native availability failure in a normal same-toolchain Lean environment
 -- without the fixture module. This is a labeled negative environment injection,
 -- not a fake unavailable observation and never a successful proof replacement.
-private unsafe def unavailableCheck (witness : ObjectKey) (expected : Syntax)
-    (documents : Array DocumentKey) : CoreM (Except Diagnostic NativeLean.Checked) := do
+private unsafe def unavailableCheck (witness : ObjectKey) : CoreM (Except Diagnostic NativeLean.CheckedDeclaration) := do
   liftM enableInitializersExecution
   let env ← liftM <| importModules #[{ module := `Lean }] {} (level := .server)
   withEnv env <| MetaM.run' <| TermElabM.run' <|
-    NativeLean.check context.project witness expected documents
+    NativeLean.checkDeclaration context.project witness
 
 private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let sourceLabel := label "source"
@@ -165,15 +213,14 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let some proofSlot := source.proseView `verso `proof | throwError "Actual source must have proof uses"
   ensure (proofSlot.stx.isMissing && !proofSlot.hasBody && !proofUses.isEmpty)
     "The actual imported source has dependency-only proof metadata"
-  let expected ← `(term| True)
   let clean ← obtain (← project context.project (label "clean"))
   let admitted ← obtain (← project context.project (label "admitted"))
   let other ← obtain (← project context.project (label "other"))
   let localSource ← obtain (← project context.project sourceLabel)
-  let cleanInput ← obtain (← clean.validate expected)
-  let admittedInput ← obtain (← admitted.validate expected)
-  let otherInput ← obtain (← other.validate expected)
-  let sourceInput ← obtain (← localSource.validate expected)
+  let cleanInput ← withNativeChecks clean
+  let admittedInput ← withNativeChecks admitted
+  let otherInput ← withNativeChecks other
+  let sourceInput ← withNativeChecks localSource
   ensure (localSource.leanKey == ⟨sourceLabel, `lean⟩ &&
     localSource.informalKey == ⟨sourceLabel, `docstring⟩ &&
     localSource.witness == ⟨context, "DependencySelectionFixture.source"⟩ &&
@@ -210,8 +257,11 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     (registry.resultForRequirement (proofKey localSource)).complete)
     "Local native proof completes while the admitted Blueprint dependency remains pending, without traversal"
   ensure ((registry.resultFor (.realization localSource.informalKey)).status == .unassessed &&
-    (registry.requirement? (proofKey localSource)).any (·.prerequisites.isEmpty))
-    "Projection does not assess prose or install mathematical dependencies as prerequisites"
+    (registry.realization? localSource.informalKey).any (fun model =>
+      model.role == `statement && model.context.language == localSource.docstringFormat) &&
+    (registry.requirement? (proofKey localSource)).any
+      (·.prerequisites == #[statementKey localSource]))
+    "Prose stays unassessed; native body completion depends only on its native statement check"
   let consumerUses ← obtain (← selectUses registry context (label "consumer"))
   ensure ((← obtain (← edge consumerUses.1 sourceLabel)) == proofKey localSource)
     "An actual accepted consumer selects the dependency-only source's exact default proof"
@@ -247,7 +297,7 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let sparseReport ← reportFor sparseRegistry
   let sparseRequirements ← entries (← field sparseReport "registry") "requirements"
   ensure (!(sparseRegistry.nodes.any (·.label == sourceLabel)) &&
-    sparseRequirements.size == 1 &&
+    sparseRequirements.size == 2 &&
     (← field (← reportedEdge sparseReport "statement" (label "clean")) "requirement") == toJson cleanKey &&
     (← field (← reportedEdge sparseReport "statement" (label "admitted")) "diagnostic").getObjValD "code" ==
       toJson "missing-prerequisite" &&
@@ -306,7 +356,13 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   ensure (wrongChecked.observation.outcome == .failed) "The actual wrong expectation fails native matching"
   let wrongGoal := changeRequirement input cleanKey fun req =>
     { req with expected := .proof wrongChecked.goal clean.witness }
-  let wrongGoal := { wrongGoal with evidence := wrongGoal.evidence.filter (·.value.requirement != cleanKey) }
+  let wrongGoal := { wrongGoal with
+    evidence := wrongGoal.evidence.filter (·.value.requirement != cleanKey)
+    bindingInputs := wrongGoal.bindingInputs ++
+      wrongChecked.semanticContext.toArray.map (fun content => authored `wrongGoalSemanticContext {
+        subject := cleanKey.subject, name := NativeLean.expectedContextFor cleanKey, content }) ++
+      wrongChecked.statementContext.toArray.map (fun content => authored `wrongGoalStatementContext {
+        subject := cleanKey.subject, name := NativeLean.expectedStatementContextFor cleanKey, content }) }
   let wrongGoalRegistry ← obtain (admit wrongGoal)
   let some wrongBinding := wrongGoalRegistry.bindingFor cleanKey | throwError "Missing wrong-goal binding"
   let wrongGoalRegistry ← obtain (admit { wrongGoal with evidence := wrongGoal.evidence.push (authored `wrongGoal {
@@ -319,18 +375,22 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
 
   -- A genuinely checked complete alternative for the same admitted node cannot
   -- substitute for its selected default proof. No mock success is constructed.
-  let alternative : RealizationKey := ⟨label "admitted", `alternative⟩
+  let alternative := (⟨label "admitted", `alternative⟩ : RealizationKey).forRole `proof
   let alternativeKey : RequirementKey := ⟨.declaration alternative clean.witness, `proof⟩
+  let expected ← `(term| True)
   let fresh ← obtain (← NativeLean.check context.project clean.witness expected
     (clean.input.objects.filterMap (·.value.document)))
   let withAlternative := { input with
     realizations := input.realizations.push (authored `alternative {
-      key := alternative, context
-      declarations := #[{ object := clean.witness, required := #[alternativeKey] }] })
+      key := alternative, context, role := `proof
+      declarations := #[{ object := clean.witness, projection := .implementation, required := #[alternativeKey] }] })
     requirements := input.requirements.push (authored `alternativeRequirement {
       key := alternativeKey, expected := .proof fresh.goal clean.witness, coverage := .dependencyClosure })
-    bindingInputs := input.bindingInputs ++ fresh.statementContext.toArray.map (fun content => authored `alternativeContext {
-      subject := alternativeKey.subject, name := NativeLean.expectedStatementContextFor alternativeKey, content }) }
+    bindingInputs := input.bindingInputs ++
+      fresh.semanticContext.toArray.map (fun content => authored `alternativeSemanticContext {
+        subject := alternativeKey.subject, name := NativeLean.expectedContextFor alternativeKey, content }) ++
+      fresh.statementContext.toArray.map (fun content => authored `alternativeStatementContext {
+        subject := alternativeKey.subject, name := NativeLean.expectedStatementContextFor alternativeKey, content }) }
   let alternativeRegistry ← obtain (admit withAlternative)
   let some alternativeBinding := alternativeRegistry.bindingFor alternativeKey | throwError "Missing alternative binding"
   let withAlternative := { withAlternative with evidence := withAlternative.evidence.push (authored `alternativeEvidence {
@@ -342,6 +402,12 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
     (alternativeRegistry.resultForRequirement admittedKey).status == .pending &&
     (← obtain (← edge alternativeUses.1 (label "admitted"))) == admittedKey)
     "Complete alternative is not implicitly selected instead of admitted default"
+  match alternativeRegistry.selectRequirement {
+      node := label "admitted", context, role := some `proof, requirement := `proof } with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "ambiguous-prerequisite")
+      "A caller omitting the realization must see multiple exact proof-role candidates"
+  | .ok _ => throwError "Unscoped proof-role selection silently chose one of two realizations"
   let alternativeReport ← reportFor alternativeRegistry
   let selectedDefault ← reportedEdge alternativeReport "statement" (label "admitted")
   ensure ((← field selectedDefault "requirement") == toJson admittedKey &&
@@ -356,33 +422,36 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
 
   -- Synthetic contract corruptions. Pure admission rejects invalid contexts;
   -- the selector rejects policy-incompatible admitted contracts.
-  for expectation in #[Expectation.review `proofread, .check `unitTests, .check `proof,
+  for expectation in #[Expectation.review `proofread `MockReviewer, .check `unitTests, .check `proof,
       .check NativeLean.statementValidator] do
     let bad ← obtain (admit (changeRequirement input cleanKey fun req => { req with expected := expectation }))
     edgeError bad (label "clean") "not-proof-requirement"
   let coverage ← obtain (admit (changeRequirement input cleanKey fun req => { req with coverage := .subject }))
   edgeError coverage (label "clean") "insufficient-coverage"
-  let unrequired ← obtain (admit (clearDeclarationRequirement input clean.leanKey))
+  let cleanProofRealization := clean.leanKey.forRole `proof
+  let unrequired ← obtain (admit (clearDeclarationRequirement input cleanProofRealization))
   edgeError unrequired (label "clean") "unrequired-default-proof"
-  let facetKey : RequirementKey := ⟨.facet clean.leanKey `proof, `proof⟩
-  let wrongSubject ← obtain (admit (rekey input cleanKey facetKey))
-  edgeError wrongSubject (label "clean") "wrong-default-subject"
-  let otherDeclarationKey : RequirementKey := ⟨.declaration clean.leanKey other.witness, `proof⟩
+  let broadKey : RequirementKey := ⟨.realization cleanProofRealization, `proof⟩
+  match admit (rekey input cleanKey broadKey) with
+  | .error diagnostics =>
+    ensure (diagnostics.any (·.code == "wrong-native-subject"))
+      "A native check cannot move from its declaration to a whole-realization subject"
+  | .ok _ => throwError "Native declaration check accepted an unowned realization subject"
+  let otherDeclarationKey : RequirementKey := ⟨.declaration cleanProofRealization other.witness, `proof⟩
   let wrongDeclaration := rekey input cleanKey otherDeclarationKey
   let wrongDeclaration := changeRequirement wrongDeclaration otherDeclarationKey fun req =>
     { req with expected := .proof fresh.goal other.witness }
   let wrongDeclaration := { wrongDeclaration with
     bindingInputs := wrongDeclaration.bindingInputs.filter
-      (·.value.subject != .declaration clean.leanKey clean.witness)
+      (·.value.subject != .declaration cleanProofRealization clean.witness)
     realizations := wrongDeclaration.realizations.map fun record =>
-    if record.value.key == clean.leanKey then { record with value := { record.value with
-      declarations := record.value.declarations.map fun decl => { decl with object := other.witness }
-      facets := record.value.facets.map fun facet => { facet with declarations := #[other.witness] } } }
+    if record.value.key == cleanProofRealization then { record with value := { record.value with
+      declarations := record.value.declarations.map fun decl => { decl with object := other.witness } } }
     else record }
   let wrongDeclarationRegistry ← obtain (admit wrongDeclaration)
-  edgeError wrongDeclarationRegistry (label "clean") "wrong-default-subject"
+  edgeError wrongDeclarationRegistry (label "clean") "missing-prerequisite"
   let wrongWitness := clearDeclarationRequirement (changeRequirement input cleanKey fun req =>
-    { req with expected := .proof fresh.goal other.witness }) clean.leanKey
+      { req with expected := .proof fresh.goal other.witness }) cleanProofRealization
   let wrongWitnessRegistry ← obtain (admit wrongWitness)
   edgeError wrongWitnessRegistry (label "clean") "wrong-default-witness"
   let foreignContext : Informal.Realizations.Context := ⟨`lean, `otherProject⟩
@@ -396,31 +465,25 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   match admit mismatchedWitness with
   | .error diagnostics => ensure (diagnostics.any (·.code == "invalid-requirement")) "Witness/goal context disagreement is invalid"
   | .ok _ => throwError "Witness and goal contexts must agree"
-  let ambiguous := { input with requirements := input.requirements.push (authored `ambiguous {
-    key := facetKey, expected := .proof fresh.goal clean.witness, coverage := .dependencyClosure }) }
-  let ambiguousRegistry ← obtain (admit ambiguous)
-  ensure ((ambiguousRegistry.resultForRequirement cleanKey).complete) "One ambiguous candidate actually completes"
-  edgeError ambiguousRegistry (label "clean") "ambiguous-prerequisite"
-  let ambiguousReport ← reportFor ambiguousRegistry
-  let ambiguousUses ← obtain (← selectUses ambiguousRegistry context sourceLabel)
-  let .error ambiguity ← edge ambiguousUses.1 (label "clean") | throwError "Expected selector ambiguity"
-  ensure ((← reportedEdge ambiguousReport "statement" (label "clean")) ==
-    Json.mkObj [("diagnostic", toJson ambiguity)]) "Ambiguity stays an exact diagnostic, not a validation status"
-  let missingDefault := clearDeclarationRequirement withAlternative admitted.leanKey
-  let missingDefault := { missingDefault with
-    realizations := missingDefault.realizations.map fun record => { record with value := { record.value with
-      facets := record.value.facets.map fun facet => { facet with required := facet.required.filter (· != admittedKey) } } }
-    requirements := missingDefault.requirements.filter (·.value.key != admittedKey)
-    evidence := missingDefault.evidence.filter (·.value.requirement != admittedKey) }
-  let missingRegistry ← obtain (admit missingDefault)
-  ensure ((missingRegistry.resultForRequirement alternativeKey).complete) "Alternative remains genuinely complete"
-  edgeError missingRegistry (label "admitted") "missing-prerequisite"
+  -- The admitted default remains selected even alongside a complete alternative;
+  -- the explicit default name resolves the ambiguity that an unscoped query reports.
+  let defaultWithAlternativeUses ← obtain (← selectUses alternativeRegistry context sourceLabel)
+  ensure ((← obtain (← edge defaultWithAlternativeUses.1 (label "clean"))) == cleanKey)
+    "A complete alternate realization cannot make the default selection ambiguous"
+  let missingDefault := { withAlternative with
+    requirements := withAlternative.requirements.filter (·.value.key != admittedKey)
+    evidence := withAlternative.evidence.filter (·.value.requirement != admittedKey) }
+  match admit missingDefault with
+  | .error diagnostics =>
+    ensure (diagnostics.any (·.code == "unknown-requirement"))
+      s!"A batch cannot publish the default proof reference without its exact contract: {repr diagnostics}"
+  | .ok _ => throwError "A complete alternative concealed the missing default proof contract"
 
-  let absent ← obtain (← unavailableCheck clean.witness expected (clean.input.objects.filterMap (·.value.document)))
-  ensure (absent.observation.outcome == .unavailable) "Actual native check without Provider must remain unavailable"
+  let absent ← obtain (← unavailableCheck clean.witness)
+  ensure (absent.body.outcome == .unavailable) "Actual native check without Provider must remain unavailable"
   let unavailable := { input with evidence := input.evidence.map fun record =>
     if record.value.requirement == cleanKey then
-      { record with value := { record.value with observation := .proof absent.observation } } else record }
+      { record with value := { record.value with observation := .check absent.body } } else record }
   let unavailableRegistry ← obtain (admit unavailable)
   let unavailableUses ← obtain (← selectUses unavailableRegistry context sourceLabel)
   ensure ((← obtain (← edge unavailableUses.1 (label "clean"))) == cleanKey &&

@@ -19,9 +19,9 @@ def batch : Environment.AuthoredBatch := {
   references := #[(reference, some source)]
   realizations := #[{
     key := Owner.rocqKey, context
-    facets := #[{ name := `statement, documents := #[source, config], declarations := #[reference] },
-      { name := `proof, documents := #[source, config], declarations := #[reference] }]
-    declarations := #[{ object := reference }] }] }
+    role := `statement
+    documents := #[source, config]
+    declarations := #[{ object := reference, projection := .statement }] }] }
 
 run_cmd liftCoreM do
   let before ← Environment.stagedAuthoring
@@ -33,5 +33,48 @@ run_cmd liftCoreM do
 run_cmd liftCoreM <| Realizations.Authoring.configureProject Owner.projectName
 run_cmd liftCoreM <| Realizations.Authoring.stage `rocq batch
 run_cmd liftCoreM <| Realizations.Authoring.stage `rocq batch
+
+-- First capture exposes the exact binding for the source-authored review slot.
+-- A test-only review is then authored with that binding and selected explicitly;
+-- it never stands in for the real native proof checks or Rocq source resolution.
+run_cmd do
+  let binding ← liftTermElabM do
+    let initial ← Realizations.Capture.capture
+    let registry ← match initial with
+      | .ok snapshot => pure snapshot.registry
+      | .error issues => throwError "Complete authoring batch did not capture: {repr issues}"
+    unless (registry.resultFor (.translation Owner.versoLink)).status == .pending &&
+        registry.reviewSelections.all (·.requirement != Owner.versoReview) do
+      throwError "A review slot without an authored judgment must remain pending"
+    let some binding := registry.bindingFor Owner.versoReview
+      | throwError "The complete staged model has no binding for the Verso review slot"
+    pure binding
+  let reviewId := `mockVersoCorrespondence
+  liftCoreM <| Realizations.Authoring.stage `mockReviewEvidence {
+    reviews := #[{
+      id := reviewId, requirement := Owner.versoReview, binding
+      observation := {
+        criterion := `statementCorrespondence, reviewer := `MockReviewer
+        outcome := .passed, explanation := "MOCK test review; not human evidence" } }]
+    reviewSelections := #[
+      { requirement := Owner.versoReview, judgment := some reviewId },
+      { requirement := Owner.rocqReview, judgment := none }] }
+
+run_cmd liftTermElabM do
+  let captured ← Realizations.Capture.capture
+  let registry ← match captured with
+    | .ok snapshot => pure snapshot.registry
+    | .error issues => throwError "Complete reviewed authoring batch did not capture: {repr issues}"
+  unless registry.reviewSelections.any (fun selection =>
+      selection.requirement == Owner.versoReview && selection.judgment == some `mockVersoCorrespondence) &&
+      registry.reviewSelections.any (fun selection =>
+      selection.requirement == Owner.rocqReview && selection.judgment.isNone) do
+    throwError "Authored review selections were not retained by complete capture"
+  unless (registry.resultFor (.realization Owner.leanProofKey)).complete do
+    throwError "The source-authored review selection changed the native proof result"
+  unless (registry.resultForRequirement Owner.versoReview).complete &&
+      (registry.resultFor (.translation Owner.versoLink)).complete &&
+      (registry.resultFor (.translation Owner.rocqLink)).status == .blocked do
+    throwError "Selected mock correspondence approval or unsupported Rocq resolution was misreported"
 
 end VersoBlueprintTests.BlueprintRealizationAuthoring.Attachment

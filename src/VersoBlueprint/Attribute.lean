@@ -129,7 +129,7 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
 
 private def statementFromDocstring? (decl : Name) (ref : Syntax) :
-    CoreM (Option (Data.InformalBody × Array Data.UseRef)) := do
+    CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
   let internalDoc? ← liftM <| findInternalDocString? env decl
   let (elabStx, deps) ←
@@ -157,7 +157,8 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     pure <| some ({
       stx := ref
       elabStx := elabStx.map (·.raw)
-    }, deps)
+    }, deps, if internalDoc?.any (fun doc => match doc with | .inl _ => true | .inr _ => false)
+      then `markdown else `verso)
 
 private structure ResolvedAutoDeps where
   statement : Array SourceData.UseDeclaration := #[]
@@ -232,7 +233,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   -- Attachments never compete with or fill an existing node's informal prose.
   let current? ← Environment.getNode? label
   let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
-  let deps ← resolveAutoDeps decl label info cfg (docstring?.map Prod.snd |>.getD #[])
+  let deps ← resolveAutoDeps decl label info cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
@@ -254,8 +255,8 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
       facets := #[`statement], reference := extRef }]
     priority := none
     source }
-  let sources ← docstring?.toArray.mapM fun (body, _) =>
-    Environment.sourceAt label `verso `statement `verso (.prose body) ref
+  let sources ← docstring?.toArray.mapM fun (body, _, format) =>
+    Environment.sourceAt label `verso `statement format (.prose body) ref
   discard <| Environment.contributeAttribute fact {
     sources
     uses := deps.statement ++ deps.proof }

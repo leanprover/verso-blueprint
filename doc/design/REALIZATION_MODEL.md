@@ -1,9 +1,10 @@
 # Realizations, relations, and assessment
 
 Design basis, updated 2026-11-06. Version one is a document compiler producing an immutable
-assessment snapshot. Its replacement data model is not implemented yet; see the
-[current implementation](REALIZATIONS_AND_TRANSLATIONS.md). Examples and planned
-regressions below are not claims of newly executed validation.
+assessment snapshot. The first bounded implementation uses direct owned realizations, explicit current
+reviews and exact native own-type support; see the
+[implementation and limits](REALIZATIONS_AND_TRANSLATIONS.md). Broader acceptance
+cases below remain design targets unless covered by a recorded test run.
 
 ## 1. Version-one contract
 
@@ -51,8 +52,8 @@ Lean statement meaning includes relevant computational definitions; selected pro
 implementation includes its own body and explicitly selected helpers. Authored text
 is byte-bound. Other sources use documented conservative selection or report unsupported/
 unavailable; there is no universal selection language. Semantic content and byte text
-sharing a file remain independently selected. Retire semantic facets and
-`Requirement.scope` once explicit selections carry their responsibilities.
+sharing a file remain independently selected. Semantic facets and
+`Requirement.scope` are retired; explicit selections carry their responsibilities.
 
 ### Assessment rules
 
@@ -157,8 +158,11 @@ Use the real authoring/import, capture, evaluation and report path:
 - One Lean declaration supplies statement S and proof P; prose supplies statement T.
 - `proves(P,S)` requires native mathematical support.
 - Correspondence between T and S requires Alice's mathematical review and, for this
-  example's contract, successful completion of `proves(P,S)`.
+  example's contract, the exact native-support obligation for `proves(P,S)`.
 - The report shows Alice's local review and the proof prerequisite separately.
+  That prerequisite names one obligation, not a dynamic reference to the relation's
+  entire contract. Adding a sibling requirement to the proof relation does not
+  silently extend Alice's prerequisite list.
 
 | Source change | Required result |
 | --- | --- |
@@ -172,8 +176,8 @@ The implementation owner makes this path work. Verification connects the product
 selection/binding interfaces, original suitable evidence and finite prerequisite
 justification to their laws. Keep obligations in production, not assumptions about
 an ideal model. Additional abstractions must simplify this example or enable the
-next concrete case. This milestone is a planned test, not completed validation.
-Record resource cost under a bounded run, separating normal build/setup from capture.
+next concrete case. The implementation fixture is `BlueprintAssessmentSnapshot`; its source-edit runner
+preserves one explicitly mocked review binding. Record resource cost under a bounded run, separating normal build/setup from capture.
 Immutable snapshots simplify authority; they do not by themselves ensure scalability.
 
 ### Use-case catalog

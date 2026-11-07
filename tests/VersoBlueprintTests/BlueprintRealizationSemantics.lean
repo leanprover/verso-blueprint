@@ -49,18 +49,32 @@ run_cmd liftTermElabM do
     value := {
       id := .num `mockReview index, requirement := key, binding := saved[index]!
       observation := .review {
-        criterion := `runtimeMeaning, reviewer := `MOCK_REVIEWER, outcome := .passed
+        criterion := `runtimeMeaning, reviewer := `MockReviewer, outcome := .passed
         coverage := if index == 0 then .subject else .dependencyClosure } } } : Contribution Evidence)
-  let reviewed ← obtain (admit { r.contributions with evidence := r.contributions.evidence ++ reviews })
+  let selections := keys.mapIdx fun index key => ({
+    origin := { id := .num `mockReviewSelection index, moduleName }
+    value := { requirement := key, judgment := some (.num `mockReview index) } } : Contribution ReviewSelection)
+  let reviewed ← obtain (admit { r.contributions with
+    evidence := r.contributions.evidence ++ reviews
+    reviewSelections := r.contributions.reviewSelections ++ selections })
   ensure ((reviewed.resultForRequirement proofKey).complete == (mode != "proof-hole"))
     "Native proof result must independently reflect the current imported body"
-  for key in keys do
+  for index in [:keys.size] do
+    let key := keys[index]!
+    let expectedId := reviews[index]!.value.id
+    match reviewed.selectedReview key with
+    | .ok (some actualId) =>
+      unless actualId == expectedId do
+        throwError s!"Test review selection chose {actualId}, expected {expectedId}"
+    | selection =>
+      throwError s!"Test review selection is missing or unresolved for {repr key}: {repr selection}"
     let result := reviewed.localResult key
     if mode == "stale" then
       ensure (!result.complete && result.diagnostics.any (·.code == "stale-content"))
         "Imported semantics changed but an old correspondence review remained current"
     else
-      ensure result.complete "Exact current inputs should accept the MOCK test review"
+      unless result.complete do
+        throwError s!"Exact current inputs should accept the MOCK test review for {repr key}: {repr result}"
   let report := Report.ofRegistry reviewed
   ensure (!(report.compress.contains "providerSources") && !(report.compress.contains "semanticInputs"))
     "Reports must not export private semantic/build inputs"

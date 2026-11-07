@@ -81,22 +81,25 @@ run_cmd liftCoreM do
   ensure (Semantic.fingerprint (.const nameA []) != Semantic.fingerprint (.const nameB []))
     "Semantic fingerprints must preserve structured names"
   let context : Informal.Realizations.Context := ⟨`verso, `nameCollision⟩
-  let key : Informal.Realizations.RealizationKey := ⟨`node, `prose⟩
   let document : Informal.Realizations.DocumentKey := ⟨context, "MOCK.md"⟩
-  let requirement : Informal.Realizations.RequirementKey := ⟨.realization key, `review⟩
-  let makeInput (facet : Name) : Informal.Translations.Input := {
+  let keyA : Informal.Realizations.RealizationKey := ⟨`node, nameA⟩
+  let keyB : Informal.Realizations.RealizationKey := ⟨`node, nameB⟩
+  let requirementA : Informal.Realizations.RequirementKey := ⟨.realization keyA, `review⟩
+  let requirementB : Informal.Realizations.RequirementKey := ⟨.realization keyB, `review⟩
+  let makeInput (key : Informal.Realizations.RealizationKey)
+      (requirement : Informal.Realizations.RequirementKey) : Informal.Translations.Input := {
     nodes := #[⟨⟨`node, `MOCK_NAME_TEST, ""⟩, { label := `node, title := "Mock name test" }⟩]
     documents := #[⟨⟨`doc, `MOCK_NAME_TEST, ""⟩, { key := document, text := "MOCK prose" }⟩]
     realizations := #[⟨⟨`realization, `MOCK_NAME_TEST, ""⟩, {
-      key, context, facets := #[{ name := facet, documents := #[document] }], required := #[requirement] }⟩]
+      key, role := `statement, context, documents := #[document], required := #[requirement] }⟩]
     requirements := #[⟨⟨`requirement, `MOCK_NAME_TEST, ""⟩, {
-      key := requirement, expected := .review `MOCK_REVIEW }⟩] }
-  let .ok firstRegistry := Informal.Translations.admit (makeInput nameA)
+      key := requirement, expected := .review `MOCK_REVIEW `MOCK_REVIEWER }⟩] }
+  let .ok firstRegistry := Informal.Translations.admit (makeInput keyA requirementA)
     | throwError "First name-collision model rejected"
-  let .ok secondRegistry := Informal.Translations.admit (makeInput nameB)
+  let .ok secondRegistry := Informal.Translations.admit (makeInput keyB requirementB)
     | throwError "Second name-collision model rejected"
-  ensure (firstRegistry.bindingFor requirement != secondRegistry.bindingFor requirement)
-    "Changed facet identity with the same display text must invalidate the binding"
+  ensure (firstRegistry.bindingFor requirementA != secondRegistry.bindingFor requirementB)
+    "Changed realization identity with the same display text must invalidate the binding"
 
   let metadataLeft := Expr.mdata (MData.empty.insert `fingerprintTest ("left" : String)) (.const `Nat [])
   let metadataRight := Expr.mdata (MData.empty.insert `fingerprintTest ("right" : String)) (.const `Nat [])

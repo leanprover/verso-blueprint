@@ -107,12 +107,11 @@ private def mkIndexItem (label : Name) (kind : Data.NodeKind) (leanObjects : Lis
 
 private def defaultLeanRealizations (snapshot : Realizations.Capture.Snapshot) (label : Name) :
     Array Realizations.Realization :=
-  snapshot.registry.realizations.filter fun realization =>
-    realization.key.node == label && realization.key.name == `lean && realization.context.language == `lean
+  snapshot.nativeRealizationsFor label
 
-private def facetHasAvailableSource (snapshot : Realizations.Capture.Snapshot)
-    (facet : Realizations.Facet) : Bool :=
-  facet.documents.any fun key =>
+private def realizationHasAvailableSource (snapshot : Realizations.Capture.Snapshot)
+    (realization : Realizations.Realization) : Bool :=
+  realization.documents.any fun key =>
     snapshot.registry.documents.any fun document =>
       document.key == key && !document.text.trimAscii.toString.isEmpty
 
@@ -140,15 +139,18 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
       if acc.any (·.object == declaration.object) then acc else acc.push declaration
   let requiredNativeChecks := snapshot.registry.requirements.filter fun requirement =>
     match requirement.key.subject with
-    | .declaration key _ => key == ⟨label, `lean⟩ &&
+    | .declaration key object => realizations.any (fun model => model.key == key &&
+        model.declarations.any (·.object == object)) &&
       (match requirement.expected with
       | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
       | _ => false)
     | _ => false
   let incompleteDecls := declarations.filter fun declaration =>
     requiredNativeChecks.any fun requirement =>
-      requirement.key.subject == .declaration ⟨label, `lean⟩ declaration.object &&
-        !(snapshot.registry.localResult requirement.key).complete
+      match requirement.key.subject with
+      | .declaration _ object => object == declaration.object &&
+          !(snapshot.registry.localResult requirement.key).complete
+      | _ => false
   let incompleteDetails := snapshot.nativeChecks.foldl (init := #[]) fun items checked =>
     if !declarations.any (·.object == checked.declaration) || !checked.status.isIncomplete ||
         items.any (·.decl == checked.declaration.native.toName) then
@@ -192,8 +194,10 @@ private def nodeRenderFailures (state : Environment.State) (snapshot : Realizati
     if record.label != label then continue
     for association in record.nativeAssociations do
       let selected := realizations.any fun realization =>
-        association.realization == realization.key && association.context == realization.context &&
-          realization.facets.any (fun facet => association.facets.contains facet.name)
+        association.context == realization.context &&
+          association.realization.forRole realization.role == realization.key &&
+          realization.declarations.any (fun declaration =>
+            declaration.object.native == association.reference.canonical.toString)
       if !selected then continue
       if let some failure := Informal.externalRenderFailure? association.reference then
         if !failures.any (·.canonical == failure.decl.canonical) then
@@ -404,11 +408,12 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
   ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
     let assessment := ctx.snapshot.assessmentFor label
     let proseRealizations := ctx.snapshot.registry.realizations.filter fun realization =>
-      realization.key.node == label && realization.context.language == `verso
-    let hasStatement := proseRealizations.any fun realization => realization.facets.any fun facet =>
-      facet.name == `statement && facetHasAvailableSource ctx.snapshot facet
-    let hasProof := proseRealizations.any fun realization => realization.facets.any fun facet =>
-      facet.name == `proof && facetHasAvailableSource ctx.snapshot facet
+      realization.key.node == label &&
+        (realization.context.language == `verso || realization.context.language == `markdown)
+    let hasStatement := proseRealizations.any fun realization =>
+      realization.role == `statement && realizationHasAvailableSource ctx.snapshot realization
+    let hasProof := proseRealizations.any fun realization =>
+      realization.role == `proof && realizationHasAvailableSource ctx.snapshot realization
     let hasCode := assessment.hasNativeDeclarations
     let statusFlags := entryStatusFlags assessment node
     let leanSummary := nodeLeanSummary ctx.snapshot label node

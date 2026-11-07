@@ -436,22 +436,25 @@ readable proposition text, and comparing fingerprints does not perform Lean
 conversion checking. The native provider still checks the independently authored
 expectation and witness using definitional equality and the kernel.
 
-`Validation.Requirement.scope` explicitly selects `.statement` or
-`.implementation`; `.statement` is the default. Facets choose content members,
-not the scope. A review with no scope written survives proof-only edits, including
-when a translation endpoint selects a facet named `proof`: it reviews that
-facet's declarations as statements and does not assess their Lean proof bodies.
-Opt into `scope := .implementation` to review the proof itself, for example whether
-the Lean proof follows an informal or Rocq proof. Statement bindings cover types
-and computational semantic dependencies, excluding proof bodies. Implementation bindings also include the
-selected declaration's own body. Native checks still run afresh, so a preserved
-statement review cannot make an admitted proof complete. Explicit prerequisites
-contribute statement contracts to freshness and retain their separate completion
-gate. The `vbp-binding-sha256-v2` encoding makes old bindings stale; rebuild
-captures and reassess affected reviews. See the [freshness contract](design/REALIZATIONS_AND_TRANSLATIONS.md#freshness-and-trust-boundary)
-for source identity and migration limits. The former whole-record
-`BindingEncoding.facet`, `declaration` and `realization` helpers are removed;
-bindings now project selected content and the local contract explicitly.
+Realizations have explicit roles and owned source selections. A Lean theorem can
+supply separate statement and proof realizations from one declaration: the
+statement selects its proposition, while the proof selects its implementation.
+Translation endpoints name realizations directly; they do not select semantic
+facets. Rewriting proof content does not change a statement binding when the
+selected statement and its interpretation stay unchanged. A proof required only
+as a completion prerequisite remains a separate gate and is not implicitly added
+to the reviewed content. Native completeness is still checked against the
+current source.
+
+Each review obligation names its criterion and required reviewer. A
+`ReviewSelection` explicitly selects its current judgment, or selects none;
+stale, missing, rejected or unsuitable selected judgments do not fall back to an
+older approval. Requirement bindings include the selected subject/content and
+its local contract, while evidence and review-selection state affect eligibility
+and completion rather than the binding. The `vbp-binding-sha256-v3` encoding
+makes older bindings stale; recapture and reassess affected judgments. See the
+[bindings and prerequisites](design/REALIZATIONS_AND_TRANSLATIONS.md#bindings-and-prerequisites)
+for source identity and migration limits.
 
 `NativeLean.SemanticContext` takes `ContentScope`, project and roots. Create it
 with `NativeLean.newSemanticContext` within one immutable checked environment;
@@ -462,10 +465,11 @@ inputs, never proof certificates. Ordinary consumers should use capture rather
 than assemble provider descriptors themselves.
 
 For standalone source adapters, `PreparedModel.prepareValidation` returns
-`Input × NativeLean.Checked`. The checked result retains the observation and any
-semantic-context diagnostics; consumers must not discard those diagnostics when
-explaining why correspondence is blocked. The `validate` convenience returns
-only the assembled `Input`; use `prepareValidation` when diagnostics are needed.
+`Except Diagnostic (Input × NativeLean.Checked)`. The checked result retains the
+observation and any semantic-context diagnostics; consumers must not discard
+those diagnostics when explaining why correspondence is blocked. The
+`validate` convenience returns `Except Diagnostic Input`; use
+`prepareValidation` when diagnostics are needed.
 Ordinary graph and query consumers should continue to use `Capture.capture`.
 
 Native source association parses original bytes using the current environment's
@@ -1931,8 +1935,10 @@ inventory; its former completion helpers are removed.
 
 Native validity, independently authored expected propositions and prose
 correspondence are separate contracts. `nativeProofComplete` can be true while
-`requiredComplete` is false because a selected prerequisite or independent
-expected proposition is unfinished. `details` exposes actual subjects,
+`requiredComplete` is false because a selected native prerequisite is unfinished.
+Independent expected propositions and correspondence reviews have their own
+labeled assessments in `details.assessment`; the native summary does not stand
+for their completion. `details` exposes actual subjects,
 requirements, observations and per-edge diagnostics without raw source or content
 bindings. Graph colors summarize the native track; use the explicit assessment
 for claims about other contracts. Source-only producer previews are uncaptured

@@ -14,9 +14,11 @@ namespace FIRSemanticFixture
 
 def node : Name := Name.mkSimple "fir.semanticWitness"
 def leanKey : RealizationKey := ⟨node, `lean⟩
-def proseKey : RealizationKey := ⟨node, `verso⟩
+def leanStatementKey : RealizationKey := leanKey.forRole `statement
+def leanProofKey : RealizationKey := leanKey.forRole `proof
+def proseKey : RealizationKey := (⟨node, `verso⟩ : RealizationKey).forRole `statement
 def nativeObject : ObjectKey := ⟨⟨`lean, `firSemanticFixture⟩, "FIRSemanticFixture.semanticWitness"⟩
-def proofKey : RequirementKey := ⟨.declaration leanKey nativeObject, `proof⟩
+def proofKey : RequirementKey := ⟨.declaration leanProofKey nativeObject, `proof⟩
 def correspondence : TranslationKey := ⟨`firSemanticFixture, `runtimeCorrespondence⟩
 def subjectReview : RequirementKey := ⟨.claim ⟨correspondence, `subject⟩, `review⟩
 def closureReview : RequirementKey := ⟨.claim ⟨correspondence, `closure⟩, `review⟩
@@ -31,8 +33,8 @@ theorem semanticWitness : RefinedReturnPost :=
 run_cmd liftCoreM <| Realizations.Authoring.stage `correspondence {
   translations := #[{
     key := correspondence
-    source := #[{ realization := proseKey, facets := #[`statement] }]
-    target := #[{ realization := leanKey, facets := #[`statement] }]
+    source := #[{ realization := proseKey }]
+    target := #[{ realization := leanStatementKey }]
     required := #[proofKey] }]
   claims := #[
     { key := ⟨correspondence, `subject⟩, interpretation := "The selected runtime semantics match the prose"
@@ -40,8 +42,8 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `correspondence {
     { key := ⟨correspondence, `closure⟩, interpretation := "The selected runtime account retains required obligations"
       required := #[closureReview] }]
   requirements := #[
-    { key := subjectReview, expected := .review `runtimeMeaning, prerequisites := #[proofKey] },
-    { key := closureReview, expected := .review `runtimeMeaning, coverage := .dependencyClosure
+    { key := subjectReview, expected := .review `runtimeMeaning `MockReviewer, prerequisites := #[proofKey] },
+    { key := closureReview, expected := .review `runtimeMeaning `MockReviewer, coverage := .dependencyClosure
       prerequisites := #[proofKey] }] }
 
 end FIRSemanticFixture

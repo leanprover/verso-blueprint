@@ -37,10 +37,13 @@ private def has (issues : Array Diagnostic) (code : String) : Bool := issues.any
 private def node := `canonicalExample
 private def context : Context := ⟨`lean, `canonicalProject⟩
 private def key : RealizationKey := ⟨node, `implementation⟩
+private def statementKey : RealizationKey := key.forRole `statement
+private def proofKey : RealizationKey := key.forRole `proof
 private def document : DocumentKey := ⟨context, "Canonical.lean"⟩
 private def model : Realization := {
-  key, context
-  facets := #[{ name := `statement, documents := #[document] }, { name := `proof }] }
+  key := statementKey, role := `statement, context, documents := #[document] }
+private def proofModel : Realization := {
+  key := proofKey, role := `proof, context, documents := #[document] }
 
 #eval show IO Unit from do
   let metadata : Data.NodeMetadata := {
@@ -64,10 +67,10 @@ private def model : Realization := {
   ensure (has (({ source with document := { document with context := ⟨`rocq, `canonicalProject⟩ } } : FacetSource).issues node model)
     "source-document-context") "Document ownership cannot disagree with the source context"
   ensure (has (({ source with destination := ⟨⟨`otherNode, key.name⟩, `statement⟩ } : FacetSource).issues node model)
-    "source-destination-mismatch") "Facet sources cannot leak across concept identity"
+    "source-destination-mismatch") "Source selections cannot leak across concept identity"
   ensure (has (({ source with destination := ⟨key, `missing⟩ } : FacetSource).issues node model)
-    "unknown-source-facet") "Missing facets remain explicit"
-  ensure (has (source.issues node { model with facets := #[{ name := `statement }] })
+    "source-role-mismatch") "A raw source slot without a direct realization role remains unavailable"
+  ensure (has (source.issues node { model with documents := #[] })
     "source-document-membership") "Composed definitions cannot discard a source document"
   ensure (has (({ source with source := { ok := true } } : FacetSource).issues node model)
     "invalid-source-location") "Source presence without a location is not a valid source result"
@@ -76,7 +79,12 @@ private def model : Realization := {
   let foreign : FacetSource := { source with
     context := rocq, document := rocqDocument
     payload := .text "Module::symbol.with-dot»name is original foreign text" }
-  let foreignModel := { model with context := rocq, facets := #[{ name := `statement, documents := #[rocqDocument] }] }
+  let foreignModel : Realization := {
+    key := key.forRole `statement
+    role := `statement
+    context := rocq
+    documents := #[rocqDocument]
+  }
   ensure ((foreign.issues node foreignModel).isEmpty) "Foreign spelling requires no Lean name interpretation"
   let .text raw := foreign.payload | throw <| IO.userError "Foreign payload changed kind"
   ensure (raw == "Module::symbol.with-dot»name is original foreign text") "Original foreign bytes must remain intact"
@@ -90,15 +98,15 @@ private def model : Realization := {
   ensure ((association.issues node model).isEmpty && !association.reference.present)
     "Raw missing native associations remain discoverable; this is no successful declaration lookup"
   ensure (has (({ association with facets := #[] } : NativeAssociation).issues node model) "empty-native-facets")
-    "Empty native selection has no implicit all-facet meaning"
+    "Empty native selection has no implicit all-role meaning"
   ensure (has (({ association with facets := #[`statement, `statement] } : NativeAssociation).issues node model)
-    "duplicate-native-facet") "Duplicate destinations must reject explicitly"
-  ensure (has (({ association with facets := #[`missing] } : NativeAssociation).issues node model) "unknown-native-facet")
-    "Unknown native destinations cannot create facets"
-  let bodyModel : Realization := { model with facets := model.facets.push { name := `body } }
+    "duplicate-native-facet") "Duplicate raw destinations must reject explicitly"
+  ensure (has (({ association with facets := #[`missing] } : NativeAssociation).issues node model) "unknown-native-role")
+    "Unknown native destinations cannot create realization roles"
+  let bodyModel : Realization := { proofModel with key := key.forRole `proof, role := `proof }
   let bodyAssociation := { association with facets := #[`body] }
   ensure ((bodyAssociation.issues node bodyModel).isEmpty)
-    "A declared arbitrary native facet is a valid association destination"
+    "A native body slot can select the direct proof realization"
   ensure (has (({ association with realization := ⟨`sibling, key.name⟩ } : NativeAssociation).issues node model)
     "source-destination-mismatch") "Native associations must retain their enclosing concept"
   let foreignContext : Context := ⟨`rust, context.project⟩
@@ -116,21 +124,21 @@ private def model : Realization := {
     node, facet := `proof, reference := { label := `unfinishedTarget, origin := .manual, intent := .technical } }
   ensure ((shared.issues node #[]).isEmpty) "Shared constraints do not invent a realization selection"
   let inferred := { shared with realization := some key.name, reference := { shared.reference with origin := .automatic } }
-  ensure ((inferred.issues node #[model]).isEmpty && inferred.reference.intent == .technical)
+  ensure ((inferred.issues node #[proofModel]).isEmpty && inferred.reference.intent == .technical)
     "Realization scope is explicit and independent of manual/automatic metadata"
   let manualScoped := { inferred with reference := { inferred.reference with origin := .manual } }
-  ensure ((manualScoped.issues node #[model, model]).isEmpty) "Exact model replay creates no selection ambiguity"
+  ensure ((manualScoped.issues node #[proofModel, proofModel]).isEmpty) "Exact model replay creates no selection ambiguity"
   ensure (has (inferred.issues node #[]) "missing-use-realization") "Missing source realization remains diagnostic"
-  ensure (has (inferred.issues node #[model, { model with context := ⟨`lean, `otherProject⟩ }]) "ambiguous-use-realization")
+  ensure (has (inferred.issues node #[proofModel, { proofModel with context := ⟨`lean, `otherProject⟩ }]) "ambiguous-use-realization")
     "Competing realization contexts cannot select a winner"
-  ensure (has (({ inferred with facet := `missing } : UseDeclaration).issues node #[model]) "unknown-use-facet")
-    "A scoped edge must name a real facet"
-  ensure (has (({ shared with node := `sibling } : UseDeclaration).issues node #[model]) "use-destination-mismatch")
+  ensure (has (({ inferred with facet := `missing } : UseDeclaration).issues node #[proofModel]) "missing-use-realization")
+    "A scoped edge must name an existing realization for its role"
+  ensure (has (({ shared with node := `sibling } : UseDeclaration).issues node #[proofModel]) "use-destination-mismatch")
     "Use scope cannot leak across concepts"
   ensure (shared.reference.label == inferred.reference.label && shared.facet == inferred.facet)
     "Source validation preserves the original unresolved target and axis"
 
--- Raw node storage keeps arbitrary realization/facet keys distinct. Display
+-- Raw node storage keeps producer-selected source slots distinct. Display
 -- accessors may select a view, but never rewrite the authored destination or
 -- collapse shared and realization-scoped uses.
 #eval show IO Unit from do
@@ -146,7 +154,23 @@ private def model : Realization := {
     source := .unavailable "Raw preservation fixture; no source lookup"
     payload := .prose { stx := .missing, previewBlocks := #[.para #[.text text]] } }
   let first := prose custom `statement "Original authored statement"
-  let second := prose alternative `commentary "Independent commentary facet"
+  let second := prose alternative `commentary "Independent commentary source slot"
+  let customKey : RealizationKey := ⟨node, custom⟩
+  let alternativeStatement := { first with destination := ⟨⟨node, alternative⟩, `statement⟩ }
+  ensure (alternativeStatement.document == first.document &&
+      alternativeStatement.selectedDocumentKey != first.selectedDocumentKey)
+    "Same-file prose selections retain distinct direct realization ownership"
+  let customProof := { first with destination := ⟨customKey, `proof⟩ }
+  ensure (customProof.document == first.document && customProof.selectedDocumentKey != first.selectedDocumentKey)
+    "Statement and proof source selections stay distinct when they share one document"
+  let customStatement : Realization := {
+    key := customKey.forRole `statement, role := `statement, context := proseContext,
+    documents := #[first.selectedDocumentKey] }
+  ensure ((first.issues node customStatement).isEmpty)
+    "A prose source belongs to its direct statement realization and selected document"
+  let wrongOwner := { customStatement with key := (⟨node, alternative⟩ : RealizationKey).forRole `statement }
+  ensure (has (first.issues node wrongOwner) "source-role-mismatch")
+    "A same-file prose source cannot be reassigned to another direct realization"
   let sharedUse : UseDeclaration := {
     node, realization := none, facet := `statement,
     reference := { label := `sharedTarget, origin := .manual, intent := .technical } }
@@ -163,7 +187,7 @@ private def model : Realization := {
     "Distinct authored destinations remain independently stored in order"
   ensure (((stored.proseView custom `statement).any (·.hasBody)) &&
     ((stored.proseView alternative `commentary).any (·.hasBody)))
-    "Keyed prose is available only through its exact realization and facet"
+    "Keyed prose is available only through its exact source realization and slot"
   ensure (stored.uses == #[sharedUse, scopedUse] &&
     stored.uses[0]!.realization.isNone && stored.uses[1]!.realization == some custom)
     "Shared and scoped dependencies retain their explicit scope"
@@ -171,8 +195,8 @@ private def model : Realization := {
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "Two occupied prose payloads at one exact destination were accepted"
 
-  -- Text payloads have one source per exact realization/facet. A different
-  -- facet or realization remains an independent source destination; raw bytes
+  -- Text payloads have one source per exact raw realization/slot. A different
+  -- slot or realization remains an independent source destination; raw bytes
   -- are retained without trimming or using emptiness to select a winner.
   let textSource (language realization facet : Name) (path raw : String) : FacetSource := {
     destination := ⟨⟨node, realization⟩, facet⟩
@@ -184,7 +208,7 @@ private def model : Realization := {
   for ordered in #[#[first, sameFacetText], #[sameFacetText, first]] do
     match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
     | .error _ => pure ()
-    | .ok _ => throw <| IO.userError "A prose body and text source shared one exact facet"
+    | .ok _ => throw <| IO.userError "A prose body and text source shared one exact raw slot"
   let placeholder : FacetSource := { first with payload := .prose { stx := .missing } }
   for ordered in #[#[placeholder, sameFacetText], #[sameFacetText, placeholder]] do
     let mixed ← match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
@@ -210,11 +234,11 @@ private def model : Realization := {
       (rustBody.destination, rustBody.document, "pub fn value() -> u8 { 1 }") &&
       textDestinations.contains (rustProof.destination, rustProof.document, "pub fn proof() -> bool { true }") &&
       textDestinations.contains (rocqBody.destination, rocqBody.document, "Theorem flag_ok : True."))
-    "Different facets and realizations retain their exact text, context and document"
+    "Different raw slots and realizations retain their exact text, context and document"
   let duplicateText := textSource `rust `rust `body "src/other.rs" "pub fn different() -> u8 { 3 }"
   match ({} : Data.Node).applyRegistrations node #[{ sources := #[rustBody, duplicateText] }] with
   | .error _ => pure ()
-  | .ok _ => throw <| IO.userError "Two text payloads at one exact facet were accepted"
+  | .ok _ => throw <| IO.userError "Two text payloads at one exact raw slot were accepted"
   let emptyRustBody := textSource `rust `rust `body "src/placeholder.rs" ""
   let emptyNode ← match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody] }] with
     | .ok stored => pure stored
@@ -224,9 +248,9 @@ private def model : Realization := {
     "An empty text payload remains visible byte-for-byte"
   match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody, rustBody] }] with
   | .error _ => pure ()
-  | .ok _ => throw <| IO.userError "An empty text payload and a second payload shared one exact facet"
+  | .ok _ => throw <| IO.userError "An empty text payload and a second payload shared one exact raw slot"
 
-  -- Markup slot identity is scoped to the exact source destination, independent
+  -- Markup slot identity is scoped to the exact raw source destination, independent
   -- of document path. Different slots coexist; the same slot is a conflict.
   let texContext : Context := ⟨`tex, `canonicalProject⟩
   let texDocument (path : String) : DocumentKey := ⟨texContext, path⟩
@@ -255,7 +279,7 @@ private def model : Realization := {
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "The same markup key at one destination was accepted from two documents"
 
-  -- Intent disagreement conflicts only for one exact scope/facet/target/origin.
+  -- Intent disagreement conflicts only for one exact scope/source-slot/target/origin.
   let scopedIntentUse : UseDeclaration := {
     node, realization := some custom, facet := `statement,
     reference := { label := `sharedTarget, origin := .manual, intent := .technical } }
@@ -266,7 +290,7 @@ private def model : Realization := {
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"Distinct dependency scopes were merged: {repr issues}"
   ensure (scopedStored.uses == #[scopedIntentUse, sharedIntentUse])
-    "Raw dependency scope and intent survive even for the same target/facet/origin"
+    "Raw dependency scope and intent survive even for the same target/slot/origin"
   let conflictingIntent := { scopedIntentUse with reference := { scopedIntentUse.reference with intent := .regular } }
   match ({} : Data.Node).applyRegistrations node #[{ uses := #[scopedIntentUse, conflictingIntent] }] with
   | .error _ => pure ()
@@ -279,8 +303,8 @@ private def model : Realization := {
   let b := `SyntheticNative.b
   let missing := `SyntheticNative.missing
   let object (name : Name) : ObjectKey := ⟨context, name.toString⟩
-  let association (name : Name) (facets : Array Name) : NativeAssociation := {
-    realization := key, context, facets
+  let association (name : Name) (slots : Array Name) : NativeAssociation := {
+    realization := key, context, facets := slots
     reference := { Data.ExternalRef.ofName name with present := false } }
   let associations := #[association a #[`statement], association b #[`proof],
     association missing #[`statement, `proof], association a #[`proof]]
@@ -294,70 +318,95 @@ private def model : Realization := {
       definedDefs := #[{ name := inlineDef }]
       definedTheorems := #[{ name := inlineTheorem }] } }
   let expected := #[a, b, missing, inlineDef, inlineTheorem]
-  let complete : Realization := { model with
-    declarations := expected.map (fun name => { object := object name })
-    facets := #[
-      { name := `statement, documents := #[document], declarations := #[object a, object missing] },
-      { name := `proof, documents := #[document], declarations := expected.map object }] }
+  let checkedRoles : Array (Name × Array Name) := #[
+    (a, #[`statement, `proof]), (b, #[`proof]), (missing, #[`statement, `proof]),
+    (inlineDef, #[`proof]), (inlineTheorem, #[`proof])]
+  let declaration (name : Name) (projection : ContentScope) : Realizations.Declaration :=
+    { object := object name, projection }
+  let statementModel : Realization := { model with
+    declarations := #[declaration a .statement, declaration missing .statement] }
+  let complete : Realization := { proofModel with
+    declarations := #[declaration a .implementation, declaration b .implementation,
+      declaration missing .implementation, declaration inlineDef .implementation,
+      declaration inlineTheorem .implementation] }
   ensure (nativeNames associations #[source] == expected)
     "Full native collection preserves registration order and unions external/inline identities once"
-  ensure ((nativeMembershipIssues node complete associations #[source]).isEmpty)
-    "Missing associations and inline definitions/theorems belong to the exact composed union"
-  ensure ((nativeMembershipIssues node complete (associations ++ associations) #[source, source]).isEmpty)
+  ensure (statementModel.declarations.all (·.projection == .statement) &&
+      complete.declarations.all (·.projection == .implementation))
+    "Direct source roles select explicit statement/type and proof/value projections"
+  ensure ((nativeMembershipIssues node statementModel associations #[source] checkedRoles).isEmpty &&
+      (nativeMembershipIssues node complete associations #[source] checkedRoles).isEmpty)
+    "Native declarations belong to their exact direct realization role"
+  ensure ((nativeMembershipIssues node statementModel (associations ++ associations) #[source, source] checkedRoles).isEmpty &&
+      (nativeMembershipIssues node complete (associations ++ associations) #[source, source] checkedRoles).isEmpty)
     "Raw replay does not duplicate semantic membership"
-  let reordered := { complete with
-    declarations := complete.declarations.reverse
-    facets := complete.facets.map fun facet => { facet with declarations := facet.declarations.reverse } }
-  ensure ((nativeMembershipIssues node reordered associations #[source]).isEmpty)
+  let reorderedStatement := { statementModel with declarations := statementModel.declarations.reverse }
+  let reorderedProof := { complete with declarations := complete.declarations.reverse }
+  ensure ((nativeMembershipIssues node reorderedStatement associations #[source] checkedRoles).isEmpty &&
+      (nativeMembershipIssues node reorderedProof associations #[source] checkedRoles).isEmpty)
     "Membership equality is independent of model declaration presentation order"
-  let explicitContract := { complete with facets := complete.facets.map fun facet =>
-    if facet.name == `statement then
-      { facet with required := #[⟨.declaration key (object b), `selectedCheck⟩] }
-    else facet }
-  ensure ((nativeMembershipIssues node explicitContract associations #[source]).isEmpty)
-    "Exact source membership does not restrict an independently explicit requirement on another subject"
+  let explicitContract := { complete with
+    declarations := (complete.declarations.map fun decl =>
+      if decl.object == object b then
+        { decl with required := #[⟨.declaration proofKey (object b), `selectedCheck⟩] }
+      else decl)
+  }
+  ensure ((nativeMembershipIssues node explicitContract associations #[source] checkedRoles).isEmpty)
+    "Exact native membership does not restrict an independently explicit declaration requirement"
   ensure (has (nativeMembershipIssues node
-    { complete with declarations := complete.declarations.filter (·.object != object missing) }
-    associations #[source]) "native-declaration-membership")
-    "Unavailable native references cannot disappear from the realization union"
+    { statementModel with declarations := statementModel.declarations.filter (·.object != object missing) }
+    associations #[source] checkedRoles) "native-role-membership")
+    "Unavailable native references cannot disappear from the direct statement realization"
   ensure (has (nativeMembershipIssues node
     { complete with declarations := complete.declarations.filter (·.object != object inlineDef) }
-    associations #[source]) "native-declaration-membership")
+    associations #[source] checkedRoles) "native-role-membership")
     "Inline definitions participate independently of inline theorems"
   ensure (has (nativeMembershipIssues node
-    { complete with declarations := complete.declarations.push { object := object `uncollectedSibling } }
-    associations #[source]) "native-declaration-membership")
-    "An uncollected sibling cannot appear as an association"
-  let wrongFacet := { complete with facets := complete.facets.map fun facet =>
-    if facet.name == `statement then { facet with declarations := facet.declarations.push (object b) } else facet }
-  ensure (has (nativeMembershipIssues node wrongFacet associations #[source]) "native-facet-membership")
-    "Realization-wide membership cannot confer membership in another selected facet"
-  let omittedInline := { complete with facets := complete.facets.map fun facet =>
-    { facet with declarations := facet.declarations.filter (· != object inlineTheorem) } }
-  ensure (has (nativeMembershipIssues node omittedInline associations #[source]) "native-facet-membership")
-    "Inline theorem membership must survive at its exact destination facet"
+    { complete with declarations := complete.declarations.push (declaration `uncollectedSibling .implementation) }
+    associations #[source] checkedRoles) "native-role-membership")
+    "An uncollected sibling cannot appear in a direct realization"
+  let wrongRole := { statementModel with declarations := statementModel.declarations.push (declaration b .statement) }
+  ensure (has (nativeMembershipIssues node wrongRole associations #[source] checkedRoles) "native-role-membership")
+    "A declaration checked only for proof cannot be assigned to the statement realization"
+  let wrongStatementProjection := { statementModel with declarations :=
+    (statementModel.declarations.map fun decl => { decl with projection := .implementation }) }
+  ensure (has (nativeMembershipIssues node wrongStatementProjection associations #[source] checkedRoles)
+      "native-role-projection")
+    "A statement realization must select the checked declaration type projection"
+  let wrongProofProjection := { complete with declarations :=
+    (complete.declarations.map fun decl => { decl with projection := .statement }) }
+  ensure (has (nativeMembershipIssues node wrongProofProjection associations #[source] checkedRoles)
+      "native-role-projection")
+    "A proof realization must select the checked declaration value projection"
+  let omittedInline := { complete with
+    declarations := complete.declarations.filter (·.object != object inlineTheorem) }
+  ensure (has (nativeMembershipIssues node omittedInline associations #[source] checkedRoles) "native-role-membership")
+    "Inline theorem membership must survive in its exact proof realization"
   let otherProject := { associations[0]! with context := ⟨`lean, `anotherProject⟩ }
-  ensure (has (nativeMembershipIssues node complete (associations.push otherProject) #[source])
+  ensure (has (nativeMembershipIssues node complete (associations.push otherProject) #[source] checkedRoles)
     "source-context-mismatch") "A same-spelled native identity in another project cannot be silently accepted"
   let otherRealization := { source with destination := ⟨⟨node, `alternative⟩, `proof⟩ }
-  ensure (has (nativeMembershipIssues node complete associations #[otherRealization])
-    "source-destination-mismatch") "A source for an alternative cannot enter this collection"
+  ensure (has (nativeMembershipIssues node complete associations #[otherRealization] checkedRoles)
+      "source-destination-mismatch")
+    "An inline source cannot move to another direct realization with the same role"
   let unsupported := Name.str `SyntheticNative "bad»name"
   let raw := #[association unsupported #[`statement]]
   ensure (nativeNames raw #[] == #[unsupported]) "Collection retains the exact typed unsupported native name"
-  ensure (has (nativeMembershipIssues node complete raw #[]) "unsupported-native-identity")
+  let unsupportedRoles := checkedRoles.push (unsupported, #[`statement])
+  let unsupportedModel := { statementModel with declarations := #[declaration unsupported .statement] }
+  ensure (has (nativeMembershipIssues node unsupportedModel raw #[] unsupportedRoles) "unsupported-native-identity")
     "The ObjectKey boundary rejects lossy names rather than comparing an incorrectly parsed declaration"
   let escaped := Name.str `SyntheticNative "with.dot"
   let escapedModel : Realization := {
-    key, context
-    declarations := #[{ object := object escaped }]
-    facets := #[{ name := `statement, declarations := #[object escaped] }] }
-  ensure ((nativeMembershipIssues node escapedModel #[association escaped #[`statement]] #[]).isEmpty)
+    key := statementKey, role := `statement, context
+    declarations := #[declaration escaped .statement] }
+  let escapedRoles := checkedRoles.push (escaped, #[`statement])
+  ensure ((nativeMembershipIssues node escapedModel #[association escaped #[`statement]] #[] escapedRoles).isEmpty)
     "A losslessly escaped dot remains a supported native identity"
   ensure (has (nativeMembershipIssues node complete associations
-    #[{ source with context := ⟨`rust, context.project⟩ }]) "source-context-mismatch")
+    #[{ source with context := ⟨`rust, context.project⟩ }] checkedRoles) "source-context-mismatch")
     "Inline collection cannot relabel compiled Lean source as foreign content"
-  ensure (has (nativeMembershipIssues `anotherConcept complete associations #[source])
+  ensure (has (nativeMembershipIssues `anotherConcept complete associations #[source] checkedRoles)
     "source-destination-mismatch") "An enclosing concept mismatch remains explicit"
   ensure (has (nativeMembershipIssues node { model with context := ⟨`lean, .anonymous⟩ } #[] #[])
     "source-context-mismatch") "Empty input cannot conceal an invalid composed context"
@@ -374,15 +423,19 @@ run_cmd Lean.Elab.Command.liftTermElabM do
     id := `canonicalMembershipFlag, moduleName := prepared.moduleName, source := path }
     { label := node, title := "Flag" } key.name
     | throwError "Real native source model preparation failed"
-  let native := input.realizations[0]!.value
+  let checkedRoles : Array (Name × Array Name) := #[(prepared.canonical, prepared.roles)]
   let association : NativeAssociation := {
     realization := key, context, facets := #[`statement, `proof]
     reference := Data.ExternalRef.ofName prepared.canonical }
-  unless (nativeMembershipIssues node native #[association] #[]).isEmpty && input.evidence.isEmpty do
+  unless input.realizations.all (fun record =>
+      (nativeMembershipIssues node record.value #[association] #[] checkedRoles).isEmpty) &&
+      input.evidence.isEmpty do
     throwError "Real native source membership must preserve exact source identity without creating validation"
-  let omitted := { native with facets := native.facets.map fun facet =>
-    if facet.name == `proof then { facet with declarations := #[] } else facet }
-  unless (nativeMembershipIssues node omitted #[association] #[]).any (·.code == "native-facet-membership") do
-    throwError "Real native proof-facet source membership cannot be silently dropped"
+  let some proofRecord := input.realizations.find? (·.value.role == `proof)
+    | throwError "Prepared native source omitted its proof realization"
+  let omittedProof := { proofRecord.value with declarations := #[] }
+  unless (nativeMembershipIssues node omittedProof #[association] #[] checkedRoles).any
+      (·.code == "native-role-membership") do
+    throwError "Real native proof-role source membership cannot be silently dropped"
 
 end VersoBlueprintTests.BlueprintCanonicalSources

@@ -1,323 +1,204 @@
-# Realizations and translations
+# Realizations and assessment snapshots
 
-The [next-model design seed](REALIZATION_MODEL.md) describes the proposed removal
-of semantic facets and the use cases guiding completion and dependency policy.
-It is a design discussion; the model documented below remains implemented today.
+The [architectural contract](REALIZATION_MODEL.md) describes the version-one
+boundaries and deferred extensions. This guide describes the implemented API.
+The first snapshot example uses ordinary authoring/import and fresh native checks;
+its Alice judgments are explicitly mocked test data, not certified human reviews.
 
-## Current model
+## One captured authority
 
-Blueprint uses one model for concepts represented in different languages. A node
-has a stable label and shared metadata. It can have multiple named realizations,
-each in a language and logical project context. A translation is an explicit,
-directed relation between selected realizations; it is not inferred from shared
-labels or declarations.
+Blueprint compiles current source-canonical input into an immutable assessment
+snapshot through `plan → observe → evaluate`. Raw module contributions, resolved
+records, indexes and reports are derived representations of that input. They
+cannot independently redefine ownership or completion. Native success is never
+persisted in the source extension or imported as authoritative evidence.
 
-For example:
+Use capture after the owning source modules have been built. Structural conflicts
+reject the complete collected candidate, including imported and explicitly authored
+records. There is no admitted partial registry. Missing sources and unsuccessful
+assessments instead remain diagnostics on the admitted objects they affect.
 
-```text
-node: toggle_involutive
-  realization verso:
-    statement: authored Verso prose
-  realization rocq-original:
-    statement/proof: authored Rocq source reference
-  realization lean:
-    statement/proof: checked Lean declaration
-translation versoToLean:
-  claim: relate the prose statement to the Lean theorem
-translation rocqToLean:
-  claim: relate the Rocq development to the Lean theorem
-```
+## Objects, owned content, and relations
 
-This layout permits one node to have several representations without treating
-them as one source or proof. In the current example the Lean proof can be
-complete while prose proofreading is unassessed and Rocq correspondence is
-blocked because Rocq resolution is unsupported.
+A node is the mathematical home with a stable global label. Its realizations are
+current independently addressable accounts, with no cross-revision identity promise.
+Each realization carries a language/project context, an explicit mathematical role,
+ordered document selections and declaration projections. Role is data: do not infer
+it from a realization key or from the word `lean`.
 
-## Concepts, realizations, and translations
+A single Lean theorem supplies separate statement and proof realizations. Both
+refer to the same canonical declaration; the statement selects its meaning, and
+the proof selects its implementation. Proposition definitions and proof-valued
+`def`s are classified from their checked types, not command spelling. A prose
+statement or argument has its own byte-bound selection. Alternatives are separate
+realizations, rather than optional members of a single assessed object.
 
-### Node and realization
+`RealizationKey.forRole` constructs unambiguous keys for ordinary producer output.
+Consumers use the stored role, not that encoding. A realization cannot list one
+object twice with conflicting projections. Its explicit document bytes stay bound
+even when a native declaration shares that source file. Source association alone
+establishes neither proof nor correspondence.
 
-A node identifies the mathematical concept, not a particular file or language.
-Its label, kind, grouping, and shared metadata belong to the node. The node label
-is the stable global identifier within a Blueprint, independent of the language
-or current implementation; agents and external cross-references should anchor to it.
+The existing `Translation` record represents a directed relation with its own key,
+kind, source and target realization endpoints, inert tags and required obligations.
+Its named `Claim` records retain joint interpretation/mapping and assumptions.
+Those claims are part of the relation's meaning, not an independent endpoint store.
+Grouped endpoints assert the authored joint connection; they imply no pairwise
+correspondences or automatic composition. Tags classify and do not supply policy.
 
-Realization keys are scoped to a node and identify its current representations.
-They have no cross-revision stability promise. A representation can be replaced
-without renaming the mathematical node. Within a capture its key must still be
-unambiguous: authored translations must resolve their current endpoints, and
-validation must match the current bindings. Reusing a name does not make old
-evidence valid for a replacement. This does not introduce historical identities,
-redirects, or a second identifier store.
+Semantic facets and `Requirement.scope` are removed. The raw Blueprint source and
+preview APIs still call statement/proof authoring slots “facets”; these locate
+source and presentation. Capture projects them to directly owned realizations.
+They are not independently assessed subobjects of a realization.
 
-A realization has a name, a source-language/project context, facets, documents,
-and declaration associations. Two Lean implementations of the same concept are
-different realizations. A declaration can support more than one node or facet;
-its native check should be represented once and referenced where needed.
+## Requirements, native support, and local judgments
 
-Statement and proof are common facet names, not global node fields. Each facet
-selects documents and declarations relevant to that part of the realization.
-Definitions may use a different set of facets. A source or markup payload is
-stored at its named realization/facet destination. A rendered page, highlighted
-snippet, or hover preview is only a view of that source.
+A requirement has an exact subject, typed expectation, coverage and explicit
+prerequisite keys. Contracts are conjunctive; an absent contract is unassessed.
+The evaluator retains local evidence results separately from final prerequisite
+completion. Positive local evidence in a dependency cycle cannot establish final
+completion. It does not search alternative proofs or invent a node-wide policy.
 
-Independent Verso prose can be a realization. A markup format or document slot
-is not automatically a new realization: use a separate realization when it is
-an independent account or port. Source provenance, such as a paper citation or
-page span, remains distinct from the source of a realization.
+### Native observations
 
-### Translation and claim
+Ordinary capture checks current declarations against Lean's checked environment.
+Statement and body checks remain separate, including native dependency coverage
+and used axioms. A passed check is not an axiom-free claim. Admitted, hidden,
+missing or unverified bodies do not become successful proofs. Ordinary authored
+`uses` wiring applies only to the generated native requirements; merely naming an
+unrelated requirement `proof` does not enroll it.
 
-A translation is a named, directed, project-level record with one or more source
-and target endpoints. Endpoints may belong to the same node or different nodes,
-so a translation may describe a split or merged formalization. A target
-realization may be the source of a later translation.
+The first built-in `proves(P,S)` route is exact own-type support. Its expectation
+`.proves witness` applies only to a proof-role implementation selection and a
+statement-role type selection of that same proof-valued declaration, with the same
+context and no additional endpoint content. The current native observation must
+check that proposition-valued witness with dependency-closure coverage. Each edge
+gets its own binding and applicability check even when capture reuses one native
+fact. A complete `Nat` definition is not mathematical proof support.
 
-A translation can contain named claims. Each claim states the correspondence
-being asserted and selects the facets and assumptions relevant to it. A
-translation's endpoints do not imply that every source/target pair corresponds.
-A shared node or declaration does not establish equivalence, and two
-translations do not compose automatically.
+A required named review with criterion `mathematicalProof` can instead supply the
+reviewed support route for the selected connection. A nonempty lint-only `proves`
+contract remains unassessed with `missing-mathematical-support`. Additional required
+reviews or checks remain conjunctive; native success cannot override rejection.
+The first example's correspondence explicitly depends on its exact native support
+requirement. General aggregate requests over relations remain deferred.
 
-Translation links are separate from mathematical `uses` dependencies. An
-external mathematical result may be a prerequisite of a correspondence claim,
-but its proof does not discharge that claim's own requirement. The claim-local
-requirement must be assessed against the claim.
+Independent expected-proposition checking remains a separate API. It requires an
+owned checked proposition definition, kernel conversion of the witness type and
+fresh completeness checking. Its current expected syntax must be closed with
+concrete universes; universally parameterized independent targets remain unsupported.
+The exact own-type route retains the declaration's native universes. No expected
+proposition is fabricated from prose or duplicated merely to check a theorem.
 
-## Requirements and completion
+### Current review selection
 
-A requirement has a typed subject, an expected validation kind, and optional
-prerequisites. Subjects include realizations, facets, declarations,
-translations, and claims. Validation kinds include native checks, proofs of an
-independently specified proposition, human reviews, and named executable
-checks. Requirements compose conjunctively. Put alternatives in separate
-realizations instead of letting one successful alternative silently satisfy
-another realization.
+`.review criterion reviewer` names the required reviewer explicitly. An authored
+`ReviewJudgment` contains its immutable identifier, requirement, original assessed
+binding and review observation. `ReviewSelection` selects one judgment identifier
+or none for that requirement. Competing selections are unresolved assessment data.
+Conflicting payloads for one immutable evidence identity reject admission.
 
-### Native Lean results
+Resolve selection before checking freshness, reviewer, criterion, coverage and
+outcome. A stale, missing, rejected or unsuitable selected judgment supplies no
+approval; an older matching approval cannot replace it. Withdrawal selects none.
+No timestamp arbitration, review-history traversal or authentication is implied.
+Multiple required reviewers use separate conjunctive obligations.
 
-Canonical capture performs fresh checks against the owning Lean environment.
-It reports a declaration's own native statement and body completeness separately
-from its explicit Blueprint requirements and dependencies.
+The pure registry checks supplied observations but does not authenticate them or
+run Lean. `Realizations.Capture.capture` obtains actual native observations; human
+judgments remain explicitly authored inputs. Do not stamp an old judgment with a
+new binding on rebuild. Unassessed prose does not block unrelated native proof.
 
-A theorem's native proof check establishes that its checked body is complete
-under the supported Lean completeness analysis. It does not establish
-correspondence with prose or prove an independently authored expected
-proposition. Definitions include their values in the native statement-side
-check. Admitted, unavailable, hidden, open, or otherwise unverified source
-remains unfinished or unavailable; it is never converted into a passing result.
+## Bindings and prerequisites
 
-Ordinary Blueprint dependency selection reuses the target declaration's existing
-native proof requirement. It does not create a duplicate specification or
-overwrite the local native result. Thus a theorem can have a complete local
-proof while its selected prerequisite is unfinished. The report shows both
-facts and identifies unresolved edges.
+The `vbp-binding-sha256-v3` encoding binds each requirement's exact owner, selected
+content, interpretation and own contract. Declaration projections select the native
+statement or implementation descriptor. Explicit prose/document selections bind
+bytes and their document identity. Composition order is significant; set-like
+prerequisite identifiers are canonicalized. A claim-local judgment binds its own
+mapping and assumptions; a whole-relation judgment binds all that relation's claims.
+Changing a sibling requirement's reviewer does not change an unchanged local judgment.
 
-Automatic statement/proof prerequisite wiring applies only to the native
-contracts generated by ordinary capture, identified by their producer identity,
-exact subject and native validator. An authored alternative can name a review
-`proof` or `proofReview` without acquiring implicit sibling requirements. Authored
-checks likewise retain their explicit prerequisite lists, even when they use a
-native validator; a conventional name is not an enrollment mechanism.
+Prerequisite identities are part of the authored requirement; their content and
+outcomes are not implicitly selected. Rewriting a proof that is only a completion
+prerequisite preserves the statement judgment. Introducing `sorry` still prevents
+final completion. Explicitly selected proof content does change its binding.
+Evidence, current-review selections and evaluation state do not enter the binding.
 
-### Independent expected propositions
+Native statement meaning includes relevant computational dependencies. Selected
+proof implementation includes its own body, with theorem dependencies interpreted
+through their statements; a review of helper implementations must select them
+explicitly. Fresh native completeness independently inspects the required closure.
+Byte-bound selections remain conservative: a whole-file selection is affected by
+any byte change. Canonical source ranges and original text are used for supported
+prose selections, with missing/ambiguous associations diagnosed rather than guessed.
 
-A project may author a separate proposition and associate it with a checked
-witness. The expected proposition must be an owned, checked Lean definition of
-a closed proposition, with no admission or unverified dependency. The native
-provider elaborates it, checks it with Lean's kernel, compares the witness's
-actual type by definitional equality, and checks completeness. The provider
-records a structural fingerprint of the independently checked proposition as
-its descriptor. Fingerprint equality is not the equality test and is never a
-substitute for Lean's definitional-equality and kernel checks.
+Earlier binding versions are stale; no automatic review migration is performed.
+SHA-256 fingerprints are compact content identities, not kernel certificates,
+provider authentication or a proof of general hash injectivity.
 
-A docstring or other prose body does not create this requirement. If no
-independent expectation or review requirement is authored, prose assessment is
-optional and reported as unassessed. Native proof completion remains visible
-separately.
+## Authoring, imports, and consumers
 
-### Reviews, evidence, and supplied observations
+Ordinary attributes/directives register through the existing Blueprint Environment
+extension. Configure the logical project using `verso.blueprint.project` or the
+package's weak Lake option. The owning module's project is preserved on import.
+Public capture requires unambiguous readable labels; arbitrary typed names remain
+supported by the pure registry.
 
-Evidence is selected by exact subject, requirement, and current content binding.
-A passed observation for another claim, witness, context, or input is
-unsuitable. Missing and unavailable observations remain explicit; they do not
-become success.
-
-The pure `Validation` and `Translations` APIs validate model structure,
-requirement relationships, bindings, and whether supplied observations fit
-requirements. They do not authenticate who supplied an observation and do not
-run Lean or a human review. A caller that fabricates a passed observation can
-therefore satisfy a pure model if it also supplies a matching current binding.
-Use `Realizations.Capture.capture` for the ordinary Lean provider path, which
-runs the native checks against the current build inputs. Foreign checkers will
-need their own trusted provider boundary before their observations can be
-treated as checked.
-
-No total project-readiness claim is implied by a report. It evaluates the
-requirements represented in the supplied admitted model; it does not discover
-omitted obligations or infer an unrecorded correspondence.
-
-## Canonical source layout and authoring
-
-### Ordinary Blueprint sources
-
-`Informal.Data.Node` stores three keyed inventories:
-
-- `sources`: typed source payloads with realization/facet destination,
-  language/project context, document identity, and source location;
-- `uses`: dependencies retaining facet, optional realization scope, origin,
-  and intent;
-- `nativeAssociations`: typed Lean declaration associations retaining their
-  destination, context, facets, and declaration snapshot.
-
-The fixed statement/proof body and external-reference fields are gone. The
-presentation helpers `proseView`, `usesOn`, and `nativeRefsOn` derive views
-from these inventories; they are not semantic storage. Custom producers must
-write the keyed records, not update a derived view.
-
-Existing Blueprint attributes, directives, inline code, and attached markup
-enroll through the ordinary environment registration path. They do not require
-a separate opt-in registration mode. Source identity does require a configured
-logical project, using `set_option verso.blueprint.project` or the package's
-weak Lake option. The selected project is stored with the owning source; a later
-query module cannot relabel it.
-
-### Explicit authored contracts
-
-Use `Informal.Realizations.Authoring` for independently authored realization,
-translation, claim, requirement, or expected-proposition records. Configure the
-exact module that calls this API:
+Explicit contracts and review inputs use `Realizations.Authoring`:
 
 ```lean
-import VersoBlueprint
 run_cmd liftCoreM <| Informal.Realizations.Authoring.configureProject `MyProject
 ```
 
-`configureProject` sets the source project for that module; it does not
-configure importers and is not needed as a separate switch for ordinary
-attributes or directives. `Authoring.stage id batch` retains one identified
-authored batch. `Authoring.expectNative id label expectedDefinition` records
-an independently written proposition definition for a label. That definition
-is checked when the owning modules have been built and capture runs.
+Configure each module that calls `Authoring.stage id batch`. Staging retains raw
+source records; it does not admit a fragment or mutate query state. `expectNative`
+names an independently authored proposition definition. Authored judgments preserve
+their recorded binding through staging/import; native evidence is generated only
+for the current capture. Uses are validated after the complete ordinary and authored
+realization inventory is available, so forward/imported references are not rejected
+merely because their producer was collected later.
 
-Authored batches and ordinary registrations use the existing Blueprint
-environment extension and import/assembly boundary. They do not create a second
-authoritative store. The complete local and imported input is checked before
-capture publishes an admitted registry. Conflicting producer identities,
-destinations, or contracts reject the complete candidate; no partial registry
-is returned. Imported authoring records carry source claims only: they do not
-persist completion, validation observations, or proof evidence.
+`Realizations.Report.ofNode` / `ofRegistry` expose each realization, relation,
+requirement, local/final result, review selection and evidence suitability separately.
+They omit raw source text and bindings. Provider success and current-binding
+suitability are distinct. Reports describe the represented contracts, not omitted
+obligations or project readiness.
 
-## Capture, graph, and query
-
-Run capture only after the modules that own the Blueprint source and Lean
-declarations have been built. `Realizations.Capture.capture` collects the
-ordinary keyed registrations and explicit authoring records, plans the native
-checks, runs the current Lean provider, admits the complete model, and binds
-fresh observations to that model. If structural admission fails, the caller
-gets diagnostics and no partial snapshot. Public node labels and dependency targets
-must round-trip through Lean name JSON and have unambiguous readable CLI spellings;
-parent groups are checked in their own namespace. Pure registries retain arbitrary
-typed names, while ordinary capture rejects unsupported or ambiguous public labels.
-
-`Snapshot.assessmentFor` is the shared projection used by graph, summary,
-heading, manifest, and CLI consumers. The status query distinguishes:
-
-- `nativeStatementComplete`: own native statement-side checks;
-- `nativeProofComplete`: own native body-completeness checks;
-- `requiredComplete`: the default Lean realization's explicit requirements and
-  their prerequisite closure;
-- `statementDependenciesComplete` and `proofDependenciesComplete`: selected
-  dependency edges for the two facets of the default Lean realization;
-- `details`: assessed subjects, requirements, observations, diagnostics, and
-  unresolved selected edges.
-
-The `sourceDeclarationSnapshots` field is display inventory, not validation
-evidence. A preview without capture reports validation as unavailable rather
-than deriving completion from snapshots. Graph colors summarize status; clients
-that need exact contract outcomes should read the assessment and its details.
-
-For agents and local inspection:
+`Snapshot.assessmentFor` supplies the existing graph/summary/CLI native summary.
+Its `nativeLocalSummary` describes checked native declarations, while full labeled
+assessments remain in `details.assessment`. Its `requiredComplete` field is the
+native-contract summary, not “some acceptable proof exists” or universal node
+completion. This first slice does not redesign graph layout or aggregate requests.
 
 ```sh
 lake exe vbp query status <label>
 ```
 
-Build the current owning sources before relying on the result. A generated
-capture describes the build from which it was produced; the query does not
-recheck source files.
+Build the owning sources first. Queries read a generated capture; they do not
+recheck edited files. Preview declaration inventories remain display data and
+cannot establish native completeness without capture.
 
-## Freshness and trust boundary
+## Migration and bounded example
 
-Content bindings use the versioned `vbp-binding-sha256-v2` encoding. A requirement
-has an explicit `scope`: `.statement` reviews mathematical content;
-`.implementation` also binds the selected declaration's own implementation. The
-default is `.statement`. Facets select documents/declarations, not scope.
-A default review of a translation selecting a `proof` facet ignores the Lean
-proof body: it assesses the statements of the selected declarations. Reviewing
-whether the Lean proof follows the informal or Rocq proof requires explicit
-`scope := .implementation`. Neither scope infers proof correspondence from the
-facet's name; implementation identity concerns the elaborated body, not formatting.
+Update clients from `Facet` / facet subjects to separately keyed realizations with
+roles and direct documents/declaration projections. Endpoints name realizations;
+requirements no longer choose scope. Add named reviewers and explicit selections
+for required human reviews. Rebuild snapshots and reassess old bindings.
 
-For Lean, statement identity includes declaration types and transitive
-computational definitions, inductives and recursors. It excludes proof bodies,
-including proofs stored as proposition-valued definitions or opaque constants.
-A definition *of* a proposition remains computational content. Implementation
-identity adds the selected declaration's own body and the statement identities
-of its dependencies; it does not recursively hash other proofs. A changed imported
-definition or type therefore invalidates dependent reviews even when local
-source is unchanged. A proof rewrite, or replacing that proof with `sorry`,
-does not invalidate its statement review. Fresh native checking still detects
-that admission and keeps proof-dependent completion unfinished.
+`BlueprintAssessmentSnapshot.Owner` is ordinary source authoring with Lean S/P and
+Verso T plus an unfinished informal alternative. Its imported consumer checks actual
+native support, explicitly mocked Alice input, separate local/prerequisite results,
+withdrawal/conflict/no-resurrection, and per-edge evidence reuse. The reversible
+`tests/test-assessment-snapshot.py` runner saves one original mock binding and tests
+normal source edits/builds for proof rewrite, admission, statement/mapping/prose
+changes, then restores the exact original source bytes. It must run under the
+maintainer's whole-tree resource cap. Validation receipts distinguish setup from
+capture time; this tiny example is not a FIR scalability certification.
 
-Bindings contain the selected endpoints, interpretation, assumptions and local
-requirement contract. Explicit prerequisites contribute statement contracts and
-content, and current prerequisite completion remains a separate evaluator gate.
-Unrelated sibling obligations and unselected facets do not change a local review.
-Missing required semantic descriptors block acceptance. Source association still
-requires current original source, but declaration-backed Lean file bytes and
-locators are not review content. Document-only Lean content, prose and foreign
-sources remain conservatively byte-bound.
-
-Expression fingerprints preserve structural constructor data without including
-allocation addresses or source metadata. They are not normalized modulo
-alpha-renaming or definitional equality, so some equivalent statement edits can
-invalidate reviews. This includes rewriting proof subterms inside the elaborated
-type itself; the proof-body guarantee concerns the declaration value, not arbitrary
-normalization of its type. Capture-local Merkle memoization shares statement descriptors
-between scopes. Native checks run again on every capture; no native success is
-persisted. Provider implementation bytes, query-site options and compiler version
-strings are not mathematical review identity. A future incompatible interpretation
-of these descriptors must bump the encoding, rather than quietly retain evidence.
-
-Old v1 bindings are stale under v2. Rebuild captures and reassess affected reviews;
-there is no automatic receipt rewrite or historical receipt store. Source
-registrations and global node labels retain their existing identities.
-
-Freshness relies on SHA-256 collision resistance. Fingerprints are not proof
-certificates, do not authenticate provider observations, and do not replace
-Lean's kernel or definitional-equality checks.
-
-## Current language and migration limits
-
-The data model can describe multiple languages, but native source resolution and
-proof checking are currently provided for Lean. Authored Rocq references can be
-retained and reported as unsupported or unresolved; readable source/config
-bytes do not establish Rocq proof validity. Rust blocks do not currently
-establish proof or correspondence completion. No cross-language symbol mapping
-or correspondence is inferred.
-
-The canonical migration removes the old fixed node slots and their completion
-fallbacks. Downstream APIs and graph payloads should consume keyed sources and
-the captured assessment. The current graph data uses schema version 4. Rebuild
-generated sites and update clients that previously read the old node fields or
-reconstructed completion from declaration snapshots.
-
-The focused test fixtures cover independent Verso/Lean/Rocq realizations,
-native proof versus optional prose assessment, explicit correspondences,
-dependency selection, atomic source/import rejection, semantic binding freshness,
-and Merkle cycles/sharing. These exercise the supported paths; they do not
-certify foreign-language checking or a general project-readiness analysis.
+Foreign Rocq/Rust resolution/checking, polymorphic independent-target matching,
+aggregate completion requests and the formal proof-layer port remain separate work.
+Readable foreign source/configuration does not establish foreign proof validity.
 
 ## Consumer pilot contracts and pending extensions
 

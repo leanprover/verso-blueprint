@@ -22,6 +22,10 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
 
 private def label (raw : String) : Name := Name.mkSimple raw
 
+private def nativeProofCheck (node declaration : Name) : RequirementKey :=
+  ⟨.declaration ((⟨node, `lean⟩ : RealizationKey).forRole `proof)
+    ⟨⟨`lean, `blueprintFixtures⟩, declaration.toString⟩, `proof⟩
+
 run_cmd liftTermElabM do
   let snapshot ← obtain (← Capture.capture)
   let registry := snapshot.registry
@@ -68,8 +72,14 @@ run_cmd liftTermElabM do
       "A local proof remains visible while selected cyclic prerequisites block closure"
     ensure node.actionableStage?.isNone
       "Cyclic prerequisites block next-step actionability"
-  ensure ((registry.resultFor (.realization ⟨cycleA, `lean⟩)).status == .blocked)
-    "Graph must use the existing evaluator's blocked cycle result"
+  let cycleAProof := nativeProofCheck cycleA `RealizationCaptureFixture.cycleA
+  let cycleBProof := nativeProofCheck cycleB `RealizationCaptureFixture.cycleB
+  for proofCheck in #[cycleAProof, cycleBProof] do
+    ensure ((registry.requirement? proofCheck).isSome && (registry.localResult proofCheck).complete)
+      "Cycle control must have a real, locally passing native proof requirement"
+    let result := registry.resultForRequirement proofCheck
+    ensure (result.status == .blocked && result.diagnostics.any (·.code == "requirement-cycle"))
+      "The exact native proof requirement must be blocked by the captured validation cycle"
 
   let missing := label "capture.absent"
   let missingGraph := Graph.buildModel snapshot #[label "capture.missing"] |>.finish "missing-use" {}

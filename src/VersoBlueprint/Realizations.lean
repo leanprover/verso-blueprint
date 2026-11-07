@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.ConceptMetadata
+import Vir.Package.Name
 
 /-! Pure identities and authored realization data. No environment extension,
 language-server transport, renderer, or completion checker is installed here. -/
@@ -49,17 +50,27 @@ structure ClaimKey where
   name : Name
   deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
-/-- Statement/proof are named facets; declarations can have separate requirements. -/
+/-- Content interpretation belongs to an owned source selection, not a requirement. -/
+inductive ContentScope where
+  | statement
+  | implementation
+  deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
+
+/-- Ordinary producers split their source roles into separately addressable objects.
+Role remains explicit data; consumers must not infer it from this key. -/
+def RealizationKey.forRole (key : RealizationKey) (role : Name) : RealizationKey :=
+  { key with name := Name.mkSimple (toJson (Vir.nameKey key.name, Vir.nameKey role)).compress }
+
+/-- Exact independently addressable assessment subjects. -/
 inductive Subject where
   | realization (key : RealizationKey)
-  | facet (key : RealizationKey) (name : Name)
   | declaration (key : RealizationKey) (object : ObjectKey)
   | translation (key : TranslationKey)
   | claim (key : ClaimKey)
   deriving Ord, Repr, Inhabited, BEq, Hashable, DecidableEq, ToJson
 
 def Subject.realization? : Subject → Option RealizationKey
-  | .realization key | .facet key _ | .declaration key _ => some key
+  | .realization key | .declaration key _ => some key
   | _ => none
 
 def Subject.translation? : Subject → Option TranslationKey
@@ -77,31 +88,24 @@ structure Node extends Data.NodeMetadata where
   title : String
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
-structure Facet where
-  name : Name
-  documents : Array DocumentKey := #[]
-  /-- Source declarations selected by this facet, referencing the realization's
-  existing associations. Sharing a declaration does not duplicate its validation. -/
-  declarations : Array ObjectKey := #[]
-  required : Array RequirementKey := #[]
-  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
-
 /-- Every listed declaration is required; alternatives belong in another realization. -/
 structure Declaration where
   object : ObjectKey
+  projection : ContentScope := .implementation
   required : Array RequirementKey := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Realization where
   key : RealizationKey
   context : Context
-  facets : Array Facet := #[]
+  role : Name := `account
+  documents : Array DocumentKey := #[]
   declarations : Array Declaration := #[]
   required : Array RequirementKey := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 def Realization.requirements (r : Realization) : Array RequirementKey :=
-  (r.required ++ r.facets.flatMap (·.required) ++ r.declarations.flatMap (·.required)).toList.eraseDups.toArray
+  (r.required ++ r.declarations.flatMap (·.required)).toList.eraseDups.toArray
 
 inductive Resolution where
   | resolved

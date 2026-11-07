@@ -89,6 +89,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintRealizationThreeWay,
     `VersoBlueprintTests.BlueprintRealizationDependencies,
     `VersoBlueprintTests.BlueprintRealizationAuthoring,
+    `VersoBlueprintTests.BlueprintAssessmentSnapshot,
     `VersoBlueprintTests.BlueprintRealizationSemantics,
     `VersoBlueprintTests.BlueprintCanonicalSources,
     `VersoBlueprintTests.BlueprintRealizationKernelGraph,

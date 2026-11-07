@@ -13,6 +13,11 @@ namespace VersoBlueprintTests.BlueprintTranslations
 open Lean Informal.Realizations Informal.Validation Informal.Translations
 open BlueprintRealizations
 
+-- This fact is a pure-fixture MOCK; it is not a kernel check.
+def mockOwnType : Observation := .check {
+  validator := NativeLean.ownTypeValidator, declaration := some leanObject,
+  proposition := true, outcome := .passed, coverage := .dependencyClosure }
+
 -- P02/P03: translating a statement differs from completing a full theorem port.
 #eval show IO Unit from do
   let reviewed ← withMockEvidence fixture `review reviewKey mockReview
@@ -28,6 +33,47 @@ open BlueprintRealizations
   let checkedAndReviewed ← withMockEvidence checked `review reviewKey mockReview
   let r ← registry checkedAndReviewed
   expect "P03: explicit full contract complete" ((r.resultFor (.translation translationKey)).complete)
+
+-- A lint result cannot establish mathematical `proves` support. Exact own-type
+-- support is sufficient for the minimum route, but it cannot bypass another
+-- required judgment on that relation.
+#eval show IO Unit from do
+  let relationKey : TranslationKey := ⟨`fixture, `formal_proof⟩
+  let lintKey : RequirementKey := ⟨.translation relationKey, `lint⟩
+  let lintOnly : Input := { fixture with
+    translations := fixture.translations.push <| contribution `formalProof {
+      key := relationKey, kind := `proves, source := #[leanProofKey], target := #[leanKey], required := #[lintKey] }
+    requirements := fixture.requirements.push <| contribution `lintRequirement {
+      key := lintKey, expected := .check `lean.lint } }
+  let linted ← withMockEvidence lintOnly `lintPassed lintKey
+    (.check { validator := `lean.lint, outcome := .passed })
+  let r ← registry linted
+  expect "proves: lint-only contract has no mathematical support"
+    ((r.resultForRequirement lintKey).complete &&
+      (r.resultFor (.translation relationKey)).status == Status.unassessed &&
+      hasIssue (r.resultFor (.translation relationKey)) "missing-mathematical-support")
+
+  let supportKey : RequirementKey := ⟨.translation relationKey, `own_type_support⟩
+  let aliceReview : RequirementKey := ⟨.translation relationKey, `alice_mathematical_review⟩
+  let supported : Input := { fixture with
+    translations := fixture.translations.push <| contribution `formalProof {
+      key := relationKey, kind := `proves, source := #[leanProofKey], target := #[leanKey],
+      required := #[supportKey, aliceReview] }
+    requirements := fixture.requirements ++ #[
+      contribution `ownTypeRequirement { key := supportKey, expected := .proves leanObject },
+      contribution `aliceReviewRequirement {
+        key := aliceReview, expected := .review `mathematicalProof `Alice }] }
+  let supported ← withMockEvidence supported `ownTypePassed supportKey mockOwnType
+  let rejectedReview ← withMockEvidence supported `aliceRejected aliceReview
+    (.review { criterion := `mathematicalProof, reviewer := `Alice, outcome := .failed })
+  let r ← registry rejectedReview
+  expect "proves: exact native support is independently complete"
+    ((r.resultForRequirement supportKey).complete)
+  expect "proves: required negative review still blocks conjunction"
+    ((r.resultForRequirement aliceReview).status == Status.pending &&
+      hasIssue (r.resultForRequirement aliceReview) "review-not-accepted" &&
+      (r.resultFor (.translation relationKey)).status == Status.pending &&
+      !(r.resultFor (.translation relationKey)).complete)
 
 -- P05/P06: independent MaxNat-shaped goal descriptors, not actual project checks.
 #eval show IO Unit from do
@@ -54,20 +100,20 @@ open BlueprintRealizations
 -- P08/P16: conjunction and explicit selection, with two alternatives in one context.
 #eval show IO Unit from do
   let otherObject := { leanObject with native := "Fixture.second_required_declaration" }
-  let otherProof : RequirementKey := ⟨.declaration leanKey otherObject, `complete_proof⟩
+  let otherProof : RequirementKey := ⟨.declaration leanProofKey otherObject, `complete_proof⟩
   let otherGoal := { goal with fingerprint := "Second independently expected proposition" }
-  let alternativeKey : RealizationKey := ⟨leanKey.node, `alternative⟩
-  let alternativeProof : RequirementKey := ⟨.facet alternativeKey `proof, `complete_proof⟩
+  let alternativeBase : RealizationKey := ⟨leanKey.node, `alternative⟩
+  let alternativeKey := alternativeBase.forRole `proof
+  let alternativeProof : RequirementKey := ⟨.declaration alternativeKey leanObject, `complete_proof⟩
   let alternative : Realization := {
-    key := alternativeKey, context := leanContext
-    facets := #[{ name := `proof, documents := #[leanDoc], required := #[alternativeProof] }]
-    declarations := #[{ object := leanObject, required := #[alternativeProof] }] }
+    key := alternativeKey, role := `proof, context := leanContext
+    declarations := #[{ object := leanObject, projection := .implementation, required := #[alternativeProof] }] }
   let input : Input := { fixture with
     objects := fixture.objects.push <| contribution `secondObject {
       key := otherObject, resolution := .resolved, document := some leanDoc }
     realizations := (fixture.realizations.map fun c =>
-      if c.value.key == leanKey then { c with value := { c.value with
-        declarations := c.value.declarations.push { object := otherObject, required := #[otherProof] } } }
+      if c.value.key == leanProofKey then { c with value := { c.value with
+        declarations := c.value.declarations.push { object := otherObject, projection := .implementation, required := #[otherProof] } } }
       else c).push (contribution `alternative alternative)
     requirements := fixture.requirements ++ #[
       contribution `secondRequirement { key := otherProof, expected := .proof otherGoal otherObject },
@@ -75,11 +121,11 @@ open BlueprintRealizations
   let input ← withMockEvidence input `firstProof proofKey mockProof
   let input ← withMockEvidence input `alternativeProof alternativeProof mockProof
   let r ← registry input
-  expect "P08: required declarations conjunctive" (!(r.resultFor (.realization leanKey)).complete)
+  expect "P08: required declarations conjunctive" (!(r.resultFor (.realization leanProofKey)).complete)
   expect "P08: alternative complete independently" ((r.resultFor (.realization alternativeKey)).complete)
   match r.selectRequirement {
       node := leanKey.node, context := leanContext
-      facet := some `proof, requirement := `complete_proof } with
+      role := some `proof, requirement := `complete_proof } with
   | .error d => expect "P16: ambiguous alternative" (d.code == "ambiguous-prerequisite")
   | .ok _ => throw <| IO.userError "Ambiguous selection chose a complete alternative"
   match r.selectRequirement {
@@ -89,17 +135,18 @@ open BlueprintRealizations
   | .ok _ => throw <| IO.userError "Missing selection succeeded"
   let input ← withMockEvidence input `secondProof otherProof (mockProof otherGoal otherObject)
   let r ← registry input
-  expect "P08: all required declarations complete" ((r.resultFor (.realization leanKey)).complete)
+  expect "P08: all required declarations complete" ((r.resultFor (.realization leanProofKey)).complete)
   match r.selectRequirement {
       node := leanKey.node, context := leanContext
-      facet := some `proof, requirement := `complete_proof } with
+      role := some `proof, requirement := `complete_proof } with
   | .error d => expect "P16: two complete alternatives still ambiguous" (d.code == "ambiguous-prerequisite")
   | .ok _ => throw <| IO.userError "Completeness supplied an implicit alternative selection"
   let unresolvedMember : Input := { input with objects := input.objects.map fun c =>
     if c.value.key == otherObject then { c with value := { c.value with resolution := .missing } } else c }
   let r ← registry unresolvedMember
   expect "P08/P21: independent proof retained despite missing other member"
-    ((r.resultForRequirement proofKey).complete && (r.resultFor (.realization leanKey)).status == Status.blocked)
+    ((r.resultForRequirement proofKey).complete &&
+      (r.resultFor (.realization leanProofKey)).status == Status.blocked)
 
 -- P12/P13: prerequisite cycles cannot manufacture closure; correspondence can cycle.
 #eval show IO Unit from do
@@ -122,7 +169,7 @@ open BlueprintRealizations
     claims := fixture.claims.push <| contribution `reverseClaim {
       key := reverseClaim, interpretation := "Separately reviewed reverse claim", required := #[reverseReview] }
     requirements := fixture.requirements.push <| contribution `reverseRequirement {
-      key := reverseReview, expected := .review `statement_correspondence } }
+      key := reverseReview, expected := .review `statement_correspondence `MockReviewer } }
   let input ← withMockEvidence bidirectional `review reviewKey mockReview
   let input ← withMockEvidence input `reverseReview reverseReview mockReview
   let r ← registry input
@@ -131,24 +178,23 @@ open BlueprintRealizations
 -- P14/P15: pure selection/requirement controls. Existing Graph/autoDeps adapters
 -- are deliberately untouched and still need their later integration regressions.
 #eval show IO Unit from do
-  let proseReview : RequirementKey := ⟨.facet informalKey `statement, `proofread⟩
+  let proseReview : RequirementKey := ⟨.realization informalKey, `proofread⟩
   let input : Input := { fixture with
     realizations := fixture.realizations.map fun c =>
-      if c.value.key == informalKey then { c with value := { c.value with
-        facets := c.value.facets.map fun f => if f.name == `statement then { f with required := #[proseReview] } else f } }
+      if c.value.key == informalKey then { c with value := { c.value with required := #[proseReview] } }
       else c
     requirements := (fixture.requirements.map fun c =>
       if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[proofKey] } } else c).push
-      (contribution `proseRequirement { key := proseReview, expected := .review `proofreading }) }
+      (contribution `proseRequirement { key := proseReview, expected := .review `proofreading `MockReviewer }) }
   let input ← withMockEvidence input `proseReview proseReview
     (.review { criterion := `proofreading, reviewer := `MockReviewer, outcome := .passed })
   let input ← withMockEvidence input `translationReview reviewKey mockReview
   let r ← registry input
-  expect "P14: complete informal statement" ((r.resultFor (.facet informalKey `statement)).complete)
+  expect "P14: complete informal statement" ((r.resultFor (.realization informalKey)).complete)
   expect "P14: selected Lean proof still blocks" ((r.resultForRequirement reviewKey).status == Status.blocked)
   match r.selectRequirement {
-      node := leanKey.node, context := leanContext, realization := some leanKey.name
-      facet := some `proof, requirement := `complete_proof } with
+      node := leanKey.node, context := leanContext, realization := some leanProofKey.name
+      role := some `proof, requirement := `complete_proof } with
   | .ok selected => expect "P14: explicit default Lean proof selection" (selected == proofKey)
   | .error d => throw <| IO.userError s!"Unexpected selection failure: {repr d}"
   let cross : Input := { input with
@@ -159,7 +205,7 @@ open BlueprintRealizations
     (.review { criterion := `proofreading, reviewer := `MockReviewer, outcome := .passed })
   let r ← registry cross
   expect "P15: distinct realizations of same node"
-    (proseReview.subject.realization? == some informalKey && proofKey.subject.realization? == some leanKey &&
+    (proseReview.subject.realization? == some informalKey && proofKey.subject.realization? == some leanProofKey &&
       informalKey.node == leanKey.node && informalKey != leanKey)
   expect "P15: genuine same-label constraint retained"
     ((r.requirement? proseReview).any (·.prerequisites == #[proofKey]) &&
@@ -183,7 +229,7 @@ open BlueprintRealizations
   let split : Input := { fixture with
     nodes := fixture.nodes.push <| contribution `splitNode { label := splitKey.node, title := "Split target" }
     realizations := fixture.realizations.push <| contribution `splitRealization {
-      key := splitKey, context := leanContext, facets := #[{ name := `statement, documents := #[leanDoc] }] }
+      key := splitKey, role := `statement, context := leanContext, documents := #[leanDoc] }
     translations := fixture.translations.map fun c => { c with value := { c.value with target := #[leanKey, splitKey] } } }
   let r ← registry split
   expect "P20: one-to-many across nodes" (r.translations.size == 1 && r.claims.size == 1)
@@ -235,7 +281,7 @@ open BlueprintRealizations
     claims := fixture.claims.push <| contribution `otherClaim {
       key := otherClaim, interpretation := "Independently reviewed reverse claim", required := #[otherReview] }
     requirements := fixture.requirements.push <| contribution `otherRequirement {
-      key := otherReview, expected := .review `statement_correspondence, prerequisites := #[reviewKey] } }
+      key := otherReview, expected := .review `statement_correspondence `MockReviewer, prerequisites := #[reviewKey] } }
   let reviewedOriginal ← withMockEvidence input `originalReview reviewKey mockReview
   let r ← registry reviewedOriginal
   expect "R1: external review alone leaves own claim pending"
@@ -249,7 +295,7 @@ open BlueprintRealizations
     if c.value.key == otherClaim then { c with value := { c.value with assumptions := #["new premise"] } } else c }
   let changedSelection : Input := { reviewedBoth with translations := reviewedBoth.translations.map fun c =>
     if c.value.key == otherTranslation then { c with value := { c.value with
-      target := #[{ realization := rocqKey, facets := #[`statement] }] } } else c }
+      target := #[leanKey] } } else c }
   for changed in #[changedInterpretation, changedAssumptions, changedSelection] do
     let current ← registry changed
     expect "R1: own changed claim cannot retain completed translation" (!(current.resultFor (.translation otherTranslation)).complete)
@@ -258,16 +304,22 @@ open BlueprintRealizations
       (current.bindingFor reviewKey == r.bindingFor reviewKey && (current.resultForRequirement reviewKey).complete)
 
 -- Cross-node mathematical obligations remain legal and reuse one checked
--- theorem requirement/evidence for its declaration and proof facet.
+-- theorem requirement/evidence for its declaration and proof realization.
 #eval show IO Unit from do
-  let obligationRealization : RealizationKey := ⟨`external_obligation, `lean⟩
+  let obligationRealization := (⟨`external_obligation, `lean⟩ : RealizationKey).forRole `proof
   let obligationContext : Context := ⟨`lean, `obligations_project⟩
   let obligationDocument : DocumentKey := ⟨obligationContext, "MockExternalObligation.lean"⟩
   let obligationObject : ObjectKey := ⟨obligationContext, "Fixture.external_preservation"⟩
-  let obligationProof : RequirementKey := ⟨.facet obligationRealization `proof, `preservation⟩
+  let obligationRole := obligationRealization
+  let obligationProof : RequirementKey := ⟨.declaration obligationRole obligationObject, `preservation⟩
   let obligationGoal : Goal := {
     context := obligationContext, fingerprint := "Independently expected preservation relation"
     documents := #[obligationDocument] }
+  let obligationDeclaration : Informal.Realizations.Declaration := {
+    object := obligationObject
+    projection := .implementation
+    required := #[obligationProof]
+  }
   let input : Input := { fixture with
     nodes := fixture.nodes.push <| contribution `obligationNode {
       label := obligationRealization.node, title := "External mathematical obligation" }
@@ -276,9 +328,8 @@ open BlueprintRealizations
     objects := fixture.objects.push <| contribution `obligationObject {
       key := obligationObject, resolution := .resolved, document := some obligationDocument }
     realizations := fixture.realizations.push <| contribution `obligationRealization {
-      key := obligationRealization, context := obligationContext
-      facets := #[{ name := `proof, declarations := #[obligationObject], required := #[obligationProof] }]
-      declarations := #[{ object := obligationObject, required := #[obligationProof] }] }
+      key := obligationRole, role := `proof, context := obligationContext
+      declarations := #[obligationDeclaration] }
     requirements := (fixture.requirements.map fun c =>
       if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[obligationProof] } } else c).push
       (contribution `obligationProof { key := obligationProof, expected := .proof obligationGoal obligationObject }) }
@@ -289,32 +340,34 @@ open BlueprintRealizations
   let proved ← withMockEvidence reviewed `preservation obligationProof (mockProof obligationGoal obligationObject)
   let r ← registry proved
   expect "R1: linked cross-node obligation permits completion" ((r.resultFor (.translation translationKey)).complete)
-  expect "R1: one theorem validation shared across declaration and proof facet"
-    ((r.resultFor (.facet obligationRealization `proof)).complete &&
-      (r.resultFor (.declaration obligationRealization obligationObject)).complete &&
+  expect "R1: one theorem validation shared across declaration and proof realization"
+    ((r.resultFor (.realization obligationRole)).complete &&
+      (r.resultFor (.declaration obligationRole obligationObject)).complete &&
       (r.evidence.filter fun e => match e.observation with | .proof _ => true | _ => false).size == 1)
   let changedContract : Input := { proved with requirements := proved.requirements.map fun c =>
     if c.value.key == obligationProof then { c with value := { c.value with
       expected := .proof { obligationGoal with fingerprint := "Changed preservation proposition" } obligationObject } } else c }
   let current ← registry changedContract
-  expect "R1/P10: changed external mathematical obligation invalidates linked local review"
-    (hasIssue (current.localResult reviewKey) "stale-content" && !(current.resultFor (.translation translationKey)).complete)
+  expect "R1/P10: changing prerequisite content leaves local review current but blocks closure"
+    ((current.localResult reviewKey).complete && current.bindingFor reviewKey == r.bindingFor reviewKey &&
+      hasIssue (current.resultForRequirement obligationProof) "stale-content" &&
+      !(current.resultFor (.translation translationKey)).complete)
 
 /-- MOCK inputs reproducing the proof-only missing helper. No canonical sources
-are checked. The original proof requirement is shared by its facet/declaration. -/
+are checked. The original proof requirement is owned by the proof realization and declaration. -/
 def withMissingProofHelper : IO Input := do
   let helper := { leanObject with native := "Fixture.proof_only_helper" }
-  let helperProof : RequirementKey := ⟨.declaration leanKey helper, `complete_proof⟩
+  let helperProof : RequirementKey := ⟨.declaration leanProofKey helper, `complete_proof⟩
   let helperGoal : Goal := { goal with fingerprint := "Helper proposition" }
+  let helperDeclaration : Informal.Realizations.Declaration := {
+    object := helper
+    projection := .implementation
+    required := #[helperProof]
+  }
   let input : Input := { fixture with
     realizations := fixture.realizations.map fun c =>
-      if c.value.key == leanKey then { c with value := { c.value with
-        declarations := c.value.declarations.push { object := helper, required := #[helperProof] }
-        facets := c.value.facets.map fun f =>
-          if f.name == `proof then { f with
-            declarations := f.declarations.push helper
-            required := f.required.push helperProof } else f } }
-      else c
+      if c.value.key == leanProofKey then { c with value := { c.value with
+        declarations := c.value.declarations.push helperDeclaration } } else c
     requirements := fixture.requirements.push <| contribution `helperRequirement {
       key := helperProof, expected := .proof helperGoal helper } }
   let input ← withMockEvidence input `goodProof proofKey mockProof
@@ -326,25 +379,44 @@ def withMissingProofHelper : IO Input := do
   let base ← withMissingProofHelper
   let r ← registry base
   expect "R2: original local proof retained" ((r.resultForRequirement proofKey).complete)
-  expect "R2: available declaration remains complete" ((r.resultFor (.declaration leanKey leanObject)).complete)
+  expect "R2: available declaration remains complete" ((r.resultFor (.declaration leanProofKey leanObject)).complete)
   expect "R2: selected statement port remains complete" ((r.resultFor (.translation translationKey)).complete)
-  expect "R2: required proof work remains blocked" ((r.resultFor (.facet leanKey `proof)).status == Status.blocked)
-  expect "R2: full realization remains blocked" ((r.resultFor (.realization leanKey)).status == Status.blocked)
-  for facets in #[#[`proof], #[`statement, `proof], #[]] do
-    let selected : Input := { base with translations := base.translations.map fun c =>
-      { c with value := { c.value with target := #[{ realization := leanKey, facets }] } } }
-    let selected ← withMockEvidence selected `selectedReview reviewKey mockReview
-    let current ← registry selected
-    expect "R2: selecting proof or whole realization preserves missing-helper blocker"
-      ((current.resultFor (.translation translationKey)).status == Status.blocked &&
-        (current.resultFor (.declaration leanKey leanObject)).complete)
+  expect "R2: required proof work remains blocked" ((r.resultFor (.realization leanProofKey)).status == Status.blocked)
+  expect "R2: statement realization without its own contract remains unassessed"
+    ((r.resultFor (.realization leanKey)).status == Status.unassessed)
+  let proofTarget : Input := { base with translations := base.translations.map fun c =>
+    { c with value := { c.value with target := #[{ realization := leanProofKey }] } } }
+  let proofTarget ← withMockEvidence proofTarget `selectedReview reviewKey mockReview
+  let current ← registry proofTarget
+  expect "R2: selecting the proof realization retains its missing-helper blocker"
+    ((current.resultFor (.translation translationKey)).status == Status.blocked &&
+      (current.resultFor (.declaration leanProofKey leanObject)).complete)
 
--- Independent review R3: nonempty endpoint IDs/facet names are not content.
+-- A current-selection conflict remains pending with available content and is
+-- still reported when unrelated source unavailability blocks the assessment.
+#eval show IO Unit from do
+  let conflicting : Input := { fixture with reviewSelections := #[
+    contribution `firstCurrentReview { requirement := reviewKey, judgment := some `firstJudgment },
+    contribution `secondCurrentReview { requirement := reviewKey, judgment := some `secondJudgment }] }
+  let available ← registry conflicting
+  expect "review selection conflict with available content stays pending"
+    ((available.localResult reviewKey).status == Status.pending &&
+      hasIssue (available.localResult reviewKey) "conflicting-review-selections")
+  let unavailableDocuments := conflicting.documents.map fun c =>
+    if c.value.key == rocqDoc then { c with value := { c.value with text := "" } } else c
+  let unavailableInput := { conflicting with documents := unavailableDocuments }
+  let unavailable ← registry unavailableInput
+  expect "review selection conflict remains visible alongside unavailable content"
+    ((unavailable.localResult reviewKey).status == Status.blocked &&
+      hasIssue (unavailable.localResult reviewKey) "conflicting-review-selections" &&
+      hasIssue (unavailable.localResult reviewKey) "content-unavailable")
+
+-- Independent review R3: nonempty endpoint IDs/role names are not content.
 #eval show IO Unit from do
   let empty : Input := { fixture with
     realizations := fixture.realizations.map fun c =>
-      if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with
-        facets := #[{ name := `statement }], declarations := #[], required := #[] } }
+      if c.value.key == leanKey || c.value.key == rocqKey || c.value.key == leanProofKey then
+        { c with value := { c.value with documents := #[], declarations := #[], required := #[] } }
       else c
     requirements := fixture.requirements.filter (·.value.key == reviewKey)
     bindingInputs := #[] }
@@ -355,12 +427,17 @@ def withMissingProofHelper : IO Input := do
     (!result.complete && hasIssue result "content-unavailable")
 
 -- Unselected content and the other endpoint cannot rescue an empty selected
--- facet; existing canonical documents must themselves contain source bytes.
+-- realization; existing canonical documents must themselves contain source bytes.
 #eval show IO Unit from do
   for emptyKey in #[rocqKey, leanKey] do
-    let emptySelected : Input := { fixture with realizations := fixture.realizations.map fun c =>
-      if c.value.key == emptyKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
-        if f.name == `statement then { f with documents := #[], declarations := #[] } else f } } else c }
+    let emptySubject : Subject :=
+      if emptyKey == rocqKey then .declaration rocqKey rocqObject
+      else .declaration leanKey leanObject
+    let emptySelected : Input := { fixture with
+      realizations := (fixture.realizations.map fun c =>
+        if c.value.key == emptyKey then { c with value := { c.value with documents := #[], declarations := #[] } } else c)
+      bindingInputs := fixture.bindingInputs.filter (·.value.subject != emptySubject)
+    }
     let input ← withMockEvidence emptySelected `emptySelectedReview reviewKey mockReview
     let r ← registry input
     expect "R3: unrelated proof content or other endpoint cannot fill selected statement"
@@ -371,9 +448,14 @@ def withMissingProofHelper : IO Input := do
   let r ← registry input
   expect "R3: empty canonical bytes do not supply selected content"
     (!(r.resultFor (.translation translationKey)).complete && hasIssue (r.localResult reviewKey) "content-unavailable")
-  let noStatements : Input := { fixture with realizations := fixture.realizations.map fun c =>
-    if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
-      if f.name == `statement then { f with documents := #[], declarations := #[] } else f } } else c }
+  let noStatements : Input := { fixture with
+    realizations := (fixture.realizations.map fun c =>
+      if c.value.key == leanKey || c.value.key == rocqKey then
+        { c with value := { c.value with documents := #[], declarations := #[] } } else c)
+    bindingInputs := (fixture.bindingInputs.filter fun c =>
+      c.value.subject != (.declaration leanKey leanObject) &&
+      c.value.subject != (.declaration rocqKey rocqObject))
+  }
   let correspondenceDocument : DocumentKey := ⟨leanContext, "MockCorrespondence.lean"⟩
   let correspondenceObject : ObjectKey := ⟨leanContext, "Fixture.correspondence"⟩
   let correspondenceGoal : Goal := {
@@ -398,34 +480,34 @@ def withMissingProofHelper : IO Input := do
 -- prose document or second checked theorem is needed for statement/proof views.
 #eval show IO Unit from do
   let declarationBacked : Input := { fixture with realizations := fixture.realizations.map fun c =>
-    if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with
-      facets := c.value.facets.map fun f => { f with documents := #[] } } } else c }
+    if c.value.key == leanKey || c.value.key == rocqKey || c.value.key == leanProofKey then { c with value := { c.value with documents := #[] } } else c }
   let input ← withMockEvidence declarationBacked `declarationReview reviewKey mockReview
   let r ← registry input
   expect "R3: selected statement declarations provide content without prose documents"
     ((r.resultFor (.translation translationKey)).complete && !(r.resultForRequirement proofKey).complete)
   let input ← withMockEvidence input `sharedProof proofKey mockProof
   let r ← registry input
-  expect "R2/R3: one proof requirement supports its existing declaration and facet"
-    ((r.resultFor (.declaration leanKey leanObject)).complete && (r.resultFor (.facet leanKey `proof)).complete)
+  expect "R2/R3: one proof requirement supports its existing declaration and realization"
+    ((r.resultFor (.declaration leanProofKey leanObject)).complete && (r.resultFor (.realization leanProofKey)).complete)
   let wholeDeclaration : Input := { fixture with
     realizations := fixture.realizations.map fun c =>
-      if c.value.key == leanKey || c.value.key == rocqKey then { c with value := { c.value with
-        facets := #[], declarations := c.value.declarations.map fun d => { d with required := #[] } } } else c
+      if c.value.key == leanKey || c.value.key == rocqKey || c.value.key == leanProofKey then
+        { c with value := { c.value with documents := #[], declarations := c.value.declarations.map fun d => { d with required := #[] } } } else c
     requirements := fixture.requirements.filter (·.value.key == reviewKey)
     bindingInputs := fixture.bindingInputs.filter (·.value.name == NativeLean.sourceContext)
     translations := fixture.translations.map fun c => { c with value := { c.value with source := #[rocqKey], target := #[leanKey] } } }
   let input ← withMockEvidence wholeDeclaration `wholeReview reviewKey mockReview
   let r ← registry input
-  expect "R3: whole formal realization can use declarations without invented facets" ((r.resultFor (.translation translationKey)).complete)
+  expect "R3: whole formal realization can use declarations without invented roles" ((r.resultFor (.translation translationKey)).complete)
 
--- Facet membership references existing associations and is checked at admission.
+-- Declaration ownership references existing associations and is checked at admission.
 #eval show IO Unit from do
   let unknown := { leanObject with native := "Fixture.not_associated" }
   let bad : Input := { fixture with realizations := fixture.realizations.map fun c =>
-    if c.value.key == leanKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
-      if f.name == `statement then { f with declarations := #[unknown] } else f } } else c }
-  expect "R2: selected declaration must belong to its realization" (rejectsWith bad "unknown-facet-declaration")
+    if c.value.key == leanKey then { c with value := { c.value with
+      declarations := #[{ object := unknown, projection := .statement }] } } else c }
+  expect "R2: stale semantic descriptors cannot follow a declaration to another owner"
+    (rejectsWith bad "invalid-binding-input")
 
 -- Pilot relocation boundary: these are MOCK observations, not replayed Rocq or
 -- Lean checks. Today DocumentKey.path participates in identity and bindings.
@@ -439,7 +521,7 @@ def withMissingProofHelper : IO Input := do
     claims := fixture.claims.push <| contribution `dependentClaim {
       key := downstreamClaim, interpretation := "Dependent MOCK relation", required := #[downstreamReview] }
     requirements := fixture.requirements.push <| contribution `dependentReview {
-      key := downstreamReview, expected := .review `statement_correspondence, prerequisites := #[reviewKey] } }
+      key := downstreamReview, expected := .review `statement_correspondence `MockReviewer, prerequisites := #[reviewKey] } }
   let input ← withMockEvidence input `nativeProof proofKey mockProof
   let input ← withMockEvidence input `upstreamReview reviewKey mockReview
   let input ← withMockEvidence input `downstreamReview downstreamReview mockReview
@@ -454,7 +536,7 @@ def withMissingProofHelper : IO Input := do
     documents := input.documents.map fun c => { c with value := { c.value with key := relocate c.value.key } }
     objects := input.objects.map fun c => { c with value := { c.value with document := c.value.document.map relocate } }
     realizations := input.realizations.map fun c => { c with value := { c.value with
-      facets := c.value.facets.map fun f => { f with documents := f.documents.map relocate } } } }
+      documents := c.value.documents.map relocate } } }
   let after ← registry relocated
   expect "pilot: untouched native proof remains complete" ((after.resultForRequirement proofKey).complete)
   for key in #[reviewKey, downstreamReview] do
@@ -485,61 +567,57 @@ def withMissingProofHelper : IO Input := do
   expect "pilot: conflicting bytes under one identity reject atomically"
     (rejectsWith conflicting "semantic-conflict")
 
--- Explicit review scope, not the facet's spelling, controls content identity.
--- All facts below are MOCK provider inputs; actual proof edits are covered by
--- BlueprintRealizationSemantics and its ordinary-import mutation runner.
+-- Direct selected content controls review identity. A proof used only as a
+-- completion prerequisite is checked independently; selecting that proof as an
+-- endpoint makes its content part of the reviewed claim. All facts are MOCKS.
 #eval show IO Unit from do
-  -- No scope on this review: the default must preserve statement assessment,
-  -- even when a translation endpoint selects a facet named `proof`.
+  -- The statement endpoint is reviewed; the separately owned proof is only a
+  -- prerequisite to completion.
   let statementInput : Input := { fixture with
-    translations := fixture.translations.map fun c => { c with value := { c.value with
-      target := #[{ realization := leanKey, facets := #[`proof] }] } }
-    requirements := fixture.requirements.map fun c =>
+    translations := (fixture.translations.map fun c =>
+      { c with value := { c.value with target := #[{ realization := leanKey }] } })
+    requirements := (fixture.requirements.map fun c =>
       if c.value.key == reviewKey then { c with value := { c.value with prerequisites := #[proofKey] } }
-      else if c.value.key == proofKey then { c with value := { c.value with scope := .implementation } }
-      else c }
-  let input ← withMockEvidence statementInput `scopeProof proofKey mockProof
-  let input ← withMockEvidence input `scopeReview reviewKey mockReview
+      else c)
+  }
+  let input ← withMockEvidence statementInput `selectedProof proofKey mockProof
+  let input ← withMockEvidence input `selectedStatementReview reviewKey mockReview
   let before ← registry input
-  expect "scope: initial statement correspondence completes" ((before.resultForRequirement reviewKey).complete)
-  let changeInput (matchesName : Name → Bool) : Input := { input with bindingInputs := input.bindingInputs.map fun c =>
-    if (matchesName c.value.name) then { c with value := { c.value with content := c.value.content ++ " changed" } } else c }
-  let proofChanged ← registry <| changeInput fun name =>
-    name == NativeLean.sourceContext || name == NativeLean.expectedContextFor proofKey
-  -- The Rocq provider has no S/P split: preserve its conservative content.
+  expect "selection: current statement review and proof prerequisite complete"
+    ((before.localResult reviewKey).complete && (before.resultFor (.translation translationKey)).complete)
   let proofOnly : Input := { input with bindingInputs := input.bindingInputs.map fun c =>
-    if c.value.name == NativeLean.expectedContextFor proofKey ||
-        (c.value.subject == .declaration leanKey leanObject && c.value.name == NativeLean.sourceContext) then
+    if (c.value.subject == .declaration leanProofKey leanObject && c.value.name == NativeLean.sourceContext) ||
+        (c.value.subject == proofKey.subject && c.value.name == NativeLean.expectedContextFor proofKey) then
       { c with value := { c.value with content := c.value.content ++ " own proof changed" } } else c }
   let after ← registry proofOnly
-  expect "scope: proof-only change preserves local statement review"
+  expect "selection: proof-only prerequisite change preserves statement review binding"
     (after.bindingFor reviewKey == before.bindingFor reviewKey && (after.localResult reviewKey).complete)
-  expect "scope: proof check must be refreshed and still gates completion"
+  expect "selection: changed proof check is stale and still gates completion"
     (!(after.resultForRequirement reviewKey).complete && !(after.localResult proofKey).complete)
-  expect "scope: foreign source remains conservatively bound"
-    (proofChanged.bindingFor reviewKey != before.bindingFor reviewKey)
-  let statementChanged ← registry <| changeInput (· == NativeLean.statementContext)
-  expect "scope: statement edit invalidates review"
+  let statementOnly : Input := { input with bindingInputs := input.bindingInputs.map fun c =>
+    if c.value.subject == (.declaration leanKey leanObject) && c.value.name == NativeLean.statementContext then
+      { c with value := { c.value with content := c.value.content ++ " statement changed" } } else c }
+  let statementChanged ← registry statementOnly
+  expect "selection: selected statement edit invalidates review"
     (statementChanged.bindingFor reviewKey != before.bindingFor reviewKey &&
       hasIssue (statementChanged.localResult reviewKey) "stale-content")
-  let missing : Input := { input with
-    bindingInputs := input.bindingInputs.filter (·.value.name != NativeLean.expectedStatementContextFor proofKey) }
+  let missing : Input := { input with bindingInputs := input.bindingInputs.filter fun c =>
+    !(c.value.subject == .declaration leanKey leanObject && c.value.name == NativeLean.statementContext) }
   let missing ← registry missing
-  expect "scope: missing prerequisite statement context cannot accept review"
+  expect "selection: missing selected statement semantics cannot accept review"
     ((missing.localResult reviewKey).status == .blocked &&
       hasIssue (missing.localResult reviewKey) "semantic-context-unavailable")
-  -- A Lean-language document alone is not a semantic descriptor. Keep its bytes.
-  let proseOnly : Input := { input with realizations := input.realizations.map fun c =>
-    if c.value.key == leanKey then { c with value := { c.value with facets := c.value.facets.map fun f =>
-      if f.name == `proof then { f with declarations := #[] } else f } } else c }
-  let proseBefore ← registry proseOnly
-  let proseAfter ← registry { proseOnly with documents := proseOnly.documents.map fun c =>
+  -- The native declaration selection is interpreted by its checked statement
+  -- descriptor; changing the file's incidental bytes adds no second selection.
+  let proseBefore ← registry input
+  let proseAfter ← registry { input with documents := input.documents.map fun c =>
     if c.value.key == leanDoc then { c with value := { c.value with text := "MOCK changed document-only source" } } else c }
-  expect "scope: document-only Lean content remains conservatively byte-bound"
-    (proseBefore.bindingFor reviewKey != proseAfter.bindingFor reviewKey)
-  -- Unknown provider facts stay conservative, including selected facet/parent
-  -- facts reached through endpoints rather than the requirement's own subject.
-  for subject in #[Subject.declaration leanKey leanObject, .facet leanKey `proof, .realization leanKey] do
+  expect "selection: native statement semantics replace incidental file bytes"
+    (proseBefore.bindingFor reviewKey == proseAfter.bindingFor reviewKey)
+  -- Unknown facts remain conservative on selected subjects. The separate proof
+  -- realization is not selected merely because its requirement gates completion.
+  for (subject, selected) in #[(Subject.declaration leanKey leanObject, true),
+      (.realization leanKey, true), (.realization leanProofKey, false)] do
     let custom := contribution `customProviderInput {
       subject, name := `customProvider.policy, content := "MOCK policy A" }
     let withCustom : Input := { input with bindingInputs := input.bindingInputs.push custom }
@@ -548,33 +626,33 @@ def withMissingProofHelper : IO Input := do
         { custom.value with name := `customProvider.otherPolicy }] do
       let changed := { input with bindingInputs := input.bindingInputs.push { custom with value := replacement } }
       let customAfter ← registry changed
-      expect "scope: selected custom provider facts and their names remain bound"
-        (customBefore.bindingFor reviewKey != customAfter.bindingFor reviewKey)
+      expect "selection: provider facts bind only when their realization is selected"
+        ((customBefore.bindingFor reviewKey != customAfter.bindingFor reviewKey) == selected)
   let sibling : RequirementKey := ⟨.claim claimKey, `independent_review⟩
-  let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent }
-  let withSibling : Input := { input with requirements := input.requirements.push siblingContract }
+  let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent `MockReviewer }
+  let withSibling : Input := { input with
+    claims := input.claims.map fun c =>
+      if c.value.key == claimKey then { c with value := { c.value with required := #[reviewKey, sibling] } } else c
+    requirements := input.requirements.push siblingContract }
   let siblingRegistry ← registry withSibling
-  expect "scope: unrelated sibling obligation does not disturb a local review"
+  expect "selection: adding a sibling obligation does not stale the local review"
     (siblingRegistry.bindingFor reviewKey == before.bindingFor reviewKey)
-  let unselected : Input := { input with realizations := input.realizations.map fun c =>
-    if c.value.key == leanKey then { c with value := { c.value with
-      facets := c.value.facets.push { name := `unselected_notes, documents := #[leanDoc] } } } else c }
+  let noteKey := (⟨leanKey.node, `unselected_notes⟩ : RealizationKey).forRole `account
+  let noteModel : Informal.Realizations.Realization := {
+    key := noteKey
+    role := `account
+    context := leanContext
+    documents := #[leanDoc]
+  }
+  let noteContribution := contribution `unselectedNotes noteModel
+  let unselected : Input := { input with realizations := input.realizations.push noteContribution }
   let unselected ← registry unselected
-  expect "scope: unselected facet metadata does not disturb endpoint review"
+  expect "selection: unselected realization does not disturb endpoint review"
     (unselected.bindingFor reviewKey == before.bindingFor reviewKey)
-  let implementationInput : Input := { input with requirements := input.requirements.map fun c =>
-    if c.value.key == reviewKey then { c with value := { c.value with scope := .implementation } } else c }
-  let implementation ← registry implementationInput
-  expect "scope: changing the review contract invalidates its old evidence"
-    (implementation.bindingFor reviewKey != before.bindingFor reviewKey &&
-      hasIssue (implementation.localResult reviewKey) "stale-content")
-  let reviewedImplementation ← withMockEvidence implementationInput `implementationReview reviewKey mockReview
-  let implementationBefore ← registry reviewedImplementation
-  let implementationAfter ← registry { reviewedImplementation with bindingInputs := proofOnly.bindingInputs }
-  expect "scope: explicit implementation review is current before an own-proof edit"
-    ((implementationBefore.localResult reviewKey).complete)
-  expect "scope: explicit implementation review goes stale on an own-proof edit"
-    (implementationBefore.bindingFor reviewKey != implementationAfter.bindingFor reviewKey &&
-      hasIssue (implementationAfter.localResult reviewKey) "stale-content")
+  let explicitProofSelection : Input := { input with translations := input.translations.map fun c =>
+    if c.value.key == translationKey then { c with value := { c.value with target := #[leanProofKey] } } else c }
+  let proofBinding ← registry explicitProofSelection
+  expect "selection: direct proof endpoint binds proof content"
+    (proofBinding.bindingFor reviewKey != before.bindingFor reviewKey)
 
 end VersoBlueprintTests.BlueprintTranslations

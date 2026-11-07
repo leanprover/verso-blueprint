@@ -7,7 +7,8 @@ import VersoBlueprint.Environment
 
 /-! Raw authoring uses the existing Environment extension. Only a query after
 normal declaration/import elaboration materializes and admits the complete batch.
-No validation observation, binding or derived Registry is persisted. -/
+Only authored records are persisted, including explicit human judgments and their
+original bindings. Native observations and the derived Registry are capture-local. -/
 
 namespace Informal.Realizations.Authoring
 

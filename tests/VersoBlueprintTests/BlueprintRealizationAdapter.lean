@@ -30,7 +30,11 @@ private def rejected : Except ε α → Bool
   | .error _ => true
   | .ok _ => false
 
-private def proofKey (p : PreparedModel) : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+private def proofKey (p : PreparedModel) : RequirementKey :=
+  ⟨.declaration (p.leanKey.forRole `proof) p.witness, `expectedProof⟩
+
+private def bodyCheckKey (p : PreparedModel) : RequirementKey :=
+  ⟨.declaration (p.leanKey.forRole `proof) p.witness, `proof⟩
 
 -- Direct owning-source preparation does not need a Blueprint node or enrollment.
 -- These are actual imported declarations/source bytes; native checking and model
@@ -81,40 +85,56 @@ run_cmd liftTermElabM do
   let nativeOrigin : Informal.Realizations.Origin := {
     id := `undocumentedSource, moduleName := request.moduleName, source := request.sourcePath }
   let nativeOnly ← obtain (source.realizeNative nativeOrigin
-    { label := `undocumentedNative, title := "Undocumented native source" } `implementation)
+    { label := `undocumentedNative, title := "Undocumented native source" } `lean)
   let nativeOnly ← obtain (admit nativeOnly)
-  ensure (nativeOnly.realizations.size == 1 && nativeOnly.documents.size == 1 &&
-    nativeOnly.evidence.isEmpty && nativeOnly.requirements.isEmpty)
-    "Undocumented native model must not fabricate a prose realization or proof contract"
+  ensure (nativeOnly.realizations.size == source.roles.size && nativeOnly.documents.size == 1 &&
+    nativeOnly.evidence.isEmpty && nativeOnly.requirements.isEmpty &&
+    nativeOnly.realizations.all (fun realization =>
+      realization.role != `prose && realization.role != `review &&
+      (nativeOnly.resultFor (.realization realization.key)).status == .unassessed))
+    "Undocumented native model records source roles only, without validation contracts or evidence"
   let noDoc ← NativeSource.prepareDocumented request
   match noDoc with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-docstring") "Undocumented source is not prose"
   | .ok _ => throwError "Undocumented declaration borrowed a nearby docstring"
   let definition ← obtain (← NativeSource.prepare { request with canonical := `RealizationAdapterFixture.Reflexivity })
-  ensure (definition.canonical == `RealizationAdapterFixture.Reflexivity && definition.semanticContext.isSome)
-    "A checked definition has native source without an artificial theorem/prose contract"
+  ensure (definition.canonical == `RealizationAdapterFixture.Reflexivity &&
+      definition.semanticContext.isSome && definition.roles == #[`statement])
+    "A proposition definition supplies statement content without an artificial proof role"
   let documented ← obtain (← NativeSource.prepareDocumented { request with canonical := `RealizationAdapterFixture.number })
-  ensure (documented.format == `markdown && documented.rawDocstring == " An unsupported definition. ")
+  ensure (documented.format == `markdown && documented.rawDocstring == " An unsupported definition. " &&
+      documented.toPrepared.roles == #[`implementation])
     "Direct owning documentation supports definitions without a legacy theorem-only node gate"
   let directLabel := Name.mkSimple "native.direct.definition"
   ensure ((← Informal.Environment.getNode? directLabel).isNone)
     "Direct model control must have no old node to project"
   let origin : Informal.Realizations.Origin := {
     id := `directSource, moduleName := request.moduleName, source := request.sourcePath }
-  let nativeKey : RealizationKey := ⟨directLabel, `implementation⟩
+  let nativeKey : RealizationKey := ⟨directLabel, `lean⟩
+  let nativeRole := documented.toPrepared.roles[0]!
+  let nativeRoleKey := nativeKey.forRole nativeRole
   let proseKey : RealizationKey := ⟨directLabel, `description⟩
   let concept : Informal.Realizations.Node := {
     label := directLabel, title := "A direct native definition", kind := .definition }
   let model ← obtain (documented.realize origin concept nativeKey.name proseKey.name)
   let r ← obtain (admit model.input)
   ensure (model.origin == origin && model.leanKey == nativeKey && model.informalKey == proseKey &&
-    r.nodes == #[concept] && r.evidence.isEmpty && r.requirements.isEmpty && r.realizations.size == 2 &&
-    (r.resultFor (.realization nativeKey)).status == .unassessed &&
+    r.nodes == #[concept] && r.evidence.isEmpty &&
+    r.realizations.size == documented.toPrepared.roles.size + 1 &&
+    r.requirements.isEmpty && (r.resultFor (.realization nativeRoleKey)).status == .unassessed &&
     (r.resultFor (.realization proseKey)).status == .unassessed)
-    "Direct model preparation preserves explicit destinations/origin and invents no checking or prose assessment"
-  ensure (r.realizations.any (fun realization => realization.key == nativeKey &&
-    realization.facets.any (·.name == `body) && !realization.facets.any (·.name == `proof)))
-    "A definition's native body must not be presented as a theorem proof"
+    "Direct source preparation preserves roles and provenance without inventing assessment contracts"
+  ensure (r.realizations.any (fun realization => realization.key == nativeRoleKey &&
+      realization.role == `implementation &&
+      realization.declarations.all (·.projection == .implementation)) &&
+    !(r.realizations.any (·.role == `proof)))
+    "A computational definition selects implementation content without a theorem-proof role"
+  ensure (r.realizations.any (fun realization => realization.key == proseKey &&
+    realization.role == `statement && realization.context.language == documented.format &&
+    realization.documents.size == 1 &&
+    r.documents.any (fun document => document.key == realization.documents[0]! &&
+      document.text == documented.rawDocstring)))
+    "The direct prose realization keeps its selected medium and exact raw docstring"
   ensure (rejected (documented.realize origin concept nativeKey.name nativeKey.name) &&
     rejected (documented.realize origin { concept with label := .anonymous } nativeKey.name proseKey.name) &&
     rejected (documented.realize { origin with moduleName := `WrongOwner } concept nativeKey.name proseKey.name))
@@ -149,67 +169,86 @@ run_cmd liftTermElabM do
   let admitted ← obtain (← NativeLean.checkDeclaration `adapterFixture sibling.witness)
   ensure (own.body.outcome == .passed && admitted.body.outcome == .failed)
     "Borrowing control requires real passing and admitted declarations"
-  let q := proofKey p
-  let input : Input := { p.input with
+  let q := bodyCheckKey p
+  let pProofKey := p.leanKey.forRole `proof
+  let siblingProofKey := sibling.leanKey.forRole `proof
+  let siblingKey : RequirementKey := ⟨.declaration siblingProofKey sibling.witness, `proof⟩
+  let firstRealizations := p.input.realizations.map fun record =>
+    if record.value.key != pProofKey then record else
+      { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+        { decl with required := #[q] } } }
+  let borrowedSiblingRealizations := sibling.input.realizations.map fun record =>
+    if record.value.key != siblingProofKey then record else
+      { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
+        { decl with required := #[q] } } }
+  let input : Input := {
+    nodes := p.input.nodes ++ sibling.input.nodes
+    documents := p.input.documents ++ sibling.input.documents
     objects := p.input.objects ++ sibling.input.objects
-    realizations := p.input.realizations.map fun record =>
-      if record.value.key != p.leanKey then record else
-        { record with value := { record.value with declarations := #[
-          { object := p.witness, required := #[q] },
-          { object := sibling.witness, required := #[q] }] } }
-    requirements := #[p.contribution `nativeRequirement {
-      key := q, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }] }
+    realizations := firstRealizations ++ borrowedSiblingRealizations
+    requirements := #[
+      p.contribution `nativeRequirement {
+        key := q, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure },
+      p.contribution `siblingRequirement {
+        key := siblingKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }]
+    evidence := p.input.evidence ++ sibling.input.evidence
+    bindingInputs := p.input.bindingInputs ++ sibling.input.bindingInputs }
   match admit input with
   | .error issues =>
     ensure (issues.any (·.code == "wrong-declaration-subject"))
       "Sibling requirement borrowing must be rejected at admission"
   | .ok _ => throwError "Sibling declaration borrowed another declaration's native requirement"
-  let facetKey : RequirementKey := ⟨.facet p.leanKey `proof, `proof⟩
-  let facetOnly := { input with
-    requirements := #[p.contribution `facetNativeRequirement {
-      key := facetKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }]
+  let realizationCheck : RequirementKey := ⟨.realization pProofKey, `broadCheck⟩
+  let broadOnly := { input with
+    requirements := input.requirements.push (p.contribution `broadNativeRequirement {
+      key := realizationCheck, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure })
     realizations := input.realizations.map fun record =>
-      if record.value.key != p.leanKey then record else
-        { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
-          { decl with required := #[facetKey] } } } }
-  match admit facetOnly with
+      if record.value.key != pProofKey then record else
+        { record with value := {
+          record.value with
+          required := #[realizationCheck]
+          declarations := record.value.declarations.map fun decl => { decl with required := #[] }
+        } } }
+  match admit broadOnly with
   | .error issues => ensure (issues.any (·.code == "wrong-native-subject")) "Native checks need declaration subjects"
-  | .ok _ => throwError "Native check escaped declaration identity through a broad facet contract"
-  let jointKey : RequirementKey := ⟨.realization p.leanKey, `jointReview⟩
-  let joint := { input with
-    requirements := #[p.contribution `jointReviewRequirement { key := jointKey, expected := .review `jointReview }]
+  | .ok _ => throwError "Native check escaped declaration identity through a realization-wide contract"
+  let validInput := { input with
     realizations := input.realizations.map fun record =>
-      if record.value.key != p.leanKey then record else
+      if record.value.key == siblingProofKey then
         { record with value := { record.value with declarations := record.value.declarations.map fun decl =>
-          { decl with required := #[jointKey] } } } }
+          { decl with required := #[siblingKey] } } }
+      else record }
+  let jointKey : RequirementKey := ⟨.realization pProofKey, `jointReview⟩
+  let joint := { validInput with
+    requirements := input.requirements.push (p.contribution `jointReviewRequirement {
+      key := jointKey, expected := .review `jointReview `MockReviewer })
+    realizations := validInput.realizations.map fun record =>
+      if record.value.key != pProofKey then record else
+        { record with value := { record.value with required := #[jointKey] } } }
   discard <| obtain (admit joint)
-  let siblingKey : RequirementKey := ⟨.declaration p.leanKey sibling.witness, `proof⟩
-  let input := { input with
-    realizations := input.realizations.map fun record =>
-      if record.value.key != p.leanKey then record else
-        { record with value := { record.value with
-          declarations := #[{ object := p.witness, required := #[q] },
-            { object := sibling.witness, required := #[siblingKey] }]
-          facets := record.value.facets.map fun facet => { facet with required := #[q] } } }
-    requirements := input.requirements.push (p.contribution `siblingRequirement {
-      key := siblingKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }) }
-  let r ← obtain (admit input)
+  let r ← obtain (admit validInput)
   let some firstBinding := r.bindingFor q | throwError "Missing first binding"
   let some siblingBinding := r.bindingFor siblingKey | throwError "Missing sibling binding"
-  let withFirst := { input with evidence := #[p.contribution `firstNative {
-    id := `actualFirstDeclaration, requirement := q, binding := firstBinding, observation := .check own.body }] }
+  let withFirst := { validInput with evidence := #[
+    p.contribution `firstNative {
+      id := `actualFirstDeclaration, requirement := q, binding := firstBinding,
+      observation := .check own.body },
+    p.contribution `siblingNative {
+      id := `actualSiblingDeclaration, requirement := siblingKey, binding := siblingBinding,
+      observation := .check admitted.body }] }
   let r ← obtain (admit withFirst)
-  ensure ((r.resultFor (.facet p.leanKey `statement)).complete &&
-    (r.resultFor (.facet p.leanKey `proof)).complete &&
-    !(r.resultFor (.declaration p.leanKey sibling.witness)).complete &&
-    !(r.resultFor (.realization p.leanKey)).complete)
-    "One declaration can serve its own facets, without completing its sibling or the group"
+  let some statementModel := r.realization? (p.leanKey.forRole `statement)
+    | throwError "The declaration lost its separate statement realization"
+  ensure (statementModel.role == `statement && statementModel.declarations[0]!.projection == .statement &&
+    (r.resultFor (.realization pProofKey)).complete &&
+    !(r.resultFor (.declaration siblingProofKey sibling.witness)).complete)
+    "One declaration keeps separate statement/proof roles without completing its sibling"
   let borrowed := { withFirst with evidence := withFirst.evidence.push (p.contribution `wrongNative {
     id := `borrowedFirstObservation, requirement := siblingKey, binding := siblingBinding
     observation := .check own.body }) }
   let r ← obtain (admit borrowed)
   ensure ((r.localResult siblingKey).diagnostics.any (·.code == "wrong-check-object") &&
-    !(r.resultFor (.declaration p.leanKey sibling.witness)).complete)
+    !(r.resultFor (.declaration siblingProofKey sibling.witness)).complete)
     "Fresh sibling binding cannot disguise an observation of another declaration"
 
 -- Native validity concerns the declaration's own source statement. These real
@@ -252,28 +291,29 @@ private def assertPendingCorrespondence (p : PreparedModel) (input : Input) (exp
   let t : TranslationKey := ⟨`adapterFixture, `docstringToLean⟩
   let c : ClaimKey := ⟨t, `statement⟩
   let review : RequirementKey := ⟨.claim c, `review⟩
+  let expectedProof := proofKey p
   let linked := { input with
     translations := #[p.contribution `translation {
       key := t
-      source := #[{ realization := p.informalKey, facets := #[`statement] }],
-      target := #[{ realization := p.leanKey, facets := #[`statement] }],
-      required := #[proofKey p] }]
+      source := #[{ realization := p.informalKey }],
+      target := #[{ realization := p.leanKey.forRole `statement }],
+      required := #[expectedProof] }]
     claims := #[p.contribution `claim {
       key := c, interpretation
       required := #[review] }]
     requirements := input.requirements.push (p.contribution `review {
-      key := review, expected := .review `statementCorrespondence }) }
+      key := review, expected := .review `statementCorrespondence `MockReviewer }) }
   -- Recheck the native proof for the newly authored connected contract;
   -- no human review observation is supplied.
   let linkedRegistry ← obtain (admit { linked with evidence := #[] })
-  let some binding := linkedRegistry.bindingFor (proofKey p) | throwError "missing binding"
+  let some binding := linkedRegistry.bindingFor expectedProof | throwError "missing binding"
   let fresh ← obtain (← NativeLean.check `adapterFixture p.witness expected
     (p.input.objects.filterMap (·.value.document)))
   let linked := { linked with evidence := #[p.contribution `proofEvidence {
-    id := p.leanKey.node ++ `nativeProof, requirement := proofKey p, binding
+    id := p.leanKey.node ++ `nativeProof, requirement := expectedProof, binding
     observation := .proof fresh.observation }] }
   let linkedRegistry ← obtain (admit linked)
-  ensure ((linkedRegistry.resultForRequirement (proofKey p)).complete) "Actual proof stays complete"
+  ensure ((linkedRegistry.resultForRequirement expectedProof).complete) "Actual proof stays complete"
   ensure ((linkedRegistry.resultFor (.translation t)).status == .pending) "Correspondence remains pending"
 
 
@@ -290,7 +330,7 @@ run_cmd liftTermElabM do
     "Ordinary escaped dotted witness remains supported"
   let noExpectedContext ← obtain (admit { escapedInput with
     bindingInputs := escapedInput.bindingInputs.filter (·.value.name !=
-      NativeLean.expectedStatementContextFor (proofKey escapedProjection)) })
+      NativeLean.expectedContextFor (proofKey escapedProjection)) })
   ensure ((noExpectedContext.localResult (proofKey escapedProjection)).diagnostics.any
       (·.code == "semantic-context-unavailable")) "Selected source alone cannot bind unknown expected-goal semantics"
   let unusual := Name.str `RealizationAdapterFixture "bad»name"
@@ -473,7 +513,12 @@ run_cmd liftTermElabM do
   ensure (p.input.nodes.any fun contribution => contribution.value.label == label &&
     contribution.value.toNodeMetadata == accepted.toNodeMetadata)
     "Current source model must preserve the exact accepted concept metadata"
-  ensure (p.docstringFormat == `markdown && p.input.realizations.size == 2) "Expected raw Markdown and Lean realizations"
+  ensure (p.docstringFormat == `markdown &&
+    (p.input.realizations.any (·.value.key == p.leanKey.forRole `statement)) &&
+    (p.input.realizations.any (·.value.key == p.leanKey.forRole `proof)) &&
+    (p.input.realizations.any fun contribution => contribution.value.key == p.informalKey &&
+      contribution.value.role == `statement && contribution.value.context.language == p.docstringFormat))
+    "Expected distinct native statement/proof and informal statement realizations"
   let source ← liftM <| IO.FS.readFile p.sourcePath
   ensure (p.witness == witness `RealizationAdapterFixture.reflexivity &&
     p.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
@@ -481,7 +526,7 @@ run_cmd liftTermElabM do
     p.input.documents[1]!.value.text.contains "**emphasis**")
     "Canonical source, module, qualified declaration and raw Markdown must survive projection"
   ensure (p.input.translations.isEmpty && p.input.evidence.isEmpty && p.input.requirements.isEmpty)
-    "Projection must not invent validation or correspondence"
+    "Source projection invents no validation contracts, observations, or correspondence"
   let initial ← obtain (admit p.input)
   ensure ((initial.resultFor (.realization p.informalKey)).status == .unassessed) "Prose is not proofread"
   let expected ← `(term| ∀ n : Nat, n = n)
@@ -496,7 +541,7 @@ run_cmd liftTermElabM do
   let input ← obtain (← p.validate expected)
   let r ← obtain (admit input)
   ensure ((r.resultForRequirement (proofKey p)).complete) "Actual imported proof must complete"
-  ensure ((r.resultFor (.facet p.leanKey `proof)).complete) "Shared proof facet must complete"
+  ensure ((r.resultFor (.realization (p.leanKey.forRole `proof))).complete) "Selected proof realization must complete"
   ensure ((r.resultFor (.realization p.informalKey)).status == .unassessed) "Proof is not proofreading"
   -- Definitional equality through an independently authored exposed alias.
   let alias ← `(term| RealizationAdapterFixture.Reflexivity)

@@ -56,6 +56,8 @@ def parseSource (label : Name) (path text : String)
 
 private partial def declarations (command : Syntax) : Array Syntax :=
   if command.isOfKind ``Parser.Command.declaration then #[command]
+  else if command.isOfKind ``Parser.Command.«mutual» then
+    command[1].getArgs.flatMap declarations
   -- Lean's parser handles the scoped syntax of these command wrappers. Only
   -- unwrap their enclosed command; do not search arbitrary syntax subtrees or
   -- replace the declaration/name ranges with the enclosing wrapper's range.
@@ -99,7 +101,7 @@ def declarationAtRanges (label : Name) (text : String) (range selection : Declar
   return candidates[0]!
 
 /-- Exact own-comment association. Lean positions count codepoints;
-`ofStringPositions` checks UTF-16 columns using the owning FileMap. -/
+`ofStringPositions checks UTF-16 columns using the owning FileMap. -/
 def docCommentAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
     (commands : Array Syntax) : Except Diagnostic String := do
   if commands.any hasStandaloneInheritance then
@@ -146,6 +148,7 @@ structure Prepared where
   canonical : Name
   declaration : ObjectKey
   kind : Data.NodeKind
+  roles : Array Name := #[]
   moduleName : Name
   document : Document
   ranges : DeclarationRanges
@@ -188,14 +191,13 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
   let some info := (← getEnv).checked.get.find? request.canonical
     | return .error <| issue "missing-declaration" request.canonical "Declaration is not in the current checked environment"
   let context : Context := ⟨`lean, request.project⟩
-  let kind : Data.NodeKind := match info with
-    | .thmInfo _ => .theorem
-    | _ => .definition
+  let roles ← NativeLean.declarationRoles info
+  let kind : Data.NodeKind := if roles.contains `proof then .theorem else .definition
   let statement ← semantics .statement request.project #[request.canonical]
   let semantics ← semantics .implementation request.project #[request.canonical]
   return .ok {
     canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
-    kind, moduleName := request.moduleName
+    kind, roles, moduleName := request.moduleName
     document := { key := ⟨context, request.sourcePath⟩, text }, ranges
     semanticContext := semantics.toOption, statementContext := statement.toOption
     semanticDiagnostics := canonical ((match semantics with | .ok _ => #[] | .error issue => #[issue]) ++
@@ -334,19 +336,28 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
   let key : RealizationKey := ⟨node.label, nativeName⟩
   let witness := source.declaration
   let document := source.document.key
-  let bodyFacet := if source.kind.isTheoremLike then `proof else `body
+  unless !source.roles.isEmpty do
+    throw <| issue "unsupported-native-role" source.canonical "Checked declaration has no supported direct content role"
+  let modelFor (role : Name) : Realization := {
+    key := key.forRole role, context := witness.context, role
+    declarations := #[{
+      object := witness
+      projection := if role == `statement then .statement else .implementation
+      required := #[] }] }
+  let roles := source.roles
+  let models := roles.map modelFor
   return {
     nodes := #[sourceContribution origin `node node]
     documents := #[sourceContribution origin `source source.document]
     objects := #[sourceContribution origin `object { key := witness, resolution := .resolved, document := some document }]
-    realizations := #[sourceContribution origin `lean {
-      key, context := witness.context
-      facets := #[{ name := `statement, declarations := #[witness] },
-        { name := bodyFacet, declarations := #[witness] }], declarations := #[{ object := witness }] }]
-    bindingInputs := (source.semanticContext.toArray.map fun content => sourceContribution origin `nativeSourceContext {
-      subject := .declaration key witness, name := NativeLean.sourceContext, content }) ++
-      (source.statementContext.toArray.map fun content => sourceContribution origin `nativeStatementContext {
-        subject := .declaration key witness, name := NativeLean.statementContext, content }) }
+    realizations := models.mapIdx fun index model =>
+      sourceContribution origin (Name.mkSimple s!"native-role-{index}") model
+    bindingInputs := roles.flatMap fun role =>
+      if role == `statement then
+        source.statementContext.toArray.map fun content => sourceContribution origin `nativeStatementContext {
+          subject := .declaration (key.forRole role) witness, name := NativeLean.statementContext, content }
+      else source.semanticContext.toArray.map fun content => sourceContribution origin `nativeSourceContext {
+        subject := .declaration (key.forRole role) witness, name := NativeLean.sourceContext, content } }
 
 /-- Materialize two explicitly named source representations of the same concept,
 without observations or fragment admission. The native source identity comes
@@ -362,15 +373,17 @@ def Documented.realize (source : Documented) (origin : Origin) (node : Realizati
   let proseContext : Context := ⟨source.format, leanContext.project⟩
   let witness := source.declaration
   let leanDoc := source.document.key
-  let proseDoc : DocumentKey := ⟨proseContext, leanDoc.path ++ "#docstring:" ++ source.canonical.toString⟩
+  let proseDoc : DocumentKey := ⟨proseContext, leanDoc.path ++ "#docstring:" ++
+    (toJson (Vir.nameKey source.canonical)).compress⟩
   let p : PreparedModel := {
     input := native, origin, witness, leanKey, informalKey
     moduleName := source.moduleName, sourcePath := leanDoc.path, docstringFormat := source.format }
   return { p with input := { native with
     documents := native.documents.push (p.contribution `docstring { key := proseDoc, text := source.rawDocstring })
-    realizations := native.realizations.push (p.contribution `informal {
-        key := informalKey, context := proseContext
-        facets := #[{ name := `statement, documents := #[proseDoc] }] }) } }
+    realizations := native.realizations ++ #[
+      p.contribution `informal {
+        key := informalKey, context := proseContext, role := `statement,
+        documents := #[proseDoc] }] } }
 
 /-- Prepare source/contracts plus a fresh observation without admission or binding.
 The complete caller batch must supply any additional goal documents. The checked
@@ -379,19 +392,25 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
     (goalDocuments : Array DocumentKey := #[])
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     Elab.Term.TermElabM (Except Diagnostic (Input × NativeLean.Checked)) := do
+  unless p.input.realizations.any (·.value.key == p.leanKey.forRole `proof) do
+    return .error <| issue "wrong-proof-witness" p.leanKey.node
+      "Expected a proof-valued native declaration before adding a proof requirement"
   let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key)
     (p.input.objects.filterMap (·.value.document))
   let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
   let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
-  let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+  let proofRealization := p.leanKey.forRole `proof
+  let key : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
+  let updateRealization (record : Contribution Realization) : Contribution Realization := Id.run do
+    if record.value.key != proofRealization then return record
+    let declaration : Declaration := {
+      object := p.witness,
+      projection := .implementation,
+      required := canonical (record.value.declarations[0]!.required.push key) }
+    return { record with value := { record.value with role := `proof, declarations := #[declaration] } }
   let input := { p.input with
-    realizations := p.input.realizations.map fun record =>
-      if record.value.key != p.leanKey then record else
-        { record with value := { record.value with
-          declarations := #[{ object := p.witness, required := #[key] }]
-          facets := record.value.facets.map fun facet =>
-            if facet.name == `proof || facet.name == `body then { facet with required := #[key] } else facet } }
-    requirements := #[p.contribution `proofRequirement {
+    realizations := p.input.realizations.map updateRealization
+    requirements := p.input.requirements ++ #[p.contribution `expectedProofRequirement {
       key, expected := .proof checked.goal p.witness
       coverage := .dependencyClosure }]
     bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
@@ -405,7 +424,7 @@ Does not register anything in the existing Blueprint environment. -/
 def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.TermElabM (Except Diagnostic Input) := do
   let prepared ← p.prepareValidation expected
   let .ok (input, checked) := prepared | return prepared.map (·.1)
-  let key : RequirementKey := ⟨.declaration p.leanKey p.witness, `proof⟩
+  let key : RequirementKey := ⟨.declaration (p.leanKey.forRole `proof) p.witness, `expectedProof⟩
   let .ok registry := admit input
     | return .error <| issue "invalid-projection" p.leanKey.node "Projected input failed pure structural admission"
   let some binding := registry.bindingFor key
