@@ -270,7 +270,7 @@ class TestBlueprintSlidesRuntime:
         code_chip.hover()
         code_panel = page.locator(".bp_code_summary_preview_panel").first
         expect(code_panel).to_be_visible()
-        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text("collatz_step")
+        expect(code_panel.locator(".bp_preview_panel_title")).to_have_text("collatz_step")
         expect(code_panel.locator(".bp_code_hover_label")).to_have_text(
             "Associated Lean declarations (display only; validation shown in heading)"
         )
@@ -284,7 +284,7 @@ class TestBlueprintSlidesRuntime:
         code_panel_metrics = code_panel.evaluate(
             """panel => {
               const panelBox = panel.getBoundingClientRect();
-              const bodyBox = panel.querySelector(".bp_code_summary_preview_body").getBoundingClientRect();
+              const bodyBox = panel.querySelector(".bp_preview_panel_body").getBoundingClientRect();
               const item = panel.querySelector(".bp_code_decl_item");
               const itemBox = item.getBoundingClientRect();
               const code = item.querySelector("code");
@@ -387,7 +387,7 @@ class TestBlueprintSlidesRuntime:
         theorem_code_chip.hover()
         theorem_code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])")
         expect(theorem_code_panel).to_be_visible()
-        expect(theorem_code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(theorem_code_panel.locator(".bp_preview_panel_title")).to_have_text(
             "multiplication_one_right"
         )
         expect(theorem_code_panel.locator(".bp_code_decl_item")).to_have_count(1)

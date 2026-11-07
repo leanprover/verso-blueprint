@@ -298,16 +298,14 @@ private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.H
     "data-bp-preview-id"
     codeSummaryPreviewId
     previewTitle
-    ".bp_code_summary_preview_panel"
-    ".bp_code_summary_preview_title"
-    ".bp_code_summary_preview_body"
-    ".bp_code_summary_preview_close"
+    "bp_code_summary_preview_panel"
     (titleAttr? := some "data-bp-preview-title")
     trigger
     body
-    Informal.HoverRender.codeSummaryPreviewPanel
     (focusable := focusable)
     (ariaLabel? := ariaLabel?)
+    (eyebrow := "Lean code")
+    (closeLabel := "Close Lean code preview")
 
 private def renderCodeEntryWrap (href : Option String) (title previewTitle : String)
     (previewBody : Output.Html) (visual : CodeEntryVisual)

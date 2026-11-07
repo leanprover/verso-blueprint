@@ -1050,7 +1050,7 @@ class TestGraphLayoutRuntime:
                 return !!panel && !panel.hidden && panel.getAttribute("data-bp-preview-mode") === "pinned";
             }"""
         )
-        title_link = panel.locator(".bp_graph_preview_title a").first
+        title_link = panel.locator(".bp_preview_panel_title a").first
         expect(title_link).to_contain_text("Definition")
         expect(title_link).to_have_attribute(
             "href", re.compile(r"Preview-Relationships/#--informal-preview-used_target--statement$")
@@ -1099,7 +1099,7 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-        page.locator(".bp_graph_preview_close").first.click()
+        page.locator(".bp_preview_panel_close").first.click()
         page.wait_for_function(
             """() => {
                 const panel = document.querySelector(".bp_graph_preview");

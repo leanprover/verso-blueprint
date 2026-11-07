@@ -77,55 +77,35 @@ def withInlinePreviewRenderContext {m α}
       })
     act
 
-private def previewPanel
-    (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
-    (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html := {{
-  <aside class={{rootClass}}
-      "data-bp-preview-mode"={{mode.dataValue}}
-      "data-bp-preview-placement"={{placement.dataValue}}
-      hidden>
-    <div class={{headerClass}}>
-      <div class={{titleClass}}></div>
-      <button type="button" class={{closeClass}} aria-label={{closeLabel}}>"Close"</button>
-    </div>
-    <div class={{bodyClass}}></div>
-  </aside>
-}}
+/--
+Attributes that let the runtime bind template previews under one root element.
 
-private def mkPreviewPanel
-    (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
-    (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html :=
-  previewPanel
-    rootClass
-    headerClass
-    titleClass
-    closeClass
-    bodyClass
-    closeLabel
-    mode placement
-
+The runtime builds the root's preview panel from the shared shell: `panelClass`
+names its role for sizing and placement, and `eyebrow` says what kind of popup it is.
+-/
 def templatePreviewDescriptorAttrs
-    (panelSelector templateSelector triggerSelector titleSelector bodySelector closeSelector : String)
+    (panelClass templateSelector triggerSelector : String)
     (keyAttr : String := "data-bp-preview-label")
     (titleAttr? : Option String := none)
     (triggerBoundAttr : String := "data-bp-bound")
     (allowHtmlCache : Bool := false)
     (mode : PreviewMode := .hover)
-    (placement : PreviewPlacement := .anchored) : Array (String × String) :=
+    (placement : PreviewPlacement := .anchored)
+    (eyebrow : String := "")
+    (closeLabel : String := "Close preview") : Array (String × String) :=
   let attrs := #[
     ("data-bp-template-preview-root", "true"),
-    ("data-bp-template-preview-panel-selector", panelSelector),
+    ("data-bp-template-preview-panel-class", panelClass),
     ("data-bp-template-preview-template-selector", templateSelector),
     ("data-bp-template-preview-trigger-selector", triggerSelector),
     ("data-bp-template-preview-key-attr", keyAttr),
     ("data-bp-template-preview-title-attr", titleAttr?.getD keyAttr),
-    ("data-bp-template-preview-title-selector", titleSelector),
-    ("data-bp-template-preview-body-selector", bodySelector),
-    ("data-bp-template-preview-close-selector", closeSelector),
     ("data-bp-template-preview-trigger-bound-attr", triggerBoundAttr),
     ("data-bp-template-preview-mode", mode.dataValue),
-    ("data-bp-template-preview-placement", placement.dataValue)
+    ("data-bp-template-preview-placement", placement.dataValue),
+    ("data-bp-template-preview-close-label", closeLabel)
   ]
+  let attrs := if eyebrow.isEmpty then attrs else attrs.push ("data-bp-template-preview-eyebrow", eyebrow)
   if allowHtmlCache then
     attrs.push ("data-bp-template-preview-allow-html-cache", "true")
   else
@@ -133,23 +113,24 @@ def templatePreviewDescriptorAttrs
 
 def templatePreviewRoot
     (rootClass triggerClass activeTriggerClass templateClass keyAttr key previewTitle : String)
-    (panelSelector titleSelector bodySelector closeSelector : String)
+    (panelClass : String)
     (titleAttr? : Option String := none)
-    (trigger body panel : Verso.Output.Html)
+    (trigger body : Verso.Output.Html)
     (focusable : Bool := false)
-    (ariaLabel? : Option String := none) :
+    (ariaLabel? : Option String := none)
+    (eyebrow : String := "")
+    (closeLabel : String := "Close preview") :
     Verso.Output.Html :=
   let rootAttrs :=
     #[("class", rootClass)] ++
       templatePreviewDescriptorAttrs
-        panelSelector
+        panelClass
         s!"template.{templateClass}[{keyAttr}]"
         s!".{activeTriggerClass}[{keyAttr}]"
-        titleSelector
-        bodySelector
-        closeSelector
         keyAttr
         titleAttr?
+        (eyebrow := eyebrow)
+        (closeLabel := closeLabel)
   let triggerAttrs := Id.run do
     let mut attrs := #[
       ("class", s!"{triggerClass} {activeTriggerClass}"),
@@ -171,57 +152,8 @@ def templatePreviewRoot
       <template {{templateAttrs}}>
         {{body}}
       </template>
-      {{panel}}
     </span>
   }}
-
-def graphPreviewPanel
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_graph_preview bp_preview_panel"
-    "bp_graph_preview_header bp_preview_panel_header"
-    "bp_graph_preview_title bp_preview_panel_title"
-    "bp_graph_preview_close bp_preview_panel_close"
-    "bp_graph_preview_body bp_preview_panel_body"
-    "Close informal preview"
-    mode placement
-
-def summaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_summary_preview_panel bp_preview_panel"
-    "bp_summary_preview_panel_header bp_preview_panel_header"
-    "bp_summary_preview_panel_title bp_preview_panel_title"
-    "bp_summary_preview_panel_close bp_preview_panel_close"
-    "bp_summary_preview_panel_body bp_preview_panel_body"
-    "Close summary preview"
-    mode placement
-
-def codeSummaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_code_summary_preview_panel bp_preview_panel"
-    "bp_code_summary_preview_header bp_preview_panel_header"
-    "bp_code_summary_preview_title bp_preview_panel_title"
-    "bp_code_summary_preview_close bp_preview_panel_close"
-    "bp_code_summary_preview_body bp_preview_panel_body"
-    "Close Lean summary preview"
-    mode placement
-
-def graphGroupPreviewPanel
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_group_hover_preview bp_preview_panel"
-    "bp_group_hover_preview_header bp_preview_panel_header"
-    "bp_group_hover_preview_title bp_preview_panel_title"
-    "bp_group_hover_preview_close bp_preview_panel_close"
-    "bp_group_hover_preview_graph bp_preview_panel_body"
-    "Close group preview"
-    mode placement
 
 def summaryPreviewWrap
     (labelNode : Verso.Output.Html)

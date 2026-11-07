@@ -79,64 +79,149 @@ body {
 }
 "##
 
+/--
+The shared preview panel shell. Every Blueprint popup uses it: a header with an
+eyebrow naming the kind of popup, a title and label link, and a close button; a
+scrolling body; and an optional footer. Role classes add only size and placement.
+-/
 def previewPanelCss : String := r##"
 .bp_preview_panel {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-lg);
+  --bp-preview-panel-radius: 0.625rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--bp-color-border-panel);
+  border-radius: var(--bp-preview-panel-radius);
   background: var(--bp-color-surface);
-  box-shadow: var(--bp-shadow-md);
-  padding: 0.65rem 0.75rem;
+  box-shadow: var(--bp-shadow-lg);
+  color: var(--bp-color-text);
+  font-style: normal;
+  font-weight: 400;
+  text-align: left;
 }
 
 .bp_preview_panel[hidden] {
   display: none !important;
 }
 
-.bp_preview_panel[data-bp-preview-placement="anchored"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -0.85rem;
-  height: 0.85rem;
-}
-
+/* Keep a hovered panel open while the pointer crosses the gap from its trigger. */
+.bp_preview_panel[data-bp-preview-placement="anchored"]::before,
 .bp_preview_panel[data-bp-preview-placement="anchored"]::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -0.85rem;
-  height: 0.85rem;
+  height: 0.75rem;
+}
+
+.bp_preview_panel[data-bp-preview-placement="anchored"]::before {
+  top: -0.75rem;
+}
+
+.bp_preview_panel[data-bp-preview-placement="anchored"]::after {
+  bottom: -0.75rem;
 }
 
 .bp_preview_panel_header {
+  flex: none;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.7rem 0.5rem 0.6rem 1rem;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+}
+
+.bp_preview_panel_heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.bp_preview_panel_eyebrow {
+  color: var(--bp-color-text-faint);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.bp_preview_panel_titleline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  min-width: 0;
 }
 
 .bp_preview_panel_title {
-  font-weight: 700;
-  color: var(--bp-color-text);
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--bp-color-text-strong);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.bp_preview_panel_title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.bp_preview_panel_title a:hover,
+.bp_preview_panel_label[href]:hover {
+  color: var(--bp-color-link, #1d4ed8);
+  text-decoration: underline;
+}
+
+.bp_preview_panel_label {
+  color: var(--bp-color-text-faint);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.bp_preview_panel_eyebrow[hidden],
+.bp_preview_panel_label[hidden],
+.bp_preview_panel_footer[hidden] {
+  display: none;
 }
 
 .bp_preview_panel_close {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-sm);
-  background: var(--bp-color-surface);
-  color: var(--bp-color-text-strong);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1;
-  padding: 0.25rem 0.45rem;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: -0.45rem 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--bp-color-text-subtle);
   cursor: pointer;
+}
+
+.bp_preview_panel_close svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.bp_preview_panel_close:hover {
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-strong);
+}
+
+.bp_preview_panel_close:focus-visible {
+  outline: 2px solid var(--bp-color-focus-border);
+  outline-offset: -2px;
 }
 
 .bp_preview_panel[data-bp-preview-mode="hover"] .bp_preview_panel_close {
@@ -144,8 +229,42 @@ def previewPanelCss : String := r##"
 }
 
 .bp_preview_panel_body {
-  border-left: 2px solid var(--bp-color-border-soft);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+  padding: 0.75rem 1rem 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Previewed content keeps its own spacing, except at the body's edges. */
+.bp_preview_panel_body > :first-child,
+.bp_preview_panel_body > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.bp_preview_panel_body > :last-child,
+.bp_preview_panel_body > :last-child > :last-child {
+  margin-bottom: 0;
+}
+
+.bp_preview_panel_footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 1rem;
+  border-top: 1px solid var(--bp-color-border-soft);
+  border-radius: 0 0 var(--bp-preview-panel-radius) var(--bp-preview-panel-radius);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-subtle);
+  font-size: 0.78rem;
+}
+
+.bp_preview_panel_footer code {
+  font-size: 0.75rem;
 }
 "##
 
@@ -190,101 +309,22 @@ def inlinePreviewCss : String := r##"
   cursor: help;
 }
 
-.bp_inline_preview_panel {
+.bp_preview_panel.bp_inline_preview_panel {
   position: fixed;
-  display: flex;
-  flex-direction: column;
   z-index: 70;
   min-width: 18rem;
-  max-width: min(34rem, 86vw);
+  max-width: min(34rem, calc(100vw - 1.5rem));
   max-height: min(26rem, 80vh);
-  overflow: hidden;
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-md);
-  background: var(--bp-color-surface);
-  box-shadow: var(--bp-shadow-lg);
 }
 
-.bp_inline_preview_panel[hidden] {
-  display: none !important;
-}
-
-.bp_inline_preview_panel_child {
+.bp_preview_panel.bp_inline_preview_panel_child {
   z-index: 71;
 }
 
-.bp_inline_preview_panel[hidden] {
-  display: none;
-}
-
-.bp_inline_preview_panel[data-bp-preview-placement="anchored"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -0.85rem;
-  height: 0.85rem;
-}
-
-.bp_inline_preview_panel[data-bp-preview-placement="docked"] {
+.bp_preview_panel.bp_inline_preview_panel[data-bp-preview-placement="docked"] {
   top: 0.9rem;
   right: 0.9rem;
   left: auto;
-}
-
-.bp_inline_preview_panel_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.4rem 0.55rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: var(--bp-color-surface-muted);
-}
-
-.bp_inline_preview_panel_title {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--bp-color-text-strong);
-}
-
-.bp_inline_preview_panel_close {
-  border: 1px solid var(--bp-color-border);
-  border-radius: 0.3rem;
-  background: var(--bp-color-surface);
-  color: var(--bp-color-text-muted);
-  font-size: 0.72rem;
-  line-height: 1;
-  padding: 0.2rem 0.35rem;
-  cursor: pointer;
-}
-
-.bp_inline_preview_panel_body {
-  padding: 0.5rem 0.6rem 0.55rem;
-  min-height: 0;
-  max-height: min(22rem, 70vh);
-  overflow: auto;
-  font-size: 0.8rem;
-}
-
-.bp_inline_preview_panel_footer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.38rem 0.55rem 0.42rem;
-  border-top: 1px solid var(--bp-color-border-soft);
-  background: var(--bp-color-surface-muted);
-  color: var(--bp-color-text-subtle);
-  font-size: 0.72rem;
-}
-
-.bp_inline_preview_panel_footer[hidden] {
-  display: none;
-}
-
-.bp_inline_preview_panel_footer code {
-  font-size: 0.72rem;
 }
 
 .bp_bibliography_hover_entry {
@@ -339,9 +379,6 @@ def inlinePreviewCss : String := r##"
   font-style: italic;
 }
 
-.bp_inline_preview_panel[data-bp-preview-mode="hover"] .bp_inline_preview_panel_close {
-  display: none;
-}
 "##
 
 /--
@@ -370,34 +407,16 @@ end BlueprintAssetBundle
 def blueprintCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
   ({ css := [blueprintTokensCss] } : BlueprintAssetBundle).withCss extras
 
+/-- Styles for pages with popups: the shared panel shell first, so `extras` can size
+and place each popup role. -/
 def previewPanelCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
-  (blueprintCssAssetBundle [previewPanelCss]).withCss extras
-
-def inlinePreviewCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
-  (blueprintCssAssetBundle extras).withCss [previewHeaderCss, inlinePreviewCss]
-
-def previewPanelInlinePreviewCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
-  (previewPanelCssAssetBundle extras).withCss [previewHeaderCss, inlinePreviewCss]
+  blueprintCssAssetBundle ([previewPanelCss, previewHeaderCss, inlinePreviewCss] ++ extras)
 
 def previewPanelAssetBundle
     (cssExtras : List String := [])
     (jsBefore : List String := [])
     (jsAfter : List String := []) : BlueprintAssetBundle :=
   (previewPanelCssAssetBundle cssExtras).append
-    ({ js := jsBefore ++ jsAfter } : BlueprintAssetBundle)
-
-def inlinePreviewAssetBundle
-    (cssExtras : List String := [])
-    (jsBefore : List String := [])
-    (jsAfter : List String := []) : BlueprintAssetBundle :=
-  (inlinePreviewCssAssetBundle cssExtras).append
-    ({ js := jsBefore ++ jsAfter } : BlueprintAssetBundle)
-
-def previewPanelInlinePreviewAssetBundle
-    (cssExtras : List String := [])
-    (jsBefore : List String := [])
-    (jsAfter : List String := []) : BlueprintAssetBundle :=
-  (previewPanelInlinePreviewCssAssetBundle cssExtras).append
     ({ js := jsBefore ++ jsAfter } : BlueprintAssetBundle)
 
 end Informal.Commands

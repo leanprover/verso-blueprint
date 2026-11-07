@@ -501,38 +501,13 @@ span[class$="_thmlabel"]::after {
   box-shadow: 0 0 0 0.16rem var(--bp-color-focus-ring);
 }
 
-.bp_code_summary_preview_panel {
+.bp_preview_panel.bp_code_summary_preview_panel {
   position: fixed;
   z-index: 36;
-  width: min(32rem, calc(100vw - 1.25rem));
-  max-height: min(24rem, 78vh);
-  overflow: hidden;
-}
-
-.bp_code_summary_preview_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.42rem 0.55rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-}
-
-.bp_code_summary_preview_title {
-  min-width: 0;
-  color: var(--bp-color-text-strong);
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.bp_code_summary_preview_body {
-  padding: 0.55rem 0.6rem 0.6rem;
-  max-height: min(20rem, 68vh);
-  overflow: auto;
+  width: max-content;
+  min-width: min(20rem, calc(100vw - 1.5rem));
+  max-width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(26rem, 80vh);
 }
 
 .bp_code_summary_preview_content {
@@ -1865,7 +1840,7 @@ def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.blueprintCssAssetBundle [css, Verso.Genre.Manual.docstringStyle]
 
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
-  Informal.Commands.previewPanelInlinePreviewAssetBundle
+  Informal.Commands.previewPanelAssetBundle
     (cssExtras := [css, Verso.Genre.Manual.docstringStyle])
     (jsAfter := [Informal.Macros.blueprintMathJs, Informal.PageBehavior.jsInteractive])
 

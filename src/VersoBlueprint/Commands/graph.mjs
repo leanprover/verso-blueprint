@@ -112,25 +112,6 @@ function appendJsonScript(doc, parent, className, value) {
   return script;
 }
 
-function createPreviewPanel(doc, classes, headerClass, titleClass, closeClass, bodyClass, closeLabel, mode, placement) {
-  const panel = createEl(doc, "aside", {
-    class: classes,
-    "data-bp-preview-mode": mode,
-    "data-bp-preview-placement": placement,
-    hidden: true
-  });
-  const header = createEl(doc, "div", { class: headerClass });
-  header.appendChild(createEl(doc, "div", { class: titleClass }));
-  header.appendChild(createEl(doc, "button", {
-    type: "button",
-    class: closeClass,
-    "aria-label": closeLabel
-  }, "Close"));
-  panel.appendChild(header);
-  panel.appendChild(createEl(doc, "div", { class: bodyClass }));
-  return panel;
-}
-
 function graphControlId(data, suffix) {
   runtimeGraphIdCounter += 1;
   return prefixedHtmlId("bp-runtime-graph", (data && data.key ? data.key : "graph") + "-" + runtimeGraphIdCounter) + suffix;
@@ -286,28 +267,6 @@ export function createGraphBlock(graphData, options) {
   });
   appendJsonScript(doc, canvas, "bp-graph-data", Object.assign({}, data, { variants: variants }));
   block.appendChild(canvas);
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_graph_preview bp_preview_panel",
-    "bp_graph_preview_header bp_preview_panel_header",
-    "bp_graph_preview_title bp_preview_panel_title",
-    "bp_graph_preview_close bp_preview_panel_close",
-    "bp_graph_preview_body bp_preview_panel_body",
-    "Close informal preview",
-    previewMode,
-    previewPlacement
-  ));
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_group_hover_preview bp_preview_panel",
-    "bp_group_hover_preview_header bp_preview_panel_header",
-    "bp_group_hover_preview_title bp_preview_panel_title",
-    "bp_group_hover_preview_close bp_preview_panel_close",
-    "bp_group_hover_preview_graph bp_preview_panel_body",
-    "Close group preview",
-    previewMode,
-    previewPlacement
-  ));
   return block;
 }
 
@@ -605,6 +564,26 @@ function bindOptionsPopover(previewUtils, graphBlock) {
   );
 }
 
+// Graph previews use the shared panel shell, built here so server-rendered and
+// runtime-built graph blocks get the same panels.
+function ensureGraphPreviewPanel(previewUtils, graphBlock, roleClass, closeLabel, behavior) {
+  const existing = graphBlock.querySelector("." + roleClass);
+  if (existing instanceof Element) return existing;
+  return previewUtils.createPreviewPanel({
+    document: graphBlock.ownerDocument,
+    parent: graphBlock,
+    roleClass: roleClass,
+    closeLabel: closeLabel,
+    mode: behavior.mode,
+    placement: behavior.placement
+  });
+}
+
+function selectDefault(select, attr, fallback) {
+  if (!(select instanceof Element)) return fallback;
+  return select.getAttribute(attr) || select.value || fallback;
+}
+
 export function initGraphBlock(previewUtils, graphBlock, options) {
       const opts = options && typeof options === "object" ? options : {};
       if (!(graphBlock instanceof Element)) return;
@@ -638,14 +617,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
-      const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
+      const previewPanelNode = ensureGraphPreviewPanel(
+        previewUtils, graphBlock, "bp_graph_preview", "Close informal preview", {
+          mode: selectDefault(previewModeSelector, "data-bp-graph-default-preview-mode", "pinned"),
+          placement: selectDefault(previewPlacementSelector, "data-bp-graph-default-preview-placement", "docked")
+        }
+      );
       const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
       let previewController = null;
       previewController = previewUtils.createPreviewSurface({
         panel: previewPanelNode,
-        titleSelector: ".bp_graph_preview_title",
-        bodySelector: ".bp_graph_preview_body",
-        closeSelector: ".bp_graph_preview_close",
         defaults: {
           mode: previewPanelBehavior.mode,
           placement: previewPanelBehavior.placement
@@ -751,15 +732,15 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         return normalizeGraphOptions(activeOptions);
       };
 
-      const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
+      const groupHoverPanel = ensureGraphPreviewPanel(
+        previewUtils, graphBlock, "bp_group_hover_preview", "Close group preview",
+        { mode: "pinned", placement: "docked" }
+      );
       let groupHoverGraphviz = null;
       const groupHoverBehavior = readPreviewBehaviorDefaults(groupHoverPanel, "pinned", "docked");
       let groupHoverController = null;
       groupHoverController = previewUtils.createPreviewSurface({
         panel: groupHoverPanel,
-        titleSelector: ".bp_group_hover_preview_title",
-        bodySelector: ".bp_group_hover_preview_graph",
-        closeSelector: ".bp_group_hover_preview_close",
         defaults: {
           mode: groupHoverBehavior.mode,
           placement: groupHoverBehavior.placement

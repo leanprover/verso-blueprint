@@ -27,7 +27,7 @@ open Lean.Doc.Syntax
 namespace Informal
 
 def usesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
-  Informal.Commands.inlinePreviewAssetBundle
+  Informal.Commands.previewPanelAssetBundle
 
 /--
 Arguments accepted by the inline `{uses ...}` role.

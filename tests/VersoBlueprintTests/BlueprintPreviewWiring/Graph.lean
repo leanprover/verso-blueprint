@@ -73,10 +73,8 @@ Base statement for graph preview mode option coverage.
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
     let graphJs? := findGraphPreviewJs? st
     pure (
-      hasSubstr out "bp_graph_preview" &&
-      hasSubstr out "class=\"bp_graph_preview bp_preview_panel\"" &&
-      hasSubstr out "data-bp-preview-mode=\"pinned\"" &&
-      hasSubstr out "data-bp-preview-placement=\"docked\"" &&
+      -- The runtime builds the graph's panels from the shared shell.
+      !hasSubstr out "bp_preview_panel" &&
       hasSubstr out "class=\"bp_graph_controls_select bp_graph_preview_mode_select\"" &&
       hasSubstr out "data-bp-graph-default-preview-mode=\"pinned\"" &&
       hasSubstr out "class=\"bp_graph_controls_select bp_graph_preview_placement_select\"" &&
@@ -91,12 +89,6 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "Near node" &&
       !hasSubstr out "class=\"bp_graph_preview_store\"" &&
       !hasSubstr out "class=\"bp_graph_preview_tpl\"" &&
-      hasSubstr out "class=\"bp_group_hover_preview bp_preview_panel\"" &&
-      hasSubstr out "class=\"bp_group_hover_preview_header bp_preview_panel_header\"" &&
-      hasSubstr out "class=\"bp_group_hover_preview_title bp_preview_panel_title\"" &&
-      hasSubstr out "class=\"bp_group_hover_preview_close bp_preview_panel_close\"" &&
-      hasSubstr out "class=\"bp_group_hover_preview_graph bp_preview_panel_body\"" &&
-      hasSubstr out "aria-label=\"Close group preview\"" &&
       hasSubstr out "class=\"bp-graph-data\"" &&
       hasSubstr out "\"variants\":" &&
       !hasSubstr out "class=\"bp-graph-variants\"" &&
@@ -123,8 +115,6 @@ Base statement for graph preview mode option coverage.
   show IO Bool from do
     let (out, _) ← renderManualDocHtmlStringAndState manualImpls hoverPreviewGraphDoc
     pure (
-      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
-      hasSubstr out "data-bp-preview-placement=\"docked\"" &&
       hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
       hasSubstr out "data-bp-graph-default-preview-placement=\"docked\"" &&
       hasSubstr out "value=\"pinned\"" &&
@@ -143,8 +133,6 @@ Base statement for graph preview mode option coverage.
   show IO Bool from do
     let (out, _) ← renderManualDocHtmlStringAndState manualImpls anchoredHoverPreviewGraphDoc
     pure (
-      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
-      hasSubstr out "data-bp-preview-placement=\"anchored\"" &&
       hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
       hasSubstr out "data-bp-graph-default-preview-placement=\"anchored\""
     )
@@ -155,8 +143,6 @@ Base statement for graph preview mode option coverage.
   show IO Bool from do
     let (out, _) ← renderManualDocHtmlStringAndState manualImpls optionHoverPreviewGraphDoc
     pure (
-      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
-      hasSubstr out "data-bp-preview-placement=\"docked\"" &&
       hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
       hasSubstr out "data-bp-graph-default-preview-placement=\"docked\""
     )

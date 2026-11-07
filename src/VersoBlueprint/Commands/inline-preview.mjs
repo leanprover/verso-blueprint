@@ -1,22 +1,14 @@
 export const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
-export function getPanel(previewUtils, id, extraClass) {
+export function getPanel(previewUtils, id, roleClass) {
   const existing = document.getElementById(id);
   if (existing instanceof Element) return existing;
   return previewUtils.createPreviewPanel({
     id: id,
-    rootClass: "bp_inline_preview_panel",
-    extraClass: extraClass,
+    roleClass: roleClass,
     mode: "hover",
     placement: "anchored",
-    headerClass: "bp_inline_preview_panel_header",
-    headingClass: "bp_inline_preview_panel_heading bp_preview_header_heading",
-    titleClass: "bp_inline_preview_panel_title",
-    headerLabelClass: "bp_inline_preview_panel_label bp_preview_header_label",
-    closeClass: "bp_inline_preview_panel_close",
-    closeLabel: "Close inline preview",
-    bodyClass: "bp_inline_preview_panel_body",
-    footerClass: "bp_inline_preview_panel_footer"
+    closeLabel: "Close inline preview"
   });
 }
 
@@ -75,12 +67,7 @@ export function bindInlinePreview(previewUtils) {
   const inlineHostPolicies = defaultInlinePreviewHostPolicies(makeBehavior);
 
   const mainSurface = previewUtils.createPreviewSurface({
-    panel: getPanel(previewUtils, "bp-inline-preview-panel", ""),
-    titleSelector: ".bp_inline_preview_panel_title",
-    headerLabelSelector: ".bp_inline_preview_panel_label",
-    bodySelector: ".bp_inline_preview_panel_body",
-    footerSelector: ".bp_inline_preview_panel_footer",
-    closeSelector: ".bp_inline_preview_panel_close",
+    panel: getPanel(previewUtils, "bp-inline-preview-panel", "bp_inline_preview_panel"),
     footerHtmlAttr: "data-bp-preview-footer-html",
     defaults: { mode: "hover", placement: "anchored" },
     onClose: hidePanel
@@ -89,13 +76,8 @@ export function bindInlinePreview(previewUtils) {
     panel: getPanel(
       previewUtils,
       "bp-inline-preview-child-panel",
-      "bp_inline_preview_panel_child"
+      "bp_inline_preview_panel bp_inline_preview_panel_child"
     ),
-    titleSelector: ".bp_inline_preview_panel_title",
-    headerLabelSelector: ".bp_inline_preview_panel_label",
-    bodySelector: ".bp_inline_preview_panel_body",
-    footerSelector: ".bp_inline_preview_panel_footer",
-    closeSelector: ".bp_inline_preview_panel_close",
     footerHtmlAttr: "data-bp-preview-footer-html",
     defaults: { mode: "hover", placement: "anchored" },
     onClose: hideChildPanel

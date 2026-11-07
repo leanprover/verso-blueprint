@@ -26,7 +26,7 @@ namespace Informal.Cite
 open Verso.Genre.Manual.Bibliography
 
 def citeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
-  Informal.Commands.inlinePreviewAssetBundle
+  Informal.Commands.previewPanelAssetBundle
 
 syntax (name := bib) "bib" ppSpace str : attr
 

@@ -57,7 +57,7 @@ private def metadataPresentationOfMetadataEntryItem (item : MetadataEntryItem) :
 def summaryCss := include_str "../summary.css"
 
 def summaryAssetBundle : BlueprintAssetBundle :=
-  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss])
+  previewPanelAssetBundle (cssExtras := [summaryCss])
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html

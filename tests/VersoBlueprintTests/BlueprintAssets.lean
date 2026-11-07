@@ -16,6 +16,11 @@ import VersoBlueprint.Slides
 
 namespace Verso.VersoBlueprintTests.BlueprintAssets
 
+/-- Every popup page gets the shared panel shell before its own styles. -/
+private def panelCss (extras : List String) : List String :=
+  [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
+    Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] ++ extras
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -23,45 +28,25 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
     Informal.Commands.previewPanelAssetBundle
       (cssExtras := ["graph-css"])
       (jsAfter := ["graph-js"])
-  bundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss, "graph-css"] &&
+  bundle.css == panelCss ["graph-css"] &&
     bundle.js == ["graph-js"]
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  let bundle :=
-    Informal.Commands.inlinePreviewAssetBundle
-      (cssExtras := ["bibliography-css"])
-      (jsBefore := ["open-target"])
-  bundle.css ==
-      [Informal.Commands.blueprintTokensCss, "bibliography-css",
-        Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    bundle.js == ["open-target"]
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  Informal.Commands.graphAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-        Informal.Commands.graphCss] &&
+  Informal.Commands.graphAssetBundle.css == panelCss [Informal.Commands.graphCss] &&
     Informal.Commands.graphAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.summaryAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-        Informal.Commands.summaryCss, Informal.Commands.previewHeaderCss,
-        Informal.Commands.inlinePreviewCss] &&
+  Informal.Commands.summaryAssetBundle.css == panelCss [Informal.Commands.summaryCss] &&
     Informal.Commands.summaryAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.bibliographyAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.bibliographyCss,
-        Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
+  Informal.Commands.bibliographyAssetBundle.css == panelCss [Informal.Commands.bibliographyCss] &&
     Informal.Commands.bibliographyAssetBundle.js == []
 
 /-- info: true -/
@@ -76,9 +61,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 #guard_msgs in
 #eval
   Informal.Block.Assets.blockAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-        Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle,
-        Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
+      panelCss [Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle] &&
     Informal.Block.Assets.blockAssetBundle.js ==
       [Informal.Macros.blueprintMathJs, Informal.PageBehavior.jsInteractive]
 
@@ -92,17 +75,13 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Cite.citeAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewHeaderCss,
-        Informal.Commands.inlinePreviewCss] &&
+  Informal.Cite.citeAssetBundle.css == panelCss [] &&
     Informal.Cite.citeAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.usesAssetBundle.css ==
-      [Informal.Commands.blueprintTokensCss, Informal.Commands.previewHeaderCss,
-        Informal.Commands.inlinePreviewCss] &&
+  Informal.usesAssetBundle.css == panelCss [] &&
     Informal.usesAssetBundle.js == []
 
 /-- info: true -/

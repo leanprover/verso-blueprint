@@ -133,26 +133,17 @@
   cursor: pointer;
 }
 
-.bp_summary_preview_panel {
+.bp_preview_panel.bp_summary_preview_panel {
   position: fixed;
   z-index: 35;
   width: min(36rem, calc(100vw - 1.4rem));
   max-height: min(68vh, 36rem);
 }
 
-.bp_summary_preview_panel[data-bp-preview-placement="docked"] {
+.bp_preview_panel.bp_summary_preview_panel[data-bp-preview-placement="docked"] {
   top: 0.9rem;
   right: 0.9rem;
   left: auto;
-}
-
-.bp_summary_preview_panel_title {
-  font-size: 0.84rem;
-}
-
-.bp_summary_preview_panel_body {
-  padding-left: 0.5rem;
-  max-height: min(56vh, 30rem);
 }
 
 .bp_summary_item_body {

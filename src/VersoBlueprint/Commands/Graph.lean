@@ -183,9 +183,6 @@ private def renderGraphHtml (s : Verso.Genre.Manual.TraverseState) (id : Multi.I
         else
           {{ <option value="anchored">"Near node"</option> }}
       ]
-      let previewPanel :=
-        Informal.HoverRender.graphPreviewPanel previewMode previewPlacement
-      let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
       return {{
         <div class="bp_graph_fullwidth">
           <div class="bp_graph_controls">
@@ -275,8 +272,6 @@ private def renderGraphHtml (s : Verso.Genre.Manual.TraverseState) (id : Multi.I
               {{.text false s!"{publicGraphDataJson}"}}
             </script>
           </div>
-          {{previewPanel}}
-          {{groupHoverPanel}}
         </div>
       }}
 

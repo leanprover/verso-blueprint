@@ -137,7 +137,7 @@ class TestPreviewRuntimeRegressions:
             panel = page.locator("#bp-inline-preview-panel")
             expect(panel).to_be_visible()
             for declaration in declarations:
-                expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(declaration)
+                expect(panel.locator(".bp_preview_panel_body")).to_contain_text(declaration)
                 expect(panel.locator(
                     f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
                 )).to_have_count(1)
@@ -432,7 +432,7 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_code_summary_preview_panel").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_code_summary_preview_title")).to_have_text("used_target")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("used_target")
         expect(panel.locator(".bp_code_decl_item")).to_have_count(1)
         expect(panel.locator(".bp_code_decl_item").first).to_contain_text("Nat.add")
 
@@ -466,7 +466,7 @@ class TestPreviewRuntimeRegressions:
 
         summary_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(summary_panel).to_be_visible()
-        expect(summary_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(summary_panel.locator(".bp_preview_panel_title")).to_have_text(
             "panel_external_short_name_definition"
         )
         expect(summary_panel.locator(".bp_code_decl_item").first).to_contain_text(
@@ -486,9 +486,9 @@ class TestPreviewRuntimeRegressions:
         decl_link.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_title")).to_have_text(
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text(
             "previewExternalDefinition"
         )
         expect(body).to_contain_text(
@@ -515,15 +515,15 @@ class TestPreviewRuntimeRegressions:
         trigger.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
 
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_title")).to_have_text(re.compile(r"^Lean declaration "))
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text(re.compile(r"^Lean declaration "))
 
         page.wait_for_function(
             """
             () => {
-              const body = document.querySelector("#bp-inline-preview-panel .bp_inline_preview_panel_body");
+              const body = document.querySelector("#bp-inline-preview-panel .bp_preview_panel_body");
               if (!body) return false;
               const html = body.innerHTML || "";
               const text = body.textContent || "";
@@ -558,13 +558,13 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text(
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text(
             "custom_client_external_markdown"
         )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text(
+        expect(panel.locator(".bp_preview_panel_body")).to_contain_text(
             "External Markdown source"
         )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text("only Markdown")
+        expect(panel.locator(".bp_preview_panel_body")).to_contain_text("only Markdown")
 
         assert_no_runtime_errors(errors)
 
@@ -589,7 +589,7 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text("Definition 1.1")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("Definition 1.1")
 
         assert_no_runtime_errors(errors)
 
@@ -1217,12 +1217,12 @@ class TestPreviewRuntimeRegressions:
         external_uses_trigger.hover()
         inline_panel = page.locator("#bp-inline-preview-panel")
         expect(inline_panel).to_be_visible()
-        inline_body = inline_panel.locator(".bp_inline_preview_panel_body")
+        inline_body = inline_panel.locator(".bp_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
             arg=inline_body.element_handle(),
         )
-        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+        expect(inline_panel.locator(".bp_preview_panel_label")).to_contain_text(
             "used_target"
         )
 
@@ -1238,7 +1238,7 @@ class TestPreviewRuntimeRegressions:
             "(el) => !!el && el.textContent.includes('Consumer node that gives the Markdown fallback target a used-by relation.')",
             arg=inline_body.element_handle(),
         )
-        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+        expect(inline_panel.locator(".bp_preview_panel_label")).to_contain_text(
             "custom_client_external_metadata_consumer"
         )
 
@@ -1251,10 +1251,10 @@ class TestPreviewRuntimeRegressions:
         external_code_trigger.hover()
         code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(code_panel).to_be_visible()
-        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(code_panel.locator(".bp_preview_panel_title")).to_have_text(
             "custom_client_external_markdown_metadata"
         )
-        expect(code_panel.locator(".bp_code_summary_preview_body")).to_contain_text(
+        expect(code_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "No associated Lean code or declaration display snapshots."
         )
 
@@ -2808,19 +2808,19 @@ class TestPreviewRuntimeRegressions:
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
 
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
 
-        header_label = panel.locator(".bp_inline_preview_panel_label")
+        header_label = panel.locator(".bp_preview_panel_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_target")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
 
-        footer = panel.locator(".bp_inline_preview_panel_footer")
+        footer = panel.locator(".bp_preview_panel_footer")
         expect(footer).to_be_visible()
         expect(footer).to_contain_text("statement")
 
@@ -2860,19 +2860,19 @@ class TestPreviewRuntimeRegressions:
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
 
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
 
-        header_label = panel.locator(".bp_inline_preview_panel_label")
+        header_label = panel.locator(".bp_preview_panel_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_target")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
 
-        footer = panel.locator(".bp_inline_preview_panel_footer")
+        footer = panel.locator(".bp_preview_panel_footer")
         expect(footer).to_be_visible()
         expect(footer).to_contain_text("proof")
 
@@ -2999,7 +2999,7 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         expect(body).to_contain_text("Preview showcase citation")
         expect(body).to_contain_text("Locator")
 
@@ -3022,7 +3022,7 @@ class TestPreviewRuntimeRegressions:
         expect(main_panel).to_be_visible()
 
         nested = main_panel.locator(
-            '.bp_inline_preview_panel_body .bp_inline_preview_ref[data-bp-preview-key="nested_inner--statement"]'
+            '.bp_preview_panel_body .bp_inline_preview_ref[data-bp-preview-key="nested_inner--statement"]'
         ).first
         expect(nested).to_have_count(1)
 
@@ -3030,10 +3030,10 @@ class TestPreviewRuntimeRegressions:
 
         child_panel = page.locator("#bp-inline-preview-child-panel")
         expect(child_panel).to_be_visible()
-        expect(child_panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
+        expect(child_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "Nested inner preview definition."
         )
-        expect(main_panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
+        expect(main_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "Outer theorem refers to"
         )
 

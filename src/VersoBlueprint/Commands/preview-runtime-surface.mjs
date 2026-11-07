@@ -32,6 +32,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
   /**
    * @typedef {Object} PreviewSurface
    * @property {HTMLElement} panel
+   * @property {HTMLElement | null} eyebrow
    * @property {Element} title
    * @property {HTMLElement | null} headerLabel
    * @property {Element} body
@@ -70,7 +71,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
 
   export function hidePreviewSurfaces(root) {
     const scope = root instanceof Element || root instanceof Document ? root : document;
-    const selector = "#bp-inline-preview-panel, #bp-inline-preview-child-panel, .bp_preview_panel";
+    const selector = ".bp_preview_panel";
     const hidePanel = function (panel) {
       if (!(panel instanceof HTMLElement)) return;
       panel.hidden = true;
@@ -112,15 +113,39 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     return node instanceof Element ? node : null;
   }
 
+  /**
+   * Class names of the shared preview panel shell. Every Blueprint popup is built
+   * from this one shell, so styling and slot lookup have a single source.
+   */
+  export const previewPanelSlotClasses = Object.freeze({
+    header: "bp_preview_panel_header",
+    heading: "bp_preview_panel_heading",
+    eyebrow: "bp_preview_panel_eyebrow",
+    titleLine: "bp_preview_panel_titleline",
+    title: "bp_preview_panel_title",
+    label: "bp_preview_panel_label",
+    close: "bp_preview_panel_close",
+    body: "bp_preview_panel_body",
+    footer: "bp_preview_panel_footer"
+  });
+
+  function slotSelector(slot) {
+    return "." + previewPanelSlotClasses[slot];
+  }
+
   export function readPreviewSurfaceSlots(panel, options) {
     const opts = options && typeof options === "object" ? options : {};
+    const slot = function (name, optionName) {
+      return readPanelSlot(panel, readStringOption(opts, optionName, slotSelector(name)));
+    };
     return {
       panel: panel instanceof Element ? panel : null,
-      title: readPanelSlot(panel, readStringOption(opts, "titleSelector", "")),
-      headerLabel: readPanelSlot(panel, readStringOption(opts, "headerLabelSelector", "")),
-      body: readPanelSlot(panel, readStringOption(opts, "bodySelector", "")),
-      footer: readPanelSlot(panel, readStringOption(opts, "footerSelector", "")),
-      closeButton: readPanelSlot(panel, readStringOption(opts, "closeSelector", ""))
+      eyebrow: slot("eyebrow", "eyebrowSelector"),
+      title: slot("title", "titleSelector"),
+      headerLabel: slot("label", "headerLabelSelector"),
+      body: slot("body", "bodySelector"),
+      footer: slot("footer", "footerSelector"),
+      closeButton: slot("close", "closeSelector")
     };
   }
 
@@ -143,6 +168,12 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const offset = readNumberOption(opts, "offset", 10);
     const side = readStringOption(opts, "side", "below");
     const footerHtmlAttr = readStringOption(opts, "footerHtmlAttr", "");
+    const eyebrowSlot = slots.eyebrow instanceof HTMLElement ? slots.eyebrow : null;
+    const defaultEyebrow = readStringOption(
+      opts,
+      "eyebrow",
+      eyebrowSlot ? (eyebrowSlot.textContent || "").trim() : ""
+    );
     const renderFooter = readFunctionOption(opts, "renderFooter", null);
     const onClose = readFunctionOption(opts, "onClose", null);
     const clearBody = readFunctionOption(opts, "clearBody", function (body) {
@@ -194,6 +225,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     /** @type {PreviewSurface} */
     const surface = {
       panel: panel,
+      eyebrow: eyebrowSlot,
       title: titleElement,
       headerLabel: headerLabelSlot,
       body: bodyElement,
@@ -221,6 +253,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         return behavior;
       },
       setSource: function (sourceNode) {
+        setPreviewEyebrow(eyebrowSlot, sourceNode, defaultEyebrow);
         setPreviewHeaderLink(slots.headerLabel, sourceNode);
         surface.setFooterSource(sourceNode);
       },
@@ -245,6 +278,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         }
       },
       clearChrome: function () {
+        setPreviewEyebrow(eyebrowSlot, null, defaultEyebrow);
         setPreviewHeaderLink(slots.headerLabel, null);
         surface.setFooterSource(null);
       },
@@ -506,67 +540,71 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     }
   }
 
+  function closeIcon(doc) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = doc.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("width", "16");
+    svg.setAttribute("height", "16");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    const path = doc.createElementNS(ns, "path");
+    path.setAttribute("d", "M4 4l8 8M12 4l-8 8");
+    svg.appendChild(path);
+    return svg;
+  }
+
+  /**
+   * Build the shared preview panel shell: a header with an optional eyebrow (what
+   * kind of popup this is), a title and label link, and a close button; a body; and
+   * an optional footer. `roleClass` names the popup's role for sizing and placement.
+   */
   export function createPreviewPanel(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const panel = document.createElement("aside");
+    const doc = opts.document && typeof opts.document.createElement === "function"
+      ? opts.document
+      : document;
     const id = readStringOption(opts, "id", "");
-    const rootClass = readStringOption(opts, "rootClass", "bp_preview_panel");
-    const extraClass = readStringOption(opts, "extraClass", "");
-    const mode = normalizePreviewMode(opts.mode, "hover");
-    const placement = normalizePreviewPlacement(opts.placement, "anchored");
-    const headerClass = readStringOption(opts, "headerClass", "bp_preview_panel_header");
-    const headingClass = readStringOption(opts, "headingClass", "");
-    const titleClass = readStringOption(opts, "titleClass", "bp_preview_panel_title");
-    const headerLabelClass = readStringOption(opts, "headerLabelClass", "");
-    const closeClass = readStringOption(opts, "closeClass", "bp_preview_panel_close");
+    const roleClass = readStringOption(opts, "roleClass", "");
+    const eyebrowText = readStringOption(opts, "eyebrow", "");
     const closeLabel = readStringOption(opts, "closeLabel", "Close preview");
-    const bodyClass = readStringOption(opts, "bodyClass", "bp_preview_panel_body");
-    const footerClass = readStringOption(opts, "footerClass", "");
-    const parent = opts.parent instanceof Element ? opts.parent : document.body;
+    const parent = opts.parent instanceof Element ? opts.parent : doc.body;
+    const element = function (tag, slot) {
+      const node = doc.createElement(tag);
+      node.className = previewPanelSlotClasses[slot];
+      return node;
+    };
 
+    const panel = doc.createElement("aside");
     if (id.length > 0) panel.id = id;
-    panel.className = rootClass + (extraClass.length > 0 ? " " + extraClass : "");
-    panel.setAttribute("data-bp-preview-mode", mode);
-    panel.setAttribute("data-bp-preview-placement", placement);
+    panel.className = "bp_preview_panel" + (roleClass.length > 0 ? " " + roleClass : "");
+    panel.setAttribute("data-bp-preview-mode", normalizePreviewMode(opts.mode, "hover"));
+    panel.setAttribute("data-bp-preview-placement", normalizePreviewPlacement(opts.placement, "anchored"));
     panel.hidden = true;
 
-    const header = document.createElement("div");
-    header.className = headerClass;
-
-    const heading = document.createElement("div");
-    if (headingClass.length > 0) heading.className = headingClass;
-
-    const title = document.createElement("div");
-    title.className = titleClass;
-    heading.appendChild(title);
-
-    if (headerLabelClass.length > 0) {
-      const label = document.createElement("a");
-      label.className = headerLabelClass;
-      label.hidden = true;
-      heading.appendChild(label);
-    }
-
-    const close = document.createElement("button");
+    const header = element("div", "header");
+    const heading = element("div", "heading");
+    const eyebrow = element("div", "eyebrow");
+    eyebrow.textContent = eyebrowText;
+    eyebrow.hidden = eyebrowText.length === 0;
+    const titleLine = element("div", "titleLine");
+    titleLine.appendChild(element("div", "title"));
+    const label = element("a", "label");
+    label.hidden = true;
+    titleLine.appendChild(label);
+    heading.appendChild(eyebrow);
+    heading.appendChild(titleLine);
+    const close = element("button", "close");
     close.type = "button";
-    close.className = closeClass;
     close.setAttribute("aria-label", closeLabel);
-    close.textContent = "Close";
-
+    close.appendChild(closeIcon(doc));
     header.appendChild(heading);
     header.appendChild(close);
     panel.appendChild(header);
-
-    const body = document.createElement("div");
-    body.className = bodyClass;
-    panel.appendChild(body);
-
-    if (footerClass.length > 0) {
-      const footer = document.createElement("div");
-      footer.className = footerClass;
-      footer.hidden = true;
-      panel.appendChild(footer);
-    }
+    panel.appendChild(element("div", "body"));
+    const footer = element("div", "footer");
+    footer.hidden = true;
+    panel.appendChild(footer);
 
     if (opts.append !== false && parent instanceof Element) {
       parent.appendChild(panel);
@@ -597,6 +635,17 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     }
     html += "</div>";
     return html;
+  }
+
+  export function setPreviewEyebrow(eyebrowNode, sourceNode, fallback) {
+    if (!(eyebrowNode instanceof HTMLElement)) return;
+    const fromSource =
+      sourceNode instanceof Element
+        ? (sourceNode.getAttribute("data-bp-preview-eyebrow") || "").trim()
+        : "";
+    const text = fromSource || (typeof fallback === "string" ? fallback : "");
+    eyebrowNode.textContent = text;
+    eyebrowNode.hidden = text.length === 0;
   }
 
   export function setPreviewHeaderLink(labelNode, sourceNode) {
@@ -637,6 +686,8 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     createPreviewPanel,
     previewMessageHtml,
     previewResultTitle,
+    previewPanelSlotClasses,
+    setPreviewEyebrow,
     setPreviewHeaderLink
   };
 

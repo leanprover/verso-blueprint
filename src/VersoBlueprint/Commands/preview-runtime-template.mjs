@@ -1,6 +1,6 @@
 import { collectPreviewTemplates, readElementOption, readFunctionOption, readHtml, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
 import { setTemplatePreviewDescriptorBinder } from "./preview-runtime-hydration.mjs";
-import { createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./preview-runtime-surface.mjs";
+import { createPreviewPanel, createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./preview-runtime-surface.mjs";
 
   // Template preview binding adapts the shared helpers to concrete surfaces.
 
@@ -9,13 +9,10 @@ import { createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./
     const root = readRootOption(opts, "root", document);
     const previewRoot = readRootOption(opts, "previewRoot", root);
     const triggerRoot = readRootOption(opts, "triggerRoot", root);
-    const panel = readElementOption(opts, "panel", null);
     const templateSelector = readStringOption(opts, "templateSelector", "");
     const triggerSelector = readStringOption(opts, "triggerSelector", "");
     const keyAttr = readStringOption(opts, "keyAttr", "data-bp-preview-label");
     const titleAttr = readStringOption(opts, "titleAttr", keyAttr);
-    const titleSelector = readStringOption(opts, "titleSelector", "");
-    const bodySelector = readStringOption(opts, "bodySelector", "");
     const triggerBoundAttr = readStringOption(opts, "triggerBoundAttr", "data-bp-bound");
     const defaults = readObjectOption(opts, "defaults", {});
     const margin = readNumberOption(opts, "margin", 12);
@@ -37,28 +34,24 @@ import { createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./
 
     const previewMap = collectPreviewTemplates(previewRoot, templateSelector, keyAttr);
     const triggers = triggerRoot.querySelectorAll(triggerSelector);
-    if (panel && panel.ownerDocument && panel.ownerDocument.body && panel.parentElement !== panel.ownerDocument.body) {
-      panel.ownerDocument.body.appendChild(panel);
-    }
+    if ((!allowHtmlCache && previewMap.size === 0) || triggers.length === 0) return null;
+    // The panel is created only once a root has something to preview.
+    const panel = readElementOption(opts, "panel", null) || createPreviewPanel({
+      roleClass: readStringOption(opts, "panelClass", ""),
+      eyebrow: readStringOption(opts, "eyebrow", ""),
+      closeLabel: readStringOption(opts, "closeLabel", "Close preview"),
+      mode: defaults.mode,
+      placement: defaults.placement
+    });
     const surface = createPreviewSurface({
       panel: panel,
-      titleSelector: titleSelector,
-      bodySelector: bodySelector,
-      closeSelector: readStringOption(opts, "closeSelector", ""),
       defaults: defaults,
       margin: margin,
       offset: offset,
       onClose: function () { hidePanel(); }
     });
-    if (!surface || (!allowHtmlCache && previewMap.size === 0)) {
-      if (panel instanceof HTMLElement) panel.hidden = true;
-      return null;
-    }
+    if (!surface) return null;
     const previewSurface = surface;
-    if (triggers.length === 0) {
-      previewSurface.hide();
-      return null;
-    }
     let activeTrigger = null;
     let showRequestToken = 0;
     let triggerLifecycle = null;
@@ -149,24 +142,19 @@ import { createPreviewSurface, previewResultTitle, resolvePreviewHtml } from "./
     if (!(root instanceof Element)) return null;
     if (root.getAttribute("data-bp-template-preview-bound") === "1") return null;
 
-    const panelSelector = readTemplateDescriptorString(root, "panel-selector", "");
-    const panel = panelSelector ? root.querySelector(panelSelector) : null;
-    if (!(panel instanceof Element)) return null;
-
     const mode = readTemplateDescriptorString(root, "mode", "");
     const placement = readTemplateDescriptorString(root, "placement", "");
     const bindOptions = {
       root: root,
       previewRoot: root,
       triggerRoot: root,
-      panel: panel,
+      panelClass: readTemplateDescriptorString(root, "panel-class", ""),
+      eyebrow: readTemplateDescriptorString(root, "eyebrow", ""),
+      closeLabel: readTemplateDescriptorString(root, "close-label", "Close preview"),
       templateSelector: readTemplateDescriptorString(root, "template-selector", ""),
       triggerSelector: readTemplateDescriptorString(root, "trigger-selector", ""),
       keyAttr: readTemplateDescriptorString(root, "key-attr", "data-bp-preview-label"),
       titleAttr: readTemplateDescriptorString(root, "title-attr", ""),
-      titleSelector: readTemplateDescriptorString(root, "title-selector", ""),
-      bodySelector: readTemplateDescriptorString(root, "body-selector", ""),
-      closeSelector: readTemplateDescriptorString(root, "close-selector", ""),
       triggerBoundAttr: readTemplateDescriptorString(root, "trigger-bound-attr", "data-bp-bound")
     };
     if ("fetchJson" in opts) bindOptions.fetchJson = opts.fetchJson;

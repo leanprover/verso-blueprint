@@ -32,7 +32,7 @@ deriving FromJson, ToJson
 def bibliographyCss := include_str "bibliography.css"
 
 def bibliographyAssetBundle : BlueprintAssetBundle :=
-  inlinePreviewAssetBundle (cssExtras := [bibliographyCss])
+  previewPanelAssetBundle (cssExtras := [bibliographyCss])
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.bibliography (biblio : BibliographyData) where
