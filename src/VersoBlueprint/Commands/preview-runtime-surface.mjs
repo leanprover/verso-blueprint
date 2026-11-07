@@ -122,6 +122,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     heading: "bp_preview_panel_heading",
     eyebrow: "bp_preview_panel_eyebrow",
     titleLine: "bp_preview_panel_titleline",
+    status: "bp_preview_panel_status",
     title: "bp_preview_panel_title",
     label: "bp_preview_panel_label",
     close: "bp_preview_panel_close",
@@ -141,6 +142,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     return {
       panel: panel instanceof Element ? panel : null,
       eyebrow: slot("eyebrow", "eyebrowSelector"),
+      status: slot("status", "statusSelector"),
       title: slot("title", "titleSelector"),
       headerLabel: slot("label", "headerLabelSelector"),
       body: slot("body", "bodySelector"),
@@ -254,6 +256,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       },
       setSource: function (sourceNode) {
         setPreviewEyebrow(eyebrowSlot, sourceNode, defaultEyebrow);
+        setPreviewStatus(slots.status, sourceNode);
         setPreviewHeaderLink(slots.headerLabel, sourceNode);
         surface.setFooterSource(sourceNode);
       },
@@ -279,6 +282,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       },
       clearChrome: function () {
         setPreviewEyebrow(eyebrowSlot, null, defaultEyebrow);
+        setPreviewStatus(slots.status, null);
         setPreviewHeaderLink(slots.headerLabel, null);
         surface.setFooterSource(null);
       },
@@ -588,6 +592,10 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     eyebrow.textContent = eyebrowText;
     eyebrow.hidden = eyebrowText.length === 0;
     const titleLine = element("div", "titleLine");
+    const status = element("span", "status");
+    status.hidden = true;
+    status.setAttribute("aria-hidden", "true");
+    titleLine.appendChild(status);
     titleLine.appendChild(element("div", "title"));
     const label = element("a", "label");
     label.hidden = true;
@@ -648,6 +656,30 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     eyebrowNode.hidden = text.length === 0;
   }
 
+  /**
+   * Show the previewed block's status mark before the title, from the source's
+   * `data-bp-preview-status-symbol` and `data-bp-preview-status-class` (the suffix
+   * of the heading's `bp_code_link_status_*` class, so the mark looks the same).
+   */
+  export function setPreviewStatus(statusNode, sourceNode) {
+    if (!(statusNode instanceof HTMLElement)) return;
+    const read = function (name) {
+      return sourceNode instanceof Element ? (sourceNode.getAttribute(name) || "").trim() : "";
+    };
+    const symbol = read("data-bp-preview-status-symbol");
+    const suffix = read("data-bp-preview-status-class");
+    statusNode.className = previewPanelSlotClasses.status +
+      (symbol && suffix ? " bp_code_link_status_" + suffix : "");
+    statusNode.replaceChildren();
+    if (symbol) {
+      const mark = document.createElement("span");
+      mark.className = "bp_code_status_symbol";
+      mark.textContent = symbol;
+      statusNode.appendChild(mark);
+    }
+    statusNode.hidden = symbol.length === 0;
+  }
+
   export function setPreviewHeaderLink(labelNode, sourceNode) {
     if (!(labelNode instanceof HTMLElement)) return;
     const label =
@@ -688,6 +720,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     previewResultTitle,
     previewPanelSlotClasses,
     setPreviewEyebrow,
+    setPreviewStatus,
     setPreviewHeaderLink
   };
 

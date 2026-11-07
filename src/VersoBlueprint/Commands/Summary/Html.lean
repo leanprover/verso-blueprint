@@ -105,7 +105,6 @@ private def SummaryHtmlContext.declLink (ctx : SummaryHtmlContext) (label target
     let key := (ctx.declPreviewLookupKey? label target).getD (Informal.LeanCodePreviewKey.lookupKey target)
     PreviewResources.select ctx.renderPreview (PreviewKey.ofString? key).toArray
       (fun key => Informal.LeanCodeLink.renderResolved target node "" (some href)
-        (previewTitle := Informal.LeanCodePreview.title target)
         (previewLookupKey? := some key.value))
       (fun _ => .tag "a" #[("href", href)] node)
   | Option.none => node

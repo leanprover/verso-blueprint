@@ -4,7 +4,7 @@ Status: open
 Kind: ux
 Priority: medium
 Origin: local
-Last reviewed: 2026-11-05
+Last reviewed: 2026-11-07
 Owner: none
 Issue: none linked
 PR: none linked
@@ -59,6 +59,9 @@ Fixed on `feat/visual-design`:
 | Empty relation chips such as "uses 0" added noise to every header | Hidden, keeping their column so other chips stay aligned; undeclared-group warnings stay visible |
 | The dependency graph opened unreadable on large projects: labels were 3px on the 240-node `visual_inspection` graph | Opens zoomed to readable labels, anchored at the graph's top-left, with a control to show the whole graph |
 | The graph page stayed blank, with no message, when its libraries could not load | The canvas explains the failure |
+| Popups opened off-screen or over their own trigger, each placed by its own code | One placement engine keeps every anchored popup inside the viewport and beside its trigger |
+| Code, relation, reference, summary, and graph popups were five unrelated designs, with jargon titles ("Associated Lean declarations (source snapshots; display only; …)"), raw labels as titles, and duplicate headers | One panel shell: an eyebrow naming the popup, the block's reader-facing title and label, content-sized body, optional footer. Relation rows and reference titles carry heading status marks; the code popup ends with a plain status sentence and a link to the Lean code |
+| Relation popups opened on hover and jumped as the pointer crossed headers | They open on click; `RelatedPanel.relationPanelOpenMode` switches them back to hover |
 
 Open, ranked:
 
@@ -70,6 +73,7 @@ Open, ranked:
 | P8 | Pages carry Blueprint CSS twice | Starter Addition page grew from 210 KB to 268 KB | Remove the re-emission once UPC-0022 lands |
 | P9 | Summary wording exposes internal terms | "native checks complete, requirements incomplete" in the starter overview | Reader-facing status names |
 | P10 | The front page leads with commit hashes and repeats the sidebar contents | Published FLT front page | Lead with progress, which the Summary already computes |
+| P11 | The Lean code popup lists declaration names but not their signatures | Code popup on `visual_inspection` Kinds | Show each signature from the preview cache, which already holds the highlighted declaration, rather than embedding it in every heading |
 
 Deferred:
 
@@ -95,13 +99,15 @@ phone width.
 
 ## Evidence
 
-- `feat/visual-design` commits 915dad9c and 8d4269f6.
+- `feat/visual-design` commits 915dad9c and 8d4269f6; the popup engine and
+  shell in 1a68b6d4 and the commits after it.
 - A computed-style diff of 21 starter and showcase pages after the fixed items
   shows only the intended font change and the auto-margin shifts it causes.
 - The browser suite has no new failures against the unmodified base.
 - `tests/browser/test_visual_inspection.py` pins the heading marks, the hidden
   empty chips, the readable initial graph zoom, and the graph's load error on
-  the `visual_inspection` test blueprint. The zoom is verified on the
+  the `visual_inspection` test blueprint, and checks that popups stay inside
+  the viewport without covering their trigger. The zoom is verified on the
   `visual_inspection` and showcase graphs, not yet on external reference
   blueprints.
 

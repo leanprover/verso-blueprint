@@ -8,6 +8,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
+import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.Lib.ExtensionDecode
@@ -105,11 +106,19 @@ structure InlineData where
   label : Data.Label
 deriving FromJson, ToJson, Quote
 
+/-- A prose reference previews its target block, named and marked as its heading is. -/
 private def RenderingResolution.Reference.withPreview
-    (reference : RenderingResolution.Reference) (key : PreviewKey) (node : Verso.Output.Html) :
-    Verso.Output.Html :=
+    (reference : RenderingResolution.Reference) (state : TraverseState) (label : Data.Label)
+    (key : PreviewKey) (node : Verso.Output.Html) : Verso.Output.Html :=
   let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
-  let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
+  let status? := (Informal.TraversalIndex.Nodes.capturedData? state label).map fun data =>
+    let visual := CodeSummary.blockStatusVisual data
+    (visual.symbol, visual.classSuffix)
+  let target := { HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key) with
+    eyebrow? := some "Reference"
+    headerLabel? := some (Data.Label.publicString label)
+    headerHref? := reference.href
+    status? }
   HoverRender.inlinePreviewTargetNode node target
 
 open Verso.Doc.Html Verso.Output.Html in
@@ -121,7 +130,8 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
       let some { label } ← ExtensionDecode.decode? (α := InlineData) data
           (fun _ => "Malformed data in Inline.informal.toHtml")
         | pure .empty
-      let some reference ← ExtensionDecode.report? (RenderingResolution.reference (← HtmlT.state) label)
+      let state ← HtmlT.state
+      let some reference ← ExtensionDecode.report? (RenderingResolution.reference state label)
         | pure .empty
       let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
       let labelText := label.toString (escape := false)
@@ -129,7 +139,7 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
         | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
         | none => {{<span title={{labelText}}>{{content}}</span>}}
       let content := PreviewResources.select renderPreview reference.previewKeys
-        (fun key => reference.withPreview key node) (fun _ => node)
+        (fun key => reference.withPreview state label key node) (fun _ => node)
         (defaultOnly := true)
       return {{<span>{{content}}</span>}}
 

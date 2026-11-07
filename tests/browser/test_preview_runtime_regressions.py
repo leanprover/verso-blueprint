@@ -526,7 +526,8 @@ class TestPreviewRuntimeRegressions:
         body = panel.locator(".bp_preview_panel_body")
 
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_preview_panel_title")).to_have_text(re.compile(r"^Lean declaration "))
+        expect(panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean declaration")
+        expect(panel.locator(".bp_preview_panel_title")).not_to_have_text(re.compile(r"^Lean declaration "))
 
         page.wait_for_function(
             """

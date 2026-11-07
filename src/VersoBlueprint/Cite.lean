@@ -583,8 +583,8 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
           pure linkNode
         else
           let previewKey := citationPreviewKey item cfg.style cfg.kind cfg.index
-          let previewTarget := Informal.HoverRender.InlinePreviewTarget.manifestBacked
-            previewKey (citationPreviewTitle item)
+          let previewTarget := { Informal.HoverRender.InlinePreviewTarget.manifestBacked
+            previewKey (citationPreviewTitle item) with eyebrow? := some "Citation" }
           pure <| Informal.HoverRender.inlinePreviewTargetNode linkNode previewTarget
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links

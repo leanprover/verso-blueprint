@@ -185,7 +185,12 @@ def previewPanelCss : String := r##"
   text-decoration: none;
 }
 
+.bp_preview_panel_status {
+  flex: none;
+}
+
 .bp_preview_panel_eyebrow[hidden],
+.bp_preview_panel_status[hidden],
 .bp_preview_panel_label[hidden],
 .bp_preview_panel_footer[hidden] {
   display: none;

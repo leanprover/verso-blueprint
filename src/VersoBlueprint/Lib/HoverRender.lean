@@ -182,9 +182,9 @@ All attributes needed to bind one inline preview trigger to its runtime panel.
 
 `triggerId` is the page-local UI id used for hover state. `lookupKey?` is the
 shared preview-data key used to load the preview body; the two are often but
-not always the same value. `headerLabel?` and `headerHref?` carry an optional
-label link for the preview header. `footerHtml?` carries optional,
-already-rendered metadata for the inline preview chrome below the preview body.
+not always the same value. The rest fill the shared panel header: `eyebrow?`
+names the kind of popup, `status?` is the target's status mark (its symbol and
+status class suffix), and `headerLabel?`/`headerHref?` are a label link.
 -/
 structure InlinePreviewTarget where
   triggerId : String
@@ -192,103 +192,33 @@ structure InlinePreviewTarget where
   lookupKey? : Option String := none
   headerLabel? : Option String := none
   headerHref? : Option String := none
-  footerHtml? : Option String := none
-
-/-- Attributes consumed by the shared preview-header label-link renderer. -/
-def previewHeaderLinkAttrs
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none) :
-    Array (String × String) := Id.run do
-  let mut attrs := #[]
-  if let some label := headerLabel? then
-    attrs := attrs.push ("data-bp-preview-header-label", label)
-  if let some href := headerHref? then
-    attrs := attrs.push ("data-bp-preview-header-href", href)
-  pure attrs
+  eyebrow? : Option String := none
+  status? : Option (String × String) := none
 
 /-- Build a target whose trigger id and manifest lookup key are the same. -/
-def InlinePreviewTarget.manifestBacked
-    (lookupKey title : String)
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none)
-    (footerHtml? : Option String := none) : InlinePreviewTarget :=
-  {
-    triggerId := lookupKey
-    title
-    lookupKey? := some lookupKey
-    headerLabel?
-    headerHref?
-    footerHtml?
-  }
+def InlinePreviewTarget.manifestBacked (lookupKey title : String) : InlinePreviewTarget :=
+  { triggerId := lookupKey, title, lookupKey? := some lookupKey }
 
 /-- Build a target with a distinct trigger id and manifest lookup key. -/
-def InlinePreviewTarget.withLookupKey
-    (triggerId title lookupKey : String)
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none)
-    (footerHtml? : Option String := none) : InlinePreviewTarget :=
-  {
-    triggerId
-    title
-    lookupKey? := some lookupKey
-    headerLabel?
-    headerHref?
-    footerHtml?
-  }
+def InlinePreviewTarget.withLookupKey (triggerId title lookupKey : String) : InlinePreviewTarget :=
+  { triggerId, title, lookupKey? := some lookupKey }
 
-private def inlinePreviewRefAttrs
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) :
-    Array (String × String) := Id.run do
-  let mut attrs := #[
-    ("class", "bp_inline_preview_ref"),
-    ("data-bp-preview-id", previewId),
-    ("data-bp-preview-title", previewTitle)
-  ]
-  if let some previewKey := previewLookupKey? then
-    attrs := attrs.push ("data-bp-preview-key", previewKey)
-  for attr in previewHeaderLinkAttrs previewHeaderLabel? previewHeaderHref? do
-    attrs := attrs.push attr
-  if let some footerHtml := previewFooterHtml? then
-    attrs := attrs.push ("data-bp-preview-footer-html", footerHtml)
-  pure attrs
+private def InlinePreviewTarget.attrs (target : InlinePreviewTarget) : Array (String × String) :=
+  let optional (name : String) (value? : Option String) := (value?.map ((name, ·))).toArray
+  #[("class", "bp_inline_preview_ref"),
+    ("data-bp-preview-id", target.triggerId),
+    ("data-bp-preview-title", target.title)] ++
+    optional "data-bp-preview-key" target.lookupKey? ++
+    optional "data-bp-preview-header-label" target.headerLabel? ++
+    optional "data-bp-preview-header-href" target.headerHref? ++
+    optional "data-bp-preview-eyebrow" target.eyebrow? ++
+    optional "data-bp-preview-status-symbol" (target.status?.map (·.1)) ++
+    optional "data-bp-preview-status-class" (target.status?.map (·.2))
 
-def inlinePreviewRef
-    (node : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) :
-    Verso.Output.Html :=
-  .tag "span"
-    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewHeaderLabel?
-      previewHeaderHref? previewFooterHtml?)
-    node
-
-/--
-Render one inline preview trigger.
-
-`previewId` is the local UI identifier used to keep panel state stable, while
-`previewLookupKey?` is the shared-manifest key used to load the preview body.
-Blueprint no longer emits page-local inline preview templates.
--/
-def inlinePreviewNode (node : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) : Verso.Output.Html :=
-  inlinePreviewRef node previewId previewTitle previewLookupKey? previewHeaderLabel?
-    previewHeaderHref? previewFooterHtml?
-
-/-- Render one inline preview trigger from a bundled preview target. -/
+/-- Render one inline preview trigger. Blueprint emits no page-local preview
+templates: the runtime loads the body by `lookupKey?`. -/
 def inlinePreviewTargetNode
     (node : Verso.Output.Html) (target : InlinePreviewTarget) : Verso.Output.Html :=
-  inlinePreviewNode node target.triggerId target.title target.lookupKey?
-    target.headerLabel? target.headerHref? target.footerHtml?
+  .tag "span" target.attrs node
 
 end Informal.HoverRender

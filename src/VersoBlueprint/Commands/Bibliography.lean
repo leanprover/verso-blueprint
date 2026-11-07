@@ -114,8 +114,8 @@ block_extension Block.bibliography (biblio : BibliographyData) where
                     PreviewCache.key theoremCtx.label (if theoremCtx.isProof then .proof else .statement)
                   let previewId :=
                     s!"bp-bib-use-{Informal.HoverRender.previewKey use.href}"
-                  let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
-                    previewId summaryText previewKey
+                  let previewTarget := { Informal.HoverRender.InlinePreviewTarget.withLookupKey
+                    previewId summaryText previewKey with eyebrow? := some "Cited in" }
                   Informal.HoverRender.inlinePreviewTargetNode lineNode previewTarget
                 | Option.none => lineNode
               {{<li class="bp_bibliography_use_item">
