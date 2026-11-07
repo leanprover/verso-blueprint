@@ -41,8 +41,6 @@ end RelationPanelKind
 structure RelationPanelsConfig where
   wrapClass : RelationPanelKind → String :=
     fun kind => s!"bp_relation_wrap bp_preview_data_{kind.key}_wrap"
-  panelAttrs : RelationPanelKind → Array (String × String) := fun _ => #[]
-  singleMode : RelationPanelKind → Informal.RelatedPanel.PanelSingleMode := fun _ => .panel
   idPrefix : RelationPanelKind → Entry → String :=
     fun kind entry => s!"bp-preview-data-{kind.key}-{entry.label}"
 
@@ -51,11 +49,7 @@ private def RelationPanelsConfig.apply
     (kind : RelationPanelKind)
     (panelCfg : Informal.RelatedPanel.PanelConfig) :
     Informal.RelatedPanel.PanelConfig :=
-  { panelCfg with
-    wrapClass := cfg.wrapClass kind
-    panelAttrs := cfg.panelAttrs kind
-    singleMode := cfg.singleMode kind
-  }
+  { panelCfg with wrapClass := cfg.wrapClass kind }
 
 /-- Genre-specific presentation knobs for rendering a preview-data-backed Blueprint block. -/
 structure RenderConfig where
@@ -90,13 +84,17 @@ private def renderRelatedPanel
     (cfg : RelationPanelsConfig)
     (kind : RelationPanelKind)
     (panelCfg : Informal.RelatedPanel.PanelConfig)
+    (owner : Informal.RelatedPanel.PanelOwner)
     (entries : Array RelatedEntry)
     (entry : Entry)
     (currentLabel : Name) :
     Html :=
   let panelEntries :=
     Informal.PreviewManifest.relatedPanelEntries entries currentLabel (cfg.idPrefix kind entry)
-  Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) panelEntries
+  Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) owner panelEntries
+
+private def entryOwner (entry : Entry) : Informal.RelatedPanel.PanelOwner :=
+  { title := entry.title, label := entry.label, href := entry.href }
 
 private def renderGroupExtra?
     (cfg : RelationPanelsConfig)
@@ -106,13 +104,14 @@ private def renderGroupExtra?
   if group.declared && group.entries.isEmpty then none else
     some <| Informal.HeaderExtra.group <| renderRelatedPanel cfg .group
       (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
+      { title := group.title, label := group.label }
       group.entries entry entry.label
 
 private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry) :
     Informal.HeaderExtra :=
   Informal.HeaderExtra.uses <| renderRelatedPanel cfg .uses
     (Informal.RelatedPanel.usesPanelConfigForBlock entry.blockData)
-    entry.usesForFacet entry Name.anonymous
+    (entryOwner entry) entry.usesForFacet entry Name.anonymous
 
 private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
     Informal.HeaderExtra :=
@@ -124,7 +123,7 @@ private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry) :
     Informal.HeaderExtra :=
   Informal.HeaderExtra.usedBy <| renderRelatedPanel cfg .usedBy
     (Informal.RelatedPanel.usedByPanelConfig (some entry.label))
-    entry.usedBy entry Name.anonymous
+    (entryOwner entry) entry.usedBy entry Name.anonymous
 
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)

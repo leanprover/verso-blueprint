@@ -64,7 +64,7 @@ private def htmlHasSourcePreview (html document pageText : String) : Bool :=
   hasSubstr html "bp_extra_slot_source" &&
     hasSubstr html "bp_source_ref_chip" &&
     hasSubstr html "bp_source_ref_panel" &&
-    hasSubstr html "bp_relation_preview_surface" &&
+    hasSubstr html "bp_source_ref_preview_body" &&
     hasSubstr html document &&
     hasSubstr html pageText
 

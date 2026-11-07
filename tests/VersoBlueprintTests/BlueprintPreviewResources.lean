@@ -275,7 +275,9 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
           for row in rows do
             if row[2]? == some (.str "resource_missing") then
               found := true
-              unless row[4]? == some (toJson expected) do
+              -- A uses panel covers one facet, so its rows drop the statement/proof badge.
+              let shown := expected.filter fun code => code != "s" && code != "p"
+              unless row[4]? == some (toJson shown) do
                 throw <| IO.userError "Manifest shell lost badges or mixed statement/proof metadata"
         unless found do
           throw <| IO.userError "Manifest shell omitted the dependency row"
@@ -291,7 +293,8 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
             unless row[1]? == some Json.null && row[0]? == some (.str reference.title) &&
                 row[3]? == some (.str href) do
               throw <| IO.userError "Cached relation lost metadata or retained an unavailable key"
-            if row[4]? == some (toJson #["s", "oa", "it"]) then
+            -- Uses panels cover one facet, so rows drop the statement badge.
+            if row[4]? == some (toJson #["oa", "it"]) then
               nestedBadgeRows := nestedBadgeRows + 1
       unless nestedMissingRows > 0 && nestedBadgeRows == 1 do
         throw <| IO.userError "Cached nested block did not retain its relation panel"

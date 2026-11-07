@@ -1,6 +1,6 @@
 from playwright.sync_api import expect, Page
 
-from support import assert_no_runtime_errors, record_runtime_errors
+from support import assert_no_runtime_errors, open_relation_popup, record_runtime_errors
 
 
 class TestBlueprintGroupPreview:
@@ -50,23 +50,31 @@ class TestBlueprintGroupPreview:
         wrapper = page.locator('.bp_wrapper[title="group_target"]').first
         group_slot = wrapper.locator(".bp_extra_slot_group")
         chip = group_slot.locator(".bp_relation_chip").first
-        panel = group_slot.locator(".bp_relation_panel").first
 
         expect(group_slot).to_have_count(1)
         expect(chip).to_have_text("group")
 
-        chip.click()
+        panel = open_relation_popup(page, chip)
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_relation_panel_title")).to_contain_text("Group: Preview group title.")
-        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Group member previews")
+        expect(chip).to_have_attribute("aria-expanded", "true")
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_eyebrow")).to_have_text("Group · 3 blocks")
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_title")).to_have_text("Preview group title.")
 
+        # The block itself is listed, marked, and not previewed.
         items = panel.locator(".bp_relation_item")
-        expect(items).to_have_count(2)
+        expect(items).to_have_count(3)
+        current = panel.locator(".bp_relation_item_current")
+        expect(current).to_have_count(1)
+        expect(current).to_contain_text("this block")
         expect(panel.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
         expect(panel.locator(".bp_relation_preview_body")).to_contain_text("First peer in the same group.")
-        items.nth(1).hover()
+        panel.locator(".bp_relation_item:not(.bp_relation_item_current)").nth(1).hover()
 
         expect(panel.locator(".bp_relation_preview_body")).to_contain_text("Second peer in the same group.")
+
+        page.keyboard.press("Escape")
+        expect(panel).to_have_count(0)
+        expect(chip).to_have_attribute("aria-expanded", "false")
         assert_no_runtime_errors(errors)
 
     def test_blocks_without_parent_do_not_render_group_chip(self, server: str, page: Page):

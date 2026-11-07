@@ -266,41 +266,35 @@ def previewPanelCss : String := r##"
 .bp_preview_panel_footer code {
   font-size: 0.75rem;
 }
-"##
 
-def previewHeaderCss : String := r##"
-.bp_preview_header_heading {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.42rem;
-  flex: 1 1 auto;
-  min-width: 0;
+/* Loading and error messages shown in place of previewed content. */
+.bp_preview_message {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-subtle);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
-.bp_preview_header_heading > *:first-child {
-  min-width: 0;
+.bp_preview_message[data-bp-preview-message="loading"] {
+  border-color: transparent;
+  background: none;
+  padding-left: 0;
+  color: var(--bp-color-text-faint);
 }
 
-.bp_preview_header_label {
-  margin-left: auto;
-  max-width: 100%;
-  color: var(--bp-color-text-muted);
-  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 0.72rem;
+.bp_preview_message[data-bp-preview-message="error"] {
+  border-color: var(--bp-color-status-error-border-soft);
+  background: var(--bp-color-surface-warn);
+  color: var(--bp-color-status-error-text);
+}
+
+.bp_preview_message_title {
   font-weight: 600;
-  overflow-wrap: anywhere;
-  text-align: right;
-  text-decoration: none;
-}
-
-.bp_preview_header_label[href]:hover {
-  color: var(--bp-color-link);
-  text-decoration: underline;
-}
-
-.bp_preview_header_label[hidden] {
-  display: none;
 }
 "##
 
@@ -410,7 +404,7 @@ def blueprintCssAssetBundle (extras : List String := []) : BlueprintAssetBundle 
 /-- Styles for pages with popups: the shared panel shell first, so `extras` can size
 and place each popup role. -/
 def previewPanelCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
-  blueprintCssAssetBundle ([previewPanelCss, previewHeaderCss, inlinePreviewCss] ++ extras)
+  blueprintCssAssetBundle ([previewPanelCss, inlinePreviewCss] ++ extras)
 
 def previewPanelAssetBundle
     (cssExtras : List String := [])

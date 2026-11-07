@@ -98,15 +98,19 @@ def test_block_popups_stay_inside_the_viewport(named_site, page: Page, width: in
     page.set_viewport_size({"width": width, "height": height})
     page.goto(f"{named_site('visual_inspection')}/Block-Anatomy/Kinds/")
     theorem = '.bp_wrapper[title="anatomy_theorem"]'
+    # Code previews open on hover; relation popups open on click.
     popups = [
-        (f"{theorem} .bp_extra_slot_code .bp_code_link", ".bp_code_summary_preview_panel"),
-        (f"{theorem} .bp_extra_slot_uses .bp_relation_chip", ".bp_relation_panel_placed"),
-        (f"{theorem} .bp_extra_slot_group .bp_relation_chip", ".bp_relation_panel_placed"),
+        (f"{theorem} .bp_extra_slot_code .bp_code_link", ".bp_code_summary_preview_panel", False),
+        (f"{theorem} .bp_extra_slot_uses .bp_relation_chip", ".bp_relation_panel_placed", True),
+        (f"{theorem} .bp_extra_slot_group .bp_relation_chip", ".bp_relation_panel_placed", True),
     ]
-    for trigger_selector, panel_selector in popups:
+    for trigger_selector, panel_selector, click in popups:
         trigger = page.locator(trigger_selector).first
         trigger.scroll_into_view_if_needed()
-        trigger.hover()
+        if click:
+            trigger.click()
+        else:
+            trigger.hover()
         query = f"({VISIBLE_PANEL_RECT})({json.dumps(panel_selector)})"
         page.wait_for_function(f"{query} !== null")
         page.wait_for_timeout(200)
@@ -119,6 +123,8 @@ def test_block_popups_stay_inside_the_viewport(named_site, page: Page, width: in
             and rect["top"] < box["y"] + box["height"] and box["y"] < rect["bottom"]
         )
         assert not covers_trigger, (trigger_selector, rect, box)
+        if click:
+            page.keyboard.press("Escape")
         page.mouse.move(1, 1)
         page.wait_for_function(f"{query} === null")
     assert_no_runtime_errors(errors)

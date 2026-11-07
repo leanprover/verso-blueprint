@@ -231,13 +231,15 @@ private def renderSummaryPreview (cdata : ComputedData)
       </div>
     }}
 
-private structure CodeEntryVisual where
+/-- How a block's Lean status shows: its symbol and the status class suffix that colours it.
+Headings and previews that list blocks share it, so a block looks the same everywhere. -/
+structure StatusVisual where
   classSuffix : String
   symbol : String
   absent : Bool := false
-deriving Inhabited
+deriving Inhabited, Repr
 
-private def codeEntryVisual (hasSource : Bool) (statusMark : BlockStatusMark) : CodeEntryVisual :=
+private def statusVisual (hasSource : Bool) (statusMark : BlockStatusMark) : StatusVisual :=
   if !hasSource then
     { classSuffix := "absent", symbol := "○", absent := true }
   else if statusMark.requirementsOpen then
@@ -270,7 +272,7 @@ private def renderCodeHeadingRenderHealthBadge (health : ExternalRenderHealth) :
   else
     {{<span class="bp_render_warning_badge bp_code_render_warning_badge" title={{health.summaryText}}>"!"</span>}}
 
-private def renderCodeEntryNode (href : Option String) (title : String) (visual : CodeEntryVisual)
+private def renderCodeEntryNode (href : Option String) (title : String) (visual : StatusVisual)
     (renderHealth : ExternalRenderHealth := {}) : Output.Html :=
   open Verso.Output.Html in
   let linkClass := s!"bp_code_link bp_code_link_status bp_code_link_status_{visual.classSuffix}" ++
@@ -308,7 +310,7 @@ private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.H
     (closeLabel := "Close Lean code preview")
 
 private def renderCodeEntryWrap (href : Option String) (title previewTitle : String)
-    (previewBody : Output.Html) (visual : CodeEntryVisual)
+    (previewBody : Output.Html) (visual : StatusVisual)
     (renderHealth : ExternalRenderHealth := {}) : Output.Html :=
   renderCodeSummaryPreview previewTitle
     (renderCodeEntryNode href title visual renderHealth)
@@ -593,18 +595,26 @@ def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
       { summaryTitle := inlinePanel.summaryTitle ++ "\n" ++ externalPanel.summaryTitle
         indicator := .seq #[inlinePanel.indicator, externalPanel.indicator] }
 
+private def headingStatusMark (data : BlockData) (source : BlockCodeData) : BlockStatusMark :=
+  let missingDeclaration := source.externalDecls.any fun decl => !decl.present || decl.provedStatus.any (·.isMissing)
+  statusMarkFromAssessment missingDeclaration data.assessment
+
+/-- The status mark a block's heading shows, for previews that list the block. -/
+def blockStatusVisual (data : BlockData) : StatusVisual :=
+  let source := data.codeData.getD {}
+  statusVisual (!source.isEmpty) (headingStatusMark data source)
+
 /-- Heading status and tooltip cover every association, independent of panel layout. -/
 def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String) : RenderParts :=
   if data.isProof then {} else
   let source := cdata.source.getD {}
   let renderHealth := externalRenderHealth source.externalDecls
-  let missingDeclaration := source.externalDecls.any fun decl => !decl.present || decl.provedStatus.any (·.isMissing)
-  let statusMark := statusMarkFromAssessment missingDeclaration data.assessment
+  let statusMark := headingStatusMark data source
   let title := if source.isEmpty then "No associated Lean declarations" else
     appendRenderHealthSummary (statusMark.title) renderHealth
   { statusMark := if source.isEmpty then none else some statusMark
     codeEntry := renderCodeEntryWrap cdata.codeHref title s!"{data.label}"
-      (renderSummaryPreview cdata hrefOf) (codeEntryVisual (!source.isEmpty) statusMark) renderHealth }
+      (renderSummaryPreview cdata hrefOf) (statusVisual (!source.isEmpty) statusMark) renderHealth }
 
 end CodeSummary
 end Informal

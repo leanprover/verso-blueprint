@@ -26,6 +26,11 @@ private def sampleMissingPreviewPanelEntry : Informal.RelatedPanel.PanelEntry :=
   label := Lean.Name.mkSimple "missing.preview"
 }
 
+private def sampleOwner : Informal.RelatedPanel.PanelOwner := {
+  title := "Source"
+  label := Lean.Name.mkSimple "source"
+}
+
 private def cachedStatement
     (label : Lean.Name) (count : Nat) (statementUses : Array Informal.Data.UseRef := #[])
     (parent : Option Informal.Data.Parent := none) :
@@ -135,16 +140,18 @@ private def cachedStatement
       #[statementEntry, proofEntry]
       statementEntry.label
       "manifest-relation"
-    let rendered := Informal.RelatedPanel.renderPanel
-      (Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "manifest.source"))
-      panelEntries
-      |>.asString
+    let render cfg := Informal.RelatedPanel.renderPanel cfg sampleOwner panelEntries |>.asString
+    let usedBy := render (Informal.RelatedPanel.usedByPanelConfig none)
+    -- A uses panel covers one facet, so its rows drop the statement/proof badge.
+    let uses := render (Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "manifest.source"))
     match panelEntries[0]?, panelEntries[1]? with
     | some statementPanelEntry, some proofPanelEntry =>
         statementPanelEntry.badgeCodes == #["s"] &&
           proofPanelEntry.badgeCodes == #["p"] &&
-          hasSubstr rendered "\"s\"" &&
-          hasSubstr rendered "\"p\""
+          hasSubstr usedBy "[\"s\"]" &&
+          hasSubstr usedBy "[\"p\"]" &&
+          !hasSubstr uses "[\"s\"]" &&
+          !hasSubstr uses "[\"p\"]"
     | _, _ => false
 
 /-- info: true -/
@@ -208,22 +215,34 @@ private def cachedStatement
     let source := Lean.Name.mkSimple "source"
     let statementCfg := Informal.RelatedPanel.statementUsesPanelConfig source
     let proofCfg := Informal.RelatedPanel.proofUsesPanelConfig source
-    statementCfg.panelTitle 2 == "Statement uses 2" &&
+    statementCfg.eyebrow 2 == "Statement uses · 2" &&
       statementCfg.chipTitle 1 == "Statement dependencies used by source" &&
-      statementCfg.singleTitle samplePanelEntry == "Statement dependency: Target" &&
-      proofCfg.panelTitle 2 == "Proof uses 2" &&
+      proofCfg.eyebrow 2 == "Proof uses · 2" &&
       proofCfg.chipTitle 1 == "Proof dependencies used by source" &&
-      proofCfg.singleTitle samplePanelEntry == "Proof dependency: Target"
+      (Informal.RelatedPanel.usedByPanelConfig none).eyebrow 1 == "Used by · 1" &&
+      (Informal.RelatedPanel.groupPanelConfig source "Group" true).eyebrow 1 == "Group · 1 block" &&
+      (Informal.RelatedPanel.groupPanelConfig source "Group" true).note?.isNone &&
+      (Informal.RelatedPanel.groupPanelConfig source "Group" false).note?.isSome
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
     let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
-    let singleOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
-    let panelOut :=
-      (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
+    let singleOut :=
+      (Informal.RelatedPanel.renderPanel cfg sampleOwner #[sampleMissingPreviewPanelEntry]).asString
+    let panelOut := (Informal.RelatedPanel.renderPanel cfg sampleOwner
+      #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
+    let currentOnly := (Informal.RelatedPanel.renderPanel cfg sampleOwner
+      #[{ samplePanelEntry with current := true }]).asString
+    -- One row opens the same popup as many: there is no separate inline preview path.
     !hasSubstr singleOut "bp_inline_preview_ref" &&
+      hasSubstr singleOut "data-bp-relation-eyebrow=\"Statement uses · 1\"" &&
+      hasSubstr singleOut "data-bp-relation-title=\"Source\"" &&
+      hasSubstr singleOut "data-bp-preview-mode=\"pinned\"" &&
+      -- A panel listing only its own block has nothing to show.
+      hasSubstr currentOnly "bp_relation_chip_empty" &&
+      !hasSubstr currentOnly "bp-relation-entries" &&
       hasSubstr singleOut "class=\"bp-relation-entries\"" &&
       hasSubstr singleOut "Missing Preview" &&
       !hasSubstr singleOut "data-bp-preview-key=" &&
@@ -243,7 +262,7 @@ private def cachedStatement
       previewTitle := "</script><script>unsafeRelationPayload()"
       label := Lean.Name.mkSimple "unsafe.payload"
     }
-    let out := Informal.RelatedPanel.renderPanel cfg #[unsafeEntry, samplePanelEntry] |>.asString
+    let out := Informal.RelatedPanel.renderPanel cfg sampleOwner #[unsafeEntry, samplePanelEntry] |>.asString
     hasSubstr out "\\u003c/script>\\u003cscript>unsafeRelationPayload()" &&
       !hasSubstr out "</script><script>unsafeRelationPayload()"
 
@@ -259,16 +278,11 @@ private def cachedStatement
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       hasSubstr out "class=\"bp_relation_wrap\"" &&
-      hasSubstr out "class=\"bp_relation_panel\"" &&
+      hasSubstr out "data-bp-relation-eyebrow=\"Used by · 2\"" &&
       hasSubstr out "class=\"bp-relation-entries\"" &&
+      -- The runtime builds the popup; pages carry only the chip and its rows.
+      !hasSubstr out "bp_relation_panel" &&
       !hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
-      !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
-      hasSubstr out "class=\"bp_relation_preview_message\"" &&
-      hasSubstr out "Loading preview" &&
-      hasSubstr out "Reverse dependency previews" &&
-      !hasSubstr out "Hover a use site to preview it." &&
-      !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       !hasSubstr out "data-bp-relation-preview-id" &&
       !hasSubstr out "data-bp-relation-preview-key=" &&
       hasSubstr out "\"s\"" &&
@@ -279,8 +293,8 @@ private def cachedStatement
       !hasSubstr out "bp_uses_chip" &&
       !hasSubstr out "bp_uses_origin_badge" &&
       !hasSubstr out "bp_uses_intent_badge" &&
-      hasExtraCss st ".bp_relation_panel.bp_relation_panel_placed" &&
-      hasExtraCss st ".bp_preview_header_label" &&
+      hasExtraCss st ".bp_preview_panel.bp_relation_panel_placed" &&
+      hasExtraCss st ".bp_relation_preview_label" &&
       hasExtraCss st ".bp_relation_badge_origin::before" &&
       hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
@@ -305,15 +319,10 @@ private def cachedStatement
       hasSubstr out ">○</span>" &&
       hasSubstr out ">L∃∀N</span>" &&
       hasSubstr out "class=\"bp_relation_chip bp_relation_chip_empty\"" &&
-      hasSubstr out "class=\"bp_inline_preview_ref\"" &&
-      !hasSubstr out "class=\"bp_inline_preview_tpl\" data-bp-preview-id=\"bp-used-by-" &&
-      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
-      hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
-      hasSubstr out "data-bp-preview-footer-html=" &&
-      hasSubstr out "data-bp-preview-key="
+      hasSubstr out "data-bp-relation-eyebrow=\"Used by · 1\"" &&
+      hasSubstr out "data-bp-relation-eyebrow=\"Statement uses · 1\"" &&
+      !hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
+      !hasSubstr out "data-bp-preview-footer-html="
     )
 
 /-- info: true -/
@@ -326,21 +335,14 @@ private def cachedStatement
       hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       hasSubstr out "class=\"bp_relation_chip\"" &&
-      hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "Statement uses 2" &&
-      hasSubstr out "Statement dependency previews" &&
-      hasSubstr out "Proof uses 2" &&
-      hasSubstr out "Proof dependency previews" &&
-      !hasSubstr out "Hover a dependency to preview it." &&
-      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
+      hasSubstr out "data-bp-relation-eyebrow=\"Statement uses · 2\"" &&
+      hasSubstr out "data-bp-relation-eyebrow=\"Proof uses · 2\"" &&
       hasSubstr out "class=\"bp-relation-entries\"" &&
       !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
       hasSubstr out "def:uses.proof" &&
       hasSubstr out "def:uses.proof.extra" &&
-      hasSubstr out "\"s\"" &&
-      hasSubstr out "\"p\"" &&
       hasSubstr out "\"oa\"" &&
       hasSubstr out "\"it\"" &&
       hasSubstr out "\"ia\"" &&
@@ -365,15 +367,10 @@ private def cachedStatement
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_group\"" "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
-      hasSubstr out "Group member previews" &&
-      !hasSubstr out "Hover another entry in this group to preview it." &&
+      hasSubstr out "data-bp-relation-eyebrow=\"Group · " &&
+      hasSubstr out "data-bp-relation-title=\"Preview group title.\"" &&
       hasSubstr out "class=\"bp-relation-entries\"" &&
       !hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
-      hasSubstr out "class=\"bp_relation_preview_message\"" &&
-      hasSubstr out "Loading preview" &&
-      !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
-      !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      !hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
       hasSubstr out "Preview group title." &&
       hasSubstr out "used by 1" &&
       relationJs?.isNone
@@ -386,8 +383,7 @@ private def cachedStatement
     let out ← renderManualDocHtmlString manualImpls missingGroupPreviewDoc
     pure (
       hasSubstr out "bp_relation_chip_warn" &&
-      hasSubstr out "data-bp-preview-id=\"bp-group-" &&
-      hasSubstr out "data-bp-preview-key=" &&
+      hasSubstr out "data-bp-relation-note=" &&
       hasSubstr out "grp:missing"
     )
 

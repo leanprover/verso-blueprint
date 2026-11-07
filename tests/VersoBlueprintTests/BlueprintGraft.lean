@@ -155,13 +155,13 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
       |>.asString
   let statement := render .statement
   let proof := render .proof
-  hasSubstr statement "Statement uses 1" &&
+  hasSubstr statement "Statement uses · 1" &&
     hasSubstr statement "def:graft.statement.dep" &&
     !hasSubstr statement "def:graft.proof.dep" &&
     hasSubstr statement "class=\"bp_extra_slot bp_extra_slot_group\"" &&
     hasSubstr statement "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
     hasSubstr statement "bp_code_panel_wrapper" &&
-    hasSubstr proof "Proof uses 1" &&
+    hasSubstr proof "Proof uses · 1" &&
     hasSubstr proof "def:graft.proof.dep" &&
     !hasSubstr proof "def:graft.statement.dep" &&
     !hasSubstr proof "class=\"bp_extra_slot bp_extra_slot_group\"" &&

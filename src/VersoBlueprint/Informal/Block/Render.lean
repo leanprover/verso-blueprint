@@ -467,12 +467,6 @@ private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
   else
     s!"Original sources ({sourceRefs.size})"
 
-private def sourceRefsPanelMeta (sourceRefs : Array Source.Ref) : String :=
-  if sourceRefs.size == 1 then
-    "Source provenance preview"
-  else
-    "Source provenance previews"
-
 private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
   let summaries := sourceRefs.map sourceRefSummary |>.toList
   if summaries.isEmpty then
@@ -524,41 +518,34 @@ private def renderSourceRefPreviewItem (sourceRef : Source.Ref) : Verso.Output.H
     </li>
   }}
 
+/-- Source provenance is static, so its popup is server-rendered in the shared panel
+shell and shown by CSS while its chip is hovered or focused. -/
 private def renderSourceRefPreview (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
   open Verso.Output.Html in
   let chipText := sourceRefsChipText sourceRefs
   let chipTitle := sourceRefsChipTitle sourceRefs
   let panelTitle := sourceRefsPanelTitle sourceRefs
-  let panelMeta := sourceRefsPanelMeta sourceRefs
   let previewItems := sourceRefs.map renderSourceRefPreviewItem
   {{
-    <div class="bp_relation_wrap bp_source_ref_wrap">
+    <div class="bp_source_ref_wrap">
       <button type="button"
           class="bp_relation_chip bp_source_ref_chip"
-          title={{chipTitle}}
-          aria-expanded="false">
+          title={{chipTitle}}>
         {{.text true chipText}}
       </button>
-      <div class="bp_relation_panel bp_source_ref_panel">
-        <div class="bp_relation_panel_header">
-          <div class="bp_relation_panel_title">{{.text true panelTitle}}</div>
-          <div class="bp_relation_panel_meta">{{.text true panelMeta}}</div>
-        </div>
-        <div class="bp_relation_panel_body bp_source_ref_panel_body">
-          <div class="bp_relation_preview_surface bp_source_ref_preview_surface">
-            <div class="bp_relation_preview_header">
-              <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_heading bp_preview_header_heading">
-                <div class="bp_relation_preview_title">{{.text true panelTitle}}</div>
-                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
-              </div>
-            </div>
-            <div class="bp_relation_preview_body bp_source_ref_preview_body">
-              <ul class="bp_source_ref_panel_list">
-                {{previewItems}}
-              </ul>
+      <div class="bp_preview_panel bp_source_ref_panel" "data-bp-preview-placement"="anchored">
+        <div class="bp_preview_panel_header">
+          <div class="bp_preview_panel_heading">
+            <div class="bp_preview_panel_eyebrow">"Source provenance"</div>
+            <div class="bp_preview_panel_titleline">
+              <div class="bp_preview_panel_title">{{.text true panelTitle}}</div>
             </div>
           </div>
+        </div>
+        <div class="bp_preview_panel_body bp_source_ref_preview_body">
+          <ul class="bp_source_ref_panel_list">
+            {{previewItems}}
+          </ul>
         </div>
       </div>
     </div>

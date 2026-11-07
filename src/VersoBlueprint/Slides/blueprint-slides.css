@@ -105,104 +105,31 @@
 }
 
 .bp_slide_node button.bp_relation_chip {
-  cursor: default;
   font-family: inherit;
 }
 
-.bp_slide_node .bp_relation_panel {
-  box-sizing: border-box;
-  left: auto;
-  right: 0;
+/* Slides keep relation popups inside the slide, below their chip. */
+.bp_slide_node .bp_preview_panel.bp_relation_panel {
+  position: absolute;
   top: calc(100% + 0.36rem);
+  right: 0;
+  left: auto;
   z-index: 1200;
   width: min(34rem, 82vw);
   max-height: 20rem;
-  overflow: auto;
-  border-radius: 8px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
-  color: var(--bp-color-text, #111827);
-  padding: 0.55rem;
 }
 
-.bp_slide_node .bp_relation_panel_header {
-  gap: 0.75rem;
-  padding-bottom: 0.36rem;
-  margin-bottom: 0.45rem;
-}
-
-.bp_slide_node .bp_relation_panel_title {
-  color: var(--bp-color-text-strong, #0f172a);
-  font-size: 0.98rem;
-  font-weight: 800;
-}
-
-.bp_slide_node .bp_relation_panel_meta {
-  color: var(--bp-color-text-muted, #64748b);
-  font-size: 0.8rem;
-}
-
-.bp_slide_node .bp_relation_panel_body {
+.bp_slide_node .bp_relation_panel .bp_preview_panel_body {
   grid-template-columns: minmax(9.4rem, 0.82fr) minmax(12.5rem, 1.18fr);
-  gap: 0.55rem;
-}
-
-.bp_slide_node .bp_relation_list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  list-style: none;
-  margin: 0;
-  max-height: 14rem;
-  padding: 0;
-}
-
-.bp_slide_node .bp_relation_item {
-  display: block;
-}
-
-.bp_slide_node .bp_relation_target {
-  box-sizing: border-box;
-  color: inherit !important;
-  padding: 0.28rem 0.34rem;
-  width: 100%;
 }
 
 .bp_slide_node .bp_relation_target_title {
-  color: #075985;
   font-size: 0.9rem;
-  font-weight: 800;
-}
-
-.bp_slide_node .bp_relation_target_meta {
-  gap: 0.24rem;
-  color: var(--bp-color-text-muted, #64748b);
-  font-size: 0.74rem;
-  margin-top: 0.08rem;
-}
-
-.bp_slide_node .bp_relation_preview_surface {
-  min-width: 0;
-  border-left: 1px solid var(--bp-color-border-soft, #e2e8f0);
-  padding-left: 0.55rem;
-}
-
-.bp_slide_node .bp_relation_preview_title {
-  color: var(--bp-color-text-strong, #0f172a);
-  font-size: 0.94rem;
-  font-weight: 800;
-  margin-bottom: 0.22rem;
 }
 
 .bp_slide_node .bp_relation_preview_body {
-  color: var(--bp-color-text, #111827);
   font-size: 0.9rem;
   line-height: 1.38;
-  max-height: 13.5rem;
-  overflow: auto;
-}
-
-.bp_slide_node .bp_relation_preview_body p {
-  margin: 0 0 0.35rem;
 }
 
 .tippy-box[data-theme~='lean'] {

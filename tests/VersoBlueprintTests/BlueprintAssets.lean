@@ -19,7 +19,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 /-- Every popup page gets the shared panel shell before its own styles. -/
 private def panelCss (extras : List String) : List String :=
   [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-    Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] ++ extras
+    Informal.Commands.inlinePreviewCss] ++ extras
 
 /-- info: true -/
 #guard_msgs in

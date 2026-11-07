@@ -364,7 +364,7 @@ private def substringsInOrder (text : String) : List String → Bool
     let rendered ← Informal.Graft.renderNodeFromManifestCache {} ctx node
     let html := rendered.asString
     pure <|
-      hasSubstr html "Statement uses 1" &&
+      hasSubstr html "Statement uses · 1" &&
       hasSubstr html "attr.hybrid.verso_docstring" &&
       !hasSubstr html "attr.hybrid.shared"
 

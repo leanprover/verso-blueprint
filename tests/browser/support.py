@@ -6,7 +6,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -75,3 +75,13 @@ def blueprint_render_api_script(body: str) -> str:
 
 def wait_for_blueprint_render_api(page: Page) -> None:
     page.evaluate(blueprint_render_api_script("return true;"))
+
+
+def open_relation_popup(page: Page, chip: Locator) -> Locator:
+    """Open a relation chip's popup and return it.
+
+    Relation popups open on click and are built in the page body, beside their chip
+    rather than inside it.
+    """
+    chip.click()
+    return page.locator(".bp_preview_panel.bp_relation_panel:not([hidden])")

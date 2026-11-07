@@ -38,7 +38,7 @@ def RelatedEntry.panelEntry
     label := entry.label
     href := entry.href
     dependencies := entry.dependencies
-    active := entry.label == currentLabel
+    current := entry.label == currentLabel
   }
 
 def relatedPanelEntries
