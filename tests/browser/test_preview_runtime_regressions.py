@@ -437,7 +437,10 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_code_summary_preview_panel").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_preview_panel_title")).to_have_text("used_target")
+        # The popup names the block as readers see it, with its label beside it.
+        expect(panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean code")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("Definition 6.1")
+        expect(panel.locator(".bp_preview_panel_label")).to_have_text("used_target")
         expect(panel.locator(".bp_code_decl_item")).to_have_count(1)
         expect(panel.locator(".bp_code_decl_item").first).to_contain_text("Nat.add")
 
@@ -471,7 +474,7 @@ class TestPreviewRuntimeRegressions:
 
         summary_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(summary_panel).to_be_visible()
-        expect(summary_panel.locator(".bp_preview_panel_title")).to_have_text(
+        expect(summary_panel.locator(".bp_preview_panel_label")).to_have_text(
             "panel_external_short_name_definition"
         )
         expect(summary_panel.locator(".bp_code_decl_item").first).to_contain_text(

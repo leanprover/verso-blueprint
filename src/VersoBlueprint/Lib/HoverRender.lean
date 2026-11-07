@@ -119,7 +119,8 @@ def templatePreviewRoot
     (focusable : Bool := false)
     (ariaLabel? : Option String := none)
     (eyebrow : String := "")
-    (closeLabel : String := "Close preview") :
+    (closeLabel : String := "Close preview")
+    (extraTriggerAttrs : Array (String × String) := #[]) :
     Verso.Output.Html :=
   let rootAttrs :=
     #[("class", rootClass)] ++
@@ -142,7 +143,7 @@ def templatePreviewRoot
       attrs := attrs.push ("role", "button")
     if let some ariaLabel := ariaLabel? then
       attrs := attrs.push ("aria-label", ariaLabel)
-    pure attrs
+    pure (attrs ++ extraTriggerAttrs)
   let templateAttrs := #[("class", templateClass), (keyAttr, key)]
   {{
     <span {{rootAttrs}}>

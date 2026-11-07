@@ -45,6 +45,7 @@ import { createPreviewPanel, createPreviewSurface, previewResultTitle, resolvePr
     });
     const surface = createPreviewSurface({
       panel: panel,
+      footerHtmlAttr: "data-bp-preview-footer-html",
       defaults: defaults,
       margin: margin,
       offset: offset,

@@ -52,6 +52,9 @@ def appendExternalRenderFailureSummary (title : String) (count : Nat) : String :
 
 structure BlockStatusMark where
   status : Data.ProvedStatus := .incomplete {}
+  /-- One plain sentence saying what the status means for this block. -/
+  lead : String := ""
+  /-- The lead followed by the validation details, for tooltips. -/
   title : String
   symbolOverride? : Option String := none
   /-- Own Lean code checks, but other required validation, such as a prerequisite, is unfinished. -/

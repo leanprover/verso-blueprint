@@ -270,15 +270,14 @@ class TestBlueprintSlidesRuntime:
         code_chip.hover()
         code_panel = page.locator(".bp_code_summary_preview_panel").first
         expect(code_panel).to_be_visible()
-        expect(code_panel.locator(".bp_preview_panel_title")).to_have_text("collatz_step")
-        expect(code_panel.locator(".bp_code_hover_label")).to_have_text(
-            "Associated Lean declarations (display only; validation shown in heading)"
-        )
+        expect(code_panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean code")
+        expect(code_panel.locator(".bp_preview_panel_label")).to_have_text("collatz_step")
+        expect(code_panel.locator(".bp_code_decl_list")).to_have_count(1)
         expect(code_panel.locator(".bp_code_decl_item")).to_have_count(2)
         decl_items = code_panel.locator(".bp_code_decl_item").all_inner_texts()
-        assert any("collatzStep" in item and "[complete]" in item for item in decl_items)
+        assert any("collatzStep" in item and "complete" in item for item in decl_items)
         assert any(
-            "collatzTerminatesAtOne" in item and "[complete]" in item
+            "collatzTerminatesAtOne" in item and "complete" in item
             for item in decl_items
         )
         code_panel_metrics = code_panel.evaluate(
@@ -387,7 +386,7 @@ class TestBlueprintSlidesRuntime:
         theorem_code_chip.hover()
         theorem_code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])")
         expect(theorem_code_panel).to_be_visible()
-        expect(theorem_code_panel.locator(".bp_preview_panel_title")).to_have_text(
+        expect(theorem_code_panel.locator(".bp_preview_panel_label")).to_have_text(
             "multiplication_one_right"
         )
         expect(theorem_code_panel.locator(".bp_code_decl_item")).to_have_count(1)

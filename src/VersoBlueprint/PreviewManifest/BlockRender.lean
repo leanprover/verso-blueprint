@@ -116,7 +116,7 @@ private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry) :
 private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
     Informal.HeaderExtra :=
   let parts := Informal.CodeSummary.renderParts
-    blockData { source := entry.codeData } (fun _ => none)
+    blockData { source := entry.codeData } (fun _ => none) (title? := some entry.title)
   Informal.HeaderExtra.code parts.codeEntry
 
 private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry) :

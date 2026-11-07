@@ -144,7 +144,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let panel := panelIndicatorHtml `matrix.siblings source
   hasSubstr heading "Native body: unfinished" &&
     hasSubstr heading "Native Lean requirements: unfinished" &&
-    hasSubstr panel "Associated Lean declarations (display only; validation shown in heading)" &&
+    hasSubstr panel "class=\"bp_code_decl_list\"" &&
     hasSubstr panel "complete source snapshot; realization validation is shown in the heading" &&
     hasSubstr panel "not realization validation"
 
@@ -186,7 +186,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let heading := codeEntryHtml `missing.snapshot .definition (some source)
   let panel := panelIndicatorHtml `missing.snapshot source
   unless inlineStatus? == some .missing &&
-      hasSubstr heading "Validation unavailable" && hasSubstr heading "[missing declaration]" &&
+      hasSubstr heading "Validation unavailable" && hasSubstr heading ">missing declaration</span>" &&
       hasSubstr panel "bp_external_status_badge_summary bp_external_status_missing" do
     throw <| IO.userError "Source snapshots did not stay display-only while the captured heading stayed unavailable"
 

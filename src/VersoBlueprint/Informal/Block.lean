@@ -101,7 +101,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
               codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
               source := codeHint?
               inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
-            } getDeclHref
+            } getDeclHref (title? := some (RenderingResolution.referenceOfData s data).title)
           | true => none
         let externalPanel : Output.Html ← do
           if externalDecls.isEmpty then
