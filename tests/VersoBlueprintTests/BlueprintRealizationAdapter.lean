@@ -106,7 +106,7 @@ run_cmd liftTermElabM do
       documented.toPrepared.roles == #[`implementation])
     "Direct owning documentation supports definitions without a legacy theorem-only node gate"
   let directLabel := Name.mkSimple "native.direct.definition"
-  ensure ((← Informal.Environment.getNode? directLabel).isNone)
+  ensure ((← Informal.Environment.getNodeInventory? directLabel).isNone)
     "Direct model control must have no old node to project"
   let origin : Informal.Realizations.Origin := {
     id := `directSource, moduleName := request.moduleName, source := request.sourcePath }
@@ -336,7 +336,7 @@ run_cmd liftTermElabM do
   let unusual := Name.str `RealizationAdapterFixture "bad»name"
   ensure (((← getEnv).checked.get.find? unusual).isSome && unusual.toString.toName != unusual)
     "Regression must use a present checked theorem whose name cannot round-trip"
-  let some accepted ← Informal.Environment.getNode? (Name.mkSimple "adapter.nonroundtrip")
+  let some accepted ← Informal.Environment.getNodeInventory? (Name.mkSimple "adapter.nonroundtrip")
     | throwError "Regression requires a real accepted attribute association"
   ensure ((accepted.nativeRefsOn `statement).any (·.canonical == unusual)) "Accepted association retains original typed name"
   match ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.nonroundtrip") (Name.str `RealizationAdapterFixture "bad»name") with
@@ -350,7 +350,7 @@ run_cmd liftTermElabM do
 -- Unicode. The consumer's own options/file map cannot supply this association.
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.unicode"
-  let before ← Informal.Environment.getNode? label
+  let before ← Informal.Environment.getNodeInventory? label
   let some accepted := before | throwError "Missing actual accepted Unicode theorem"
   let association := (accepted.nativeRefsOn `statement)[0]!
   ensure (association.range?.isNone && association.selectionRange?.isNone)
@@ -412,7 +412,7 @@ run_cmd liftTermElabM do
   let trueGoal ← `(term| True)
   let input ← obtain (← p.validate trueGoal)
   assertPendingCorrespondence p input trueGoal "The own Verso source states this theorem"
-  let after ← Informal.Environment.getNode? label
+  let after ← Informal.Environment.getNodeInventory? label
   ensure (reprStr before == reprStr after) "Verso projection/checking preserves accepted state"
   -- Current consumer settings must not relabel already authored own Markdown.
   let markdown ← withOptions (fun opts => opts.setBool `doc.verso true) <|
@@ -505,7 +505,7 @@ run_cmd liftTermElabM do
 -- and checking twice must not install new registrations or alter membership.
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.reflexivity"
-  let before ← Informal.Environment.getNode? label
+  let before ← Informal.Environment.getNodeInventory? label
   let labels ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity
   let some accepted := before | throwError "Missing actual accepted metadata"
   let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label
@@ -564,7 +564,7 @@ run_cmd liftTermElabM do
     "Admitted proof with matching goal cannot complete through pure rules"
   assertPendingCorrespondence p input expected "The prose states natural-number reflexivity"
   let _ ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label `RealizationAdapterFixture.reflexivity)
-  let after ← Informal.Environment.getNode? label
+  let after ← Informal.Environment.getNodeInventory? label
   ensure (reprStr before == reprStr after &&
     labels == (← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity))
     "Read/check must preserve accepted node/declaration membership"

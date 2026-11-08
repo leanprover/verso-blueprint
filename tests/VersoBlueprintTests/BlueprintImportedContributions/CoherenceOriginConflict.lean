@@ -11,8 +11,8 @@ open Lean Informal
 #eval show CoreM Bool from do
   let state := Environment.informalExt.getState (← getEnv)
   let conflicts ← Environment.importedConflicts
-  return (state.pendingNodes.getD `coherent_origin_conflict {}).authoredOriginConflict &&
-    (← Environment.getNode? `coherent_origin_conflict).isNone &&
+  return (state.nodeRegistrations.getD `coherent_origin_conflict {}).authoredOriginConflict &&
+    (← Environment.getNodeInventory? `coherent_origin_conflict).isNone &&
     conflicts.any (fun conflict => conflict.label == `coherent_origin_conflict &&
       conflict.reasons == #["Label coherent_origin_conflict was independently introduced by authored contributions"])
 
@@ -34,7 +34,7 @@ run_cmd do
   let after := Environment.informalExt.getState (← getEnv)
   unless result.isNone && reprStr before == reprStr after do
     throwError "Local registration revived rejected imported evidence"
-  unless after.data.get? `coherent_origin_conflict |>.isNone do
+  unless after.inventory.get? `coherent_origin_conflict |>.isNone do
     throwError "Rejected imported node became visible"
   unless !(after.leanNameLabels.getD `CoherenceOriginFact.declaration #[]).contains
       `coherent_origin_conflict do

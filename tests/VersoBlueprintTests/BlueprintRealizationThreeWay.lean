@@ -77,7 +77,7 @@ private def statusText (result : Result) : String :=
 #guard_msgs in
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.flag.involutive"
-  let before ← Informal.Environment.getNode? label
+  let before ← Informal.Environment.getNodeInventory? label
   let labelsBefore ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.flagInvolutive
   let p ← obtain (← RealizationAdapterFixture.prepareModel `flagPilot label `RealizationAdapterFixture.flagInvolutive)
   ensure (p.docstringFormat == `verso) "Use actual accepted Verso source"
@@ -328,7 +328,7 @@ run_cmd liftTermElabM do
     (alternativeRegistry.resultFor (.translation rocqTranslation)).status == .blocked &&
     (alternativeRegistry.resultForRequirement proof).complete)
     "A readable alternative is not silently selected instead of the authored Rocq endpoint"
-  let after ← Informal.Environment.getNode? label
+  let after ← Informal.Environment.getNodeInventory? label
   ensure (reprStr before == reprStr after && labelsBefore ==
     (← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.flagInvolutive))
     "Composition/querying does not mutate accepted Blueprint membership"

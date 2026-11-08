@@ -16,7 +16,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.Combined
 -- Provenance belongs to the registered node, and re-exports add no contributors.
 #eval show Lean.CoreM Unit from do
   let state := Informal.Environment.informalExt.getState (← Lean.getEnv)
-  let some node := state.data.get? `key_theorem | throwError "Missing registered node"
+  let some node := state.inventory.get? `key_theorem | throwError "Missing registered node"
   unless node.origin == `VersoBlueprintTests.BlueprintImportedContributions.Statement &&
       node.modules.size == 3 &&
       node.modules.contains `VersoBlueprintTests.BlueprintImportedContributions.Statement &&

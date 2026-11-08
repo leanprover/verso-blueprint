@@ -19,6 +19,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let variant := { record with nativeAssociations := record.nativeAssociations.map fun association =>
     { association with realization := ⟨label, `differentDestination⟩ } }
   Environment.modify fun state => { state with
-    pendingNodes := state.pendingNodes.insert label {
-      state.pendingNodes.getD label {} with localRegistrations := #[{}] }
+    nodeRegistrations := state.nodeRegistrations.insert label {
+      state.nodeRegistrations.getD label {} with localRegistrations := #[{}] }
     localFactRecords := [record, variant] }

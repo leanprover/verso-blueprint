@@ -179,12 +179,12 @@ run_cmd liftTermElabM do
   ensure (foreign.context.language == `rocq && foreign.role == `implementation &&
       foreign.declarations.isEmpty && (registry.resultFor (.realization foreignKey)).status == .unassessed)
     "Foreign source borrowed a native declaration or validation"
-  ensure (before.data.get? (Name.mkSimple "storage.source") |>.any fun node =>
+  ensure (before.inventory.get? (Name.mkSimple "storage.source") |>.any fun node =>
       node.sources.any fun source => source.destination.realization == ⟨Name.mkSimple "storage.source", `rocqTranslation⟩ &&
         source.destination.facet == `implementation)
     "Accepted source inventory flattened the imported named destination"
   ensure snapshot.diagnostics.isEmpty s!"Unexpected source/provider diagnostics: {repr snapshot.diagnostics}"
-  ensure (registry.nodes.size == before.data.size) "Capture omitted ordinary accepted concepts"
+  ensure (registry.nodes.size == before.inventory.size) "Capture omitted ordinary accepted concepts"
   ensure ((registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
     "Complete native theorem did not complete"
   ensure (!(registry.resultForRequirement (key "capture.admitted" `RealizationCaptureFixture.admitted)).complete)
@@ -204,13 +204,13 @@ run_cmd liftTermElabM do
   let displayRight := Name.str (Name.mkSimple "foo") "bar»"
   ensure (displayLeft != displayRight && reprStr displayLeft == reprStr displayRight)
     "Producer-identity collision fixture no longer has equal display spellings"
-  let some (_, baseNode) := before.data.toArray[0]? | throwError "Missing node metadata fixture"
-  let accepted : Environment.RegisteredNode := { baseNode with toNode := {
-    baseNode.toNode with sources := #[], uses := #[], nativeAssociations := #[] } }
+  let some (_, baseNode) := before.inventory.toArray[0]? | throwError "Missing node metadata fixture"
+  let accepted : Data.NodeInventory := { baseNode with
+    sources := #[], uses := #[], nativeAssociations := #[] }
   let pending : NameSet := (({} : NameSet).insert displayLeft).insert displayRight
   let collisionRaw : Capture.Raw := {
     nodes := #[(displayLeft, accepted), (displayRight, accepted)]
-    pending, facts := [], authored := #[], initialIssues := #[] }
+    registered := pending, facts := [], authored := #[], initialIssues := #[] }
   let collisionPlan := Capture.plan collisionRaw
   match Capture.evaluate collisionPlan {} with
   | .ok _ => throwError "Capture accepted names that cannot round-trip through public graph JSON"
@@ -222,7 +222,7 @@ run_cmd liftTermElabM do
     "Public spelling collision must be between individually round-tripping names"
   let publicRaw : Capture.Raw := { collisionRaw with
     nodes := #[(flat, accepted), (hierarchical, accepted)]
-    pending := (({} : NameSet).insert flat).insert hierarchical }
+    registered := (({} : NameSet).insert flat).insert hierarchical }
   for nodes in #[publicRaw.nodes, publicRaw.nodes.reverse] do
     let publicPlan := Capture.plan { publicRaw with nodes }
     match Capture.evaluate publicPlan {} with
@@ -233,18 +233,17 @@ run_cmd liftTermElabM do
     let single ← obtain (Capture.evaluate singlePlan {})
     ensure (single.registry.nodes.size == 1) "Either public spelling is supported when unambiguous"
   -- Unresolved targets also enter the public graph, and must not alias a node.
-  let withUse : Environment.RegisteredNode := { accepted with toNode := {
-    accepted.toNode with uses := #[{
-      node := flat, facet := `statement, reference := { label := hierarchical } }] } }
+  let withUse : Data.NodeInventory := { accepted with uses := #[{
+      node := flat, facet := `statement, reference := { label := hierarchical } }] }
   let targetPlan := Capture.plan { publicRaw with nodes := #[(flat, withUse)] }
   match Capture.evaluate targetPlan {} with
   | .ok _ => throwError "Unresolved dependency target aliased a public node label"
   | .error issues => ensure (issues.any (·.code == "ambiguous-public-label")) "Missing target alias diagnostic"
-  let withGroup (parent : Name) : Environment.RegisteredNode := { accepted with toNode := {
-    accepted.toNode with parent := some parent } }
+  let withGroup (parent : Name) : Data.NodeInventory := { accepted with
+    parent := some parent }
   let groupRaw : Capture.Raw := { publicRaw with
     nodes := #[(`firstGroupNode, withGroup flat), (`secondGroupNode, withGroup hierarchical)]
-    pending := (({} : NameSet).insert `firstGroupNode).insert `secondGroupNode }
+    registered := (({} : NameSet).insert `firstGroupNode).insert `secondGroupNode }
   match Capture.evaluate (Capture.plan groupRaw) {} with
   | .ok _ => throwError "Capture accepted ambiguous parent group labels"
   | .error issues => ensure (issues.any (·.code == "ambiguous-public-label")) "Missing group alias diagnostic"
@@ -264,10 +263,10 @@ run_cmd liftTermElabM do
     realization := { docSource.destination.realization with name := displayLeft } } }
   let docRight := { docSource with destination := { docSource.destination with
     realization := { docSource.destination.realization with name := displayRight } } }
-  let docAccepted := { docNode with toNode := { docNode.toNode with sources := #[docLeft, docRight] } }
+  let docAccepted := { docNode with sources := #[docLeft, docRight] }
   let docRaw : Capture.Raw := {
     nodes := #[(docLabel, docAccepted)]
-    pending := ({} : NameSet).insert docLabel
+    registered := ({} : NameSet).insert docLabel
     facts := before.factRecords.filter (·.label == docLabel)
     authored := #[]
     initialIssues := #[] }
@@ -303,7 +302,7 @@ run_cmd liftTermElabM do
   let inlineKey := implementationKey "storage.source" `storedInline
   ensure ((registry.localResult inlineKey).complete && !(registry.resultForRequirement inlineKey).complete)
     "Real imported inline definition must check locally despite its missing shared dependencies"
-  let some acceptedSources := before.data.get? (Name.mkSimple "storage.source")
+  let some acceptedSources := before.inventory.get? (Name.mkSimple "storage.source")
     | throwError "Missing accepted heterogeneous-source fixture"
   let allSourceSteps := plan.ordinary.flatMap fun node => node.realizations.flatMap (·.sources)
   for source in acceptedSources.sources do
@@ -343,20 +342,20 @@ run_cmd liftTermElabM do
 run_cmd liftTermElabM do
   let state := Environment.informalExt.getState (← getEnv)
   let label := Name.mkSimple "storage.source"
-  let .some registered := state.data.get? label | throwError "Missing foreign-source diagnostic fixture"
+  let .some registered := state.inventory.get? label | throwError "Missing foreign-source diagnostic fixture"
   let destination : SourceData.FacetDestination := ⟨⟨label, `rocqTranslation⟩, `implementation⟩
-  let .some source := registered.toNode.sources.find? (·.destination == destination)
+  let .some source := registered.sources.find? (·.destination == destination)
     | throwError "Missing arbitrary non-Lean source for diagnostic fixture"
   let source := { source with source := Data.SourceLocationResult.unavailable "test source range unavailable" }
-  let selected : Environment.RegisteredNode := { registered with toNode := {
-    registered.toNode with sources := #[source], uses := #[], nativeAssociations := #[] } }
+  let selected : Data.NodeInventory := { registered with
+    sources := #[source], uses := #[], nativeAssociations := #[] }
   let unrelatedLabel := `capture.diagnosticUnrelated
-  let unrelated : Environment.RegisteredNode := { registered with toNode := {
-    registered.toNode with sources := #[], uses := #[], nativeAssociations := #[] } }
+  let unrelated : Data.NodeInventory := { registered with
+    sources := #[], uses := #[], nativeAssociations := #[] }
   let pending := ({} : NameSet).insert label |>.insert unrelatedLabel
   let raw : Capture.Raw := {
     nodes := #[(label, selected), (unrelatedLabel, unrelated)]
-    pending, facts := [], authored := #[], initialIssues := #[] }
+    registered := pending, facts := [], authored := #[], initialIssues := #[] }
   let plan := Capture.plan raw
   let observations ← obtain (← Capture.observe plan)
   let snapshot ← obtain (Capture.evaluate plan observations)
@@ -389,7 +388,7 @@ run_cmd liftTermElabM do
 -- declaration, is associated through its owning FileMap and native ranges.
 run_cmd liftTermElabM do
   let state := Environment.informalExt.getState (← getEnv)
-  let sources := (state.pendingNodes.getD (Name.mkSimple "storage.source") {}).registrations.flatMap (·.sources)
+  let sources := (state.nodeRegistrations.getD (Name.mkSimple "storage.source") {}).registrations.flatMap (·.sources)
   let some source := sources.find? (fun source => match source.payload with | .leanInline _ => true | _ => false)
     | throwError "Missing real inline source"
   let .leanInline code := source.payload | throwError "Wrong payload"
@@ -559,10 +558,10 @@ run_cmd liftTermElabM do
   try
     Environment.modify fun state => Id.run do
       let target := Name.mkSimple "capture.complete"
-      let some node := state.data.get? target | return state
+      let some node := state.inventory.get? target | return state
       let associations := node.nativeAssociations.map fun association => { association with
         reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } }
-      return { state with data := state.data.insert target { node with nativeAssociations := node.nativeAssociations ++ associations } }
+      return { state with inventory := state.inventory.insert target { node with nativeAssociations := node.nativeAssociations ++ associations } }
     let snapshot ← obtain (← Capture.capture)
     ensure (snapshot.diagnostics.any (·.code == "source-unavailable")) "Missing association diagnostic was lost"
     ensure (!(snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
@@ -577,10 +576,10 @@ run_cmd liftTermElabM do
   try
     Environment.modify fun state => Id.run do
       let target := Name.mkSimple "capture.dependent"
-      let some node := state.data.get? target | return state
+      let some node := state.inventory.get? target | return state
       let associations := node.nativeAssociations.map fun association => { association with
         reference := { association.reference with canonical := `RealizationCaptureFixture.absentNative } }
-      return { state with data := state.data.insert target { node with nativeAssociations := associations } }
+      return { state with inventory := state.inventory.insert target { node with nativeAssociations := associations } }
     let snapshot ← obtain (← Capture.capture)
     ensure (snapshot.diagnostics.any (·.code == "missing-declaration")) "Missing native declaration diagnostic was lost"
     ensure (!(snapshot.registry.resultForRequirement (key "capture.dependent" `RealizationCaptureFixture.absentNative)).complete)

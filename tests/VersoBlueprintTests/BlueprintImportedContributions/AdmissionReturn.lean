@@ -34,7 +34,7 @@ run_cmd do
       updated.leanDecls.contains `acceptedDecl do
     throwError "Payload registration did not retain selected evidence in its return value"
   let state := Environment.informalExt.getState (← getEnv)
-  let some stored := state.data.get? label
+  let some stored := state.inventory.get? label
     | throwError "Accepted node was not committed"
   unless updated.tags == stored.tags && updated.priority == stored.priority &&
       updated.nativeRefsOn `statement == stored.nativeRefsOn `statement && updated.leanDecls == stored.leanDecls do

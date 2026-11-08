@@ -497,7 +497,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   reportImportedConflicts
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    let count := (informalExt.getState (← getEnv)).data.size
+    let count := (informalExt.getState (← getEnv)).inventory.size
     logInfo m!"Adding a project graph for {count} registered nodes"
   let graphData : GraphBlockData := { options, previewMode, previewPlacement }
   let block ← serializedBlockTerm `Informal.Commands.Block.graph graphData

@@ -8,7 +8,7 @@ import VersoBlueprint.ExternalRef.Laws
 
 /-! Exact declaration membership of the keyed node projection. -/
 
-namespace Informal.Data.Node
+namespace Informal.Data.NodeInventory
 open Lean
 
 private theorem mem_pushName (names : Array Name) (name query : Name) :
@@ -75,9 +75,9 @@ private theorem mem_inline_fold (codes : Array Code) (names : Array Name) (query
       simp [or_and_right, exists_or, or_assoc]
   simpa using h codes.toList names
 
-private theorem mem_inlineCode_source (node : Node) {code : Code} :
+private theorem mem_inlineCode_source (node : NodeInventory) {code : Code} :
     code ∈ node.inlineCodes ↔ ∃ source ∈ node.sources, source.payload = .leanInline code := by
-  simp only [Node.inlineCodes, Array.mem_filterMap]
+  simp only [NodeInventory.inlineCodes, Array.mem_filterMap]
   constructor
   · rintro ⟨source, hsource, hmatch⟩
     cases hp : source.payload with
@@ -94,7 +94,7 @@ private theorem mem_inlineCode_source (node : Node) {code : Code} :
 /-- Raw association and inline-code membership follows the keyed source inventories.
 Present external references and all inline declaration names participate; missing
 references remain in storage but do not create a native declaration index entry. -/
-theorem mem_leanDecls (node : Node) (name : Name) :
+theorem mem_leanDecls (node : NodeInventory) (name : Name) :
     name ∈ node.leanDecls ↔
       (∃ association ∈ node.nativeAssociations,
         association.reference.present = true ∧
@@ -106,7 +106,7 @@ theorem mem_leanDecls (node : Node) (name : Name) :
       (node.externalAssociationSnapshots.foldl
         (fun acc ref => if ref.present then pushUniqueNativeName acc ref.canonical else acc) #[]) ↔ _
   rw [mem_inline_fold, mem_external_fold]
-  simp only [Node.externalAssociationSnapshots, Array.mem_map, mem_inlineCode_source]
+  simp only [NodeInventory.externalAssociationSnapshots, Array.mem_map, mem_inlineCode_source]
   simp only [Array.mem_empty_iff, false_or]
   constructor
   · rintro (⟨ref, ⟨association, ha, href⟩, hpresent, hname⟩ |
@@ -121,7 +121,7 @@ theorem mem_leanDecls (node : Node) (name : Name) :
 
 /-- One-pass-stable keyed associations produce fixed canonical fields in the
 derived node-wide display union. The raw associations themselves remain intact. -/
-theorem associatedExternalRefs_fixed (node : Node)
+theorem associatedExternalRefs_fixed (node : NodeInventory)
     (fixed : ∀ association ∈ node.nativeAssociations,
       association.reference.canonical.eraseMacroScopes.eraseMacroScopes =
         association.reference.canonical.eraseMacroScopes)
@@ -133,11 +133,11 @@ theorem associatedExternalRefs_fixed (node : Node)
     have hin' : input ∈ node.externalAssociationSnapshots := by simpa using hin
     have hassociation : ∃ association ∈ node.nativeAssociations,
         association.reference = input := by
-      simpa [Node.externalAssociationSnapshots] using hin'
+      simpa [NodeInventory.externalAssociationSnapshots] using hin'
     rcases hassociation with ⟨association, hassociation, rfl⟩
     exact fixed association hassociation
   change ref ∈ ExternalRef.mergeSnapshots #[] node.externalAssociationSnapshots at href
   exact ExternalRef.mergeSnapshots_normalized_fixed #[]
     node.externalAssociationSnapshots stable href
 
-end Informal.Data.Node
+end Informal.Data.NodeInventory

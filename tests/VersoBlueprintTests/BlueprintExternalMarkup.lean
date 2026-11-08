@@ -31,7 +31,7 @@ private def externalMarkupLocation?
     (slot : String) : Option Informal.Data.ExternalMarkupLocation :=
   sources.find? language slot |>.bind (·.location)
 
-private def nodeExternalMarkup (node : Informal.Data.Node) : Informal.Data.ExternalMarkupSet :=
+private def nodeExternalMarkup (node : Informal.Data.NodeInventory) : Informal.Data.ExternalMarkupSet :=
   node.sources.foldl (init := {}) fun entries source =>
     match source.payload with
     | .markup markup => entries.insert markup
@@ -786,13 +786,13 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 #eval
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    let some node := state.data.get? (Name.mkSimple "external.markup")
+    let some node := state.inventory.get? (Name.mkSimple "external.markup")
       | pure false
-    let some unlabeledAnchor := state.data.get? (Name.mkSimple "external.unlabeled.anchor")
+    let some unlabeledAnchor := state.inventory.get? (Name.mkSimple "external.unlabeled.anchor")
       | pure false
-    let some witness := state.data.get? (Name.mkSimple "external.witness")
+    let some witness := state.inventory.get? (Name.mkSimple "external.witness")
       | pure false
-    let some multi := state.data.get? (Name.mkSimple "external.multi")
+    let some multi := state.inventory.get? (Name.mkSimple "external.multi")
       | pure false
     let nodeMarkup := nodeExternalMarkup node
     let witnessMarkup := nodeExternalMarkup witness

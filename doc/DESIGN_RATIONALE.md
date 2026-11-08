@@ -28,9 +28,11 @@ A labeled object may carry the informal statement or proof text, ownership and
 group metadata, and links to formal material such as inline Lean code,
 attributed compiled declarations, or external `(lean := "...")` references.
 
-That database lives in `Environment.State`. Its object corpus lives in
-`Environment.State.data`, with companion group and author metadata in the same
-environment state. Elaboration and compilation are responsible for recording
+That database lives in `Environment.State`. Each label's persisted input is its
+`NodeRegistrations` in `Environment.State.nodeRegistrations`; the compiled node
+information, `Data.NodeInventory`, lives in `Environment.State.inventory` and is
+reassembled from those registrations on import. Companion group and author
+metadata live in the same environment state. Elaboration and compilation are responsible for recording
 the object-level facts and persisting them through Lean's compiled environment
 data (oleans), rather than trying to precompute whole-site presentation.
 
@@ -263,7 +265,7 @@ The same flow can be read as four contracts:
    source.
 
    Blueprint's existing environment extension persists the authored source
-   inventory and producer records in compiled modules. `Data.Node` now stores
+   inventory and producer records in compiled modules. `Data.NodeInventory` now stores
    keyed source destinations, scoped uses, and typed native associations rather
    than fixed statement/proof slots. Normal attributes and directives enroll
    their sources through this path automatically. A logical project option
@@ -474,8 +476,8 @@ that owner.
 
 | Fact family | Owner | Stored as | Main consumers |
 | --- | --- | --- | --- |
-| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL, issue URL | Elaboration | `Environment.State.data` registered nodes; captured `RenderNode` records for rendering | traversal, graph, summary, manifest construction |
-| Attribute-module ownership and first-application order | Attribute elaboration | `Environment.State.blueprintAttributeLabelsByModule`; node semantics remain in `Environment.State.data` | `{includeBlueprintModule}`, exact-module diagnostics |
+| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL, issue URL | Elaboration | `Environment.State.inventory` compiled nodes; captured `RenderNode` records for rendering | traversal, graph, summary, manifest construction |
+| Attribute-module ownership and first-application order | Attribute elaboration | `Environment.State.blueprintAttributeLabelsByModule`; node semantics remain in `Environment.State.inventory` | `{includeBlueprintModule}`, exact-module diagnostics |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
 | Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |

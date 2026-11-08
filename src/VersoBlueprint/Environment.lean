@@ -25,7 +25,7 @@ register_option verso.blueprint.project : String := {
 /--
 Elaboration-time builder for the single currently open directive.
 
-This stays separate from `Data.Node`: it collects authored metadata and uses
+This stays separate from `Data.NodeInventory`: it collects authored metadata and uses
 before the final checked contribution is assembled.
 -/
 structure InProgress where
@@ -54,14 +54,6 @@ structure ImportedConflict where
   reasons : Array String := #[]
   modules : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq
-
-/-- A checked node and the module provenance of its accepted contributions. -/
-structure RegisteredNode extends Node where
-  origin : Name
-  modules : Array Name := #[]
-deriving Inhabited, Repr
-
-instance : Coe RegisteredNode Node := ⟨RegisteredNode.toNode⟩
 
 /-- Unique module catalog in attribute-application order, with indexed membership. -/
 structure AttributeLabelCatalog where
@@ -123,8 +115,9 @@ def authoringRecordIssues (records : Array AuthoringRecord) : Array Realizations
 private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 
-/-- All pending payload inputs and their provenance for one Blueprint label. -/
-structure PendingNode where
+/-- Every registration of one Blueprint label and its provenance. These are the
+persisted inputs; the label's `NodeInventory` is assembled from them. -/
+structure NodeRegistrations where
   registrations : Array SourceData.Registration := #[]
   /-- The local subset is exported; imported registrations remain evidence only. -/
   localRegistrations : Array SourceData.Registration := #[]
@@ -135,8 +128,8 @@ structure PendingNode where
   authoredOriginConflict : Bool := false
 deriving Inhabited, Repr
 
-private def PendingNode.append (pending : PendingNode) (incomingOrigin contributor : Name)
-    (incoming : Array SourceData.Registration) (isLocal authored : Bool) : PendingNode :=
+private def NodeRegistrations.append (pending : NodeRegistrations) (incomingOrigin contributor : Name)
+    (incoming : Array SourceData.Registration) (isLocal authored : Bool) : NodeRegistrations :=
   let origin := if pending.contributors.isEmpty then incomingOrigin else pending.origin
   let authoredOriginConflict := pending.authoredOriginConflict ||
     (authored && pending.authoredOrigin?.any (· != incomingOrigin))
@@ -157,11 +150,12 @@ facts out of this environment extension unless they become stable semantic
 data.
 -/
 structure State where
-  data : NameMap RegisteredNode := {}
+  /-- Compiled node information, assembled from `nodeRegistrations`. Derived, never exported. -/
+  inventory : NameMap NodeInventory := {}
   /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
   nextCount : Nat := 1
-  /-- Pending registrations and all label-local provenance, including rejected imports. -/
-  pendingNodes : NameMap PendingNode := {}
+  /-- Every label's registrations and provenance, including rejected imports. -/
+  nodeRegistrations : NameMap NodeRegistrations := {}
   /-- Complete selected-fact evidence, newest first. Reverse for assembly so
   declaration presentation follows registration order, including imported evidence. -/
   factRecords : List Record := []
@@ -243,67 +237,64 @@ private def addLeanDeclLabel
   leanNameLabels.insert decl (Label.pushUnique labels label)
 
 private def addNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : NodeInventory) :
     NameMap (Array Label) :=
   node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
 /-- Commit all node stores together only after the shared reducer accepts the registration. -/
 private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array SourceData.Registration) (facts : List Record) : Except (Array String) (State × Node) := do
+    (incoming : Array SourceData.Registration) (facts : List Record) : Except (Array String) (State × NodeInventory) := do
   let authored := incoming.any (·.claimsAuthoredNode)
-  let pending := (state.pendingNodes.getD label {}).append origin contributor incoming true authored
+  let pending := (state.nodeRegistrations.getD label {}).append origin contributor incoming true authored
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
   let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
   let assembled ← NodeAssembly.assemble label pending.registrations records.reverse
-  let node := assembled.node
-  let nodeOrigin := pending.authoredOrigin?.getD pending.origin
-  let registered : RegisteredNode := {
-    toNode := node
-    origin := nodeOrigin
+  let node := { assembled.node with
+    origin := pending.authoredOrigin?.getD pending.origin
     modules := pending.contributors }
   return ({ state with
-    data := state.data.insert label registered
+    inventory := state.inventory.insert label node
     nextCount := max state.nextCount (node.count + 1)
     leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
-    pendingNodes := state.pendingNodes.insert label pending
+    nodeRegistrations := state.nodeRegistrations.insert label pending
     factRecords := records
     localFactRecords := facts.foldl (fun records record => collector.insert record records) state.localFactRecords
     }, node)
 
 /-- Resolve every imported label against the complete decoded evidence set. -/
 private def State.reassembleImported (state : State) : State := Id.run do
-  let mut data : NameMap RegisteredNode := {}
+  let mut inventory : NameMap NodeInventory := {}
   let mut leanNameLabels : NameMap (Array Label) := {}
   let mut nextCount := 1
   let mut conflicts := state.importedConflicts
   let records := state.factRecords.reverse
-  for (label, pending) in state.pendingNodes.toArray do
+  for (label, pending) in state.nodeRegistrations.toArray do
     if pending.authoredOriginConflict then
       let origins := pending.contributors
       conflicts := pushImportedConflict conflicts .node label
         #[s!"Label {label} was independently introduced by authored contributions"] origins
     else match NodeAssembly.assemble label pending.registrations records with
     | .ok assembled =>
-      let node := assembled.node
-      let origin := pending.authoredOrigin?.getD pending.origin
-      let modules := pending.contributors
-      data := data.insert label { toNode := node, origin, modules }
+      let node := { assembled.node with
+        origin := pending.authoredOrigin?.getD pending.origin
+        modules := pending.contributors }
+      inventory := inventory.insert label node
       nextCount := max nextCount (node.count + 1)
       leanNameLabels := addNodeLeanDeclLabels leanNameLabels label node
     | .error reasons =>
       conflicts := pushImportedConflict conflicts .node label reasons
         pending.contributors
-  return { state with data, leanNameLabels, nextCount, importedConflicts := sortImportedConflicts conflicts }
+  return { state with inventory, leanNameLabels, nextCount, importedConflicts := sortImportedConflicts conflicts }
 
 /-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
 private def State.collectImportedEntry (state : State) : Entry → State
   | .authoring record => { state with authoringRecords := state.authoringRecords.push record }
   | .node label origin contributor contributions facts authored =>
-    let pending := (state.pendingNodes.getD label {}).append origin contributor contributions false authored
+    let pending := (state.nodeRegistrations.getD label {}).append origin contributor contributions false authored
     let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
     { state with
-      pendingNodes := state.pendingNodes.insert label pending
+      nodeRegistrations := state.nodeRegistrations.insert label pending
       factRecords := records
       }
   | .blueprintAttributeLabel moduleName label =>
@@ -331,11 +322,11 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       pure state.reassembleImported
     -- Export only local contributions, retaining the original label's module.
     exportEntriesFnEx env := fun state =>
-      let nodeEntries := state.pendingNodes.toArray.filterMap fun (name, pending) =>
+      let nodeEntries := state.nodeRegistrations.toArray.filterMap fun (name, pending) =>
         if pending.localRegistrations.isEmpty then none else some <| (name, pending)
       let nodeEntries := nodeEntries.map fun (name, pending) =>
         let contributions := pending.localRegistrations.map (·.compact)
-        match state.data.get? name with
+        match state.inventory.get? name with
         | some node =>
           let facts := (state.localFactRecords.filter (fun record => record.label == name)).reverse
           Entry.node name (pending.authoredOrigin?.getD node.origin) env.mainModule
@@ -466,10 +457,10 @@ def reportImportedConflicts : m Unit := do
 
 /-- Commit one checked registration after its admission inputs have been validated. -/
 private def commitContribution (label : Label) (contribution : SourceData.Registration) (facts : List Record) :
-    m (Option Node) := do
+    m (Option NodeInventory) := do
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
-  let origin := (state.pendingNodes.getD label {}).authoredOrigin?.getD mainModule
+  let origin := (state.nodeRegistrations.getD label {}).authoredOrigin?.getD mainModule
   match state.addNode label origin mainModule #[contribution] facts with
   | .ok (state, node) =>
     modifyEnv (informalExt.setState · state)
@@ -479,7 +470,7 @@ private def commitContribution (label : Label) (contribution : SourceData.Regist
     return none
 
 /-- Register a node payload under an explicit label. -/
-def contribute (label : Label) (contribution : SourceData.Registration) : m (Option Node) := do
+def contribute (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) := do
   reportImportedConflicts
   commitContribution label contribution []
 
@@ -488,13 +479,13 @@ Register a producer-identified selected record with a node payload.
 The record is the sole owner of the selected label, external references, and priority.
 -/
 def contributeRecord (fact : Record) (contribution : SourceData.Registration) :
-    m (Option Node) := do
+    m (Option NodeInventory) := do
   reportImportedConflicts
   commitContribution fact.label contribution [fact]
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
-  let { data, activeDirective, .. } := informalExt.getState (← getEnv)
-  match (kind, data.get? label, activeDirective.isNone) with
+  let { inventory, activeDirective, .. } := informalExt.getState (← getEnv)
+  match (kind, inventory.get? label, activeDirective.isNone) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
     let statementCanBeFilled :=
@@ -570,12 +561,12 @@ private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool :=
 
 /-- Plan ordinary admission and the module catalog in one transaction. Source
 capture happens after the owning build; no opt-in default enrollment is needed. -/
-def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option Node) := do
+def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) := do
   let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
   reportImportedConflicts
   let before := informalExt.getState (← getEnv)
   let moduleName ← getMainModule
-  let origin := (before.pendingNodes.getD fact.label {}).authoredOrigin?.getD moduleName
+  let origin := (before.nodeRegistrations.getD fact.label {}).authoredOrigin?.getD moduleName
   match before.addNode fact.label origin moduleName #[payload] [fact] with
   | .error reasons =>
     for reason in reasons do logError reason
@@ -645,8 +636,8 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
 def addDep (stx : Syntax) (dep : Name) : m Unit :=
   addUse stx { label := dep }
 
-def getNode? (label : Label) : m (Option Node) := do
-  return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)
+def getNodeInventory? (label : Label) : m (Option NodeInventory) := do
+  return (informalExt.getState (← getEnv)).inventory.get? label
 
 def labelsForLeanDecl (decl : Name) : m (Array Label) := do
   return (informalExt.getState (← getEnv)).leanNameLabels.getD decl.eraseMacroScopes #[]

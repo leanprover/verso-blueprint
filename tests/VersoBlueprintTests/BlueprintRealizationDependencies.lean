@@ -49,7 +49,7 @@ private def project (projectName node : Name) : CoreM (Except Diagnostic Prepare
   let documented ← match ← NativeSource.prepareDocumented request with
     | .ok documented => pure documented
     | .error diagnostic => return .error diagnostic
-  let some accepted ← Informal.Environment.getNode? node
+  let some accepted ← Informal.Environment.getNodeInventory? node
     | return .error {
         code := "missing-node"
         subject := node.toString
@@ -203,12 +203,12 @@ private unsafe def unavailableCheck (witness : ObjectKey) : CoreM (Except Diagno
 
 private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   let sourceLabel := label "source"
-  let before ← Informal.Environment.getNode? sourceLabel
+  let before ← Informal.Environment.getNodeInventory? sourceLabel
   let some source := before | throwError "Missing accepted source"
   let statementUses := source.usesOn `statement
   let proofUses := source.usesOn `proof
   let beforeLabels ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source
-  let consumerBefore ← Informal.Environment.getNode? (label "consumer")
+  let consumerBefore ← Informal.Environment.getNodeInventory? (label "consumer")
   let consumerLabelsBefore ← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer
   let some proofSlot := source.proseView `verso `proof | throwError "Actual source must have proof uses"
   ensure (proofSlot.stx.isMissing && !proofSlot.hasBody && !proofUses.isEmpty)
@@ -308,7 +308,7 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   -- shape. Canonical keyed-source conflict rejection is exercised by the raw
   -- inventory test; source parsing failures remain covered by NativeSource.
   for (name, key) in #[(label "clean", cleanKey), (label "admitted", admittedKey)] do
-    let some target ← Informal.Environment.getNode? name | throwError "Missing accepted target"
+    let some target ← Informal.Environment.getNodeInventory? name | throwError "Missing accepted target"
     ensure (target.leanDecls.size == 1) "The accepted concept retains its native declaration inventory"
     ensure ((registry.localResult key).complete == (name == label "clean"))
       "Fresh native observations distinguish the clean theorem from its admitted counterpart"
@@ -494,10 +494,10 @@ private unsafe def runControls : CommandElabM Unit := liftTermElabM do
   ensure ((← field unavailableEdge "requirement") == toJson cleanKey &&
     (← field (← field unavailableEdge "result") "status") == toJson Status.blocked)
     "Actual native unavailability reports blocked existing validation with unchanged selected key"
-  let after ← Informal.Environment.getNode? sourceLabel
+  let after ← Informal.Environment.getNodeInventory? sourceLabel
   ensure (reprStr before == reprStr after && beforeLabels ==
     (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.source) &&
-    reprStr consumerBefore == reprStr (← Informal.Environment.getNode? (label "consumer")) &&
+    reprStr consumerBefore == reprStr (← Informal.Environment.getNodeInventory? (label "consumer")) &&
     consumerLabelsBefore == (← Informal.Environment.labelsForLeanDecl `DependencySelectionFixture.consumer))
     "Accepted source/membership and contracts remain read-only"
   logInfo "Selector fixture: axes/metadata preserved; clean contract complete; admitted contract pending; unresolved edges retained"

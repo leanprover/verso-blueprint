@@ -18,11 +18,11 @@ open Lean Informal SourceData
 run_cmd Lean.Elab.Command.liftCoreM do
   let label := Name.mkSimple "storage.source"
   let state := Environment.informalExt.getState (← getEnv)
-  let registrations := (state.pendingNodes.getD label {}).registrations
+  let registrations := (state.nodeRegistrations.getD label {}).registrations
   let sources := registrations.flatMap (·.sources)
   let uses := registrations.flatMap (·.uses)
   unless sources.size == 7 && state.importedConflicts.isEmpty &&
-      state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) do
+      state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) do
     throwError "Diamond import duplicated a source or re-exported imported registrations"
   unless sources.all (fun source => source.context.project == `blueprintFixtures &&
       source.destination.realization.node == label && source.document.context == source.context &&

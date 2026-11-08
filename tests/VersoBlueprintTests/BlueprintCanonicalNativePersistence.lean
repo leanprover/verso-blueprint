@@ -22,7 +22,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let state := Environment.informalExt.getState (← getEnv)
   let records := state.factRecords.filter (·.label == label)
   unless records.length == 4 && state.localFactRecords.isEmpty &&
-      state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) &&
+      state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) &&
       state.authoringRecords.isEmpty do
     throwError "Imports must retain complete native inputs once, with no local export or enrolled default"
   let associations := records.toArray.flatMap (·.nativeAssociations)
@@ -38,7 +38,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   unless records.all (fun record =>
       (record.referencesAt ⟨label, `alternative⟩ ⟨`lean, `wrongProject⟩ `proof).isEmpty) do
     throwError "A same-spelled native reference from another project was selected"
-  let some node := state.data.get? label | throwError "Ordinary imported concept was not accepted"
+  let some node := state.inventory.get? label | throwError "Ordinary imported concept was not accepted"
   unless node.leanDecls.size == 2 && node.leanDecls.contains ``original &&
       node.leanDecls.contains ``additional &&
       (state.leanNameLabels.getD `CanonicalNativePersistence.notDeclared #[]).isEmpty do

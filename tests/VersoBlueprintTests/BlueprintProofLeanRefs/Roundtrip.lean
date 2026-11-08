@@ -18,7 +18,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
 #eval show CoreM Bool from do
   let state := Environment.informalExt.getState (← getEnv)
   let label := Name.mkSimple "proof.imported.crossFacet"
-  let some node := state.data.get? label | return false
+  let some node := state.inventory.get? label | return false
   let records := state.factRecords.filter (·.label == label)
   let proofOnly := state.factRecords.filter (·.label == Name.mkSimple "proof.imported.associations")
   let refs (record : Contributions.Record) (facet : Name) :=
@@ -36,7 +36,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
 /-- info: true -/
 #guard_msgs in
 #eval show CoreM Bool from do
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.associations")
     | return false
   return node.leanDecls == #[``Provider.firstProof, ``Provider.secondProof] &&
     (← Environment.labelsForLeanDecl ``Provider.firstProof) == #[Name.mkSimple "proof.imported.associations"] &&
@@ -46,7 +46,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
 /-- info: true -/
 #guard_msgs in
 #eval show CoreM Bool from do
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.repeated")
     | return false
   let labels ← Environment.labelsForLeanDecl ``Provider.admittedProof
   return node.leanDecls == #[``Provider.admittedProof] &&
@@ -58,5 +58,5 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
 #guard_msgs in
 #eval show CoreM Bool from do
   let label := Name.mkSimple "proof.inline.overlap"
-  return (← Environment.getNode? label).isNone &&
+  return (← Environment.getNodeInventory? label).isNone &&
     !(← Environment.labelsForLeanDecl ``Provider.admittedProof).contains label

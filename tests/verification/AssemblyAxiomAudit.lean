@@ -44,5 +44,5 @@ import VersoBlueprint.Node.MembershipLaws
 #print axioms Informal.Data.ExternalRef.mergeSnapshots_fold_membership
 #print axioms Informal.Data.ExternalRef.mergeSnapshots_fold_canonical_nodup
 
-#print axioms Informal.Data.Node.mem_leanDecls
-#print axioms Informal.Data.Node.associatedExternalRefs_fixed
+#print axioms Informal.Data.NodeInventory.mem_leanDecls
+#print axioms Informal.Data.NodeInventory.associatedExternalRefs_fixed

@@ -231,7 +231,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   validateDeclKind decl info
   -- Only the declaration introducing a label owns its implicit statement.
   -- Attachments never compete with or fill an existing node's informal prose.
-  let current? ← Environment.getNode? label
+  let current? ← Environment.getNodeInventory? label
   let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
   let deps ← resolveAutoDeps decl label info cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions

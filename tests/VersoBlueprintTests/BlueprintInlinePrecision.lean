@@ -35,7 +35,7 @@ theorem inline_main_complete : True := by
   show Elab.Term.TermElabM Bool from do
     let label := Name.mkSimple "inline.theorem.helper"
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    match state.data.get? label with
+    match state.inventory.get? label with
     | none => pure false
     | some node =>
       let .ok snapshot ← Realizations.Capture.capture | pure false
@@ -76,7 +76,7 @@ inductive SourceFilteredStage where
 
 private def literateDeclNamesFor? (label : Name) : CoreM (Option (Array String)) := do
   let state := Informal.Environment.informalExt.getState (← getEnv)
-  match state.data.get? label with
+  match state.inventory.get? label with
   | none => pure none
   | some node =>
     let names :=

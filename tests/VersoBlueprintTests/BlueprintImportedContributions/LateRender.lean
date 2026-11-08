@@ -59,7 +59,7 @@ def lateBlueprint : Informal.BlueprintDocument := .capture graphDoc.toPart
         throw <| IO.userError "A graph-free document acquired a graph"
 
 #eval show CoreM Unit from do
-  let some node ← Informal.Environment.getNode? `key_theorem | throwError "Missing node"
+  let some node ← Informal.Environment.getNodeInventory? `key_theorem | throwError "Missing node"
   unless node.usesOn `proof == #[
       { label := `proof_dep, intent := .technical }, { label := `statement_dep }] do
     throwError "Final environment lost the late dependency"

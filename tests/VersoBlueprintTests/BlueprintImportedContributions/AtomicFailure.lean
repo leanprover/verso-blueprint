@@ -177,7 +177,7 @@ A valid statement after rejected declarations.
 run_cmd do
   let state := Environment.informalExt.getState (← getEnv)
   unless state.activeDirective.isNone &&
-      (state.data.get? `atomic_recovered).any (·.hasStatementBody) do
+      (state.inventory.get? `atomic_recovered).any (·.hasStatementBody) do
     throwError "Directive scope did not recover after failure"
 
 -- Standalone producers must agree with the accepted registry, even during recovery.
@@ -332,7 +332,7 @@ Manual external-code authoring retains the same authority evidence.
 
 run_cmd do
   for label in #[`attr_authorities, `manual_authorities] do
-    let some node ← Environment.getNode? label | throwError "Missing node"
+    let some node ← Environment.getNodeInventory? label | throwError "Missing node"
     let statementUses := (node.uses.filter (·.facet == `statement)).map (·.reference)
     let expectedUses := if label == `attr_authorities then #[
         { label := `atomic_type, origin := .automatic },

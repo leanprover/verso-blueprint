@@ -81,7 +81,7 @@ Second statement.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "dup.statement")
+    let some node := state.inventory.get? (Name.mkSimple "dup.statement")
       | return false
     pure ((node.proseView `verso `statement).isSome && (node.proseView `verso `proof).isNone)
 
@@ -97,7 +97,7 @@ Proposition body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "prop.kind")
+    let some node := state.inventory.get? (Name.mkSimple "prop.kind")
       | return false
     pure (node.kind == .proposition && (node.proseView `verso `statement).isSome)
 
@@ -117,6 +117,6 @@ Ghost proof body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    pure <| !(state.data.contains (Name.mkSimple "ghost.proof"))
+    pure <| !(state.inventory.contains (Name.mkSimple "ghost.proof"))
 
 end Verso.VersoBlueprintTests.BlueprintInformal.Structure

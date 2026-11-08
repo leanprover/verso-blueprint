@@ -43,7 +43,7 @@ theorem assemble_ok_hasAttributeAssociations {label : Label}
       ∃ record ∈ records, record.label = label ∧
         ∃ association ∈ record.nativeAssociations,
           (association.reference.origin == .blueprintAttr) = true := by
-  simp only [Data.Node.hasAttributeAssociations, Array.any_eq_true']
+  simp only [Data.NodeInventory.hasAttributeAssociations, Array.any_eq_true']
   constructor
   · rintro ⟨association, hassociation, horigin⟩
     obtain ⟨record, hrecord, hlabel, hassociation⟩ :=
@@ -78,16 +78,16 @@ association union plus inline code in the successful keyed payload source set.
 No per-language or statement/proof projection filters the native witnesses. -/
 theorem assemble_ok_leanDecls_sources {label : Label}
     {payloads : Array SourceData.Registration} {records : List Record}
-    {assembled : Assembly} {base : Node}
+    {assembled : Assembly} {base : NodeInventory}
     (h : assemble label payloads records = .ok assembled)
-    (hb : Node.applyRegistrations label {} payloads = .ok base)
+    (hb : NodeInventory.applyRegistrations label {} payloads = .ok base)
     (name : Name) :
     name ∈ assembled.node.leanDecls ↔
       Association records label name ∨
         (∃ source ∈ base.sources, ∃ code, source.payload = .leanInline code ∧
           ∃ declaration ∈ code.definedDeclNames,
             declaration.eraseMacroScopes = name) := by
-  rw [Informal.Data.Node.mem_leanDecls]
+  rw [Informal.Data.NodeInventory.mem_leanDecls]
   have hassoc :
       (∃ association ∈ assembled.node.nativeAssociations,
         association.reference.present = true ∧

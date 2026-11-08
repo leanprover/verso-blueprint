@@ -27,7 +27,7 @@ deriving ToJson, FromJson, Quote
 def Placement.showsCode (placement : Placement) : Bool :=
   !placement.config.compact && placement.config.toNode.facet == "statement"
 
-def nodeHasBlueprintAttributeAttachments (node : Data.Node) : Bool :=
+def nodeHasBlueprintAttributeAttachments (node : Data.NodeInventory) : Bool :=
   node.hasAttributeAssociations
 
 /-- Decode the persisted Manual representation without disguising failure as prose. -/
@@ -46,7 +46,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     DocElabM (Option (BlockOccurrence × Array Syntax)) := do
   if cfg.toNode.facet != "statement" then return none
   let label := LabelNameParsing.parse cfg.label
-  let some node ← Environment.getNode? label | return none
+  let some node ← Environment.getNodeInventory? label | return none
   if !nodeHasBlueprintAttributeAttachments node then return none
   let statementStxs ←
     match node.proseView `verso `statement with

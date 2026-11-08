@@ -14,7 +14,7 @@ open Lean Informal Verso.Genre
 /-- info: true -/
 #guard_msgs in
 #eval show CoreM Bool from do
-  let some node ← Environment.getNode? `coherent_equal | return false
+  let some node ← Environment.getNodeInventory? `coherent_equal | return false
   let labelsA ← Environment.labelsForLeanDecl `CoherenceEqualA.declaration
   let labelsB ← Environment.labelsForLeanDecl `CoherenceEqualB.declaration
   return (← Environment.importedConflicts).isEmpty &&

@@ -42,7 +42,7 @@ theorem assemble_ok_stableReferences {label : Label} {payloads : Array SourceDat
     {records : List Record} {assembled : Assembly}
     (h : assemble label payloads records = .ok assembled) : StableReferences records label := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -60,7 +60,7 @@ theorem assemble_ok_admissionErrors {label : Label} {payloads : Array SourceData
     (h : assemble label payloads records = .ok assembled) :
     (admissionErrors label payloads records).isEmpty = true := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -72,9 +72,9 @@ theorem assemble_ok_admissionErrors {label : Label} {payloads : Array SourceData
 
 /-- The projection does not rewrite the payload source inventory. -/
 theorem assemble_ok_sources {label : Label} {payloads : Array SourceData.Registration}
-    {records : List Record} {assembled : Assembly} {base : Node}
+    {records : List Record} {assembled : Assembly} {base : NodeInventory}
     (h : assemble label payloads records = .ok assembled)
-    (hb : Node.applyRegistrations label {} payloads = .ok base) :
+    (hb : NodeInventory.applyRegistrations label {} payloads = .ok base) :
     assembled.node.sources = base.sources := by
   unfold assemble at h
   rw [hb] at h
@@ -93,7 +93,7 @@ theorem assemble_ok_resolve {label : Label} {payloads : Array SourceData.Registr
     (h : assemble label payloads records = .ok assembled) :
     resolve label records = .ok assembled.view := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -111,7 +111,7 @@ theorem assemble_ok_sourceDestinations {label : Label} {payloads : Array SourceD
     (h : assemble label payloads records = .ok assembled) :
     (sourceDestinationIssues label payloads records).isEmpty = true := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -126,7 +126,7 @@ actual composed membership and selected-name admission are separate obligations.
 theorem assemble_success_iff (label : Label) (payloads : Array SourceData.Registration)
     (records : List Record) :
     (∃ assembled, assemble label payloads records = .ok assembled) ↔
-      (∃ node, Node.applyRegistrations label {} payloads = .ok node) ∧
+      (∃ node, NodeInventory.applyRegistrations label {} payloads = .ok node) ∧
         (NoCollision records label ∧ ¬ PriorityDisagreement records label) ∧
         ((sourceDestinationIssues label payloads records).isEmpty = true ∧
           StableReferences records label) := by
@@ -138,7 +138,7 @@ theorem assemble_success_iff (label : Label) (payloads : Array SourceData.Regist
       (assemble_ok_admissionErrors h)
     refine ⟨?_, accepted, ⟨admitted.1, admitted.2⟩⟩
     unfold assemble at h
-    cases hn : Node.applyRegistrations label {} payloads with
+    cases hn : NodeInventory.applyRegistrations label {} payloads with
     | error _ => simp [hn] at h
     | ok node => exact ⟨node, rfl⟩
   · rintro ⟨⟨node, hn⟩, accepted, ⟨hs, hstable⟩⟩
@@ -153,7 +153,7 @@ theorem assemble_ok_priority {label : Label} {payloads : Array SourceData.Regist
     (h : assemble label payloads records = .ok assembled) :
     assembled.node.priority = assembled.view.priority := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with
@@ -196,7 +196,7 @@ theorem assemble_ok_nativeAssociations {label : Label} {payloads : Array SourceD
     (h : assemble label payloads records = .ok assembled) :
     assembled.node.nativeAssociations = assembled.view.supports.toArray.flatMap (·.nativeAssociations) := by
   unfold assemble at h
-  cases hn : Node.applyRegistrations label {} payloads with
+  cases hn : NodeInventory.applyRegistrations label {} payloads with
   | error _ => simp [hn] at h
   | ok node =>
     cases hr : resolve label records with

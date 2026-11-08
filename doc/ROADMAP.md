@@ -182,7 +182,7 @@ Work:
    requirements onto `PreviewManifest.Entry`; remaining candidates include
    repeated traversal-store decoding and validation-message assembly patterns
    across preview, source, and status data
-2. keep `Informal.Environment.InProgress` separate from `Data.Node` while it
+2. keep `Informal.Environment.InProgress` separate from `Data.NodeInventory` while it
    owns directive-stack state and typed preview blocks; attribute docstring term
    syntax belongs only to persisted `InformalData`
 3. keep `Informal.Environment.State` as the persisted semantic store and
@@ -191,7 +191,7 @@ Work:
    phase-safe
 4. extend the centralized declaration-level presentation in
    `ProvedStatus.presentation` into a broader node-health record derived from
-   `Data.Node` plus external declaration checks; declaration rows, summary
+   `Data.NodeInventory` plus external declaration checks; declaration rows, summary
    detail rows, heading marks, code-entry icons, and external-code rows already
    share the declaration-status vocabulary
 5. preserve the structural separation between identified external associations

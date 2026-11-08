@@ -329,7 +329,7 @@ structure BlockData extends BlockMetadata, BlockPresentation where
   codeData : Option BlockCodeData := none
 deriving FromJson, ToJson, Quote
 
-def RenderNode.ofNode (label : Data.Label) (node : Data.Node)
+def RenderNode.ofNode (label : Data.Label) (node : Data.NodeInventory)
     (author : Option Data.AuthorInfo := none)
     (assessment : Option Realizations.NodeAssessment := none) : RenderNode := {
   label

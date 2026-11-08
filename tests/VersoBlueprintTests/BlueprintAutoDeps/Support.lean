@@ -17,8 +17,8 @@ def label (s : String) : Name :=
 def state : CoreM Environment.State := do
   pure <| Environment.informalExt.getState (← getEnv)
 
-def node? (labelText : String) : CoreM (Option Data.Node) := do
-  pure <| (← state).data.get? (label labelText)
+def node? (labelText : String) : CoreM (Option Data.NodeInventory) := do
+  pure <| (← state).inventory.get? (label labelText)
 
 def statementUses (labelText : String) : CoreM (Array Data.UseRef) := do
   let some node ← node? labelText

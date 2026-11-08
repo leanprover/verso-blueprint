@@ -11,7 +11,7 @@ import VersoBlueprintTests.BlueprintAttribute
 /-- info: true -/
 #guard_msgs in
 #eval show Lean.CoreM Bool from do
-  let some node ← Informal.Environment.getNode? (Lean.Name.mkSimple "attr.hybrid.shared")
+  let some node ← Informal.Environment.getNodeInventory? (Lean.Name.mkSimple "attr.hybrid.shared")
     | return false
   return node.leanDecls == #[
     `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridSharedFirst,

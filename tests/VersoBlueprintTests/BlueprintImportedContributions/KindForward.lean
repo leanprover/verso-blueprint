@@ -8,7 +8,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.KindBody
 import VersoBlueprintTests.BlueprintImportedContributions.KindAttachment
 
 #eval show Lean.CoreM Unit from do
-  let some node ← Informal.Environment.getNode? `kind_placeholder
+  let some node ← Informal.Environment.getNodeInventory? `kind_placeholder
     | throwError "Missing merged node"
   unless node.kind == .lemma && node.kindIsExplicit do
     throwError "An attachment replaced the authored lemma kind"

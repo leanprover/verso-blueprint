@@ -23,7 +23,7 @@ abbrev SelectedUses := Array SelectedUse × Array SelectedUse
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
 
-private def canonicalTheorem (role : String) (label : Name) (node : Data.Node) :
+private def canonicalTheorem (role : String) (label : Name) (node : Data.NodeInventory) :
     Except Diagnostic Name := do
   let associations := node.nativeAssociations.filter fun association =>
     association.realization == ⟨label, `lean⟩
@@ -42,7 +42,7 @@ private def canonicalTheorem (role : String) (label : Name) (node : Data.Node) :
 
 private def selectTarget (registry : Registry) (context : Context) (label : Name) :
     CoreM (Except Diagnostic RequirementKey) := do
-  let some node ← Environment.getNode? label
+  let some node ← Environment.getNodeInventory? label
     | return .error <| issue "missing-target" label "No accepted dependency target"
   let canonical ← match canonicalTheorem "target" label node with
     | .ok name => pure name
@@ -94,7 +94,7 @@ def selectUses (registry : Registry) (context : Context) (source : Name) :
     CoreM (Except Diagnostic SelectedUses) := do
   unless context.valid && context.language == `lean do
     return .error <| issue "unsupported-view" source "An explicit valid Lean project context is required"
-  let some node ← Environment.getNode? source
+  let some node ← Environment.getNodeInventory? source
     | return .error <| issue "missing-source" source "No accepted source node"
   if let .error diagnostic := canonicalTheorem "source" source node then return .error diagnostic
   let selectAxis (uses : Array Data.UseRef) : CoreM (Array SelectedUse) :=

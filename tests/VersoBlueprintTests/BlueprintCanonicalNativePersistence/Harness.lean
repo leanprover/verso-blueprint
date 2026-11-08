@@ -11,7 +11,7 @@ namespace CanonicalNativePersistence
 
 -- Expected error messages are captured, then assertions run outside the capture.
 -- Test failures cannot be swallowed by the expected-error harness.
-def rejected (fragment : String) (action : CoreM (Option Data.Node)) : CoreM Unit := do
+def rejected (fragment : String) (action : CoreM (Option Data.NodeInventory)) : CoreM Unit := do
   let before := Environment.informalExt.getState (← getEnv)
   let messages ← Core.getMessageLog
   let (result, errors) ← try

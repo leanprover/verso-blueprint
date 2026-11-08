@@ -110,9 +110,9 @@ private def hasLabel (labels : Array Informal.Data.Label) (label : String) : Boo
       Environment.labelsForLeanDecl
         `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.conflictInlineThenExternalValue
     let state ← currentState
-    let some extInlineNode := state.data.get? (Name.mkSimple "conflict.ext.inline")
+    let some extInlineNode := state.inventory.get? (Name.mkSimple "conflict.ext.inline")
       | pure false
-    let some inlineExtNode := state.data.get? (Name.mkSimple "conflict.inline.ext")
+    let some inlineExtNode := state.inventory.get? (Name.mkSimple "conflict.inline.ext")
       | pure false
     pure <|
       hasLabel natAddLabels "conflict.ext.inline" &&
@@ -154,7 +154,7 @@ Simple body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "inductive.external")
+    let some node := state.inventory.get? (Name.mkSimple "inductive.external")
       | pure false
     pure <|
       node.kind == .definition &&
@@ -197,7 +197,7 @@ Simple body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "trim.external.name")
+    let some node := state.inventory.get? (Name.mkSimple "trim.external.name")
       | pure false
     pure !node.hasAssociatedCode
 

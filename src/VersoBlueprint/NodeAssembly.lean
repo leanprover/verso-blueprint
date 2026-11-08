@@ -33,8 +33,8 @@ private def inferredNodeKind (external : Array ExternalRef) (literate : Array Co
   if external.any (·.kind.isTheoremLike) || literate.any (! ·.definedTheorems.isEmpty) then .theorem
   else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then .definition else .lemma
 
-private def mergeContribution (label : Label) (node : Node)
-    (incoming : SourceData.Registration) : MergeM Node := do
+private def mergeContribution (label : Label) (node : NodeInventory)
+    (incoming : SourceData.Registration) : MergeM NodeInventory := do
   -- Keep every raw source and use; conflicts are scoped to their actual keys.
   let mut sources := node.sources
   for source in incoming.sources do
@@ -89,8 +89,8 @@ private def registrationIssues (label : Label) (incoming : SourceData.Registrati
   return errors
 
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
-private def applyPayloads (label : Label) (node : Node)
-    (contributions : Array SourceData.Registration) : Except (Array String) Node :=
+private def applyPayloads (label : Label) (node : NodeInventory)
+    (contributions : Array SourceData.Registration) : Except (Array String) NodeInventory :=
   let sourceErrors := contributions.flatMap (registrationIssues label)
   let (node, errors) := (contributions.foldlM (mergeContribution label) node).run sourceErrors
   if errors.isEmpty then .ok node else .error errors
@@ -102,8 +102,8 @@ namespace Informal.Data
 /-- Apply body, kind, markup, dependency, and literate payloads to a node.
 Selected associations and priority are supplied separately through identified
 records. This reducer preserves those fields on an already assembled node. -/
-def Node.applyRegistrations (label : Label) (node : Node)
-    (contributions : Array SourceData.Registration) : Except (Array String) Node :=
+def NodeInventory.applyRegistrations (label : Label) (node : NodeInventory)
+    (contributions : Array SourceData.Registration) : Except (Array String) NodeInventory :=
   Informal.NodeAssembly.applyPayloads label node contributions
 
 end Informal.Data
@@ -219,10 +219,10 @@ view supplies all keyed native associations and agreed priority. Source/use
 payloads retain their original destinations and scopes; no completion is inferred.
 Metadata display defaults are independent of validation. -/
 structure Assembly where
-  node : Node
+  node : NodeInventory
   view : View
 
-private def project (node : Node) (view : View) : Assembly :=
+private def project (node : NodeInventory) (view : View) : Assembly :=
   let nativeAssociations := view.supports.toArray.flatMap (·.nativeAssociations)
   let kind := if node.kindIsExplicit then node.kind else
     inferredNodeKind (nativeAssociations.map (·.reference)) node.inlineCodes
@@ -270,7 +270,7 @@ def admissionErrors (label : Label) (payloads : Array SourceData.Registration)
 
 def assemble (label : Label) (payloads : Array SourceData.Registration) (records : List Record) :
     Except (Array String) Assembly :=
-  match Node.applyRegistrations label {} payloads with
+  match NodeInventory.applyRegistrations label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)

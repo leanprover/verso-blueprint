@@ -16,12 +16,12 @@ open Informal.NodeAssembly
   for refs in #[#[a,b,m], #[a,m,b], #[b,a,m], #[b,m,a], #[m,a,b], #[m,b,a]] do
     for batches in #[#[refs], #[refs[:1].toArray, refs[1:].toArray],
         #[refs[:2].toArray, refs[2:].toArray], refs.map (#[·])] do
-      let result := batches.foldlM (fun node batch => node.applyRegistrations `target batch) ({} : Node)
+      let result := batches.foldlM (fun node batch => node.applyRegistrations `target batch) ({} : NodeInventory)
       match result with
       | .error _ => pure ()
       | .ok _ => throw <| IO.userError "A manual override hid conflicting automatic intents"
   for refs in #[#[a,m], #[m,a], #[a,a,m,m]] do
-    let .ok node := ({} : Node).applyRegistrations `target refs
+    let .ok node := ({} : NodeInventory).applyRegistrations `target refs
       | throw <| IO.userError "Compatible authority levels were rejected"
     unless node.usesOn `proof == #[{ label := `dep, intent := .auxiliary }] do
       throw <| IO.userError "Manual metadata lost precedence"

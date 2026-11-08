@@ -150,7 +150,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.statement_target")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.statement_target")
       | return false
     let some statement := node.proseView `verso `statement
       | return false
@@ -167,7 +167,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.proof_target")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.proof_target")
       | return false
     let some proof := node.proseView `verso `proof
       | return false
@@ -184,7 +184,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.excluded_target")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.excluded_target")
       | return false
     let some statement := node.proseView `verso `statement
       | return false
@@ -197,7 +197,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.external_target")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.external_target")
       | return false
     let some _statement := node.proseView `verso `statement
       | return false
@@ -213,7 +213,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.inline_target")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.inline_target")
       | return false
     let some _statement := node.proseView `verso `statement
       | return false
@@ -229,7 +229,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some node ← Environment.getNode? (label "auto.demo.external_opt_out")
+    let some node ← Environment.getNodeInventory? (label "auto.demo.external_opt_out")
       | return false
     let statementDeps := node.usesOn `statement
     let proofDeps := node.usesOn `proof
@@ -253,7 +253,7 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
         "auto.demo.viewer"
       ]
     let counts ← labels.mapM fun labelText => do
-      let some node ← Environment.getNode? (label labelText)
+      let some node ← Environment.getNodeInventory? (label labelText)
         | return 0
       return node.count
     pure <| counts == #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

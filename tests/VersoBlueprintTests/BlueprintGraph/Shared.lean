@@ -46,10 +46,10 @@ def mkDefCode (decl : Name) (typeSorry : Bool := false) : Code :=
 def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : Code :=
   { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
 
-def mkState (entries : List (Name × Node)) : Environment.State :=
-  let data := entries.foldl (init := ({} : Lean.NameMap Environment.RegisteredNode)) fun acc (label, node) =>
-    acc.insert label { toNode := node, origin := `BlueprintGraph.Shared }
-  { data }
+def mkState (entries : List (Name × NodeInventory)) : Environment.State :=
+  let inventory := entries.foldl (init := ({} : Lean.NameMap NodeInventory)) fun acc (label, node) =>
+    acc.insert label { node with origin := `BlueprintGraph.Shared }
+  { inventory }
 
 def hasNodeWith {Ref : Type} (g : Graph Ref) (label : Name) (p : GraphNode Ref → Bool) : Bool :=
   match g.find? (·.label == label) with

@@ -17,14 +17,14 @@ open Lean Informal Realizations SourceData
 
 -- Canonical nodes have keyed inventories rather than fixed language slots or a
 -- completion setter. Realizations.Node is the language-independent concept.
-#check_failure (fun (node : Data.Node) => node.statement)
-#check_failure (fun (node : Data.Node) => node.proof)
-#check_failure (fun (node : Data.Node) => node.externalRefs)
-#check_failure (fun (node : Data.Node) => node.proofExternalRefs)
-#check_failure (fun (node : Data.Node) => node.literateCodes)
-#check_failure (fun (node : Data.Node) => node.rustCode)
-#check_failure (fun (node : Data.Node) => node.externalMarkup)
-#check_failure (fun (node : Data.Node) => node.blueprintAttributeAttachments)
+#check_failure (fun (node : Data.NodeInventory) => node.statement)
+#check_failure (fun (node : Data.NodeInventory) => node.proof)
+#check_failure (fun (node : Data.NodeInventory) => node.externalRefs)
+#check_failure (fun (node : Data.NodeInventory) => node.proofExternalRefs)
+#check_failure (fun (node : Data.NodeInventory) => node.literateCodes)
+#check_failure (fun (node : Data.NodeInventory) => node.rustCode)
+#check_failure (fun (node : Data.NodeInventory) => node.externalMarkup)
+#check_failure (fun (node : Data.NodeInventory) => node.blueprintAttributeAttachments)
 #check_failure (fun (node : Realizations.Node) => node.complete)
 
 namespace VersoBlueprintTests.BlueprintCanonicalSources
@@ -51,7 +51,7 @@ private def proofModel : Realization := {
     parent := some `home, priority := some "high", owner := some `author
     tags := #["first", "second"], effort := some "small"
     prUrl := some "https://example.invalid/pr", issueUrl := some "https://example.invalid/issue" }
-  let registered : Data.Node := { toNodeMetadata := metadata }
+  let registered : Data.NodeInventory := { toNodeMetadata := metadata }
   let concept := registered.toConcept node "Canonical concept"
   ensure (concept.toNodeMetadata == metadata && concept.label == node && concept.title == "Canonical concept")
     "The pure node must retain the same accepted metadata projection, including every shared field"
@@ -180,7 +180,7 @@ private def proofModel : Realization := {
   let registrations : Array Registration := #[{
     sources := #[first, second]
     uses := #[sharedUse, scopedUse] }]
-  let stored ← match ({} : Data.Node).applyRegistrations node registrations with
+  let stored ← match ({} : Data.NodeInventory).applyRegistrations node registrations with
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"Valid arbitrary source keys were rejected: {repr issues}"
   ensure (stored.sources.map (·.destination) == #[first.destination, second.destination])
@@ -191,7 +191,7 @@ private def proofModel : Realization := {
   ensure (stored.uses == #[sharedUse, scopedUse] &&
     stored.uses[0]!.realization.isNone && stored.uses[1]!.realization == some custom)
     "Shared and scoped dependencies retain their explicit scope"
-  match ({} : Data.Node).applyRegistrations node #[{ sources := #[first, prose custom `statement "Conflicting duplicate"] }] with
+  match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[first, prose custom `statement "Conflicting duplicate"] }] with
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "Two occupied prose payloads at one exact destination were accepted"
 
@@ -206,12 +206,12 @@ private def proofModel : Realization := {
     payload := .text raw }
   let sameFacetText := textSource `verso custom `statement "statement.txt" "Independent statement source"
   for ordered in #[#[first, sameFacetText], #[sameFacetText, first]] do
-    match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
+    match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := ordered }] with
     | .error _ => pure ()
     | .ok _ => throw <| IO.userError "A prose body and text source shared one exact raw slot"
   let placeholder : FacetSource := { first with payload := .prose { stx := .missing } }
   for ordered in #[#[placeholder, sameFacetText], #[sameFacetText, placeholder]] do
-    let mixed ← match ({} : Data.Node).applyRegistrations node #[{ sources := ordered }] with
+    let mixed ← match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := ordered }] with
       | .ok stored => pure stored
       | .error issues => throw <| IO.userError s!"An empty prose placeholder conflicted with text: {repr issues}"
     ensure (mixed.sources.size == 2 &&
@@ -222,7 +222,7 @@ private def proofModel : Realization := {
   let rustBody := textSource `rust `rust `body "src/lib.rs" "pub fn value() -> u8 { 1 }"
   let rustProof := textSource `rust `rust `proof "src/proof.rs" "pub fn proof() -> bool { true }"
   let rocqBody := textSource `rocq `rocq `body "theories/Flag.v" "Theorem flag_ok : True."
-  let textNode ← match ({} : Data.Node).applyRegistrations node #[{
+  let textNode ← match ({} : Data.NodeInventory).applyRegistrations node #[{
       sources := #[rustBody, rustProof, rocqBody] }] with
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"Distinct text destinations were rejected: {repr issues}"
@@ -236,17 +236,17 @@ private def proofModel : Realization := {
       textDestinations.contains (rocqBody.destination, rocqBody.document, "Theorem flag_ok : True."))
     "Different raw slots and realizations retain their exact text, context and document"
   let duplicateText := textSource `rust `rust `body "src/other.rs" "pub fn different() -> u8 { 3 }"
-  match ({} : Data.Node).applyRegistrations node #[{ sources := #[rustBody, duplicateText] }] with
+  match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[rustBody, duplicateText] }] with
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "Two text payloads at one exact raw slot were accepted"
   let emptyRustBody := textSource `rust `rust `body "src/placeholder.rs" ""
-  let emptyNode ← match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody] }] with
+  let emptyNode ← match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[emptyRustBody] }] with
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"An empty text payload was rejected: {repr issues}"
   ensure (emptyNode.sources.any fun source => source.document == emptyRustBody.document &&
       match source.payload with | .text raw => raw.isEmpty | _ => false)
     "An empty text payload remains visible byte-for-byte"
-  match ({} : Data.Node).applyRegistrations node #[{ sources := #[emptyRustBody, rustBody] }] with
+  match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[emptyRustBody, rustBody] }] with
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "An empty text payload and a second payload shared one exact raw slot"
 
@@ -263,7 +263,7 @@ private def proofModel : Realization := {
   let texMain := markupSource "paper-a.tex" "statement" "\\forall x, P(x)"
   let texProof := markupSource "paper-a.tex" "proof" "by induction"
   let texMainElsewhere := markupSource "paper-b.tex" "statement" "\\forall x, Q(x)"
-  let markupNode ← match ({} : Data.Node).applyRegistrations node #[{
+  let markupNode ← match ({} : Data.NodeInventory).applyRegistrations node #[{
       sources := #[texMain, texProof] }] with
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"Distinct markup slots were rejected: {repr issues}"
@@ -275,7 +275,7 @@ private def proofModel : Realization := {
       ("paper-a.tex", "statement", "\\forall x, P(x)"),
       ("paper-a.tex", "proof", "by induction")])
     "Distinct markup slots retain their source documents and bytes"
-  match ({} : Data.Node).applyRegistrations node #[{ sources := #[texMain, texMainElsewhere] }] with
+  match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[texMain, texMainElsewhere] }] with
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "The same markup key at one destination was accepted from two documents"
 
@@ -286,13 +286,13 @@ private def proofModel : Realization := {
   let sharedIntentUse := { scopedIntentUse with
     realization := none
     reference := { scopedIntentUse.reference with intent := .regular } }
-  let scopedStored ← match ({} : Data.Node).applyRegistrations node #[{ uses := #[scopedIntentUse, sharedIntentUse] }] with
+  let scopedStored ← match ({} : Data.NodeInventory).applyRegistrations node #[{ uses := #[scopedIntentUse, sharedIntentUse] }] with
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"Distinct dependency scopes were merged: {repr issues}"
   ensure (scopedStored.uses == #[scopedIntentUse, sharedIntentUse])
     "Raw dependency scope and intent survive even for the same target/slot/origin"
   let conflictingIntent := { scopedIntentUse with reference := { scopedIntentUse.reference with intent := .regular } }
-  match ({} : Data.Node).applyRegistrations node #[{ uses := #[scopedIntentUse, conflictingIntent] }] with
+  match ({} : Data.NodeInventory).applyRegistrations node #[{ uses := #[scopedIntentUse, conflictingIntent] }] with
   | .error _ => pure ()
   | .ok _ => throw <| IO.userError "Conflicting intent for one exact scoped use was accepted"
 

@@ -44,7 +44,7 @@ run_cmd liftTermElabM do
 #eval
   show CoreM Bool from do
     let label := Name.mkSimple "dup.imported.node"
-    let some node ← Informal.Environment.getNode? label | return false
+    let some node ← Informal.Environment.getNodeInventory? label | return false
     let labelsA ← Informal.Environment.labelsForLeanDecl
       `Verso.VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA.importedNodeA
     let labelsB ← Informal.Environment.labelsForLeanDecl

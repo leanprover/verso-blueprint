@@ -12,7 +12,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.Proof
 /-- info: true -/
 #guard_msgs in
 #eval show Lean.CoreM Bool from do
-  let some node ← Informal.Environment.getNode? `key_theorem | return false
+  let some node ← Informal.Environment.getNodeInventory? `key_theorem | return false
   let labels ← node.leanDecls.mapM Informal.Environment.labelsForLeanDecl
   let markup := node.sources.filterMap fun source =>
     match source.payload with | .markup markup => some markup | _ => none

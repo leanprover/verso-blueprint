@@ -363,11 +363,15 @@ clients must not depend on the value of the internal schema marker.
 
 ### Keyed source and realization data
 
-`Informal.Data.Node` is the accepted source inventory for one Blueprint label.
-It stores keyed `sources`, scoped `uses`, and typed `nativeAssociations`; it no
-longer stores a fixed statement/proof body or fixed external-reference arrays.
-Use `Node.proseView realization facet`, `usesOn facet`, `nativeRefsOn facet`,
-and the other `Node` helpers for display. These are derived views and must not be
+`Informal.Data.NodeInventory` is the compiled node information for one Blueprint
+label: the checked assembly of every registration, with its module provenance
+(`origin`, `modules`). It stores keyed `sources`, scoped `uses`, and typed
+`nativeAssociations`; it no longer stores a fixed statement/proof body or fixed
+external-reference arrays. The persisted input is the label's
+`Environment.NodeRegistrations`; the inventory is rebuilt from it on import and is
+read with `Environment.getNodeInventory?`.
+Use `NodeInventory.proseView realization facet`, `usesOn facet`, `nativeRefsOn facet`,
+and the other `NodeInventory` helpers for display. These are derived views and must not be
 written back as semantic input: they intentionally omit some destination and
 scope information retained by the keyed arrays.
 

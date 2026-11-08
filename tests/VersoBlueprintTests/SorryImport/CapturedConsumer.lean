@@ -17,7 +17,7 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
     let label := Name.mkSimple "sorry.capture.both"
-    let some node := state.data.get? label | return false
+    let some node := state.inventory.get? label | return false
     let some ref := (node.nativeRefsOn `statement)[0]? | return false
     let some captured := statusCaptureBlueprint.model.nodes.find? (·.label == label) | return false
     let some capturedRef := captured.externalRefs[0]? | return false

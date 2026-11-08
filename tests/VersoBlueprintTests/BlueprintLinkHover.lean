@@ -295,7 +295,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let state := Informal.Environment.informalExt.getState (← getEnv)
     let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
     let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
-    match state.data.get? (Name.mkSimple "lem:hover.intent.node") with
+    match state.inventory.get? (Name.mkSimple "lem:hover.intent.node") with
     | some node =>
       let uses := node.usesOn `statement
       if !uses.isEmpty then
@@ -342,7 +342,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
 #eval
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    match state.data.get? (Name.mkSimple "lem:hover.bpref.ref") with
+    match state.inventory.get? (Name.mkSimple "lem:hover.bpref.ref") with
     | some node =>
       pure <| (node.usesOn `statement).isEmpty
     | none => pure false

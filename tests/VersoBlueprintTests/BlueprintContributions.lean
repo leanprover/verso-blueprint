@@ -226,7 +226,7 @@ private def highA : Record := { a with priority := some "high" }
   | .error _ => false
 
 -- Payload reduction retains authored bodies, dependencies, and literate code.
-#guard match ({} : Node).applyRegistrations `shared #[{
+#guard match ({} : NodeInventory).applyRegistrations `shared #[{
     sources := #[BlueprintNativeFixture.source `shared `verso `statement `verso (.prose { stx := .missing, elabStx := #[.missing] }),
       BlueprintNativeFixture.source `shared `lean `body `lean (.leanInline { stx := .missing })]
     uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]

@@ -26,7 +26,7 @@ def testFact (label : Name) (site : Nat) (ref : Data.ExternalRef) (facet : Name 
 /-- Relevant committed producer fields, compared independently of their Repr. -/
 def sameProducerNodes (before after : Environment.State) : Bool :=
   #[`checked_attribute, `checked_directive].all fun label =>
-    match before.data.get? label, after.data.get? label with
+    match before.inventory.get? label, after.inventory.get? label with
     | some previous, some current =>
       previous.nativeAssociations == current.nativeAssociations &&
         previous.uses == current.uses &&
@@ -52,9 +52,9 @@ A real proof association.
 run_cmd do
   let state := Environment.informalExt.getState (← getEnv)
   let records := state.factRecords.reverse
-  let some attributeNode := state.data.get? `checked_attribute
+  let some attributeNode := state.inventory.get? `checked_attribute
     | throwError "Attribute producer was rejected"
-  let some directiveNode := state.data.get? `checked_directive
+  let some directiveNode := state.inventory.get? `checked_directive
     | throwError "Directive producer was rejected"
   unless attributeNode.leanDecls.contains
       `Verso.VersoBlueprintTests.ReferenceNameAdmission.checkedAttribute &&
@@ -84,7 +84,7 @@ run_cmd do
       unless accepted.isNone && after.factRecords == before.factRecords &&
           after.localFactRecords == before.localFactRecords && after.nextCount == before.nextCount &&
           after.leanNameLabels.toList == before.leanNameLabels.toList &&
-          !after.data.contains `checked_local_bad && !after.pendingNodes.contains `checked_local_bad &&
+          !after.inventory.contains `checked_local_bad && !after.nodeRegistrations.contains `checked_local_bad &&
           sameProducerNodes before after do return false
   return true
 

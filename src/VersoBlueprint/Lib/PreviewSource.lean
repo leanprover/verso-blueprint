@@ -107,7 +107,7 @@ def traversalPreviewCandidateKey?
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
 
-private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
+private def nodeFacetPreview? (node : Data.NodeInventory) (facet : PreviewCache.Facet) : Option Preview := do
   let facetName := match facet with
     | .statement => `statement
     | .proof => `proof
@@ -121,7 +121,7 @@ private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : 
 
 def environmentSelection? (env : Environment) (label : Name) : Option Selection := do
   let state := informalExt.getState env
-  let node ← state.data.get? label
+  let node ← state.inventory.get? label
   let (facet, preview) ←
     PreviewCache.Facet.select? (nodeFacetPreview? node)
   pure <| Selection.ofPreview label facet preview

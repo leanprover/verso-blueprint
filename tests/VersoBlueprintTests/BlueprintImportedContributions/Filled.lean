@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.FillPlaceholder
 /-- info: true -/
 #guard_msgs in
 #eval show Lean.CoreM Bool from do
-  let some node ← Informal.Environment.getNode? `placeholder | return false
+  let some node ← Informal.Environment.getNodeInventory? `placeholder | return false
   let some statement := node.proseView `verso `statement | return false
   let some proof := node.proseView `verso `proof | return false
   return (← Informal.Environment.importedConflicts).isEmpty &&

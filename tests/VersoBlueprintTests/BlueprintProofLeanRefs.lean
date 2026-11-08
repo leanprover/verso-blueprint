@@ -51,9 +51,9 @@ theorem admittedAttachedResult : True := by sorry
         let .ok batched := assemble indices
           | throw <| IO.userError "Repeated associations were rejected"
         let .ok (_, incremental) := indices.foldlM
-            (fun (state : Array Nat × Data.Node) index => do
+            (fun (state : Array Nat × Data.NodeInventory) index => do
               let accumulated := state.1.push index
-              return (accumulated, ← assemble accumulated)) (#[], ({} : Data.Node))
+              return (accumulated, ← assemble accumulated)) (#[], ({} : Data.NodeInventory))
           | throw <| IO.userError "Incremental associations were rejected"
         let .ok replayed := assemble (indices ++ indices)
           | throw <| IO.userError "Replayed associations were rejected"
@@ -66,7 +66,7 @@ theorem admittedAttachedResult : True := by sorry
     let ref := { good with provedStatus := status, present := status != .missing }
     let code : Data.Code := { stx := .missing, definedTheorems := #[{
       name := good.canonical, provedStatus := .proved }] }
-    let node : Data.Node := {
+    let node : Data.NodeInventory := {
       kind := .theorem
       nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[ref]
       sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
@@ -87,7 +87,7 @@ theorem admittedAttachedResult : True := by sorry
       throw <| IO.userError "Provider display status supplied a missing realization assessment"
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := good.canonical, provedStatus := .proved }] }
-  let node : Data.Node := {
+  let node : Data.NodeInventory := {
     kind := .theorem
     nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[good]
     sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
@@ -140,7 +140,7 @@ This imported statement association also has a proof-facet occurrence.
 /- Both facets contribute to node membership, dependency inference, and source inventory. -/
 #eval show CoreM Unit from do
   let state := Environment.informalExt.getState (← getEnv)
-  let some node := state.data.get? (Name.mkSimple "proof.references")
+  let some node := state.inventory.get? (Name.mkSimple "proof.references")
     | throwError "Missing proof-reference node"
   unless (node.nativeRefsOn `statement).map (·.canonical) == #[`Nat.add_assoc] &&
       (node.nativeRefsOn `proof).map (·.canonical) == #[`Nat.add_comm, `Nat.add_left_comm] do
@@ -153,24 +153,24 @@ This imported statement association also has a proof-facet occurrence.
   unless state.leanNameLabels.getD `Nat.add_comm #[] ==
       #[Name.mkSimple "proof.helper.owner", Name.mkSimple "proof.references"] do
     throwError "Proof declarations were excluded from the accepted index"
-  let some proofOnly := state.data.get? (Name.mkSimple "proof.attachments.only")
+  let some proofOnly := state.inventory.get? (Name.mkSimple "proof.attachments.only")
     | throwError "Missing proof-only association node"
   unless proofOnly.hasAssociatedCode && proofOnly.leanDecls == #[``attachedResult] &&
       (proofOnly.nativeRefsOn `proof).map (·.canonical) == #[``attachedResult] &&
       (proofOnly.usesOn `proof).map (·.label) == #[Name.mkSimple "proof.inferred.dep"] &&
       (proofOnly.usesOn `statement).isEmpty do
     throwError "Proof association did not contribute membership or inferred proof dependencies"
-  let some admitted := state.data.get? (Name.mkSimple "proof.attachments.admitted")
+  let some admitted := state.inventory.get? (Name.mkSimple "proof.attachments.admitted")
     | throwError "Missing admitted proof association"
   unless (admitted.nativeRefsOn `proof).size == 1 && (admitted.nativeRefsOn `proof)[0]!.provedStatus.isIncomplete do
     throwError "Admitted proof provider evidence was not retained"
-  let some both := state.data.get? (Name.mkSimple "proof.attachments.both")
+  let some both := state.inventory.get? (Name.mkSimple "proof.attachments.both")
     | throwError "Missing shared-facet association"
   unless both.leanDecls == #[``attachedResult] && both.associatedExternalRefs.size == 1 do
     throwError "The same declaration on two facets was counted twice"
   let proofGap : Data.ProvedStatus := .incomplete {
     knownSorry := #[{ location := .proof, origin := .dependency }] }
-  let crossFacetGap : Data.Node := { both with
+  let crossFacetGap : Data.NodeInventory := { both with
     nativeAssociations := both.nativeAssociations.map fun association =>
       if association.facets.contains `proof then
         { association with reference := { association.reference with provedStatus := proofGap } }
@@ -191,7 +191,7 @@ This imported statement association also has a proof-facet occurrence.
 -- local contribution and check both associations again after another import.
 private def contributeProofReferences (label : Data.Label) (references : Array Data.ExternalRef)
     (payload : SourceData.Registration := {}) :
-    CoreM (Option Data.Node) := do
+    CoreM (Option Data.NodeInventory) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
     label, nativeAssociations := BlueprintNativeFixture.associations label #[`proof] references
@@ -203,7 +203,7 @@ run_meta do
     (Data.ExternalRef.ofName ``Provider.secondProof)
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") #[ref]
     | throwError "Could not extend the imported proof associations"
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.associations")
     | throwError "Missing imported proof node"
   unless node.leanDecls == #[``Provider.firstProof, ``Provider.secondProof] do
     throwError "Local proof association discarded imported membership"
@@ -216,7 +216,7 @@ run_meta do
   let neutral := { ref with provedStatus := .proved }
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") #[neutral, ref]
     | throwError "Could not repeat the imported proof association"
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.repeated")
     | throwError "Missing repeated imported proof node"
   unless (node.nativeRefsOn `proof).size == 1 &&
       node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
@@ -234,7 +234,7 @@ run_meta do
     let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
       kind := some .theorem, sources := #[BlueprintNativeFixture.source (Name.mkSimple "proof.inline.overlap") `lean `body `lean (.leanInline code)] }
       | throwError "Could not register inline/external overlap"
-    let some node ← Environment.getNode? (Name.mkSimple "proof.inline.overlap")
+    let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.inline.overlap")
       | throwError "Missing inline/external overlap"
     unless node.associatedExternalRefs.size == 1 &&
         node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&

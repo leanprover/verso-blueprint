@@ -128,9 +128,9 @@ theorem rollbackDeclaration : True := True.intro
 -- Assert semantic fields, evidence buffers, indexes, catalogs and counters
 -- directly. No debug rendering is used as a substitute for state assertions.
 private def unchanged (before after : Environment.State) : TermElabM Unit := do
-  ensure (before.data.toArray.map (·.1) == after.data.toArray.map (·.1)) "Accepted labels changed"
-  for (label, a) in before.data.toArray do
-    let some b := after.data.get? label | throwError "Accepted node disappeared"
+  ensure (before.inventory.toArray.map (·.1) == after.inventory.toArray.map (·.1)) "Accepted labels changed"
+  for (label, a) in before.inventory.toArray do
+    let some b := after.inventory.get? label | throwError "Accepted node disappeared"
     ensure (a.kind == b.kind && a.kindIsExplicit == b.kindIsExplicit && a.count == b.count &&
       reprStr a.sources == reprStr b.sources && a.uses == b.uses &&
       a.nativeAssociations == b.nativeAssociations &&
@@ -141,9 +141,9 @@ private def unchanged (before after : Environment.State) : TermElabM Unit := do
     decide (before.factRecords = after.factRecords) &&
     decide (before.localFactRecords = after.localFactRecords) &&
     before.leanNameLabels.toArray == after.leanNameLabels.toArray) "Evidence/index/counter changed"
-  ensure (before.pendingNodes.toArray.map (·.1) == after.pendingNodes.toArray.map (·.1)) "Pending labels changed"
-  for (label, a) in before.pendingNodes.toArray do
-    let some b := after.pendingNodes.get? label | throwError "Pending node disappeared"
+  ensure (before.nodeRegistrations.toArray.map (·.1) == after.nodeRegistrations.toArray.map (·.1)) "Pending labels changed"
+  for (label, a) in before.nodeRegistrations.toArray do
+    let some b := after.nodeRegistrations.get? label | throwError "Pending node disappeared"
     ensure (a.registrations.size == b.registrations.size && a.localRegistrations.size == b.localRegistrations.size &&
       a.origin == b.origin && a.contributors == b.contributors && a.authoredOrigin? == b.authoredOrigin? &&
       a.authoredOriginConflict == b.authoredOriginConflict) "Pending payload/export/provenance changed"
@@ -308,7 +308,7 @@ run_cmd liftTermElabM do
     Environment.modify fun state => { state with factRecords := { fact with priority := some "synthetic" } :: state.factRecords }
     discard <| rejected "producer-collision" (← query)
   isolated do
-    Environment.modify fun state => { state with data := state.data.modify Owner.node fun node =>
+    Environment.modify fun state => { state with inventory := state.inventory.modify Owner.node fun node =>
       { node with nativeAssociations := node.nativeAssociations.map fun association =>
         { association with reference := { association.reference with canonical := `Wrong.subject } } } }
     -- The expectation cannot borrow the original theorem after its accepted

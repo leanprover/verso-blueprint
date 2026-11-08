@@ -303,7 +303,7 @@ def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
 def capture (state : Informal.Environment.State)
     (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none) :
     Array Informal.RenderNode :=
-  state.data.toArray.map fun (label, node) =>
+  state.inventory.toArray.map fun (label, node) =>
     Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?) (assessmentFor label)
 
 def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=

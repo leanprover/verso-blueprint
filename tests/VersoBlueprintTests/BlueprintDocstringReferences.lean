@@ -20,10 +20,10 @@ private def manualImpls : ExtensionImpls := extension_impls%
 #guard_msgs in
 #eval show CoreM Bool from do
   let state := Informal.Environment.informalExt.getState (← getEnv)
-  let some node := state.data.get? (Name.mkSimple "attr.doc.source") | return false
+  let some node := state.inventory.get? (Name.mkSimple "attr.doc.source") | return false
   let some statement := node.proseView `verso `statement | return false
   let some proof := node.proseView `verso `proof | return false
-  let some late := state.data.get? (Name.mkSimple "attr.doc.late") | return false
+  let some late := state.inventory.get? (Name.mkSimple "attr.doc.late") | return false
   pure <|
     statement.hasBody && !proof.hasBody &&
     node.usesOn `statement == #[
@@ -33,7 +33,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
       node.usesOn `proof == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
     (late.proseView `verso `statement).any (fun body => !body.hasBody) &&
     (late.usesOn `statement).map (·.label) == #[Name.mkSimple "attr.doc.target"] &&
-    (state.pendingNodes.getD (Name.mkSimple "attr.doc.source") {}).localRegistrations.isEmpty && state.activeDirective.isNone
+    (state.nodeRegistrations.getD (Name.mkSimple "attr.doc.source") {}).localRegistrations.isEmpty && state.activeDirective.isNone
 
 #docs (Genre.Manual) includedDoc "Docstring references" :=
 :::::::
@@ -125,7 +125,7 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
   let some (.inr doc) ← findInternalDocString? (← getEnv) ``invalidDocstringIntent
     | return false
   let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
-  let some node ← Informal.Environment.getNode? (Name.mkSimple "attr.doc.invalid.recovered")
+  let some node ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.invalid.recovered")
     | return false
   pure <| dependencies.isEmpty &&
     (node.usesOn `statement).isEmpty &&

@@ -185,15 +185,15 @@ private def recordObservation (collected : Collected) (key : RequirementKey) (ob
 
 /-- Lossless view of the fields consumed by capture; not another store. -/
 structure Raw where
-  nodes : Array (Name × Environment.RegisteredNode)
-  pending : NameSet
+  nodes : Array (Name × Data.NodeInventory)
+  registered : NameSet
   facts : List Contributions.Record
   authored : Array Environment.AuthoringRecord
   initialIssues : Array Diagnostic
 
 def Raw.ofState (state : Environment.State) : Raw := {
-  nodes := state.data.toArray
-  pending := state.pendingNodes.toArray.foldl (fun names (name, _) => names.insert name) {}
+  nodes := state.inventory.toArray
+  registered := state.nodeRegistrations.toArray.foldl (fun names (name, _) => names.insert name) {}
   facts := state.factRecords
   authored := state.authoringRecords
   initialIssues := Environment.authoringRecordIssues state.authoringRecords ++ state.importedConflicts.map fun conflict =>
@@ -262,7 +262,7 @@ structure RealizationStep where
 
 structure NodeStep where
   label : Name
-  accepted : Environment.RegisteredNode
+  accepted : Data.NodeInventory
   realizations : Array RealizationStep
 
 structure AuthoredStep where
@@ -455,14 +455,14 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
   for node in p.ordinary do
     let label := node.label
     let accepted := node.accepted
-    if !p.raw.pending.contains label then
+    if !p.raw.registered.contains label then
       reject "missing-source-envelope" label.toString "Accepted concept has no retained source registrations"
     if let .error diagnostics := Contributions.resolve label p.raw.facts then
       reject "producer-collision" label.toString (reprStr diagnostics)
     let uses := accepted.uses
     collected := { collected with
       input.nodes := collected.input.nodes.push (contribution `node (toJson (Vir.nameKey label))
-        (accepted.toNode.toConcept label label.toString))
+        (accepted.toConcept label label.toString))
       uses := collected.uses ++ uses }
     for step in node.realizations do
       let base := step.key

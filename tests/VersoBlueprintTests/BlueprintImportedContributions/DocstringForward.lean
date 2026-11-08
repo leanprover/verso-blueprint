@@ -17,10 +17,10 @@ import VersoBlueprintTests.BlueprintImportedContributions.DocstringB
 @[blueprint "owned_docstring"] theorem docstringOwner : True := trivial
 
 #eval show Lean.CoreM Unit from do
-  let some node ← Informal.Environment.getNode? `owned_docstring
+  let some node ← Informal.Environment.getNodeInventory? `owned_docstring
     | throwError "Missing declaration-owned node"
   unless node.hasStatementBody do
     throwError "The introducing declaration lost its docstring statement"
   let state := Informal.Environment.informalExt.getState (← Lean.getEnv)
-  unless state.nextCount == state.data.foldl (fun next _ node => max next (node.count + 1)) 1 do
+  unless state.nextCount == state.inventory.foldl (fun next _ node => max next (node.count + 1)) 1 do
     throwError "The elaboration counter disagrees with accepted imported and local nodes"

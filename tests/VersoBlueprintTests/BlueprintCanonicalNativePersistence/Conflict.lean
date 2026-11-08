@@ -16,11 +16,11 @@ run_cmd Lean.Elab.Command.liftCoreM do
     let records := state.factRecords.filter (·.label == label)
     let [first, second] := records | throwError "Expected both raw collision variants"
     unless first.id == second.id && first.nativeAssociations != second.nativeAssociations &&
-        state.importedConflicts.any (·.label == label) && !state.data.contains label &&
+        state.importedConflicts.any (·.label == label) && !state.inventory.contains label &&
         !(state.leanNameLabels.getD `CanonicalNativePersistence.original #[]).contains label do
       throwError "Conflicting imported native destinations were collapsed or admitted"
     unless state.localFactRecords.isEmpty &&
-        state.pendingNodes.all (fun _ pending => pending.localRegistrations.isEmpty) do
+        state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) do
       throwError "Malformed imported evidence must remain raw, not become a local export"
     -- Exercise later attachment without conflating diagnostic reporting state
     -- with semantic rollback. Restore this whole test environment on every exit.

@@ -12,7 +12,7 @@ open Lean Informal
 run_cmd Lean.Elab.Command.liftCoreM do
   let label := Name.mkSimple "storage.source"
   let state := Environment.informalExt.getState (← getEnv)
-  let pending := state.pendingNodes.getD label {}
+  let pending := state.nodeRegistrations.getD label {}
   let some source := (pending.registrations.flatMap (·.sources)).find? (·.context.language == `lean)
     | throwError "Missing actual inline source"
   let variant : SourceData.Registration := { sources := #[{ source with
@@ -20,4 +20,4 @@ run_cmd Lean.Elab.Command.liftCoreM do
     document := ⟨⟨`lean, `otherProject⟩, source.document.path⟩
     payload := .leanInline { stx := .missing } }] }
   Environment.modify fun state => { state with
-    pendingNodes := state.pendingNodes.insert label { pending with localRegistrations := #[variant] } }
+    nodeRegistrations := state.nodeRegistrations.insert label { pending with localRegistrations := #[variant] } }

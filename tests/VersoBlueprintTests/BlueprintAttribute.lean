@@ -17,17 +17,17 @@ namespace Verso.VersoBlueprintTests.BlueprintAttribute
 private def importedState : CoreM Informal.Environment.State := do
   pure <| Informal.Environment.informalExt.getState (← getEnv)
 
-private def importedNode? (label : String) : CoreM (Option Informal.Data.Node) := do
-  pure <| (← importedState).data.get? (Name.mkSimple label)
+private def importedNode? (label : String) : CoreM (Option Informal.Data.NodeInventory) := do
+  pure <| (← importedState).inventory.get? (Name.mkSimple label)
 
-private def importedNodeByName? (label : Name) : CoreM (Option Informal.Data.Node) := do
-  pure <| (← importedState).data.get? label
+private def importedNodeByName? (label : Name) : CoreM (Option Informal.Data.NodeInventory) := do
+  pure <| (← importedState).inventory.get? label
 
 private def importedNodeHasLocalContributions (label : String) : CoreM Bool := do
-  pure <| !((← importedState).pendingNodes.getD (Name.mkSimple label) {}).localRegistrations.isEmpty
+  pure <| !((← importedState).nodeRegistrations.getD (Name.mkSimple label) {}).localRegistrations.isEmpty
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
-    (node : Informal.Data.Node) : Bool :=
+    (node : Informal.Data.NodeInventory) : Bool :=
   match node.nativeRefsOn `statement with
   | #[ref] =>
     ref.origin == .blueprintAttr &&
@@ -173,7 +173,7 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
           .definition inductiveNode
 
 /-- Imported statement payloads should keep empty deps and at least one preview source. -/
-private def importedStatementExportOk (node : Informal.Data.Node) : Bool :=
+private def importedStatementExportOk (node : Informal.Data.NodeInventory) : Bool :=
   match node.proseView `verso `statement with
   | some st => (node.usesOn `statement).isEmpty &&
       (!st.previewBlocks.isEmpty || !st.elabStx.isEmpty)
