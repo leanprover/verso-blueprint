@@ -75,24 +75,21 @@ function createRow(entry) {
   if (row.label) item.setAttribute("data-bp-preview-header-label", row.label);
   if (row.href) item.setAttribute("data-bp-preview-header-href", row.href);
 
+  // One line per row: status mark, title, and badges. The label is in the row's
+  // tooltip and in the preview heading of the selected row.
   const target = element(row.href && !row.current ? "a" : "span", "bp_relation_target");
   if (target instanceof HTMLAnchorElement) target.href = row.href;
-  const title = element("span", "bp_relation_target_title");
-  title.appendChild(statusMark(entry[6]));
-  title.appendChild(element("span", "bp_relation_target_name", row.title || row.label));
-  if (row.current) title.appendChild(element("span", "bp_relation_current_tag", "this block"));
-  target.appendChild(title);
-
-  const meta = element("span", "bp_relation_target_meta");
-  if (row.label) meta.appendChild(element("code", "", row.label));
+  if (row.label) target.title = row.label;
+  target.appendChild(statusMark(entry[6]));
+  target.appendChild(element("span", "bp_relation_target_name", row.title || row.label));
+  if (row.current) target.appendChild(element("span", "bp_relation_current_tag", "this block"));
   (Array.isArray(entry[4]) ? entry[4] : []).forEach(function (code) {
     const spec = relationBadges[code];
     if (!spec) return;
     const badge = element("span", "bp_relation_axis_badge " + spec.className, spec.text);
     badge.title = spec.title;
-    meta.appendChild(badge);
+    target.appendChild(badge);
   });
-  target.appendChild(meta);
   item.appendChild(target);
   row.element = item;
   return row;

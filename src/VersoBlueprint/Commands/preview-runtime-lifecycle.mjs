@@ -195,7 +195,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
   // when its own size changes, such as when its content arrives, and when the page
   // scrolls or resizes. Measuring once on open is what misplaced panels before.
 
-  /** @type {Map<HTMLElement, { anchor: unknown, options: Record<string, unknown> }>} */
+  /** @type {Map<HTMLElement, { anchor: unknown, options: Record<string, unknown>, side: string }>} */
   const placedPanels = new Map();
   /** @type {ResizeObserver | null} */
   let placedPanelObserver = null;
@@ -254,7 +254,12 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     panel.style.overflowY = "";
   }
 
-  function computePlacement(panel, anchor, options) {
+  // An open panel whose content changes keeps the side it opened on, capped to fit,
+  // rather than jumping to the other side of its anchor; it moves only when this
+  // little room is left there.
+  const stickySideMinRoom = 160;
+
+  function computePlacement(panel, anchor, options, previousSide) {
     const rect = readAnchorRect(anchor);
     if (!rect) return null;
     const margin = Number.isFinite(options.margin) ? Number(options.margin) : 12;
@@ -273,7 +278,11 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     const after = (vertical ? bounds.bottom : bounds.right) - end - offset;
     const before = start - (vertical ? bounds.top : bounds.left) - offset;
     const mainSize = function () { return vertical ? size.height : size.width; };
-    const useAfter = mainSize() <= after || after >= before;
+    const keeps = function (room) { return room >= Math.min(mainSize(), stickySideMinRoom); };
+    const useAfter =
+      previousSide === "after" && keeps(after) ? true :
+      previousSide === "before" && keeps(before) ? false :
+      mainSize() <= after || after >= before;
     const room = Math.max(0, useAfter ? after : before);
     if (mainSize() > room) size = capPanelSize(panel, vertical, room);
     if (!vertical && size.height > bounds.bottom - bounds.top) size = capPanelSize(panel, true, bounds.bottom - bounds.top);
@@ -291,13 +300,14 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     panel.style.left = Math.round(left - origin.left) + "px";
     panel.style.top = Math.round(top - origin.top) + "px";
     panel.setAttribute("data-bp-placed", "1");
-    return { left: left, top: top };
+    return { left: left, top: top, side: useAfter ? "after" : "before" };
   }
 
   function placeTrackedPanel(panel) {
     const placement = placedPanels.get(panel);
     if (!placement || !panel.isConnected || panel.hidden) return;
-    computePlacement(panel, placement.anchor, placement.options);
+    const placed = computePlacement(panel, placement.anchor, placement.options, placement.side);
+    if (placed) placement.side = placed.side;
   }
 
   function trackPlacedPanel(panel) {
@@ -320,7 +330,8 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
    * element. With `side: "below"` (the default) it opens under the anchor and flips
    * above when there is more room there; with `side: "beside"` it opens to the right
    * and flips left. The panel never covers its anchor: when neither side has room, it
-   * takes the roomier side and is capped to fit there, scrolling its content. Its width
+   * takes the roomier side and is capped to fit there, scrolling its content. When its
+   * content or the page changes later, it keeps its side while that side has room. Its width
    * is likewise capped to the available width. Placing with no anchor stops tracking
    * the panel and clears its position and caps.
    *
@@ -342,9 +353,12 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
       return null;
     }
     const opts = options && typeof options === "object" ? options : {};
-    placedPanels.set(panel, { anchor: anchor, options: opts });
+    const placement = { anchor: anchor, options: opts, side: "" };
+    placedPanels.set(panel, placement);
     trackPlacedPanel(panel);
-    return computePlacement(panel, anchor, opts);
+    const placed = computePlacement(panel, anchor, opts, "");
+    if (placed) placement.side = placed.side;
+    return placed;
   }
 
   export function bindPanelRepositioner(options) {

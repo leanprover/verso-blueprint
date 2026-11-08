@@ -571,8 +571,23 @@ span[class$="_thmlabel"]::after {
   font-size: 0.75rem;
 }
 
+/* In the popup the mark already shows the status, so the word stays quiet. */
 .bp_code_decl_item .bp_code_decl_status {
   margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.bp_code_decl_name a {
+  color: var(--bp-color-link);
+  text-decoration: none;
+}
+
+.bp_code_decl_name a:hover {
+  text-decoration: underline;
 }
 
 .bp_code_summary_status {
@@ -584,6 +599,7 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_summary_go {
   margin-left: auto;
+  color: var(--bp-color-link);
   font-weight: 600;
   text-decoration: none;
 }
@@ -949,7 +965,7 @@ button.bp_relation_chip:focus-visible {
 
 .bp_relation_panel .bp_preview_panel_body {
   display: grid;
-  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  grid-template-columns: fit-content(18rem) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
@@ -987,11 +1003,15 @@ button.bp_relation_chip:focus-visible {
 
 .bp_relation_target {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.45rem 0.6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 0.375rem;
-  color: inherit;
+  color: var(--bp-color-text-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
   text-decoration: none;
 }
 
@@ -1009,16 +1029,6 @@ a.bp_relation_target:hover {
   outline-offset: -2px;
 }
 
-.bp_relation_target_title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  color: var(--bp-color-text-strong);
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
 .bp_relation_status {
   flex: none;
   display: inline-flex;
@@ -1032,23 +1042,8 @@ a.bp_relation_target:hover {
   font-weight: 500;
 }
 
-.bp_relation_item_current .bp_relation_target_title {
+.bp_relation_item_current .bp_relation_target {
   color: var(--bp-color-text-subtle);
-}
-
-.bp_relation_target_meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  padding-left: 1.3rem;
-  color: var(--bp-color-text-faint);
-  font-size: 0.72rem;
-}
-
-.bp_relation_target_meta code {
-  font-size: 0.72rem;
-  overflow-wrap: anywhere;
 }
 
 .bp_relation_axis_badge {
@@ -1153,7 +1148,7 @@ a.bp_relation_target:hover {
 }
 
 .bp_relation_preview_label[href]:hover {
-  color: var(--bp-color-link, #1d4ed8);
+  color: var(--bp-color-link);
   text-decoration: underline;
 }
 

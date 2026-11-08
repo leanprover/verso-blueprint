@@ -80,8 +80,8 @@ structure DeclSummaryItem where
   /-- Explicit HTML-cache preview lookup key, when it differs from `previewName`. -/
   previewLookupKey? : Option String := none
   href : Option String := none
-  /-- Reader-facing declaration kind, such as "theorem" or "definition". -/
-  kindText : String := "definition"
+  /-- Reader-facing declaration kind, such as "theorem", or empty when unknown. -/
+  kindText : String := ""
   status : Option Data.ProvedStatus := none
   present : Bool := true
 deriving Inhabited, Repr
@@ -112,7 +112,8 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
           <span class="bp_code_status_symbol">{{.text true view.codeEntrySymbol}}</span>
         </span>
         <span class="bp_code_decl_name">{{nameNode}}</span>
-        <span class="bp_code_decl_kind">{{.text true item.kindText}}</span>
+        {{if item.kindText.isEmpty then .empty else
+          {{<span class="bp_code_decl_kind">{{.text true item.kindText}}</span>}}}}
         <span class={{s!"bp_code_decl_status {view.codeDeclClass}"}}>
           {{.text true view.summaryText}}
         </span>
@@ -181,7 +182,7 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
       displayName := decl.written
       previewName := decl.canonical
       href := decl.href? hrefOf
-      kindText := (externalDeclKindText? decl).getD "declaration"
+      kindText := (externalDeclKindText? decl).getD ""
       status := decl.provedStatus
       present := decl.present
     }

@@ -63,6 +63,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-biblio-border-soft: #e9ddff;
   --bp-color-biblio-surface-soft: #fdfbff;
   --bp-color-biblio-link: #4c1d95;
+  --bp-color-link: #1d4ed8;
   --bp-radius-sm: 0.35rem;
   --bp-radius-md: 0.45rem;
   --bp-radius-lg: 0.5rem;
@@ -173,7 +174,7 @@ def previewPanelCss : String := r##"
 
 .bp_preview_panel_title a:hover,
 .bp_preview_panel_label[href]:hover {
-  color: var(--bp-color-link, #1d4ed8);
+  color: var(--bp-color-link);
   text-decoration: underline;
 }
 
