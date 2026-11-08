@@ -19,7 +19,7 @@ open Verso.VersoBlueprintTests.ReferenceNameAdmission
   let selected := before.factRecords.filter (·.label == `checked_imported_bad)
   if before.inventory.contains `checked_imported_bad || selected.length != 2 then return false
   unless selected.any (fun record => record.nativeAssociations.any fun association =>
-      association.facets.contains `implementation && association.reference.canonical == malformedCanonical && !association.reference.present) do return false
+      association.placement == `implementation && association.reference.canonical == malformedCanonical && !association.reference.present) do return false
   unless before.importedConflicts.any (fun conflict => conflict.label == `checked_imported_bad &&
       conflict.reasons.any (·.contains "unstable canonical name")) do return false
   unless before.leanNameLabels.toList.all (fun (_, labels) =>

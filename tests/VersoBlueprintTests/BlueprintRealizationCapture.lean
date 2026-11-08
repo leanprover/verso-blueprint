@@ -181,7 +181,7 @@ run_cmd liftTermElabM do
     "Foreign source borrowed a native declaration or validation"
   ensure (before.inventory.get? (Name.mkSimple "storage.source") |>.any fun node =>
       node.sources.any fun source => source.destination.realization == ⟨Name.mkSimple "storage.source", `rocqTranslation⟩ &&
-        source.destination.facet == `implementation)
+        source.destination.role == some `implementation)
     "Accepted source inventory flattened the imported named destination"
   ensure snapshot.diagnostics.isEmpty s!"Unexpected source/provider diagnostics: {repr snapshot.diagnostics}"
   ensure (registry.nodes.size == before.inventory.size) "Capture omitted ordinary accepted concepts"
@@ -234,7 +234,7 @@ run_cmd liftTermElabM do
     ensure (single.registry.nodes.size == 1) "Either public spelling is supported when unambiguous"
   -- Unresolved targets also enter the public graph, and must not alias a node.
   let withUse : Data.NodeInventory := { accepted with uses := #[{
-      node := flat, facet := `statement, reference := { label := hierarchical } }] }
+      node := flat, role := `statement, reference := { label := hierarchical } }] }
   let targetPlan := Capture.plan { publicRaw with nodes := #[(flat, withUse)] }
   match Capture.evaluate targetPlan {} with
   | .ok _ => throwError "Unresolved dependency target aliased a public node label"
@@ -306,8 +306,8 @@ run_cmd liftTermElabM do
     | throwError "Missing accepted heterogeneous-source fixture"
   let allSourceSteps := plan.ordinary.flatMap fun node => node.realizations.flatMap (·.sources)
   for source in acceptedSources.sources do
-    if let .leanInline _ := source.payload then continue
-    let model := source.destination.realization.forRole (SourceData.selectedRole source.destination.facet)
+    let some role := source.destination.role | continue
+    let model := source.destination.realization.forRole role
     ensure (registry.realization? model |>.isSome) s!"Missing ordinary source role {model.name}"
     ensure ((registry.resultFor (.realization model)).status == .unassessed)
       s!"Source presence invented validation for {model.name}"
@@ -343,7 +343,7 @@ run_cmd liftTermElabM do
   let state := Environment.informalExt.getState (← getEnv)
   let label := Name.mkSimple "storage.source"
   let .some registered := state.inventory.get? label | throwError "Missing foreign-source diagnostic fixture"
-  let destination : SourceData.FacetDestination := ⟨⟨label, `rocqTranslation⟩, `implementation⟩
+  let destination : SourceData.SourceDestination := ⟨⟨label, `rocqTranslation⟩, some `implementation⟩
   let .some source := registered.sources.find? (·.destination == destination)
     | throwError "Missing arbitrary non-Lean source for diagnostic fixture"
   let source := { source with source := Data.SourceLocationResult.unavailable "test source range unavailable" }

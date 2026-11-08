@@ -19,7 +19,7 @@ def testFact (label : Name) (site : Nat) (ref : Data.ExternalRef) (facet : Name 
     Contributions.Record := {
   id := { moduleName := `ReferenceNameAdmission, producer := `test, subject := label, site, slot := 0 }
   label
-  nativeAssociations := BlueprintNativeFixture.associations label #[facet] #[ref]
+  nativeAssociations := BlueprintNativeFixture.associations label facet #[ref]
   priority := none
   source := none }
 

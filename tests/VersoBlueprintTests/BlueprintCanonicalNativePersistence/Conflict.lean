@@ -30,7 +30,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       id := ⟨← getMainModule, `test.validLater, label, 1, 0⟩, label
       nativeAssociations := #[{
         realization := ⟨label, `lean⟩, context := ⟨`lean, `blueprintFixtures⟩
-        facets := #[`statement], reference }]
+        placement := `statement, reference }]
       priority := none, source := none } { tags := #["must not restore rejected concept"] }
   finally
     setEnv env

@@ -28,23 +28,23 @@ structure Record where
   id : ContributionId
   label : Label
   /-- Every native destination and full typed snapshot survives collection and
-  import. Facet/realization selection does not narrow the raw evidence union. -/
+  import. Placement/realization selection does not narrow the raw evidence union. -/
   nativeAssociations : Array Informal.SourceData.NativeAssociation := #[]
   priority : Option String
   source : Option SourceLocation
   deriving DecidableEq, Repr
 
-/-- Both facets establish normal node membership; neither is descriptive-only. -/
+/-- Every placement establishes normal node membership; none is descriptive-only. -/
 def Record.allReferences (r : Record) : Array ExternalRef :=
   r.nativeAssociations.map (·.reference)
 
 /-- Exact selected source membership; independent of resolution/completion and
 the node-wide union. Missing native snapshots remain selected inputs. -/
 def Record.referencesAt (r : Record) (key : Informal.Realizations.RealizationKey)
-    (context : Informal.Realizations.Context) (facet : Name) : Array ExternalRef :=
+    (context : Informal.Realizations.Context) (placement : Name) : Array ExternalRef :=
   (r.nativeAssociations.filter fun association =>
     association.realization == key && association.context == context &&
-      association.facets.contains facet).map (·.reference)
+      association.placement == placement).map (·.reference)
 
 def EvidenceEq (xs ys : List Record) : Prop := ∀ r, r ∈ xs ↔ r ∈ ys
 

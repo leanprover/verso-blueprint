@@ -26,7 +26,7 @@ run_cmd do
         site := 1
         slot := 0 }
       label := `coherent_equal
-      nativeAssociations := BlueprintNativeFixture.associations `coherent_equal #[`statement] #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations `coherent_equal `statement #[ref]
       priority := some "high"
       source := none } {}
 

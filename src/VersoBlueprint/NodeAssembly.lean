@@ -47,15 +47,17 @@ private def mergeContribution (label : Label) (node : NodeInventory)
           | .markup first, .markup second => first.key == second.key
           | _, _ => false
         if occupied then
-          conflict s!"Label {label}: duplicate-source: realization '{source.destination.realization.name}' already has a {source.destination.facet} source"
+          let role := source.destination.role.map toString |>.getD "compiled Lean"
+          let article := if "aeiou".contains role.front then "an" else "a"
+          conflict s!"Label {label}: duplicate-source: realization '{source.destination.realization.name}' already has {article} {role} source"
     sources := sources.push source
   let mut uses := node.uses
   for use in incoming.uses do
     for previous in uses do
-      if previous.realization == use.realization && previous.facet == use.facet &&
+      if previous.realization == use.realization && previous.role == use.role &&
           previous.reference.label == use.reference.label && previous.reference.origin == use.reference.origin &&
           previous.reference.intent != use.reference.intent then
-        conflict s!"Label {label} declares conflicting {use.facet} dependency intents for '{use.reference.label}' ({use.reference.origin}): existing '{previous.reference.intent}', new '{use.reference.intent}'"
+        conflict s!"Label {label} declares conflicting {use.role} dependency intents for '{use.reference.label}' ({use.reference.origin}): existing '{previous.reference.intent}', new '{use.reference.intent}'"
     uses := uses.push use
   let parent ← mergeMetadata label "parents" node.parent incoming.parent
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
@@ -82,10 +84,10 @@ private def registrationIssues (label : Label) (incoming : SourceData.Registrati
   let mut errors := incoming.sources.flatMap fun source =>
     (source.rawIssues label).map fun issue => s!"Label {label}: {issue.code}: {issue.message}"
   for use in incoming.uses do
-    if use.node != label || use.reference.label.isAnonymous || use.facet.isAnonymous ||
+    if use.node != label || use.reference.label.isAnonymous || use.role.isAnonymous ||
         use.realization.any (·.isAnonymous) ||
-        (use.realization.isNone && use.facet != `statement && use.facet != `proof) then
-      errors := errors.push s!"Label {label}: invalid-use-destination: Use must preserve its concept, scope and explicit facet"
+        (use.realization.isNone && use.role != `statement && use.role != `proof) then
+      errors := errors.push s!"Label {label}: invalid-use-destination: Use must preserve its concept, scope and explicit role"
   return errors
 
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
@@ -113,8 +115,8 @@ namespace Informal.NodeAssembly
 open Lean Informal.Data Informal.Contributions
 
 private def recordMessage (record : Record) : String :=
-  let statement := (record.nativeAssociations.filter (·.facets.contains `statement)).map (·.reference)
-  let proof := (record.nativeAssociations.filter (·.facets.contains `proof)).map (·.reference)
+  let statement := (record.nativeAssociations.filter (·.placement == `statement)).map (·.reference)
+  let proof := (record.nativeAssociations.filter (·.placement == `proof)).map (·.reference)
   let refs := String.intercalate ", " (statement.toList.map fun ref => ref.canonical.toString)
   let proofRefs := if proof.isEmpty then "" else
     s!" proofRefs=[{String.intercalate ", " (proof.toList.map fun ref => ref.canonical.toString)}]"
@@ -161,8 +163,8 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.source != record.source then
     differences := differences.push
       s!"registration source ({registrationSourceMessage first.source} → {registrationSourceMessage record.source})"
-  if first.nativeAssociations.map (fun association => (association.realization, association.context, association.facets)) !=
-      record.nativeAssociations.map (fun association => (association.realization, association.context, association.facets)) then
+  if first.nativeAssociations.map (fun association => (association.realization, association.context, association.placement)) !=
+      record.nativeAssociations.map (fun association => (association.realization, association.context, association.placement)) then
     differences := differences.push "native destinations"
   if first.allReferences.map (·.canonical) != record.allReferences.map (·.canonical) then
     differences := differences.push "native associations"

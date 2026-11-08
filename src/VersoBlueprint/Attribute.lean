@@ -186,7 +186,7 @@ private def resolveManualTargets
     return labels.foldl Data.Label.pushUnique acc
 
 private def collectAxisDeps
-    (currentDecl currentLabel facet : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
+    (currentDecl currentLabel role : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
     (docstringDeps : Array Data.UseRef := #[]) :
     CoreM (Array SourceData.UseDeclaration) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
@@ -198,14 +198,14 @@ private def collectAxisDeps
       out := out.push {
         node := currentLabel
         realization := some `lean
-        facet := facet
+        role := role
         reference := DependencyAnalysis.automaticUseRef label }
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then
-      out := out.push { node := currentLabel, facet, reference := dependency }
+      out := out.push { node := currentLabel, role, reference := dependency }
   for label in explicit do
     if !excluded.contains label then
-      out := out.push { node := currentLabel, facet, reference := manualUseRef label }
+      out := out.push { node := currentLabel, role, reference := manualUseRef label }
   return out
 
 private def resolveAutoDeps
@@ -252,11 +252,11 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     label
     nativeAssociations := #[{
       realization := ⟨label, `lean⟩, context := ⟨`lean, project⟩
-      facets := #[`statement], reference := extRef }]
+      placement := `statement, reference := extRef }]
     priority := none
     source }
   let sources ← docstring?.toArray.mapM fun (body, _, format) =>
-    Environment.sourceAt label `verso `statement format (.prose body) ref
+    Environment.sourceAt label `verso (some `statement) format (.prose body) ref
   discard <| Environment.contributeAttribute fact {
     sources
     uses := deps.statement ++ deps.proof }

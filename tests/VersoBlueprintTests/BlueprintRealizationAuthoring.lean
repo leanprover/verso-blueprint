@@ -343,9 +343,9 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Source
   let reference : Data.ExternalRef := {
     canonical := `VersoBlueprintTests.BlueprintRealizationAuthoring.rollbackDeclaration
     written := `rollbackDeclaration, present := true, origin := .blueprintAttr, kind := .theorem }
-  return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label #[`statement] #[reference] Owner.projectName, priority := none, source := none },
+  return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label `statement #[reference] Owner.projectName, priority := none, source := none },
     { count := state.nextCount + 100, tags := #["synthetic candidate"]
-      sources := #[BlueprintNativeFixture.source label `verso `statement `verso
+      sources := #[BlueprintNativeFixture.source label `verso (some `statement) `verso
         (.prose { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
 
 -- Ordinary capture has no default-enrollment phase or theorem/docstring gate.

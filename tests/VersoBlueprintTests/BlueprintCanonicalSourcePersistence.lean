@@ -31,23 +31,23 @@ run_cmd Lean.Elab.Command.liftCoreM do
   unless sources.all (fun source => source.document.path.endsWith "Owner.lean" ||
       source.document.path.endsWith "Attachment.lean") do
     throwError "Consumer module replaced the owning source path"
-  unless sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, `statement⟩) &&
-      sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, `proof⟩) &&
-      sources.any (fun source => source.destination == ⟨⟨label, `lean⟩, `body⟩) do
+  unless sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `statement⟩) &&
+      sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `proof⟩) &&
+      sources.any (fun source => source.destination == ⟨⟨label, `lean⟩, none⟩) do
     throwError "Realization and facet identities were flattened"
   unless sources.any (fun source =>
-      source.destination == ⟨⟨label, `rocqTranslation⟩, `implementation⟩ &&
+      source.destination == ⟨⟨label, `rocqTranslation⟩, some `implementation⟩ &&
       source.context.language == `rocq && source.document.path.endsWith "Attachment.lean" &&
       (match source.payload with
       | .text raw => raw == "Definition flag_identity (b : bool) := b."
       | _ => false)) do
     throwError "Imported Rocq source bytes or their named destination were lost"
   unless uses.any (fun use => use.reference.label == Name.mkSimple "storage.forward" &&
-      use.facet == `statement && use.realization.isNone && use.reference.origin == .manual) &&
+      use.role == `statement && use.realization.isNone && use.reference.origin == .manual) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
-      use.facet == `proof && use.realization == some `lean && use.reference.origin == .automatic) &&
+      use.role == `proof && use.realization == some `lean && use.reference.origin == .automatic) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
-      use.facet == `proof && use.realization.isNone && use.reference.intent == .technical) &&
+      use.role == `proof && use.realization.isNone && use.reference.intent == .technical) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.tagged" &&
       use.realization.isNone && use.reference.origin == .automatic && use.reference.intent == .auxiliary) do
     throwError "Shared forward references, scoped inference or proof intent were lost"
@@ -80,22 +80,22 @@ run_cmd Lean.Elab.Command.liftCoreM do
     try
       let rustContext : Realizations.Context := ⟨`rust, `blueprintFixtures⟩
       let rustKey : Realizations.RealizationKey := ⟨label, `rustTranslation⟩
-      let rustSource : SourceData.FacetSource := {
-        destination := ⟨rustKey, `body⟩
+      let rustSource : SourceData.SourceSelection := {
+        destination := ⟨rustKey, some `implementation⟩
         context := rustContext
         document := ⟨rustContext, "src/lib.rs"⟩
         source := .unavailable "Foreign fixture bytes are present without a provider range"
         payload := .text "pub fn value() -> u8 { 1 }" }
       let rocqContext : Realizations.Context := ⟨`rocq, `blueprintFixtures⟩
       let rocqKey : Realizations.RealizationKey := ⟨label, `rocqTranslation⟩
-      let rocqSource : SourceData.FacetSource := {
-        destination := ⟨rocqKey, `proof⟩
+      let rocqSource : SourceData.SourceSelection := {
+        destination := ⟨rocqKey, some `proof⟩
         context := rocqContext
         document := ⟨rocqContext, "theories/Flag.v"⟩
         source := .unavailable "Foreign fixture bytes are present without a provider range"
         payload := .text "Theorem flag_involutive : forall x, flag (flag x) = x." }
       let scopedUse : SourceData.UseDeclaration := {
-        node := label, realization := some `rustTranslation, facet := `body
+        node := label, realization := some `rustTranslation, role := `implementation
         reference := { label := `storage.native, origin := .automatic, intent := .technical } }
       let some foreignNode ← Environment.contribute label {
         sources := #[rustSource, rocqSource]
@@ -115,7 +115,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
 
     CanonicalNativePersistence.rejected "source-destination-mismatch" <|
       Environment.contribute label { sources := #[{ source with
-        destination := ⟨⟨`sibling, `verso⟩, `statement⟩ }] }
+        destination := ⟨⟨`sibling, `verso⟩, some `statement⟩ }] }
     -- Empty source payload avoids a duplicate-body failure, reaching context validation.
     CanonicalNativePersistence.rejected "source-context-mismatch" <|
       Environment.contribute label { sources := #[{ source with
@@ -128,15 +128,15 @@ run_cmd Lean.Elab.Command.liftCoreM do
         payload := .prose { stx := .missing } }] }
     CanonicalNativePersistence.rejected "invalid-use-destination" <|
       Environment.contribute label { uses := #[{
-        node := `sibling, facet := `proof, reference := { label := `target } }] }
+        node := `sibling, role := `proof, reference := { label := `target } }] }
     -- A source/native context mismatch also rejects when each group is valid alone.
     let leanSource := (sources.find? (·.context.language == `lean)).get!
     CanonicalNativePersistence.rejected "source-context-mismatch" <|
       Environment.contributeRecord {
         id := ⟨← getMainModule, `test, label, 1, 0⟩, label, priority := none, source := none
         nativeAssociations := #[{
-          realization := ⟨label, `lean⟩, context := ⟨`lean, `otherProject⟩, facets := #[`statement]
+          realization := ⟨label, `lean⟩, context := ⟨`lean, `otherProject⟩, placement := `statement
           reference := Data.ExternalRef.ofName `storedInline }] } {}
-    unless leanSource.destination.facet == `body do throwError "Control missed inline input"
+    unless leanSource.destination.role == none do throwError "Control missed inline input"
   finally
     setEnv oldEnv

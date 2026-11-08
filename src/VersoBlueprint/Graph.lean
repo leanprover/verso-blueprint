@@ -666,10 +666,10 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       ref?
     }
 
-def capturedUses (snapshot : Realizations.Capture.Snapshot) (label facet : Name) :
+def capturedUses (snapshot : Realizations.Capture.Snapshot) (label role : Name) :
     Array Data.UseRef :=
   Data.UseRef.mergeByLabel #[] <| (snapshot.uses.filter fun use =>
-    use.source == label && use.facet == facet).map (·.reference)
+    use.source == label && use.role == role).map (·.reference)
 
 private def expandLabels (snapshot : Realizations.Capture.Snapshot) (roots : Array Name) : Array Name :=
   Id.run <| do

@@ -33,7 +33,7 @@ rebuilt from the persisted registrations on import, and never exported itself.
 This is not an admitted validation registry: source facts and rendered snapshots
 cannot establish proof completion. Destinations and scopes remain explicit. -/
 structure NodeInventory extends NodeMetadata where
-  sources : Array SourceData.FacetSource := #[]
+  sources : Array SourceData.SourceSelection := #[]
   uses : Array SourceData.UseDeclaration := #[]
   nativeAssociations : Array SourceData.NativeAssociation := #[]
   /-- The module that introduced the label; an authored origin takes precedence. -/
@@ -48,29 +48,29 @@ def NodeInventory.toConcept (node : NodeInventory) (label : Name) (title : Strin
 
 /-- Effective edge metadata for presentation. This is intentionally an aggregate;
 validation consumes the original scoped `uses`, never this flattened view. -/
-def NodeInventory.usesOn (node : NodeInventory) (facet : Name) : Array UseRef :=
-  UseRef.mergeByLabel #[] ((node.uses.filter (·.facet == facet)).map (·.reference))
+def NodeInventory.usesOn (node : NodeInventory) (role : Name) : Array UseRef :=
+  UseRef.mergeByLabel #[] ((node.uses.filter (·.role == role)).map (·.reference))
 
 /-- A named prose view for rendering. Admission permits one nonempty prose body
-per named facet. Dependency-only views retain the ordinary placeholder behavior;
+per realization and role. Dependency-only views retain the ordinary placeholder behavior;
 this presentation value is never stored or used to infer validation scope. -/
-def NodeInventory.proseView (node : NodeInventory) (realization facet : Name) : Option InformalData := Id.run do
+def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : Option InformalData := Id.run do
   let bodies := node.sources.filterMap fun source =>
-    if source.destination.realization.name != realization || source.destination.facet != facet then none
+    if source.destination.realization.name != realization || source.destination.role != some role then none
     else match source.payload with | .prose body => some body | _ => none
   let body := bodies.find? (·.hasBody) <|> bodies[0]?
-  let useDeclarations := ((node.uses.filter (·.facet == facet)).map (·.reference)).foldl
+  let useDeclarations := ((node.uses.filter (·.role == role)).map (·.reference)).foldl
     (fun refs ref => if refs.contains ref then refs else refs.push ref) #[]
   match body with
   | some body => return some { toInformalBody := body, useDeclarations }
   | none => return if useDeclarations.isEmpty then none
     else some { stx := .missing, useDeclarations }
 
-/-- Native source snapshots on a display facet, across all realizations.
+/-- Native source snapshots at one presentation placement, across all realizations.
 The original association inventory retains the realization and context. -/
-def NodeInventory.nativeRefsOn (node : NodeInventory) (facet : Name) : Array ExternalRef :=
+def NodeInventory.nativeRefsOn (node : NodeInventory) (placement : Name) : Array ExternalRef :=
   ExternalRef.mergeSnapshots #[] <|
-    (node.nativeAssociations.filter (·.facets.contains facet)).map (·.reference)
+    (node.nativeAssociations.filter (·.placement == placement)).map (·.reference)
 
 def NodeInventory.inlineCodes (node : NodeInventory) : Array Code :=
   node.sources.filterMap fun source => match source.payload with
@@ -79,11 +79,11 @@ def NodeInventory.inlineCodes (node : NodeInventory) : Array Code :=
 def NodeInventory.hasAttributeAssociations (node : NodeInventory) : Bool :=
   node.nativeAssociations.any (·.reference.origin == .blueprintAttr)
 
-/-- All captured associations, including arbitrary named facets. -/
+/-- All captured associations, including arbitrary named placements. -/
 def NodeInventory.externalAssociationSnapshots (node : NodeInventory) : Array ExternalRef :=
   node.nativeAssociations.map (·.reference)
 
-/-- Canonical node associations from both facets. Rendering keeps each facet's
+/-- Canonical node associations from every placement. Rendering keeps each placement's
 snapshot; node-level projections retain every observed status conservatively. -/
 def NodeInventory.associatedExternalRefs (node : NodeInventory) : Array ExternalRef :=
   ExternalRef.mergeSnapshots #[] node.externalAssociationSnapshots

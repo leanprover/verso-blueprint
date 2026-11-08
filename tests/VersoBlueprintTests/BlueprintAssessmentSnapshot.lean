@@ -140,7 +140,7 @@ private def defaultUseSelectionDetails (snapshot : Realizations.Capture.Snapshot
   let registry := snapshot.registry
   let selectedUses := snapshot.uses.filter fun use =>
     use.source == mainDependentLabel && use.reference.label == label
-  let selectedSummary := selectedUses.map fun use => (use.context, use.realization, use.facet, use.selected)
+  let selectedSummary := selectedUses.map fun use => (use.context, use.realization, use.role, use.selected)
   let alternativeSummary := match registry.realization? unfinishedAlternativeProof with
     | some alternative => s!"role={alternative.role}, required={reprStr alternative.required}, documents={reprStr alternative.documents}"
     | none => "missing"
@@ -189,7 +189,7 @@ run_cmd liftCoreM do
   let association : SourceData.NativeAssociation := {
     realization := customBase
     context := ⟨`lean, project⟩
-    facets := #[`statement, `proof]
+    placement := `statement
     reference }
   let fact : Contributions.Record := {
     id := {

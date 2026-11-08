@@ -370,18 +370,31 @@ label: the checked assembly of every registration, with its module provenance
 external-reference arrays. The persisted input is the label's
 `Environment.NodeRegistrations`; the inventory is rebuilt from it on import and is
 read with `Environment.getNodeInventory?`.
-Use `NodeInventory.proseView realization facet`, `usesOn facet`, `nativeRefsOn facet`,
-and the other `NodeInventory` helpers for display. These are derived views and must not be
-written back as semantic input: they intentionally omit some destination and
-scope information retained by the keyed arrays.
+Use `NodeInventory.proseView realization role`, `usesOn role`,
+`nativeRefsOn placement`, and the other `NodeInventory` helpers for display. These
+are derived views and must not be written back as semantic input: they
+intentionally omit some destination and scope information retained by the keyed
+arrays.
 
 Custom source producers submit an `Informal.SourceData.Registration` through
 `Informal.Environment.contribute`. The registration extends the shared node
-metadata and carries `SourceData.FacetSource` values with an explicit
-realization/facet destination, language/project context, document identity,
-source location, and typed payload. Each use also carries its facet and optional
-realization scope. A missing scope means a concept-level prerequisite, not an
-unknown or default realization.
+metadata and carries `SourceData.SourceSelection` values with a
+`SourceDestination` (realization and role), language/project context, document
+identity, source location, and typed payload. Prose, text and markup sources
+state their role, such as `statement`, `proof` or `implementation`; Rust code
+blocks are `implementation`. Compiled Lean payloads state no role
+(`role := none`): capture derives each declaration's roles from its checked
+classification. Each use also carries its role, the statement's or the proof's
+dependency, and an optional realization scope. A missing scope means a
+concept-level prerequisite, not an unknown or default realization.
+
+A `SourceData.NativeAssociation` attaches a compiled declaration to a node. Its
+`placement`, such as `statement` or `proof`, only says where the declaration is
+presented. The declaration's roles come from its checked classification: a
+theorem contributes both a statement and a proof, a definition an
+implementation, and a proposition definition a statement, wherever it is placed.
+Only a declaration that cannot be classified falls back to its placement, so it
+stays visible where its author put it.
 
 Identified records in `Informal.Contributions.Record` carry native declaration
 associations and priority. Call `Environment.contributeRecord` when supplying

@@ -100,9 +100,9 @@ def selectUses (registry : Registry) (context : Context) (source : Name) :
   let selectAxis (uses : Array Data.UseRef) : CoreM (Array SelectedUse) :=
     uses.mapM fun use => return (use, ← selectTarget registry context use.label)
   let statement ← selectAxis (Data.UseRef.mergeByLabel #[] ((node.uses.filter fun use =>
-    use.facet == `statement && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
+    use.role == `statement && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
   let proof ← selectAxis (Data.UseRef.mergeByLabel #[] ((node.uses.filter fun use =>
-    use.facet == `proof && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
+    use.role == `proof && (use.realization.isNone || use.realization == some `lean)).map (·.reference)))
   return .ok (statement, proof)
 
 end Informal.Realizations.Dependencies

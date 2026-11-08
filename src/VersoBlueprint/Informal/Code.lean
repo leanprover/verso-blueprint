@@ -332,7 +332,7 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
         let deps ← liftM <| DependencyAnalysis.inferDecls decls
         pure <| deps.toUseRefs (currentLabel? := some cfg.label)
       else pure ({} : DependencyAnalysis.InferredUseRefs)
-    let source ← liftM <| Environment.sourceAt cfg.label `lean `body `lean
+    let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean
       (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
     let some _ ← Environment.contribute cfg.label {
       sources := #[source]
@@ -410,7 +410,7 @@ private def externalMarkupImpl
     match cfg.label? with
     | some label =>
       let source ← liftM <| Environment.sourceAt label
-        (Name.str (Name.mkSimple language.key) cfg.slot) `statement (Name.mkSimple language.key)
+        (Name.str (Name.mkSimple language.key) cfg.slot) (some `statement) (Name.mkSimple language.key)
         (.markup markup) (← getRef)
       let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])

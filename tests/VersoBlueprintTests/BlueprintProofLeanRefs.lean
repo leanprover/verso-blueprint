@@ -43,7 +43,7 @@ theorem admittedAttachedResult : True := by sorry
             ({ id := { moduleName := `Repeated, producer := `test, subject := `repeated,
                        site := index, slot := 0 },
                label := `repeated,
-               nativeAssociations := BlueprintNativeFixture.associations `repeated #[if isProof then `proof else `statement] #[refs[index]!],
+               nativeAssociations := BlueprintNativeFixture.associations `repeated (if isProof then `proof else `statement) #[refs[index]!],
                priority := none, source := none }
               : Contributions.Record)
           (NodeAssembly.assemble `repeated #[] records).map (·.node)
@@ -68,8 +68,8 @@ theorem admittedAttachedResult : True := by sorry
       name := good.canonical, provedStatus := .proved }] }
     let node : Data.NodeInventory := {
       kind := .theorem
-      nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[ref]
-      sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
+      nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[ref]
+      sources := #[BlueprintNativeFixture.source `providerSnapshot `lean none `lean (.leanInline code)] }
     unless node.summaryExternalRefs.isEmpty && node.associatedExternalRefs.size == 1 &&
         node.associatedExternalRefs[0]!.provedStatus.reportJson == status.reportJson &&
         node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.reportJson == status.reportJson do
@@ -89,11 +89,11 @@ theorem admittedAttachedResult : True := by sorry
     name := good.canonical, provedStatus := .proved }] }
   let node : Data.NodeInventory := {
     kind := .theorem
-    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[good]
-    sources := #[BlueprintNativeFixture.source `providerSnapshot `lean `body `lean (.leanInline code)] }
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[good]
+    sources := #[BlueprintNativeFixture.source `providerSnapshot `lean none `lean (.leanInline code)] }
   let external := { good with provedStatus := unverified }
   let observed := { node with
-    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot #[`proof] #[external] }
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[external] }
   unless observed.associatedExternalRefs[0]!.provedStatus == unverified do
     throw <| IO.userError "Inline provider inventory discarded external lookup evidence"
 
@@ -172,7 +172,7 @@ This imported statement association also has a proof-facet occurrence.
     knownSorry := #[{ location := .proof, origin := .dependency }] }
   let crossFacetGap : Data.NodeInventory := { both with
     nativeAssociations := both.nativeAssociations.map fun association =>
-      if association.facets.contains `proof then
+      if association.placement == `proof then
         { association with reference := { association.reference with provedStatus := proofGap } }
       else association }
   unless (crossFacetGap.nativeRefsOn `proof)[0]!.provedStatus == proofGap do
@@ -194,7 +194,7 @@ private def contributeProofReferences (label : Data.Label) (references : Array D
     CoreM (Option Data.NodeInventory) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
-    label, nativeAssociations := BlueprintNativeFixture.associations label #[`proof] references
+    label, nativeAssociations := BlueprintNativeFixture.associations label `proof references
     priority := none, source := none }
   Environment.contributeRecord fact payload
 
@@ -232,7 +232,7 @@ run_meta do
     let code : Data.Code := { stx := .missing, definedTheorems := #[{
       name := ``Provider.admittedProof, provedStatus := .proved }] }
     let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
-      kind := some .theorem, sources := #[BlueprintNativeFixture.source (Name.mkSimple "proof.inline.overlap") `lean `body `lean (.leanInline code)] }
+      kind := some .theorem, sources := #[BlueprintNativeFixture.source (Name.mkSimple "proof.inline.overlap") `lean none `lean (.leanInline code)] }
       | throwError "Could not register inline/external overlap"
     let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.inline.overlap")
       | throwError "Missing inline/external overlap"

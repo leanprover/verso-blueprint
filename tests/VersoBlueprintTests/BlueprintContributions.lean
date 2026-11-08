@@ -12,14 +12,14 @@ namespace VersoBlueprintTests.BlueprintContributions
 private def a : Record := {
   id := ⟨`A, `blueprint.attribute, `declA, 10, 0⟩
   label := `shared
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[ExternalRef.ofName `declA .blueprintAttr]
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[ExternalRef.ofName `declA .blueprintAttr]
   priority := none
   source := some { path := "A.lean", range := default }
 }
 private def b : Record := {
   id := ⟨`B, `blueprint.attribute, `declB, 20, 0⟩
   label := `shared
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[ExternalRef.ofName `declB .blueprintAttr]
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[ExternalRef.ofName `declB .blueprintAttr]
   priority := none
   source := some { path := "B.lean", range := default }
 }
@@ -98,7 +98,7 @@ private def otherA := { a with label := `other }
 #guard accepts `unrelated [otherA, a] [] none []
 
 -- Complete snapshot differences are not collapsed to declaration-name equality.
-private def snapshotA := { a with nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{
+private def snapshotA := { a with nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{
   (ExternalRef.ofName `declA .blueprintAttr) with
   provedStatus := .incomplete { knownSorry := #[{ location := .proof }] }
   provenance := .inWorkspace `A "formalization.lean"
@@ -113,7 +113,7 @@ private def independentSnapshotA := { snapshotA with id := c.id }
 -- Proof-only identified evidence establishes normal declaration membership.
 private def proofA : Record := { a with
   id := ⟨`Proof, `blueprint.directive, `declA, 0, 0⟩
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`proof] a.allReferences }
+  nativeAssociations := BlueprintNativeFixture.associations `shared `proof a.allReferences }
 #guard accepts `shared [proofA] [`declA] none [proofA]
 #guard accepts `shared [a, proofA, a, proofA] [`declA] none [a, proofA]
 -- Moving a snapshot to another facet changes the record; it is not exact replay.
@@ -131,7 +131,7 @@ private def unverifiedRef : ExternalRef := {
   (ExternalRef.ofName `declA .directiveLean) with
   provedStatus := .incomplete { unverified := #[{
     location := .statement, declaration := `declA, reason := .bodyUnavailable }] } }
-private def unverifiedProof : Record := { proofA with nativeAssociations := BlueprintNativeFixture.associations `shared #[`proof] #[unverifiedRef] }
+private def unverifiedProof : Record := { proofA with nativeAssociations := BlueprintNativeFixture.associations `shared `proof #[unverifiedRef] }
 #guard [[snapshotA, unverifiedProof], [unverifiedProof, snapshotA],
     collector.collect [snapshotA, unverifiedProof, snapshotA, unverifiedProof]].all fun records =>
   match Informal.NodeAssembly.assemble `shared #[] records with
@@ -147,7 +147,7 @@ private def unverifiedProof : Record := { proofA with nativeAssociations := Blue
 -- Collision diagnostics name only the changed snapshot fields, including a
 -- render-content difference without embedding the rendered HTML itself.
 private def diagnosticSnapshotA : Record := { a with
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{ (ExternalRef.ofName `declA .directiveLean) with
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ (ExternalRef.ofName `declA .directiveLean) with
     present := false
     provedStatus := .incomplete { knownSorry := #[{ location := .proof }] }
     provenance := .outWorkspace `Snapshot "snapshot.lean"
@@ -175,7 +175,7 @@ private def collisionMessagesFor (records : List Record) : Array String :=
 -- Formatting says only how many sorry locations were observed, so the typed
 -- snapshot comparison must run before that lossy diagnostic projection.
 private def differentSorryLocationSnapshotA : Record := { snapshotA with
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{ snapshotA.allReferences[0]! with
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ snapshotA.allReferences[0]! with
     provedStatus := .incomplete { knownSorry := #[{ location := .statement }] } }] }
 #guard let messages := collisionMessagesFor [snapshotA, differentSorryLocationSnapshotA]
   messages.any (·.contains "status (incomplete(known-sorry=1, unverified=0) → incomplete(known-sorry=1, unverified=0))")
@@ -184,10 +184,10 @@ private def differentSorryLocationSnapshotA : Record := { snapshotA with
 
 -- Ordering uses complete evidence even when only equal-length rendered bodies differ.
 private def renderOnlySnapshotA : Record := { a with
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{ (ExternalRef.ofName `declA .blueprintAttr) with
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ (ExternalRef.ofName `declA .blueprintAttr) with
     render := .ok { html := "same-length-A", hoverPayloads := #[] } }] }
 private def renderOnlySnapshotB : Record := { renderOnlySnapshotA with
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{ (ExternalRef.ofName `declA .blueprintAttr) with
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ (ExternalRef.ofName `declA .blueprintAttr) with
     render := .ok { html := "same-length-B", hoverPayloads := #[] } }] }
 #guard collisionMessagesFor [renderOnlySnapshotA, renderOnlySnapshotB] ==
   collisionMessagesFor [renderOnlySnapshotB, renderOnlySnapshotA]
@@ -196,7 +196,7 @@ private def renderOnlySnapshotB : Record := { renderOnlySnapshotA with
     !messages.any (·.contains "same-length-A") &&
     !messages.any (·.contains "same-length-B")
 
-private def missingB := { b with nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[{ (ExternalRef.ofName `declB) with present := false }] }
+private def missingB := { b with nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ (ExternalRef.ofName `declB) with present := false }] }
 #guard accepts `shared [a, missingB] [`declA] none [a, missingB]
 #guard rejects `shared [missingB, b] [(b.id, [missingB, b])] []
 
@@ -205,7 +205,7 @@ private def missingB := { b with nativeAssociations := BlueprintNativeFixture.as
 private def sameDeclDirective : Record := {
   id := ⟨`Directive, `blueprint.directive, `declA, 40, 0⟩
   label := `shared
-  nativeAssociations := BlueprintNativeFixture.associations `shared #[`statement] #[ExternalRef.ofName `declA .directiveLean]
+  nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[ExternalRef.ofName `declA .directiveLean]
   priority := none
   source := none
 }
@@ -227,8 +227,8 @@ private def highA : Record := { a with priority := some "high" }
 
 -- Payload reduction retains authored bodies, dependencies, and literate code.
 #guard match ({} : NodeInventory).applyRegistrations `shared #[{
-    sources := #[BlueprintNativeFixture.source `shared `verso `statement `verso (.prose { stx := .missing, elabStx := #[.missing] }),
-      BlueprintNativeFixture.source `shared `lean `body `lean (.leanInline { stx := .missing })]
+    sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { stx := .missing, elabStx := #[.missing] }),
+      BlueprintNativeFixture.source `shared `lean none `lean (.leanInline { stx := .missing })]
     uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
   }] with
   | .ok node => (node.proseView `verso `statement).any (·.hasBody) &&
@@ -239,7 +239,7 @@ private def highA : Record := { a with priority := some "high" }
 #guard match Informal.NodeAssembly.assemble `shared #[] [highA, proofA] with
   | .error _ => false
   | .ok assembled => match assembled.node.applyRegistrations `shared #[{
-      sources := #[BlueprintNativeFixture.source `shared `verso `statement `verso (.prose { stx := .missing, elabStx := #[.missing] })]
+      sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { stx := .missing, elabStx := #[.missing] })]
       uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
     }] with
     | .error _ => false

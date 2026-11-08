@@ -20,7 +20,7 @@ run_cmd do
   let fact : Contributions.Record := {
     id := { moduleName := ← getMainModule, producer := `test, subject := label, site := 1, slot := 0 }
     label
-    nativeAssociations := BlueprintNativeFixture.associations label #[`statement] #[{ canonical := `acceptedDecl, written := `acceptedDecl, present := true }]
+    nativeAssociations := BlueprintNativeFixture.associations label `statement #[{ canonical := `acceptedDecl, written := `acceptedDecl, present := true }]
     priority := some "high"
     source := none }
   let some selected ← Environment.contributeRecord fact { tags := #["selected"] }

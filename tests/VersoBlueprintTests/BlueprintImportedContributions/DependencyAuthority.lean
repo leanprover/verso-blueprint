@@ -25,7 +25,7 @@ open Informal.NodeAssembly
       | throw <| IO.userError "Compatible authority levels were rejected"
     unless node.usesOn `proof == #[{ label := `dep, intent := .auxiliary }] do
       throw <| IO.userError "Manual metadata lost precedence"
-    let rawEvidence := (node.uses.filter (·.facet == `proof)).map (·.reference)
+    let rawEvidence := (node.uses.filter (·.role == `proof)).map (·.reference)
     let expectedEvidence := refs.flatMap (·.uses.map (·.reference))
     unless rawEvidence == expectedEvidence do
       throw <| IO.userError "Raw scoped validation evidence or its registration order changed"

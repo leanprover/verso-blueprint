@@ -19,7 +19,7 @@ run_cmd do
         site := 1
         slot := 0 }
       label := `coherent_origin
-      nativeAssociations := BlueprintNativeFixture.associations `coherent_origin #[`statement] #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations `coherent_origin `statement #[ref]
       priority := none
       source := none } {}
   discard <| Environment.contributeRecord
@@ -30,7 +30,7 @@ run_cmd do
         site := 2
         slot := 0 }
       label := `coherent_origin_conflict
-      nativeAssociations := BlueprintNativeFixture.associations `coherent_origin_conflict #[`statement] #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations `coherent_origin_conflict `statement #[ref]
       priority := none
       source := none } {}
 

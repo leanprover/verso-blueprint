@@ -21,7 +21,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
     id := ⟨← getMainModule, `test.scopedNative, node, 1, 0⟩, label := node
     nativeAssociations := #[{
       realization := ⟨node, `alternative⟩, context := ⟨`lean, ← Environment.sourceProject⟩
-      facets := #[`statement, `proof], reference }]
+      placement := `statement, reference }]
     priority := none, source := none } {}
     | throwError "Actual scoped native attachment was rejected"
   let missing ← externalRefSnapshotAtCurrentDir (← getOptions)
@@ -31,7 +31,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
     id := ⟨← getMainModule, `test.scopedNative, node, 2, 0⟩, label := node
     nativeAssociations := #[{
       realization := ⟨node, `pending⟩, context := ⟨`lean, ← Environment.sourceProject⟩
-      facets := #[`proof], reference := missing }]
+      placement := `proof, reference := missing }]
     priority := none, source := none } {}
     | throwError "Missing source must remain raw selected evidence"
 

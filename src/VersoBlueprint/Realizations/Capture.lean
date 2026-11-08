@@ -46,7 +46,7 @@ structure SelectedUse where
   /-- Context selected for the native target contract, not the source language. -/
   context : Option Context
   realization : Option Name
-  facet : Name
+  role : Name
   reference : Data.UseRef
   selected : Except Diagnostic (Array RequirementKey)
   deriving Repr
@@ -135,9 +135,9 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let uses := snapshot.uses.filter (·.source == label)
   let selected := uses.filter fun use => nativeModels.any fun model =>
     use.context == some model.context &&
-      useSelectsRealization use.source use.realization use.facet model
+      useSelectsRealization use.source use.realization use.role model
   let dependenciesComplete (statementOnly : Bool) :=
-    (selected.filter fun use => !statementOnly || selectedRole use.facet == `statement).all fun use =>
+    (selected.filter fun use => !statementOnly || use.role == `statement).all fun use =>
       match use.selected with
       | .error _ => false
       | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
@@ -169,7 +169,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
         ("requiredComplete", toJson nativeLocalComplete)]),
       ("uses", toJson (uses.map fun use => Json.mkObj [
         ("source", toJson use.source), ("targetContext", toJson use.context),
-        ("realization", toJson use.realization), ("facet", toJson use.facet),
+        ("realization", toJson use.realization), ("role", toJson use.role),
         ("reference", toJson use.reference), ("selection", toJson use.selected)])),
       ("sourceDiagnostics", toJson diagnostics)] }
 
@@ -208,7 +208,7 @@ structure NativeRequest where
 structure InlineRequest where
   context : Context
   name : Name
-  source : FacetSource
+  source : SourceSelection
   deriving Inhabited
 
 structure CheckRequest where
@@ -236,7 +236,7 @@ structure ExpectedRequest where
   deriving Inhabited
 
 structure SourceStep where
-  source : FacetSource
+  source : SourceSelection
   document : Nat
   documented : Option (Except Diagnostic Nat) := none
   deriving Inhabited
@@ -403,7 +403,7 @@ private def readDocument (reader : System.FilePath → IO String) (key : Documen
     return ({ key, text := "" }, #[{ code := "source-unavailable", subject := key.path, message := "Cannot read canonical source" }])
 
 private def request (context : Context) (name : Name) (association : Option NativeAssociation)
-    (source : Option FacetSource) : CoreM (Except Diagnostic NativeSource.Request) := do
+    (source : Option SourceSelection) : CoreM (Except Diagnostic NativeSource.Request) := do
   let fail (message : String) : Except Diagnostic NativeSource.Request := .error {
     code := "source-association-unavailable", subject := name.toString, message }
   let env ← getEnv
@@ -493,23 +493,11 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         | _, _ => none
       let rolesForName (name : Name) : Array Name :=
         (checkedRoles.find? (·.1 == name)).map (·.2) |>.getD #[]
-      let rawSlotsForName (name : Name) : Array Name := Id.run do
-        let mut slots := associations.filter (·.reference.canonical == name) |>.flatMap (·.facets)
-        for source in sources do
-          if let .leanInline code := source.payload then
-            if code.definedDeclNames.contains name then slots := slots.push source.destination.facet
-        return slots
-      let selectedNativeRoles (name : Name) : Array Name := Id.run do
-        let roles := rolesForName name
-        let slots := rawSlotsForName name
-        if roles.isEmpty then return canonical (slots.map selectedRole)
-        return SourceData.selectedNativeRoles slots roles
-      let mut sourceRoleNames := sources.filterMap fun source =>
-        match source.payload with
-        | .leanInline _ => none
-        | _ => some (selectedRole source.destination.facet)
+      let declarationRoles (name : Name) : Array Name :=
+        SourceData.declarationRoles associations sources (rolesForName name) name
+      let sourceRoleNames := sources.filterMap (·.destination.role)
       let roleNames := canonical (sourceRoleNames ++ declarationResults.flatMap fun declaration =>
-        selectedNativeRoles declaration.name)
+        declarationRoles declaration.name)
       let mut sourceDocs : Array (Name × DocumentKey) := #[]
       for sourceStep in step.sources do
         let source := sourceStep.source
@@ -521,7 +509,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             documents := collected.sourceDiagnostics.documents ++ readIssues.map (document.key, ·) } }
         if let some reason := source.source.error then
           collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
-            code := "source-association-unavailable", subject := s!"{label}/{base.name}/{source.destination.facet}", message := reason }] }
+            code := "source-association-unavailable", subject := s!"{label}/{base.name}/{source.destination.role.getD `compiled}", message := reason }] }
         if let .prose _ := source.payload then
           let selectedKey := source.selectedDocumentKey
           let selectedText ← match sourceStep.documented with
@@ -564,15 +552,15 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             (BindingEncoding.documentKey selectedKey) selectedDocument
           collected := { collected with input := { collected.input with
             documents := collected.input.documents.push selectedContribution } }
-          sourceDocs := sourceDocs.push (selectedRole source.destination.facet, selectedKey)
+          if let some role := source.destination.role then
+            sourceDocs := sourceDocs.push (role, selectedKey)
         else
-          match source.payload with
-          | .leanInline _ => pure ()
-          | _ => sourceDocs := sourceDocs.push (selectedRole source.destination.facet, source.selectedDocumentKey)
+          if let some role := source.destination.role then
+            sourceDocs := sourceDocs.push (role, source.selectedDocumentKey)
       let mut roleModels : Array Realization := #[]
       for role in roleNames do
         let declarations := declarationResults.filterMap fun result => Id.run do
-          let roles := selectedNativeRoles result.name
+          let roles := declarationRoles result.name
           unless roles.contains role do return none
           let witness := object result.name
           let nativeRoles := rolesForName result.name
@@ -590,11 +578,11 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let issues := if context.language == `lean then
           roleModels.flatMap fun model => nativeMembershipIssues label model associations sources checkedRoles
         else roleModels.flatMap fun model =>
-          (sources.filter (fun source => selectedRole source.destination.facet == model.role)).flatMap (·.issues label model)
+          (sources.filter (·.destination.role == some model.role)).flatMap (·.issues label model)
       unless issues.isEmpty do full (.error issues)
       for declaration in declarationResults do
         let witness := object declaration.name
-        let nativeRoles := selectedNativeRoles declaration.name
+        let nativeRoles := declarationRoles declaration.name
         let objectObservation : ObjectObservation ← match declaration.prepared with
           | .error issues => do
             collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
@@ -791,26 +779,26 @@ private def selectTarget (collected : Collected) (context : Context) (target : N
 
 private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
   let mut selected := #[]
-  let scopes := (collected.uses.map fun use => (use.node, use.realization, use.facet)).foldl
+  let scopes := (collected.uses.map fun use => (use.node, use.realization, use.role)).foldl
     (fun scopes scope => if scopes.contains scope then scopes else scopes.push scope) #[]
-  for (source, realization, facet) in scopes do
+  for (source, realization, role) in scopes do
     let uses := Data.UseRef.mergeByLabel #[] <| (collected.uses.filter fun use =>
-      use.node == source && use.realization == realization && use.facet == facet).map (·.reference)
+      use.node == source && use.realization == realization && use.role == role).map (·.reference)
     let models := collected.input.realizations.filter fun contribution =>
-      useSelectsRealization source realization facet contribution.value
+      useSelectsRealization source realization role contribution.value
     let contexts := canonical (models.map fun contribution =>
       ({ language := `lean, project := contribution.value.context.project } : Context))
     for reference in uses do
       if contexts.isEmpty then
         selected := selected.push {
-          source, realization, facet, reference, context := none
+          source, realization, role, reference, context := none
           selected := .error {
             code := "missing-source-context", subject := source.toString
             message := "Dependency has no stored source project context" } }
       else
         for context in contexts do
           selected := selected.push {
-            source, realization, facet, reference, context := some context
+            source, realization, role, reference, context := some context
             selected := selectTarget collected context reference.label }
   return selected
 
@@ -838,7 +826,7 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
     if model.context.language != `lean ||
         (model.role != `statement && model.role != `proof && model.role != `implementation) then continue
     let relevant := uses.filter fun use => use.context == some model.context &&
-      useSelectsRealization use.source use.realization use.facet model
+      useSelectsRealization use.source use.realization use.role model
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
       let name := model.role
@@ -859,7 +847,7 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
           bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
             subject, name := name ++ `selectedUses
             content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
-              edge.facet, edge.reference, edge.selected))).compress }) } }
+              edge.role, edge.reference, edge.selected))).compress }) } }
         collected := recordObservation collected selectionKey (.check {
           validator := `blueprint.dependencySelection
           outcome := if failures.isEmpty then .passed else .unavailable

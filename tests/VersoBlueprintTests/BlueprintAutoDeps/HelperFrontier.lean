@@ -178,7 +178,7 @@ theorem afterAssociation : lateHelper := True.intro
         site := 1
         slot := 0 }
       label := label "auto.frontier.constructor"
-      nativeAssociations := BlueprintNativeFixture.associations (label "auto.frontier.constructor") #[`statement] #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations (label "auto.frontier.constructor") `statement #[ref]
       priority := none
       source := none } {}
     | throwError "Could not register the collector's constructor boundary"

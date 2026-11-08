@@ -18,7 +18,7 @@ private def testRecord (label : Name) (site : Nat)
     subject := label
     site
     slot := 0 }
-  label, nativeAssociations := BlueprintNativeFixture.associations label #[`statement] references
+  label, nativeAssociations := BlueprintNativeFixture.associations label `statement references
   priority, source := none }
 
 run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 1 (priority := some "high")) {}
@@ -57,7 +57,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     count := before.nextCount + 100
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
-    sources := #[BlueprintNativeFixture.source `key_theorem `verso `proof `verso
+    sources := #[BlueprintNativeFixture.source `key_theorem `verso (some `proof) `verso
       (.prose { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] })]
   }
   let after := Environment.informalExt.getState (← getEnv)
@@ -94,11 +94,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3888/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3892/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4591/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4595/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -138,7 +138,7 @@ Inner statement.
 :::::::
 
 -- This reports an error without throwing out of the body elaborator.
-/-- error: Label atomic_duplicate_rust: duplicate-source: realization 'rust' already has a body source -/
+/-- error: Label atomic_duplicate_rust: duplicate-source: realization 'rust' already has an implementation source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) loggedAtomicFailure "Logged body failure" :=
@@ -188,7 +188,7 @@ run_cmd do
     sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_markup `markdown.default `statement `markdown
       (.markup { language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" }) (← getRef)] }
   discard <| Environment.contribute `atomic_standalone_rust {
-    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_rust `rust `body `rust
+    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_rust `rust (some `implementation) `rust
       (.text "pub fn accepted() {}") (← getRef)] }
 
 -- Attribute registration must not publish a module-catalog entry when its
@@ -219,7 +219,7 @@ Rejected markup.
 ```
 :::::::
 
-/-- error: Label atomic_standalone_rust: duplicate-source: realization 'rust' already has a body source -/
+/-- error: Label atomic_standalone_rust: duplicate-source: realization 'rust' already has an implementation source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) rejectedStandaloneRust "Rejected standalone Rust" :=
@@ -333,7 +333,7 @@ Manual external-code authoring retains the same authority evidence.
 run_cmd do
   for label in #[`attr_authorities, `manual_authorities] do
     let some node ← Environment.getNodeInventory? label | throwError "Missing node"
-    let statementUses := (node.uses.filter (·.facet == `statement)).map (·.reference)
+    let statementUses := (node.uses.filter (·.role == `statement)).map (·.reference)
     let expectedUses := if label == `attr_authorities then #[
         { label := `atomic_type, origin := .automatic },
         { label := `atomic_type }, { label := `atomic_type }, { label := `atomic_type }]

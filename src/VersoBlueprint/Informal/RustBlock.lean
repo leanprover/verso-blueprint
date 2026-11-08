@@ -71,7 +71,7 @@ private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
       raw := contents.getString
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
     }
-    let source ← liftM <| Environment.sourceAt cfg.label `rust `body `rust (.text contents.getString) (← getRef)
+    let source ← liftM <| Environment.sourceAt cfg.label `rust (some `implementation) `rust (.text contents.getString) (← getRef)
     let some _ ← Environment.contribute cfg.label { sources := #[source] }
       | ``(Block.concat #[])
     ``(Block.other (Block.informalRustCode $(quote data)) #[])

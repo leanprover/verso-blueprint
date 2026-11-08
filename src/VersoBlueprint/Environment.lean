@@ -384,13 +384,14 @@ def sourceProject : CoreM Name := do
   return project
 
 /-- Capture the owning source identity at production time. Missing ranges stay
-explicit; no reader/provider runs before the owning module has finished building. -/
-def sourceAt (node realization facet language : Name) (payload : SourceData.ProviderPayload)
-    (ref : Syntax) : CoreM SourceData.FacetSource := do
+explicit; no reader/provider runs before the owning module has finished building.
+Pass `role := none` only for compiled Lean payloads, whose roles are checked. -/
+def sourceAt (node realization : Name) (role : Option Name) (language : Name)
+    (payload : SourceData.ProviderPayload) (ref : Syntax) : CoreM SourceData.SourceSelection := do
   let context : Realizations.Context := ⟨language, ← sourceProject⟩
   let location ← SourceLocation.ofSyntax? ref
   return {
-    destination := ⟨⟨node, realization⟩, facet⟩
+    destination := ⟨⟨node, realization⟩, role⟩
     context, document := ⟨context, ← getFileName⟩
     source := match location with
       | some location => .found location
@@ -519,8 +520,8 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
 
 private def InProgress.toRegistration (current : InProgress) (count : Nat) (ref : Syntax)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
-  let facet := match current.kind with | .statement _ => `statement | .proof => `proof
-  let source ← sourceAt current.label `verso facet `verso (.prose { stx := ref, previewBlocks := blocks }) ref
+  let role := match current.kind with | .statement _ => `statement | .proof => `proof
+  let source ← sourceAt current.label `verso (some role) `verso (.prose { stx := ref, previewBlocks := blocks }) ref
   return {
     kind := match current.kind with | .statement kind => some kind | .proof => none
     count := match current.kind with | .statement _ => count | .proof => 0
@@ -541,7 +542,7 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
     let context : Realizations.Context := ⟨`lean, ← sourceProject⟩
     associations := externalRefs.map fun reference => {
       realization := ⟨current.label, `lean⟩, context
-      facets := #[match current.kind with | .statement _ => `statement | .proof => `proof]
+      placement := match current.kind with | .statement _ => `statement | .proof => `proof
       reference }
   return some {
     id := {
@@ -630,7 +631,7 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
     modify fun state =>
       { state with activeDirective := some { current with uses := current.uses.push {
         node := current.label
-        facet := match current.kind with | .statement _ => `statement | .proof => `proof
+        role := match current.kind with | .statement _ => `statement | .proof => `proof
         reference := useRef } } }
 
 def addDep (stx : Syntax) (dep : Name) : m Unit :=

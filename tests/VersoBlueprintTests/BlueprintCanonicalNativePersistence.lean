@@ -28,13 +28,13 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let associations := records.toArray.flatMap (·.nativeAssociations)
   unless associations.size == 4 && associations.all (·.context == context) do
     throwError "Producer context changed or native input disappeared on import replay"
-  let refs (name facet : Name) := records.toArray.flatMap fun record =>
-    record.referencesAt ⟨label, name⟩ context facet
+  let refs (name placement : Name) := records.toArray.flatMap fun record =>
+    record.referencesAt ⟨label, name⟩ context placement
   unless (refs `lean `statement).size == 2 && (refs `lean `proof).isEmpty &&
       (refs `alternative `statement).map (·.canonical) == #[``additional] &&
-      (refs `alternative `proof).map (·.canonical) == #[``additional] &&
+      (refs `alternative `proof).isEmpty &&
       (refs `pending `proof).size == 1 && !(refs `pending `proof)[0]!.present do
-    throwError "Exact native realization/facet selection borrowed or dropped a source"
+    throwError "Exact native realization/placement selection borrowed or dropped a source"
   unless records.all (fun record =>
       (record.referencesAt ⟨label, `alternative⟩ ⟨`lean, `wrongProject⟩ `proof).isEmpty) do
     throwError "A same-spelled native reference from another project was selected"
@@ -67,7 +67,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
     unless ref.present do throwError "Arbitrary-facet control needs a real current native declaration"
     let selected : Realizations.RealizationKey := ⟨label, `arbitraryFacet⟩
     let arbitrary : SourceData.NativeAssociation := {
-      realization := selected, context, facets := #[`body], reference := ref }
+      realization := selected, context, placement := `body, reference := ref }
     let oldLabels ← Environment.labelsForLeanDecl `Nat.add_assoc
     unless !oldLabels.contains label do
       throwError "Arbitrary-facet index control was already installed"
@@ -77,7 +77,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       priority := none, source := none } {}
         | throwError "An arbitrary named native facet was rejected"
     let retained := accepted.nativeAssociations.any fun item =>
-      item.realization == selected && item.context == context && item.facets == #[`body] &&
+      item.realization == selected && item.context == context && item.placement == `body &&
         item.reference.canonical == `Nat.add_assoc && item.reference.present
     let newLabels ← Environment.labelsForLeanDecl `Nat.add_assoc
     unless retained && accepted.leanDecls.contains `Nat.add_assoc && newLabels.contains label do
@@ -91,8 +91,8 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let fresh := { original with id := { original.id with moduleName := ← getMainModule, site := 100 } }
   rejected "source-context-mismatch" <| Environment.contributeRecord { fresh with
     nativeAssociations := #[{ association with context := ⟨`lean, `otherProject⟩ }] } {}
-  rejected "empty-native-facets" <| Environment.contributeRecord { fresh with
-    nativeAssociations := #[{ association with facets := #[] }] } {}
+  rejected "unknown-native-placement" <| Environment.contributeRecord { fresh with
+    nativeAssociations := #[{ association with placement := .anonymous }] } {}
   rejected "source-destination-mismatch" <| Environment.contributeRecord { fresh with
     nativeAssociations := #[{ association with realization := ⟨`wrongConcept, `alternative⟩ }] } {}
   -- A successful inner native contribution must also roll back on an enclosing
