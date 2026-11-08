@@ -5,6 +5,8 @@ assessment snapshot. The first bounded implementation uses direct owned realizat
 reviews and exact native own-type support; see the
 [implementation and limits](REALIZATIONS_AND_TRANSLATIONS.md). Broader acceptance
 cases below remain design targets unless covered by a recorded test run.
+The [architecture review protocol](REALIZATION_ARCHITECTURE_REVIEW.md) maps these
+cases to backend boundaries, measures and decisions for the joint review.
 
 ## 1. Version-one contract
 
