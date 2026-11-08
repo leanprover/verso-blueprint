@@ -80,6 +80,9 @@ A required named review with criterion `mathematicalProof` can instead supply th
 reviewed support route for the selected connection. A nonempty lint-only `proves`
 contract remains unassessed with `missing-mathematical-support`. Additional required
 reviews or checks remain conjunctive; native success cannot override rejection.
+An exact native `proves` relation needs no extra claim record. If claims are
+attached, each needs its own assessment contract; native support does not
+silently discharge an unassessed additional claim.
 The first example's correspondence explicitly depends on its exact native support
 requirement. General aggregate requests over relations remain deferred.
 

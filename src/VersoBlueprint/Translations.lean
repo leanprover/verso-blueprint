@@ -646,8 +646,11 @@ def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
           | _ => false
       unless supported do return { status := .unassessed, diagnostics := #[issue
         "missing-mathematical-support" key "A proves contract requires exact formal or mathematical review support"] }
-    else if !(r.claims.any (·.key.translation == key)) ||
-        r.claims.any (fun c => c.key.translation == key && c.required.isEmpty) then
+    else if !(r.claims.any (·.key.translation == key)) then
+      return { status := .unassessed }
+    -- Native support establishes the P/S connection, not additional authored
+    -- claims. Every attached claim needs its own assessment contract.
+    if r.claims.any (fun c => c.key.translation == key && c.required.isEmpty) then
       return { status := .unassessed }
   if keys.isEmpty then return { status := .unassessed }
   let results := keys.map (r.resultForRequirement ·)

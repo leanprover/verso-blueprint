@@ -416,4 +416,3 @@ theorem mergeSnapshots_normalized_fixed (current incoming : Array ExternalRef)
   exact stable input hi
 
 end Informal.Data.ExternalRef
-

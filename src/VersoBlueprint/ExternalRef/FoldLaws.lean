@@ -103,4 +103,3 @@ theorem mergeSnapshots_fold_canonical_nodup {α : Type} (select : α → Array E
     exact mergeSnapshots_canonical_nodup _ _
 
 end Informal.Data.ExternalRef
-

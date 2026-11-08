@@ -324,6 +324,19 @@ run_cmd liftTermElabM do
   let some binding := unreviewed.bindingFor aliceReview
     | throwError "Missing current Alice-review binding"
   let unreviewedEnvironment ← getEnv
+  -- Real native support cannot discharge an additional, unassessed claim.
+  -- This isolated capture uses no mock proof or review success.
+  ensure ((unreviewed.resultFor (.translation proofRelation)).complete)
+    "An exact native proves relation needs no extra claim record"
+  let extraClaim : ClaimKey := ⟨proofRelation, `unassessedAdditionalClaim⟩
+  let withExtraClaim ← captureWithAuthored unreviewedEnvironment `extraProofClaim {
+    claims := #[{
+      key := extraClaim
+      interpretation := "The proof's mathematical explanation has been independently reviewed." }] }
+  ensure ((withExtraClaim.resultForRequirement nativeSupport).complete &&
+    (withExtraClaim.resultFor (.claim extraClaim)).status == .unassessed &&
+    (withExtraClaim.resultFor (.translation proofRelation)).status == .unassessed)
+    "An unassessed additional claim must prevent relation completion while native support stays complete"
   let judgmentId := `mockAliceCurrent
   let judgment := mockJudgment judgmentId `AliceMock .passed binding
   liftM (m := TermElabM) (α := Unit)

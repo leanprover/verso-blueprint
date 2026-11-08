@@ -75,6 +75,47 @@ def mockOwnType : Observation := .check {
       (r.resultFor (.translation relationKey)).status == Status.pending &&
       !(r.resultFor (.translation relationKey)).complete)
 
+-- Additional claims stay conjunctive even on a native `proves` relation.
+-- All observations here are explicit MOCK input to the pure admission API.
+#eval show IO Unit from do
+  let relationKey : TranslationKey := ⟨`fixture, `proof_with_extra_claim⟩
+  let support : RequirementKey := ⟨.translation relationKey, `nativeSupport⟩
+  let extraClaim : ClaimKey := ⟨relationKey, `explanation⟩
+  let review : RequirementKey := ⟨.claim extraClaim, `aliceReview⟩
+  let base : Input := { fixture with
+    translations := fixture.translations.push <| contribution `extraProofRelation {
+      key := relationKey, kind := `proves, source := #[leanProofKey], target := #[leanKey],
+      required := #[support] }
+    requirements := fixture.requirements.push <| contribution `extraNativeSupport {
+      key := support, expected := .proves leanObject } }
+  let r ← registry (← withMockEvidence base `extraNativePassed support mockOwnType)
+  expect "extra claim: no extra claim is required by native own-type support"
+    ((r.resultFor (.translation relationKey)).complete)
+  let withClaim : Input := { base with claims := base.claims.push <| contribution `extraClaim {
+    key := extraClaim, interpretation := "The proof explanation has been independently reviewed." } }
+  let r ← registry (← withMockEvidence withClaim `extraNativePassed support mockOwnType)
+  expect "extra claim: native support cannot fill an absent claim contract"
+    ((r.resultForRequirement support).complete &&
+      (r.resultFor (.claim extraClaim)).status == .unassessed &&
+      (r.resultFor (.translation relationKey)).status == .unassessed)
+  let contracted : Input := { withClaim with
+    claims := withClaim.claims.map fun c =>
+      if c.value.key == extraClaim then { c with value := { c.value with required := #[review] } } else c
+    requirements := withClaim.requirements.push <| contribution `extraReviewRequirement {
+      key := review, expected := .review `exposition `AliceMock } }
+  let checked ← withMockEvidence contracted `extraNativePassed support mockOwnType
+  let r ← registry checked
+  expect "extra claim: declared review awaits a judgment"
+    ((r.resultForRequirement support).complete && (r.resultFor (.translation relationKey)).status == .pending)
+  for outcome in #[Outcome.failed, .passed] do
+    let reviewed ← withMockEvidence checked `mockExtraReview review
+      (.review { criterion := `exposition, reviewer := `AliceMock, outcome })
+    let r ← registry reviewed
+    expect "extra claim: only selected approval completes the conjunction"
+      ((r.resultForRequirement support).complete &&
+        (r.resultFor (.claim extraClaim)).complete == (outcome == .passed) &&
+        (r.resultFor (.translation relationKey)).complete == (outcome == .passed))
+
 -- P05/P06: independent MaxNat-shaped goal descriptors, not actual project checks.
 #eval show IO Unit from do
   let ownershipGoal := { goal with fingerprint :=
