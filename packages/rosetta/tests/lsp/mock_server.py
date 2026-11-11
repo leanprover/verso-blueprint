@@ -16,6 +16,7 @@ cancelled_requests = []
 mode = None
 source_uri = None
 target_uri = None
+token_mode = None
 
 
 def send(message):
@@ -66,6 +67,9 @@ while True:
         mode = options.get("mode")
         source_uri = options.get("sourceUri")
         target_uri = options.get("targetUri")
+        token_mode = options.get("tokenMode")
+        if mode == "workspace":
+            assert params["capabilities"]["textDocument"]["semanticTokens"]["requests"]["range"] is True
         if mode == "ignore-term":
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         reply(request_id, {"capabilities": {
@@ -73,7 +77,8 @@ while True:
             "textDocumentSync": 1,
             "definitionProvider": True, "hoverProvider": True,
             **({"workspaceSymbolProvider": {"resolveProvider": True},
-                "semanticTokensProvider": {"full": True, "range": True, "legend": {
+                "semanticTokensProvider": {"full": token_mode not in ("range", "none"),
+                    "range": token_mode not in ("full", "none"), "legend": {
                     "tokenTypes": ["keyword", "function", "number"],
                     "tokenModifiers": ["declaration"]}}} if mode == "workspace" else {}),
         }})
@@ -104,7 +109,11 @@ while True:
                             "targetSelectionRange": {"start": {"line": 0, "character": 5},
                                                      "end": {"line": 0, "character": 12}}}])
     elif method in ("textDocument/semanticTokens/full", "textDocument/semanticTokens/range"):
-        reply(request_id, {"data": [0, 2, 2, 0, 0, 0, 3, 7, 1, 1, 0, 12, 1, 2, 0]})
+        assert token_mode != "none"
+        assert token_mode != "range" or method.endswith("/range")
+        assert token_mode != "full" or method.endswith("/full")
+        reply(request_id, None if token_mode == "null" else {
+            "data": [0, 2, 2, 0, 0, 0, 3, 7, 1, 1, 0, 12, 1, 2, 0]})
     elif method == "textDocument/didOpen":
         document = params["textDocument"]
         diagnostics(document["uri"], document["version"], "old warning")
@@ -114,6 +123,12 @@ while True:
         document = params["textDocument"]
         diagnostics(document["uri"], 1, "stale after edit")
         diagnostics(document["uri"], document["version"], "current warning")
+    elif method == "test/readiness":
+        send({"method": "test/status", "params": {"ready": False}})
+        for _ in range(600):
+            send({"method": "window/logMessage", "params": {"type": 3, "message": "indexing"}})
+        send({"method": "test/status", "params": {"ready": True}})
+        reply(request_id, True)
     elif method == "test/barrier":
         reply(request_id, True)
     elif method == "test/hold-document":

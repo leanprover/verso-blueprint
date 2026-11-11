@@ -16,8 +16,9 @@ extraction into its own repository. No remote repository or release is assumed.
 
 The bridge references the core through `..`, so both packages share one source
 checkout. Core-only consumers do not fetch Verso. Neither package depends on
-Blueprint. The standalone core targets Lean 4.36.0-rc2. The separate Verso bridge
-still pins its Lean 4.35.0 dependency stack.
+Blueprint. Both packages default to Lean 4.35.0, matching the Verso bridge's
+dependency stack. The core also uses the module system for Lean 4.36 consumers;
+the bridge has not been migrated to a Lean 4.36 dependency stack.
 
 ## Build and test
 

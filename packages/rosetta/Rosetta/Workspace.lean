@@ -39,6 +39,9 @@ def Document.semanticTokens (document : Document) (text : String) (range? : Opti
     | throw <| ClientError.unsupported "semantic tokens"
   let useRange := range?.isSome && (provider.getObjValD "range" != .null) &&
     (provider.getObjValD "range" != .bool false)
+  unless useRange || (provider.getObjValD "full" != .null &&
+      provider.getObjValD "full" != .bool false) do
+    throw <| ClientError.unsupported "full-document semantic tokens"
   let method := if useRange then "textDocument/semanticTokens/range" else "textDocument/semanticTokens/full"
   let params := [("textDocument", Json.mkObj [("uri", toJson document.uri)])]
   let params := if useRange then params ++ [("range", toJson range?)] else params

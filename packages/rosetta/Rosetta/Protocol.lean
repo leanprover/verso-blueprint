@@ -69,6 +69,7 @@ legend and the exact document. Unknown legend indexes and invalid ranges fail
 explicitly, without changing the underlying source text. -/
 def semanticSpans (source : String) (provider result : Json) :
     Except String (Array SemanticSpan) := do
+  if result == .null then return #[]
   let legend ← provider.getObjVal? "legend"
   let types ← legend.getObjValAs? (Array String) "tokenTypes"
   let modifiers ← legend.getObjValAs? (Array String) "tokenModifiers"

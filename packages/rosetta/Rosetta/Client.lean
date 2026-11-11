@@ -181,7 +181,9 @@ private def dispatch (config : ClientConfig) (state : Std.Mutex State) (message 
     else state.atomically do
       modify fun s =>
         if s.notifications.size < 512 then { s with notifications := s.notifications.push message }
-        else { s with droppedNotifications := s.droppedNotifications + 1 }
+        else { s with
+          notifications := (s.notifications.extract 1 s.notifications.size).push message
+          droppedNotifications := s.droppedNotifications + 1 }
   else
     let id ← protocol <| message.getObjValAs? Nat "id"
     let result := message.getObjVal? "result"
@@ -491,7 +493,7 @@ def Client.start (config : ClientConfig) : EIO ClientError Client := do
           ("definition", Json.mkObj [("linkSupport", toJson true)]),
           ("diagnostic", Json.mkObj [("relatedDocumentSupport", toJson false)]),
           ("semanticTokens", Json.mkObj [
-            ("requests", Json.mkObj [("full", toJson true)]),
+            ("requests", Json.mkObj [("full", toJson true), ("range", toJson true)]),
             ("tokenTypes", toJson #["namespace", "type", "class", "enum", "interface", "struct",
               "typeParameter", "parameter", "variable", "property", "enumMember", "event",
               "function", "method", "macro", "keyword", "modifier", "comment", "string",

@@ -27,7 +27,32 @@ current VBP Lean 4.35.0 checkout.
 
 ## Evidence and history
 
-The current maintainer bundle is under
+The workspace-reference extension incorporates submitted commit `87792df4`
+(based on `c25e9a99`). It adds workspace-symbol discovery, deferred location
+resolution, exact name/container filtering, definition following, source slicing,
+semantic highlighting, and a bounded notification readiness helper. The canonical
+package API guide describes the author-facing operations and their limitations.
+
+The integration keeps both package defaults on Lean 4.35.0 and retains the core's
+module migration for Lean 4.36 consumers. Review fixes advertise range-token
+requests, respect range/full server capabilities, accept empty token results,
+and retain the latest bounded notification trace so indexing status is not
+permanently hidden after 512 messages.
+
+The extension's acceptance bundle is under
+`_out/verso-lsp-design/source-definition-acceptance/`, with source SHA-256
+`48870458afe0f165aef6b06304e54ae33601164e5b7441c03d8adc94d924939d`.
+Standalone core tests pass on Lean 4.35.0 and 4.36.0-rc2. The 4.35 integration
+also passes both standalone package tests, import-isolation and pinned local-Git
+consumer builds, mock/Rust/Rocq probes, offline plain Verso and Blueprint
+rendering, snapshot validation, `vbp check`, unchanged Blueprint semantic queries,
+and the full VBP `lake test`. A separate live rust-analyzer probe on 4.36 resolves
+and highlights a workspace definition and rejects a missing name. Browser
+acceptance was not repeated for this extension; the renderer itself is unchanged.
+The submitted author's Dalek lookups are additional inherited evidence, not
+independent checks performed by this review.
+
+The earlier extraction maintainer bundle is under
 `_out/verso-lsp-design/rosetta-packages/`. The harness copies the entire package
 unit outside the VBP sources, builds/tests both packages, checks forbidden
 imports, and creates a test-owned local Git repository. Fresh consumer projects

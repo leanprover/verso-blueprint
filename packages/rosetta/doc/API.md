@@ -56,6 +56,10 @@ LocationLink. `Document.semanticTokens text range?` requests and decodes semanti
 against the exact opened document text. When a range is supplied and the server
 supports range tokens, it requests only that range; otherwise it requests full
 document tokens.
+Rosetta advertises both request forms and never sends an unadvertised full
+request to a range-only server. A `null` token result means no coloring; the
+source slice is still preserved. The `text` argument must be the exact text
+used to open the document version.
 
 For a named reference, use:
 
@@ -89,9 +93,13 @@ Initialization options remain caller-owned. For example, rust-analyzer needs
 `workspace.symbol.search.kind = "all_symbols"` to include methods. Workspace
 indexing readiness is also server-specific. `Client.waitForNotification method
 predicate timeoutMs` provides a bounded wait on the latest notification of that
-method, so a caller can await rust-analyzer's `experimental/serverStatus` with
+method in the retained trace, so a caller can await rust-analyzer's `experimental/serverStatus` with
 `quiescent = true`. The generic API contains no Rust names, source paths, or
 Rust syntax assumptions; the author supplies the reference separator.
+`Client.notifications` retains the latest 512 general notifications, with an
+eviction count. Diagnostics are stored separately in `Document.diagnostics`.
+A readiness message evicted by later traffic cannot satisfy this wait; callers
+that need a stronger readiness barrier should use a server-specific request.
 
 ## Error contract
 
