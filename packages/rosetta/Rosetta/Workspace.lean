@@ -48,17 +48,17 @@ def Document.semanticTokens (document : Document) (text : String) (range? : Opti
   let result ← document.request method (Json.mkObj params)
   EIO.ofExcept <| (semanticSpans text provider result).mapError ClientError.protocol
 
-/-- Await the latest notification of a given method satisfying a readiness predicate.
-The caller owns server-specific readiness semantics; waiting is bounded. -/
+/-- Await retained notification params satisfying a readiness predicate. Configure
+the method in retainedNotificationMethods before startup. The caller owns
+server-specific readiness semantics; waiting is bounded. -/
 def Client.waitForNotification (client : Client) (method : String) (accept : Json → Bool)
     (timeoutMs : Nat := 30000) : EIO ClientError Unit := do
+  unless client.config.retainedNotificationMethods.contains method do
+    throw <| ClientError.invalidInput s!"notification method was not configured for retention: {method}"
   let deadline := (← IO.monoMsNow) + timeoutMs
   repeat
-    let (messages, _) ← client.notifications
-    let latest := (messages.filter fun (message : Json) =>
-      (message.getObjValAs? String "method").toOption == some method).back?
-    if let some message := latest then
-      if accept ((message.getObjVal? "params").toOption.getD .null) then return
+    if let some params ← client.latestNotification method then
+      if accept params then return
     if (← IO.monoMsNow) ≥ deadline then throw <| ClientError.deadline method
     IO.sleep 20
 

@@ -27,6 +27,23 @@ current VBP Lean 4.35.0 checkout.
 
 ## Evidence and history
 
+The latest follow-up adapts lean-mirror's vendored readiness patch `8d1e2e7`
+into a generic API: `ClientConfig.retainedNotificationMethods` selects general
+notification methods before startup, and `Client.latestNotification` observes
+their latest params independently of the bounded journal. The existing
+`Client.waitForNotification` now requires configured retention and uses that
+state. This prevents later unrelated traffic from evicting a loading-state
+update. Rust-specific readiness semantics remain in the consuming facade.
+
+Evidence is under `_out/verso-lsp-design/notification-retention/`, source SHA-256
+`72569004f47f7deb232406a6e2ee4fe7c466875d57110cee68189b0eaebfa296`.
+Core build/tests pass on Lean 4.35.0 and 4.36.0-rc2, including initialization-time
+notifications, journal eviction, replacement of ready by busy, null params, and
+unconfigured/session-isolated state. An isolated copy of the lean-mirror facade
+at `b5fb7b6`, adapted to the generic API, builds and passes its native six-feature
+editor/diagnostics/shutdown contract. The original lean-mirror worktree and PR12
+are unchanged; its vendored pin can be updated separately.
+
 The workspace-reference extension incorporates submitted commit `87792df4`
 (based on `c25e9a99`). It adds workspace-symbol discovery, deferred location
 resolution, exact name/container filtering, definition following, source slicing,

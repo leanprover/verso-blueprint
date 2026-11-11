@@ -70,6 +70,7 @@ while True:
         token_mode = options.get("tokenMode")
         if mode == "workspace":
             assert params["capabilities"]["textDocument"]["semanticTokens"]["requests"]["range"] is True
+            send({"method": "test/status", "params": {"ready": False}})
         if mode == "ignore-term":
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         reply(request_id, {"capabilities": {
@@ -128,6 +129,14 @@ while True:
         for _ in range(600):
             send({"method": "window/logMessage", "params": {"type": 3, "message": "indexing"}})
         send({"method": "test/status", "params": {"ready": True}})
+        send({"method": "test/null-status", "params": None})
+        for _ in range(600):
+            send({"method": "window/logMessage", "params": {"type": 3, "message": "finished"}})
+        reply(request_id, True)
+    elif method == "test/not-ready":
+        send({"method": "test/status", "params": {"ready": False}})
+        for _ in range(600):
+            send({"method": "window/logMessage", "params": {"type": 3, "message": "busy again"}})
         reply(request_id, True)
     elif method == "test/barrier":
         reply(request_id, True)

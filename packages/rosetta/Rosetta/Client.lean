@@ -25,6 +25,9 @@ structure ClientConfig where
   initializationOptions : Json := .null
   configuration : Array (String × Json) := #[]
   experimentalCapabilities : Json := .null
+  /-- General notification methods whose latest params survive journal eviction.
+  Configure before startup to include notifications sent during initialization. -/
+  retainedNotificationMethods : Array String := #[]
   timeoutMs : Nat := 5000
   maxQueuedMessages : Nat := 128
   maxQueuedBytes : Nat := 8 * 1024 * 1024
@@ -48,6 +51,7 @@ private structure State where
   queuedBytes : Nat := 0
   active? : Option Outbound := none
   stopWriter : Bool := false
+  latestNotifications : Std.HashMap String Json := {}
   notifications : Array Json := #[]
   droppedNotifications : Nat := 0
   failure? : Option ClientError := none
@@ -179,6 +183,8 @@ private def dispatch (config : ClientConfig) (state : Std.Mutex State) (message 
           | none => s
           | some doc => { s with documents := s.documents.insert params.uri (doc.publish params) }
     else state.atomically do
+      if config.retainedNotificationMethods.contains method then
+        modify fun s => { s with latestNotifications := s.latestNotifications.insert method params }
       modify fun s =>
         if s.notifications.size < 512 then { s with notifications := s.notifications.push message }
         else { s with
@@ -377,6 +383,12 @@ def Document.diagnostics (document : Document) : EIO ClientError (Option Diagnos
     admit s
     checkDocument s (some (document.uri, document.version))
     return s.documents[document.uri]? >>= (·.diagnostics?)
+
+/-- Latest params for a configured general notification method, independent of
+the journal. None means no retained value; some Json.null is a received value.
+Like capabilities and stderr, this is a snapshot, not a session liveness test. -/
+def Client.latestNotification (client : Client) (method : String) : BaseIO (Option Json) :=
+  client.state.atomically do return (← get).latestNotifications[method]?
 
 def Client.notifications (client : Client) : BaseIO (Array Json × Nat) :=
   client.state.atomically do return ((← get).notifications, (← get).droppedNotifications)

@@ -25,6 +25,7 @@ operational errors remain typed through analysis and profile callbacks.
 | `Client.start config` | Acquire a manually owned client; returns `EIO ClientError Client` |
 | `client.request method params timeoutMs cancel?` | Workspace/session RPC; return the JSON result or throw `ClientError` |
 | `client.notify method params` | Admit a workspace/session notification to the bounded queue |
+| `client.latestNotification method` | Observe retained params for a configured general notification method (`BaseIO`) |
 | `client.openDocument uri languageId text` | Return a handle for the admitted document version |
 | `document.request method params timeoutMs cancel?` | RPC with matching URI/version, checked at admission and delivery |
 | `document.change text` | Admit an edit and return its replacement handle |
@@ -91,15 +92,38 @@ scope, use `Document.definitions` or the existing `ContextProfile` analysis.
 
 Initialization options remain caller-owned. For example, rust-analyzer needs
 `workspace.symbol.search.kind = "all_symbols"` to include methods. Workspace
-indexing readiness is also server-specific. `Client.waitForNotification method
-predicate timeoutMs` provides a bounded wait on the latest notification of that
-method in the retained trace, so a caller can await rust-analyzer's `experimental/serverStatus` with
-`quiescent = true`. The generic API contains no Rust names, source paths, or
-Rust syntax assumptions; the author supplies the reference separator.
-`Client.notifications` retains the latest 512 general notifications, with an
-eviction count. Diagnostics are stored separately in `Document.diagnostics`.
-A readiness message evicted by later traffic cannot satisfy this wait; callers
-that need a stronger readiness barrier should use a server-specific request.
+indexing readiness is also server-specific. Configure the methods whose latest
+params must survive unrelated traffic **before starting the session**:
+
+```lean
+Client.withSession { config with
+    retainedNotificationMethods := #["experimental/serverStatus"] } fun client => do
+  client.waitForNotification "experimental/serverStatus" (fun status =>
+    (status.getObjValAs? Bool "quiescent").toOption == some true) 30000
+  client.sourceDefinition "rust" "EdwardsPoint::compress" "::"
+```
+
+`Client.latestNotification method : BaseIO (Option Json)` returns the latest
+params for a configured general notification method. `none` means no retained
+value (including an unconfigured method); `some Json.null` means a notification
+with null params arrived. Each configured method retains one value, including
+updates received during initialization. A newer busy status replaces an older
+ready status. The default retains no methods. There is no Rust-specific status
+field or API in the core.
+
+`Client.waitForNotification method predicate timeoutMs` requires that method in
+`retainedNotificationMethods`; otherwise it fails with `ClientError.invalidInput`.
+It waits on the retained value, independent of journal eviction, and reports
+`ClientError.deadline` if the predicate is not satisfied by the deadline. This
+changes the earlier journal-scanning helper: its callers must now configure the
+method before startup. These observations are snapshots, not session-liveness
+checks or a guarantee against subsequent indexing. The caller supplies the
+server-specific predicate and experimental capabilities needed to enable it.
+
+`Client.notifications` independently retains the latest 512 general notifications
+with an eviction count. Diagnostics remain in `Document.diagnostics`, outside
+both general-notification stores. The generic API contains no Rust names, source
+paths, or Rust syntax assumptions; the author supplies the reference separator.
 
 ## Error contract
 

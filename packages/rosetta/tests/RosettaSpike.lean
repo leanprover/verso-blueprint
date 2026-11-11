@@ -455,8 +455,12 @@ def workspaceChecks (server : String) : EIO ClientError Unit :=
     let targetUri := (System.Uri.pathToUri targetFile : String)
     Client.withSession {
         command := "python3", args := #[server], root := "."
+        retainedNotificationMethods := #["test/status", "test/null-status", "missing/readiness"]
         initializationOptions := Json.mkObj [
           ("mode", "workspace"), ("sourceUri", toJson sourceUri), ("targetUri", toJson targetUri)] } fun client => do
+      assertCheck ((← client.latestNotification "test/status").any (fun params =>
+        (params.getObjValAs? Bool "ready").toOption == some false))
+        "notification sent during initialization was lost"
       let definition ← client.sourceDefinition "test-language" "Container::measure" "::"
       assertCheck (definition.definition.uri == targetUri) "definition location was ignored"
       assertCheck (String.join (definition.pieces.toList.map HighlightedPiece.text) == "fn measure() { 1 }")
@@ -483,9 +487,22 @@ def workspaceChecks (server : String) : EIO ClientError Unit :=
         (params.getObjValAs? Bool "ready").toOption == some true) 1000
       let (notifications, dropped) ← client.notifications
       assertCheck (notifications.size == 512 && dropped > 0) "notification trace was not bounded"
+      assertCheck (!(notifications.any fun message =>
+        (message.getObjValAs? String "method").toOption == some "test/status"))
+        "readiness regression did not evict the journal entry"
+      assertCheck ((← client.latestNotification "test/null-status") == some Json.null)
+        "null notification params were confused with an absent notification"
+      discard <| client.request "test/not-ready" (Json.mkObj [])
+      let busy ← (client.waitForNotification "test/status" (fun params =>
+        (params.getObjValAs? Bool "ready").toOption == some true) 0).toBaseIO
+      assertCheck (match busy with | .error (.deadline _) => true | _ => false)
+        "an older ready notification hid a newer busy notification"
       let timedOut ← (client.waitForNotification "missing/readiness" (fun _ => true) 0).toBaseIO
       assertCheck (match timedOut with | .error (.deadline _) => true | _ => false)
         "readiness wait did not respect its deadline"
+      let unconfigured ← (client.waitForNotification "unconfigured/status" (fun _ => true) 0).toBaseIO
+      assertCheck (match unconfigured with | .error (.invalidInput _) => true | _ => false)
+        "readiness wait accepted an unconfigured notification method"
       IO.println "Workspace lookup, definition following, ambiguity and Unicode highlighting passed"
     for tokenMode in #["range", "full", "null", "none"] do
       Client.withSession {
@@ -493,6 +510,8 @@ def workspaceChecks (server : String) : EIO ClientError Unit :=
           initializationOptions := Json.mkObj [
             ("mode", "workspace"), ("sourceUri", toJson sourceUri), ("targetUri", toJson targetUri),
             ("tokenMode", toJson tokenMode)] } fun client => do
+        assertCheck ((← client.latestNotification "test/status").isNone)
+          "retained state leaked into another session"
         let result ← (client.sourceDefinition "test-language" "Container::measure" "::").toBaseIO
         if tokenMode == "none" then
           assertCheck (match result with | .error (.unsupported _) => true | _ => false)

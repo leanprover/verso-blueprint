@@ -59,6 +59,8 @@ searches workspace symbols, follows the LSP definition result, and highlights
 the returned source range with semantic tokens. It requires a unique exact name
 and, when supplied, a matching server-reported container. It never chooses an
 arbitrary fuzzy result. Server initialization and readiness remain caller-owned.
+Use `ClientConfig.retainedNotificationMethods` and `Client.latestNotification`
+when a loading-state update must survive eviction from the notification journal.
 
 See the [API guide](doc/API.md) for sessions, handles, error constructors, and
 conversion to an application's `IO` boundary.
