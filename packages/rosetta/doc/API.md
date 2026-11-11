@@ -47,6 +47,52 @@ validation/matching (`Bundle.validate`, `Bundle.find`), and the Verso bridge
 retain their existing responsibilities. The current `VersoRosetta.collect` and
 `VersoRosetta.enrich` entry points operate on Manual parts and remain pure.
 
+## Workspace references and highlighted definitions
+
+`Client.workspaceSymbols query` wraps `workspace/symbol`, including deferred
+locations via `workspaceSymbol/resolve`. `Document.definitions position` wraps
+`textDocument/definition` and preserves both full and selection ranges from
+LocationLink. `Document.semanticTokens text range?` requests and decodes semantic tokens
+against the exact opened document text. When a range is supplied and the server
+supports range tokens, it requests only that range; otherwise it requests full
+document tokens.
+
+For a named reference, use:
+
+```lean
+Client.withSession config fun client => do
+  -- Wait for the project's server to finish loading, when necessary.
+  client.sourceDefinition "rust" "EdwardsPoint::compress" "::"
+```
+
+`Client.sourceDefinition` searches by the final component, filters fuzzy results
+to an exact name and optional container supplied by the author, and requires a
+unique location. It asks `definition` at that location, follows the returned
+file URI, and highlights its returned range. The result is a
+`HighlightedDefinition` with the original `DefinitionTarget`, language ID, and
+lossless text pieces carrying semantic token types and modifiers. Token spans
+intersecting the range boundaries are clipped, preserving Unicode and CRLF.
+Source files are read only. Non-file URIs are reported as unsupported.
+
+The lower-level operations `Client.workspaceDefinition` and
+`Client.highlightDefinition` can be used separately. Missing or ambiguous names
+produce `ClientError.invalidInput`; protocol, server, and unsupported-feature
+errors keep their existing types. A Location-only server controls the source
+extent it returns; Rosetta does not invent a larger declaration range.
+
+This is workspace symbol discovery, not compiler resolution of expressions or
+imports. Qualification matches the server's `containerName` exactly; supported
+container depth is determined by the server. For a Rust expression in a known
+scope, use `Document.definitions` or the existing `ContextProfile` analysis.
+
+Initialization options remain caller-owned. For example, rust-analyzer needs
+`workspace.symbol.search.kind = "all_symbols"` to include methods. Workspace
+indexing readiness is also server-specific. `Client.waitForNotification method
+predicate timeoutMs` provides a bounded wait on the latest notification of that
+method, so a caller can await rust-analyzer's `experimental/serverStatus` with
+`quiescent = true`. The generic API contains no Rust names, source paths, or
+Rust syntax assumptions; the author supplies the reference separator.
+
 ## Error contract
 
 `ClientError` is the machine-facing failure interface:

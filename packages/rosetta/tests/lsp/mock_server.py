@@ -14,6 +14,8 @@ client_request = None
 document_request = None
 cancelled_requests = []
 mode = None
+source_uri = None
+target_uri = None
 
 
 def send(message):
@@ -60,14 +62,49 @@ while True:
     request_id = message.get("id")
     params = message.get("params", {})
     if method == "initialize":
-        mode = (params.get("initializationOptions") or {}).get("mode")
+        options = params.get("initializationOptions") or {}
+        mode = options.get("mode")
+        source_uri = options.get("sourceUri")
+        target_uri = options.get("targetUri")
         if mode == "ignore-term":
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         reply(request_id, {"capabilities": {
             "positionEncoding": "utf-8" if mode == "wrong-encoding" else "utf-16",
             "textDocumentSync": 1,
             "definitionProvider": True, "hoverProvider": True,
+            **({"workspaceSymbolProvider": {"resolveProvider": True},
+                "semanticTokensProvider": {"full": True, "range": True, "legend": {
+                    "tokenTypes": ["keyword", "function", "number"],
+                    "tokenModifiers": ["declaration"]}}} if mode == "workspace" else {}),
         }})
+    elif method == "workspace/symbol":
+        def symbol(name, container):
+            return {"name": name, "kind": 12, "containerName": container,
+                    "location": {"uri": source_uri, "range": {
+                        "start": {"line": 0, "character": 0 if container == "Container" else 1},
+                        "end": {"line": 0, "character": 5}}}}
+        query = params["query"]
+        if query == "measure":
+            reply(request_id, [symbol("measure", "Container"), symbol("measure", "Container"),
+                               symbol("measure", "Other"), symbol("measureMore", "Container")])
+        elif query == "deferred":
+            reply(request_id, [{"name": "deferred", "kind": 12,
+                                "location": {"uri": source_uri}, "data": 7}])
+        else:
+            reply(request_id, [])
+    elif method == "workspaceSymbol/resolve":
+        assert params["data"] == 7
+        params["location"]["range"] = {"start": {"line": 0, "character": 0},
+                                        "end": {"line": 0, "character": 5}}
+        reply(request_id, params)
+    elif method == "textDocument/definition":
+        reply(request_id, [{"targetUri": target_uri,
+                            "targetRange": {"start": {"line": 0, "character": 2},
+                                            "end": {"line": 0, "character": 20}},
+                            "targetSelectionRange": {"start": {"line": 0, "character": 5},
+                                                     "end": {"line": 0, "character": 12}}}])
+    elif method in ("textDocument/semanticTokens/full", "textDocument/semanticTokens/range"):
+        reply(request_id, {"data": [0, 2, 2, 0, 0, 0, 3, 7, 1, 1, 0, 12, 1, 2, 0]})
     elif method == "textDocument/didOpen":
         document = params["textDocument"]
         diagnostics(document["uri"], document["version"], "old warning")

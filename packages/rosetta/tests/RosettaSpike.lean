@@ -3,6 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
+import Rosetta.Workspace
 import Rosetta.Client
 import Rosetta.Source
 
@@ -438,8 +439,45 @@ private def probe (language command root : String) : EIO ClientError Unit := do
   finally
     check (← client.close).complete s!"{language}: process was not reaped"
 
+
+private def assertCheck (condition : Bool) (message : String) : EIO ClientError Unit :=
+  unless condition do throw <| ClientError.invalidInput message
+
+/-- A workspace result in one file resolves into a differently located definition.
+Unicode and CRLF exercise token slicing without using any Rust-specific syntax. -/
+def workspaceChecks (server : String) : EIO ClientError Unit :=
+  IO.FS.withTempFile fun indexHandle indexFile => IO.FS.withTempFile fun targetHandle targetFile => do
+    indexHandle.putStr "index\n"
+    indexHandle.flush
+    targetHandle.putStr "😀fn measure() { 1 }\r\n"
+    targetHandle.flush
+    let sourceUri := (System.Uri.pathToUri indexFile : String)
+    let targetUri := (System.Uri.pathToUri targetFile : String)
+    Client.withSession {
+        command := "python3", args := #[server], root := "."
+        initializationOptions := Json.mkObj [
+          ("mode", "workspace"), ("sourceUri", toJson sourceUri), ("targetUri", toJson targetUri)] } fun client => do
+      let definition ← client.sourceDefinition "test-language" "Container::measure" "::"
+      assertCheck (definition.definition.uri == targetUri) "definition location was ignored"
+      assertCheck (String.join (definition.pieces.toList.map HighlightedPiece.text) == "fn measure() { 1 }")
+        "source slice did not preserve the exact definition range"
+      assertCheck (definition.pieces.any (fun piece => piece.tokenType == "function" &&
+          piece.text == "measure" && piece.modifiers == #["declaration"])) "semantic coloring was lost"
+      for reference in #["missing", "measure", "::measure", "Container::"] do
+        let result ← (client.workspaceDefinition "test-language" reference "::").toBaseIO
+        assertCheck (match result with | .error (.invalidInput _) => true | _ => false)
+          s!"expected unresolved, ambiguous, or malformed reference: {reference}"
+      let deferred ← client.workspaceSymbols "deferred"
+      assertCheck (deferred.size == 1 && (deferred[0]?).any (fun symbol => symbol.location.uri == sourceUri))
+        "deferred workspace symbol location was not resolved"
+      let clipped ← client.highlightDefinition "test-language" {
+        definition.definition with range := { start := ⟨0, 3⟩, «end» := ⟨0, 10⟩ } }
+      assertCheck (String.join (clipped.pieces.toList.map HighlightedPiece.text) == "n measu")
+        "tokens intersecting source boundaries were discarded"
+      IO.println "Workspace lookup, definition following, ambiguity and Unicode highlighting passed"
+
 def main (args : List String) : IO Unit := do
   match args with
-  | ["mock", server] => pureChecks; (mockChecks server).toIO (IO.userError ∘ toString)
+  | ["mock", server] => pureChecks; (mockChecks server *> workspaceChecks server).toIO (IO.userError ∘ toString)
   | ["probe", language, command, root] => (probe language command root).toIO (IO.userError ∘ toString)
   | _ => throw <| IO.userError "usage: rosetta-spike mock SERVER.py | probe LANGUAGE COMMAND ROOT"

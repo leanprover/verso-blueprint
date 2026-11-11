@@ -3,8 +3,12 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Lean.Data.Lsp
-import Rosetta.Source
+module
+
+public import Lean.Data.Lsp
+public import Rosetta.Source
+
+public section
 
 /-! Experimental normalization of external LSP results, without genre metadata. -/
 namespace Rosetta

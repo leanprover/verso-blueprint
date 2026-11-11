@@ -3,8 +3,12 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Lean.Data.Lsp.Communication
-import Rosetta.Error
+module
+
+public import Lean.Data.Lsp.Communication
+public import Rosetta.Error
+
+public section
 
 namespace Rosetta.Internal
 

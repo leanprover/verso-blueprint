@@ -3,10 +3,14 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Rosetta.Framing
-import Rosetta.Protocol
-import Std.Sync.Mutex
-import Std.Sync.CancellationToken
+module
+
+public import Rosetta.Framing
+public import Rosetta.Protocol
+public import Std.Sync.Mutex
+public import Std.Sync.CancellationToken
+
+public section
 
 /-! Experimental stdio client. Transport state never protects blocking IO.
 Document handles belong to one client and one admitted document version. -/
@@ -27,7 +31,7 @@ structure ClientConfig where
   maxPendingRequests : Nat := 128
   maxInboundBytes : Nat := 16 * 1024 * 1024
 
-private def stdio : IO.Process.StdioConfig := {
+def stdio : IO.Process.StdioConfig := {
   stdin := .piped, stdout := .piped, stderr := .piped }
 
 private structure Outbound where
@@ -59,7 +63,7 @@ structure Client where
   private stderrReader : Task (Except IO.Error Unit)
   private stderrBytes : IO.Ref ByteArray
   private initializeResult : IO.Ref Json
-  private config : ClientConfig
+  config : ClientConfig
   private cleanup : IO.Promise CloseReport
 
 /-- A document version in its owning session. Obtain a new handle after an edit;
@@ -479,7 +483,9 @@ def Client.start (config : ClientConfig) : EIO ClientError Client := do
       ("capabilities", Json.mkObj [
         ("experimental", config.experimentalCapabilities),
         ("general", Json.mkObj [("positionEncodings", toJson #["utf-16"])]),
-        ("workspace", Json.mkObj [("configuration", toJson true), ("workspaceFolders", toJson true)]),
+        ("workspace", Json.mkObj [("configuration", toJson true), ("workspaceFolders", toJson true),
+          ("symbol", Json.mkObj [("resolveSupport", Json.mkObj [
+            ("properties", toJson #["location.range"])])])]),
         ("textDocument", Json.mkObj [
           ("publishDiagnostics", Json.mkObj [("versionSupport", toJson true)]),
           ("definition", Json.mkObj [("linkSupport", toJson true)]),
