@@ -11,7 +11,7 @@ and [migration notes](https://github.com/ejgallego/rosetta/blob/main/doc/MIGRATI
 
 VBP consumes `verso-rosetta` as a pinned Git dependency with `subDir = "verso"`.
 The root `rosetta` package is resolved from the same checkout. The current pin
-is `c6ecf219099c4e1795141dc5cc190da5ee84aaf6`. The local `packages/rosetta/` copy has been removed.
+is `462fa57af6e058919a8d48be5fd1ba61675641e1`. The local `packages/rosetta/` copy has been removed.
 The standalone repository preserves the four package commits since extraction;
 its exported Lean sources match VBP `bc6c4f5a` byte for byte.
 
@@ -23,7 +23,8 @@ VBP Git dependency revisions remain unchanged.
 
 Rosetta is published as a public repository, with `main` at this exact pin.
 The VBP dependency migration is committed locally on `feat/verso-lsp-adapter`
-in `245eb1d2`; it has not been submitted or merged into VBP's development branch.
+in `245eb1d2`, with follow-up pin updates; it has not been submitted or merged
+into VBP's development branch.
 The pin has been fetched directly from GitHub. Initial local migration checks
 used a command-scoped URL substitution before publication; no persistent Git
 URL substitution was installed. Migration and publication evidence live under
