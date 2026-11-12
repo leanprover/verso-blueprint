@@ -9,9 +9,12 @@ and [migration notes](https://github.com/ejgallego/rosetta/blob/main/doc/MIGRATI
 
 ## Repository boundary
 
-VBP consumes `verso-rosetta` as a pinned Git dependency with `subDir = "verso"`.
-The root `rosetta` package is resolved from the same checkout. The current pin
-is `462fa57af6e058919a8d48be5fd1ba61675641e1`. The local `packages/rosetta/` copy has been removed.
+VBP explicitly pins both `rosetta` and `verso-rosetta` from one repository
+revision, selecting `subDir = "verso"` for the bridge. The repository URL and
+revision have one definition in `lakefile.lean`. Declaring the core directly
+keeps VBP's lockfile free of inherited workspace-relative paths, so another
+project can consume VBP from a path dependency. The local `packages/rosetta/`
+copy has been removed.
 The standalone repository preserves the four package commits since extraction;
 its exported Lean sources match VBP `bc6c4f5a` byte for byte.
 

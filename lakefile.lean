@@ -3,7 +3,12 @@ open Lake DSL
 
 -- Pin the matching Lean 4.35 stable dependency stack.
 -- Rosetta owns the protocol client and Verso bridge in its standalone repository.
-require «verso-rosetta» from git "https://github.com/ejgallego/rosetta.git" @ "462fa57af6e058919a8d48be5fd1ba61675641e1" / "verso"
+def rosettaRepository := "https://github.com/ejgallego/rosetta.git"
+def rosettaRevision := "462fa57af6e058919a8d48be5fd1ba61675641e1"
+-- Pin the core directly: inherited workspace-relative path entries are not
+-- portable when VBP itself is consumed as a path dependency in another project.
+require rosetta from git rosettaRepository @ rosettaRevision
+require «verso-rosetta» from git rosettaRepository @ rosettaRevision / "verso"
 
 require verso from git "https://github.com/leanprover/verso"@"v4.35.0"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0"

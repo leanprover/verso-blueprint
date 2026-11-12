@@ -29,8 +29,10 @@ def main():
     manifest = json.loads((repo / "lake-manifest.json").read_text())
     core = next(entry for entry in manifest["packages"] if entry["name"] == "rosetta")
     bridge = next(entry for entry in manifest["packages"] if entry["name"].strip("«»") == "verso-rosetta")
-    assert core["type"] == "path" and bridge["type"] == "git"
-    package = (repo / core["dir"]).resolve()
+    assert core["type"] == bridge["type"] == "git"
+    assert core["url"] == bridge["url"] and core["rev"] == bridge["rev"]
+    package = (repo / manifest["packagesDir"] / core["name"].strip("«»") /
+               (core.get("subDir") or "")).resolve()
     for toolchain in (package / "lean-toolchain", package / "verso/lean-toolchain"):
         assert toolchain.read_text().strip() == (repo / "lean-toolchain").read_text().strip(), \
             f"package toolchain differs from this VBP checkout: {toolchain}"
