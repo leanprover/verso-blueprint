@@ -14,4 +14,4 @@ open Lean Informal
   return (← Environment.importedConflicts).isEmpty &&
     node.priority == some "high" && node.externalRefs.size == 2 &&
     (state.factRecords.filter fun record => record.label == `coherent_equal).length == 2 &&
-    (state.nodeContributors.getD `coherent_equal #[]).size == 2
+    (state.pendingNodes.getD `coherent_equal {}).contributors.size == 2

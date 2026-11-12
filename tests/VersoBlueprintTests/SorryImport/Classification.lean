@@ -11,7 +11,8 @@ open Lean Informal Informal.Data
 
 namespace Verso.VersoBlueprintTests.SorryImport.Classification
 
-private unsafe def withProvider (importAll : Bool) (action : CoreM Bool) : CoreM Bool := do
+private unsafe def withProvider (importAll : Bool) (action : CoreM Bool)
+    (loadExts : Bool := true) : CoreM Bool := do
   liftM enableInitializersExecution
   -- Dynamic imports must use the same cache-in-place artifact map as normal
   -- elaboration. Lake's public setup interface resolves that map without
@@ -24,7 +25,7 @@ private unsafe def withProvider (importAll : Bool) (action : CoreM Bool) : CoreM
   let setup : ModuleSetup ← ofExcept <| Json.parse output.stdout >>= fromJson?
   let env ← liftM <| importModules
     #[{ module := `VersoBlueprintTests.SorryImport.Provider, importAll }]
-    {} (loadExts := true) (level := .exported) (arts := setup.importArts)
+    {} (loadExts := loadExts) (level := .exported) (arts := setup.importArts)
   withEnv env action
 
 private def statusOf (name : Name) : CoreM ProvedStatus := do
@@ -210,5 +211,36 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
       !Graph.nodeLocalProofFormalized {} completeNode && completeRef.provedStatus.isUnverified &&
       nestedRef.provedStatus.sorryEvidence == #[statementDependency] && nestedRef.provedStatus.hasUnverifiedCoverage &&
       !missingRef.present && missingRef.provedStatus == .missing
+
+-- A missing collector extension cannot authorize body absence. The exposed
+-- numeric consumer actually uses the admitted value; this is not an unused-let
+-- control. Lean's original-kind module entries remain available in this import.
+/-- info: true -/
+#guard_msgs in
+#eval
+  withProvider false (loadExts := false) do
+    let names := #[`sorryImportNumber, `sorryImportExposed, `sorryImportAxiom,
+      `sorryImportExposedComplete, `sorryImportComplete]
+    let statuses ← analyzeDeclarations names
+    let individual ← names.mapM analyzeDeclaration
+    return statuses == individual &&
+      statuses[0]!.isUnverified && !statuses[0]!.isAxiomLike &&
+      statuses[1]!.isUnverified && !statuses[1]!.isProved &&
+      statuses[2]!.isAxiomLike && statuses[3]!.isProved &&
+      statuses[4]!.isUnverified && !statuses[4]!.isAxiomLike
+
+-- Loading bodies supplies evidence even without initialized summary extensions.
+-- Clean controls remain complete, and genuine axioms retain their own policy.
+/-- info: true -/
+#guard_msgs in
+#eval
+  withProvider true (loadExts := false) do
+    let hidden ← statusOf `sorryImportNumber
+    let exposed ← statusOf `sorryImportExposed
+    let axiomStatus ← statusOf `sorryImportAxiom
+    let clean ← statusOf `sorryImportComplete
+    return hidden.containsExplicitSorry && !hidden.isProved &&
+      exposed.dependsOnSorry && !exposed.isProved &&
+      axiomStatus.isAxiomLike && clean.isProved
 
 end Verso.VersoBlueprintTests.SorryImport.Classification

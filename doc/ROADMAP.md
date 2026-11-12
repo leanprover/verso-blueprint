@@ -26,6 +26,21 @@ architecture narrative. Those live in
 
 ## Active Workstreams
 
+### Verification of Accepted Blueprint Data
+
+The verification lane owns proofs connecting identified contribution evidence
+to the production assembler, accepted node fields, and environment indexes.
+The [verification plan](roadmap/verification.md) records the bounded sequence,
+assumptions, acceptance commands, and ownership boundaries.
+
+V1 implements the assembly-to-resolver bridge, a two-way acceptance
+characterization, and input-facing priority laws on the merged #469 admission
+boundary. The next bounded milestone is V2a: snapshot merge union, normalization,
+uniqueness, and presence laws. Keep facet membership, environment coherence,
+and conservative completion as separate follow-ups.
+Coordinate Lean observation and coverage contracts with the axiom-analysis lane;
+do not replace missing API guarantees with unverified global axioms.
+
 ### Rendering and Preview Boundary
 
 Goal: keep Blueprint's render entry point thin while making preview delivery
@@ -168,8 +183,9 @@ Work:
    `Data.Node` plus external declaration checks; declaration rows, summary
    detail rows, heading marks, code-entry icons, and external-code rows already
    share the declaration-status vocabulary
-5. encode the intended ownership rules for `CodeRef.external`, especially the
-   difference between Blueprint-owned labels and Lean-owned declaration names
+5. preserve the structural separation between identified external associations
+   and node payloads; Blueprint labels and Lean declaration names retain their
+   separate ownership through capture and rendering
 6. decide whether richer group metadata belongs in the core data model, then
    either port the local `group-metadata-rendering` work or retire it
 7. reject invalid nested and duplicate declarations before they mutate the

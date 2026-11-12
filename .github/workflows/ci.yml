@@ -83,6 +83,8 @@ jobs:
           ./scripts/lean-low-priority lake build
           +VersoBlueprint.Contributions.Laws:olean
           +VersoBlueprint.NodeAssembly.Laws:olean
+      - name: Print contribution and assembly proof dependencies
+        run: ./scripts/lean-low-priority lake lean tests/verification/AssemblyAxiomAudit.lean
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
       - name: Run consumer math lint smoke

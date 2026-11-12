@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Contributions
 
-/-! The narrow assembly layer combines legacy node payloads with the proved
+/-! The narrow assembly layer combines node payloads with the proved
 external-association/priority slice.  It deliberately does not import the
 environment extension or rendering consumers. -/
 
@@ -73,12 +73,7 @@ private def mergeContribution (label : Label) (node : Node)
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
   let issueUrl ← mergeMetadata label "issue URLs" node.issueUrl incoming.issueUrl
-  let externalRefs := node.externalRefs
-  let mut literateCodes := node.literateCodes
-  for code in incoming.leanCode do
-    match code with
-    | .external _ => pure ()
-    | .literate code => literateCodes := literateCodes.push code
+  let literateCodes := node.literateCodes ++ incoming.literateCodes
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
@@ -86,7 +81,7 @@ private def mergeContribution (label : Label) (node : Node)
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
     | none => pure <| if node.kindIsExplicit then node.kind else
-        inferredNodeKind (ExternalRef.mergeSnapshots externalRefs node.proofExternalRefs) literateCodes
+        inferredNodeKind (ExternalRef.mergeSnapshots node.externalRefs node.proofExternalRefs) literateCodes
   return { node with
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
@@ -94,8 +89,8 @@ private def mergeContribution (label : Label) (node : Node)
     literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
-/-- Private legacy reducer for body, kind, markup, dependency, and literate payloads. -/
-private def applyLegacy (label : Label) (node : Node)
+/-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
+private def applyPayloads (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
   let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
   if errors.isEmpty then .ok node else .error errors
@@ -104,34 +99,18 @@ end Informal.NodeAssembly
 
 namespace Informal.Data
 
-/--
-Apply body, kind, markup, dependency and literate payloads to a node.
-This public legacy API rejects priority and references on either facet because their
-admission requires an identified selected contribution record; producers should
-use `Environment.contributeSelected` for those fields. Its implementation lives
-in `NodeAssembly` so the environment can combine it with the selected-fact
-resolver without a Data ↔ Contributions cycle.
--/
+/-- Apply body, kind, markup, dependency, and literate payloads to a node.
+Selected associations and priority are supplied separately through identified
+records. This reducer preserves those fields on an already assembled node. -/
 def Node.applyContributions (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
-  if contributions.any NodeContribution.hasSelectedFields then
-    .error #["Blueprint external references and priority require an identified contribution record"]
-  else
-    Informal.NodeAssembly.applyLegacy label node contributions
+  Informal.NodeAssembly.applyPayloads label node contributions
 
 end Informal.Data
 
 namespace Informal.NodeAssembly
 
 open Lean Informal.Data Informal.Contributions
-
-/-- Remove fields whose admission is owned by a selected contribution record. -/
-def withoutSelectedFacts (contribution : NodeContribution) : NodeContribution :=
-  { contribution with
-    priority := none
-    proofExternalRefs := #[]
-    leanCode := contribution.leanCode.filter fun code =>
-      match code with | .external _ => false | .literate _ => true }
 
 /-- Capability projection for consumers that need every accepted attribute association. -/
 def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
@@ -187,21 +166,22 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.references.map (·.canonical) != record.references.map (·.canonical) ||
       first.proofReferences.map (·.canonical) != record.proofReferences.map (·.canonical) then
     differences := differences.push "facet associations"
-  let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
-  let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
-  if origins != recordOrigins then
+  if first.allReferences.map (·.origin) != record.allReferences.map (·.origin) then
+    let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
+    let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
     differences := differences.push s!"origin ({origins} → {recordOrigins})"
-  let presence := referenceFieldMessage first.allReferences (fun ref => toString ref.present)
-  let recordPresence := referenceFieldMessage record.allReferences (fun ref => toString ref.present)
-  if presence != recordPresence then
+  if first.allReferences.map (·.present) != record.allReferences.map (·.present) then
+    let presence := referenceFieldMessage first.allReferences (fun ref => toString ref.present)
+    let recordPresence := referenceFieldMessage record.allReferences (fun ref => toString ref.present)
     differences := differences.push s!"presence ({presence} → {recordPresence})"
-  let sources := referenceFieldMessage first.allReferences externalSourceMessage
-  let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
-  if sources != recordSources then
+  if first.allReferences.map (fun ref => (ref.provenance, ref.sourceHref?)) !=
+      record.allReferences.map (fun ref => (ref.provenance, ref.sourceHref?)) then
+    let sources := referenceFieldMessage first.allReferences externalSourceMessage
+    let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
-  let statuses := referenceFieldMessage first.allReferences (provedStatusMessage ·.provedStatus)
-  let recordStatuses := referenceFieldMessage record.allReferences (provedStatusMessage ·.provedStatus)
   if first.allReferences.map (·.provedStatus) != record.allReferences.map (·.provedStatus) then
+    let statuses := referenceFieldMessage first.allReferences (provedStatusMessage ·.provedStatus)
+    let recordStatuses := referenceFieldMessage record.allReferences (provedStatusMessage ·.provedStatus)
     differences := differences.push s!"status ({statuses} → {recordStatuses})"
   if first.allReferences.map (·.render) != record.allReferences.map (·.render) then
     differences := differences.push s!"render differs ({referenceFieldMessage first.allReferences (renderStateMessage ·.render)} → {referenceFieldMessage record.allReferences (renderStateMessage ·.render)})"
@@ -218,27 +198,29 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
     s!"{idKey record.id}/{record.label.toString}/" ++
       String.intercalate "," (record.references.toList.map fun ref => ref.canonical.toString) ++
       s!"/{record.priority}"
-  let supportOrder := fun (a b : Record) => decide <| supportKey a < supportKey b
-  let collisionOrder := fun (a b : Record) => decide <|
-    supportKey a < supportKey b || (supportKey a = supportKey b && reprStr a < reprStr b)
+  let keyedSupports := fun (supports : List Record) => supports.toArray.map fun record =>
+    (supportKey record, reprStr record, record)
+  let supportOrder := fun (a b : String × String × Record) =>
+    a.1 < b.1 || (a.1 = b.1 && a.2.1 < b.2.1)
   let collisionMessages := collisions.flatMap fun (id, supports) =>
     #[s!"Label {label} has conflicting contribution identity {id.moduleName}.{id.producer}:{id.subject} at {id.site}/{id.slot}"] ++
-      match (supports.toArray.qsort collisionOrder).toList with
+      match (keyedSupports supports |>.qsort supportOrder).toList with
       | [] => #[]
-      | first :: rest => #[recordMessage first] ++
-        rest.toArray.map fun record => s!"{recordMessage record}; {collisionDifferenceMessage first record}"
+      | first :: rest => #[recordMessage first.2.2] ++
+        rest.toArray.map fun record =>
+          s!"{recordMessage record.2.2}; {collisionDifferenceMessage first.2.2 record.2.2}"
   let priorityMessages := priorities.flatMap fun (value, supports) =>
     #[s!"Label {label} declares conflicting priorities including '{value}'"] ++
-      ((supports.toArray.qsort supportOrder).map recordMessage)
+      ((keyedSupports supports |>.qsort supportOrder).map fun support => recordMessage support.2.2)
   collisionMessages ++ priorityMessages
 
 /--
 Assemble one complete node atomically. Selected records are resolved exactly once;
 their accepted projection supplies external references and priority, while the
-legacy reducer retains body, kind, markup, dependency, and literate policies.
+payload reducer retains body, kind, markup, dependency, and literate policies.
 On success, the node exposes the resolved priority and an attribute capability
 projected from every accepted support. It does not choose a general snapshot or
-claim confluence for unrelated legacy payloads.
+claim confluence for unrelated payload policies.
 -/
 structure Assembly where
   node : Node
@@ -257,9 +239,9 @@ private def project (node : Node) (view : View) : Assembly :=
     priority := view.priority
     kind := kind }, view }
 
-def assemble (label : Label) (legacy : Array NodeContribution) (records : List Record) :
+def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
     Except (Array String) Assembly :=
-  match Node.applyContributions label {} legacy with
+  match Node.applyContributions label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)

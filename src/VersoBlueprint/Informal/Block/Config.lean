@@ -130,7 +130,7 @@ structure ResolvedConfig where
   label : Data.Label
   labelSyntax : Syntax
   envKind : Data.InProgressKind
-  codeHint : Option Data.CodeRef := none
+  externalRefs : Array Data.ExternalRef := #[]
   parent : Option Data.Parent := none
   priority : Option String := none
   owner : Option Data.AuthorId := none
@@ -260,16 +260,11 @@ def Config.resolveForDirective {m}
     else
       pure {}
   let inferredUseRefs := inferredDeps.toUseRefs cfg.metadataUses (some cfg.label)
-  let codeHint : Option Data.CodeRef :=
-    if hasExternalRaw then
-      some (.external resolvedExternalCode)
-    else
-      none
   pure {
     label := cfg.label
     labelSyntax := cfg.labelSyntax
     envKind
-    codeHint
+    externalRefs := resolvedExternalCode
     parent := cfg.parent
     priority
     owner
