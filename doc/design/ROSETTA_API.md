@@ -21,14 +21,11 @@ VBP retains the Blueprint/plain-Verso integration generators, offline rendering
 checks, browser fixtures and Blueprint semantic comparisons. Existing unrelated
 VBP Git dependency revisions remain unchanged.
 
-Rosetta is published as a public repository, with `main` at this exact pin.
-The VBP dependency migration is committed locally on `feat/verso-lsp-adapter`
-in `245eb1d2`, with follow-up pin updates; it has not been submitted or merged
-into VBP's development branch.
-The pin has been fetched directly from GitHub. Initial local migration checks
-used a command-scoped URL substitution before publication; no persistent Git
-URL substitution was installed. Migration and publication evidence live under
-`_out/verso-lsp-design/rosetta-migration/`.
+The pinned revision is published in Rosetta's public repository and can be
+fetched directly from GitHub. Package CI builds the core on Lean 4.35.0 and
+4.36.0-rc2, builds/tests the Lean 4.35.0 Verso bridge, and checks fresh Git
+consumers and package isolation. VBP CI separately compiles and compares the
+plain Verso and Blueprint request plans without starting language servers.
 
 The authoring integration currently uses the explicit generator-boundary API:
 collect inert requests, analyze through configured server profiles, save and

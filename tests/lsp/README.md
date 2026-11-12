@@ -75,6 +75,12 @@ the standalone repository. VBP's runner resolves the actual package directory
 from its Lake manifest, records the pinned URL/revision and source snapshot,
 and exercises its Blueprint-specific generator boundary.
 
+VBP CI also runs `lake exe rosetta-docs plan` and checks that the five authored
+requests survive collection unchanged inside the Blueprint node. This path
+compiles both documents without starting a language server. The Rust fixture's
+readiness hook uses Rosetta's retained notification state, independently of the
+bounded notification journal.
+
 It then compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:
 

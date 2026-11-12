@@ -18,11 +18,7 @@ private def requests : IO (Array Request) := do
 private def awaitRust (client : Client) : EIO ClientError Json := do
   let deadline := (← IO.monoMsNow) + 15000
   repeat
-    let (notifications, dropped) ← client.notifications
-    unless dropped == 0 do throw <| ClientError.io <| IO.userError "readiness trace overflow"
-    if let some status := notifications.toList.reverse.find? (fun message =>
-        (message.getObjValAs? String "method").toOption == some "experimental/serverStatus") then
-      let params ← IO.ofExcept <| status.getObjVal? "params"
+    if let some params ← client.latestNotification "experimental/serverStatus" then
       if (params.getObjValAs? Bool "quiescent").toOption == some true then
         unless (params.getObjValAs? String "health").toOption == some "ok" do
           throw <| ClientError.io <| IO.userError s!"Rust workspace is not healthy: {params.compress}"
@@ -75,6 +71,7 @@ private def profiles (root : System.FilePath) (rust rocq : String) : IO (Array C
     key := "rust-values", languageId := "rust"
     client := {
       command := rust, root := rustRoot, timeoutMs := 15000
+      retainedNotificationMethods := #["experimental/serverStatus"]
       initializationOptions := Json.mkObj [
         ("checkOnSave", toJson false),
         ("cargo", Json.mkObj [("buildScripts", Json.mkObj [("enable", toJson false)])]),
