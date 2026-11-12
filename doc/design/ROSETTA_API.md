@@ -1,4 +1,4 @@
-# Rosetta extraction and API index
+# Rosetta integration and API index
 
 The core and Verso bridge now belong to the independent
 [ejgallego/rosetta](https://github.com/ejgallego/rosetta) repository.
@@ -21,11 +21,20 @@ VBP retains the Blueprint/plain-Verso integration generators, offline rendering
 checks, browser fixtures and Blueprint semantic comparisons. Existing unrelated
 VBP Git dependency revisions remain unchanged.
 
-The migration is prepared locally. The GitHub repository must be published at
-this exact pin before a fresh VBP clone can fetch it. Local validation uses a
-command-scoped Git URL substitution to the standalone checkout; no global Git
-configuration or remote publication is implied. Migration evidence and the
-publication handoff live under `_out/verso-lsp-design/rosetta-migration/`.
+Rosetta is published as a public repository, with `main` at this exact pin.
+The VBP dependency migration is committed locally on `feat/verso-lsp-adapter`
+in `245eb1d2`; it has not been submitted or merged into VBP's development branch.
+The pin has been fetched directly from GitHub. Initial local migration checks
+used a command-scoped URL substitution before publication; no persistent Git
+URL substitution was installed. Migration and publication evidence live under
+`_out/verso-lsp-design/rosetta-migration/`.
+
+The authoring integration currently uses the explicit generator-boundary API:
+collect inert requests, analyze through configured server profiles, save and
+validate the bundle, enrich the document, then render normally. Plain Verso and
+Blueprint fixtures exercise this path and preserve Blueprint semantic queries.
+A standard `vbp build` configuration interface for profiles and saved bundles
+remains follow-up work; publishing the library does not add that interface.
 
 ## Evidence and history
 
