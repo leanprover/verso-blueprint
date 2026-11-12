@@ -2,7 +2,7 @@
 
 This is maintainer tooling for the design in
 [`doc/design/VERSO_LSP_ADAPTER.md`](../../doc/design/VERSO_LSP_ADAPTER.md).
-The `rosetta` package under [`packages/rosetta`](../../packages/rosetta/README.md)
+The independent [`rosetta` package](https://github.com/ejgallego/rosetta)
 imports Lean and Std, with no package dependencies. Its separate `verso/`
 package supplies the Verso bridge. Both are experimental; the Blueprint core
 does not import either library by default.
@@ -48,7 +48,7 @@ Unix; the recorded validation platform is Linux. See the
 They now match structured `ClientError` constructors, preserve server codes and
 absent/null/nested error data, distinguish successful null results, and exercise
 typed action-plus-cleanup failures. See the
-[current API and migration guide](../../packages/rosetta/doc/API.md).
+[current API and migration guide](https://github.com/ejgallego/rosetta/blob/main/doc/API.md).
 
 The real checks query both an authored-block position and a named-reference
 probe in the same project scope. They retrieve available semantic tokens,
@@ -67,13 +67,13 @@ VBP attachment semantics. See its [results and limits](../../doc/design/VERSO_LS
 import is `import Rosetta`. `VersoRosetta` is a separate package/library whose aggregate import
 registers the experimental Manual code block and role. The core imports only
 Lean/Std; the bridge imports Verso and never VBP. VBP consumes the bridge as a
-local path dependency while repository ownership and publication are settled.
+pinned Git dependency from `ejgallego/rosetta`, selecting `subDir = "verso"`.
 
-The document mode builds/tests both copied packages, checks their dependency
-manifests, and verifies that the core cannot import Verso and the bridge cannot
-import Blueprint. It also creates a test-owned local Git repository and builds
-fresh core and bridge consumer projects using pinned Git dependencies; the
-bridge consumer uses `subDir = "verso"`. No remote is created or pushed.
+Rosetta's own CI builds/tests its packages, checks import isolation, and builds
+fresh pinned Git consumers. Those checks live in `tests/check_packages.py` in
+the standalone repository. VBP's runner resolves the actual package directory
+from its Lake manifest, records the pinned URL/revision and source snapshot,
+and exercises its Blueprint-specific generator boundary.
 
 It then compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:

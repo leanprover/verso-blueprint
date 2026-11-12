@@ -26,25 +26,31 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     wrapper = str(repo / "scripts/lean-low-priority")
-    package = repo / "packages/rosetta"
+    manifest = json.loads((repo / "lake-manifest.json").read_text())
+    core = next(entry for entry in manifest["packages"] if entry["name"] == "rosetta")
+    bridge = next(entry for entry in manifest["packages"] if entry["name"].strip("«»") == "verso-rosetta")
+    assert core["type"] == "path" and bridge["type"] == "git"
+    package = (repo / core["dir"]).resolve()
     for toolchain in (package / "lean-toolchain", package / "verso/lean-toolchain"):
         assert toolchain.read_text().strip() == (repo / "lean-toolchain").read_text().strip(), \
             f"package toolchain differs from this VBP checkout: {toolchain}"
     package_files = sorted(path for path in package.rglob("*")
-                           if path.is_file() and not {".lake", ".beam", ".git", "__pycache__"}.intersection(path.parts)
+                           if path.is_file() and not {".lake", ".beam", ".git", "__pycache__"}.intersection(path.relative_to(package).parts)
                            and path.suffix != ".pyc")
     identity = hashlib.sha256()
-    for path in sorted([*package_files,
-                        *(repo / "tests/RosettaDocs").glob("*.lean"),
-                        repo / "tests/RosettaDocsMain.lean",
-                        repo / "lakefile.lean", repo / "lean-toolchain", repo / "lake-manifest.json",
-                        *Path(__file__).parent.rglob("*")]):
+    sources = {Path("rosetta") / path.relative_to(package): path for path in package_files}
+    for path in [*(repo / "tests/RosettaDocs").glob("*.lean"),
+                 repo / "tests/RosettaDocsMain.lean",
+                 repo / "lakefile.lean", repo / "lean-toolchain", repo / "lake-manifest.json",
+                 *Path(__file__).parent.rglob("*")]:
         if path.is_file() and "__pycache__" not in path.parts:
-            identity.update(str(path.relative_to(repo)).encode())
-            identity.update(path.read_bytes())
-            saved = output / "source" / path.relative_to(repo)
-            saved.parent.mkdir(parents=True, exist_ok=True)
-            saved.write_bytes(path.read_bytes())
+            sources[path.relative_to(repo)] = path
+    for relative, path in sorted(sources.items()):
+        identity.update(str(relative).encode())
+        identity.update(path.read_bytes())
+        saved = output / "source" / relative
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_bytes(path.read_bytes())
     # Content-addressed, test-owned copy: no VBP sources or canonical build
     # outputs are available inside the proposed standalone repository.
     standalone = output / "standalone" / identity.hexdigest()[:16]
@@ -56,6 +62,7 @@ def main():
     prefix = [wrapper, "lake", "exe", "rosetta-spike"]
     metadata = {"sourceSha256": identity.hexdigest(),
                 "leanToolchain": (repo / "lean-toolchain").read_text().strip(),
+                "rosetta": {"url": bridge["url"], "revision": bridge["rev"]},
                 "servers": {}}
     (output / "identity.json").write_text(json.dumps(metadata, indent=2) + "\n")
     cases = [("mock", None)]
@@ -96,94 +103,8 @@ def main():
             print(f"{name}: passed", flush=True)
             return result
 
-        build = [wrapper, "lake", "build"]
-        run_document_case("independent-core", [], tool=build, cwd=standalone)
-        core_manifest = json.loads((standalone / "lake-manifest.json").read_text())
-        assert core_manifest["packages"] == []
-        bridge = standalone / "verso"
-        bridge_manifest = json.loads((bridge / "lake-manifest.json").read_text())
-
-        def warm_git_sources(target):
-            cache = target / ".lake/packages"
-            cache.mkdir(parents=True, exist_ok=True)
-            for entry in bridge_manifest["packages"]:
-                if entry["type"] != "git":
-                    continue
-                name = entry["name"].strip("«»")
-                source = repo / ".lake/packages" / name
-                actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
-                assert actual == entry["rev"], f"warmed source revision differs: {name}"
-                dirty = subprocess.check_output(
-                    ["git", "status", "--porcelain", "--untracked-files=no"], cwd=source, text=True)
-                assert not dirty, f"warmed dependency has tracked edits: {name}"
-                destination = cache / name
-                if not destination.exists():
-                    destination.symlink_to(source.resolve(), target_is_directory=True)
-
-        def assert_unavailable(name, module, cwd):
-            source = cwd / "Unavailable.lean"
-            source.write_text(f"import {module}\n")
-            try:
-                result = run_document_case(name, [source.name], tool=[wrapper, "lake", "lean"],
-                                           cwd=cwd, expect_success=False)
-                assert module in result.stderr + result.stdout
-            finally:
-                source.unlink()
-
-        assert_unavailable("core-without-verso", "Verso", standalone)
-        warm_git_sources(bridge)
-        run_document_case("independent-bridge", [], tool=build, cwd=bridge)
-        run_document_case("independent-bridge-tests", [], tool=[wrapper, "lake", "test"], cwd=bridge)
-        bridge_names = {entry["name"].strip("«»") for entry in bridge_manifest["packages"]}
-        assert "rosetta" in bridge_names and "verso" in bridge_names
-        assert not {"VersoBlueprint", "lean_vir", "verso-slides", "proofwidgets"} & bridge_names
-        assert_unavailable("bridge-without-blueprint", "VersoBlueprint", bridge)
-
-        # Exercise the exact Git + subDir mechanism intended for publication,
-        # using a local fixture repository rather than creating/pushing a remote.
-        def git(*arguments):
-            return subprocess.check_output(["git", *arguments], cwd=standalone,
-                                           text=True, stderr=subprocess.STDOUT).strip()
-
-        if not (standalone / ".git").exists():
-            git("init", "-b", "main")
-            git("config", "user.name", "Rosetta package tests")
-            git("config", "user.email", "rosetta-tests@example.invalid")
-        git("add", ".")
-        if git("status", "--porcelain"):
-            git("commit", "--no-gpg-sign", "-m", "test: package extraction snapshot")
-        revision = git("rev-parse", "HEAD")
-        repository_uri = standalone.as_uri()
-
-        def git_consumer(name, dependency, imports, subdir=None):
-            consumer = output / "consumers" / identity.hexdigest()[:16] / name
-            consumer.mkdir(parents=True, exist_ok=True)
-            (consumer / "lean-toolchain").write_text((standalone / "lean-toolchain").read_text())
-            config = (f'name = "{name}"\ndefaultTargets = ["Consumer"]\n'
-                      f'[[require]]\nname = "{dependency}"\ngit = {json.dumps(repository_uri)}\n'
-                      f'rev = {json.dumps(revision)}\n')
-            if subdir:
-                config += f'subDir = {json.dumps(subdir)}\n'
-            config += '[[lean_lib]]\nname = "Consumer"\n'
-            (consumer / "lakefile.toml").write_text(config)
-            (consumer / "Consumer.lean").write_text(imports)
-            if subdir:
-                warm_git_sources(consumer)
-            run_document_case(name, [], tool=build, cwd=consumer)
-            return json.loads((consumer / "lake-manifest.json").read_text())
-
-        core_consumer = git_consumer("rosetta_consumer", "rosetta", "import Rosetta\n#check Rosetta.analyze\n")
-        assert {entry["name"] for entry in core_consumer["packages"]} == {"rosetta"}
-        bridge_consumer = git_consumer("verso_rosetta_consumer", "verso-rosetta",
-                                      "import Rosetta\nimport VersoRosetta\n#check VersoRosetta.collect\n", "verso")
-        consumer_names = {entry["name"].strip("«»") for entry in bridge_consumer["packages"]}
-        assert {"rosetta", "verso-rosetta", "verso"} <= consumer_names
-        assert not {"VersoBlueprint", "lean_vir", "verso-slides", "proofwidgets"} & consumer_names
-        (docs / "package-boundaries.json").write_text(json.dumps({
-            "repositoryRevision": revision, "corePackages": [],
-            "bridgePackages": sorted(bridge_names), "bridgeConsumerPackages": sorted(consumer_names),
-            "coreCannotImportVerso": True, "bridgeCannotImportBlueprint": True,
-            "gitConsumersBuilt": True}, indent=2) + "\n")
+        # Package and Git-consumer isolation tests belong to Rosetta's own CI.
+        # This harness tests the exact pinned package through VBP's generators.
         run_document_case("plan", ["plan", str(docs / "plan.json")])
         plan = json.loads((docs / "plan.json").read_text())
         assert len(plan) == 5

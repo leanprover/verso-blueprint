@@ -1,29 +1,31 @@
 # Rosetta extraction and API index
 
-The current API guide is owned by the extracted package:
-[`packages/rosetta/doc/API.md`](../../packages/rosetta/doc/API.md).
-The [package README](../../packages/rosetta/README.md) describes the standalone
-build and runtime requirements; the
-[bridge README](../../packages/rosetta/verso/README.md) covers Verso integration.
+The core and Verso bridge now belong to the independent
+[ejgallego/rosetta](https://github.com/ejgallego/rosetta) repository.
+See its [API guide](https://github.com/ejgallego/rosetta/blob/main/doc/API.md),
+[package README](https://github.com/ejgallego/rosetta),
+[bridge README](https://github.com/ejgallego/rosetta/blob/main/verso/README.md),
+and [migration notes](https://github.com/ejgallego/rosetta/blob/main/doc/MIGRATION.md).
 
-## Current local boundary
+## Repository boundary
 
-`packages/rosetta/` is one proposed standalone repository containing two Lake
-packages. The `rosetta` package has no package dependencies and owns the core,
-protocol tests, mock peer, and real-server fixture projects. The nested
-`verso-rosetta` package depends on that core through `..` and on pinned Verso.
-It owns an authoring/collection smoke test that requires no Blueprint import.
+VBP consumes `verso-rosetta` as a pinned Git dependency with `subDir = "verso"`.
+The root `rosetta` package is resolved from the same checkout. The current pin
+is `c6ecf219099c4e1795141dc5cc190da5ee84aaf6`. The local `packages/rosetta/` copy has been removed.
+The standalone repository preserves the four package commits since extraction;
+its exported Lean sources match VBP `bc6c4f5a` byte for byte.
 
-VBP consumes the bridge through a local path dependency. Its Rosetta libraries
-are no longer declared in the VBP lakefile, and the implementation sources no
-longer live under VBP's `src/`. VBP retains its cross-project rendering fixtures
-and end-to-end maintainer harness. Existing VBP Git dependency revisions are
-preserved. A pinned remote dependency can replace the local path after
-repository ownership and release policy are settled.
+Rosetta owns the protocol client, source mapping, typed errors, analysis, mock
+and real-server fixtures, Verso bridge, and package/Git-consumer isolation tests.
+VBP retains the Blueprint/plain-Verso integration generators, offline rendering
+checks, browser fixtures and Blueprint semantic comparisons. Existing unrelated
+VBP Git dependency revisions remain unchanged.
 
-The extraction is local and unreleased. It does not create a remote repository
-or establish multi-release support. The initial package toolchains match the
-current VBP Lean 4.35.0 checkout.
+The migration is prepared locally. The GitHub repository must be published at
+this exact pin before a fresh VBP clone can fetch it. Local validation uses a
+command-scoped Git URL substitution to the standalone checkout; no global Git
+configuration or remote publication is implied. Migration evidence and the
+publication handoff live under `_out/verso-lsp-design/rosetta-migration/`.
 
 ## Evidence and history
 

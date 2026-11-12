@@ -2,8 +2,8 @@ import Lake
 open Lake DSL
 
 -- Pin the matching Lean 4.35 stable dependency stack.
--- Locally vendored Rosetta packages; VBP consumes the bridge.
-require «verso-rosetta» from "packages/rosetta/verso"
+-- Rosetta owns the protocol client and Verso bridge in its standalone repository.
+require «verso-rosetta» from git "https://github.com/ejgallego/rosetta.git" @ "c6ecf219099c4e1795141dc5cc190da5ee84aaf6" / "verso"
 
 require verso from git "https://github.com/leanprover/verso"@"v4.35.0"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0"

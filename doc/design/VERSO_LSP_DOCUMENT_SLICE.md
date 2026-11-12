@@ -33,15 +33,15 @@ into the bridge and passes the existing captured rendering model through.
 | `VersoRosetta` | Core data and Verso | Compile inert requests and render accepted facts |
 | Blueprint consumer | Verso bridge and VBP | Enrich a document before the normal Blueprint generator |
 
-The subsequent package extraction places both libraries in separate Lake
-packages under `packages/rosetta/`, with VBP consuming the bridge through a path
-dependency. The runner now copies the complete package unit away from VBP
-sources, builds/tests both packages, and builds pinned local-Git consumer
-projects. The core manifest has an empty `packages` array; the bridge has no
-Blueprint dependency. See the [extraction index](ROSETTA_API.md).
+The libraries were subsequently extracted into separate Lake packages and are
+now maintained together in [ejgallego/rosetta](https://github.com/ejgallego/rosetta).
+VBP's prepared migration consumes the bridge through a pinned Git dependency;
+the package and Git-consumer checks belong to Rosetta's CI. The core manifest
+has an empty `packages` array, and the bridge has no Blueprint dependency.
+See the [current repository and migration index](ROSETTA_API.md).
 
-Repository ownership and release/toolchain policy still need to be settled
-before publication. There is no compatibility wrapper for #63's old model.
+There is no compatibility wrapper for #63's old model. The evidence below
+records the earlier experiment; current publication state is in the index.
 
 ## Staging that works
 
