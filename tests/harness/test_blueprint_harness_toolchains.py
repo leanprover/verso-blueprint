@@ -331,7 +331,11 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
         verso_match = next(toolchains_mod.VERSO_REQUIRE_PATTERN.finditer(text), None)
         slides_match = next(toolchains_mod.VERSO_SLIDES_REQUIRE_PATTERN.finditer(text), None)
         manifest = json.loads((PACKAGE_ROOT / "lake-manifest.json").read_text(encoding="utf-8"))
-        manifest_refs = {package["name"]: package["inputRev"] for package in manifest["packages"]}
+        manifest_refs = {
+            package["name"]: package["inputRev"]
+            for package in manifest["packages"]
+            if package["type"] == "git"
+        }
         lean_ref = toolchains_mod.normalize_lean_release_ref(
             (PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")
         )
