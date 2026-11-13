@@ -843,13 +843,13 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
           match edge.selected with | .ok keys => keys | .error _ => #[]
         collected := { collected with input := { collected.input with
           requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
-            key := selectionKey, expected := .check `blueprint.dependencySelection })
+            key := selectionKey, expected := .check dependencySelectionValidator })
           bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
-            subject, name := name ++ `selectedUses
+            subject, name := selectedUsesFor selectionKey
             content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
               edge.role, edge.reference, edge.selected))).compress }) } }
         collected := recordObservation collected selectionKey (.check {
-          validator := `blueprint.dependencySelection
+          validator := dependencySelectionValidator
           outcome := if failures.isEmpty then .passed else .unavailable
           explanation := if failures.isEmpty then "Every dependency selected its exact current native contract"
             else (toJson failures).compress })

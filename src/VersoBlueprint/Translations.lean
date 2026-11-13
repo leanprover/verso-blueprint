@@ -304,14 +304,17 @@ private def fingerprint (domain : String) (value : Json) : String :=
 private def sourceTag (scope : ContentScope) : Name :=
   if scope == .statement then NativeLean.statementContext else NativeLean.sourceContext
 
-private def expectedInput (name : Name) : Bool :=
-  NativeLean.expectedContext.isPrefixOf name || (`lean.expectedStatementContext).isPrefixOf name
+/-- Descriptors owned by one contract of the subject, not by the subject. -/
+private def contractInput (name : Name) : Bool :=
+  NativeLean.expectedContext.isPrefixOf name || (`lean.expectedStatementContext).isPrefixOf name ||
+    selectedUses.isPrefixOf name
 
 /-- Only the native provider's two known content descriptors are scope-selected.
-Other supplied inputs remain conservative. Expected-goal descriptors belong to
-individual contracts, never to every review of their containing realization. -/
+Other supplied inputs remain conservative. Expected-goal and dependency-selection
+descriptors belong to individual contracts, never to every review of their
+containing realization. -/
 private def selectedInput (scope : ContentScope) (native : Bool) (input : BindingInput) : Bool :=
-  !expectedInput input.name &&
+  !contractInput input.name &&
     (!(native && (input.name == NativeLean.sourceContext || input.name == NativeLean.statementContext)) ||
       input.name == sourceTag scope)
 
@@ -367,7 +370,9 @@ private def Registry.computeBindings (r : Registry) : Std.HashMap RequirementKey
   let mut bindings := {}
   for requirement in r.requirements do
     let key := requirement.key
-    let mut parts := #[(BindingEncoding.requirement requirement).compress] ++ subjectParts key.subject
+    let mut parts := #[(BindingEncoding.requirement requirement).compress] ++ subjectParts key.subject ++
+      ((subjectInputs[key.subject]?.getD #[]).filter (·.name == selectedUsesFor key)).map
+        (fun input => (BindingEncoding.bindingInput input).compress)
     if let .proof goal witness := requirement.expected then
       -- Independent-goal evidence assesses its own witness and selected expectation.
       let descriptors := (subjectInputs[key.subject]?.getD #[]).filter

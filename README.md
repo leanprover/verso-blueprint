@@ -80,8 +80,8 @@ lualatex-compatible command.
 A Blueprint node names one mathematical concept. It can have several named
 realizations: for example, its original Verso statement, a Rocq development,
 and a Lean formalization. Each realization keeps its own sources and language
-context. Statement and proof are facets of a realization; a translation is an
-explicit relationship between realizations.
+context and one role, such as statement or proof; a translation is an explicit
+relationship between realizations.
 
 Source provenance, such as a paper citation or source span, remains distinct
 from a realization. Rendered HTML and code previews are views, not additional

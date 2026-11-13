@@ -227,7 +227,7 @@ run_cmd liftTermElabM do
     match evidence.observation with
     | .proof observation => ensure (observation.outcome == .passed) "Actual independent-goal proof did not pass"
     | .check observation =>
-      ensure (observation.validator == `blueprint.dependencySelection || observation.declaration.isSome) "A native check must retain its own declaration identity"
+      ensure (observation.validator == Validation.dependencySelectionValidator || observation.declaration.isSome) "A native check must retain its own declaration identity"
     | .review observation =>
       ensure (evidence.requirement == Owner.versoReview &&
         observation.criterion == `statementCorrespondence && observation.reviewer == `MockReviewer &&

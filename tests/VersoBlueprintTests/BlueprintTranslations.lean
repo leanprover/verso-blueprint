@@ -669,6 +669,21 @@ def withMissingProofHelper : IO Input := do
       let customAfter ← registry changed
       expect "selection: provider facts bind only when their realization is selected"
         ((customBefore.bindingFor reviewKey != customAfter.bindingFor reviewKey) == selected)
+  -- What a dependency selected is another node's shape. It binds its own
+  -- selection contract and never a review of the selected statement.
+  let selectionKey : RequirementKey := ⟨.declaration leanKey leanObject, `statement ++ `dependencySelection⟩
+  let selection (content : String) : Input := { input with
+    requirements := input.requirements.push <| contribution `selectionContract {
+      key := selectionKey, expected := .check dependencySelectionValidator }
+    bindingInputs := input.bindingInputs.push <| contribution `selectionDescriptor {
+      subject := selectionKey.subject, name := selectedUsesFor selectionKey, content } }
+  let selectedTheorem ← registry (selection "MOCK dependency selects a theorem")
+  let selectedDefinition ← registry (selection "MOCK dependency selects a definition")
+  expect "selection: a dependency's selected target does not stale the statement review"
+    (selectedTheorem.bindingFor reviewKey == before.bindingFor reviewKey &&
+      selectedDefinition.bindingFor reviewKey == before.bindingFor reviewKey)
+  expect "selection: a dependency's selected target binds its own selection contract"
+    (selectedTheorem.bindingFor selectionKey != selectedDefinition.bindingFor selectionKey)
   let sibling : RequirementKey := ⟨.claim claimKey, `independent_review⟩
   let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent `MockReviewer }
   let withSibling : Input := { input with

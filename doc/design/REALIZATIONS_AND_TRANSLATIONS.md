@@ -130,7 +130,10 @@ mapping and assumptions; a whole-relation judgment binds all that relation's cla
 Changing a sibling requirement's reviewer does not change an unchanged local judgment.
 
 Prerequisite identities are part of the authored requirement; their content and
-outcomes are not implicitly selected. Rewriting a proof that is only a completion
+outcomes are not implicitly selected. The record of which target each declared use
+selected binds only the dependency-selection check that produced it. A dependency
+changing shape, such as a theorem becoming a definition, therefore re-runs that
+check and can change completion, but leaves judgments of the using statement current. Rewriting a proof that is only a completion
 prerequisite preserves the statement judgment. Introducing `sorry` still prevents
 final completion. Explicitly selected proof content does change its binding.
 Evidence, current-review selections and evaluation state do not enter the binding.

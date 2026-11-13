@@ -53,6 +53,13 @@ def expectedStatementContextFor (key : RequirementKey) : Name := `lean.expectedS
 
 end NativeLean
 
+/-- The mechanical dependency-selection check and the descriptor of what it
+selected. The descriptor records other nodes' target selection, so it binds
+only its own selection contract, never the declaration it is attached to. -/
+def dependencySelectionValidator : Name := `blueprint.dependencySelection
+def selectedUses : Name := `blueprint.selectedUses
+def selectedUsesFor (key : RequirementKey) : Name := selectedUses ++ key.name
+
 def Expectation.isNativeDeclarationCheck : Expectation → Bool
   | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
   | _ => false
