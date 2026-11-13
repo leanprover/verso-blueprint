@@ -684,6 +684,10 @@ def withMissingProofHelper : IO Input := do
       selectedDefinition.bindingFor reviewKey == before.bindingFor reviewKey)
   expect "selection: a dependency's selected target binds its own selection contract"
     (selectedTheorem.bindingFor selectionKey != selectedDefinition.bindingFor selectionKey)
+  -- A subject cannot publish a reference to a contract nobody supplied.
+  expect "selection: a required contract must exist in the same admitted input"
+    (rejectsWith { input with requirements := input.requirements.filter (·.value.key != proofKey) }
+      "unknown-requirement")
   let sibling : RequirementKey := ⟨.claim claimKey, `independent_review⟩
   let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent `MockReviewer }
   let withSibling : Input := { input with

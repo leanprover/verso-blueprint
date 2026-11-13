@@ -7,7 +7,6 @@ import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Owner
 import VersoBlueprintTests.BlueprintRealizationAuthoring.Attachment
 import VersoBlueprint.Realizations.Report
-import VersoBlueprint.Realizations.Dependencies
 
 open Lean Meta Elab Command Term Informal
 open Realizations Validation Translations
@@ -21,6 +20,16 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   match value with
   | .ok value => pure value
   | .error issues => throwError "Unexpected rejection: {repr issues}"
+
+/-- The native proof contract that the production capture selected for one
+statement-axis dependency. -/
+private def selectedProof (snapshot : Capture.Snapshot) (consumer target : String) : TermElabM RequirementKey := do
+  let some use := snapshot.uses.find? fun use => use.source == Name.mkSimple consumer &&
+      use.role == `statement && use.reference.label == Name.mkSimple target
+    | throwError "Missing captured dependency {consumer} -> {target}"
+  let some key := (← obtain use.selected).find? (·.name == `proof)
+    | throwError "Dependency {consumer} -> {target} selected no native proof contract"
+  return key
 
 private def unassessedProofKey : RealizationKey :=
   (⟨Name.mkSimple "authoring.unassessed", `lean⟩ : RealizationKey).forRole `proof
@@ -38,7 +47,8 @@ private def unassessedProofKeyRequirement : RequirementKey :=
 run_cmd liftTermElabM do
   let before := Environment.informalExt.getState (← getEnv)
   ensure before.authoringProject?.isNone "Imports must not configure the consumer"
-  let r ← obtain ((← Realizations.Capture.capture).map (·.registry))
+  let snapshot ← obtain (← Realizations.Capture.capture)
+  let r := snapshot.registry
   ensure ((r.resultForRequirement Owner.proof).complete &&
     (r.resultFor (.realization Owner.proseKey)).status == .unassessed &&
     (r.resultFor (.translation Owner.versoLink)).complete &&
@@ -71,10 +81,7 @@ run_cmd liftTermElabM do
     "The completed Verso link must be supported by the explicitly selected, current MOCK review"
   for (consumer, target, complete) in #[("authoring.nativeDependent", "authoring.unassessed", true),
       ("authoring.admittedDependent", "authoring.nativeAdmitted", false)] do
-    let uses ← obtain (← Realizations.Dependencies.selectUses r ⟨`lean, Owner.projectName⟩ (Name.mkSimple consumer))
-    let some (_, selected) := uses.1.find? (fun edge => edge.1.label == Name.mkSimple target)
-      | throwError "Missing native-only ordinary dependency"
-    let selected ← obtain selected
+    let selected ← selectedProof snapshot consumer target
     let some requirement := r.requirement? selected | throwError "Missing native contract"
     ensure (selected.name == `proof && requirement.expected == .check NativeLean.bodyValidator &&
       (r.resultForRequirement selected).complete == complete)
@@ -103,9 +110,7 @@ run_cmd liftTermElabM do
     value := {
       id := `nativeAlternativeCheck, requirement := alternativeKey, binding
       observation := .check fresh.body } } })
-  let uses ← obtain (← Realizations.Dependencies.selectUses alternatives witness.context (Name.mkSimple "authoring.admittedDependent"))
-  let some (_, .ok selected) := uses.1.find? (fun entry => entry.1.label == Name.mkSimple "authoring.nativeAdmitted")
-    | throwError "Missing admitted native default"
+  let selected ← selectedProof snapshot "authoring.admittedDependent" "authoring.nativeAdmitted"
   ensure ((alternatives.resultForRequirement alternativeKey).complete &&
     !(alternatives.resultForRequirement selected).complete &&
     selected.subject != alternativeKey.subject) "A complete native alternative cannot rescue the selected admitted default"
@@ -173,11 +178,11 @@ private def capturePlanned : TermElabM (Except (Array Diagnostic) Capture.Snapsh
   | .error issues => pure (.error issues)
   | .ok observations => pure (Capture.evaluate plan observations)
 
-private def query : TermElabM (Except (Array Diagnostic) Registry) := do
+private def querySnapshot : TermElabM (Except (Array Diagnostic) Capture.Snapshot) := do
   let before := Environment.informalExt.getState (← getEnv)
   let sentinel ← mkFreshExprMVar (mkConst ``True)
   let metaBefore ← getMCtx
-  let result := (← capturePlanned).map (·.registry)
+  let result ← capturePlanned
   let metaAfter ← getMCtx
   unchanged before (Environment.informalExt.getState (← getEnv))
   ensure (!(← sentinel.mvarId!.isAssigned) && metaBefore.mvarCounter == metaAfter.mvarCounter &&
@@ -187,6 +192,9 @@ private def query : TermElabM (Except (Array Diagnostic) Registry) := do
     metaBefore.decls.toList.map (·.1) == metaAfter.decls.toList.map (·.1))
     "Materialization leaked elaborator changes"
   return result
+
+private def query : TermElabM (Except (Array Diagnostic) Registry) :=
+  return (← querySnapshot).map (·.registry)
 
 private def rejected (code : String) (result : Except (Array Diagnostic) α) : TermElabM (Array Diagnostic) :=
   match result with
@@ -245,11 +253,9 @@ run_cmd liftTermElabM do
   isolated do
     Realizations.Authoring.expectNative `wrongIndependentGoal (Name.mkSimple "authoring.nativeDependent")
       `VersoBlueprintTests.BlueprintRealizationAuthoring.wrongExpected
-    let r ← obtain (← query)
-    let uses ← obtain (← Realizations.Dependencies.selectUses r ⟨`lean, Owner.projectName⟩
-      (Name.mkSimple "authoring.admittedDependent"))
-    let some (_, .ok key) := uses.1.find? (fun entry => entry.1.label == Name.mkSimple "authoring.nativeDependent")
-      | throwError "Missing exact native prerequisite"
+    let snapshot ← obtain (← querySnapshot)
+    let r := snapshot.registry
+    let key ← selectedProof snapshot "authoring.admittedDependent" "authoring.nativeDependent"
     let expected := { key with name := `expectedProof }
     ensure ((r.resultForRequirement key).complete && !(r.resultForRequirement expected).complete &&
       (r.localResult key).complete)
