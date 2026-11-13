@@ -44,7 +44,7 @@ it does not require a new provider in this PR.
 | U1 | Attach one Lean theorem and prose statement; inspect its status. | Separate native statement/body results from unassessed prose and correspondence. A definition of a proposition differs from a proof-valued definition. | Current. `BlueprintAssessmentSnapshot`, `BlueprintRealizationCapture`, `BlueprintRealizationAdapter`. |
 | U2 | Review prose-to-Lean correspondence; edit the proof, statement or imported definition. | Proof-only edits preserve the statement review; admissions can break prerequisite completion; relevant statement/interpretation changes stale the review. Explicitly assessed proof content behaves differently. | Current. `test-assessment-snapshot.py`, `test-realization-semantic-binding.py`, `BlueprintTranslations`. |
 | U3 | Require Alice's review; reject, replace or withdraw a judgment. | Only the explicitly selected suitable judgment counts. No historical fallback, reviewer substitution or evidence-induced binding change. | Current, symbolic reviewer identity. `BlueprintAssessmentSnapshot`, `BlueprintTranslations`; review inputs are mocked in tests. |
-| U4 | Develop two proofs of the same statement. | Keep each proof/relation result; an unfinished alternative cannot block an unrelated completed development or repair code using an admitted proof. | Current per-relation results. Aggregate any/all requests and proof independence remain deferred. |
+| U4 | Develop two proofs of the same statement. | Keep each proof/relation result and its native assumptions; an unfinished alternative cannot block an unrelated completed development or repair code using an admitted proof. Future suitable-proof selection needs an assumption policy. | Boundary for coexisting native Lean proofs: independent target matching does not yet qualify as `proves` support. Current per-relation controls cover an informal alternative with required mathematical review. Aggregate any/all requests and proof independence remain deferred. |
 | U5 | Declare uses, including forward/imported references, custom native bases and cycles. | Preserve authored intent versus observed native dependencies; select exact targets independently of completion. Shared declarations within one selected object are conjunctive; independent alternatives are not silently conjoined. Cyclic validation cannot bootstrap completion. | Current. `BlueprintAssessmentSnapshot`, `BlueprintRealizationCapture`, `BlueprintRealizationDependencies`. |
 | U6 | Add an extra mathematical or exposition claim to a proof relation. | Exact native support remains visible; an unassessed, pending or rejected additional claim prevents full relation completion. | Current. Regression repaired in `169d43a4`; pure and actual capture tests. |
 | U7 | Relate a paper/PDF, a Verso account and Lean formalization. | Three distinct selections and assessments. A transcription is not the original; missing/ambiguous original content cannot silently fall back. No automatic composition of correspondences. | Boundary. Supported byte/native selections are current; exact PDF-region resolution and OCR checking are not claimed. |
@@ -78,6 +78,43 @@ They cannot pass by inventing observations. The existing design acceptance table
 remains the detailed mutation catalog; avoid copying it into multiple test plans.
 
 ## Backend map, anchored in U1–U3
+
+### Agreed reference case: `toggle_twice`
+
+Accepted by the maintainer on 2026-11-08 as the first joint-review case (U1–U3).
+An author supplies a globally labeled node `toggle_twice`, a prose statement
+(toggling a flag twice returns the original flag), and a Lean declaration
+containing the formal statement and proof. The author explicitly claims that
+the prose and Lean statements correspond. Attachment alone makes no such claim.
+
+For this case, the requested correspondence contract requires Alice's review of
+the selected statements/interpretation and the selected native proof's completion.
+Prose proofreading is optional. Reviewing proof method or explanation would be a
+separate explicitly selected assessment. The three reader questions are:
+
+1. Is the current native proof complete?
+2. Does Alice's selected judgment approve the current correspondence?
+3. Are all conditions of this particular correspondence contract satisfied?
+
+| Situation | Native proof | Alice's judgment | Correspondence contract |
+| --- | --- | --- | --- |
+| Valid proof, no review | Complete | Awaiting review | Unfinished |
+| Alice approves the current statements | Complete | Current approval | Complete |
+| Proof rewritten, selected statement meaning unchanged | Rechecked | Approval stays current | Complete if the new proof passes |
+| Proof replaced with `sorry` | Incomplete | Approval stays current | Unfinished |
+| Selected statement or mapping changes | Independently assessed | Previous approval is stale | Unfinished |
+| Alice withdraws approval | Independently assessed | No current approval | Unfinished |
+| Another unfinished proof is added | Each proof assessed separately | Unchanged if assessed content is unchanged | Existing contract retains its exact selected prerequisites |
+
+This specifies expected behavior independently of backend representation. It does
+not claim implementation of the independent native alternative route in U4.
+Success includes natural authoring and explanations of each unfinished result;
+the record count, public convenience API and cost remain architectural review
+questions. The small implemented fixture uses a trivial proposition; this
+mathematical narrative is the agreed use-case specification, not a new executed
+Flag test.
+
+### Current backend trace
 
 An ordinary `@[blueprint "label"] theorem ...` supplies an accepted source
 association. Current capture produces separate native statement/proof realizations
@@ -219,5 +256,7 @@ Initial ledger:
 | Decision | Basis | Status |
 | --- | --- | --- |
 | Review architecture through explicit cases, costs and authoring examples. | Maintainer request, 2026-11-07. | Agreed methodology; case priorities and product budgets reviewed together. |
+| Start with the `toggle_twice` authoring/correspondence scenario above. | Maintainer confirmation, 2026-11-08. | Expected behavior agreed; backend and ergonomic review next. |
 | Keep formal proof completion in a second PR. | Production behavior, regression evidence and formal verification have distinct review scopes. | Agreed; proof checkpoint preserved, port paused. |
 | Native support cannot discharge unassessed attached claims. | Actual capture counterexample and positive/negative repair controls. | Implemented and focused-tested at `169d43a4`. |
+| Distinguish proof-body replacement from renamed selection and coexisting native proofs. | Claude's 2026-11-07 addendum, checked against the current minimum-support gate. | Renamed-selection control added as a target; native U4 relabeled Boundary. No independent-target support implementation activated. |

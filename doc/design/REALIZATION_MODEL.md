@@ -207,6 +207,19 @@ Finishing P2, obtaining a suitable proof of S, and finishing both developments a
 different requested outcomes. Version one has no universal node-completion rule;
 aggregate requests are deferred.
 
+Current support is narrower for coexisting native Lean proofs: P2 belongs to a
+different declaration from the one supplying S, so the own-type route cannot
+connect them. Independent expected-proposition checking exists, but does not yet
+qualify as formal support for a `proves` relation. That route remains a boundary
+case until it checks P2 against the exact selected S, with rigid target universes,
+the full telescope and fresh completeness. A detached expected-goal check is not
+enough. The tested informal alternative uses a required mathematical review.
+
+Expose assumptions separately for each proof; different proof methods can depend
+on different native axioms. Any future suitable-proof aggregate needs an explicit
+assumption policy. A proof of a changed proposition is a separate statement with
+an explicit checked adapter, rather than another proof of S.
+
 An alternative proof never repairs the native dependency chain of code that still
 references an admitted declaration. Mere name differences do not establish that
 two proofs use independent methods.
@@ -363,6 +376,7 @@ first milestone with these controls as the corresponding supported path is conne
 | --- | --- |
 | One declaration supplies S and P | Separate owned selections, shared canonical source. |
 | Proof-only rewrite or proof prerequisite becomes `sorry` | Statement judgment can stay current; native and combined completion respond. |
+| Replace a selected declaration `t` with renamed `t_fast` of the same type | Judgments selecting that declaration become stale: selection identity changed. Never transfer evidence merely because statement digests agree. Unchanged selections retain their usual freshness rules. |
 | Imported computational meaning changes | Dependent statement binding responds despite unchanged local text. |
 | Helper proof changes | Only explicitly covered reviews stale; native dependency checks remain fresh. |
 | Native content and prose share a file; content moves between owners | Preserve byte selection and owner relationships despite equal flattened inventories. |

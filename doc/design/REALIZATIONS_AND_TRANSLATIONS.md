@@ -46,10 +46,12 @@ Those claims are part of the relation's meaning, not an independent endpoint sto
 Grouped endpoints assert the authored joint connection; they imply no pairwise
 correspondences or automatic composition. Tags classify and do not supply policy.
 
-Semantic facets and `Requirement.scope` are removed. The raw Blueprint source and
-preview APIs still call statement/proof authoring slots “facets”; these locate
-source and presentation. Capture projects them to directly owned realizations.
-They are not independently assessed subobjects of a realization.
+Semantic facets and `Requirement.scope` are removed. Raw `SourceSelection`s use
+`SourceDestination` roles, and authored uses carry a role. Native associations
+carry presentation placements, which cannot override a checked declaration's
+semantic role. Capture projects sources to directly owned realizations. Preview
+facets, such as `PreviewCache.Facet`, remain presentation concepts; they are not
+independently assessed subobjects of a realization.
 
 ## Requirements, native support, and local judgments
 
@@ -92,6 +94,11 @@ fresh completeness checking. Its current expected syntax must be closed with
 concrete universes; universally parameterized independent targets remain unsupported.
 The exact own-type route retains the declaration's native universes. No expected
 proposition is fabricated from prose or duplicated merely to check a theorem.
+The independent `.proof goal witness` requirement does not currently satisfy the
+minimum support rule for `proves`. Coexisting Lean proofs of one selected statement
+therefore lack an automated formal relation route. A future route must match the
+receiving edge's exact selected statement, rather than merely accept a checked
+witness against an unrelated expected goal.
 
 ### Current review selection
 
