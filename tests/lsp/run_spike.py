@@ -1,0 +1,151 @@
+"""Run the Lean protocol spike against a mock and explicitly selected servers.
+
+Only this maintainer experiment uses Python; the adapter library imports Lean
+and Std and does not depend on this script or the mock server at runtime.
+"""
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import subprocess
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rust-command")
+    parser.add_argument("--rocq-command")
+    parser.add_argument("--documents", action="store_true",
+                        help="Also exercise compiled requests and offline Verso/Blueprint rendering")
+    args = parser.parse_args()
+    if args.documents and not (args.rust_command and args.rocq_command):
+        parser.error("--documents requires both --rust-command and --rocq-command")
+    repo = Path(__file__).resolve().parents[2]
+    output = args.output.resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    wrapper = str(repo / "scripts/lean-low-priority")
+    manifest = json.loads((repo / "lake-manifest.json").read_text())
+    core = next(entry for entry in manifest["packages"] if entry["name"] == "rosetta")
+    bridge = next(entry for entry in manifest["packages"] if entry["name"].strip("«»") == "verso-rosetta")
+    assert core["type"] == bridge["type"] == "git"
+    assert core["url"] == bridge["url"] and core["rev"] == bridge["rev"]
+    package = (repo / manifest["packagesDir"] / core["name"].strip("«»") /
+               (core.get("subDir") or "")).resolve()
+    for toolchain in (package / "lean-toolchain", package / "verso/lean-toolchain"):
+        assert toolchain.read_text().strip() == (repo / "lean-toolchain").read_text().strip(), \
+            f"package toolchain differs from this VBP checkout: {toolchain}"
+    package_files = sorted(path for path in package.rglob("*")
+                           if path.is_file() and not {".lake", ".beam", ".git", "__pycache__"}.intersection(path.relative_to(package).parts)
+                           and path.suffix != ".pyc")
+    identity = hashlib.sha256()
+    sources = {Path("rosetta") / path.relative_to(package): path for path in package_files}
+    for path in [*(repo / "tests/RosettaDocs").glob("*.lean"),
+                 repo / "tests/RosettaDocsMain.lean",
+                 repo / "lakefile.lean", repo / "lean-toolchain", repo / "lake-manifest.json",
+                 *Path(__file__).parent.rglob("*")]:
+        if path.is_file() and "__pycache__" not in path.parts:
+            sources[path.relative_to(repo)] = path
+    for relative, path in sorted(sources.items()):
+        identity.update(str(relative).encode())
+        identity.update(path.read_bytes())
+        saved = output / "source" / relative
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_bytes(path.read_bytes())
+    # Content-addressed, test-owned copy: no VBP sources or canonical build
+    # outputs are available inside the proposed standalone repository.
+    standalone = output / "standalone" / identity.hexdigest()[:16]
+    standalone.mkdir(parents=True, exist_ok=True)
+    for path in package_files:
+        target = standalone / path.relative_to(package)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+    prefix = [wrapper, "lake", "exe", "rosetta-spike"]
+    metadata = {"sourceSha256": identity.hexdigest(),
+                "leanToolchain": (repo / "lean-toolchain").read_text().strip(),
+                "rosetta": {"url": bridge["url"], "revision": bridge["rev"]},
+                "servers": {}}
+    (output / "identity.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    cases = [("mock", None)]
+    for language, command in (("rust", args.rust_command), ("rocq", args.rocq_command)):
+        if command:
+            project = output / "projects" / language
+            shutil.copytree(standalone / "tests/lsp/projects" / language, project, dirs_exist_ok=True)
+            version = subprocess.run([command, "--version"], capture_output=True, text=True,
+                                     check=True, timeout=15).stdout.strip()
+            metadata["servers"][language] = {"command": command, "version": version}
+            cases.append((language, ["probe", language, command, str(project)]))
+    (output / "identity.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    failed = []
+    for name, case in cases:
+        case_command = [wrapper, "lake", "test"] if case is None else prefix + case
+        result = subprocess.run(case_command, cwd=standalone, capture_output=True,
+                                text=True, timeout=120)
+        (output / f"{name}.jsonl").write_text(result.stdout)
+        (output / f"{name}.stderr").write_text(result.stderr)
+        print(f"{name}: {'passed' if result.returncode == 0 else 'FAILED'}", flush=True)
+        if result.returncode:
+            failed.append(name)
+            print(result.stderr[-4000:], flush=True)
+    if failed:
+        raise SystemExit("failed cases: " + ", ".join(failed))
+    if args.documents:
+        docs = output / "documents"
+        docs.mkdir(exist_ok=True)
+        command = [wrapper, "lake", "exe", "rosetta-docs"]
+
+        def run_document_case(name, arguments, tool=command, cwd=repo, expect_success=True):
+            result = subprocess.run(tool + arguments, cwd=cwd, capture_output=True,
+                                    text=True, timeout=120)
+            (docs / f"{name}.stdout").write_text(result.stdout)
+            (docs / f"{name}.stderr").write_text(result.stderr)
+            if (result.returncode == 0) != expect_success:
+                raise SystemExit(f"{name} had unexpected exit {result.returncode}:\n{result.stderr[-4000:]}")
+            print(f"{name}: passed", flush=True)
+            return result
+
+        # Package and Git-consumer isolation tests belong to Rosetta's own CI.
+        # This harness tests the exact pinned package through VBP's generators.
+        run_document_case("plan", ["plan", str(docs / "plan.json")])
+        plan = json.loads((docs / "plan.json").read_text())
+        assert len(plan) == 5
+        for request in plan:
+            for text, origin in zip(request["text"].split("\n"), request["origins"], strict=True):
+                from urllib.parse import unquote, urlparse
+                source = Path(unquote(urlparse(origin["uri"]).path)).read_text().splitlines()
+                # A final empty line denotes the insertion point before the fence.
+                if text:
+                    row = source[origin["line"]].encode("utf-16-le")
+                    start = origin["character"] * 2
+                    assert row[start:start + len(text.encode("utf-16-le"))].decode("utf-16-le") == text
+        run_document_case("analyze", ["analyze", str(docs / "bundle.json"),
+                          str(docs / "runtime"), args.rust_command, args.rocq_command])
+        run_document_case("snapshot-check", ["check", str(docs / "bundle.json")])
+        run_document_case("baseline", ["baseline", str(docs / "baseline")])
+        for kind in ("plain", "blueprint"):
+            run_document_case(f"offline-{kind}", ["render", str(docs / "bundle.json"),
+                              str(docs / kind), kind])
+            assert (docs / kind / "html-single/index.html").exists()
+            tex = (docs / kind / "tex/main.tex").read_text()
+            assert all(text in tex for text in ("pub fn step", "Definition step", "missing", "compiler checks disabled"))
+        run_document_case("offline-navigation", ["render", str(docs / "bundle.json"),
+                          str(docs / "navigation"), "navigation"])
+        vbp = [wrapper, "lake", "exe", "vbp"]
+        site = docs / "blueprint/html-single"
+        run_document_case("vbp-check", ["check", "--site", str(site)], tool=vbp)
+        for selector in ("labels", "work-queue", "stats"):
+            snapshots = []
+            for kind in ("baseline", "blueprint"):
+                result = subprocess.run(vbp + ["query", "--site", str(docs / kind / "html-single"), selector],
+                                        cwd=repo, capture_output=True, text=True, check=True, timeout=60)
+                snapshots.append(json.loads(result.stdout))
+            assert snapshots[0] == snapshots[1], f"Blueprint {selector} changed after LSP enrichment"
+        (docs / "semantic-comparison.json").write_text(json.dumps({
+            "selectors": ["labels", "work-queue", "stats"], "unchanged": True}, indent=2) + "\n")
+        print("Blueprint semantic comparison: passed", flush=True)
+    print(f"evidence: {output}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
