@@ -77,6 +77,7 @@ private def profiles (root : System.FilePath) (rust rocq : String) : IO (Array C
         ("cargo", Json.mkObj [("buildScripts", Json.mkObj [("enable", toJson false)])]),
         ("procMacro", Json.mkObj [("enable", toJson false)])]
       experimentalCapabilities := Json.mkObj [("serverStatusNotification", toJson true)] }
+    provenance := Json.mkObj [("profile", toJson "vbp-rust-fixture"), ("serverCommand", toJson rust)]
     document := rustRoot / "src/lib.rs"
     referencePrefix := "const _: () = { let _ = "
     referenceSuffix := "; };"
@@ -94,6 +95,7 @@ private def profiles (root : System.FilePath) (rust rocq : String) : IO (Array C
       client := {
         command := rocq, root := rocqRoot, timeoutMs := 15000
         initializationOptions := Json.mkObj [("check_only_on_request", toJson false)] }
+      provenance := Json.mkObj [("profile", toJson "vbp-rocq-fixture"), ("serverCommand", toJson rocq)]
       document := rocqRoot / "Probe.v"
       referencePrefix := "Check ", referenceSuffix := "."
       collectDiagnostics := rocqDiagnostics }
@@ -104,10 +106,29 @@ private def loadBundle (path : String) : IO Bundle := do
   IO.ofExcept bundle.validate
   return bundle
 
+/-- Reuse exact compiled requests on separate pages and include one twice.
+The logical analysis plan remains five requests; render occurrences are distinct. -/
+private def navigationPart : IO (Part Verso.Genre.Manual) := do
+  let plan ← requests
+  let blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := plan.filterMap fun request =>
+    if request.kind == .code then some (.other (VersoRosetta.Block.lspCode request) #[]) else none
+  let references : Array (Verso.Doc.Block Verso.Genre.Manual) := plan.filterMap fun request =>
+    if request.kind == .reference then
+      some (.para #[.other (VersoRosetta.Inline.lspReference request) #[]]) else none
+  let page : String → Array (Verso.Doc.Block Verso.Genre.Manual) → Part Verso.Genre.Manual := fun name content => Part.mk #[.text name] name
+    (some { file := some name, htmlSplit := .default }) content #[]
+  let repeated := blocks.extract 0 1
+  return Part.mk #[.text "Rosetta navigation"] "Rosetta navigation" none #[] #[
+    page "definitions" blocks, page "references" references, page "repeated" repeated]
+
 private def render (bundlePath output kind : String) : IO UInt32 := do
   let bundle ← loadBundle bundlePath
   let arguments := ["--output", output, "--with-html-single", "--without-html-multi", "--with-tex"]
-  if kind == "plain" then
+  if kind == "navigation" then
+    let text ← IO.ofExcept <| VersoRosetta.enrich bundle (← navigationPart)
+    manualMain text (extensionImpls := by exact extension_impls%)
+      ["--output", output, "--with-html-single", "--with-html-multi", "--without-tex"]
+  else if kind == "plain" then
     let text ← IO.ofExcept <| VersoRosetta.enrich bundle RosettaDocs.plain.toPart
     manualMain text (extensionImpls := by exact extension_impls%) arguments
   else if kind == "blueprint" then
@@ -115,7 +136,7 @@ private def render (bundlePath output kind : String) : IO UInt32 := do
     let text ← IO.ofExcept <| VersoRosetta.enrich bundle document.text
     Informal.PreviewManifest.blueprintMainWithPreviewData text arguments
       (extensionImpls := by exact extension_impls%) (model := document.model)
-  else throw <| IO.userError "expected plain or blueprint"
+  else throw <| IO.userError "expected plain, blueprint or navigation"
 
 def main (args : List String) : IO UInt32 := do
   match args with
@@ -148,4 +169,4 @@ def main (args : List String) : IO UInt32 := do
     unless toJson once == toJson twice do throw <| IO.userError "snapshot replay is not idempotent"
     IO.println "Compiled plans agree, snapshot replay matches, and changed source is rejected"
     return 0
-  | _ => throw <| IO.userError "usage: rosetta-docs plan FILE | analyze FILE RUNTIME_ROOT RUST ROCQ | render BUNDLE OUTPUT plain|blueprint | check BUNDLE | baseline OUTPUT"
+  | _ => throw <| IO.userError "usage: rosetta-docs plan FILE | analyze FILE RUNTIME_ROOT RUST ROCQ | render BUNDLE OUTPUT plain|blueprint|navigation | check BUNDLE | baseline OUTPUT"

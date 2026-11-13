@@ -1,7 +1,7 @@
-# Verso LSP design spike
+# Rosetta integration acceptance
 
 This is maintainer tooling for the design in
-[`doc/design/VERSO_LSP_ADAPTER.md`](../../doc/design/VERSO_LSP_ADAPTER.md).
+[current integration guide](../../doc/design/ROSETTA_API.md).
 The independent [`rosetta` package](https://github.com/ejgallego/rosetta)
 imports Lean and Std, with no package dependencies. Its separate `verso/`
 package supplies the Verso bridge. Both are experimental; the Blueprint core
@@ -44,7 +44,7 @@ unbound document requests, malformed envelopes, oversized/partial frames,
 concurrent/repeated close, SIGTERM-resistant servers, and descendants retaining
 stdio after their leader exits. These process-group checks currently target
 Unix; the recorded validation platform is Linux. See the
-[lifecycle contract and limits](../../doc/design/PARLEY_LIFECYCLE_REVIEW.md).
+[lifecycle contract and limits](../../doc/design/archive/rosetta/PARLEY_LIFECYCLE_REVIEW.md).
 They now match structured `ClientError` constructors, preserve server codes and
 absent/null/nested error data, distinguish successful null results, and exercise
 typed action-plus-cleanup failures. See the
@@ -58,8 +58,8 @@ separate project-membership experiment. Rust compiler checks are disabled to
 isolate native language-server diagnostics. Rocq completion data is recorded
 separately from diagnostics.
 
-The protocol mode establishes no supported author syntax, snapshot cache, or
-VBP attachment semantics. See its [results and limits](../../doc/design/VERSO_LSP_SPIKE.md).
+The protocol mode tests server interactions separately from the authored-document
+workflow below. See its historical [results and limits](../../doc/design/archive/rosetta/VERSO_LSP_SPIKE.md).
 
 ## Compiled document and offline rendering experiment
 
@@ -108,5 +108,13 @@ uv run --project tests/browser --extra test python tests/lsp/check_docs_browser.
 
 The pages require no live language server. The browser check verifies exact
 source text, hovers, local navigation, authored diagnostic lines, escaped hover
-markup, and mobile overflow. The [document-slice report](../../doc/design/VERSO_LSP_DOCUMENT_SLICE.md)
-records current behavior and the remaining package/product decisions.
+markup, mobile overflow, unique IDs for repeated inclusions, cross-page links,
+and hover-table loading on nested pages. A separate `navigation` document reuses
+the exact compiled requests on definition and reference pages and includes a
+code request twice. No additional analysis is needed for repeated occurrences.
+
+Bundles use revision 2; regenerate older output. Context provenance records
+caller-supplied profile/server evidence without checking external project
+freshness. Replay matches exact authored URIs as well as text and identity.
+The [integration guide](../../doc/design/ROSETTA_API.md) describes current scope;
+[historical reports](../../doc/design/archive/rosetta/README.md) preserve the experiments.

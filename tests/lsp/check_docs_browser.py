@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import shutil
 import threading
+from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -62,10 +63,10 @@ def main():
                 expect(tooltip).to_contain_text("pub fn step")
                 assert tooltip.locator("img").count() == 0
                 target = reference.locator("a").get_attribute("href")
-                assert target and target.startswith("#")
-                expect(page.locator(target)).to_have_count(1)
+                assert target and urlsplit(target).fragment
+                expect(page.locator("#" + urlsplit(target).fragment)).to_have_count(1)
                 reference.locator("a").click()
-                assert page.evaluate("window.location.hash") == target
+                assert page.evaluate("window.location.hash") == "#" + urlsplit(target).fragment
                 rocq = page.locator(".lsp-reference").nth(1).locator("[data-verso-hover]").first
                 rocq.focus()
                 expect(page.locator("[role=tooltip]:visible").filter(has_text="nat -> nat")).to_have_count(1)
@@ -84,6 +85,36 @@ def main():
                 results.append({"kind": kind, "sourcePreserved": True, "hovers": True,
                                 "localNavigation": True, "diagnostics": True, "mobileOverflow": False})
                 page.close()
+            # Logical requests are shared across occurrences, while DOM IDs
+            # remain unique in both single-page and multi-page output.
+            page = browser.new_page()
+            base = f"http://127.0.0.1:{server.server_port}/navigation"
+            page.goto(base + "/html-single/index.html")
+            expect(page.locator(".lsp-panel")).to_have_count(4)
+            identifiers = page.locator("[id]").evaluate_all("nodes => nodes.map(node => node.id)")
+            assert len(identifiers) == len(set(identifiers)), "repeated inclusion duplicated a DOM ID"
+            for reference in page.locator(".lsp-reference a").all():
+                target = urlsplit(reference.get_attribute("href"))
+                expect(page.locator("#" + target.fragment)).to_have_count(1)
+            page.goto(base + "/html-multi/references/index.html")
+            expect(page.locator(".lsp-reference")).to_have_count(2)
+            link = page.locator(".lsp-reference a").first
+            target = urlsplit(link.get_attribute("href"))
+            assert "definitions" in target.path and target.fragment, target
+            # The hover table must also resolve from a nested page.
+            trigger = link.locator("[data-verso-hover]").first
+            page.wait_for_function("el => !!el._tippy", arg=trigger.element_handle())
+            trigger.hover()
+            expect(page.locator("[role=tooltip]:visible")).to_contain_text("pub fn step")
+            link.click()
+            assert "/definitions/" in page.url
+            expect(page.locator("#" + target.fragment)).to_have_count(1)
+            page.goto(base + "/html-multi/repeated/index.html")
+            repeated_id = page.locator(".lsp-panel").get_attribute("id")
+            assert repeated_id != target.fragment, "logical and occurrence identities were conflated"
+            page.close()
+            results.append({"kind": "navigation", "uniqueOccurrenceIds": True,
+                            "crossPageNavigation": True, "nestedPageHovers": True})
             browser.close()
     finally:
         server.shutdown()

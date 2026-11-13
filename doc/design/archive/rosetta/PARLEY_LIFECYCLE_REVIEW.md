@@ -1,10 +1,13 @@
+> Historical design record. APIs and package layout below are superseded.
+> Use the [current integration guide](../../ROSETTA_API.md) and the standalone Rosetta API.
+
 # Parley lifecycle review
 
 Date: 2026-10-23. This follows the [document slice](VERSO_LSP_DOCUMENT_SLICE.md).
 The core and bridge remain local experimental libraries; this does not publish
 a package or update PR #63.
 
-API update: the subsequent [structured-error revision](ROSETTA_API.md) replaces
+API update: the subsequent [structured-error revision](../../ROSETTA_API.md) replaces
 the `request`/`call` pair below with one result-returning `request`, uses
 `EIO ClientError` through analysis and profile actions, and removes
 `Document.withClient`. The lifecycle evidence and timings here describe the

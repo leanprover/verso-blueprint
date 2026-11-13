@@ -1,3 +1,6 @@
+> Historical design record. APIs and package layout below are superseded.
+> Use the [current integration guide](../../ROSETTA_API.md) and the standalone Rosetta API.
+
 # Verso LSP adapter: first protocol and mapping experiment
 
 Date: 2026-10-22. This follows the

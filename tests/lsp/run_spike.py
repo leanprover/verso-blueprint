@@ -129,6 +129,8 @@ def main():
             assert (docs / kind / "html-single/index.html").exists()
             tex = (docs / kind / "tex/main.tex").read_text()
             assert all(text in tex for text in ("pub fn step", "Definition step", "missing", "compiler checks disabled"))
+        run_document_case("offline-navigation", ["render", str(docs / "bundle.json"),
+                          str(docs / "navigation"), "navigation"])
         vbp = [wrapper, "lake", "exe", "vbp"]
         site = docs / "blueprint/html-single"
         run_document_case("vbp-check", ["check", "--site", str(site)], tool=vbp)

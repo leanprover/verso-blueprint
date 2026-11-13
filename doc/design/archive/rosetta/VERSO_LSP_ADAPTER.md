@@ -1,3 +1,6 @@
+> Historical design record. APIs and package layout below are superseded.
+> Use the [current integration guide](../../ROSETTA_API.md) and the standalone Rosetta API.
+
 # Reusable Verso LSP adapter: design round one
 
 Status: proposal, 2026-10-22. A first experimental protocol/mapping core now

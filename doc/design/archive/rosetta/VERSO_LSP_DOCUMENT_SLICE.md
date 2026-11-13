@@ -1,3 +1,6 @@
+> Historical design record. APIs and package layout below are superseded.
+> Use the [current integration guide](../../ROSETTA_API.md) and the standalone Rosetta API.
+
 # Independent LSP library and offline Verso document slice
 
 Date: 2026-10-23. This extends the [protocol experiment](VERSO_LSP_SPIKE.md)
@@ -14,7 +17,7 @@ dependency-free core package and protocol/document checks pass, and browser
 checks pass with the renamed anchors and hover theme.
 Current Rosetta rename evidence lives under
 `_out/verso-lsp-design/rosetta-rename/`; the current API guide is
-[`ROSETTA_API.md`](ROSETTA_API.md).
+[`ROSETTA_API.md`](../../ROSETTA_API.md).
 
 ## Library boundary
 
@@ -38,7 +41,7 @@ now maintained together in [ejgallego/rosetta](https://github.com/ejgallego/rose
 VBP's prepared migration consumes the bridge through a pinned Git dependency;
 the package and Git-consumer checks belong to Rosetta's CI. The core manifest
 has an empty `packages` array, and the bridge has no Blueprint dependency.
-See the [current repository and migration index](ROSETTA_API.md).
+See the [current repository and migration index](../../ROSETTA_API.md).
 
 There is no compatibility wrapper for #63's old model. The evidence below
 records the earlier experiment; current publication state is in the index.
@@ -165,7 +168,7 @@ document queries use versioned handles, and concurrent close callers share a
 cleanup report. Unix cleanup can escalate beyond SIGTERM. The first report is
 historical evidence, not the current API. The library remains experimental;
 platform coverage and package ownership still need release decisions. The
-[current API guide](ROSETTA_API.md) records the later structured-error and API
+[current API guide](../../ROSETTA_API.md) records the later structured-error and API
 trimming revision.
 
 Before a supported release, settle profiles and external-project inputs,
