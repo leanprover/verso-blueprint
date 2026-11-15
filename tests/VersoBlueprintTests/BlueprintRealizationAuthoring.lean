@@ -467,32 +467,31 @@ run_cmd liftTermElabM do
       metaBefore.decls.toList.map (·.1) == metaAfter.decls.toList.map (·.1))
       "Normal observation return must restore elaboration state"
     let observations ← obtain observed
-    let expectedRequests := plan.expected.mapIdx fun handle request => (handle, request)
-    let some (expectedHandle, expectedRequest) := expectedRequests.find? (·.2.node == target)
+    let some expectedRequest := plan.expected.find? (·.node == target)
       | throwError "Missing focused independent expected-goal request"
     let witness : ObjectKey := ⟨⟨`lean, Owner.projectName⟩,
       "VersoBlueprintTests.BlueprintRealizationAuthoring.Owner.withoutContract"⟩
-    let some expectedResult := observations.expected.find? (·.handle == expectedHandle)
+    let some expectedResult := observations.expected.find? fun entry =>
+        entry.request.project == expectedRequest.project && entry.request.expected == expectedRequest.expected
       | throwError "Expected-goal observation disappeared"
     let specification := plan.specifications[expectedRequest.specification]!
     let specificationDocument := plan.documents[specification.document]!
     ensure (expectedRequest.nativeSources.any fun handle =>
-      observations.native.any fun result => result.handle == handle &&
+      observations.native.any fun result => result.request == plan.native[handle]! &&
         match result.result with
         | .error diagnostic => diagnostic.code == "source-unavailable"
         | .ok _ => false)
       "A real native source request must retain its unavailable result"
-    ensure (expectedResult.result.documents == #[specificationDocument] &&
-      expectedResult.result.witness == witness)
+    ensure (expectedResult.request.documents == #[specificationDocument] &&
+      expectedResult.request.witness == witness)
       "Expected-goal documents must use only the authored spec after witness-source failure"
-    let .ok checked := expectedResult.result.result
+    let .ok checked := expectedResult.result
       | throwError "Independent expected goal did not run after the native source failure"
     ensure (checked.observation.outcome == .passed && checked.goal.documents == #[specificationDocument])
       "The independently authored goal must be checked against its exact spec-only documents"
-    let checkRequests := plan.checks.mapIdx (fun handle request => (handle, request))
-    let some checkedDeclaration := checkRequests.find? (·.2.witness == witness)
+    let some checkRequest := plan.checks.find? (·.witness == witness)
       | throwError "Missing actual own-native check request"
-    let some checkedResult := observations.checks.find? (·.handle == checkedDeclaration.1)
+    let some checkedResult := observations.checks.find? (·.request == checkRequest)
       | throwError "Own-native observation disappeared after source failure"
     let .ok nativeCheck := checkedResult.result | throwError "Own-native check did not run"
     ensure (nativeCheck.body.outcome == .passed)

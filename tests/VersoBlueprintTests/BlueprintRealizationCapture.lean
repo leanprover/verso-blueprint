@@ -85,7 +85,7 @@ run_cmd liftTermElabM do
     "Shared-reader control did not actually exercise repeated physical requests"
   ensure (!observations.native.isEmpty && !observations.inline.isEmpty && !observations.documented.isEmpty)
     "Native, inline and documented results must retain their separate families"
-  let reversed : Capture.Observations plan := {
+  let reversed : Capture.Observations := {
     documents := observations.documents.reverse, native := observations.native.reverse
     inline := observations.inline.reverse, documented := observations.documented.reverse
     checks := observations.checks.reverse, specifications := observations.specifications.reverse
@@ -97,16 +97,36 @@ run_cmd liftTermElabM do
   let nativeInventory (s : Capture.Snapshot) := s.nativeChecks.map fun c =>
     (c.declaration, c.kind, c.statement, c.body, c.status)
   ensure (nativeInventory snapshot == nativeInventory replay) "Observation order changed native inventory"
+  -- Answers are identified by the request they answer, not by a plan position.
+  -- A separately built plan of the same source state, whose requests sit at
+  -- different positions, accepts the same answers and yields the same snapshot.
+  let rebuiltRaw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let reorderedPlan := Capture.plan { rebuiltRaw with nodes := rebuiltRaw.nodes.reverse }
+  ensure (reorderedPlan.checks.map (·.witness) != plan.checks.map (·.witness))
+    "Cross-plan control must place its requests at different positions"
+  let crossPlan ← obtain (Capture.evaluate reorderedPlan observations)
+  let registryView (s : Capture.Snapshot) := (s.registry.nodes, s.registry.documents, s.registry.objects,
+    s.registry.realizations, s.registry.requirements, s.registry.evidence, s.registry.bindingInputs)
+  ensure (registryView snapshot == registryView crossPlan && snapshot.sourceDiagnostics == crossPlan.sourceDiagnostics &&
+    snapshot.registry.nodes.all fun node =>
+      (snapshot.assessmentFor node.label).details == (crossPlan.assessmentFor node.label).details)
+    "Answers observed for one plan must serve a separately built plan of the same source state"
   -- Fault injection only at the pure boundary; successful facts come from real
   -- providers, never mocked proof success.
-  let rejects (code : String) (batch : Capture.Observations plan) : TermElabM Unit := do
+  let rejects (code : String) (batch : Capture.Observations) : TermElabM Unit := do
     match Capture.evaluate plan batch with
     | .ok _ => throwError "Malformed observation batch was admitted: {code}"
     | .error issues => ensure (issues.any (·.code == code)) s!"Wrong batch rejection: {repr issues}"
   let some document := observations.documents[0]? | throwError "Missing actual document control"
   rejects "missing-observation" { observations with documents := observations.documents.extract 1 observations.documents.size }
   rejects "duplicate-observation" { observations with documents := observations.documents.push document }
-  rejects "extraneous-observation" { observations with documents := observations.documents.push { document with handle := plan.documents.size } }
+  -- An answer to a request this plan does not make is ignored.
+  let unrequestedKey := { document.request with path := "unrequested-document" }
+  let unrequested ← obtain (Capture.evaluate plan { observations with documents := observations.documents.push {
+    request := unrequestedKey, result := ({ document.result.1 with key := unrequestedKey }, #[]) } })
+  ensure (unrequested.registry.contributions == snapshot.registry.contributions &&
+    unrequested.sourceDiagnostics == snapshot.sourceDiagnostics)
+    "An unrequested answer changed the snapshot"
   rejects "mismatched-observation" { observations with documents := observations.documents.modify 0 fun entry =>
     { entry with result := ({ entry.result.1 with key := { entry.result.1.key with path := "wrong-document" } }, entry.result.2) } }
   for batch in #[
@@ -282,7 +302,7 @@ run_cmd liftTermElabM do
     | throwError "Missing planned source step for the first typed docstring owner"
   let some (.ok leftHandle) := leftStep.documented
     | throwError "Expected a current documented-provider request for the first owner"
-  let some leftProvider := docObservations.documented.find? (·.handle == leftHandle)
+  let some leftProvider := docObservations.documented.find? (·.request == docPlan.documented[leftHandle]!)
     | throwError "Missing native docstring provider observation"
   let expectedDocText ← match leftProvider.result with
     | .ok documented => pure documented.rawDocstring
@@ -317,7 +337,7 @@ run_cmd liftTermElabM do
         | throwError "Selected prose document lost its source owner"
       let expectedText ← match sourceStep.documented with
         | some (.ok handle) =>
-          let some provider := observations.documented.find? (·.handle == handle)
+          let some provider := observations.documented.find? (·.request == plan.documented[handle]!)
             | throwError "Selected native docstring lost its provider observation"
           match provider.result with
           | .ok documented => pure documented.rawDocstring
@@ -483,28 +503,26 @@ run_cmd liftTermElabM do
     specifications := observations.specifications.reverse, expected := observations.expected.reverse })
   ensure (replay.registry.contributions == snapshot.registry.contributions)
     "Expected-goal table order changed origins, goal documents or bindings"
-  let rejects (code : String) (batch : Capture.Observations plan) : TermElabM Unit := do
+  let rejects (code : String) (batch : Capture.Observations) : TermElabM Unit := do
     match Capture.evaluate plan batch with
     | .ok _ => throwError "Malformed authored observation batch was admitted"
     | .error issues => ensure (issues.any (·.code == code)) s!"Wrong authored batch rejection: {repr issues}"
   rejects "missing-observation" { observations with specifications := #[] }
   rejects "missing-observation" { observations with expected := #[] }
   let some expected := observations.expected[0]? | throwError "Missing expected-goal result control"
-  let originalChecked ← obtain expected.result.result
+  let originalChecked ← obtain expected.result
   let semanticDiagnostic : Diagnostic := {
     code := "semantic-context-unavailable"
     subject := "Unrelated.TransitiveDependency"
     message := "Injected failure for diagnostic propagation control" }
   let failingSemantics : NativeLean.SemanticContext := fun _ _ _ => pure (.error semanticDiagnostic)
-  let expectedName := plan.expected[expected.handle]!.expected
   let checkedWithoutContext ← obtain (← NativeLean.check `blueprintFixtures
-    originalChecked.observation.witness (mkCIdent expectedName) expected.result.documents failingSemantics)
+    originalChecked.observation.witness (mkCIdent expected.request.expected) expected.request.documents failingSemantics)
   ensure (checkedWithoutContext.semanticContext.isNone &&
     checkedWithoutContext.semanticDiagnostics == #[semanticDiagnostic])
     "Native expected-goal check dropped its semantic-context failure"
-  let failedSemantics : Capture.Observations plan := { observations with
-    expected := observations.expected.modify 0 fun entry =>
-      { entry with result := { entry.result with result := .ok checkedWithoutContext } } }
+  let failedSemantics : Capture.Observations := { observations with
+    expected := observations.expected.modify 0 fun entry => { entry with result := .ok checkedWithoutContext } }
   let preserved ← obtain (Capture.evaluate plan failedSemantics)
   ensure (preserved.diagnostics.contains semanticDiagnostic)
     "Expected-proof semantic-context failure was dropped during capture evaluation"
@@ -520,21 +538,30 @@ run_cmd liftTermElabM do
   let genericDiagnostic := { semanticDiagnostic with subject := "native" }
   let genericFailure := { checkedWithoutContext with semanticDiagnostics := #[genericDiagnostic] }
   let generic ← obtain (Capture.evaluate plan { observations with
-    expected := observations.expected.modify 0 fun entry =>
-      { entry with result := { entry.result with result := .ok genericFailure } } })
+    expected := observations.expected.modify 0 fun entry => { entry with result := .ok genericFailure } })
   assertScoped generic genericDiagnostic
   let nativeFailure := { observations with native := observations.native.map fun entry =>
-    if plan.native[entry.handle]!.name != ``complete then entry else
+    if entry.request.name != ``complete then entry else
       { entry with result := entry.result.map fun prepared => { prepared with
         semanticContext := none, statementContext := none, semanticDiagnostics := #[semanticDiagnostic] } } }
   let native ← obtain (Capture.evaluate plan nativeFailure)
   assertScoped native semanticDiagnostic
   rejects "duplicate-observation" { observations with expected := observations.expected.push expected }
-  rejects "extraneous-observation" { observations with expected := observations.expected.push { expected with handle := plan.expected.size } }
+  -- An answer to a request this plan does not make is ignored.
+  let unrequestedAnswer := { expected with request := { expected.request with expected := `unrequestedExpectation } }
+  let unrequested ← obtain (Capture.evaluate plan
+    { observations with expected := observations.expected.push unrequestedAnswer })
+  ensure (unrequested.registry.contributions == snapshot.registry.contributions)
+    "An unrequested expected-goal answer changed the snapshot"
+  -- An answer for other documents or other specification bytes answers a
+  -- different request; an answer whose content disagrees with its request is
+  -- mismatched.
+  rejects "missing-observation" { observations with expected := observations.expected.modify 0 fun entry =>
+    { entry with request := { entry.request with documents := #[] } } }
   rejects "mismatched-observation" { observations with expected := observations.expected.modify 0 fun entry =>
-    { entry with result := { entry.result with documents := #[] } } }
-  rejects "mismatched-observation" { observations with specifications := observations.specifications.modify 0 fun entry =>
-    { entry with result := { entry.result with document := { entry.result.document with text := "different specification bytes" } } } }
+    { entry with result := .ok { originalChecked with goal := { originalChecked.goal with documents := #[] } } } }
+  rejects "missing-observation" { observations with specifications := observations.specifications.modify 0 fun entry =>
+    { entry with request := { entry.request with document := { entry.request.document with text := "different specification bytes" } } } }
   let env ← getEnv
   try
     Authoring.expectNative `competingExpectation (Name.mkSimple "capture.complete") `RealizationCaptureFixture.expectedFalse
