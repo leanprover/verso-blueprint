@@ -388,7 +388,8 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
   expect "named tests: selected contract complete" ((r.resultFor (.realization rustKey)).complete)
   expect "named tests: no effect on Lean proof" (!(r.resultForRequirement proofKey).complete)
 
--- Unknown realization selection and a proof contract in the wrong project fail admission.
+-- Unknown realization selection, a proof contract in the wrong project, and a
+-- witness outside its goal's project fail admission.
 #eval show IO Unit from do
   let unknownRealization : Input := { fixture with translations := fixture.translations.map fun c =>
     { c with value := { c.value with source := #[{ realization := ⟨rocqKey.node, `absent⟩ }] } } }
@@ -397,6 +398,10 @@ def hasIssue (result : Result) (code : String) : Bool := result.diagnostics.any 
   let wrongContext : Input := { fixture with requirements := fixture.requirements.map fun c =>
     if c.value.key == proofKey then { c with value := { c.value with expected := .proof foreignGoal rocqObject } } else c }
   expect "proof expected in selected realization context" (rejectsWith wrongContext "wrong-project")
+  let foreignWitness : ObjectKey := { leanObject with context := ⟨`lean, `otherProject⟩ }
+  let mismatchedWitness : Input := { fixture with requirements := fixture.requirements.map fun c =>
+    if c.value.key == proofKey then { c with value := { c.value with expected := .proof goal foreignWitness } } else c }
+  expect "proof witness in its goal's context" (rejectsWith mismatchedWitness "invalid-requirement")
 
 end VersoBlueprintTests.BlueprintRealizations
 

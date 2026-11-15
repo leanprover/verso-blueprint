@@ -133,9 +133,10 @@ Prerequisite identities are part of the authored requirement; their content and
 outcomes are not implicitly selected. The record of which target each declared use
 selected binds only the dependency-selection check that produced it. A dependency
 changing shape, such as a theorem becoming a definition, therefore re-runs that
-check and can change completion, but leaves judgments of the using statement current. Rewriting a proof that is only a completion
-prerequisite preserves the statement judgment. Introducing `sorry` still prevents
-final completion. Explicitly selected proof content does change its binding.
+check and can change completion, but leaves judgments of the using statement
+current. Rewriting a proof that is only a completion prerequisite preserves the
+statement judgment. Introducing `sorry` still prevents final completion.
+Explicitly selected proof content does change its binding.
 Evidence, current-review selections and evaluation state do not enter the binding.
 
 Native statement meaning includes relevant computational dependencies. Selected

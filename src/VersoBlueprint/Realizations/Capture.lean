@@ -749,8 +749,6 @@ private def selectTarget (collected : Collected) (context : Context) (target : N
     else failModel (if candidates.isEmpty then "missing-native-contract" else "ambiguous-native-contract")
       "Dependency needs one unambiguous direct native proof, implementation, or proposition definition"
   let models ← modelSelection
-  unless !models.isEmpty && models.all (·.context == context) do
-    return ← fail "wrong-default-context" "Dependency belongs to another project context"
   let mut required := #[]
   for model in models do
     unless !model.declarations.isEmpty do

@@ -684,10 +684,17 @@ def withMissingProofHelper : IO Input := do
       selectedDefinition.bindingFor reviewKey == before.bindingFor reviewKey)
   expect "selection: a dependency's selected target binds its own selection contract"
     (selectedTheorem.bindingFor selectionKey != selectedDefinition.bindingFor selectionKey)
-  -- A subject cannot publish a reference to a contract nobody supplied.
+  -- A subject cannot publish a reference to a contract nobody supplied. In the
+  -- base fixture only the proof declaration's `required` list names `proofKey`.
+  let noProofContract : Input := { fixture with
+    requirements := fixture.requirements.filter (·.value.key != proofKey) }
+  expect "selection: the removed contract is referenced by no prerequisite"
+    (!(noProofContract.requirements.any (·.value.prerequisites.contains proofKey)))
   expect "selection: a required contract must exist in the same admitted input"
-    (rejectsWith { input with requirements := input.requirements.filter (·.value.key != proofKey) }
-      "unknown-requirement")
+    (match admit noProofContract with
+      | .ok _ => false
+      | .error issues => issues.any fun issue => issue.code == "unknown-requirement" &&
+          issue.subject == (toJson proofKey).compress && issue.message == "Missing contract requirement")
   let sibling : RequirementKey := ⟨.claim claimKey, `independent_review⟩
   let siblingContract := contribution `siblingReview { key := sibling, expected := .review `independent `MockReviewer }
   let withSibling : Input := { input with

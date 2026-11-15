@@ -57,6 +57,13 @@ theorem consumer : True := source
 @[blueprint "dependencies.empty"]
 theorem empty : True := True.intro
 
+/-- The only use names a missing target; nothing else leaves this node unfinished. -/
+@[blueprint "dependencies.unresolved" (uses := ["dependencies.missing"])]
+theorem unresolved : True := True.intro
+
+@[blueprint "dependencies.unresolvedConsumer" (uses := ["dependencies.unresolved"])]
+theorem unresolvedConsumer : True := unresolved
+
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
   unless condition do throwError message
 
@@ -78,7 +85,7 @@ private def selects (snapshot : Capture.Snapshot) (source : String) (role : Name
     (expected : Array RequirementKey) : TermElabM Unit := do
   match ← selection snapshot source role target with
   | .ok keys =>
-    unless expected.all keys.contains do
+    unless canonical keys == canonical expected do
       throwError "{source} -> {target} ({role}) selected {repr keys}, expected {repr expected}"
   | .error diagnostic => throwError "{source} -> {target} ({role}) failed: {repr diagnostic}"
 
@@ -137,5 +144,63 @@ run_cmd liftTermElabM do
       s!"Native validity and Blueprint closure were conflated for {repr key}"
   ensure (!(registry.resultForRequirement (contract "consumer" ``consumer `proof)).complete)
     "A dependent completed through an unfinished dependency"
+
+  -- The failed selection alone gates a node with no admitted dependency.
+  let unresolvedStatement := contract "unresolved" ``unresolved `statement
+  let unresolvedGate : RequirementKey := ⟨unresolvedStatement.subject, `statement ++ `dependencySelection⟩
+  fails snapshot "unresolved" `statement "missing" "missing-target"
+  ensure ((registry.requirement? unresolvedStatement).any (·.prerequisites == #[unresolvedGate]))
+    "The unresolved statement requires something other than its selection check"
+  ensure (!(registry.resultForRequirement unresolvedGate).complete)
+    "A missing target did not leave its selection check unfinished"
+  for key in #[unresolvedStatement, contract "unresolved" ``unresolved `proof,
+      contract "unresolvedConsumer" ``unresolvedConsumer `statement,
+      contract "unresolvedConsumer" ``unresolvedConsumer `proof] do
+    ensure ((registry.localResult key).complete && !(registry.resultForRequirement key).complete)
+      s!"A failed selection alone did not gate the closure of {repr key}"
+
+  -- The selection record is attached under its own check's name. Every other
+  -- binding input on a using declaration is a native descriptor or names one of
+  -- that subject's own contracts.
+  let selectionChecks := registry.requirements.filter (·.expected == .check dependencySelectionValidator)
+  ensure (selectionChecks.any (·.key == gate) && selectionChecks.any (·.key == unresolvedGate))
+    "Capture did not create the expected selection checks"
+  for check in selectionChecks do
+    let subjectInputs := registry.bindingInputs.filter (·.subject == check.key.subject)
+    ensure (subjectInputs.any (·.name == selectedUsesFor check.key))
+      s!"The selection record of {repr check.key} is not attached under its check's name"
+    let contractScoped := (registry.requirements.filter (·.key.subject == check.key.subject)).flatMap
+      fun requirement => #[NativeLean.expectedContextFor requirement.key,
+        NativeLean.expectedStatementContextFor requirement.key, selectedUsesFor requirement.key]
+    ensure (subjectInputs.all fun input => input.name == NativeLean.sourceContext ||
+        input.name == NativeLean.statementContext || contractScoped.contains input.name)
+      s!"A declaration-wide binding input on {repr check.key.subject} may carry its selection record"
+
+  -- Changing what the uses selected re-binds the selection check only, never a
+  -- review of the using statement or its native statement check.
+  let review : RequirementKey := ⟨sourceStatement.subject, `mockStatementReview⟩
+  let captured := registry.contributions
+  let withReview : Input := { captured with requirements := captured.requirements.push {
+    origin := { id := `mockStatementReview, moduleName := `MockProvider, source := "synthetic-test-input" }
+    value := { key := review, expected := .review `statementCorrespondence `MockReviewer } } }
+  let selectionRecord (input : BindingInput) : Bool := input.subject == sourceStatement.subject &&
+    input.name != NativeLean.sourceContext && input.name != NativeLean.statementContext
+  ensure (withReview.bindingInputs.any (selectionRecord ·.value))
+    "The using statement carries no selection record to change"
+  let reselect (input : Contribution BindingInput) : Contribution BindingInput :=
+    if selectionRecord input.value then
+      { input with value := { input.value with content := input.value.content ++ " reselected" } }
+    else input
+  let reselected : Input := { withReview with bindingInputs := withReview.bindingInputs.map reselect }
+  let readmit (input : Input) : TermElabM Registry := match admit input with
+    | .ok registry => pure registry
+    | .error diagnostics => throwError "Re-admission rejected the captured input: {repr diagnostics}"
+  let before ← readmit withReview
+  let after ← readmit reselected
+  ensure (after.bindingFor review == before.bindingFor review &&
+      after.bindingFor sourceStatement == before.bindingFor sourceStatement)
+    "A changed dependency selection re-bound the using statement"
+  ensure (after.bindingFor gate != before.bindingFor gate)
+    "A changed dependency selection did not re-bind its selection check"
 
 end DependencySelectionFixture
