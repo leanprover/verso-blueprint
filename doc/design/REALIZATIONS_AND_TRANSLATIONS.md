@@ -168,7 +168,19 @@ Byte-bound selections remain conservative: a whole-file selection is affected by
 any byte change. A supported prose selection takes its bytes from the original
 source buffer recorded in its compiled syntax, checked against its stored range;
 capture reads no file for it, so a prose source edited or removed after its module
-was built still yields the compiled text. Missing/ambiguous associations are
+was built still yields the compiled text. A plain native declaration is likewise
+taken from the compiled environment: its kind, roles, semantic descriptors and
+declaration ranges come from the environment, and any recorded snapshot ranges
+must agree with them. Capture reads and locates no owning file for it and gives
+its object no source document, so its availability rests on the environment and
+its semantic descriptor. An owning file that is unreadable, edited, deleted, or
+absent from the source search path (as for a dependency shipped without sources)
+yields no `source-unavailable` for it and blocks none of its native checks or
+realizations, and an independent expected goal binds only its specification
+document. Capture still reads the owning file where its bytes are the content: a
+declaration's own doc comment, whose raw bytes the environment does not keep, and
+an inline Blueprint block, whose original syntax is checked against the file.
+Those keep their current diagnostics. Missing/ambiguous associations are
 diagnosed rather than guessed.
 
 Earlier binding versions are stale; no automatic review migration is performed.

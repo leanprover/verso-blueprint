@@ -201,7 +201,9 @@ def Raw.ofState (state : Environment.State) : Raw := {
 
 /-- A native source request is identified by what it asks: the declaration in
 its context and the owning-source facts recorded with it. The association's
-retained presentation snapshots are not part of the request. -/
+retained presentation snapshots are not part of the request. A plain native
+declaration is answered from the environment; only the doc-comment and inline
+families read the file at `sourcePath?`. -/
 structure NativeRequest where
   context : Context
   name : Name
@@ -259,8 +261,9 @@ structure SpecificationKey where
 
 instance : Hashable SpecificationKey := ⟨fun key => hash (key.expected, key.document.key)⟩
 
-/-- The goal's documents depend on earlier owning-source results and earlier
-authored references. The recipe resolves them at this exact record position. -/
+/-- The goal's documents depend on its specification and on the documents of
+earlier observations of its witness; a native declaration's observation carries
+none. The recipe resolves them at this exact record position. -/
 structure ExpectedRequest where
   node : Name
   expected : Name
@@ -441,8 +444,6 @@ private def readDocument (reader : System.FilePath → IO String) (key : Documen
 
 private def request (job : NativeRequest) : CoreM (Except Diagnostic NativeSource.Request) := do
   let name := job.name
-  let fail (message : String) : Except Diagnostic NativeSource.Request := .error {
-    code := "source-association-unavailable", subject := name.toString, message }
   let env ← getEnv
   unless (env.checked.get.find? name).isSome do
     return .error {
@@ -451,18 +452,24 @@ private def request (job : NativeRequest) : CoreM (Except Diagnostic NativeSourc
   let owner := (env.getModuleIdxFor? name).bind (fun index => env.header.moduleNames[index.toNat]?)
     |>.getD env.mainModule
   if let some moduleName := job.moduleName? then
-    if moduleName != owner then return fail "Stored native module disagrees with current declaration owner"
-  let path ← match job.sourcePath? with
-    | some path => pure path
-    | none =>
-      if owner == env.mainModule then pure (← getFileName)
-      else
-        let some path ← (← getSrcSearchPath).findModuleWithExt "lean" owner
-          | return fail "Owning module source path is unavailable"
-        pure path.toString
+    if moduleName != owner then return .error {
+      code := "source-association-unavailable", subject := name.toString
+      message := "Stored native module disagrees with current declaration owner" }
   return .ok {
-    project := job.context.project, canonical := name, moduleName := owner, sourcePath := path
+    project := job.context.project, canonical := name, moduleName := owner
     range? := job.range?, selectionRange? := job.selectionRange? }
+
+/-- The owning source file, for the providers that read it: the recorded path,
+or the owning module's source on the search path. A plain native declaration
+never asks, so a dependency shipped without sources does not affect it. -/
+private def sourcePath (job : NativeRequest) (request : NativeSource.Request) : CoreM (Except Diagnostic String) := do
+  if let some path := job.sourcePath? then return .ok path
+  if request.moduleName == (← getEnv).mainModule then return .ok (← getFileName)
+  let some path ← (← getSrcSearchPath).findModuleWithExt "lean" request.moduleName
+    | return .error {
+        code := "source-association-unavailable", subject := job.name.toString
+        message := "Owning module source path is unavailable" }
+  return .ok path.toString
 
 private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step : DeclarationStep) :
     ExceptT (Array Diagnostic) m (Except (Array Diagnostic) NativeSource.Prepared) := do
@@ -480,7 +487,7 @@ private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step :
   if !issues.isEmpty then return .error (canonical issues)
   let some first := prepared[0]?
     | return .error #[{ code := "source-association-unavailable", subject := name.toString, message := "No owning source association" }]
-  if prepared.any (fun other => other.document != first.document || other.ranges.range != first.ranges.range ||
+  if prepared.any (fun other => other.ranges.range != first.ranges.range ||
       other.ranges.selectionRange != first.ranges.selectionRange ||
       other.moduleName != first.moduleName || other.declaration != first.declaration) then
     return .error #[{ code := "ambiguous-source", subject := name.toString, message := "Competing owning sources for the same declaration" }]
@@ -630,8 +637,6 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           | .ok prepared => do
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
-              input.documents := collected.input.documents.push
-                (contribution `document (BindingEncoding.documentKey prepared.document.key) prepared.document)
               input.bindingInputs := collected.input.bindingInputs ++ nativeRoles.flatMap fun role =>
                 if role == `statement then
                   prepared.statementContext.toArray.map fun content => contribution `nativeStatementContext
@@ -642,7 +647,8 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                   (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
                     subject := .declaration (base.forRole role) witness,
                     name := NativeLean.sourceContext, content } }
-            pure { key := witness, resolution := .resolved, document := some prepared.document.key }
+            -- The environment establishes the declaration; no source document is attached.
+            pure { key := witness, resolution := .resolved }
         collected := { collected with
           input.objects := collected.input.objects.push
             (contribution `object (BindingEncoding.objectKey witness) objectObservation) }
@@ -988,14 +994,10 @@ private def whenOk (agrees : α → Bool) : Except ε α → Bool
   | .ok value => agrees value
   | .error _ => true
 
-private def preparedMatches (context : Context) (name : Name) (prepared : NativeSource.Prepared) : Bool :=
-  prepared.canonical == name && prepared.declaration == ⟨⟨`lean, context.project⟩, name.toString⟩ &&
-    prepared.document.key.context == ⟨`lean, context.project⟩
-
 private def associatedMatches (request : NativeRequest) (prepared : NativeSource.Prepared) : Bool :=
-  preparedMatches request.context request.name prepared &&
+  prepared.canonical == request.name &&
+    prepared.declaration == ⟨⟨`lean, request.context.project⟩, request.name.toString⟩ &&
     request.moduleName?.all (· == prepared.moduleName) &&
-    request.sourcePath?.all (· == prepared.document.key.path) &&
     request.range?.all (· == prepared.ranges.range) &&
     request.selectionRange?.all (· == prepared.ranges.selectionRange)
 
@@ -1021,7 +1023,9 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
       answerFor "inline" request.name.toString inline request.key (whenOk (associatedMatches request.key.native))
     documented := fun request =>
       answerFor "documented" request.name.toString documented request
-        (whenOk fun value => associatedMatches request value.toPrepared)
+        (whenOk fun value => associatedMatches request value.toPrepared &&
+          value.document.key.context == ⟨`lean, request.context.project⟩ &&
+          request.sourcePath?.all (· == value.document.key.path))
     check := fun request =>
       answerFor "check" request.witness.native checks request (whenOk fun value =>
         value.declaration == request.witness &&
@@ -1065,6 +1069,7 @@ private def entries [BEq κ] [Hashable κ] (answers : Std.HashMap κ α) : Array
 /-- One effect scope for all providers, including dependent expected goals.
 The supplied reader is a byte-reading seam for tests, not a native-success hook.
 Successful physical reads are shared across every provider family in this call.
+Plain native declarations are prepared from the environment and read nothing.
 Environment, metavariables and info state are restored even on exceptions. -/
 def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFile) :
     TermElabM (Except (Array Diagnostic) Observations) := withObservationState do
@@ -1088,20 +1093,26 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
       native := fun job => answerOnce native job do
         match ← request job with
         | .error issue => pure (.error issue)
-        | .ok request => NativeSource.prepare request reader semantics
+        | .ok request => NativeSource.prepare request semantics
       inline := fun job => answerOnce inline job.key do
         match job.source.payload with
         | .leanInline code =>
           match ← request job.key.native with
           | .error issue => pure (.error issue)
-          | .ok request => NativeSource.prepareInline request code reader semantics
+          | .ok request =>
+            match ← sourcePath job.key.native request with
+            | .error issue => pure (.error issue)
+            | .ok path => NativeSource.prepareInline request path code reader semantics
         | _ => pure (.error {
             code := "invalid-inline-request", subject := job.name.toString,
             message := "Inline request has no inline source payload" })
       documented := fun job => answerOnce documented job do
         match ← request job with
         | .error issue => pure (.error issue)
-        | .ok request => NativeSource.prepareDocumented request reader semantics
+        | .ok request =>
+          match ← sourcePath job request with
+          | .error issue => pure (.error issue)
+          | .ok path => NativeSource.prepareDocumented request path reader semantics
       check := fun job => answerOnce checks job (NativeLean.checkDeclaration job.project job.witness)
       specification := fun key => answerOnce specifications key
         (ownedDefinition key.expected key.origin key.document).run

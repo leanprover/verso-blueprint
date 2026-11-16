@@ -9,10 +9,12 @@ import Lean.Elab.DeclarationRange
 import VersoBlueprint.Validation.Lean
 import VersoBlueprint.Translations
 
-/-! Native owning-source preparation. This module does not import the Blueprint
-Environment or read accepted nodes. It prepares original source for a typed native
-identity; callers separately establish the Blueprint association and admit their
-complete model. Normal owning-module build is a precondition. -/
+/-! Native declaration preparation. This module does not import the Blueprint
+Environment or read accepted nodes. It prepares a typed native identity from the
+compiled environment, reading the owning source file only where its bytes are the
+data: a declaration's own doc comment and an inline Blueprint block. Callers
+separately establish the Blueprint association and admit their complete model.
+Normal owning-module build is a precondition. -/
 
 namespace Informal.Realizations.NativeSource
 
@@ -23,16 +25,13 @@ private def issue (code : String) (label : Name) (message : String) : Diagnostic
 
 /-- Parse only in the current environment; do not elaborate commands or mutate
 Blueprint state. Syntax requiring intervening elaboration, or made incompatible
-by later imports reserving new keywords, is unsupported. Native declaration lookup can
-stop after its checked range; whole-file parsing remains required for docstrings
+by later imports reserving new keywords, is unsupported. The whole file is parsed
 so a later inheritance directive cannot be hidden. Original source is not sliced. -/
-def parseSource (label : Name) (path text : String)
-    (through? : Option DeclarationRange := none) : CoreM (Except Diagnostic (Array Syntax)) := do
+def parseSource (label : Name) (path text : String) : CoreM (Except Diagnostic (Array Syntax)) := do
   try
     let input := Parser.mkInputContext text path
     let (_, state, messages) ← liftM <| Parser.parseHeader input
     let env ← getEnv
-    let stop? := through?.map fun range => input.fileMap.ofPosition range.endPos
     let rec loop (fuel : Nat) (state : Parser.ModuleParserState) (messages : MessageLog)
         (commands : Array Syntax) : Except Diagnostic (Array Syntax) := do
       match fuel with
@@ -47,9 +46,7 @@ def parseSource (label : Name) (path text : String)
         if command.isOfKind ``Parser.Command.eoi then return commands
         if Parser.isTerminalCommand command || next.pos <= state.pos then
           throw <| issue "source-parse-failed" label "Owning source parser stopped before end of file"
-        let commands := commands.push command
-        if stop?.any (next.pos >= ·) then return commands
-        loop fuel next messages commands
+        loop fuel next messages (commands.push command)
     return loop (text.utf8ByteSize + 1) state messages #[]
   catch _ =>
     return .error <| issue "source-parse-failed" label "Owning source parser failed"
@@ -123,9 +120,9 @@ def docCommentAtRanges (label : Name) (text : String) (range selection : Declara
   -- including initial/final whitespace and supplementary-plane characters.
   return String.Pos.Raw.extract text ⟨source.start.byteIdx + 3⟩ ⟨source.stop.byteIdx - 2⟩
 
-/-- Compare optional accepted snapshot ranges with current owning native ranges.
-The latter must be read for that same canonical declaration. This pure check
-does not fill in or mutate any accepted record. -/
+/-- Compare optional accepted snapshot ranges with the environment's current
+native ranges for that same canonical declaration. This pure check does not fill
+in or mutate any accepted record. -/
 def checkedSourceRanges (label : Name) (snapshotRange snapshotSelection : Option DeclarationRange)
     (native : Option DeclarationRanges) : Except Diagnostic DeclarationRanges := do
   let some ranges := native
@@ -134,36 +131,41 @@ def checkedSourceRanges (label : Name) (snapshotRange snapshotSelection : Option
     throw <| issue "source-association-unavailable" label "Accepted snapshot and current native ranges disagree"
   return ranges
 
-/-- Source metadata supplied by the owning producer, not a node or display name.
-Snapshot ranges are compared with current native ranges, never filled in. -/
+/-- Declaration metadata supplied by the owning producer, not a node or display
+name. Snapshot ranges are compared with current native ranges, never filled in.
+The owning source path is not part of it: only the providers that read the file
+take one. -/
 structure Request where
   project : Name
   canonical : Name
   moduleName : Name
-  sourcePath : String
   range? : Option DeclarationRange := none
   selectionRange? : Option DeclarationRange := none
 
+/-- A declaration as the compiled environment establishes it. It carries no
+source document: its content is the checked declaration, not the owning file. -/
 structure Prepared where
   canonical : Name
   declaration : ObjectKey
   kind : Data.NodeKind
   roles : Array Name := #[]
   moduleName : Name
-  document : Document
   ranges : DeclarationRanges
   semanticContext : Option String := none
   statementContext : Option String := none
   semanticDiagnostics : Array Diagnostic := #[]
 
+/-- A declaration together with its own doc comment's raw bytes and the owning
+source file they were read from. -/
 structure Documented extends Prepared where
+  document : Document
   format : Name
   rawDocstring : String
 
 private def checkOwner (request : Request) : CoreM (Except Diagnostic Unit) := do
   let name := request.canonical
-  if request.project.isAnonymous || name.isAnonymous || request.moduleName.isAnonymous || blank request.sourcePath then
-    return .error <| issue "invalid-source-request" name "Expected explicit project, typed declaration and owning module/path"
+  if request.project.isAnonymous || name.isAnonymous || request.moduleName.isAnonymous then
+    return .error <| issue "invalid-source-request" name "Expected explicit project, typed declaration and owning module"
   unless name.toString.toName == name do
     return .error <| issue "unsupported-identity" name "Canonical Lean name cannot be represented losslessly by this adapter"
   let env ← getEnv
@@ -185,7 +187,7 @@ private def nativeDocstringFormat (name : Name) : CoreM (Except Diagnostic Name)
     | none, none => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
     | some _, some _ => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
-private def preparedAt (request : Request) (text : String) (ranges : DeclarationRanges)
+private def preparedAt (request : Request) (ranges : DeclarationRanges)
     (semantics : NativeLean.SemanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   let some info := (← getEnv).checked.get.find? request.canonical
@@ -197,60 +199,53 @@ private def preparedAt (request : Request) (text : String) (ranges : Declaration
   let semantics ← semantics .implementation request.project #[request.canonical]
   return .ok {
     canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
-    kind, roles, moduleName := request.moduleName
-    document := { key := ⟨context, request.sourcePath⟩, text }, ranges
+    kind, roles, moduleName := request.moduleName, ranges
     semanticContext := semantics.toOption, statementContext := statement.toOption
     semanticDiagnostics := canonical ((match semantics with | .ok _ => #[] | .error issue => #[issue]) ++
       (match statement with | .ok _ => #[] | .error issue => #[issue])) }
 
-private def prepareSource (request : Request) (readSource : System.FilePath → IO String)
-    (wholeFile : Bool := true)
-    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
-    CoreM (Except Diagnostic (Prepared × Array Syntax)) := do
-  let name := request.canonical
-  let ranges ← match checkedSourceRanges name request.range? request.selectionRange?
-      (← findDeclarationRanges? name) with
-    | .ok ranges => pure ranges
-    | .error diagnostic => return .error diagnostic
-  let text ← try liftM <| readSource request.sourcePath catch _ =>
-    return .error <| issue "source-unavailable" name "Cannot read canonical source at owning association path"
-  if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
-  let commands ← match ← parseSource name request.sourcePath text
-      (if wholeFile then none else some ranges.range) with
-    | .ok commands => pure commands
-    | .error diagnostic => return .error diagnostic
-  match declarationAtRanges name text ranges.range ranges.selectionRange commands with
-  | .error diagnostic => return .error diagnostic
-  | .ok _ => pure ()
-  return (← preparedAt request text ranges semantics).map (·, commands)
+private def environmentRanges (request : Request) : CoreM (Except Diagnostic DeclarationRanges) := do
+  return checkedSourceRanges request.canonical request.range? request.selectionRange?
+    (← findDeclarationRanges? request.canonical)
+
+private def checkSourcePath (request : Request) (sourcePath : String) : Except Diagnostic Unit :=
+  if blank sourcePath then
+    .error <| issue "invalid-source-request" request.canonical "Expected an explicit owning source path"
+  else .ok ()
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a
-body-bearing definition. Source lookup neither checks proof validity nor asserts
-a Blueprint association, expected goal or correspondence. Parsing stops after the
-checked declaration; unrelated later document syntax does not invalidate its
-association. Normal owning-module build remains a precondition, and both exact
-native ranges are still required. Documentation uses the stricter whole-file path. -/
-def prepare (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile)
+body-bearing definition, from the compiled environment alone. No file is read:
+the environment's declaration ranges, which must agree with any recorded snapshot
+ranges, locate it, and an owning source file that is unreadable, edited or
+deleted after the build does not change the result. Preparation neither checks
+proof validity nor asserts a Blueprint association, expected goal or
+correspondence. Normal owning-module build remains a precondition. -/
+def prepare (request : Request)
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
-  return (← prepareSource request readSource (wholeFile := false) (semantics := semantics)).map (·.1)
+  let ranges ← match ← environmentRanges request with
+    | .ok ranges => pure ranges
+    | .error diagnostic => return .error diagnostic
+  preparedAt request ranges semantics
 
 /-- Prepare a declaration from an original Blueprint Lean block. Reparse the
 original block contents with Verso's byte-preserving padding, then compare both
 native ranges. Cached command syntax and rendered text cannot supply the source.
 The owning source must still equal the producer's original syntax input; ordinary
-source edits therefore require the normal owning-module rebuild. -/
-def prepareInline (request : Request) (code : Data.Code)
+source edits therefore require the normal owning-module rebuild. The file is read
+for this check only; the result carries no source document, as for `prepare`. -/
+def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
     (readSource : System.FilePath → IO String := IO.FS.readFile)
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
+  if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
   let name := request.canonical
   let declared := code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
   unless (declared.filter (· == name)).size == 1 do
     return .error <| issue "source-association-unavailable" name "Inline source must select the exact declaration once"
-  let text ← try liftM <| readSource request.sourcePath catch _ =>
+  let text ← try liftM <| readSource sourcePath catch _ =>
     return .error <| issue "source-unavailable" name "Cannot read owning inline source"
   unless code.stx.isOfKind ``Lean.Doc.Syntax.codeblock && (originalRange? text code.stx).isSome do
     return .error <| issue "source-association-unavailable" name "Inline block is not original syntax from the current owning file"
@@ -258,13 +253,12 @@ def prepareInline (request : Request) (code : Data.Code)
   unless strings.size == 1 && (originalRange? text strings[0]!).isSome do
     return .error <| issue "source-association-unavailable" name "Inline block has no unique original contents"
   let padded ← withReader (fun ctx : Core.Context => { ctx with
-      fileName := request.sourcePath, fileMap := FileMap.ofString text }) <|
+      fileName := sourcePath, fileMap := FileMap.ofString text }) <|
     Verso.SyntaxUtils.parserInputString ⟨strings[0]!⟩
-  let ranges ← match checkedSourceRanges name request.range? request.selectionRange?
-      (← findDeclarationRanges? name) with
+  let ranges ← match ← environmentRanges request with
     | .ok ranges => pure ranges
     | .error diagnostic => return .error diagnostic
-  let commands ← match ← parseSource name request.sourcePath padded with
+  let commands ← match ← parseSource name sourcePath padded with
     | .ok commands => pure commands
     | .error diagnostic => return .error diagnostic
   match declarationAtRanges name padded ranges.range ranges.selectionRange commands with
@@ -280,27 +274,45 @@ def prepareInline (request : Request) (code : Data.Code)
     unless DeclarationRange.ofStringPositions map whole.start whole.stop == ranges.range &&
         DeclarationRange.ofStringPositions map selected.start selected.stop == ranges.selectionRange do
       return .error <| issue "source-association-unavailable" name "Inline native ranges disagree with the owning FileMap"
-  preparedAt request text ranges semantics
+  preparedAt request ranges semantics
 
 /-- Additionally require direct own native format metadata and one original
-modifier comment at the declaration's exact full/name ranges. Return raw authored
-bytes only; inherited/rendered text and nearby comments are not substitutes. -/
-def prepareDocumented (request : Request) (readSource : System.FilePath → IO String := IO.FS.readFile)
+modifier comment at the declaration's exact full/name ranges. The environment
+keeps only a normalized or parsed docstring, so the raw comment is read from the
+whole owning source file, which must still contain one original declaration at
+both native ranges. Return raw authored bytes only; inherited/rendered text and
+nearby comments are not substitutes. -/
+def prepareDocumented (request : Request) (sourcePath : String)
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Documented) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
-  let format ← match ← nativeDocstringFormat request.canonical with
+  if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
+  let name := request.canonical
+  let format ← match ← nativeDocstringFormat name with
     | .ok format => pure format
     | .error diagnostic => return .error diagnostic
-  let (source, commands) ← match ← prepareSource request readSource (semantics := semantics) with
-    | .ok source => pure source
+  let ranges ← match ← environmentRanges request with
+    | .ok ranges => pure ranges
     | .error diagnostic => return .error diagnostic
-  let rawDocstring ← match docCommentAtRanges request.canonical source.document.text
-      source.ranges.range source.ranges.selectionRange commands with
+  let text ← try liftM <| readSource sourcePath catch _ =>
+    return .error <| issue "source-unavailable" name "Cannot read canonical source at owning association path"
+  if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
+  let commands ← match ← parseSource name sourcePath text with
+    | .ok commands => pure commands
+    | .error diagnostic => return .error diagnostic
+  if let .error diagnostic := declarationAtRanges name text ranges.range ranges.selectionRange commands then
+    return .error diagnostic
+  let prepared ← match ← preparedAt request ranges semantics with
+    | .ok prepared => pure prepared
+    | .error diagnostic => return .error diagnostic
+  let rawDocstring ← match docCommentAtRanges name text ranges.range ranges.selectionRange commands with
     | .ok raw => pure raw
     | .error diagnostic => return .error diagnostic
-  if blank rawDocstring then return .error <| issue "missing-docstring" request.canonical "Empty raw docstring"
-  return .ok { toPrepared := source, format, rawDocstring }
+  if blank rawDocstring then return .error <| issue "missing-docstring" name "Empty raw docstring"
+  return .ok {
+    toPrepared := prepared, document := { key := ⟨⟨`lean, request.project⟩, sourcePath⟩, text }
+    format, rawDocstring }
 
 /-- Evidence-free source model. No node lookup, admission or Blueprint
 association is established by constructing it. The caller retains its producer
@@ -325,8 +337,9 @@ def PreparedModel.contribution (p : PreparedModel) (slot : Name) (value : α) : 
   sourceContribution p.origin slot value
 
 /-- Source-only native representation, including declarations without prose.
-The caller supplies concept metadata and producer origin. No native proof,
-expected goal, prose realization or observation is synthesized. -/
+The caller supplies concept metadata and producer origin. The resolved object
+carries no source document; its content is the checked declaration. No native
+proof, expected goal, prose realization or observation is synthesized. -/
 def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realizations.Node)
     (nativeName : Name) : Except Diagnostic Input := do
   unless !node.label.isAnonymous && !nativeName.isAnonymous do
@@ -335,7 +348,6 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
     throw <| issue "invalid-source-origin" source.canonical "Expected an explicit owning producer origin"
   let key : RealizationKey := ⟨node.label, nativeName⟩
   let witness := source.declaration
-  let document := source.document.key
   unless !source.roles.isEmpty do
     throw <| issue "unsupported-native-role" source.canonical "Checked declaration has no supported direct content role"
   let modelFor (role : Name) : Realization := {
@@ -348,8 +360,7 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
   let models := roles.map modelFor
   return {
     nodes := #[sourceContribution origin `node node]
-    documents := #[sourceContribution origin `source source.document]
-    objects := #[sourceContribution origin `object { key := witness, resolution := .resolved, document := some document }]
+    objects := #[sourceContribution origin `object { key := witness, resolution := .resolved }]
     realizations := models.mapIdx fun index model =>
       sourceContribution origin (Name.mkSimple s!"native-role-{index}") model
     bindingInputs := roles.flatMap fun role =>
@@ -395,8 +406,7 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
   unless p.input.realizations.any (·.value.key == p.leanKey.forRole `proof) do
     return .error <| issue "wrong-proof-witness" p.leanKey.node
       "Expected a proof-valued native declaration before adding a proof requirement"
-  let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key)
-    (p.input.objects.filterMap (·.value.document))
+  let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key) #[]
   let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
   let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
   let proofRealization := p.leanKey.forRole `proof

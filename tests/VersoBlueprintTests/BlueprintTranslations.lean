@@ -484,11 +484,25 @@ def withMissingProofHelper : IO Input := do
     expect "R3: unrelated proof content or other endpoint cannot fill selected statement"
       (!(r.resultFor (.translation translationKey)).complete && hasIssue (r.localResult reviewKey) "content-unavailable")
   let whitespace : Input := { fixture with documents := fixture.documents.map fun c =>
-    if c.value.key == leanDoc then { c with value := { c.value with text := " \n\t" } } else c }
+    if c.value.key == rocqDoc then { c with value := { c.value with text := " \n\t" } } else c }
   let input ← withMockEvidence whitespace `whitespaceReview reviewKey mockReview
   let r ← registry input
   expect "R3: empty canonical bytes do not supply selected content"
     (!(r.resultFor (.translation translationKey)).complete && hasIssue (r.localResult reviewKey) "content-unavailable")
+  -- A Lean declaration's content is established by the environment, not by a
+  -- document: blank bytes do not block it, a missing semantic descriptor does.
+  let leanWhitespace : Input := { fixture with documents := fixture.documents.map fun c =>
+    if c.value.key == leanDoc then { c with value := { c.value with text := " \n\t" } } else c }
+  let input ← withMockEvidence leanWhitespace `leanWhitespaceReview reviewKey mockReview
+  let r ← registry input
+  expect "R3: a Lean declaration needs no document bytes"
+    ((r.localResult reviewKey).complete && !hasIssue (r.localResult reviewKey) "content-unavailable")
+  -- The MOCK evidence helper supplies missing descriptors, so remove it afterwards.
+  let input ← withMockEvidence fixture `noDescriptorReview reviewKey mockReview
+  let r ← registry { input with
+    bindingInputs := input.bindingInputs.filter (·.value.subject != .declaration leanKey leanObject) }
+  expect "R3: a selected Lean declaration still needs its semantic descriptor"
+    (!(r.localResult reviewKey).complete && hasIssue (r.localResult reviewKey) "semantic-context-unavailable")
   let noStatements : Input := { fixture with
     realizations := (fixture.realizations.map fun c =>
       if c.value.key == leanKey || c.value.key == rocqKey then

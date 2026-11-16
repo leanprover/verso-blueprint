@@ -36,16 +36,18 @@ private def proofKey (p : PreparedModel) : RequirementKey :=
 private def bodyCheckKey (p : PreparedModel) : RequirementKey :=
   ⟨.declaration (p.leanKey.forRole `proof) p.witness, `proof⟩
 
--- Direct owning-source preparation does not need a Blueprint node or enrollment.
--- These are actual imported declarations/source bytes; native checking and model
--- admission remain separate operations, rather than facts invented by lookup.
+-- Direct native preparation does not need a Blueprint node or enrollment.
+-- These are actual imported declarations; native checking and model admission
+-- remain separate operations, rather than facts invented by lookup. A plain
+-- declaration is prepared from the environment; only doc-comment prose reads
+-- the owning source bytes.
 run_cmd liftTermElabM do
   let before ← Informal.Environment.stagedAuthoring
+  let sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
   let request : NativeSource.Request := {
     project := `adapterFixture
     canonical := `RealizationAdapterFixture.identityInvolutive
-    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider
-    sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" }
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
   ensure ((← Informal.Environment.labelsForLeanDecl request.canonical).isEmpty)
     "Direct source control must use an unenrolled declaration"
   let source ← obtain (← NativeSource.prepare request)
@@ -55,45 +57,49 @@ run_cmd liftTermElabM do
   let changedQueryOptions ← obtain changedQueryOptions
   ensure (source.semanticContext == some changedQueryOptions)
     "Query-site display/budget options cannot change the meaning of an already checked declaration"
+  let some ranges ← findDeclarationRanges? request.canonical | throwError "Missing actual native ranges"
   ensure (source.canonical == request.canonical && source.declaration == witness request.canonical &&
-    source.moduleName == request.moduleName && source.document.key.path == request.sourcePath &&
-    source.document.text == (← IO.FS.readFile request.sourcePath) && source.semanticContext.isSome)
-    "Direct source must preserve typed identity, exact owning bytes and current semantic inputs"
+    source.moduleName == request.moduleName && source.ranges.range == ranges.range &&
+    source.ranges.selectionRange == ranges.selectionRange && source.semanticContext.isSome)
+    "Direct source must preserve typed identity, the environment's native ranges and current semantic inputs"
   -- Parser-boundary injection only, not successful proof/provider evidence:
-  -- unrelated later syntax need not parse to locate an already checked native
-  -- declaration. The original whole text is retained, and both ranges still bind.
-  let tailInput := source.document.text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
-  let boundedSource ← obtain (← NativeSource.prepare request (fun _ => pure tailInput))
-  ensure (boundedSource.document.text == tailInput && boundedSource.ranges.range == source.ranges.range &&
-    boundedSource.ranges.selectionRange == source.ranges.selectionRange)
-    "Native prefix association must preserve whole source bytes and exact checked ranges"
-  ensure (!(← NativeSource.parseSource request.canonical request.sourcePath tailInput).isOk)
+  -- doc-comment association reads and parses the whole owning file, so a later
+  -- unsupported command still blocks it.
+  let text ← IO.FS.readFile sourcePath
+  let tailInput := text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
+  ensure (!(← NativeSource.parseSource request.canonical sourcePath tailInput).isOk)
     "Control tail must require unsupported parser context"
-  let documentedTail ← NativeSource.prepareDocumented
-    { request with canonical := `RealizationAdapterFixture.number } (fun _ => pure tailInput)
+  let documentedRequest := { request with canonical := `RealizationAdapterFixture.number }
+  let documentedTail ← NativeSource.prepareDocumented documentedRequest sourcePath (fun _ => pure tailInput)
   match documentedTail with
   | .error diagnostic =>
     ensure (diagnostic.code == "source-parse-failed")
       "Docstring association must still inspect the whole source for later inheritance"
-  | .ok _ => throwError "Native prefix shortcut leaked into docstring association"
-  for result in #[
-      ← NativeSource.prepare request (fun _ => pure ("\n" ++ source.document.text)),
-      ← NativeSource.prepare { request with selectionRange? := some {
-        source.ranges.selectionRange with charUtf16 := source.ranges.selectionRange.charUtf16 + 1 } },
-      ← NativeSource.prepare request (fun _ => pure "import Lean\n#broken_before_declaration\n")] do
-    ensure (!result.isOk) "Prefix parsing weakened exact owning declaration/name-range guards"
+  | .ok _ => throwError "Docstring association skipped part of its owning source"
+  for (result, code) in #[
+      (← NativeSource.prepareDocumented documentedRequest sourcePath (fun _ => pure ("\n" ++ text)),
+        "source-association-unavailable"),
+      (← NativeSource.prepareDocumented documentedRequest sourcePath
+        (fun _ => pure "import Lean\n#broken_before_declaration\n"), "source-parse-failed")] do
+    match result with
+    | .error diagnostic => ensure (diagnostic.code == code) s!"Wrong docstring source rejection: {diagnostic.code}"
+    | .ok _ => throwError "Docstring association weakened exact owning declaration/name-range guards"
+  let disagreeing ← NativeSource.prepare { request with selectionRange? := some {
+    source.ranges.selectionRange with charUtf16 := source.ranges.selectionRange.charUtf16 + 1 } }
+  ensure (!disagreeing.isOk) "A recorded snapshot range disagreeing with the environment was accepted"
   let nativeOrigin : Informal.Realizations.Origin := {
-    id := `undocumentedSource, moduleName := request.moduleName, source := request.sourcePath }
+    id := `undocumentedSource, moduleName := request.moduleName, source := sourcePath }
   let nativeOnly ← obtain (source.realizeNative nativeOrigin
     { label := `undocumentedNative, title := "Undocumented native source" } `lean)
   let nativeOnly ← obtain (admit nativeOnly)
-  ensure (nativeOnly.realizations.size == source.roles.size && nativeOnly.documents.size == 1 &&
+  ensure (nativeOnly.realizations.size == source.roles.size && nativeOnly.documents.isEmpty &&
+    nativeOnly.objects.all (fun object => object.resolution == .resolved && object.document.isNone) &&
     nativeOnly.evidence.isEmpty && nativeOnly.requirements.isEmpty &&
     nativeOnly.realizations.all (fun realization =>
       realization.role != `prose && realization.role != `review &&
       (nativeOnly.resultFor (.realization realization.key)).status == .unassessed))
-    "Undocumented native model records source roles only, without validation contracts or evidence"
-  let noDoc ← NativeSource.prepareDocumented request
+    "Undocumented native model records source roles only, without a source document, validation contracts or evidence"
+  let noDoc ← NativeSource.prepareDocumented request sourcePath
   match noDoc with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-docstring") "Undocumented source is not prose"
   | .ok _ => throwError "Undocumented declaration borrowed a nearby docstring"
@@ -101,15 +107,16 @@ run_cmd liftTermElabM do
   ensure (definition.canonical == `RealizationAdapterFixture.Reflexivity &&
       definition.semanticContext.isSome && definition.roles == #[`statement])
     "A proposition definition supplies statement content without an artificial proof role"
-  let documented ← obtain (← NativeSource.prepareDocumented { request with canonical := `RealizationAdapterFixture.number })
+  let documented ← obtain (← NativeSource.prepareDocumented documentedRequest sourcePath)
   ensure (documented.format == `markdown && documented.rawDocstring == " An unsupported definition. " &&
-      documented.toPrepared.roles == #[`implementation])
-    "Direct owning documentation supports definitions without a legacy theorem-only node gate"
+      documented.toPrepared.roles == #[`implementation] && documented.document.text == text &&
+      documented.document.key == ⟨⟨`lean, request.project⟩, sourcePath⟩)
+    "Direct owning documentation supports definitions without a legacy theorem-only node gate, and keeps its exact owning bytes"
   let directLabel := Name.mkSimple "native.direct.definition"
   ensure ((← Informal.Environment.getNodeInventory? directLabel).isNone)
     "Direct model control must have no old node to project"
   let origin : Informal.Realizations.Origin := {
-    id := `directSource, moduleName := request.moduleName, source := request.sourcePath }
+    id := `directSource, moduleName := request.moduleName, source := sourcePath }
   let nativeKey : RealizationKey := ⟨directLabel, `lean⟩
   let nativeRole := documented.toPrepared.roles[0]!
   let nativeRoleKey := nativeKey.forRole nativeRole
@@ -139,7 +146,8 @@ run_cmd liftTermElabM do
     rejected (documented.realize origin { concept with label := .anonymous } nativeKey.name proseKey.name) &&
     rejected (documented.realize { origin with moduleName := `WrongOwner } concept nativeKey.name proseKey.name))
     "Source model destinations and owning producer must be explicit and consistent"
-  let neighbor ← obtain (← NativeSource.prepareDocumented { request with canonical := `RealizationAdapterFixture.neighboringComment })
+  let neighbor ← obtain (← NativeSource.prepareDocumented
+    { request with canonical := `RealizationAdapterFixture.neighboringComment } sourcePath)
   ensure (neighbor.format == `verso && neighbor.rawDocstring == " Même *texte* 😀 λ with {name}`Nat`. ")
     "Own unregistered Verso comment preserves exact supplementary Unicode bytes"
   for (bad, code) in #[
@@ -153,10 +161,15 @@ run_cmd liftTermElabM do
     match ← NativeSource.prepare bad with
     | .error diagnostic => ensure (diagnostic.code == code) "Direct native source rejection changed"
     | .ok _ => throwError "Direct native source accepted inconsistent identity/owner/ranges"
-  let unreadable ← NativeSource.prepare request (fun _ => throw <| IO.userError "injected unavailable source")
+  -- Only the doc-comment provider reads the file, so only it reports source I/O.
+  let unreadable ← NativeSource.prepareDocumented documentedRequest sourcePath
+    (fun _ => throw <| IO.userError "injected unavailable source")
   match unreadable with
   | .error diagnostic => ensure (diagnostic.code == "source-unavailable") "No source-I/O fallback"
   | .ok _ => throwError "Direct source manufactured readable bytes"
+  match ← NativeSource.prepareDocumented documentedRequest "" with
+  | .error diagnostic => ensure (diagnostic.code == "invalid-source-request") "Blank owning path must be explicit"
+  | .ok _ => throwError "Doc-comment preparation accepted a blank owning path"
   ensure (decide (before = (← Informal.Environment.stagedAuthoring)))
     "Source preparation must not enroll declarations or persist semantic observations"
 
@@ -356,9 +369,9 @@ run_cmd liftTermElabM do
   ensure (association.range?.isNone && association.selectionRange?.isNone)
     "Ordinary attribute snapshot predates native range registration"
   let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture label `RealizationAdapterFixture.«état😀»)
-  ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.key.context.language == `verso)
+  ensure (p.docstringFormat == `verso && p.input.documents[0]!.value.key.context.language == `verso)
     "Own native format metadata must select Verso"
-  ensure (p.input.documents[1]!.value.text == " Même *texte* 😀 λ with {name}`Nat`. ")
+  ensure (p.input.documents[0]!.value.text == " Même *texte* 😀 λ with {name}`Nat`. ")
     "Exact own source body includes authored whitespace, markup and Unicode"
   ensure (p.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
     p.witness == witness (Name.str `RealizationAdapterFixture "état😀"))
@@ -394,7 +407,7 @@ run_cmd liftTermElabM do
   let text ← liftM <| IO.FS.readFile p.sourcePath
   let commands ← obtain (← parseSource label p.sourcePath text)
   let raw ← obtain (docCommentAtRanges label text ranges.range ranges.selectionRange commands)
-  ensure (raw == p.input.documents[1]!.value.text) "Exact owning-source association"
+  ensure (raw == p.input.documents[0]!.value.text) "Exact owning-source association"
   -- Explicit negative structural injections, not fabricated provider success.
   for badCommands in #[commands ++ commands, commands.map fun command =>
       command.rewriteBottomUp fun stx =>
@@ -419,10 +432,10 @@ run_cmd liftTermElabM do
     RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity
   let markdown ← obtain markdown
   ensure (markdown.docstringFormat == `markdown &&
-    markdown.input.documents[1]!.value.text == " Every natural number equals itself. Raw Markdown, with **emphasis**. ")
+    markdown.input.documents[0]!.value.text == " Every natural number equals itself. Raw Markdown, with **emphasis**. ")
     "Markdown retains its exact own raw body and native format"
   let basic ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.verso") `RealizationAdapterFixture.versoDocstring)
-  ensure (basic.input.documents[1]!.value.text == " An own *Verso* docstring with {name}`Nat` and é 😀. ")
+  ensure (basic.input.documents[0]!.value.text == " An own *Verso* docstring with {name}`Nat` and é 😀. ")
     "Option-wrapped Verso source remains exact"
 
 run_cmd liftTermElabM do
@@ -468,7 +481,7 @@ run_cmd liftTermElabM do
   let input ← obtain (← p.validate expected)
   let r ← obtain (admit input)
   ensure ((r.resultForRequirement (proofKey p)).complete) "Actual two-case involution must complete"
-  ensure (p.docstringFormat == `verso && p.input.documents[1]!.value.text ==
+  ensure (p.docstringFormat == `verso && p.input.documents[0]!.value.text ==
     "\nToggling a *two-state* flag twice returns the original flag: é 😀.\nFor {name}`RealizationAdapterFixture.Flag.off`, toggle gives on then off;\nfor on, it gives off then on.\n")
     "Flag retains the full exact own Verso account"
   assertPendingCorrespondence p input expected "The Verso account states toggle involution by its two cases"
@@ -519,12 +532,11 @@ run_cmd liftTermElabM do
     (p.input.realizations.any fun contribution => contribution.value.key == p.informalKey &&
       contribution.value.role == `statement && contribution.value.context.language == p.docstringFormat))
     "Expected distinct native statement/proof and informal statement realizations"
-  let source ← liftM <| IO.FS.readFile p.sourcePath
   ensure (p.witness == witness `RealizationAdapterFixture.reflexivity &&
     p.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
-    p.input.documents[0]!.value.text == source &&
-    p.input.documents[1]!.value.text.contains "**emphasis**")
-    "Canonical source, module, qualified declaration and raw Markdown must survive projection"
+    p.input.documents.size == 1 && p.input.documents[0]!.value.text.contains "**emphasis**" &&
+    p.input.objects.all (·.value.document.isNone))
+    "Module, qualified declaration and raw Markdown must survive projection; the native object carries no source document"
   ensure (p.input.translations.isEmpty && p.input.evidence.isEmpty && p.input.requirements.isEmpty)
     "Source projection invents no validation contracts, observations, or correspondence"
   let initial ← obtain (admit p.input)

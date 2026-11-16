@@ -419,7 +419,7 @@ run_cmd Lean.Elab.Command.liftTermElabM do
   let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
   let prepared ← NativeSource.prepare {
     project := context.project, canonical := `RealizationAdapterFixture.flagInvolutive
-    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider, sourcePath := path }
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
   let .ok prepared := prepared | throwError "Real native owning-source preparation failed"
   let .ok input := prepared.realizeNative {
     id := `canonicalMembershipFlag, moduleName := prepared.moduleName, source := path }

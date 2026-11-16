@@ -136,15 +136,15 @@ def prepareModel (project label canonical : Lean.Name)
     (reader : System.FilePath → IO String := IO.FS.readFile)
     (metadata : Informal.Data.NodeMetadata := {}) :
     Lean.CoreM (Except Informal.Realizations.Diagnostic Informal.Realizations.NativeSource.PreparedModel) := do
+  let sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
   let request : Informal.Realizations.NativeSource.Request := {
     project, canonical
-    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider
-    sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" }
-  match ← Informal.Realizations.NativeSource.prepareDocumented request reader with
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
+  match ← Informal.Realizations.NativeSource.prepareDocumented request sourcePath reader with
   | .error diagnostic => return .error diagnostic
   | .ok source =>
     let origin : Informal.Realizations.Origin := {
-      id := label ++ `providerFixture, moduleName := request.moduleName, source := request.sourcePath }
+      id := label ++ `providerFixture, moduleName := request.moduleName, source := sourcePath }
     return source.realize origin { toNodeMetadata := metadata, label, title := label.toString } `lean `docstring
 
 

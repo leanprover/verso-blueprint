@@ -45,9 +45,6 @@ private def hasExactMutualAssociations (snapshot : Realizations.Capture.Snapshot
   let siblingChecks := snapshot.nativeChecks.filter (·.declaration == mutualSiblingObject)
   let some selectedSource := registry.objects.find? (·.key == mutualSelectedObject) | return false
   let some siblingSource := registry.objects.find? (·.key == mutualSiblingObject) | return false
-  let some sourceKey := selectedSource.document | return false
-  let some siblingSourceKey := siblingSource.document | return false
-  let some sourceDocument := registry.documents.find? (·.key == sourceKey) | return false
   return selected.role == `statement && sibling.role == `statement &&
     selected.declarations.size == 1 &&
     selected.declarations[0]!.object == mutualSelectedObject &&
@@ -58,8 +55,7 @@ private def hasExactMutualAssociations (snapshot : Realizations.Capture.Snapshot
     selectedChecks.size == 1 && siblingChecks.size == 1 &&
     selectedChecks.all (·.roles.contains `statement) && siblingChecks.all (·.roles.contains `statement) &&
     selectedSource.resolution == .resolved && siblingSource.resolution == .resolved &&
-    sourceKey == siblingSourceKey &&
-    sourceDocument.text.contains "def mutualSelected" && sourceDocument.text.contains "def mutualSibling"
+    selectedSource.document.isNone && siblingSource.document.isNone
 
 private def hasProofValuedDefinitionRoles (snapshot : Realizations.Capture.Snapshot) : Bool := Id.run do
   let registry := snapshot.registry
@@ -223,7 +219,7 @@ run_cmd liftTermElabM do
     ensure (hasExactProseSelection initial originalProseSentence)
       "The statement realization must own the complete Unicode prose body, not the Lean theorem"
     ensure (hasExactMutualAssociations initialSnapshot)
-      "Mutual-block declarations must retain their distinct canonical owners and shared exact source"
+      "Mutual-block declarations must retain their distinct canonical owners, resolved without a source document"
     ensure (hasProofValuedDefinitionRoles initialSnapshot)
       "A proof-valued def must retain statement and proof roles from one real native check"
     ensure (hasCustomNativeBase initialSnapshot)
@@ -257,7 +253,7 @@ run_cmd liftTermElabM do
     ensure (hasExactProseSelection reviewed expectedProse)
       "The selected Verso source must contain the full current prose body, without native source"
     ensure (hasExactMutualAssociations reviewedSnapshot)
-      "Mutual-block declarations must retain their distinct canonical owners and shared exact source"
+      "Mutual-block declarations must retain their distinct canonical owners, resolved without a source document"
     ensure (hasProofValuedDefinitionRoles reviewedSnapshot)
       "A proof-valued def must retain statement and proof roles from one real native check"
     ensure (hasCustomNativeBase reviewedSnapshot)
@@ -313,7 +309,7 @@ run_cmd liftTermElabM do
   ensure (hasExactProseSelection unreviewed originalProseSentence)
     "The statement realization must own the complete Unicode prose body, not the Lean theorem"
   ensure (hasExactMutualAssociations unreviewedSnapshot)
-    "Mutual-block declarations must retain their distinct canonical owners and shared exact source"
+    "Mutual-block declarations must retain their distinct canonical owners, resolved without a source document"
   ensure (hasProofValuedDefinitionRoles unreviewedSnapshot)
     "A proof-valued def must retain statement and proof roles from one real native check"
   ensure (hasCustomNativeBase unreviewedSnapshot)
@@ -368,7 +364,7 @@ run_cmd liftTermElabM do
   ensure (hasExactProseSelection reviewed originalProseSentence)
     "The statement realization must own the complete Unicode prose body, not the Lean theorem"
   ensure (hasExactMutualAssociations reviewedSnapshot)
-    "Mutual-block declarations must retain their distinct canonical owners and shared exact source"
+    "Mutual-block declarations must retain their distinct canonical owners, resolved without a source document"
   ensure (hasProofValuedDefinitionRoles reviewedSnapshot)
     "A proof-valued def must retain statement and proof roles from one real native check"
   ensure (hasCustomNativeBase reviewedSnapshot)

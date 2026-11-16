@@ -444,6 +444,71 @@ run_cmd liftTermElabM do
     unreadable.diagnostics == real.diagnostics)
     "A prose selection must keep its compiled text, selected key and binding when no source file can be read"
 
+-- A plain native declaration is prepared from the compiled environment, not from
+-- its owning file. With a reader that fails for every path, a node with a plain
+-- native theorem (no doc-comment prose, no inline block) keeps the same native
+-- check results, realization completion and bindings as under the real reader.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let label := Name.mkSimple "capture.complete"
+  let .some registered := state.inventory.get? label | throwError "Missing plain native fixture"
+  let proofModel := (⟨label, `lean⟩ : RealizationKey).forRole `proof
+  let review : RequirementKey := ⟨.realization proofModel, `proofReview⟩
+  let raw : Capture.Raw := {
+    nodes := #[(label, { registered with sources := #[], uses := #[] })]
+    registered := ({} : NameSet).insert label, facts := [], initialIssues := #[]
+    authored := #[{
+      origin := { id := `plainNativeReview, moduleName := ← getMainModule, source := ← getFileName }
+      project := `blueprintFixtures
+      authored := { requirements := #[{ key := review, expected := .review `proofCorrespondence `MockReviewer }] } }] }
+  let plan := Capture.plan raw
+  ensure (plan.documents.isEmpty && plan.inline.isEmpty && plan.documented.isEmpty && !plan.native.isEmpty)
+    "The control must request only plain native declarations"
+  let captureWith (reader : System.FilePath → IO String) : TermElabM Capture.Snapshot := do
+    let observations ← obtain (← Capture.observe plan reader)
+    obtain (Capture.evaluate plan observations)
+  let real ← captureWith IO.FS.readFile
+  let unreadable ← captureWith fun path => throw (IO.userError s!"injected unreadable source {path}")
+  let checks (snapshot : Capture.Snapshot) := reprStr (snapshot.nativeChecks.map fun checked =>
+    (checked.declaration, checked.roles, checked.statement, checked.body, checked.status))
+  let completion (snapshot : Capture.Snapshot) := snapshot.registry.realizations.map fun model =>
+    (model.key, (snapshot.registry.resultFor (.realization model.key)).status)
+  let bindings (snapshot : Capture.Snapshot) := snapshot.registry.requirements.map fun requirement =>
+    (requirement.key, snapshot.registry.bindingFor requirement.key)
+  ensure ((real.registry.resultFor (.realization proofModel)).complete && (real.registry.bindingFor review).isSome &&
+    real.registry.documents.isEmpty && real.diagnostics.isEmpty)
+    "The plain native control must complete its proof realization without any source document"
+  ensure (checks unreadable == checks real && completion unreadable == completion real &&
+    bindings unreadable == bindings real && unreadable.diagnostics == real.diagnostics)
+    "A plain native declaration must keep its checks, completion and bindings when no source file can be read"
+
+-- A plain native declaration never asks for its owning source path, so a
+-- dependency whose module source is not on the source search path is still
+-- captured. Under `lake build` the search path holds only the toolchain sources;
+-- the control records no path, so locating the file would need that search.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let label := Name.mkSimple "storage.native"
+  let owner := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
+  let .some registered := state.inventory.get? label | throwError "Missing imported plain native fixture"
+  let associations := registered.nativeAssociations.map fun association => { association with
+    reference := { association.reference with provenance := .outWorkspace owner none } }
+  ensure (!associations.isEmpty && associations.all (·.reference.provenance.sourcePath?.isNone))
+    "The control must record no owning source path"
+  -- Without a source search path entry for the owner the old file lookup failed;
+  -- with one (an editor session) the control still holds but proves less.
+  if (← (← getSrcSearchPath).findModuleWithExt "lean" owner).isSome then return
+  let raw : Capture.Raw := {
+    nodes := #[(label, { registered with sources := #[], uses := #[], nativeAssociations := associations })]
+    registered := ({} : NameSet).insert label, facts := [], authored := #[], initialIssues := #[] }
+  let plan := Capture.plan raw
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  let implementation := (⟨label, `lean⟩ : RealizationKey).forRole `implementation
+  ensure (observations.native.all (·.result.isOk) && snapshot.diagnostics.isEmpty &&
+    (snapshot.registry.resultFor (.realization implementation)).complete)
+    "A plain native declaration whose module source is not on the search path must still be captured"
+
 -- Original inline text, including a supplementary Unicode character before the
 -- declaration, is associated through its owning FileMap and native ranges.
 run_cmd liftTermElabM do
@@ -454,17 +519,19 @@ run_cmd liftTermElabM do
   let .leanInline code := source.payload | throwError "Wrong payload"
   let request : NativeSource.Request := {
     project := `blueprintFixtures, canonical := `storedInline
-    moduleName := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
-    sourcePath := source.document.path }
-  let prepared ← obtain (← NativeSource.prepareInline request code)
-  let text ← IO.FS.readFile source.document.path
-  ensure (prepared.document.text == text && text.contains '𝒫') "Inline source lost original Unicode bytes"
+    moduleName := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner }
+  let path := source.document.path
+  let prepared ← obtain (← NativeSource.prepareInline request path code)
+  let text ← IO.FS.readFile path
+  let some ranges ← findDeclarationRanges? `storedInline | throwError "Missing inline native ranges"
+  ensure (text.contains '𝒫' && prepared.ranges.range == ranges.range &&
+    prepared.ranges.selectionRange == ranges.selectionRange) "Inline source lost its Unicode FileMap association"
   for result in #[
-      ← NativeSource.prepareInline request { code with stx := .missing },
-      ← NativeSource.prepareInline request { code with definedDefs := #[] },
-      ← NativeSource.prepareInline request code (fun _ => pure (text ++ "\n-- source changed\n")),
-      ← NativeSource.prepareInline { request with moduleName := `WrongOwner } code,
-      ← NativeSource.prepareInline { request with range? := some { prepared.ranges.range with charUtf16 := prepared.ranges.range.charUtf16 + 1 } } code] do
+      ← NativeSource.prepareInline request path { code with stx := .missing },
+      ← NativeSource.prepareInline request path { code with definedDefs := #[] },
+      ← NativeSource.prepareInline request path code (fun _ => pure (text ++ "\n-- source changed\n")),
+      ← NativeSource.prepareInline { request with moduleName := `WrongOwner } path code,
+      ← NativeSource.prepareInline { request with range? := some { prepared.ranges.range with charUtf16 := prepared.ranges.range.charUtf16 + 1 } } path code] do
     ensure (!result.isOk) "Invalid/synthetic/stale inline association was accepted"
 
 -- Specifications remain independently authored, with all origin variants kept.
@@ -619,7 +686,9 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "ambiguous-native-expectation")) "Wrong multi-witness diagnostic"
   finally setEnv env
 
--- Real passed native observations cannot hide an unavailable owning source.
+-- A plain native declaration rests on the compiled environment: an association
+-- whose recorded owning path cannot be read neither reports an unavailable
+-- source nor blocks the declaration's real passed native check.
 run_cmd liftTermElabM do
   let env ← getEnv
   try
@@ -630,9 +699,10 @@ run_cmd liftTermElabM do
         reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } }
       return { state with inventory := state.inventory.insert target { node with nativeAssociations := node.nativeAssociations ++ associations } }
     let snapshot ← obtain (← Capture.capture)
-    ensure (snapshot.diagnostics.any (·.code == "source-unavailable")) "Missing association diagnostic was lost"
-    ensure (!(snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
-      "Unavailable source completed via a passed native observation"
+    ensure (!(snapshot.diagnostics.any (·.code == "source-unavailable")))
+      "An unreadable recorded owning path made a plain native declaration unavailable"
+    ensure ((snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
+      "An unreadable recorded owning path blocked a passed native check"
   finally setEnv env
 
 

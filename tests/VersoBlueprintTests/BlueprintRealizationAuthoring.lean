@@ -224,9 +224,8 @@ run_cmd liftTermElabM do
       | .proof observation => observation.outcome == .passed
       | _ => false)))
     "The independently authored proposition must have a current passing native proof observation"
-  ensure (goal.documents.any (·.path.endsWith "/Owner.lean") &&
-    goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean"))
-    "Binding must include both canonical witness and independently authored specification source"
+  ensure (goal.documents.size == 1 && goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean"))
+    "Binding must include the independently authored specification source and no native witness file"
   for key in goal.documents do
     let some document := r.documents.find? (·.key == key) | throwError "Missing bound source"
     ensure (document.text == (← IO.FS.readFile key.path)) "Bound source is not the original canonical bytes"
@@ -476,29 +475,34 @@ run_cmd liftTermElabM do
       | throwError "Expected-goal observation disappeared"
     let specification := plan.specifications[expectedRequest.specification]!
     let specificationDocument := plan.documents[specification.document]!
+    -- A plain native declaration is prepared from the environment, so its
+    -- unreadable owning file does not make it unavailable.
     ensure (observations.native.any fun result => result.request.name.toString == witness.native &&
         match result.result with
-        | .error diagnostic => diagnostic.code == "source-unavailable"
-        | .ok _ => false)
-      "A real native source request must retain its unavailable result"
+        | .error _ => false
+        | .ok prepared => prepared.declaration == witness)
+      "A plain native declaration must not depend on reading its owning source file"
     ensure (expectedResult.request.documents == #[specificationDocument] &&
       expectedResult.request.witness == witness)
-      "Expected-goal documents must use only the authored spec after witness-source failure"
+      "Expected-goal documents must be the authored spec only, never the witness's owning file"
     let .ok checked := expectedResult.result
-      | throwError "Independent expected goal did not run after the native source failure"
+      | throwError "Independent expected goal did not run with an unreadable owning file"
     ensure (checked.observation.outcome == .passed && checked.goal.documents == #[specificationDocument])
       "The independently authored goal must be checked against its exact spec-only documents"
     let some checkRequest := plan.checks.find? (·.witness == witness)
       | throwError "Missing actual own-native check request"
     let some checkedResult := observations.checks.find? (·.request == checkRequest)
-      | throwError "Own-native observation disappeared after source failure"
+      | throwError "Own-native observation disappeared with an unreadable owning file"
     let .ok nativeCheck := checkedResult.result | throwError "Own-native check did not run"
     ensure (nativeCheck.body.outcome == .passed)
-      "A failed source association must not suppress the real own-native check"
+      "An unreadable owning file must not suppress the real own-native check"
     let snapshot ← obtain (Capture.evaluate plan observations)
+    -- Doc-comment prose still reads the file and keeps its diagnostic; the
+    -- native declaration's checks and expected goal complete without it.
     ensure (snapshot.diagnostics.any (·.code == "source-unavailable") &&
-      snapshot.nativeChecks.any (fun result => result.declaration == witness && result.body.outcome == .passed))
-      "Evaluated snapshot must retain the source diagnostic and independent real native check"
+      snapshot.nativeChecks.any (fun result => result.declaration == witness && result.body.outcome == .passed) &&
+      (snapshot.registry.resultFor (.realization unassessedProofKey)).complete)
+      "Evaluated snapshot must keep the doc-comment diagnostic and complete the native proof without the owning file"
 
 -- F1: authored alternatives own their contracts. Conventional names do not
 -- opt a review (or an authored native check) into ordinary dependency wiring.

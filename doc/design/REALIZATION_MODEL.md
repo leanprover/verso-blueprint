@@ -377,7 +377,7 @@ first milestone with these controls as the corresponding supported path is conne
 
 | Control | Required distinction |
 | --- | --- |
-| One declaration supplies S and P | Separate owned selections, shared canonical source. |
+| One declaration supplies S and P | Separate owned selections of one checked declaration. |
 | Proof-only rewrite or proof prerequisite becomes `sorry` | Statement judgment can stay current; native and combined completion respond. |
 | Replace a selected declaration `t` with renamed `t_fast` of the same type | Judgments selecting that declaration become stale: selection identity changed. Never transfer evidence merely because statement digests agree. Unchanged selections retain their usual freshness rules. |
 | Imported computational meaning changes | Dependent statement binding responds despite unchanged local text. |

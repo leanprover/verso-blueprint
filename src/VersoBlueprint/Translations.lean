@@ -396,11 +396,16 @@ private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array D
     if blank document.text then #[issue "content-unavailable" key "Selected canonical source is empty"] else #[]
   | none => #[issue "content-unavailable" key "Selected canonical source is missing"]
 
+/-- A resolved object is available through its source document, except a Lean
+declaration: the compiled environment establishes its content, so its
+availability does not depend on any document, and a selection of it requires its
+semantic descriptor instead (`semanticIssues`). -/
 private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
   match r.objectIndex[key]? with
   | some observation =>
     if observation.resolution != .resolved then
       #[issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"]
+    else if key.context.language == `lean then #[]
     else match observation.document with
       | some document => r.documentIssues document
       | none => #[issue "object-unavailable" key "No canonical source document for selected declaration"]
