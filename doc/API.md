@@ -421,6 +421,9 @@ Lean realization, not optional prose assessment or overall project readiness.
 
 `NodeAssessment.selectedLeanUseCount` counts the uses selected for that ordinary
 Lean realization in its exact context, including unresolved target selections.
+Each use requires all of its target's ordinary Lean declarations; its axis picks
+a theorem's statement or proof check (see the
+[dependency rule](MANUAL.md#dependency-graph)).
 Its dependency-completion booleans assess that same subset. A zero count means
 no Lean prerequisites were selected, not that some prerequisites were checked
 successfully. `details.uses` retains the full edge inventory, including other

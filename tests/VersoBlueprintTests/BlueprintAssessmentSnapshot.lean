@@ -81,7 +81,7 @@ private def hasCustomNativeBase (snapshot : Realizations.Capture.Snapshot) : Boo
   let some customStatement := registry.realization? customBaseStatement | return false
   let some customProof := registry.realization? customBaseProof | return false
   let some customProofRequirement := registry.requirement? customWitnessProofCheck | return false
-  let some dependentStatementRequirement := registry.requirement? customDependentStatementCheck | return false
+  let some dependentProofRequirement := registry.requirement? customDependentProofCheck | return false
   let witnessChecks := snapshot.nativeChecks.filter (·.declaration == customWitnessObject)
   let selectedUses := snapshot.uses.filter fun use =>
     use.source == customDependentLabel && use.reference.label == customNativeLabel
@@ -100,7 +100,7 @@ private def hasCustomNativeBase (snapshot : Realizations.Capture.Snapshot) : Boo
     witnessChecks.size == 1 && witnessChecks.all (fun checked =>
       checked.roles.contains `statement && checked.roles.contains `proof && checked.body.outcome == .passed) &&
     customProofRequirement.prerequisites == #[customWitnessStatementCheck] &&
-    dependentStatementRequirement.prerequisites.contains customWitnessProofCheck &&
+    dependentProofRequirement.prerequisites.contains customWitnessProofCheck &&
     selectedUses.size == 1 && selectedExactly &&
     (registry.resultForRequirement customWitnessStatementCheck).complete &&
     (registry.resultForRequirement customWitnessProofCheck).complete &&
@@ -130,8 +130,8 @@ private def hasDefaultUseSelection (snapshot : Realizations.Capture.Snapshot) : 
     !alternativeDocument.text.isEmpty && !alternativeResult.localComplete &&
     alternativeResult.status == .pending &&
     (registry.resultFor (.realization unfinishedAlternativeProof)).status == .pending &&
-    dependentStatementRequirement.prerequisites.contains proofCheck &&
     !dependentStatementRequirement.prerequisites.contains unfinishedAlternativeCheck &&
+    dependentProofRequirement.prerequisites.contains proofCheck &&
     dependentProofRequirement.prerequisites.contains mainDependentStatementCheck &&
     !dependentProofRequirement.prerequisites.contains unfinishedAlternativeCheck &&
     downstreamComplete == defaultComplete

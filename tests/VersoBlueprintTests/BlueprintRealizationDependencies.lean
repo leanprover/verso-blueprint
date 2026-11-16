@@ -7,8 +7,14 @@ import VersoBlueprint
 import VersoBlueprint.Realizations.Authoring
 import VersoBlueprint.Realizations.Capture
 
-/-! Which native contract each declared use selects. Every selection below comes
-from an ordinary capture of this module's real declarations; nothing is mocked. -/
+/-! Which native contracts each declared use selects. Every selection below comes
+from an ordinary capture of this module's real declarations; nothing is mocked.
+
+A label's ordinary Lean declarations form one development, and a use requires
+all of them. The use's axis decides the contract of each declaration: a
+proof-axis use requires each theorem's proof, a statement-axis use only each
+theorem's statement; both require each data definition's implementation and
+each proposition definition's statement. -/
 
 open Lean Elab Command Term Informal
 open Realizations Validation Translations
@@ -23,7 +29,7 @@ theorem clean : True := True.intro
 @[blueprint "dependencies.admitted"]
 theorem admitted : True := by sorry
 
-/-- A data definition is selected through its implementation contract. -/
+/-- A data definition is selected through its implementation contract on both axes. -/
 @[blueprint "dependencies.definition"]
 def definitionTarget : Nat := 1
 
@@ -38,18 +44,42 @@ theorem groupedOne : True := True.intro
 @[blueprint "dependencies.grouped"]
 theorem groupedTwo : True := True.intro
 
-/-- A proof and a data definition under one label offer no unique contract. -/
-@[blueprint "dependencies.mixed"]
-theorem mixedProof : True := True.intro
-
+/-- A data definition and the theorems about it form one development. -/
 @[blueprint "dependencies.mixed"]
 def mixedValue : Nat := 0
+
+@[blueprint "dependencies.mixed"]
+theorem mixedValueZero : mixedValue = 0 := rfl
+
+@[blueprint "dependencies.mixed"]
+theorem mixedValueSmall : mixedValue ≤ 1 := Nat.zero_le 1
+
+/-- A data definition whose body is admitted. -/
+@[blueprint "dependencies.admittedDefinition"]
+def admittedValue : Nat := sorry
 
 @[blueprint "dependencies.source"
   (uses := ["dependencies.clean", "dependencies.admitted", "dependencies.definition",
     "dependencies.proposition", "dependencies.grouped", "dependencies.mixed", "dependencies.missing"])
-  (proofUses := ["dependencies.clean", "dependencies.missing"])]
+  (proofUses := ["dependencies.clean", "dependencies.admitted", "dependencies.definition",
+    "dependencies.proposition", "dependencies.grouped", "dependencies.mixed", "dependencies.missing"])]
 theorem source : True := True.intro
+
+/-- A statement mentioning an admitted theorem is meaningful once it is stated. -/
+@[blueprint "dependencies.statementUser" (uses := ["dependencies.admitted"])]
+theorem statementUser : True := True.intro
+
+/-- A proof using an admitted theorem is not done. -/
+@[blueprint "dependencies.proofUser" (proofUses := ["dependencies.admitted"])]
+theorem proofUser : True := True.intro
+
+/-- A proof using a mixed development requires all of it. -/
+@[blueprint "dependencies.mixedUser" (proofUses := ["dependencies.mixed"])]
+theorem mixedUser : True := True.intro
+
+/-- A definition's body is part of its meaning, so it gates a statement using it. -/
+@[blueprint "dependencies.admittedDefinitionUser" (uses := ["dependencies.admittedDefinition"])]
+theorem admittedDefinitionUser : True := True.intro
 
 @[blueprint "dependencies.consumer" (uses := ["dependencies.source"])]
 theorem consumer : True := source
@@ -102,28 +132,74 @@ run_cmd liftTermElabM do
     | .ok snapshot => pure snapshot
     | .error diagnostics => throwError "Capture rejected the fixture: {repr diagnostics}"
   let registry := snapshot.registry
+  let cleanStatement := contract "clean" ``clean `statement
   let cleanProof := contract "clean" ``clean `proof
+  let admittedStatement := contract "admitted" ``admitted `statement
   let admittedProof := contract "admitted" ``admitted `proof
   let sourceStatement := contract "source" ``source `statement
   let sourceProof := contract "source" ``source `proof
+  let definition := contract "definition" ``definitionTarget `implementation
+  let proposition := contract "proposition" ``propositionTarget `statement
+  let mixedImplementation := contract "mixed" ``mixedValue `implementation
 
-  -- Each kind of target selects its own complete native contract.
-  selects snapshot "source" `statement "clean" #[cleanProof]
+  -- A proof-axis use requires each target declaration to be done.
   selects snapshot "source" `proof "clean" #[cleanProof]
-  selects snapshot "source" `statement "definition" #[contract "definition" ``definitionTarget `implementation]
-  selects snapshot "source" `statement "proposition" #[contract "proposition" ``propositionTarget `statement]
-  selects snapshot "source" `statement "grouped"
+  selects snapshot "source" `proof "definition" #[definition]
+  selects snapshot "source" `proof "proposition" #[proposition]
+  selects snapshot "source" `proof "grouped"
     #[contract "grouped" ``groupedOne `proof, contract "grouped" ``groupedTwo `proof]
-  selects snapshot "consumer" `statement "source" #[sourceProof]
+  selects snapshot "source" `proof "mixed" #[mixedImplementation,
+    contract "mixed" ``mixedValueZero `proof, contract "mixed" ``mixedValueSmall `proof]
+
+  -- A statement-axis use requires a theorem's statement, not its proof; a
+  -- definition's body is part of its meaning on either axis.
+  selects snapshot "source" `statement "clean" #[cleanStatement]
+  selects snapshot "source" `statement "definition" #[definition]
+  selects snapshot "source" `statement "proposition" #[proposition]
+  selects snapshot "source" `statement "grouped"
+    #[contract "grouped" ``groupedOne `statement, contract "grouped" ``groupedTwo `statement]
+  selects snapshot "source" `statement "mixed" #[mixedImplementation,
+    contract "mixed" ``mixedValueZero `statement, contract "mixed" ``mixedValueSmall `statement]
+  selects snapshot "consumer" `statement "source" #[sourceStatement]
 
   -- Selection does not depend on whether the target is finished.
-  selects snapshot "source" `statement "admitted" #[admittedProof]
+  selects snapshot "source" `statement "admitted" #[admittedStatement]
+  selects snapshot "source" `proof "admitted" #[admittedProof]
   ensure ((registry.resultForRequirement cleanProof).complete &&
+    (registry.resultForRequirement admittedStatement).complete &&
     !(registry.resultForRequirement admittedProof).complete)
     "The clean and admitted targets were not assessed independently of their selection"
 
+  -- A statement using an admitted theorem is complete; a proof using it is not.
+  let statementUser := contract "statementUser" ``statementUser `statement
+  ensure ((registry.requirement? statementUser).any (·.prerequisites.contains admittedStatement) &&
+      (registry.resultForRequirement statementUser).complete &&
+      (registry.resultForRequirement (contract "statementUser" ``statementUser `proof)).complete)
+    "A statement-axis use of an admitted theorem gated the using node"
+  let proofUser := contract "proofUser" ``proofUser `proof
+  ensure ((registry.requirement? proofUser).any (·.prerequisites.contains admittedProof) &&
+      (registry.resultForRequirement (contract "proofUser" ``proofUser `statement)).complete &&
+      (registry.localResult proofUser).complete && !(registry.resultForRequirement proofUser).complete)
+    "A proof-axis use of an admitted theorem did not gate the using proof"
+
+  -- A proof using a mixed development requires all of it and completes with it.
+  let mixedUser := contract "mixedUser" ``mixedUser `proof
+  selects snapshot "mixedUser" `proof "mixed" #[mixedImplementation,
+    contract "mixed" ``mixedValueZero `proof, contract "mixed" ``mixedValueSmall `proof]
+  ensure ((registry.resultForRequirement mixedImplementation).complete &&
+      (registry.resultForRequirement mixedUser).complete)
+    "A proof using a complete mixed development did not complete"
+
+  -- A statement using an admitted data definition requires its implementation.
+  let admittedValue := contract "admittedDefinition" ``admittedValue `implementation
+  let admittedDefinitionUser := contract "admittedDefinitionUser" ``admittedDefinitionUser `statement
+  selects snapshot "admittedDefinitionUser" `statement "admittedDefinition" #[admittedValue]
+  ensure (!(registry.resultForRequirement admittedValue).complete &&
+      (registry.localResult admittedDefinitionUser).complete &&
+      !(registry.resultForRequirement admittedDefinitionUser).complete)
+    "A statement using an admitted data definition was not gated by its body"
+
   -- Failures stay on their own edge and axis, with no invented requirement.
-  fails snapshot "source" `statement "mixed" "ambiguous-native-contract"
   fails snapshot "source" `statement "missing" "missing-target"
   fails snapshot "source" `proof "missing" "missing-target"
   ensure (!(snapshot.uses.any (·.source == Name.mkSimple "dependencies.empty")))
@@ -136,9 +212,9 @@ run_cmd liftTermElabM do
     !(registry.resultForRequirement gate).complete)
     "An unresolved dependency did not leave its selection check unfinished"
   ensure ((registry.requirement? sourceStatement).any (fun requirement =>
-      requirement.prerequisites.contains gate && requirement.prerequisites.contains cleanProof &&
-      requirement.prerequisites.contains admittedProof))
-    "The using statement does not require its selection check and selected contracts"
+      requirement.prerequisites.contains gate && requirement.prerequisites.contains cleanStatement &&
+      requirement.prerequisites.contains admittedStatement && !requirement.prerequisites.contains admittedProof))
+    "The using statement does not require its selection check and only its targets' statements"
   for key in #[sourceStatement, sourceProof] do
     ensure ((registry.localResult key).complete && !(registry.resultForRequirement key).complete)
       s!"Native validity and Blueprint closure were conflated for {repr key}"

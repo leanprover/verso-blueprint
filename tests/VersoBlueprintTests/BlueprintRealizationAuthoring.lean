@@ -22,10 +22,10 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
   | .error issues => throwError "Unexpected rejection: {repr issues}"
 
 /-- The native proof contract that the production capture selected for one
-statement-axis dependency. -/
+proof-axis dependency. -/
 private def selectedProof (snapshot : Capture.Snapshot) (consumer target : String) : TermElabM RequirementKey := do
   let some use := snapshot.uses.find? fun use => use.source == Name.mkSimple consumer &&
-      use.role == `statement && use.reference.label == Name.mkSimple target
+      use.role == `proof && use.reference.label == Name.mkSimple target
     | throwError "Missing captured dependency {consumer} -> {target}"
   let some key := (← obtain use.selected).find? (·.name == `proof)
     | throwError "Dependency {consumer} -> {target} selected no native proof contract"

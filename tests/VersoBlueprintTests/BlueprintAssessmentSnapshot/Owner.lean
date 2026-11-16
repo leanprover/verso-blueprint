@@ -115,10 +115,10 @@ def proofValue : True := True.intro
 
 theorem customWitness : True := True.intro
 
-@[blueprint "assessment.customDependent" (uses := ["assessment.customBase"])]
+@[blueprint "assessment.customDependent" (proofUses := ["assessment.customBase"])]
 theorem customDependent : True := True.intro
 
-@[blueprint "assessment.mainDependent" (uses := ["assessment.statementProof"])]
+@[blueprint "assessment.mainDependent" (proofUses := ["assessment.statementProof"])]
 theorem mainDependent : True := True.intro
 
 #docs (Manual) assessmentSnapshotDoc "Assessment Snapshot Example" :=

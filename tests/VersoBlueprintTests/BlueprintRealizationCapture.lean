@@ -23,7 +23,7 @@ theorem complete : True := True.intro
 theorem admitted : True := by sorry
 
 /-- A clean local proof with an unfinished mathematical prerequisite. -/
-@[blueprint "capture.dependent" (uses := ["capture.admitted"])]
+@[blueprint "capture.dependent" (proofUses := ["capture.admitted"])]
 theorem dependent : True := True.intro
 
 /-- Missing labels remain visible and block the Blueprint closure. -/
@@ -46,7 +46,7 @@ theorem groupedComplete : True := True.intro
 theorem groupedAdmitted : True := by sorry
 
 /-- A multi-declaration target requires every selected declaration. -/
-@[blueprint "capture.groupedDependent" (uses := ["capture.grouped"])]
+@[blueprint "capture.groupedDependent" (proofUses := ["capture.grouped"])]
 theorem groupedDependent : True := True.intro
 
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=

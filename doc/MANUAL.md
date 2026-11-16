@@ -1544,6 +1544,28 @@ Read the proof fill states as:
 - `Locally formalized + dependencies complete`: both the node and its full
   dependency closure are complete
 
+Each dependency on a label with Lean declarations requires Lean checks of that
+target. All ordinary Lean declarations associated with the target label form one
+development, and the dependency requires every one of them. The dependency's
+axis decides which check of each declaration it requires:
+
+| Target declaration | Statement dependency (`uses`) | Proof dependency (`proofUses`) |
+| --- | --- | --- |
+| Theorem | Its statement | Its proof |
+| Data definition | Its implementation (body) | Its implementation (body) |
+| Proposition definition | Its statement | Its statement |
+
+A statement that mentions a theorem is meaningful once that theorem is stated,
+so a statement dependency on an admitted (`sorry`) theorem does not block the
+statement, while a proof dependency on it blocks the proof. A statement whose
+Lean type really contains the admitted proof is still caught by its own
+dependency-closure check. A definition's body is part of its meaning, so it
+gates both axes. For a data definition, both `uses` and `proofUses` gate its
+single implementation; each entry still selects by its own axis. A target with
+no ordinary Lean declaration, or an unresolved label, leaves the dependency
+selection unfinished, which blocks the dependent. Selecting an alternative
+realization of the target explicitly is not supported.
+
 Lean completion independently inspects the full transitive dependency closure of
 associated checked declarations: their types, available values (including opaque
 values), inductive constructor types, and recursor reduction rules and links.

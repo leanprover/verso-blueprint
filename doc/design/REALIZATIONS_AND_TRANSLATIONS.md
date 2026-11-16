@@ -129,6 +129,27 @@ prerequisite identifiers are canonicalized. A claim-local judgment binds its own
 mapping and assumptions; a whole-relation judgment binds all that relation's claims.
 Changing a sibling requirement's reviewer does not change an unchanged local judgment.
 
+A declared use selects native contracts of its target's ordinary Lean
+realizations in its source's project context. Two rules decide the exact set
+([user summary](../MANUAL.md#dependency-graph)):
+
+- The target label's ordinary Lean declarations form one development; the use
+  requires all of them, whether theorems, data definitions or both.
+- The use's authored axis decides each declaration's contract. A proof-axis use
+  requires the target to be done: each theorem's proof, each data definition's
+  implementation and each proposition definition's statement. A statement-axis
+  use requires only what the using statement needs in order to be stated: each
+  theorem's statement instead of its proof, and the same implementation and
+  proposition-definition contracts.
+
+A statement that mentions a theorem is meaningful once the theorem is stated;
+its proof gates proofs. If the using statement's Lean type contains that proof
+term, the using statement's own dependency-closure check observes the hole.
+Missing targets and targets without ordinary Lean declarations are selection
+failures; a declaration owned by several ordinary realizations of the selected
+role is `ambiguous-native-contract`. Naming a target realization explicitly is
+not supported.
+
 Prerequisite identities are part of the authored requirement; their content and
 outcomes are not implicitly selected. The record of which target each declared use
 selected binds only the dependency-selection check that produced it. A dependency

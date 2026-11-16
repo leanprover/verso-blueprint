@@ -91,6 +91,9 @@ sharing a file remain independently selected. Semantic facets and
    references, source role and local/shared scope. Select exact targets, or diagnose
    ambiguity under a documented deterministic shorthand. Completion must not choose the
    target. Alternative proofs never repair the native closure of code using an admission.
+   The ordinary Lean shorthand requires all of a label's Lean declarations, and the
+   use's axis picks each theorem's statement or proof contract; see
+   [bindings and prerequisites](REALIZATIONS_AND_TRANSLATIONS.md#bindings-and-prerequisites).
 9. **Derived views.** Publish labeled realization/relation results, local evidence and
    prerequisite reasons. No universal node-completion Boolean or hidden `lean`-name
    policy. Graph filtering, significance and display grouping cannot alter validation.

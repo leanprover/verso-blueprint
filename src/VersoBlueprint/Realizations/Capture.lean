@@ -749,9 +749,15 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
         batch.reviewSelections.mapIdx (authoredContribution record.origin `reviewSelection) } }
   return collected
 
-/-- Select the complete ordinary native contract, independently of its outcome.
-Alternatives are explicit realizations and cannot rescue the default. -/
-private def selectTarget (collected : Collected) (context : Context) (target : Name) :
+/-- Select the native contracts a use requires of its target, independently of
+their outcomes. A label's ordinary Lean declarations form one development, and a
+use requires all of them. The use's authored axis decides which contract of each
+declaration it requires: a data definition's implementation and a proposition
+definition's statement on either axis; a theorem's proof on the proof axis, and
+only its statement on the statement axis, since a statement mentioning a theorem
+is meaningful once that theorem is stated. Alternatives are explicit
+realizations and cannot rescue the default. -/
+private def selectTarget (collected : Collected) (context : Context) (axis : Name) (target : Name) :
     Except Diagnostic (Array RequirementKey) := do
   let input := collected.input
   let fail (code message : String) : Except Diagnostic (Array RequirementKey) := .error {
@@ -761,56 +767,41 @@ private def selectTarget (collected : Collected) (context : Context) (target : N
   let candidates := (ordinaryNativeRealizations input target).filter fun model =>
     model.context == context &&
       (model.role == `proof || model.role == `implementation || model.role == `statement)
-  let proofs := candidates.filter (·.role == `proof)
-  let implementations := candidates.filter (·.role == `implementation)
   let statements := candidates.filter (·.role == `statement)
-  if proofs.size > 1 || implementations.size > 1 || (proofs.isEmpty && statements.size > 1) then
-    return ← fail "ambiguous-native-contract"
-      "Dependency has multiple ordinary native developments and no unique target contract"
-  let failModel (code message : String) : Except Diagnostic (Array Realization) := .error {
-    code, subject := target.toString, message }
-  let proofObjects := proofs.flatMap (·.declarations.map (·.object))
-  let extraStatements := (statements.flatMap (·.declarations.map (·.object))).any
-    (fun object => !proofObjects.contains object)
-  let propositionDefinitions := statements.all fun model => model.declarations.all fun declaration =>
-    (collected.nativeChecks.find? (·.declaration == declaration.object)).any (·.roles == #[`statement])
-  let modelSelection : Except Diagnostic (Array Realization) :=
-    if !proofs.isEmpty && implementations.isEmpty then
-      if extraStatements then failModel "ambiguous-native-contract"
-        "Dependency includes a proposition definition in addition to its proof target"
-      else .ok proofs
-    else if proofs.isEmpty && !implementations.isEmpty && statements.isEmpty then .ok implementations
-    else if proofs.isEmpty && implementations.isEmpty && !statements.isEmpty then
-      if propositionDefinitions then .ok statements
-      else failModel "missing-native-contract"
-        "A native statement without a proof role is a dependency target only when its checked declaration defines a proposition"
-    else failModel (if candidates.isEmpty then "missing-native-contract" else "ambiguous-native-contract")
-      "Dependency needs one unambiguous direct native proof, implementation, or proposition definition"
-  let models ← modelSelection
+  let objects := canonical (candidates.flatMap (·.declarations.map (·.object)))
+  if objects.isEmpty then
+    return ← fail "missing-native-contract" "Dependency has no ordinary native declarations"
+  let owners (role : Name) (object : ObjectKey) : Array (Realization × Declaration) :=
+    candidates.filterMap fun model =>
+      if model.role == role then (model.declarations.find? (·.object == object)).map (model, ·) else none
   let mut required := #[]
-  for model in models do
-    unless !model.declarations.isEmpty do
-      return ← fail "missing-native-contract" "Dependency has no selected native declarations"
-    let validator := if model.role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
-    for declaration in model.declarations do
-      let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
-      let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
-      let expectedProjection := if model.role == `statement then .statement else .implementation
-      let roleMatches := (collected.nativeChecks.find? (·.declaration == declaration.object)).any
-        (·.roles.contains model.role)
-      unless roleMatches && declaration.projection == expectedProjection && contracts.size == 1 &&
-          contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
-          declaration.required.contains key do
-        return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
-      if model.role == `proof then
-        let hasStatement := contracts[0]!.prerequisites.any fun prerequisite =>
-          statements.any fun statementModel =>
-            prerequisite == ⟨.declaration statementModel.key declaration.object, `statement⟩ &&
-            statementModel.declarations.any (·.object == declaration.object)
-        unless hasStatement do
-          return ← fail "invalid-native-contract" "A proof role must depend on its selected proposition type"
-      required := required ++ declaration.required
-    required := required ++ model.required
+  for object in objects do
+    let role := if !(owners `implementation object).isEmpty then `implementation
+      else if axis == `proof && !(owners `proof object).isEmpty then `proof
+      else `statement
+    let selectedOwners := owners role object
+    if selectedOwners.size > 1 then
+      return ← fail "ambiguous-native-contract"
+        "Dependency declaration belongs to several ordinary native realizations of the selected role"
+    let some (model, declaration) := selectedOwners[0]?
+      | return ← fail "invalid-native-contract" "Dependency declaration has no contract for its selected role"
+    let validator := if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+    let key : RequirementKey := ⟨.declaration model.key object, role⟩
+    let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
+    let expectedProjection := if role == `statement then .statement else .implementation
+    let roleMatches := (collected.nativeChecks.find? (·.declaration == object)).any (·.roles.contains role)
+    unless roleMatches && declaration.projection == expectedProjection && contracts.size == 1 &&
+        contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
+        declaration.required.contains key do
+      return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
+    if role == `proof then
+      let hasStatement := contracts[0]!.prerequisites.any fun prerequisite =>
+        statements.any fun statementModel =>
+          prerequisite == ⟨.declaration statementModel.key object, `statement⟩ &&
+          statementModel.declarations.any (·.object == object)
+      unless hasStatement do
+        return ← fail "invalid-native-contract" "A proof role must depend on its selected proposition type"
+    required := required ++ declaration.required ++ model.required
   return canonical required
 
 private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
@@ -835,7 +826,7 @@ private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
         for context in contexts do
           selected := selected.push {
             source, realization, role, reference, context := some context
-            selected := selectTarget collected context reference.label }
+            selected := selectTarget collected context role reference.label }
   return selected
 
 /-- A mechanical check of contract selection, not a proof checker. Only this

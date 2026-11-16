@@ -43,7 +43,7 @@ theorem involutive : ∀ flag : RealizationAdapterFixture.Flag,
 theorem withoutContract : True := True.intro
 
 /-- An ordinary imported dependent selects its target's native complete-proof check. -/
-@[blueprint "authoring.nativeDependent" (uses := ["authoring.unassessed"])]
+@[blueprint "authoring.nativeDependent" (proofUses := ["authoring.unassessed"])]
 theorem nativeDependent : True := withoutContract
 
 /-- An ordinary default whose native statement is valid and whose proof is admitted. -/
@@ -51,7 +51,7 @@ theorem nativeDependent : True := withoutContract
 theorem nativeAdmitted : True := by sorry
 
 /-- The selected admitted prerequisite must stay visible even for a clean local proof. -/
-@[blueprint "authoring.admittedDependent" (uses := ["authoring.nativeAdmitted", "authoring.nativeDependent"])]
+@[blueprint "authoring.admittedDependent" (proofUses := ["authoring.nativeAdmitted", "authoring.nativeDependent"])]
 theorem admittedDependent : True := True.intro
 
 run_cmd liftCoreM do
