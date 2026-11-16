@@ -267,9 +267,6 @@ structure ExpectedRequest where
   project : Name
   origin : Origin
   specification : Nat
-  nativeSources : Array Nat
-  inlineSources : Array Nat
-  priorAuthoredRecords : Nat
   deriving Inhabited
 
 /-- What an expected-goal answer answers. The recipe resolves its witness and
@@ -281,9 +278,10 @@ structure ExpectedKey where
   documents : Array DocumentKey
   deriving BEq, Hashable
 
+/-- Prose takes its text from the stored syntax and requests no document. -/
 structure SourceStep where
   source : SourceSelection
-  document : Nat
+  document : Option Nat := none
   documented : Option (Except Diagnostic Nat) := none
   deriving Inhabited
 
@@ -344,8 +342,10 @@ def plan (raw : Raw) : Plan := Id.run do
       let context := (canonical (sources.map (·.context) ++ associations.map (·.context)))[0]?.getD default
       let mut sourceSteps := #[]
       for source in sources do
-        let document := result.documents.size
-        result := { result with documents := result.documents.push source.document }
+        let mut document := none
+        unless source.payload matches .prose _ do
+          document := some result.documents.size
+          result := { result with documents := result.documents.push source.document }
         let mut documented := none
         if let .prose _ := source.payload then
           let owners := records.filter fun record => record.id.producer == `blueprint.attribute &&
@@ -388,13 +388,9 @@ def plan (raw : Raw) : Plan := Id.run do
       result := { result with documents := result.documents.push ⟨⟨`lean, record.project⟩, record.origin.source⟩ }
       let specification := result.specifications.size
       result := { result with specifications := result.specifications.push { expected, origin := record.origin, document } }
-      let declarations := (result.ordinary.filter (·.label == node)).flatMap fun node =>
-        (node.realizations.filter (·.key.name == `lean)).flatMap (·.declarations)
       goals := goals.push result.expected.size
       result := { result with expected := result.expected.push {
-        node, expected, project := record.project, origin := record.origin, specification
-        nativeSources := declarations.flatMap (·.native), inlineSources := declarations.flatMap (·.inline)
-        priorAuthoredRecords := result.authored.size } }
+        node, expected, project := record.project, origin := record.origin, specification } }
     let mut documents := #[]
     for document in record.authored.sources do
       documents := documents.push result.documents.size
@@ -541,19 +537,20 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let mut sourceDocs : Array (Name × DocumentKey) := #[]
       for sourceStep in step.sources do
         let source := sourceStep.source
-        let (document, readIssues) ← providers.document p.documents[sourceStep.document]!
-        collected := { collected with
-          input.documents := collected.input.documents.push
-            (contribution `document (BindingEncoding.documentKey document.key) document)
-          sourceDiagnostics := { collected.sourceDiagnostics with
-            documents := collected.sourceDiagnostics.documents ++ readIssues.map (document.key, ·) } }
+        if let some handle := sourceStep.document then
+          let (document, readIssues) ← providers.document p.documents[handle]!
+          collected := { collected with
+            input.documents := collected.input.documents.push
+              (contribution `document (BindingEncoding.documentKey document.key) document)
+            sourceDiagnostics := { collected.sourceDiagnostics with
+              documents := collected.sourceDiagnostics.documents ++ readIssues.map (document.key, ·) } }
         if let some reason := source.source.error then
           collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
             code := "source-association-unavailable", subject := s!"{label}/{base.name}/{source.destination.role.getD `compiled}", message := reason }] }
         if let .prose _ := source.payload then
           let selectedKey := source.selectedDocumentKey
           let selectedText ← match sourceStep.documented with
-            | none => pure (source.selectedText document)
+            | none => pure source.selectedText
             | some (.error diagnostic) =>
               collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
               pure (.error diagnostic)
@@ -571,7 +568,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                   collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
                   pure (.error diagnostic)
                 else if documented.document.key.path != source.document.path ||
-                    documented.document.text != document.text ||
+                    some documented.document.text != source.proseBuffer? ||
                     documented.document.key.context.project != source.context.project then
                   pure (.error {
                     code := "source-selection-unavailable"

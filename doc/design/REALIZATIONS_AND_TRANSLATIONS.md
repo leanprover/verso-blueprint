@@ -144,8 +144,11 @@ proof implementation includes its own body, with theorem dependencies interprete
 through their statements; a review of helper implementations must select them
 explicitly. Fresh native completeness independently inspects the required closure.
 Byte-bound selections remain conservative: a whole-file selection is affected by
-any byte change. Canonical source ranges and original text are used for supported
-prose selections, with missing/ambiguous associations diagnosed rather than guessed.
+any byte change. A supported prose selection takes its bytes from the original
+source buffer recorded in its compiled syntax, checked against its stored range;
+capture reads no file for it, so a prose source edited or removed after its module
+was built still yields the compiled text. Missing/ambiguous associations are
+diagnosed rather than guessed.
 
 Earlier binding versions are stale; no automatic review migration is performed.
 SHA-256 fingerprints are compact content identities, not kernel certificates,

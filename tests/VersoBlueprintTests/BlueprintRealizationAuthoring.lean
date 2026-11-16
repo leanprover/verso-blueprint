@@ -476,8 +476,7 @@ run_cmd liftTermElabM do
       | throwError "Expected-goal observation disappeared"
     let specification := plan.specifications[expectedRequest.specification]!
     let specificationDocument := plan.documents[specification.document]!
-    ensure (expectedRequest.nativeSources.any fun handle =>
-      observations.native.any fun result => result.request == plan.native[handle]! &&
+    ensure (observations.native.any fun result => result.request.name.toString == witness.native &&
         match result.result with
         | .error diagnostic => diagnostic.code == "source-unavailable"
         | .ok _ => false)

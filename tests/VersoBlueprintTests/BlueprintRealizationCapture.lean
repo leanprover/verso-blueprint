@@ -344,9 +344,10 @@ run_cmd liftTermElabM do
           | .error issue => throwError "Selected native docstring provider failed: {repr issue}"
         | some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
         | none =>
-          let some owningDocument := registry.documents.find? (·.key == sourceStep.source.document)
-            | throwError "Selected prose lost its canonical owner bytes"
-          obtain (sourceStep.source.selectedText owningDocument)
+          -- The compiled buffer is the unchanged source file in this control.
+          ensure (sourceStep.source.proseBuffer? == some (← IO.FS.readFile sourceStep.source.document.path))
+            "Selected prose syntax does not point into its original source bytes"
+          obtain sourceStep.source.selectedText
       ensure (document.text == expectedText) "Selected prose document differs from exact original source bytes"
     else
       ensure (document.text == (← IO.FS.readFile document.key.path)) "Canonical document is not original source bytes"
@@ -403,6 +404,45 @@ run_cmd liftTermElabM do
       "Document diagnostics did not use the full language/project/path identity"
     ensure (scopedSnapshot.diagnostics.contains documentIssue)
       "An unattached document error disappeared from the aggregate capture diagnostics"
+
+-- Prose selections take their text from the compiled syntax, not from a file
+-- read at capture. With a reader that fails for every path, a prose-only
+-- realization keeps its exact selected text, selected document key and binding.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let label := Name.mkSimple "storage.source"
+  let .some registered := state.inventory.get? label | throwError "Missing prose source fixture"
+  let proseSources := registered.sources.filter fun source => source.payload matches .prose _
+  let some prose := proseSources[0]? | throwError "Missing directive prose source"
+  let some role := prose.destination.role | throwError "Directive prose needs a role"
+  let model := prose.destination.realization.forRole role
+  let review : RequirementKey := ⟨.realization model, `correspondence⟩
+  let raw : Capture.Raw := {
+    nodes := #[(label, { registered with sources := proseSources, uses := #[], nativeAssociations := #[] })]
+    registered := ({} : NameSet).insert label, facts := [], initialIssues := #[]
+    authored := #[{
+      origin := { id := `proseOnlyReview, moduleName := ← getMainModule, source := ← getFileName }
+      project := `blueprintFixtures
+      authored := { requirements := #[{ key := review, expected := .review `statementCorrespondence `MockReviewer }] } }] }
+  let plan := Capture.plan raw
+  ensure plan.documents.isEmpty "A prose-only realization must not request a source document"
+  let captureWith (reader : System.FilePath → IO String) : TermElabM Capture.Snapshot := do
+    let observations ← obtain (← Capture.observe plan reader)
+    obtain (Capture.evaluate plan observations)
+  let real ← captureWith IO.FS.readFile
+  let unreadable ← captureWith fun path => throw (IO.userError s!"injected unreadable source {path}")
+  let expectedText ← obtain prose.selectedText
+  ensure (prose.proseBuffer? == some (← IO.FS.readFile prose.document.path))
+    "Prose syntax does not point into its original source bytes"
+  let selected (snapshot : Capture.Snapshot) :=
+    snapshot.registry.documents.find? (·.key == prose.selectedDocumentKey)
+  ensure (!expectedText.trimAscii.isEmpty && (selected real).map (·.text) == some expectedText &&
+    selected unreadable == selected real &&
+    (unreadable.registry.realization? model).map (·.documents) == some #[prose.selectedDocumentKey] &&
+    (real.registry.bindingFor review).isSome &&
+    unreadable.registry.bindingFor review == real.registry.bindingFor review &&
+    unreadable.diagnostics == real.diagnostics)
+    "A prose selection must keep its compiled text, selected key and binding when no source file can be read"
 
 -- Original inline text, including a supplementary Unicode character before the
 -- declaration, is associated through its owning FileMap and native ranges.

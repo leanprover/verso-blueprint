@@ -49,19 +49,30 @@ structure SourceSelection where
   payload : ProviderPayload
   deriving Repr, Inhabited
 
-/-- Stable identity for the exact authored source selection. Coordinates are
-deliberately absent so moving unchanged prose does not change its identity. -/
+/-- A prose selection as stored at registration: the whole original source buffer
+its syntax points into, its byte range there, and the selected bytes. The
+compiled environment retains that buffer, so no file is read. -/
+private def proseSelection (body : Data.InformalBody) : Except String (String × Syntax.Range × String) := do
+  let .original leading _ _ _ := body.stx.getHeadInfo
+    | throw "Prose selection has no original syntax start"
+  let .original _ _ trailing _ := body.stx.getTailInfo
+    | throw "Prose selection has no original syntax end"
+  unless leading.str == trailing.str do
+    throw "Prose syntax start and end belong to different source buffers"
+  let some range := body.stx.getRange?
+    | throw "Prose selection has no original byte range"
+  unless range.start.byteIdx <= range.stop.byteIdx && range.stop.byteIdx <= leading.str.utf8ByteSize do
+    throw "Prose selection range is outside its source buffer"
+  return (leading.str, range, String.Pos.Raw.extract leading.str ⟨range.start.byteIdx⟩ ⟨range.stop.byteIdx⟩)
+
+/-- Stable identity for the exact authored source selection: the hash of the
+selected bytes. Coordinates are deliberately absent so moving unchanged prose
+does not change its identity. -/
 private def SourceSelection.selectionIdentity (source : SourceSelection) : String :=
   match source.payload with
-  | .prose body => Id.run do
-    let .original leading _ _ _ := body.stx.getHeadInfo | return "unavailable"
-    let .original _ _ trailing _ := body.stx.getTailInfo | return "unavailable"
-    unless leading.str == trailing.str do return "unavailable"
-    let some range := body.stx.getRange? | return "unavailable"
-    if range.start.byteIdx > range.stop.byteIdx || range.stop.byteIdx > leading.str.utf8ByteSize then
-      return "unavailable"
-    let bytes := String.Pos.Raw.extract leading.str ⟨range.start.byteIdx⟩ ⟨range.stop.byteIdx⟩
-    SHA256.text bytes
+  | .prose body => match proseSelection body with
+    | .ok (_, _, bytes) => SHA256.text bytes
+    | .error _ => "unavailable"
   | _ => "whole-document"
 
 def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey :=
@@ -74,35 +85,32 @@ def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey
         source.selectionIdentity)).compress }
   | _ => source.document
 
-/-- Extract only an original prose selection from its owning document. Cached
-preview/AST renderings and nearby text are never substituted. -/
-def SourceSelection.selectedText (source : SourceSelection) (document : Document) : Except Diagnostic String := do
-  let .prose body := source.payload
-    | return document.text
+/-- The whole original source buffer a prose selection's stored syntax points into. -/
+def SourceSelection.proseBuffer? (source : SourceSelection) : Option String :=
+  match source.payload with
+  | .prose body => (proseSelection body).toOption.map (·.1)
+  | _ => none
+
+/-- Extract an original prose selection from the source buffer its stored syntax
+points into, as compiled. No file is read, so a source edited or removed after
+its module was built does not change the result. Cached preview/AST renderings
+and nearby text are never substituted. -/
+def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic String := do
   let subject := source.destination.subject
   let fail (message : String) : Except Diagnostic String := .error {
     code := "source-selection-unavailable", subject := (toJson subject).compress, message }
-  unless document.key == source.document do
-    return ← fail "Owning document identity disagrees with the source selection"
+  let .prose body := source.payload
+    | return ← fail "Only prose sources select text from their stored syntax"
   let some location := source.source.location
     | return ← fail (source.source.error.getD "Source selection has no original location")
-  unless source.source.ok && location.path == document.key.path do
+  unless source.source.ok && location.path == source.document.path do
     return ← fail "Source selection is unavailable at its canonical owning path"
-  let .original leading _ _ _ := body.stx.getHeadInfo
-    | return ← fail "Prose selection has no original syntax start"
-  let .original _ _ trailing _ := body.stx.getTailInfo
-    | return ← fail "Prose selection has no original syntax end"
-  unless leading.str == document.text && trailing.str == document.text do
-    return ← fail "Prose syntax belongs to a different source buffer"
-  let some range := body.stx.getRange?
-    | return ← fail "Prose selection has no original byte range"
-  let map := FileMap.ofString document.text
-  unless map.utf8RangeToLspRange range == location.range do
+  let (buffer, range, bytes) ← match proseSelection body with
+    | .ok selection => pure selection
+    | .error message => return ← fail message
+  unless (FileMap.ofString buffer).utf8RangeToLspRange range == location.range do
     return ← fail "Stored UTF-16 source range disagrees with the owning FileMap"
-  unless range.start.byteIdx <= range.stop.byteIdx &&
-      range.stop.byteIdx <= document.text.utf8ByteSize do
-    return ← fail "Prose selection range is outside its owning document"
-  return String.Pos.Raw.extract document.text ⟨range.start.byteIdx⟩ ⟨range.stop.byteIdx⟩
+  return bytes
 
 /-- Absent realization means an authored concept-level constraint. Automatic or
 manual origin is metadata, not a substitute for this explicit scope. -/
