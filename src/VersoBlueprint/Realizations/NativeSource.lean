@@ -229,32 +229,60 @@ def prepare (request : Request)
     | .error diagnostic => return .error diagnostic
   preparedAt request ranges semantics
 
-/-- Prepare a declaration from an original Blueprint Lean block. Reparse the
-original block contents with Verso's byte-preserving padding, then compare both
-native ranges. Cached command syntax and rendered text cannot supply the source.
-The owning source must still equal the producer's original syntax input; ordinary
-source edits therefore require the normal owning-module rebuild. The file is read
-for this check only; the result carries no source document, as for `prepare`. -/
-def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
+/-- An original literal and its owning buffer, checked for this occurrence before
+sharing any native answer. Verso reads the bytes between the literal's two
+positions from this buffer when constructing its parser input. -/
+structure InlineBlock where
+  private mk ::
+  declaration : Name
+  buffer : String
+  range : Syntax.Range
+  registeredRange? : Option Lsp.Range
+  contents : StrLit
+  deriving Inhabited
+
+instance : BEq InlineBlock where
+  beq a b := a.declaration == b.declaration && a.range == b.range && a.registeredRange? == b.registeredRange? &&
+    a.contents.raw.getRange? == b.contents.raw.getRange? && a.buffer == b.buffer
+
+def selectInline (name : Name) (code : Data.Code) (registeredRange? : Option Lsp.Range := none) :
+    Except Diagnostic InlineBlock := do
+  let declared := code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
+  unless (declared.filter (· == name)).size == 1 do
+    throw <| issue "source-association-unavailable" name "Inline source must select the exact declaration once"
+  let badBlock := issue "source-association-unavailable" name "Inline block has no original source range"
+  let .original leading .. := code.stx.getHeadInfo | throw badBlock
+  let some block := originalRange? leading.str code.stx | throw badBlock
+  unless code.stx.isOfKind ``Lean.Doc.Syntax.codeblock do throw badBlock
+  let strings := code.stx.getArgs.filter (·.isStrLit?.isSome)
+  let #[literal] := strings
+    | throw <| issue "source-association-unavailable" name "Inline block has no unique original contents"
+  let some contents := originalRange? leading.str literal | throw badBlock
+  unless block.start <= contents.start && contents.start <= contents.stop && contents.stop <= block.stop do
+    throw <| issue "source-association-unavailable" name "Inline contents lie outside their original block"
+  return ⟨name, leading.str, block, registeredRange?, ⟨literal⟩⟩
+
+/-- Reparse the selected bytes with Verso's padding and verify the exact native
+ranges. The current owning file must still match the original source buffer. -/
+def prepareInlineBlock (request : Request) (sourcePath : String) (block : InlineBlock)
     (readSource : System.FilePath → IO String := IO.FS.readFile)
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     CoreM (Except Diagnostic Prepared) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
   let name := request.canonical
-  let declared := code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
-  unless (declared.filter (· == name)).size == 1 do
-    return .error <| issue "source-association-unavailable" name "Inline source must select the exact declaration once"
+  unless block.declaration == name do
+    return .error <| issue "source-association-unavailable" name "Inline block was selected for another declaration"
   let text ← try liftM <| readSource sourcePath catch _ =>
     return .error <| issue "source-unavailable" name "Cannot read owning inline source"
-  unless code.stx.isOfKind ``Lean.Doc.Syntax.codeblock && (originalRange? text code.stx).isSome do
-    return .error <| issue "source-association-unavailable" name "Inline block is not original syntax from the current owning file"
-  let strings := code.stx.getArgs.filter (·.isStrLit?.isSome)
-  unless strings.size == 1 && (originalRange? text strings[0]!).isSome do
-    return .error <| issue "source-association-unavailable" name "Inline block has no unique original contents"
-  let padded ← withReader (fun ctx : Core.Context => { ctx with
-      fileName := sourcePath, fileMap := FileMap.ofString text }) <|
-    Verso.SyntaxUtils.parserInputString ⟨strings[0]!⟩
+  unless block.buffer == text do
+    return .error <| issue "source-association-unavailable" name "Inline block is not from the current owning file"
+  let map := FileMap.ofString text
+  if let some registered := block.registeredRange? then
+    unless map.utf8RangeToLspRange block.range == registered do
+      return .error <| issue "source-association-unavailable" name "Inline block disagrees with its registered range"
+  let padded ← withReader (fun ctx : Core.Context => { ctx with fileName := sourcePath, fileMap := map }) <|
+    Verso.SyntaxUtils.parserInputString block.contents
   let ranges ← match ← environmentRanges request with
     | .ok ranges => pure ranges
     | .error diagnostic => return .error diagnostic
@@ -270,11 +298,19 @@ def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
       | return .error <| issue "source-association-unavailable" name "Inline declaration has no original range"
     let some selected := (Elab.getDeclarationSelectionRef declaration[1]).getRange?
       | return .error <| issue "source-association-unavailable" name "Inline declaration has no original name range"
-    let map := FileMap.ofString text
     unless DeclarationRange.ofStringPositions map whole.start whole.stop == ranges.range &&
         DeclarationRange.ofStringPositions map selected.start selected.stop == ranges.selectionRange do
       return .error <| issue "source-association-unavailable" name "Inline native ranges disagree with the owning FileMap"
   preparedAt request ranges semantics
+
+/-- Check one registered occurrence against its owning source and declaration. -/
+def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
+    CoreM (Except Diagnostic Prepared) := do
+  match selectInline request.canonical code with
+  | .error diagnostic => return .error diagnostic
+  | .ok block => prepareInlineBlock request sourcePath block readSource semantics
 
 /-- Additionally require direct own native format metadata and one original
 modifier comment at the declaration's exact full/name ranges. The environment

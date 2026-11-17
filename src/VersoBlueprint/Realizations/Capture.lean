@@ -221,25 +221,14 @@ def NativeRequest.ofAssociation (context : Context) (association : NativeAssocia
   sourcePath? := association.reference.provenance.sourcePath?
   range? := association.reference.range?, selectionRange? := association.reference.selectionRange? }
 
+/-- Only a checked occurrence can request a shared native association. Equality
+includes the original source buffer and the selected literal's byte range. -/
 structure InlineRequest where
-  context : Context
-  name : Name
-  source : SourceSelection
-  deriving Inhabited
-
-/-- What an inline answer answers: the declaration in its owning document and
-the registered location of the block that must contain it. The block's syntax
-is the provider's input, not part of this identity. -/
-structure InlineKey where
   native : NativeRequest
-  location : Data.SourceLocationResult
-  deriving BEq
+  block : NativeSource.InlineBlock
+  deriving Inhabited, BEq
 
-instance : Hashable InlineKey := ⟨fun key => hash key.native⟩
-
-def InlineRequest.key (request : InlineRequest) : InlineKey := {
-  native := { context := request.context, name := request.name, sourcePath? := some request.source.document.path }
-  location := request.source.source }
+instance : Hashable InlineRequest := ⟨fun request => hash request.native⟩
 
 structure CheckRequest where
   project : Name
@@ -325,7 +314,7 @@ structure Plan where
   raw : Raw
   documents : Array DocumentKey := #[]
   native : Array NativeRequest := #[]
-  inline : Array InlineRequest := #[]
+  inline : Array (Except Diagnostic InlineRequest) := #[]
   documented : Array NativeRequest := #[]
   checks : Array CheckRequest := #[]
   specifications : Array SpecificationRequest := #[]
@@ -377,7 +366,9 @@ def plan (raw : Raw) : Plan := Id.run do
           if let .leanInline code := source.payload then
             if (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).contains name then
               inline := inline.push result.inline.size
-              result := { result with inline := result.inline.push { context, name, source } }
+              let job := (NativeSource.selectInline name code (source.source.location.map (·.range))).map fun block => {
+                native := { context, name, sourcePath? := some source.document.path }, block : InlineRequest }
+              result := { result with inline := result.inline.push job }
         declarations := declarations.push { name, native, inline, check := result.checks.size }
         result := { result with checks := result.checks.push { project := context.project, witness := ⟨context, name.toString⟩ } }
       realizations := realizations.push { key, sources := sourceSteps, associations, declarations }
@@ -413,7 +404,7 @@ of supplied facts. -/
 structure Observations where
   documents : Array (ResultEntry DocumentKey (Document × Array Diagnostic)) := #[]
   native : Array (ResultEntry NativeRequest (Except Diagnostic NativeSource.Prepared)) := #[]
-  inline : Array (ResultEntry InlineKey (Except Diagnostic NativeSource.Prepared)) := #[]
+  inline : Array (ResultEntry InlineRequest (Except Diagnostic NativeSource.Prepared)) := #[]
   documented : Array (ResultEntry NativeRequest (Except Diagnostic NativeSource.Documented)) := #[]
   checks : Array (ResultEntry CheckRequest (Except Diagnostic NativeLean.CheckedDeclaration)) := #[]
   specifications : Array (ResultEntry SpecificationKey (Except (Array Diagnostic) Unit)) := #[]
@@ -481,7 +472,10 @@ private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step :
     | .error issue => issues := issues.push issue
     | .ok value => prepared := prepared.push value
   for handle in step.inline do
-    match ← providers.inline p.inline[handle]! with
+    let result ← match p.inline[handle]! with
+      | .error issue => pure (.error issue)
+      | .ok job => providers.inline job
+    match result with
     | .error issue => issues := issues.push issue
     | .ok value => prepared := prepared.push value
   if !issues.isEmpty then return .error (canonical issues)
@@ -495,6 +489,7 @@ private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step :
 
 private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : ExceptT (Array Diagnostic) m Collected := do
   let mut collected : Collected := {}
+  let mut associationsByObject : Std.HashMap ObjectKey (Except (Array Diagnostic) Unit) := {}
   for node in p.ordinary do
     let label := node.label
     let accepted := node.accepted
@@ -614,7 +609,9 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           return some {
             object := witness,
             projection := if role == `statement then .statement else .implementation,
-            required }
+            required, sourceIssues := match result.prepared with
+              | .error issues => issues
+              | .ok _ => #[] }
         let documents := canonical (sourceDocs.filterMap fun (sourceRole, document) =>
           if sourceRole == role then some document else none)
         roleModels := roleModels.push {
@@ -627,13 +624,10 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       for declaration in declarationResults do
         let witness := object declaration.name
         let nativeRoles := declarationRoles declaration.name
-        let objectObservation : ObjectObservation ← match declaration.prepared with
+        let association : Except (Array Diagnostic) Unit ← match declaration.prepared with
           | .error issues => do
             collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label issues }
-            pure {
-              key := witness
-              resolution := if issues.any (·.code == "missing-declaration") then .missing else .unsupported
-              explanation := (toJson issues).compress }
+            pure (.error issues)
           | .ok prepared => do
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
@@ -647,11 +641,14 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                   (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
                     subject := .declaration (base.forRole role) witness,
                     name := NativeLean.sourceContext, content } }
-            -- The environment establishes the declaration; no source document is attached.
-            pure { key := witness, resolution := .resolved }
-        collected := { collected with
-          input.objects := collected.input.objects.push
-            (contribution `object (BindingEncoding.objectKey witness) objectObservation) }
+            pure (.ok ())
+        -- Any successful association resolves the shared object. The owned
+        -- selection keeps its own failure even if a sibling succeeds.
+        let combined := match associationsByObject[witness]?, association with
+          | some (.ok ()), _ => .ok ()
+          | some (.error prior), .error issues => .error (prior ++ issues)
+          | _, current => current
+        associationsByObject := associationsByObject.insert witness combined
         for role in nativeRoles do
           unless (rolesForName declaration.name).contains role do continue
           let key : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
@@ -674,7 +671,14 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         collected := { collected with
           input.realizations := collected.input.realizations.push
             (contribution `realization (BindingEncoding.realizationKey model.key) model) }
-  return collected
+  let objects := associationsByObject.toArray.map fun (key, association) =>
+    let value : ObjectObservation := match association with
+      | .ok () => { key, resolution := .resolved }
+      | .error issues => {
+        key, resolution := if issues.any (·.code == "missing-declaration") then .missing else .unsupported
+        explanation := (toJson (canonical issues)).compress }
+    contribution `object (BindingEncoding.objectKey key) value
+  return { collected with input.objects := objects }
 
 private def ownedDefinition (name : Name) (origin : Origin) (source : Document) : CaptureM Unit := do
   let env ← getEnv
@@ -1020,7 +1024,7 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
     native := fun request =>
       answerFor "native" request.name.toString native request (whenOk (associatedMatches request))
     inline := fun request =>
-      answerFor "inline" request.name.toString inline request.key (whenOk (associatedMatches request.key.native))
+      answerFor "inline" request.native.name.toString inline request (whenOk (associatedMatches request.native))
     documented := fun request =>
       answerFor "documented" request.name.toString documented request
         (whenOk fun value => associatedMatches request value.toPrepared &&
@@ -1083,7 +1087,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
     let semantics ← NativeLean.newSemanticContext
     let documents ← liftM <| IO.mkRef ({} : Std.HashMap DocumentKey (Document × Array Diagnostic))
     let native ← liftM <| IO.mkRef ({} : Std.HashMap NativeRequest (Except Diagnostic NativeSource.Prepared))
-    let inline ← liftM <| IO.mkRef ({} : Std.HashMap InlineKey (Except Diagnostic NativeSource.Prepared))
+    let inline ← liftM <| IO.mkRef ({} : Std.HashMap InlineRequest (Except Diagnostic NativeSource.Prepared))
     let documented ← liftM <| IO.mkRef ({} : Std.HashMap NativeRequest (Except Diagnostic NativeSource.Documented))
     let checks ← liftM <| IO.mkRef ({} : Std.HashMap CheckRequest (Except Diagnostic NativeLean.CheckedDeclaration))
     let specifications ← liftM <| IO.mkRef ({} : Std.HashMap SpecificationKey (Except (Array Diagnostic) Unit))
@@ -1094,18 +1098,13 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         match ← request job with
         | .error issue => pure (.error issue)
         | .ok request => NativeSource.prepare request semantics
-      inline := fun job => answerOnce inline job.key do
-        match job.source.payload with
-        | .leanInline code =>
-          match ← request job.key.native with
+      inline := fun job => answerOnce inline job do
+        match ← request job.native with
+        | .error issue => pure (.error issue)
+        | .ok request =>
+          match ← sourcePath job.native request with
           | .error issue => pure (.error issue)
-          | .ok request =>
-            match ← sourcePath job.key.native request with
-            | .error issue => pure (.error issue)
-            | .ok path => NativeSource.prepareInline request path code reader semantics
-        | _ => pure (.error {
-            code := "invalid-inline-request", subject := job.name.toString,
-            message := "Inline request has no inline source payload" })
+          | .ok path => NativeSource.prepareInlineBlock request path job.block reader semantics
       documented := fun job => answerOnce documented job do
         match ← request job with
         | .error issue => pure (.error issue)

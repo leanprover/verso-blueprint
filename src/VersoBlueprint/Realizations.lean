@@ -88,11 +88,28 @@ structure Node extends Data.NodeMetadata where
   title : String
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
+/-- Immutable producer-site identity and diagnostic provenance, not a semantic key. -/
+structure Origin where
+  id : Name
+  moduleName : Name
+  source : String := ""
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
+
+structure Diagnostic where
+  code : String
+  subject : String
+  message : String
+  origins : Array Origin := #[]
+  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
+
 /-- Every listed declaration is required; alternatives belong in another realization. -/
 structure Declaration where
   object : ObjectKey
   projection : ContentScope := .implementation
   required : Array RequirementKey := #[]
+  /-- Failures of this owner's source association, even when another owner
+  resolves the same canonical object. -/
+  sourceIssues : Array Diagnostic := #[]
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 structure Realization where
@@ -122,24 +139,10 @@ structure ObjectObservation where
   explanation : String := ""
   deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
-/-- Immutable producer-site identity and diagnostic provenance, not a semantic key. -/
-structure Origin where
-  id : Name
-  moduleName : Name
-  source : String := ""
-  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
-
 structure Contribution (α : Type) where
   origin : Origin
   value : α
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
-
-structure Diagnostic where
-  code : String
-  subject : String
-  message : String
-  origins : Array Origin := #[]
-  deriving Ord, Repr, Inhabited, BEq, DecidableEq, ToJson
 
 /-- Current provider/build semantic inputs for a selected subject. These are
 materialized with current source, never exported by source authoring or reports. -/

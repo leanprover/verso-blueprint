@@ -534,6 +534,90 @@ run_cmd liftTermElabM do
       ← NativeSource.prepareInline { request with range? := some { prepared.ranges.range with charUtf16 := prepared.ranges.range.charUtf16 + 1 } } path code] do
     ensure (!result.isOk) "Invalid/synthetic/stale inline association was accepted"
 
+-- Source attribution is per registration. Only the genuine imported block and
+-- its compatible copy may use the shared declaration and native check.
+run_cmd liftTermElabM do
+  let env ← getEnv
+  try
+    let good := Name.mkSimple "storage.source"
+    let copy := Name.mkSimple "capture.inlineCopy"
+    let bad := Name.mkSimple "capture.inlineBad"
+    let repeated := Name.mkSimple "capture.inlineRepeatedName"
+    let stale := Name.mkSimple "capture.inlineStaleBuffer"
+    let shifted := Name.mkSimple "capture.inlineShiftedRange"
+    let emptyLiteral := Name.mkSimple "capture.inlineEmptyLiteral"
+    let state := Environment.informalExt.getState env
+    let some node := state.inventory.get? good | throwError "Missing source fixture"
+    let some source := node.sources.find? (·.payload matches .leanInline _) | throwError "Missing block"
+    let .leanInline code := source.payload | throwError "Expected Lean block"
+    let staleBuffer := (← IO.FS.readFile source.document.path) ++ "\n-- later revision\n"
+    let staleSyntax := code.stx.rewriteBottomUp fun stx =>
+      match stx.getInfo? with
+      | some (.original lead start trail stop) =>
+        stx.setInfo (.original { lead with str := staleBuffer } start { trail with str := staleBuffer } stop)
+      | _ => stx
+    let emptySyntax := code.stx.modifyArgs fun args => args.map fun arg =>
+      match arg.isStrLit?, arg.getHeadInfo with
+      | some _, .original lead start trail _ => arg.setInfo (.original lead start trail start)
+      | _, _ => arg
+    for (label, payload) in #[(copy, code), (bad, { code with stx := .missing }),
+        (repeated, { code with definedDefs := code.definedDefs ++ code.definedDefs }),
+        (stale, { code with stx := staleSyntax }), (shifted, code),
+        (emptyLiteral, { code with stx := emptySyntax })] do
+      let location := if label != shifted then source.source else
+        { source.source with location := source.source.location.map fun loc =>
+            { loc with range := { loc.range with start := { loc.range.start with character := loc.range.start.character + 1 } } } }
+      let registration := { source with source := location, payload := .leanInline payload, destination := {
+        source.destination with realization := { source.destination.realization with node := label } } }
+      ensure (← Environment.contribute label { sources := #[registration] }).isSome
+        "Expected a structurally accepted source registration"
+    let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+    let labels := #[good, copy, bad, repeated, stale, shifted, emptyLiteral]
+    let rows := raw.nodes.filter fun row => labels.contains row.1
+    ensure (rows.size == labels.size) "Accepted source rows disappeared"
+    let plan := Capture.plan { raw with nodes := rows }
+    let reversed := Capture.plan { raw with nodes := rows.reverse }
+    let check (snapshot : Capture.Snapshot) := do
+      let object := snapshot.registry.objects.find? (·.key.native == "storedInline")
+      ensure (object.any (·.resolution == .resolved)) "A malformed registration hid the genuine object"
+      for label in labels do
+        let valid := label == good || label == copy
+        let req := implementationKey (Data.Label.publicString label) `storedInline
+        ensure ((snapshot.registry.localResult req).complete == valid)
+          s!"Wrong local native assessment for {label}"
+        let diagnostic := snapshot.sourceDiagnostics.nodes.any fun (owner, issue) =>
+          owner == label && issue.code == "source-association-unavailable"
+        ensure (diagnostic == !valid) s!"Source diagnostic attributed to the wrong owner: {label}"
+      ensure ((snapshot.assessmentFor copy).requiredComplete &&
+        !(snapshot.assessmentFor bad).requiredComplete) "Public assessment borrowed another owner's source"
+    for order in #[plan, reversed] do
+      let answers ← obtain (← Capture.observe order)
+      ensure (answers.inline.size == 4 && (answers.inline.filter (·.result.isOk)).size == 1)
+        "Expected one shared pass and separate failures for the buffer, block range and literal range"
+      for replay in #[plan, reversed] do
+        check (← obtain (Capture.evaluate replay answers))
+    -- Even the genuine occurrence's answer at the same owner, file and
+    -- location cannot make a later malformed selection usable during replay.
+    let goodOnly := Capture.plan { raw with nodes := rows.filter (·.1 == good) }
+    let answers ← obtain (← Capture.observe goodOnly)
+    let changedPlan (stx : Syntax) :=
+      let broken := { source with payload := .leanInline { code with stx } }
+      let changed := { node with sources := node.sources.map fun item =>
+        if item.payload matches .leanInline _ then broken else item }
+      Capture.plan { raw with nodes := #[(good, changed)] }
+    for stx in #[staleSyntax, emptySyntax] do
+      match Capture.evaluate (changedPlan stx) answers with
+      | .ok _ => throwError "An old answer served a different buffer or literal range at the same address"
+      | .error issues => ensure (issues.any (·.code == "missing-observation")) "Wrong replay rejection"
+    let changedSnapshot ← obtain (Capture.evaluate (changedPlan .missing) answers)
+    ensure (changedSnapshot.registry.objects.any (fun o => o.key.native == "storedInline" &&
+        o.resolution == .unsupported) &&
+      !(changedSnapshot.registry.localResult (implementationKey "storage.source" `storedInline)).complete &&
+      changedSnapshot.sourceDiagnostics.nodes.any (fun (owner, issue) =>
+        owner == good && issue.code == "source-association-unavailable"))
+      "A previous good answer was replayed onto a malformed occurrence at the same address"
+  finally setEnv env
+
 -- Specifications remain independently authored, with all origin variants kept.
 def expectedTrue : Prop := True
 def expectedFalse : Prop := False

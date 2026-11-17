@@ -422,9 +422,12 @@ private def Registry.subjectContentIssues (r : Registry) (subject : Subject) : A
   match subject with
   | .realization key =>
     match r.realization? key with
-    | some realization => r.contentIssues subject realization.documents (realization.declarations.map (·.object))
+    | some realization => realization.declarations.flatMap (·.sourceIssues) ++
+        r.contentIssues subject realization.documents (realization.declarations.map (·.object))
     | none => #[issue "unknown-realization" key "Missing source realization"]
-  | .declaration _ object => r.objectIssues object
+  | .declaration owner object =>
+    let selected := (r.realization? owner).bind (·.declarations.find? (·.object == object))
+    (selected.map (·.sourceIssues)).getD #[] ++ r.objectIssues object
   | _ => #[]
 
 private def Registry.semanticIssues (r : Registry) (key : RealizationKey)
@@ -481,7 +484,9 @@ private def Registry.computeLocalResult (r : Registry) (key : RequirementKey) : 
         reviewIssues := #[issue "missing-current-review" id "Selected judgment is unavailable"]
   match req.expected with
   | .proof _ witness =>
-    let unavailable := r.objectIssues witness
+    let unavailable := match key.subject.realization? with
+      | some owner => r.subjectContentIssues (.declaration owner witness)
+      | none => r.objectIssues witness
     if !unavailable.isEmpty then
       return {
         status := .blocked

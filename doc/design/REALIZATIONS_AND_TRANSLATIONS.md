@@ -180,8 +180,11 @@ realizations, and an independent expected goal binds only its specification
 document. Capture still reads the owning file where its bytes are the content: a
 declaration's own doc comment, whose raw bytes the environment does not keep, and
 an inline Blueprint block, whose original syntax is checked against the file.
-Those keep their current diagnostics. Missing/ambiguous associations are
-diagnosed rather than guessed.
+Capture checks each inline registration's declaration membership and original
+block and literal ranges before sharing a native answer. Two concepts may select
+the same declaration. If one registration fails, its selection reports the source
+diagnostic and stays unavailable. A genuine selection on the other concept can
+still resolve and use the checked declaration.
 
 Earlier binding versions are stale; no automatic review migration is performed.
 SHA-256 fingerprints are compact content identities, not kernel certificates,
