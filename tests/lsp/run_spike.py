@@ -42,7 +42,7 @@ def main():
     identity = hashlib.sha256()
     sources = {Path("rosetta") / path.relative_to(package): path for path in package_files}
     for path in [*(repo / "tests/RosettaDocs").glob("*.lean"),
-                 repo / "tests/RosettaDocsMain.lean",
+                 repo / "tests/RosettaDocsMain.lean", repo / "src/VersoBlueprintRosetta.lean",
                  repo / "lakefile.lean", repo / "lean-toolchain", repo / "lake-manifest.json",
                  *Path(__file__).parent.rglob("*")]:
         if path.is_file() and "__pycache__" not in path.parts:

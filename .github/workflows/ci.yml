@@ -92,6 +92,8 @@ jobs:
           mkdir -p _out/rosetta
           ./scripts/lean-low-priority lake exe rosetta-docs plan _out/rosetta/plan.json
           python3 -c 'import json; assert len(json.load(open("_out/rosetta/plan.json"))) == 5'
+      - name: Replay saved Rosetta analysis in a downstream Blueprint
+        run: python3 tests/lsp/check_vbp_replay.py
       - name: Run consumer math lint smoke
         run: python3 ./scripts/check_math_lint_fresh_repo.py
 

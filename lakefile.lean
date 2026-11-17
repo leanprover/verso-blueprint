@@ -58,6 +58,10 @@ lean_exe «vir-client-example» where
   srcDir := "tests"
   root := `VirClientExampleMain
 
+-- Opt-in generator integration for saved Rosetta analysis.
+lean_lib VersoBlueprintRosetta where
+  srcDir := "src"
+
 -- Blueprint core library.
 @[default_target]
 lean_lib VersoBlueprint where

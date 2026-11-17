@@ -17,10 +17,15 @@ integration fixtures and preserves its own labels, dependencies and proof status
 4. Save/review that bundle, then call `VersoRosetta.enrich` and render normally.
    Replay and HTML/TeX generation require no running language server.
 
-This is an explicit generator API. Standard `vbp build` profile/snapshot
-configuration is follow-up work. Production Blueprint modules do not import
-Rosetta automatically. See the executable example in
-[`tests/RosettaDocsMain.lean`](../../tests/RosettaDocsMain.lean) and
+For a Blueprint generator, import `VersoBlueprintRosetta` and call
+`Informal.blueprintMainWithRosetta` with a captured `BlueprintDocument`. Build
+with `lake exe vbp build --rosetta-bundle analysis.json` to validate and replay
+the bundle before traversal. Use a fresh traversal when supplying a bundle.
+Without the flag, the wrapper runs the usual Blueprint render. Server profiles
+and bundle generation belong to the project's analysis step.
+
+See the [generator example](../MANUAL.md#foreign-language-analysis-with-rosetta),
+the [analysis fixture](../../tests/RosettaDocsMain.lean), and
 [reproducible acceptance commands](../../tests/lsp/README.md).
 
 ## Contract and use cases

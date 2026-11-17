@@ -81,7 +81,16 @@ compiles both documents without starting a language server. The Rust fixture's
 readiness hook uses Rosetta's retained notification state, independently of the
 bounded notification journal.
 
-It then compiles/collects the same requests from plain Verso and a
+The offline CLI test creates a downstream project with a Rosetta-enabled
+generator and a synthetic saved bundle. It checks HTML and TeX, compares
+Blueprint queries with the baseline, and verifies that invalid bundles fail
+before the generator writes output:
+
+```sh
+python3 tests/lsp/check_vbp_replay.py
+```
+
+The real-server fixture separately compiles/collects the same requests from plain Verso and a
 Blueprint node, analyzes once, and renders from the saved bundle:
 
 ```sh

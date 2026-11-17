@@ -5,7 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import Rosetta
 import RosettaDocs.Blueprint
-import VersoBlueprint.PreviewManifest
+import VersoBlueprintRosetta
 
 open Lean Verso Verso.Doc Verso.Genre.Manual Rosetta
 
@@ -122,20 +122,17 @@ private def navigationPart : IO (Part Verso.Genre.Manual) := do
     page "definitions" blocks, page "references" references, page "repeated" repeated]
 
 private def render (bundlePath output kind : String) : IO UInt32 := do
-  let bundle ← loadBundle bundlePath
   let arguments := ["--output", output, "--with-html-single", "--without-html-multi", "--with-tex"]
-  if kind == "navigation" then
-    let text ← IO.ofExcept <| VersoRosetta.enrich bundle (← navigationPart)
+  if kind == "blueprint" then
+    Informal.blueprintMainWithRosetta RosettaDocs.blueprintDocument
+      (arguments ++ ["--rosetta-bundle", bundlePath])
+  else if kind == "navigation" then
+    let text ← IO.ofExcept <| VersoRosetta.enrich (← loadBundle bundlePath) (← navigationPart)
     manualMain text (extensionImpls := by exact extension_impls%)
       ["--output", output, "--with-html-single", "--with-html-multi", "--without-tex"]
   else if kind == "plain" then
-    let text ← IO.ofExcept <| VersoRosetta.enrich bundle RosettaDocs.plain.toPart
+    let text ← IO.ofExcept <| VersoRosetta.enrich (← loadBundle bundlePath) RosettaDocs.plain.toPart
     manualMain text (extensionImpls := by exact extension_impls%) arguments
-  else if kind == "blueprint" then
-    let document := RosettaDocs.blueprintDocument
-    let text ← IO.ofExcept <| VersoRosetta.enrich bundle document.text
-    Informal.PreviewManifest.blueprintMainWithPreviewData text arguments
-      (extensionImpls := by exact extension_impls%) (model := document.model)
   else throw <| IO.userError "expected plain, blueprint or navigation"
 
 def main (args : List String) : IO UInt32 := do

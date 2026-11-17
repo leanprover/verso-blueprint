@@ -1866,6 +1866,41 @@ The detailed public API reference lives in [`API.md`](./API.md). It covers:
 - [the public browser runtime API](./API.md#browser-runtime-api) and the
   boundary around bundled helper APIs
 
+## Foreign-language analysis with Rosetta
+
+A Blueprint can use Rosetta's `lspCode` block for authored snippets and `lspRef`
+role for names in the same analysis context. Import `VersoRosetta` in the
+Blueprint source. In the generator, opt in to saved analysis by using
+`VersoBlueprintRosetta`:
+
+```lean
+import VersoBlueprintRosetta
+import ProjectTemplate.Blueprint
+
+open Verso Doc
+open Verso.Genre Manual
+
+def main (args : List String) : IO UInt32 :=
+  Informal.blueprintMainWithRosetta
+    (Informal.BlueprintDocument.capture (%doc ProjectTemplate.Blueprint))
+    args
+```
+
+Generate the analysis bundle separately using `VersoRosetta.collect` and
+`Rosetta.analyze` with profiles for your language servers and projects. Then
+render from the Blueprint project root:
+
+```bash
+lake exe vbp build --rosetta-bundle analysis.json
+```
+
+The generator checks the bundle against the compiled requests before writing
+output. Matching includes the authored source locations. Regenerate the
+bundle if the source or checkout path changes. Building from a bundle requires
+no running language servers. Without the flag, requests render as unanalyzed.
+See the [Rosetta integration guide](design/ROSETTA_API.md) for the analysis and
+replay contract.
+
 ## The Generator Entry Point
 
 Blueprint projects normally expose a small generator `main` function.
@@ -1900,8 +1935,9 @@ Blueprint does not keep compatibility layers for renamed helpers, documented
 public entry points, read-through aliases, command aliases, or old rendering
 paths. When an interface changes, update the in-repository callers, tests,
 examples, and documentation together; downstream projects can migrate when
-they update their pinned Blueprint revision. New generators should call
-`Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
+they update their pinned Blueprint revision. The standard generator uses
+`Informal.PreviewManifest.blueprintMainWithPreviewData`. For saved foreign-language
+analysis, use the [Rosetta generator](#foreign-language-analysis-with-rosetta).
 
 For normal local and CI usage, prefer the project helper:
 
