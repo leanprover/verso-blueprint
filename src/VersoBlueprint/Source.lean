@@ -56,14 +56,14 @@ block_extension Block.sourceDocument (document : Document) where
     some <| fun _ _ _ _ _ => pure .empty
 
 private def reportUnexpectedSourceDocumentBlock
-    (cfg : DocumentConfig) (block : TSyntax `block) : DocElabM Unit := do
+    (cfg : DocumentConfig) (block : Lean.Doc.VersoBlock) : DocElabM Unit := do
   if ← Metadata.isMetadataBlock block then
     logErrorAt block m!"Source document '{cfg.id}' has an extra metadata block; source_document directives accept exactly one leading metadata block"
   else
     logErrorAt block m!"Source document '{cfg.id}' has unexpected body content; source_document directives accept exactly one metadata block and no visible body"
 
 private def sourceDocumentMetadataTerm
-    (cfg : DocumentConfig) (contents : Array (TSyntax `block)) :
+    (cfg : DocumentConfig) (contents : Array (Lean.Doc.VersoBlock)) :
     DocElabM (Option (TSyntax `term)) := do
   let leading ← Metadata.splitLeadingMetadata contents
   match leading.term? with

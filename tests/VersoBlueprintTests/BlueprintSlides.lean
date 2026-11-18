@@ -127,7 +127,7 @@ private def writeSlidesPreviewDataFiles
   let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
   let matchingHeads :=
     cfg.extraHead.filter fun html =>
-      hasAllSubstr html.asString [
+      hasAllSubstr html.render [
         "<script type=\"module\"",
         Informal.Slides.blueprintSlideRuntimeModulePath
       ]
@@ -234,7 +234,7 @@ private def writeSlidesPreviewDataFiles
   let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
   cfg.extraCss.any (·.filename == Informal.Slides.blueprintSlidesCssFilename) &&
     cfg.extraHead.any (fun html =>
-      hasSubstr html.asString Informal.Slides.blueprintSlideRuntimeModulePath) &&
+      hasSubstr html.render Informal.Slides.blueprintSlideRuntimeModulePath) &&
     cfg.extraJs.isEmpty &&
     cfgAgain.extraCss.size == cfg.extraCss.size &&
     cfgAgain.extraHead.size == cfg.extraHead.size &&
@@ -342,7 +342,7 @@ private def writeSlidesPreviewDataFiles
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
         hasSubstr rendered "bp_slide_node_blueprint" &&
@@ -361,7 +361,7 @@ private def writeSlidesPreviewDataFiles
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "class=\"bp_metadata_panel\"" &&
         hasSubstr rendered "slides" &&
@@ -396,7 +396,7 @@ private def writeSlidesPreviewDataFiles
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       groupManifestOk &&
         usedByManifestOk &&
@@ -425,7 +425,7 @@ private def writeSlidesPreviewDataFiles
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       groupManifestOk &&
         hasSubstr rendered "bp_extra_slot_group" &&

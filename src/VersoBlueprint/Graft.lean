@@ -102,7 +102,7 @@ private def renderLeanCodeBodies
     match ← renderLeanCodePreviewBody? goB state id resolved.preview.label key with
     | none => pure ()
     | some (body, codeData) =>
-        if body.asString.trimAscii.isEmpty then
+        if body.render.trimAscii.isEmpty then
           pure ()
         else
           bodies := bodies.push body
@@ -121,10 +121,10 @@ private def renderManualGraftNode
   match RenderingResolution.facetByKey? state node.key with
   | .error error =>
       Verso.reportError error
-      pure <| Html.tag "div" (manualNodeAttrs node) <|
+      pure <| Lean.Html.element "div" (manualNodeAttrs node) <|
         renderNotice "bp_graft_node_notice" "error" "Invalid Blueprint node" error
   | .ok none =>
-      pure <| Html.tag "div" (manualNodeAttrs node) <|
+      pure <| Lean.Html.element "div" (manualNodeAttrs node) <|
         renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
           node.selectionDescription
   | .ok (some resolved) =>
@@ -136,7 +136,7 @@ private def renderManualGraftNode
       let externalBody? := if preview.facet == .statement then
         Informal.ExternalMarkupRender.previewBody? {} entry.externalMarkup else none
       if !preview.hasRenderedBody && entry.leanCodePreviewKeys.isEmpty && externalBody?.isNone then
-        pure <| Html.tag "div" (manualNodeAttrs node) <|
+        pure <| Lean.Html.element "div" (manualNodeAttrs node) <|
           renderNotice "bp_graft_node_notice" "error"
             "Blueprint node has no cached content" node.key
       else
@@ -220,7 +220,7 @@ block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideC
         | some cfg => pure cfg
         | Option.none => pure {}
       let content ← blocks.mapM goB
-      pure <| Html.tag "div" cfg.attrs (Html.seq content)
+      pure <| Lean.Html.element "div" cfg.attrs (Html.seq content)
 
 private meta def currentGenreIs (genreTerm : Term) : DocElabM Bool := do
   let current := (← readThe DocElabContext).genre

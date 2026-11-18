@@ -93,7 +93,7 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
     }
     nodeAttrs := fun node => node.renderedAttrsWithClass "bp_test_graft_node"
     renderMissingNode := fun node title detail =>
-      .tag "div" (node.renderedAttrsWithClass "bp_test_graft_notice") <|
+      .element "div" (node.renderedAttrsWithClass "bp_test_graft_notice") <|
         Html.ofString s!"{title}: {detail}"
   }
 
@@ -145,7 +145,7 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
       (facetProjectionEntry facet)
       content
       (some facetProjectionGroup)
-      |>.asString
+      |>.render
   let statement := render .statement
   let proof := render .proof
   hasSubstr statement "Statement uses 1" &&
@@ -190,10 +190,10 @@ private def facetProjectionGroup : Informal.PreviewManifest.GroupRelation :=
       !statementEntry.leanCodePreviewKeys.isEmpty &&
       statementEntry.codeData.isSome &&
       proofEntry.codeData.isNone && proofEntry.leanCodePreviewKeys.isEmpty &&
-      hasSubstr statementHtml.asString "graftFacetCodeWitness" &&
-      hasSubstr statementHtml.asString "bp_code_panel_wrapper" &&
-      !hasSubstr proofHtml.asString "graftFacetCodeWitness" &&
-      !hasSubstr proofHtml.asString "bp_code_panel_wrapper"
+      hasSubstr statementHtml.render "graftFacetCodeWitness" &&
+      hasSubstr statementHtml.render "bp_code_panel_wrapper" &&
+      !hasSubstr proofHtml.render "graftFacetCodeWitness" &&
+      !hasSubstr proofHtml.render "bp_code_panel_wrapper"
 
 private def renderAuditNode
     (manifest : Informal.PreviewManifest.File)
@@ -260,7 +260,7 @@ private def renderAuditNode
       graftManifestRenderConfig
       ctx
       node
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
         hasSubstr rendered "bp_graft_manifest_node" &&
@@ -279,7 +279,7 @@ private def renderAuditNode
   show IO Bool from do
     let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
     let renderedHtml ← renderAuditNode files.manifest files.htmlCache "def:graft.manual.left"
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "audit_graft_node" &&
         hasSubstr rendered "audit_blueprint_node" &&
@@ -313,7 +313,7 @@ private def renderAuditNode
       graftManifestRenderConfig
       ctx
       node
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "Preview manifest unavailable" &&
         hasSubstr rendered "Provide a Blueprint preview manifest" &&
@@ -331,7 +331,7 @@ private def renderAuditNode
       graftManifestRenderConfig
       ctx
       node
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     pure <|
       hasSubstr rendered "Blueprint node not found" &&
         hasSubstr rendered "label `def:graft.manual.missing`" &&
@@ -352,7 +352,7 @@ private def renderAuditNode
       graftManifestRenderConfig
       ctx
       node
-    let rendered := renderedHtml.asString
+    let rendered := renderedHtml.render
     let logs ← logs.get
     pure <|
       hasSubstr rendered "Blueprint HTML cache entry not found" &&
@@ -385,7 +385,7 @@ private def renderAuditNode
     let errors ← IO.mkRef (#[] : Array String)
     let logError := fun message => errors.modify (·.push message)
     let html ← renderManualBlocksHtmlWithState blocks manualImpls invalid (logError := logError)
-    unless hasSubstr html.asString "Invalid Blueprint node" &&
+    unless hasSubstr html.render "Invalid Blueprint node" &&
         (← errors.get).any (hasSubstr · expected) do
       throw <| IO.userError "Live graft concealed a required facet lookup failure"
     errors.set #[]
@@ -512,7 +512,7 @@ private def exportInBothModes (state : TraverseState) :
       keys.push (TraversalIndex.LeanCodePreviews.lookupKey ``graftManualLeftValue) do
     throw <| IO.userError "Panel keys were not deduplicated in first-occurrence order"
   let html ← renderManualBlocksHtmlWithState blocks manualImpls state
-  let rendered := html.asString
+  let rendered := html.render
   unless (rendered.splitOn "identical-code-panel").length == 3 &&
       hasSubstr rendered "firstPanelDecl: complete" &&
       hasSubstr rendered "secondPanelDecl: complete" &&

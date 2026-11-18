@@ -63,7 +63,7 @@ def BlockStatusMark.text (s : BlockStatusMark) : String :=
 
 def BlockStatusMark.toHtml (s : BlockStatusMark) : Output.Html :=
   open Verso.Output.Html in
-  {{ <span class="bp_status_mark" title={{s.title}}>{{.text true s.text}}</span> }}
+  {{ <span class="bp_status_mark" title={{s.title}}>{{.text s.text}}</span> }}
 
 def codeHoverListItem (body : Output.Html) : Output.Html :=
   open Verso.Output.Html in
@@ -71,23 +71,23 @@ def codeHoverListItem (body : Output.Html) : Output.Html :=
 
 def codeHoverTextItem (text : String) : Output.Html :=
   open Verso.Output.Html in
-  let body : Output.Html := .text true text
+  let body : Output.Html := .text text
   codeHoverListItem body
 
 def codeHoverEmptyItem (text : String) : Output.Html :=
   open Verso.Output.Html in
-  {{<li class="bp_code_hover_none">{{.text true text}}</li>}}
+  {{<li class="bp_code_hover_none">{{.text text}}</li>}}
 
 def codeHoverCodeItem (text : String) : Output.Html :=
   open Verso.Output.Html in
-  let body : Output.Html := {{<code>{{.text true text}}</code>}}
+  let body : Output.Html := {{<code>{{.text text}}</code>}}
   codeHoverListItem body
 
 def codeHoverSection (title : String) (items : Array Output.Html) : Output.Html :=
   open Verso.Output.Html in
   {{
     <div class="bp_code_hover_section">
-      <span class="bp_code_hover_label">{{.text true title}}</span>
+      <span class="bp_code_hover_label">{{.text title}}</span>
       <ul class="bp_code_hover_list">
         {{.seq items}}
       </ul>
@@ -158,9 +158,9 @@ def mkCodePanel
       <details class="bp_code_block bp_code_panel" {{attrs}}>
         <summary class="bp_heading lemma_thmheading" title={{summaryTitle}}>
           <span class="bp_heading_title_row">
-            <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text true header.caption}}</span>
+            <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text header.caption}}</span>
             {{if let some number := header.number? then
-                {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text true number}}</span>}}
+                {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text number}}</span>}}
               else
                 .empty}}
           </span>

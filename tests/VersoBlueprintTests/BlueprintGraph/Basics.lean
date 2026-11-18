@@ -347,11 +347,11 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     !empty.localStatementFormalized && !empty.localProofFormalized &&
     !uncaptured.localStatementFormalized && !uncaptured.localProofFormalized
 
-/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext] -/
 #guard_msgs in
 #print axioms ProvedStatus.mergeConservative_proved_left
 
-/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_right' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_right' depends on axioms: [propext] -/
 #guard_msgs in
 #print axioms ProvedStatus.mergeConservative_proved_right
 

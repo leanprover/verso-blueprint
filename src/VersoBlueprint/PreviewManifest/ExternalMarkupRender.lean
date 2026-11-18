@@ -34,6 +34,6 @@ def renderExternalMarkupEntryHtml
     content
     wrapperClass? := some "bp_preview_data_node_blueprint bp_external_markup_node"
   }
-  some <| Verso.Output.Html.asString html
+  some <| Lean.Html.render html
 
 end Informal.PreviewManifest

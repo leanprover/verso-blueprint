@@ -138,7 +138,7 @@ private def cachedStatement
     let rendered := Informal.RelatedPanel.renderPanel
       (Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "manifest.source"))
       panelEntries
-      |>.asString
+      |>.render
     match panelEntries[0]?, panelEntries[1]? with
     | some statementPanelEntry, some proofPanelEntry =>
         statementPanelEntry.badgeCodes == #["s"] &&
@@ -220,9 +220,9 @@ private def cachedStatement
 #eval
   show Bool from
     let cfg := Informal.RelatedPanel.statementUsesPanelConfig (Lean.Name.mkSimple "source")
-    let singleOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).asString
+    let singleOut := (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry]).render
     let panelOut :=
-      (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).asString
+      (Informal.RelatedPanel.renderPanel cfg #[sampleMissingPreviewPanelEntry, samplePanelEntry]).render
     !hasSubstr singleOut "bp_inline_preview_ref" &&
       hasSubstr singleOut "class=\"bp-relation-entries\"" &&
       hasSubstr singleOut "Missing Preview" &&
@@ -243,7 +243,7 @@ private def cachedStatement
       previewTitle := "</script><script>unsafeRelationPayload()"
       label := Lean.Name.mkSimple "unsafe.payload"
     }
-    let out := Informal.RelatedPanel.renderPanel cfg #[unsafeEntry, samplePanelEntry] |>.asString
+    let out := Informal.RelatedPanel.renderPanel cfg #[unsafeEntry, samplePanelEntry] |>.render
     hasSubstr out "\\u003c/script>\\u003cscript>unsafeRelationPayload()" &&
       !hasSubstr out "</script><script>unsafeRelationPayload()"
 

@@ -124,7 +124,7 @@ private def graphToHtml
               match group.summary? with
               | some summary => {{
                   <p class="bp_graph_legend_group_summary">
-                    {{.text false summary}}
+                    {{.raw summary}}
                   </p>
                 }}
               | Option.none => .empty
@@ -134,18 +134,18 @@ private def graphToHtml
                 | some swatch => {{
                     <span class="bp_graph_legend_item">
                       <span class="bp_graph_legend_swatch" "style"={{swatch.inlineStyle}}></span>
-                      {{.text false item.label}}
+                      {{.raw item.label}}
                     </span>
                   }}
                 | Option.none => {{
                     <span class="bp_graph_legend_item">
-                      {{.text false item.label}}
+                      {{.raw item.label}}
                     </span>
                   }}
             {{
               <section class="bp_graph_legend_group">
                 <div class="bp_graph_legend_group_header">
-                  <span class="bp_graph_legend_group_title">{{.text false group.title}}</span>
+                  <span class="bp_graph_legend_group_title">{{.raw group.title}}</span>
                   {{summaryHtml}}
                 </div>
                 <div class="bp_graph_legend_items">
@@ -157,7 +157,7 @@ private def graphToHtml
           match note? with
           | some note => {{
               <p class="bp_graph_legend_note">
-                {{.text false note}}
+                {{.raw note}}
               </p>
             }}
           | Option.none => .empty
@@ -321,7 +321,7 @@ private def graphToHtml
             "data-bp-graph-pack"={{graphPackDefault}}
           >
             <script type="application/json" class="bp-graph-data">
-              {{.text false s!"{publicGraphDataJson}"}}
+              {{.raw s!"{publicGraphDataJson}"}}
             </script>
           </div>
           {{previewPanel}}
@@ -492,7 +492,9 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
     (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
     PartElabM FinishedPart := do
   let titlePreview := "Dependency Graph"
-  let titleInlines ← `(inline | "Dependency Graph")
+  let titleText ← Lean.Doc.mkVersoTextFromRef "Dependency Graph"
+  let titleInlines : Lean.Doc.VersoInline ←
+    `(Lean.Doc.Parser.Inline.text| $titleText:versoText)
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   reportImportedConflicts
@@ -505,9 +507,13 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
 open Verso Doc Elab Syntax PartElabM in
-@[part_command Lean.Doc.Syntax.command]
+@[part_command Lean.Doc.Parser.Block.command]
 public meta def depGraph : PartCommand
-  | stx@`(block|command{blueprint_graph $args*}) => do
+  | .command v => do
+    if v.name.getId != `blueprint_graph then
+      Lean.Elab.throwUnsupportedSyntax
+    let stx := v.stx.raw
+    let args := v.args
     let cfg ← Verso.ArgParse.parseThe BlueprintGraphConfig (← parseArgs args)
     let options ← parseGraphOptions cfg
     let previewMode ← parseGraphPreviewMode cfg

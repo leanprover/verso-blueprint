@@ -10,9 +10,15 @@ namespace Verso.VersoBlueprintTests.BlueprintMathLint
 
 open Informal
 
-private def extractedRaw? (rawSource : String) (span : Informal.MathLint.Span) : Option String := do
-  let (start, stop) ← Informal.MathLint.inlineCodeRawRangeOfDecodedSpan? rawSource span
-  pure <| start.extract rawSource stop
+/--
+Extract the source text that a math span maps to. `lines` gives each code line's text and the
+offset where it starts in `source`.
+-/
+private def extractedRaw? (source : String) (lines : Array (String × Nat))
+    (span : Informal.MathLint.Span) : Option String := do
+  let lines := lines.map fun (text, start) => (text, (⟨start⟩ : String.Pos.Raw))
+  let (start, stop) ← Informal.MathLint.codeLinesRawRangeOfDecodedSpan? lines span
+  pure <| start.extract source stop
 
 private def localNodeAvailable : IO Bool := do
   try
@@ -65,23 +71,32 @@ private def localNodeAvailable : IO Bool := do
     let reports ← tasks.mapM fun task => IO.ofExcept task.get
     pure <| !nodeAvailable || reports.all (·.isSome)
 
+-- Lean 4.36 inline code has no escapes: `\n` and `\\` occupy two source characters each.
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    extractedRaw? r#"\`x"# { start := 0, length := 1 } == some r#"\`"#
+    let source := r#"\nu + \undefinedmacro"#
+    extractedRaw? source #[(source, 0)] { start := 6, length := 15 } == some r#"\undefinedmacro"#
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    extractedRaw? r#"\\x"# { start := 0, length := 1 } == some r#"\\"#
+    let source := r#"a \\ \bad"#
+    extractedRaw? source #[(source, 0)] { start := 5, length := 4 } == some r#"\bad"#
 
+-- The docstring indentation between lines is not part of the code, so the second line's
+-- columns start after it.
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    extractedRaw? r#"\alpha"# { start := 0, length := 6 } == some r#"\alpha"#
+    let source := "a +\n  " ++ r#"\bad"#
+    let lines := #[("a +\n", 0), (r#"\bad"#, 6)]
+    extractedRaw? source lines { start := 4, length := 4 } == some r#"\bad"# &&
+      extractedRaw? source lines { start := 0, length := 4 } == some "a +\n" &&
+      extractedRaw? source lines { start := 2, length := 3 } == some "+\n  \\"
 
 /-- info: true -/
 #guard_msgs in

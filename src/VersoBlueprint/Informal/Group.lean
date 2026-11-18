@@ -18,7 +18,6 @@ import VersoBlueprint.TraversalIndex
 open Verso Doc Elab
 open Verso.Genre Manual
 open Verso.ArgParse
-open Lean.Doc.Syntax
 open Lean Elab
 
 namespace Informal
@@ -69,16 +68,16 @@ private def collapseWhitespace (s : String) : String :=
   let s := s.replace "\t" " "
   String.intercalate " " <| (s.splitOn " ").filter (fun chunk => !chunk.isEmpty)
 
-private def blockChunkText (env : Environment) (block : TSyntax `block) : String :=
-  match block with
-  | `(block|para[$inlines*]) =>
-    Verso.Doc.Elab.inlinesToString env inlines
-  | `(block|header($_){$inlines*}) =>
-    Verso.Doc.Elab.inlinesToString env inlines
+private def blockChunkText (env : Environment) (block : Lean.Doc.VersoBlock) : String :=
+  match Lean.Doc.BlockView.of block with
+  | some (.para v) =>
+    Verso.Doc.Elab.inlinesToString env v.content
+  | some (.header v) =>
+    Verso.Doc.Elab.inlinesToString env v.content
   | _ =>
     (Syntax.reprint block.raw).getD ""
 
-private def groupHeaderFromContents (contents : Array (TSyntax `block)) : DocElabM String := do
+private def groupHeaderFromContents (contents : Array (Lean.Doc.VersoBlock)) : DocElabM String := do
   let env ← getEnv
   let raw := contents.foldl (init := "") fun acc block =>
     let chunk := (blockChunkText env block).trimAscii.toString

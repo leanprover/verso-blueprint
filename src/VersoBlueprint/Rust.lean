@@ -72,9 +72,9 @@ private def isIdentRest (c : Char) : Bool :=
 
 private def tokenNode (cls txt : String) : Verso.Output.Html :=
   if cls.isEmpty then
-    Verso.Output.Html.text true txt
+    Lean.Html.text txt
   else
-    Verso.Output.Html.tag "span" #[("class", cls)] (Verso.Output.Html.text true txt)
+    Lean.Html.element "span" #[("class", cls)] (Lean.Html.text txt)
 
 private def classifyIdent (txt : String) : String :=
   if keywordSet.contains txt then
@@ -152,8 +152,8 @@ def highlightHtml (source : String) : Verso.Output.Html :=
         out := out.push <| tokenNode "bp_rust_num" (pos.extract source stop)
         pos := stop
       else
-        out := out.push <| Verso.Output.Html.text true (pos.extract source nextPos)
+        out := out.push <| Lean.Html.text (pos.extract source nextPos)
         pos := nextPos
-    return Verso.Output.Html.tag "pre" #[("class", "bp_external_decl_stmt hl rust block bp_rust_code")] (Verso.Output.Html.seq out)
+    return Lean.Html.element "pre" #[("class", "bp_external_decl_stmt hl rust block bp_rust_code")] (Verso.Output.Html.seq out)
 
 end Informal.Rust

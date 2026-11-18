@@ -22,7 +22,6 @@ open Verso Doc Elab
 open Verso.Genre Manual
 open Verso.ArgParse
 open Lean Lean.Elab
-open Lean.Doc.Syntax
 
 namespace Informal
 
@@ -128,7 +127,7 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
         | pure .empty
       let some reference ← ExtensionDecode.report? (RenderingResolution.reference (← HtmlT.state) label)
         | pure .empty
-      let content ← if inlines.isEmpty then pure #[.text true reference.title] else inlines.mapM goI
+      let content ← if inlines.isEmpty then pure #[.text reference.title] else inlines.mapM goI
       let labelText := label.toString (escape := false)
       let node := match reference.href with
         | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}

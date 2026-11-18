@@ -11,28 +11,28 @@ namespace Informal.Source.Metadata
 
 open Lean Elab Term
 open Verso Doc Elab
-open Lean.Doc.Syntax
 
 /-- Reconstruct the Lean structure-initializer term carried by a Verso metadata block. -/
-def metadataTerm? (block : TSyntax `block) : DocElabM (Option (TSyntax `term)) := do
-  match block with
-  | `(block|%%%%$_ $fieldOrAbbrev* %%%%$_) =>
-      return some (← `(term| { $fieldOrAbbrev* }))
-  | _ =>
+def metadataTerm? (block : Lean.Doc.VersoBlock) : DocElabM (Option (TSyntax `term)) := do
+  match Lean.Doc.MetadataView.of block with
+  | some view =>
+      let fields := view.fields
+      return some ⟨(← `(Lean.Parser.Term.structInst| { $[$fields],* })).raw⟩
+  | none =>
       return none
 
-def isMetadataBlock (block : TSyntax `block) : DocElabM Bool := do
+def isMetadataBlock (block : Lean.Doc.VersoBlock) : DocElabM Bool := do
   return (← metadataTerm? block).isSome
 
 structure LeadingMetadata where
   term? : Option (TSyntax `term) := none
-  body : Array (TSyntax `block) := #[]
+  body : Array (Lean.Doc.VersoBlock) := #[]
 
 /--
 Split off the optional leading metadata block used by Blueprint source syntax.
 The remaining blocks stay in original order so callers can render or reject them.
 -/
-def splitLeadingMetadata (contents : Array (TSyntax `block)) : DocElabM LeadingMetadata := do
+def splitLeadingMetadata (contents : Array (Lean.Doc.VersoBlock)) : DocElabM LeadingMetadata := do
   match contents[0]? with
   | some first =>
       match ← metadataTerm? first with
@@ -43,9 +43,9 @@ def splitLeadingMetadata (contents : Array (TSyntax `block)) : DocElabM LeadingM
 
 /-- Keep visible blocks while letting callers report metadata that appears too late. -/
 def visibleBlocksWithoutMetadata
-    (contents : Array (TSyntax `block))
-    (onMetadataBlock : TSyntax `block → DocElabM Unit) :
-    DocElabM (Array (TSyntax `block)) := do
+    (contents : Array (Lean.Doc.VersoBlock))
+    (onMetadataBlock : Lean.Doc.VersoBlock → DocElabM Unit) :
+    DocElabM (Array (Lean.Doc.VersoBlock)) := do
   let mut body := #[]
   for block in contents do
     if ← isMetadataBlock block then

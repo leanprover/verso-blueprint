@@ -512,17 +512,17 @@ def readBuildMetadata : IO BuildMetadata := do
 private def buildMetadataLabelHtml (label : String) (href? : Option String) : Output.Html :=
   match href? with
   | some href =>
-      Output.Html.tag "a"
+      Lean.Html.element "a"
         #[("class", "bp_build_metadata_label bp_build_metadata_link"), ("href", href)]
         (VersoBlueprint.Html.text label)
   | none =>
-      Output.Html.tag "span" #[("class", "bp_build_metadata_label")] (VersoBlueprint.Html.text label)
+      Lean.Html.element "span" #[("class", "bp_build_metadata_label")] (VersoBlueprint.Html.text label)
 
 private def buildMetadataCodeHtml (value : String) (href? : Option String) : Output.Html :=
-  let code := Output.Html.tag "code" #[("class", "bp_build_metadata_commit")] (VersoBlueprint.Html.text value)
+  let code := Lean.Html.element "code" #[("class", "bp_build_metadata_commit")] (VersoBlueprint.Html.text value)
   match href? with
   | some href =>
-      Output.Html.tag "a" #[("class", "bp_build_metadata_commit_link"), ("href", href)] code
+      Lean.Html.element "a" #[("class", "bp_build_metadata_commit_link"), ("href", href)] code
   | none => code
 
 def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
@@ -563,7 +563,7 @@ def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
   }}
 
 def buildMetadataHtmlString (metadata : BuildMetadata) : String :=
-  Output.Html.asString <| buildMetadataHtml metadata
+  Lean.Html.render <| buildMetadataHtml metadata
 
 def insertBuildMetadataHtml? (html metadataHtml : String) : Option String :=
   if html.contains "class=\"bp_build_metadata\"" then
@@ -1122,10 +1122,11 @@ def File.findHtml? (file : File) (key : String) : Option String :=
 
 def initialHoverState : Verso.Code.Hover.State Output.Html :=
   { dedup := { ({} : Verso.Code.Hover.Dedup Output.Html) with nextId := hoverIdStart }
-    idSupply := {} }
+    idSupply := {}
+    tokenHovers := {} }
 
 def HoverDoc.toHtml (doc : HoverDoc) : Output.Html :=
-  Output.Html.text false doc.html
+  Lean.Html.raw doc.html
 
 def File.hoverDocsJson (file : File) : Json :=
   file.hoverDocs.foldl (init := Json.mkObj []) fun out doc =>
@@ -1145,7 +1146,8 @@ def File.hoverDedup (file : File) : Verso.Code.Hover.Dedup Output.Html :=
 
 def File.hoverState (file : File) : Verso.Code.Hover.State Output.Html :=
   { dedup := file.hoverDedup
-    idSupply := {} }
+    idSupply := {}
+    tokenHovers := {} }
 
 /--
 Rendered Lean-code preview keys and bodies, deduplicated by preview identity.
@@ -2164,7 +2166,7 @@ private def buildTraversalEntries
             continue
           pure html
         else
-          pure (externalBody?.getD (.text false codeOnlyBlockPreviewHtml))
+          pure (externalBody?.getD (.raw codeOnlyBlockPreviewHtml))
       let manifestEntry := { blockEntryOfFacet state resolved with
         codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
       entries := entries.push manifestEntry
@@ -2216,7 +2218,7 @@ private def buildExternalMarkupEntries
         let heading := manifestEntry.heading
         if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
             heading.caption heading.label markup manifestEntry.externalMarkup manifestEntry.sources then
-          htmlEntries := htmlEntries.push { key := manifestEntry.key, html := .text false html }
+          htmlEntries := htmlEntries.push { key := manifestEntry.key, html := .raw html }
   pure (entries, htmlEntries)
 
 private def declarationRangeToLspRange (range : Lean.DeclarationRange) : Lean.Lsp.Range := {
@@ -2484,12 +2486,12 @@ def buildPreviewDataFiles
     let html ← match resolve entry.html with
       | .ok html => pure html
       | .error error => throw (IO.userError s!"Blueprint resource {entry.key}: {error}")
-    pure ({ key := entry.key, html := html.asString } : HtmlCache.Entry)
+    pure ({ key := entry.key, html := html.render } : HtmlCache.Entry)
   let hoverDocs ← hoverState.dedup.contentId.toArray.mapM fun (id, html) => do
     let html ← match resolve html with
       | .ok html => pure html
       | .error error => throw (IO.userError s!"Blueprint hover {id}: {error}")
-    pure ({ id, html := html.asString } : HtmlCache.HoverDoc)
+    pure ({ id, html := html.render } : HtmlCache.HoverDoc)
   if verbose then
     let serializeFinish ← IO.monoMsNow
     let bytes := resolvedEntries.foldl (fun n entry => n + entry.html.utf8ByteSize) 0

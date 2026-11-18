@@ -85,7 +85,7 @@ private def manualImpls : ExtensionImpls := extension_impls%
   let decl := ``BlueprintAttribute.DocstringProvider.source
   let some (.inr doc) ← findInternalDocString? (← getEnv) decl | return false
   let some markdown ← findSimpleDocString? (← getEnv) decl | return false
-  let html := Informal.Docstring.versoDocstringToHtml doc |>.asString
+  let html := Informal.Docstring.versoDocstringToHtml doc |>.render
   pure <| hasSubstr markdown "attr.doc.target" && hasSubstr markdown "the comparison" &&
     hasSubstr html "<code>attr.doc.target</code>" &&
     hasSubstr html "<strong>the comparison</strong>" && hasSubstr html "bp_math inline"
@@ -128,7 +128,7 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
     | return false
   pure <| dependencies.isEmpty &&
     node.statement.all (·.deps.isEmpty) &&
-    hasSubstr (Informal.Docstring.versoDocstringToHtml doc).asString "bad"
+    hasSubstr (Informal.Docstring.versoDocstringToHtml doc).render "bad"
 
 /-- error: Unexpected named argument `intent` -/
 #guard_msgs in

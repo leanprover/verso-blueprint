@@ -383,7 +383,7 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 /-- Render a relation-row badge with semantic relation styling classes. -/
 private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
-  {{<span class={{className}} title={{title}}>{{.text true text}}</span>}}
+  {{<span class={{className}} title={{title}}>{{.text text}}</span>}}
 
 private def relationBadgeBaseClass : String :=
   "bp_relation_axis_badge"
@@ -500,7 +500,7 @@ private def loadingBody (detail : String) : Output.Html :=
   {{
     <div class="bp_relation_preview_message" "data-bp-preview-message"="loading">
       <div class="bp_relation_preview_message_title">"Loading preview"</div>
-      <div class="bp_relation_preview_message_detail">{{.text true detail}}</div>
+      <div class="bp_relation_preview_message_detail">{{.text detail}}</div>
     </div>
   }}
 
@@ -522,13 +522,13 @@ private def panelEntryActive (selectedEntry? : Option PanelEntry) (entry : Panel
   | none => entry.active
 
 private def scriptJson (json : Json) : Output.Html :=
-  .text false (json.compress.replace "<" "\\u003c")
+  .raw (json.compress.replace "<" "\\u003c")
 
 /-- Assemble JSON leaves structurally so preview keys can be selected before
 serialization. No HTML or JSON string is parsed during resource finalization. -/
 private def jsonArrayHtml (values : Array Output.Html) : Output.Html :=
-  .seq (#[.text false "["] ++
-    (values.toList.intersperse (.text false ",")).toArray ++ #[.text false "]"])
+  .seq (#[.raw "["] ++
+    (values.toList.intersperse (.raw ",")).toArray ++ #[.raw "]"])
 
 /-- Runtime row: [title, previewKey?, label, href?, badgeCodes, active]. -/
 private def panelEntryDataHtml (renderPreview : PreviewResources.Render)
@@ -551,17 +551,17 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
     (renderPreview : PreviewResources.Render := PreviewResources.immediate) : Output.Html :=
   open Verso.Output.Html in Id.run do
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
-    {{<span class={{chipClass}} title={{chipTitle}}>{{.text true (cfg.chipText n)}}</span>}}
+    {{<span class={{chipClass}} title={{chipTitle}}>{{.text (cfg.chipText n)}}</span>}}
   let renderInlinePreview (entry : PanelEntry) : Output.Html :=
     let chipNode : Output.Html :=
       if let some href := entry.href then
         {{<a class={{s!"{cfg.chipClass} bp_code_link"}} href={{href}} title={{cfg.singleTitle entry}}>
-            {{.text true (cfg.chipText 1)}}
+            {{.text (cfg.chipText 1)}}
           </a>}}
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     let previewFooterHtml? :=
-      let html := renderRelationBadgeCodes entry.badgeCodes |>.asString
+      let html := renderRelationBadgeCodes entry.badgeCodes |>.render
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
@@ -580,18 +580,18 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
     let previewBody : Output.Html := loadingBody cfg.previewEmptyText
     let rowData := jsonArrayHtml (entries.map (panelEntryDataHtml renderPreview selectedEntry?))
     let rowList : Output.Html :=
-      .tag "ul" #[("class", "bp_relation_list")] <|
+      .element "ul" #[("class", "bp_relation_list")] <|
         {{
           <script type="application/json" class="bp-relation-entries">
             {{rowData}}
           </script>
         }}
     let panel : Output.Html :=
-      .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
+      .element "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
         {{
           <div class="bp_relation_panel_header">
-            <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
-            <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
+            <div class="bp_relation_panel_title">{{.text (cfg.panelTitle entries.size)}}</div>
+            <div class={{cfg.panelMetaClass}}>{{.text cfg.panelMeta}}</div>
           </div>
           <div class="bp_relation_panel_body">
             {{rowList}}
@@ -599,7 +599,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
               <div class="bp_relation_preview_header">
                 <div class="bp_relation_preview_label">"Preview"</div>
                 <div class="bp_relation_preview_heading bp_preview_header_heading">
-                  <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+                  <div class="bp_relation_preview_title">{{.text previewTitle}}</div>
                   <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
                 </div>
               </div>
@@ -610,10 +610,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
           </div>
         }}
     let panelShell : Output.Html :=
-      .tag "div" #[("class", cfg.wrapClass)] <|
+      .element "div" #[("class", cfg.wrapClass)] <|
         {{
           <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
-            {{.text true (cfg.chipText entries.size)}}
+            {{.text (cfg.chipText entries.size)}}
           </button>
           {{panel}}
         }}

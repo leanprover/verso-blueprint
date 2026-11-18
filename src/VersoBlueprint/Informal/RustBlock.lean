@@ -68,10 +68,10 @@ private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
     let data : Informal.Rust.InlineCodeData := {
       label := cfg.label
-      raw := contents.getString
+      raw := contents.getVersoCodeBlock
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
     }
-    let some _ ← Environment.contribute cfg.label { rustCode := some { raw := contents.getString } }
+    let some _ ← Environment.contribute cfg.label { rustCode := some { raw := contents.getVersoCodeBlock } }
       | ``(Block.concat #[])
     ``(Block.other (Block.informalRustCode $(quote data)) #[])
 

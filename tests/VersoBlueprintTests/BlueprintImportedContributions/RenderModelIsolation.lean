@@ -65,7 +65,7 @@ def isolatedBlueprint : BlueprintDocument := .capture isolatedDocument.toPart
       (TraversalIndex.Nodes.renderedData? state node.label).any (·.globalCount.isSome) do
     throw <| IO.userError "An explicitly supplied occurrence prevented anchor and numbering allocation"
   let html ← Informal.renderManualBlocksHtmlWithState blocks extension_impls% state
-  unless hasSubstr html.asString "Synthetic theorem" && hasSubstr html.asString "synthetic" do
+  unless hasSubstr html.render "Synthetic theorem" && hasSubstr html.render "synthetic" do
     throw <| IO.userError "A synthetic rendering model lost its body or metadata"
 
 -- Captured nodes without a rendered target do not acquire graph membership or numbering.

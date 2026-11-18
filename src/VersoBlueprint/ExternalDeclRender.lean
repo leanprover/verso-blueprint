@@ -8,6 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Docstring
+import Verso.Output.Html.Markdown
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Macros
 
@@ -218,14 +219,14 @@ private def templateVersoHoverAttrs
       let contents :=
         match marker? with
         | some localId =>
-            contents ++ .tag "span" #[(externalDeclHoverInlineMarkerAttrName, toString localId)] .empty
+            contents ++ .element "span" #[(externalDeclHoverInlineMarkerAttrName, toString localId)] .empty
         | none => contents
-      pure <| some <| .tag name attrs' contents)
+      pure <| some <| .element name attrs' contents)
 
 private def hoverPayloads
     (hoverDedup : Verso.Code.Hover.Dedup ExternalDeclHtml) : Array ExternalDeclHoverPayload :=
   hoverDedup.contentId.fold (init := #[]) (fun out localId html =>
-    out.push { localId, html := html.asString })
+    out.push { localId, html := html.render })
   |>.qsort (fun a b => a.localId < b.localId)
 
 /--
@@ -247,7 +248,7 @@ private def renderWithHoverPayloads
     (html : ExternalDeclHighlightRender ExternalDeclHtml) : ExternalDeclRenderedHtml :=
   let (html, hoverState) := html.run {}
   {
-    html := (templateVersoHoverAttrs html hoverState.dedup).asString
+    html := (templateVersoHoverAttrs html hoverState.dedup).render
     hoverPayloads := hoverPayloads hoverState.dedup
   }
 
@@ -262,7 +263,7 @@ private def renderExternalDeclSignatureVariant
   let signatureHtml ← highlightedToHtml signature
   pure {{
     <pre class="bp_external_decl_signature signature hl lean block">
-      <span class="keyword token">{{.text true keywordText}}</span> " " {{signatureHtml}}
+      <span class="keyword token">{{.text keywordText}}</span> " " {{signatureHtml}}
     </pre>
   }}
 
@@ -278,16 +279,20 @@ private def signatureToHtml (keywordText : String) (sig : Verso.Genre.Manual.Sig
     </div>
   }}
 
+/--
+Render a Markdown docstring at build time, as Verso does for hovers. Since Verso v4.36 no page
+script converts `pre.docstring` elements, so raw Markdown would stay visible.
+-/
 private def plainDocstringHtml (docs? : Option String) : ExternalDeclHtml :=
-  open Verso.Output.Html in
   match docs? with
   | none => .empty
   | some docs =>
-    {{<pre class="docstring">{{.text true docs}}</pre>}}
+    .element "div" #[("class", "docstring")]
+      (Verso.Output.Html.Markdown.toHtml docs (math := true))
 
 private def structuralDocstringHtml
     (doc : Lean.VersoDocString) (texPrelude : String) : ExternalDeclHtml :=
-  .tag "div" #[("class", "docstring")]
+  .element "div" #[("class", "docstring")]
     (Informal.Docstring.versoDocstringToHtml doc texPrelude)
 
 private def internalDocstringHtml
@@ -322,7 +327,7 @@ private def renderTitledSection? (decl : Name) (title : String) (rows : Array Ex
     let labelId := externalDeclSectionLabelId decl title
     some {{
       <div class="bp_external_decl_section" role="group" aria-labelledby={{labelId}}>
-        <p class="bp_external_decl_section_label" id={{labelId}}>{{.text true title}}</p>
+        <p class="bp_external_decl_section_label" id={{labelId}}>{{.text title}}</p>
         {{rows}}
       </div>
     }}
@@ -401,7 +406,7 @@ private def renderExternalDeclWrapper
     if headerMeta.isEmpty then
       .empty
     else
-      {{<span class="bp_external_decl_header_meta">{{.text true s!"({String.intercalate ", " headerMeta.toList})"}}</span>}}
+      {{<span class="bp_external_decl_header_meta">{{.text s!"({String.intercalate ", " headerMeta.toList})"}}</span>}}
   let headerSourceHtml : ExternalDeclHtml :=
     match headerSource? with
     | none => .empty
@@ -409,9 +414,9 @@ private def renderExternalDeclWrapper
       let sourceNode : ExternalDeclHtml :=
         match source.href? with
         | some href =>
-          {{<a class="bp_external_decl_source_path" href={{href}}>{{.text true source.text}}</a>}}
+          {{<a class="bp_external_decl_source_path" href={{href}}>{{.text source.text}}</a>}}
         | none =>
-          {{<span class="bp_external_decl_source_path">{{.text true source.text}}</span>}}
+          {{<span class="bp_external_decl_source_path">{{.text source.text}}</span>}}
       {{
         <span class="bp_external_decl_source">
           "defined in " {{sourceNode}}
@@ -421,13 +426,13 @@ private def renderExternalDeclWrapper
     <div class={{s!"declaration decl {kindClass}"}} data-decl={{decl.toString}} data-kind={{kindMarker}}>
       <div class="bp_external_decl_kicker">
         <div class="bp_external_decl_kicker_main">
-          <span class="bp_external_decl_kind">{{.text true kindMarker}}</span>
+          <span class="bp_external_decl_kind">{{.text kindMarker}}</span>
           {{headerMetaHtml}}
           {{headerSourceHtml}}
         </div>
         <div class="bp_external_decl_kicker_status">
           {{if let some badge := headerBadge? then
-            {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text true badge.text}}</span>}}
+            {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text badge.text}}</span>}}
           else .empty}}
         </div>
       </div>
@@ -467,7 +472,7 @@ private def renderFieldSignature
     else
       let inheritedRows : Array ExternalDeclHtml :=
         field.fieldFrom.toArray.map fun parent =>
-          {{<li><code>{{.text true parent.name.toString}}</code></li>}}
+          {{<li><code>{{.text parent.name.toString}}</code></li>}}
       {{
         <div class="inheritance docs">
           "Inherited from "
@@ -653,7 +658,7 @@ def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) :=
     let some cinfo := env.find? decl
       | return none
     match ← renderDeclHtmlDirectFromInfoE decl cinfo with
-    | .ok html => return some (.text false html.selfContained)
+    | .ok html => return some (.raw html.selfContained)
     | .error err =>
       logError m!"External declaration rendering failed for {decl}: {err.message}"
       return none
