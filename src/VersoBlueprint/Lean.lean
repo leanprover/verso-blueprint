@@ -105,7 +105,7 @@ private def quoteHighlightViaSerialization (hls : Highlighted) : DocElabM Term :
     let repr := hlToExport hls
     ``(hlFromExport! $(quote repr))
 
-private def toHighlightedLeanBlock (shouldShow : Bool) (hls : Highlighted) (str: StrLit) : DocElabM Term := do
+private def toHighlightedLeanBlock (shouldShow : Bool) (hls : Highlighted) (str : Lean.Doc.VersoCodeBlock) : DocElabM Term := do
   if !shouldShow then
     return ← ``(Block.concat #[])
 
@@ -118,7 +118,7 @@ private def toHighlightedLeanBlock (shouldShow : Bool) (hls : Highlighted) (str:
   let range := range.map (← getFileMap).utf8RangeToLspRange
   ``(Block.other
       (Verso.Genre.Manual.InlineLean.Block.lean $(← quoteHighlightViaSerialization hls) (some $(quote (← getFileName))) $(quote range))
-      #[Block.code $(quote str.getString)])
+      #[Block.code $(quote str.getVersoCodeBlock)])
 
 private def commandLineSpan (fileMap : FileMap) (stx : Syntax) : Nat :=
   match stx.getRange? with
@@ -289,9 +289,9 @@ private def cmdAnalysis (cmd : Syntax) (cmdIndex : Nat) : CmdAnalysis :=
     refs
   }
 
-def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabCommandResult :=
+def elabCommands (config : LeanBlockConfig) (str : Lean.Doc.VersoCodeBlock) : DocElabM ElabCommandResult :=
   withoutAsync <| do
-    PointOfInterest.save (← getRef) ((config.name.map (·.toString)).getD (abbrevFirstLine 20 str.getString))
+    PointOfInterest.save (← getRef) ((config.name.map (·.toString)).getD (abbrevFirstLine 20 str.getVersoCodeBlock))
       (kind := Lsp.SymbolKind.file)
       (detail? := some ("Lean code" ++ config.outlineMeta))
 
@@ -359,7 +359,7 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
           lastPos := (cmd.getTrailingTailPos?).getD lastPos
         pure hls
       else
-        pure <| Highlighted.text str.getString
+        pure <| Highlighted.text str.getVersoCodeBlock
 
     if let some name := config.name then
       let nonSilentMsgs := cmdState.messages.toList.filter (!·.isSilent)
@@ -368,7 +368,7 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
 
     reportMessages cmdState.messages
     if config.show then
-      warnLongLines col? str
+      warnLongLines str
 
     let block ← toHighlightedLeanBlock config.show hls str
     let (definedDefs, definedTheorems) ←

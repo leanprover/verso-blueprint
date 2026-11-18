@@ -217,7 +217,7 @@ private def clientText (text : String) : Verso.Output.Html :=
 private def clientTag
     (tagName : String) (attrs : Array (String × String)) (body : Verso.Output.Html) :
     Verso.Output.Html :=
-  Verso.Output.Html.tag tagName attrs body
+  Lean.Html.element tagName attrs body
 
 private def clientExample
     (exampleName label facet title bodyKey note : String)
@@ -292,7 +292,7 @@ private def previewModuleExample : Verso.Output.Html :=
     (Verso.Output.Html.seq #[titleNode, noteNode, summaryNode, bodyNode])
 
 private def previewModuleExampleScript : Verso.Output.Html :=
-  clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
+  clientTag "script" #[("type", "module")] <| Lean.Html.raw r##"
 const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
 
 // Find the showcase card that will display this module-based result.
@@ -339,7 +339,7 @@ if (card) {
 "##
 
 private def graphModuleExampleScript : Verso.Output.Html :=
-  clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
+  clientTag "script" #[("type", "module")] <| Lean.Html.raw r##"
 const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
 
 // Find the showcase card that already displays graph manifest data.

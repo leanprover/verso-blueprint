@@ -169,8 +169,8 @@ pub fn unrendered_attachment() {}
   let (blocks, state) ← traverseManualDocBlocksAndState manualImpls hoverAvailabilityDoc
     (fun error => errors.modify (·.push error))
   let fullHtml ← renderManualBlocksHtmlWithState blocks manualImpls state
-  unless !hasSubstr fullHtml.asString "Theorem 0" &&
-      hasSubstr fullHtml.asString "Rust code for hover:unrendered" do
+  unless !hasSubstr fullHtml.render "Theorem 0" &&
+      hasSubstr fullHtml.render "Rust code for hover:unrendered" do
     throw <| IO.userError "Related or Rust panels invented a document number"
   let some (.concat #[.other _ references]) := blocks.back?
     | throw <| IO.userError "Missing authored reference paragraphs"
@@ -187,7 +187,7 @@ pub fn unrendered_attachment() {}
     (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
   for (reference, (label, key, linked)) in references.zip cases do
     let html ← renderManualBlocksHtmlWithState #[reference] manualImpls state
-    let html := html.asString
+    let html := html.render
     let tex ← renderManualBlocksTeXWithState manualImpls #[reference] state
     unless hasSubstr html "custom prose" && hasSubstr tex "custom prose" &&
         hasSubstr html "custom dependency" && hasSubstr tex "custom dependency" &&
@@ -403,8 +403,8 @@ The target is elaborated after the reference.
   let forward : Doc.VersoDoc Genre.Manual := .mk (fun _ => part) "{}"
   let (blocks, state) ← traverseManualDocBlocksAndState manualImpls forward logError (model := model)
   let html ← renderManualBlocksHtmlWithState blocks manualImpls state
-  unless (← errors.get).isEmpty && hasSubstr html.asString "Theorem 1" &&
-      hasSubstr html.asString "reference_known_omitted" &&
+  unless (← errors.get).isEmpty && hasSubstr html.render "Theorem 1" &&
+      hasSubstr html.render "reference_known_omitted" &&
       (TraversalIndex.Nodes.href? state `reference_known_omitted).isNone do
     throw <| IO.userError "Forward references or known omitted nodes were rejected"
   let .ok omitted := RenderingResolution.canonical state `reference_known_omitted
@@ -445,7 +445,7 @@ The target is elaborated after the reference.
         manualImpls relationState
       let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
         toJson relation.label.toString, toJson relation.href]).compress.dropEnd 1 |>.toString
-      unless relation.title == "odd namespace.odd label" && hasSubstr panel.asString rowPrefix do
+      unless relation.title == "odd namespace.odd label" && hasSubstr panel.render rowPrefix do
         throw <| IO.userError "Live relation and manifest label fallbacks disagree"
   let markup : Data.ExternalMarkupData := {
     label := qualified
@@ -501,7 +501,7 @@ The target is elaborated after the reference.
         errors.set #[]
         let html ← renderManualBlocksHtmlWithState references impls state (logError := logError)
         unless (← errors.get).any (hasSubstr · expected) &&
-            !hasSubstr html.asString "invalid authored reference" do
+            !hasSubstr html.render "invalid authored reference" do
           throw <| IO.userError "HTML rendering concealed a required reference lookup failure"
       let texError? ← try
         let _ ← renderManualBlocksTeXWithState manualImpls references state

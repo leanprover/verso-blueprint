@@ -103,7 +103,7 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
   open Verso.Output.Html in
   items.map fun item =>
     let nameNode : Output.Html :=
-      let txt := {{<code>{{.text true s!"{item.displayName}"}}</code>}}
+      let txt := {{<code>{{.text s!"{item.displayName}"}}</code>}}
       match item.href with
       | some href =>
         Informal.LeanCodeLink.renderResolved
@@ -115,7 +115,7 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
       <li class="bp_code_decl_item">
         <span class="bp_code_decl_name">{{nameNode}}</span>
         <span class={{s!"bp_code_decl_status {declSummaryStatusClass item}"}}>
-          {{.text true s!"[{declSummaryStatusText item}]"}}
+          {{.text s!"[{declSummaryStatusText item}]"}}
         </span>
       </li>
     }}
@@ -148,7 +148,7 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
       else
         hrefOf failure.decl.written
     let declNode :=
-      let txt := {{<code>{{.text true s!"{failure.decl.written}"}}</code>}}
+      let txt := {{<code>{{.text s!"{failure.decl.written}"}}</code>}}
       match href with
       | some href =>
         Informal.LeanCodeLink.renderResolved
@@ -156,7 +156,7 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
           (previewTitle := s!"{failure.decl.canonical}")
       | none => txt
     codeHoverListItem {{
-      <span>{{declNode}}": " {{.text true failure.message}}</span>
+      <span>{{declNode}}": " {{.text failure.message}}</span>
     }}
 
 private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDeclData)
@@ -298,7 +298,7 @@ private def renderCodeEntryNode (href : Option String) (title : String) (visual 
     (if visual.absent then " bp_code_link_empty" else "")
   let body : Output.Html := {{
     {{renderCodeHeadingRenderHealthBadge renderHealth}}
-    <span class="bp_code_status_symbol">{{.text true visual.symbol}}</span>
+    <span class="bp_code_status_symbol">{{.text visual.symbol}}</span>
     <span class="bp_code_link_label">"L∃∀N"</span>
   }}
   match href with
@@ -573,8 +573,8 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
     appendRenderHealthSummary presentation.title renderHealth
   let badge : Output.Html := {{
     <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {presentation.className}"}} title={{badgeTitle}}>
-      <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text true presentation.iconText}}</span>
-      <span class="bp_external_status_badge_text">{{.text true presentation.badgeText}}</span>
+      <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text presentation.iconText}}</span>
+      <span class="bp_external_status_badge_text">{{.text presentation.badgeText}}</span>
     </span>
   }}
   {

@@ -14,7 +14,7 @@ open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 
 private def textHtml (text : String) : Output.Html :=
-  .text true text
+  .text text
 
 private def renderedHeaderExtras : String :=
   (renderHeaderExtras {
@@ -27,7 +27,7 @@ private def renderedHeaderExtras : String :=
       HeaderExtra.custom (Lean.Name.mkSimple "source") (textHtml "source")
         (order := 25) (wrapperClass := "etingof-extra")
     ]
-  }).asString
+  }).render
 
 /-- info: true -/
 #guard_msgs in

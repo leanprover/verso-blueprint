@@ -237,7 +237,7 @@ def summaryPreviewWrap
         if let some previewKey := previewLookupKey? then
           attrs := attrs.push ("data-bp-preview-key", previewKey)
         pure attrs
-      .tag "span" attrs labelNode
+      .element "span" attrs labelNode
   | none => {{
       <span class="bp_summary_preview_wrap">
         {{labelNode}}
@@ -331,7 +331,7 @@ def inlinePreviewRef
     (previewHeaderHref? : Option String := none)
     (previewFooterHtml? : Option String := none) :
     Verso.Output.Html :=
-  .tag "span"
+  .element "span"
     (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewHeaderLabel?
       previewHeaderHref? previewFooterHtml?)
     node

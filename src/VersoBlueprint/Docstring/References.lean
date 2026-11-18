@@ -22,7 +22,7 @@ def Reference.label (reference : Reference) : Data.Label :=
   reference.target.elim id (·.label)
 
 private def referenceInline (target : Data.Label ⊕ Data.UseRef)
-    (contents : TSyntaxArray `inline) :
+    (contents : TSyntaxArray ``Lean.Doc.Parser.inline) :
     Lean.Doc.DocM (Lean.Doc.Inline Lean.ElabInline) := do
   let reference : Reference := { target, hasCustomText := !contents.isEmpty }
   let contents ← contents.mapM Lean.Doc.elabInline
@@ -36,7 +36,7 @@ private def referenceInline (target : Data.Label ⊕ Data.UseRef)
 /-- Preserve dependency metadata without requiring an enclosing Manual directive. -/
 @[doc_role Informal.uses]
 def uses (label : StrLit) (origin : String := "manual") (intent : String := "regular")
-    (contents : TSyntaxArray `inline) :
+    (contents : TSyntaxArray ``Lean.Doc.Parser.inline) :
     Lean.Doc.DocM (Lean.Doc.Inline Lean.ElabInline) := do
   let cfg := UsesConfig.ofArgs { val := label.getString, «syntax» := label.raw }
     (some origin) (some intent)
@@ -45,7 +45,7 @@ def uses (label : StrLit) (origin : String := "manual") (intent : String := "reg
 
 /-- Preserve a Blueprint prose link without creating a dependency edge. -/
 @[doc_role Informal.bpref]
-def bpref (label : StrLit) (contents : TSyntaxArray `inline) :
+def bpref (label : StrLit) (contents : TSyntaxArray ``Lean.Doc.Parser.inline) :
     Lean.Doc.DocM (Lean.Doc.Inline Lean.ElabInline) :=
   referenceInline (.inl (LabelNameParsing.parse label.getString)) contents
 

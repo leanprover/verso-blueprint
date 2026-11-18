@@ -70,10 +70,10 @@ private def inlineCode (declStatus : Data.ProvedStatus) : InlineCodeBlocks :=
 
 private def codeEntryHtml (label : Name) (kind : Data.NodeKind) (source : Option BlockCodeData) : String :=
   let data := statementData label kind source
-  (CodeSummary.renderParts data { source } (fun _ => none)).codeEntry.asString
+  (CodeSummary.renderParts data { source } (fun _ => none)).codeEntry.render
 
 private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String :=
-  (CodeSummary.renderPanelIndicator label { source := some source } (fun _ => none)).indicator.asString
+  (CodeSummary.renderPanelIndicator label { source := some source } (fun _ => none)).indicator.render
 
 /-- info: true -/
 #guard_msgs in

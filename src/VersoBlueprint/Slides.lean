@@ -95,14 +95,14 @@ private def slidesMainWithBlueprintRenderer
   let render : Verso.Doc.Html.HtmlT VersoSlides.Slides (Verso.BuildLogT IO) Verso.Output.Html :=
     VersoSlides.renderDocument config doc
   let (slidesHtml, hoverState) ←
-    ((render.run ctx).run initialHoverState).run logger
+    ((render.run ctx) initialHoverState).run logger
   let title := VersoSlides.inlinesToPlainText doc.title
   let fullHtml := VersoSlides.renderFullHtml config title slidesHtml traverseState.cssBlocks
   let dir := config.outputDir
   if !(← dir.pathExists) then
     IO.FS.createDirAll dir
   let indexPath := dir / "index.html"
-  IO.FS.writeFile indexPath ("<!doctype html>\n" ++ fullHtml.asString)
+  IO.FS.writeFile indexPath ("<!doctype html>\n" ++ fullHtml.render)
   IO.FS.writeFile (dir / "-verso-docs.json") (toString hoverState.dedup.docJson)
   VersoSlides.writeVendoredAssets dir config.theme
   writeSlideAssets dir assetPlan

@@ -25,7 +25,7 @@ private def marker := "verso-blueprint-preview-choice"
 /-- Retain both presentations until resource availability is known. There is no
 mutable session, side table, or function stored in the resulting fragment. -/
 def deferred : Render := fun key present absent =>
-  .tag marker #[("key", key.value)] (.seq #[present (), absent ()])
+  .element marker #[("key", key.value)] (.seq #[present (), absent ()])
 
 /-- Blank text under the browser cache's `String.trim()` contract. Includes
 ECMAScript whitespace and line terminators, including nonbreaking space and BOM. -/
@@ -39,9 +39,9 @@ def textIsBlank (text : String) : Bool :=
 /-- Recognize blank fragments structurally, without serializing choices.
 Finalization rejects choices whose branches disagree about body presence. -/
 partial def htmlIsBlank : Html → Bool
-  | .text _ text => textIsBlank text
+  | .text text | .raw text => textIsBlank text
   | .seq children => children.all htmlIsBlank
-  | .tag name attrs contents =>
+  | .element name attrs contents =>
     if name != marker then false
     else
       match attrs, contents with
@@ -55,9 +55,10 @@ selected path or branches that disagree about body presence are diagnosed.
 Discarded alternatives are not recursively validated. Raw HTML stays opaque.
 The result still has type `Html`: callers must enforce this serialization boundary. -/
 partial def finish (available : PreviewKey → Bool) : Html → Except String Html
-  | .text escape text => pure (.text escape text)
+  | .text text => pure (.text text)
+  | .raw text => pure (.raw text)
   | .seq children => .seq <$> children.mapM (finish available)
-  | .tag name attrs contents => do
+  | .element name attrs contents => do
     if name == marker then
       let (#[ ("key", key) ], .seq #[present, absent]) := (attrs, contents)
         | throw "Malformed Blueprint preview choice"
@@ -67,6 +68,6 @@ partial def finish (available : PreviewKey → Bool) : Html → Except String Ht
         | throw "Empty Blueprint preview choice key"
       finish available (if available key then present else absent)
     else
-      return .tag name attrs (← finish available contents)
+      return .element name attrs (← finish available contents)
 
 end Informal.PreviewResources

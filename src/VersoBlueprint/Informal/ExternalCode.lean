@@ -179,7 +179,7 @@ private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclSta
 
 private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
   open Verso.Output.Html in
-  let declTxt := {{<code>{{.text true s!"{item.decl.written}"}}</code>}}
+  let declTxt := {{<code>{{.text s!"{item.decl.written}"}}</code>}}
   if let some href := item.href then
     Informal.LeanCodeLink.renderResolved
       item.decl.canonical declTxt "" (some href)
@@ -206,7 +206,7 @@ private def externalDeclHead (item : LinkedExternalDecl) (status : ExternalDeclS
   {{
     <div class="bp_external_decl_head">
       {{externalDeclNode item}}
-      <span class={{status.className}}>{{.text true status.panelText}}</span>
+      <span class={{status.className}}>{{.text status.panelText}}</span>
     </div>
   }}
 
@@ -216,7 +216,7 @@ private def externalDeclRenderedMeta
   let metaText := status.panelText
   let statusBadge : Output.Html :=
     if !metaText.isEmpty then
-      {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {status.className}"}}>{{.text true metaText}}</span>}}
+      {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {status.className}"}}>{{.text metaText}}</span>}}
     else
       .empty
   let sourceRef? := externalDeclSourceRef? item
@@ -240,11 +240,11 @@ private def externalDeclRenderedWith [Monad m]
   match item.decl.render with
   | .ok renderedHtml =>
     let renderedHtml ← renderHtml renderedHtml
-    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
+    pure <| .element "div" #[("class", "bp_external_decl_rendered")] (.raw renderedHtml)
   | .error err =>
-    pure <| .tag "pre"
+    pure <| .element "pre"
       #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
-      (.text true s!"Render failed: {err.message}")
+      (.text s!"Render failed: {err.message}")
 
 private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
   Id.run <| externalDeclRenderedWith (fun renderedHtml => pure renderedHtml.selfContained) item
@@ -253,7 +253,7 @@ private def registerPageHoverPayload [Monad m]
     (payload : ExternalDeclHoverPayload) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Nat :=
   modifyGet fun st =>
-    let (id, dedup) := st.dedup.insert (.text false payload.html)
+    let (id, dedup) := st.dedup.insert (.raw payload.html)
     (id, { st with dedup })
 
 private def renderedHtmlWithHoverTable [Monad m]
@@ -297,7 +297,7 @@ private def missingExternalDeclBody : Output.Html :=
   open Verso.Output.Html in
   {{
     <pre class="bp_external_decl_stmt bp_code_hover_none">
-      {{.text true s!"declaration not found ({Data.ExternalDeclLookupError.message .notPresentAtRegistration})"}}
+      {{.text s!"declaration not found ({Data.ExternalDeclLookupError.message .notPresentAtRegistration})"}}
     </pre>
   }}
 
@@ -366,7 +366,7 @@ private abbrev ExternalDeclCacheHoverRender :=
 private def registerCacheHoverPayload (payload : ExternalDeclHoverPayload) :
     ExternalDeclCacheHoverRender Nat :=
   modifyGet fun st =>
-    let (id, dedup) := st.dedup.insert (.text false payload.html)
+    let (id, dedup) := st.dedup.insert (.raw payload.html)
     (id, { st with dedup })
 
 private def renderedHtmlWithCacheHovers

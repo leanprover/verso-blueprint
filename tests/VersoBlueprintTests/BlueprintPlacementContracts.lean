@@ -94,7 +94,7 @@ private def combine (docs : Array (Doc.VersoDoc Genre.Manual)) : Doc.VersoDoc Ge
     let cached ← Graft.renderNodeFromManifestCache {}
       (Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)) node
     unless entry.foldCodeBlock == defaultFold &&
-        hasSubstr cached.asString "open=\"open\"" == !defaultFold do
+        hasSubstr cached.render "open=\"open\"" == !defaultFold do
       throw <| IO.userError "Cached presentation disagrees with the selected occurrence"
 
 set_option verso.blueprint.foldProofBlocks false in
@@ -130,8 +130,8 @@ Proof with its own folded presentation.
     let some entry := files.manifest.findEntry? node.key | throw <| IO.userError "Missing proof cache"
     let cached ← Graft.renderNodeFromManifestCache {}
       (Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)) node
-    unless entry.foldProofBlock && !hasSubstr cached.asString "open=\"open\"" &&
-        hasSubstr cached.asString "Proof with its own folded presentation." do
+    unless entry.foldProofBlock && !hasSubstr cached.render "open=\"open\"" &&
+        hasSubstr cached.render "Proof with its own folded presentation." do
       throw <| IO.userError "Exported proof lost its facet-local presentation"
 
 -- These chapters were elaborated independently, not fabricated as completed
@@ -227,7 +227,7 @@ private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Bloc
       -- not accidentally satisfy the hover-trigger assertion.
       let references ← renderManualBlocksHtmlWithState
         (blocks.flatMap proseParagraphs) impls state
-      unless countSubstr references.asString s!"data-bp-preview-key=\"{node.key}\"" == 2 do
+      unless countSubstr references.render s!"data-bp-preview-key=\"{node.key}\"" == 2 do
         throw <| IO.userError "Ordinary references did not request the code-only statement preview"
       for mode in #[ExternalMarkupRender.Mode.markdown, .none] do
         let files ← PreviewManifest.buildPreviewDataFiles impls (fun e => throw <| IO.userError e)
@@ -242,12 +242,12 @@ private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Bloc
           throw <| IO.userError "Code-only hover fallback disagrees with exported body selection"
         let cached ← Graft.renderNodeFromManifestCache {}
           (Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)) node
-        unless hasSubstr cached.asString "exportedUndocumentedDefinition" &&
+        unless hasSubstr cached.render "exportedUndocumentedDefinition" &&
             !entry.leanCodePreviewKeys.isEmpty &&
-            !hasSubstr cached.asString "Blueprint node not found" do
+            !hasSubstr cached.render "Blueprint node not found" do
           throw <| IO.userError "Witness attachment broke exported graft reuse"
         if mode == .markdown then
-          unless hasSubstr direct.asString "Witness marker" == hasSubstr cached.asString "Witness marker" do
+          unless hasSubstr direct.render "Witness marker" == hasSubstr cached.render "Witness marker" do
             throw <| IO.userError "Direct and exported witness body availability disagree"
 
 -- Persisted Manual blocks round-trip structurally, including an explicitly

@@ -40,7 +40,6 @@ open Verso Doc Elab
 open Verso.Genre Manual
 open Verso.ArgParse
 open Verso.Output.Html
-open Lean.Doc.Syntax
 open Lean Elab
 
 namespace Informal
@@ -189,10 +188,10 @@ def Block.withPreviewAvailability (impls : ExtensionImpls)
 
 private structure ParsedDirectiveContents where
   sourceRef? : Option Source.Ref := none
-  body : Array (TSyntax `block) := #[]
+  body : Array (Lean.Doc.VersoBlock) := #[]
 
 private def parseDirectiveSourceMetadata
-    (cfg : Config) (contents : Array (TSyntax `block)) : DocElabM ParsedDirectiveContents := do
+    (cfg : Config) (contents : Array (Lean.Doc.VersoBlock)) : DocElabM ParsedDirectiveContents := do
   let leading ← Source.Metadata.splitLeadingMetadata contents
   let sourceRef? ←
     match leading.term? with

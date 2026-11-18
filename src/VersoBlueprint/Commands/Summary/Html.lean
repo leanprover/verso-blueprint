@@ -208,7 +208,7 @@ private def summaryMetadataBadges (metadata : MetadataPresentation) : Array Outp
 
 private def summaryMetadataActionLinks (metadata : MetadataPresentation) : Array Output.Html :=
   metadata.summaryActionLinks.map fun action =>
-    {{ <a class="bp_code_link" href={{action.href}}>{{.text true action.label}}</a> }}
+    {{ <a class="bp_code_link" href={{action.href}}>{{.text action.label}}</a> }}
 
 private def summaryActionLinksRow (actionLinks : Array Output.Html) : Output.Html :=
   if Array.isEmpty actionLinks then
@@ -225,11 +225,11 @@ def summaryCard (label value : String) (status? : Option String := Option.none)
     (className : String := summaryCardClass) : Output.Html :=
   let statusNode : Output.Html :=
     match status? with
-    | Option.some status => {{<span class="bp_summary_status">{{.text true status}}</span>}}
+    | Option.some status => {{<span class="bp_summary_status">{{.text status}}</span>}}
     | Option.none => .empty
   {{ <div class={{className}}>
-      <span class="bp_summary_label">{{.text true label}}</span>
-      <span class="bp_summary_value">{{.text true value}}</span>
+      <span class="bp_summary_label">{{.text label}}</span>
+      <span class="bp_summary_value">{{.text value}}</span>
       {{statusNode}}
     </div> }}
 
@@ -277,7 +277,7 @@ def summaryDetailsList (title : String) (rows : Array Output.Html)
     else
       #[("class", className)]
   {{ <details {{attrs}}>
-      <summary>{{.text true title}}</summary>
+      <summary>{{.text title}}</summary>
       <ul class="bp_summary_list">
         {{rows}}
       </ul>
@@ -291,7 +291,7 @@ def summarySection (title : String) (content : Output.Html)
     else
       #[("class", "bp_summary_section")]
   {{ <details {{attrs}}>
-      <summary>{{.text true title}}</summary>
+      <summary>{{.text title}}</summary>
       {{content}}
     </details> }}
 
@@ -328,7 +328,7 @@ private def summaryItemBody (body : Output.Html) : Output.Html :=
   {{ <div class="bp_summary_item_body">{{body}}</div> }}
 
 private def summaryItemTextBody (text : String) : Output.Html :=
-  summaryItemBody (.text true text)
+  summaryItemBody (.text text)
 
 private def summaryItemActions (body : Output.Html) : Output.Html :=
   {{ <div class="bp_summary_item_actions">{{body}}</div> }}
@@ -353,7 +353,7 @@ private def SummaryHtmlContext.associatedDecls (ctx : SummaryHtmlContext) (label
 private def SummaryHtmlContext.leanRow (ctx : SummaryHtmlContext) (label : Name) (kind : String)
     (leanObjects : List Name) : Output.Html :=
   let entryRef := ctx.entryRef label
-  summaryItemShell entryRef (some (.text true s!"({kind})"))
+  summaryItemShell entryRef (some (.text s!"({kind})"))
     .empty #[] #[ctx.associatedDecls label leanObjects]
 
 private def SummaryHtmlContext.leanRows (ctx : SummaryHtmlContext) (items : List IndexItem) :
@@ -404,13 +404,13 @@ private def SummaryHtmlContext.incompleteRow (ctx : SummaryHtmlContext) (item : 
   let badgeClass := summaryBadgeClassForStatus item.status
   let body := {{
     <div class="bp_summary_item_body">
-      {{.text true declPrefix}} {{declLink}} " "
+      {{.text declPrefix}} {{declLink}} " "
       <span class={{badgeClass}}>
         s!"[{if item.isTheorem then "theorem/lemma" else "definition"}; {statusLabel}; {whereTxt}; refs: {refsTxt}]"
       </span>
     </div>
   }}
-  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body #[] #[]
+  pure <| summaryItemShell entryRef (some (.text s!"({item.kind})")) body #[] #[]
 
 private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (label written canonical : Name) :
     Output.Html :=
@@ -432,11 +432,11 @@ private def SummaryHtmlContext.externalDeclIssueRow (ctx : SummaryHtmlContext) (
   let declNode := ctx.externalDeclNode label written canonical
   let body := {{
     <div class="bp_summary_item_body">
-        {{.text true bodyPrefix}} {{declNode}} " "
+        {{.text bodyPrefix}} {{declNode}} " "
         {{badge}}
     </div>
   }}
-  summaryItemShell entryRef (some (.text true s!"({kind})")) body #[] #[actions]
+  summaryItemShell entryRef (some (.text s!"({kind})")) body #[] #[actions]
 
 private def SummaryHtmlContext.missingRow (ctx : SummaryHtmlContext) (item : MissingLeanDeclItem) :
     Output.Html :=
@@ -447,7 +447,7 @@ private def SummaryHtmlContext.renderFailureRow (ctx : SummaryHtmlContext) (item
     Output.Html :=
   ctx.externalDeclIssueRow item.label item.kind item.written item.canonical
     "External render failed for " (summaryWarnBadge "[render failure]")
-    (summaryItemActions {{<code>{{.text true item.message}}</code>}})
+    (summaryItemActions {{<code>{{.text item.message}}</code>}})
 
 private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : PriorityItem) :
     Output.Html :=
@@ -461,7 +461,7 @@ private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : Pr
       summaryMetricBadge "stage" item.stage,
       summaryMetricBadge "statement" item.statementStatus
     ] ++ summaryUsageBadges item.directUses item.downstreamUses ++ proofBadges
-  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+  summaryItemShell entryRef (some (.text s!"({item.kind})"))
     (summaryItemTextBody s!"Ready for {item.stage} work.")
     badges
     #[ctx.associatedDecls item.label item.leanObjects, summaryActionLinksRow actionLinks]
@@ -474,7 +474,7 @@ private def SummaryHtmlContext.usageRow (ctx : SummaryHtmlContext) (item : Usage
       summaryWarnMetricBadge primaryLabel primaryCount,
       summaryMetricBadge secondaryLabel secondaryCount
     ] ++ summaryUsageBadges item.directUses item.downstreamUses
-  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+  summaryItemShell entryRef (some (.text s!"({item.kind})"))
     (summaryItemTextBody bodyText)
     badges
     #[ctx.associatedDecls item.label item.leanObjects]
@@ -500,7 +500,7 @@ private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
       summaryMetricBadge "statement deps" item.statementDeps,
       summaryMetricBadge "proof deps" item.proofDeps
     ] ++ summaryUsageBadges item.directUses item.downstreamUses
-  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+  summaryItemShell entryRef (some (.text s!"({item.kind})"))
     (summaryItemTextBody "Prerequisite fan-in measured from the current statement/proof dependency graph.")
     badges
     #[ctx.associatedDecls item.label item.leanObjects]
@@ -514,7 +514,7 @@ private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
       summaryMetricBadge "total debt" item.totalDebt
     ]
   summaryItemShell
-    (.text true item.header)
+    (.text item.header)
     (some {{<code>s!"{item.parent}"</code>}})
     (summaryItemTextBody "Grouped proof/code debt derived from the current incomplete-declaration snapshots.")
     badges
@@ -533,7 +533,7 @@ private def summaryOwnerRollupRow (item : OwnerRollupItem) : Output.Html :=
   let badges :=
     summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
   summaryItemShell
-    (.text true item.displayName)
+    (.text item.displayName)
     (some {{<code>s!"{item.owner}"</code>}})
     .empty
     badges
@@ -555,7 +555,7 @@ private def SummaryHtmlContext.metadataEntryRow (ctx : SummaryHtmlContext) (item
   let metadata := metadataPresentationOfMetadataEntryItem item
   let badges := summaryMetadataBadges metadata
   let actionLinks := summaryMetadataActionLinks metadata
-  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+  summaryItemShell entryRef (some (.text s!"({item.kind})"))
     (summaryItemTextBody bodyText)
     badges
     #[ctx.associatedDecls item.label item.leanObjects, summaryActionLinksRow actionLinks]
@@ -579,11 +579,11 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
   match item.nextPriority? with
   | Option.none =>
     summaryItemShell
-      (.text true item.header)
+      (.text item.header)
       (some {{<code>s!"{item.parent}"</code>}})
       (summaryItemTextBody "Grouped view over entries sharing the same parent.")
       badges
-      #[summaryItemActions (.text true "Next: no ready child currently unlocks downstream work.")]
+      #[summaryItemActions (.text "Next: no ready child currently unlocks downstream work.")]
   | Option.some next =>
     let nextRef := ctx.entryRef next.label
     let priorityBadges : Array Output.Html :=
@@ -591,7 +591,7 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
       | Option.some priority => #[summaryWarnMetricBadge "priority" priority]
       | Option.none => #[]
     summaryItemShell
-      (.text true item.header)
+      (.text item.header)
       (some {{<code>s!"{item.parent}"</code>}})
       (summaryItemTextBody "Grouped view over entries sharing the same parent.")
       badges

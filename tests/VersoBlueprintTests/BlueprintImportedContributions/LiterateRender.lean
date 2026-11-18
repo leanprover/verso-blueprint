@@ -121,8 +121,8 @@ theorem omittedMixedSorry : True := by sorry
         | throw <| IO.userError "Missing captured graph node"
       unless health.totalDecls == expectedCount && health.anyGapCount == 1 &&
           graphNode.proofStatus == .incomplete &&
-          hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
-          hasSubstr html.asString declaration.toString &&
+          hasSubstr heading.codeEntry.render "bp_code_link_status_warning" &&
+          hasSubstr html.render declaration.toString &&
           model.summary.incompleteDetails.any (·.decl == declaration) do
         throw <| IO.userError s!"Heading, summary, and graph disagree about omitted declaration {declaration}"
       let some entry := files.manifest.findEntry? (PreviewCache.key label .statement)
@@ -138,7 +138,7 @@ theorem omittedMixedSorry : True := by sorry
       let panelHealth := Graph.codeHealthOfBlockSource data.kind {} content.codeData.nonempty?
       unless panelHealth.totalDecls == expectedCount - 1 && panelHealth.anyGapCount == 0 do
         throw <| IO.userError "A manifest-backed code panel counted an omitted declaration"
-      let shell := (PreviewManifest.BlockRender.renderWithRenderedContent {} entry content).asString
+      let shell := (PreviewManifest.BlockRender.renderWithRenderedContent {} entry content).render
       unless hasSubstr shell "bp_code_link_status_warning" &&
           (expectedCount == 1 || hasSubstr shell "bp_external_status_ok") do
         throw <| IO.userError "Manifest-backed heading and visible panel lost their distinct status scopes"

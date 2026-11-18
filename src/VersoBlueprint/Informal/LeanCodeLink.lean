@@ -49,8 +49,8 @@ private def renderLinkNode
     | some title => attrs.push ("title", title)
     | none => attrs
   match href? with
-  | some href => .tag "a" (attrs.push ("href", href)) node
-  | none => .tag "span" attrs node
+  | some href => .element "a" (attrs.push ("href", href)) node
+  | none => .element "span" attrs node
 
 def renderResolved
     (decl : Name)

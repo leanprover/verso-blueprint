@@ -59,12 +59,12 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
     let missing? ← (Informal.renderDeclHtmlNodeDirect? `No.Such.Declaration).run'
     let natAddHasPayload :=
       match natAdd? with
-      | some html => html.asString.length > 0
+      | some html => html.render.length > 0
       | none => false
     let natAddHasLocalHover :=
       match natAdd? with
       | some html =>
-        let out := html.asString
+        let out := html.render
         out.contains "class=\"hover-info\"" && !out.contains "data-verso-hover="
       | none => false
     let externalWrapperHtmlOk :=
@@ -75,17 +75,17 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         let badUnsafeDef := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">unsafe def</span> <div class=\"wide-only\">"
         let badUnsafeAbbrev := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">unsafe abbrev</span> <div class=\"wide-only\">"
         let badTheorem := "<pre class=\"bp_external_decl_signature signature hl lean block\"><span class=\"keyword token\">theorem</span> <div class=\"wide-only\">"
-        !natAdd.asString.contains badWide &&
-        !sameDef.asString.contains badWide &&
-        !sameAbbrev.asString.contains badAbbrev &&
-        !sameUnsafeDef.asString.contains badUnsafeDef &&
-        !sameUnsafeAbbrev.asString.contains badUnsafeAbbrev &&
-        !sameThm.asString.contains badTheorem
+        !natAdd.render.contains badWide &&
+        !sameDef.render.contains badWide &&
+        !sameAbbrev.render.contains badAbbrev &&
+        !sameUnsafeDef.render.contains badUnsafeDef &&
+        !sameUnsafeAbbrev.render.contains badUnsafeAbbrev &&
+        !sameThm.render.contains badTheorem
       | _, _, _, _, _, _ => false
     let abbrevUsesAbbrevRendering :=
       match sameAbbrev? with
       | some sameAbbrev =>
-        let out := sameAbbrev.asString
+        let out := sameAbbrev.render
         out.contains "sameModuleRenderAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
@@ -96,7 +96,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
     let unsafeDefUsesUniformDefinitionRendering :=
       match sameUnsafeDef? with
       | some sameUnsafeDef =>
-        let out := sameUnsafeDef.asString
+        let out := sameUnsafeDef.render
         out.contains "sameModuleRenderUnsafeDef" &&
           out.contains "class=\"declaration decl def\"" &&
           out.contains "data-kind=\"def\"" &&
@@ -107,7 +107,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
     let unsafeAbbrevUsesUniformAbbrevRendering :=
       match sameUnsafeAbbrev? with
       | some sameUnsafeAbbrev =>
-        let out := sameUnsafeAbbrev.asString
+        let out := sameUnsafeAbbrev.render
         out.contains "sameModuleRenderUnsafeAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
@@ -119,7 +119,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
     let structureUsesFieldFirstRendering :=
       match samePackage? with
       | some samePackage =>
-        let out := samePackage.asString
+        let out := samePackage.render
         out.contains "class=\"declaration decl structure\"" &&
           out.contains "data-kind=\"structure\"" &&
           out.contains "<span class=\"bp_external_decl_kind\">structure</span>" &&
@@ -132,7 +132,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
     let theoremDocstringAvailableForRuntimeMarkdown :=
       match samePackageExists? with
       | some samePackageExists =>
-        let out := samePackageExists.asString
+        let out := samePackageExists.render
         out.contains "<pre class=\"docstring\">Given a counterexample-shaped input `x + y = y + x`" &&
           out.contains "produce a package." &&
           !out.contains "<span class=\"bp_external_decl_header_meta\">(docstring)</span>"
@@ -221,10 +221,10 @@ private def htmlTestContext :
           none
       | .error _ => none)
       | return false
-    let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.asString
+    let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.render
     let (cacheHtml, cacheHoverState) :=
       Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[ref, ref] {}
-    let cacheHtml := cacheHtml.asString
+    let cacheHtml := cacheHtml.render
     let renderPage (decls : Array Informal.Data.ExternalRef) :
         Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Verso.Output.Html :=
       Informal.ExternalCode.renderPanelWithPageHovers
@@ -237,7 +237,7 @@ private def htmlTestContext :
         Verso.Output.Html × Verso.Code.Hover.State Verso.Output.Html :=
       Id.run <| (renderPage #[ref, ref] htmlTestContext).run {}
     let hoverState := result.snd
-    let pageHtml := result.fst.asString
+    let pageHtml := result.fst.render
     let failedRef : Informal.Data.ExternalRef := {
       (Informal.Data.ExternalRef.ofName `Ext.external.strategy_render_fail) with
         present := true
@@ -247,13 +247,13 @@ private def htmlTestContext :
     let expectedError :=
       "Render failed: Ext.external.strategy_render_fail: synthetic render failure"
     let previewErrorHtml :=
-      Informal.ExternalCode.renderPreviewHtml #[failedRef] |>.asString
+      Informal.ExternalCode.renderPreviewHtml #[failedRef] |>.render
     let (cacheErrorHtml, _) :=
       Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[failedRef] {}
-    let cacheErrorHtml := cacheErrorHtml.asString
+    let cacheErrorHtml := cacheErrorHtml.render
     let (pageErrorHtml, _) :=
       Id.run <| (renderPage #[failedRef] htmlTestContext).run {}
-    let pageErrorHtml := pageErrorHtml.asString
+    let pageErrorHtml := pageErrorHtml.render
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&

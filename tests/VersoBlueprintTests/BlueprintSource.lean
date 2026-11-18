@@ -335,13 +335,13 @@ private def checkSpanValidation (name : String) (span : Informal.Source.Span)
       ]
     }
     let singleHtml? :=
-      (Informal.renderSourceHeaderExtra? #[paperSource]).map (·.html.asString)
+      (Informal.renderSourceHeaderExtra? #[paperSource]).map (·.html.render)
     let multipleHtml? :=
-      (Informal.renderSourceHeaderExtra? #[paperSource, notesSource]).map (·.html.asString)
+      (Informal.renderSourceHeaderExtra? #[paperSource, notesSource]).map (·.html.render)
     let uncitedHtml? :=
-      (Informal.renderSourceHeaderExtra? #[uncitedSource]).map (·.html.asString)
+      (Informal.renderSourceHeaderExtra? #[uncitedSource]).map (·.html.render)
     let ambiguousHtml? :=
-      (Informal.renderSourceHeaderExtra? #[ambiguousSource]).map (·.html.asString)
+      (Informal.renderSourceHeaderExtra? #[ambiguousSource]).map (·.html.render)
     singleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
       multipleHtml?.any (hasSubstr · "sources 2") &&
       !multipleHtml?.any (hasSubstr · s!"source: {sharedCitation}") &&
@@ -365,7 +365,7 @@ private def checkSpanValidation (name : String) (span : Informal.Source.Span)
   for (name, spans, expected) in cases do
     let some extra := Informal.renderSourceHeaderExtra? #[{ document := "paper", spans }]
       | throw <| IO.userError s!"{name}: source chip missing"
-    let html := extra.html.asString
+    let html := extra.html.render
     unless hasSubstr html s!">{expected}<" && hasSubstr html "page 12" && hasSubstr html "page 13" do
       throw <| IO.userError s!"{name}: wrong summary or a recorded region was lost"
 

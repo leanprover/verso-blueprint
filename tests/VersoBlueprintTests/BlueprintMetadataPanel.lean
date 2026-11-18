@@ -135,7 +135,7 @@ def metadataPanelDocBlueprint : Informal.BlueprintDocument := .capture metadataP
   unless entry.blockData.toBlockMetadata == metadata do
     throw <| IO.userError "Manifest-to-block conversion dropped inherited metadata"
   let render (entry : PreviewManifest.Entry) :=
-    (PreviewManifest.BlockRender.renderWithRenderedContent {} entry { body := .empty }).asString
+    (PreviewManifest.BlockRender.renderWithRenderedContent {} entry { body := .empty }).render
   let html := render entry
   for expected in #["Owner Name", "https://example.com/owner", "https://example.com/avatar.png",
       "https://example.com/pull/1", "https://example.com/issues/42\">#42</a>"] do
