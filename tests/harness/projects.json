@@ -11,6 +11,9 @@
       "targets": [
         {
           "release": "v4.35.0"
+        },
+        {
+          "release": "v4.36.0"
         }
       ],
       "generate_command": [
