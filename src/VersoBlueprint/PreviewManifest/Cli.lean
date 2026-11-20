@@ -87,6 +87,14 @@ def parseExternalMarkupRenderOptionsIO
   | .ok parsed => pure parsed
   | .error err => throw <| IO.userError err
 
+def rosettaBundleFlag : String := "--rosetta-bundle"
+
+def parseRosettaBundleFilename (args : List String) :
+    Except String (System.FilePath × List String) :=
+  match args, Verso.CLI.requireFilename rosettaBundleFlag args with
+  | _, .ok file more _ => .ok (file, more)
+  | _, .error message => .error message
+
 def pdfFlag : String := "--pdf"
 def pdfEngineFlag : String := "--pdf-engine"
 def pdfRunsFlag : String := "--pdf-runs"

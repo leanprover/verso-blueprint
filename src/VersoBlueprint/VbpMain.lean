@@ -14,7 +14,7 @@ open System
 namespace VersoBlueprint.Vbp.Main
 
 private def buildUsageLine : String :=
-  "lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]"
+  "lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>] [--rosetta-bundle <file>]"
 
 private def mainCommandLines : List String := [
   "lake exe vbp discover",
@@ -39,7 +39,8 @@ private def buildOptionLines : List String := [
   "--pdf-runs <n>      Run the PDF engine <n> times",
   "--verbose           Show Blueprint generation phase progress",
   "--serve             Serve the generated html-multi directory after build",
-  "--port <n>          Serve on a fixed TCP port; requires --serve"
+  "--port <n>          Serve on a fixed TCP port; requires --serve",
+  "--rosetta-bundle <file>  Replay saved analysis with a Rosetta-enabled generator"
 ]
 
 private def indentHelpLine (line : String) : String :=
@@ -263,6 +264,7 @@ structure BuildOptions where
   verbose : Bool := false
   serve : Bool := false
   port? : Option Nat := none
+  rosettaBundle? : Option FilePath := none
 
 private def maxTcpPort : Nat := 65535
 
@@ -307,6 +309,13 @@ private partial def parseBuildOptionsCore : List String → BuildOptions → Exc
             | .ok runs => parseBuildOptionsCore more { opts with pdf := true, pdfRuns? := some runs }
             | .error err => .error err
         | [] => .error s!"missing value after {Informal.PreviewManifest.pdfRunsFlag}"
+      else if arg == Informal.PreviewManifest.rosettaBundleFlag then
+        if opts.rosettaBundle?.isSome then
+          .error s!"{arg} may only be given once"
+        else
+          match Informal.PreviewManifest.parseRosettaBundleFilename args with
+          | .ok (file, more) => parseBuildOptionsCore more { opts with rosettaBundle? := some file }
+          | .error err => .error err
       else
         match arg, args with
         | "--verbose", args => parseBuildOptionsCore args { opts with verbose := true }
@@ -387,6 +396,9 @@ private def generateSite (opts : BuildOptions) : IO UInt32 := do
       pure 1
   | .ok context =>
       let args := generatorLeanArgs context.generatorFile opts.output opts.verbose ++ pdfGeneratorArgs opts
+      let args := match opts.rosettaBundle? with
+        | some bundle => args ++ #[Informal.PreviewManifest.rosettaBundleFlag, bundle.toString]
+        | none => args
       runGenerator context args
 
 private def serveScript : String := String.intercalate "\n" [
