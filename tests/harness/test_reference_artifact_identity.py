@@ -131,6 +131,7 @@ class ReferenceArtifactIdentityTests(unittest.TestCase):
                     "release_id": "v4.32.0",
                     "project_id": "verso-flt",
                     "branch": "v4.32.0",
+                    "generator_revision": REVISION_A,
                     "project_manifest": project_manifest("v4.32.0", "verso-flt"),
                 },
                 {
@@ -138,6 +139,7 @@ class ReferenceArtifactIdentityTests(unittest.TestCase):
                     "release_id": "v4.32.0",
                     "project_id": "noperthedron",
                     "branch": "v4.32.0",
+                    "generator_revision": REVISION_A,
                     "project_manifest": project_manifest("v4.32.0", "noperthedron"),
                 },
             ]
@@ -148,6 +150,10 @@ class ReferenceArtifactIdentityTests(unittest.TestCase):
             return_value=REVISION_A,
         ) as resolve:
             expected = expected_identities_from_matrix(matrix, Path("."))
+
+        with patch("scripts.reference_artifact_identity.resolve_branch_revision", return_value=REVISION_B):
+            with self.assertRaisesRegex(ValueError, "no longer matches"):
+                expected_identities_from_matrix(matrix, Path("."))
 
         resolve.assert_called_once_with(Path("."), "v4.32.0")
         self.assertEqual(expected["version"], 1)

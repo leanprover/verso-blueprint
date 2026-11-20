@@ -996,16 +996,25 @@ pushes to release branches named like `v4.34.0`, and manual dispatch, it:
   [source identity and ownership model](#external-reference-cache-ownership)
   as local worktrees
 
-`reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
-successful `reference-blueprints.yml` run on a release branch named like
-`v4.34.0`, checks out the repository default-development branch as the source
-of truth for deployment policy, resolves every release target with
-`deploy_pages: true`, selects project targets marked `publish_reference: true`,
-rebuilds those selected blueprints in isolation, and assembles one combined
-GitHub Pages artifact. The per-project target entry is the source of truth for
-the project id, release, pinned ref, and publication flag. For each deploy
+Dispatch `reference-blueprints-deploy.yml` on the repository default branch to
+publish the current catalog manually. Configure the `github-pages` environment
+to allow that branch and remove retired branches when promoting a release.
+
+Automatic publication starts after a successful same-repository push run of
+`reference-blueprints.yml` on a branch in the published catalog. Its commit must
+still be the branch head. Every other published head and the controller commit
+must also have a successful push run of that workflow. While a head is pending or
+has failed, the existing site stays up. A successful push validation on a
+published branch causes the whole catalog to be checked again. Manual dispatch
+uses the selected default-branch commit and can publish without waiting for CI.
+
+The resolver selects releases with `deploy_pages: true` and project targets
+marked `publish_reference: true`. It records the controller commit and each
+release branch's generator commit before calling `publish-reference-blueprints.yml`
+to build and assemble the combined Pages artifact. The catalog entry owns the
+project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
-default-development catalog and passes it to the release-branch harness with
+controller catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
 `projects.json` refs. The per-project target entry also owns the exact external
 reference toolchain, so two projects in the same release family can use
@@ -1020,10 +1029,14 @@ reference site. Set `deploy_pages` to `false` when that release has no published
 reference targets; every release with `deploy_pages: true` must have at least
 one published target in the default-development catalog.
 
-All runs of the deploy workflow share one repository-wide concurrency group
-because every run replaces the same combined Pages site. A deploy matrix entry
-first computes an exact generated-site identity from the release id, project
-id, complete generated one-project manifest, and checked-out release-branch
+Eligible runs share the publishing group on the default ref. A retry waits
+for an active publication. Immediately before calling Pages, including on a
+deploy-only retry, the deploy job reads the repository's default branch and
+the controller and release heads from GitHub. A changed or deleted ref stops
+publication of the recorded artifact.
+
+Each deploy matrix entry computes an exact generated-site identity from the
+release id, project id, complete generated one-project manifest, and checked-out release-branch
 commit. The workflow restores only the cache key for that exact identity; it
 does not use prefix or stale fallback keys. On a cache miss, normal generation
 runs and installs the identity metadata before saving the generated site. On a
@@ -1031,9 +1044,10 @@ cache hit, toolchain installation, dependency restoration, external checkout,
 and generation are skipped.
 
 Before assembling Pages, the staging job independently recomputes the expected
-identities from the current catalog and fetched release-branch heads. It rejects
-missing, unexpected, tampered, or non-matching artifacts and removes the
-identity metadata from the public site. This permits a trusted last-known-good
+identities from the resolved catalog and freshly fetched release-branch heads.
+Staging fails if a release moved since resolution or if an artifact is
+missing, unexpected, tampered with, or carries a different identity. It removes
+the identity metadata from the public site. This permits a trusted last-known-good
 generated site to cover a temporary upstream outage only while every relevant
 pin and generator revision remains exactly unchanged.
 

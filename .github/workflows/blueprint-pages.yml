@@ -18,12 +18,11 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: ${{ github.repository }}-blueprint-pages-${{ github.ref }}
-  cancel-in-progress: true
+  # Only the default branch publishes. Keep other refs and PR builds independent.
+  group: ${{ github.repository }}-blueprint-pages-${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.run_attempt == 1 }}
 
 jobs:
   build:
@@ -36,7 +35,6 @@ jobs:
           submodules: recursive
       - if: ${{ !inputs.checkout_submodules }}
         uses: actions/checkout@v5
-      - uses: actions/configure-pages@v6
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -112,12 +110,28 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    if: github.event_name != 'pull_request'
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - name: Verify the default branch still points to this build
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {data: repository} = await github.rest.repos.get(context.repo)
+            const branch = repository.default_branch
+            const {data} = await github.rest.git.getRef({...context.repo, ref: `heads/${branch}`})
+            if (context.ref !== `refs/heads/${branch}` || data.object.sha !== context.sha) {
+              throw new Error(`The current default branch no longer matches this build. Run a fresh deployment.`)
+            }
       - id: deployment
         uses: actions/deploy-pages@v5

@@ -151,9 +151,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Lint GitHub workflows
-        uses: docker://rhysd/actionlint:latest
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
         with:
-          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-pages.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml project_template/.github/workflows/blueprint-pages.yml project_template/.github/workflows/pages.yml
+          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-pages.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml .github/workflows/publish-reference-blueprints.yml project_template/.github/workflows/blueprint-pages.yml project_template/.github/workflows/pages.yml
       - name: Check reusable workflow copy stays in sync
         run: cmp .github/workflows/blueprint-pages.yml project_template/.github/workflows/blueprint-pages.yml
       - name: Install elan

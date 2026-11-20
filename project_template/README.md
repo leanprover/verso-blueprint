@@ -120,10 +120,19 @@ The template includes `.github/workflows/pages.yml`.
 It also includes `.github/workflows/blueprint-pages.yml`.
 
 - on pull requests, it builds the Blueprint site and uploads the Pages artifact
-- on pushes to `main`, it deploys `_out/site/html-multi` to GitHub Pages
+- on pushes to the repository default branch and on manual dispatch from that
+  branch, it deploys `_out/site/html-multi` to GitHub Pages
+- a manual run on another branch or tag builds a preview artifact in its own
+  concurrency group
 
-Depending on your repository or organization settings, you may still need to
-enable GitHub Pages with GitHub Actions as the publishing source once.
+Allow the default branch in the `github-pages` environment's deployment
+rules. Before publishing, the deploy job verifies that the artifact's commit
+is still the default-branch head. This also applies when retrying that job.
+Only the deploy job receives Pages write and OIDC token permissions.
+
+PR builds can upload preview artifacts before Pages is enabled. Before the first
+deployment, open **Settings → Pages** and select **GitHub Actions** as the
+publishing source.
 
 ## Next step
 
