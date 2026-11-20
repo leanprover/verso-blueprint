@@ -997,9 +997,10 @@ pushes to release branches named like `v4.34.0`, and manual dispatch, it:
   as local worktrees
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
-successful `reference-blueprints.yml` run on a release branch named like
-`v4.34.0`, checks out the repository default-development branch as the source
-of truth for deployment policy, resolves every release target with
+successful `reference-blueprints.yml` run for a push to a release branch named
+like `v4.34.0`, or when it is dispatched by hand. It checks out the repository
+default-development branch as the source of truth for deployment policy,
+resolves every release target with
 `deploy_pages: true`, selects project targets marked `publish_reference: true`,
 rebuilds those selected blueprints in isolation, and assembles one combined
 GitHub Pages artifact. The per-project target entry is the source of truth for

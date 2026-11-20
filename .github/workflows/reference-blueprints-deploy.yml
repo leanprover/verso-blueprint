@@ -12,20 +12,23 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   # Every trigger assembles and replaces the same combined Pages site. Keep a
   # single repository-wide deployment in flight so paired release completions
   # coalesce instead of rebuilding and racing the full catalog independently.
-  group: ${{ github.repository }}-reference-blueprints-pages
+  # A run that won't deploy gets its own group, so it can't cancel a deployment
+  # that is in progress.
+  group: ${{ github.repository }}-reference-blueprints-pages${{ !(github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository)) && format('-skipped-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   resolve-deploy-releases:
     name: Resolve Deploy Releases
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Deploy only after a push to this repository, never for a pull request.
+    # The `branches: v*` filter doesn't ensure that, because it also matches a
+    # pull request from a branch with a name like `v1`.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       manifest_path: ${{ steps.resolve.outputs.manifest_path }}
@@ -319,6 +322,10 @@ jobs:
     environment:
       name: github-pages
     runs-on: ubuntu-latest
+    # Publishing to Pages needs these two permissions.
+    permissions:
+      pages: write
+      id-token: write
     needs:
       - resolve-deploy-releases
       - upload-pages-artifact
