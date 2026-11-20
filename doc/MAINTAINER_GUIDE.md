@@ -996,11 +996,17 @@ pushes to release branches named like `v4.34.0`, and manual dispatch, it:
   [source identity and ownership model](#external-reference-cache-ownership)
   as local worktrees
 
-`reference-blueprints-deploy.yml` accepts a direct manual dispatch or a successful
-`reference-blueprints.yml` push run on a release branch of this repository.
-Automatic runs read deployment policy from the default-development branch and
-check that the triggering branch still points to the commit that passed.
-Manual runs read policy from the selected dispatch commit.
+Dispatch `reference-blueprints-deploy.yml` on the repository default branch to
+publish the current catalog manually. Configure the `github-pages` environment
+to allow that branch and remove retired branches when promoting a release.
+
+Automatic publication starts after a successful same-repository push run of
+`reference-blueprints.yml` on a branch in the published catalog. Its commit must
+still be the branch head. Every other published head and the controller commit
+must also have a successful push run of that workflow. While a head is pending or
+has failed, the existing site stays up. A successful push validation on a
+published branch causes the whole catalog to be checked again. Manual dispatch
+uses the selected default-branch commit and can publish without waiting for CI.
 
 The resolver selects releases with `deploy_pages: true` and project targets
 marked `publish_reference: true`. It records the controller commit and each
@@ -1023,9 +1029,11 @@ reference site. Set `deploy_pages` to `false` when that release has no published
 reference targets; every release with `deploy_pages: true` must have at least
 one published target in the default-development catalog.
 
-Only runs that reach the publishing workflow enter the repository-wide
-concurrency group. A skipped validation therefore leaves an active deployment
-alone.
+Eligible runs share the publishing group on the default ref. A retry waits
+for an active publication. Immediately before calling Pages, including on a
+deploy-only retry, the deploy job reads the repository's default branch and
+the controller and release heads from GitHub. A changed or deleted ref stops
+publication of the recorded artifact.
 
 Each deploy matrix entry computes an exact generated-site identity from the
 release id, project id, complete generated one-project manifest, and checked-out release-branch

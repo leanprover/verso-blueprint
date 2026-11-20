@@ -14,10 +14,11 @@ permissions:
   contents: read
 
 # The caller has checked the event and the validated revision before entering
-# this group. Every eligible run rebuilds the same combined Pages site.
+# this group on the default ref. Archived workflows used an unqualified group.
 concurrency:
-  group: ${{ github.repository }}-reference-blueprints-pages
-  cancel-in-progress: true
+  group: ${{ github.repository }}-reference-blueprints-pages-${{ github.ref }}
+  # A partial retry can carry old inputs. Let the running deployment finish.
+  cancel-in-progress: ${{ github.run_attempt == 1 }}
 
 jobs:
   build-reference-blueprints:
@@ -287,12 +288,37 @@ jobs:
     environment:
       name: github-pages
     runs-on: ubuntu-latest
-    # Publishing to Pages needs these two permissions.
     permissions:
+      contents: read
       pages: write
       id-token: write
     needs:
       - upload-pages-artifact
     steps:
+      - name: Verify the recorded revisions before publishing
+        uses: actions/github-script@v9
+        env:
+          CONTROLLER_REVISION: ${{ inputs.controller_revision }}
+          PROJECT_MATRIX: ${{ inputs.project_matrix }}
+        with:
+          script: |
+            const {data: repository} = await github.rest.repos.get(context.repo)
+            const controller = context.payload.repository.default_branch
+            if (repository.default_branch !== controller) {
+              throw new Error(`The default branch has changed from ${controller} to ${repository.default_branch}`)
+            }
+            const revisions = new Map([[controller, process.env.CONTROLLER_REVISION]])
+            for (const {branch, generator_revision} of JSON.parse(process.env.PROJECT_MATRIX).include) {
+              if (revisions.has(branch) && revisions.get(branch) !== generator_revision) {
+                throw new Error(`Conflicting artifact revisions for ${branch}`)
+              }
+              revisions.set(branch, generator_revision)
+            }
+            for (const [branch, expected] of revisions) {
+              const {data} = await github.rest.git.getRef({...context.repo, ref: `heads/${branch}`})
+              if (data.object.sha !== expected) {
+                throw new Error(`${branch} moved from ${expected} to ${data.object.sha}. Run a fresh deployment.`)
+              }
+            }
       - id: deployment
         uses: actions/deploy-pages@v5
