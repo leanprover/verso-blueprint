@@ -130,8 +130,9 @@ rules. Before publishing, the deploy job verifies that the artifact's commit
 is still the default-branch head. This also applies when retrying that job.
 Only the deploy job receives Pages write and OIDC token permissions.
 
-Depending on your repository or organization settings, you may still need to
-enable GitHub Pages with GitHub Actions as the publishing source once.
+PR builds can upload preview artifacts before Pages is enabled. Before the first
+deployment, open **Settings → Pages** and select **GitHub Actions** as the
+publishing source.
 
 ## Next step
 
