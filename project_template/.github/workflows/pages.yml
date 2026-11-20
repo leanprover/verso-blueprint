@@ -15,4 +15,3 @@ permissions:
 jobs:
   pages:
     uses: ./.github/workflows/blueprint-pages.yml
-    secrets: inherit

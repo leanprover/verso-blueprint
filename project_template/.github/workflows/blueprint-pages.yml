@@ -18,11 +18,11 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  pages: read
 
 concurrency:
-  group: ${{ github.repository }}-blueprint-pages-${{ github.ref }}
+  # Cancel superseded publishing builds before they can reach the shared site.
+  group: ${{ github.repository }}-blueprint-pages-${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'deploy' || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -112,7 +112,10 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      pages: write
+      id-token: write
     needs: build
     environment:
       name: github-pages

@@ -120,7 +120,11 @@ The template includes `.github/workflows/pages.yml`.
 It also includes `.github/workflows/blueprint-pages.yml`.
 
 - on pull requests, it builds the Blueprint site and uploads the Pages artifact
-- on pushes to `main`, it deploys `_out/site/html-multi` to GitHub Pages
+- on pushes to `main` and on manual dispatch, it deploys `_out/site/html-multi` to GitHub Pages
+
+PR builds cancel older builds for the same ref. Publishing runs across all
+refs share a concurrency group because they replace the same site. Only the
+deploy job receives Pages write and OIDC token permissions.
 
 Depending on your repository or organization settings, you may still need to
 enable GitHub Pages with GitHub Actions as the publishing source once.
