@@ -8,12 +8,9 @@ on:
       - completed
     branches:
       - v*
-  workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   # Every trigger assembles and replaces the same combined Pages site. Keep a
@@ -25,7 +22,7 @@ concurrency:
 jobs:
   resolve-deploy-releases:
     name: Resolve Deploy Releases
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       manifest_path: ${{ steps.resolve.outputs.manifest_path }}
@@ -35,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
       - name: Resolve deploy release metadata
         id: resolve
@@ -214,7 +211,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -261,7 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
       - name: Show deploy release summary
         run: |
@@ -316,6 +313,9 @@ jobs:
 
   deploy:
     name: Deploy Pages
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
     runs-on: ubuntu-latest

@@ -951,7 +951,13 @@ pushes to release branches named like `v4.34.0`, and manual dispatch, it:
   [source identity and ownership model](#external-reference-cache-ownership)
   as local worktrees
 
-`reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
+The shared build workflow skips reference targets when the controller catalog
+has retired this release. Its test-blueprint job still runs.
+
+This release is archived. To publish the combined site manually, dispatch
+`reference-blueprints-deploy.yml` on the repository default branch.
+
+The deployment workflow runs after a
 successful `reference-blueprints.yml` run on a release branch named like
 `v4.34.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with

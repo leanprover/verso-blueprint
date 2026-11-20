@@ -54,13 +54,27 @@ jobs:
             git fetch --no-tags origin "$BP_DEFAULT_DEV_BRANCH"
             manifest_path=_out/controller-projects.json
             mkdir -p "$(dirname "$manifest_path")"
+            git show "origin/$BP_DEFAULT_DEV_BRANCH:branch-policy.json" > _out/controller-branch-policy.json
+            published=$(jq -r --arg release "$BP_RELEASE_ID" 'any(.release_targets[]; .id == $release)' _out/controller-branch-policy.json)
+            echo "release_in_catalog=$published" >> "$GITHUB_OUTPUT"
             git show "origin/$BP_DEFAULT_DEV_BRANCH:tests/harness/projects.json" > "$manifest_path"
           fi
           echo "manifest_path=$manifest_path" >> "$GITHUB_OUTPUT"
           echo "release_id=$BP_RELEASE_ID" >> "$GITHUB_OUTPUT"
       - name: Resolve release metadata
         id: resolve
+        env:
+          RELEASE_IN_CATALOG: ${{ steps.controller.outputs.release_in_catalog }}
         run: |
+          if [[ "$RELEASE_IN_CATALOG" == false ]]; then
+            echo "The controller has retired this release; skipping its reference builds."
+            {
+              echo 'reference_project_count=0'
+              echo 'reference_matrix={"include":[]}'
+              echo 'deploy_pages=false'
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           python3 ./scripts/emit_reference_release_matrix.py \
             --manifest "${{ steps.controller.outputs.manifest_path }}" \
             --release "${{ steps.controller.outputs.release_id }}" \
