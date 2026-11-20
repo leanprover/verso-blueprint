@@ -996,17 +996,19 @@ pushes to release branches named like `v4.34.0`, and manual dispatch, it:
   [source identity and ownership model](#external-reference-cache-ownership)
   as local worktrees
 
-`reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
-successful `reference-blueprints.yml` run for a push to a release branch named
-like `v4.34.0`, or when it is dispatched by hand. It checks out the repository
-default-development branch as the source of truth for deployment policy,
-resolves every release target with
-`deploy_pages: true`, selects project targets marked `publish_reference: true`,
-rebuilds those selected blueprints in isolation, and assembles one combined
-GitHub Pages artifact. The per-project target entry is the source of truth for
-the project id, release, pinned ref, and publication flag. For each deploy
+`reference-blueprints-deploy.yml` accepts a direct manual dispatch or a successful
+`reference-blueprints.yml` push run on a release branch of this repository.
+Automatic runs read deployment policy from the default-development branch and
+check that the triggering branch still points to the commit that passed.
+Manual runs read policy from the selected dispatch commit.
+
+The resolver selects releases with `deploy_pages: true` and project targets
+marked `publish_reference: true`. It records the controller commit and each
+release branch's generator commit before calling `publish-reference-blueprints.yml`
+to build and assemble the combined Pages artifact. The catalog entry owns the
+project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
-default-development catalog and passes it to the release-branch harness with
+controller catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
 `projects.json` refs. The per-project target entry also owns the exact external
 reference toolchain, so two projects in the same release family can use
@@ -1021,10 +1023,12 @@ reference site. Set `deploy_pages` to `false` when that release has no published
 reference targets; every release with `deploy_pages: true` must have at least
 one published target in the default-development catalog.
 
-All runs of the deploy workflow share one repository-wide concurrency group
-because every run replaces the same combined Pages site. A deploy matrix entry
-first computes an exact generated-site identity from the release id, project
-id, complete generated one-project manifest, and checked-out release-branch
+Only runs that reach the publishing workflow enter the repository-wide
+concurrency group. A skipped validation therefore leaves an active deployment
+alone.
+
+Each deploy matrix entry computes an exact generated-site identity from the
+release id, project id, complete generated one-project manifest, and checked-out release-branch
 commit. The workflow restores only the cache key for that exact identity; it
 does not use prefix or stale fallback keys. On a cache miss, normal generation
 runs and installs the identity metadata before saving the generated site. On a
@@ -1032,9 +1036,10 @@ cache hit, toolchain installation, dependency restoration, external checkout,
 and generation are skipped.
 
 Before assembling Pages, the staging job independently recomputes the expected
-identities from the current catalog and fetched release-branch heads. It rejects
-missing, unexpected, tampered, or non-matching artifacts and removes the
-identity metadata from the public site. This permits a trusted last-known-good
+identities from the resolved catalog and freshly fetched release-branch heads.
+Staging fails if a release moved since resolution or if an artifact is
+missing, unexpected, tampered with, or carries a different identity. It removes
+the identity metadata from the public site. This permits a trusted last-known-good
 generated site to cover a temporary upstream outage only while every relevant
 pin and generator revision remains exactly unchanged.
 

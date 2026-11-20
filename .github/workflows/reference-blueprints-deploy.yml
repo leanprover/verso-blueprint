@@ -13,323 +13,51 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # Every trigger assembles and replaces the same combined Pages site. Keep a
-  # single repository-wide deployment in flight so paired release completions
-  # coalesce instead of rebuilding and racing the full catalog independently.
-  # A run that won't deploy gets its own group, so it can't cancel a deployment
-  # that is in progress.
-  group: ${{ github.repository }}-reference-blueprints-pages${{ !(github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository)) && format('-skipped-{0}', github.run_id) || '' }}
-  cancel-in-progress: true
-
 jobs:
   resolve-deploy-releases:
     name: Resolve Deploy Releases
-    # Deploy only after a push to this repository, never for a pull request.
-    # The `branches: v*` filter doesn't ensure that, because it also matches a
-    # pull request from a branch with a name like `v1`.
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
-      manifest_path: ${{ steps.resolve.outputs.manifest_path }}
-      deployable_release_count: ${{ steps.resolve.outputs.deployable_release_count }}
+      controller_revision: ${{ steps.controller.outputs.commit }}
       deployable_project_count: ${{ steps.resolve.outputs.deployable_project_count }}
       deployable_project_matrix: ${{ steps.resolve.outputs.deployable_project_matrix }}
     steps:
       - uses: actions/checkout@v5
+        id: controller
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.repository.default_branch }}
           fetch-depth: 0
+      - name: Check validated release revision
+        id: release
+        if: github.event_name == 'workflow_run'
+        env:
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          VALIDATED_REVISION: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if current=$(git rev-parse --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH") &&
+              [[ "$current" == "$VALIDATED_REVISION" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping superseded validation of $RELEASE_BRANCH at $VALIDATED_REVISION."
+          fi
       - name: Resolve deploy release metadata
         id: resolve
+        if: github.event_name == 'workflow_dispatch' || steps.release.outputs.current == 'true'
         run: python3 ./scripts/emit_reference_deploy_matrix.py --github-output >> "$GITHUB_OUTPUT"
 
-  build-reference-blueprints:
-    name: Build Release ${{ matrix.release_id }} / ${{ matrix.project_id }}
-    runs-on: ubuntu-latest
+  publish:
     needs: resolve-deploy-releases
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
-    env:
-      BP_REFERENCE_SOURCE_IDENTITY: ${{ matrix.reference_source_identity }}
-      BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}
-      BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}
-      BP_REFERENCE_ARTIFACT_PATH: ${{ matrix.artifact_path }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_matrix) }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ matrix.branch }}
-      - name: Show deployable release target
-        run: |
-          echo "release_id=${{ matrix.release_id }}"
-          echo "rc=${{ matrix.rc }}"
-          echo "toolchain=${{ matrix.toolchain }}"
-          echo "verso_ref=${{ matrix.verso_ref }}"
-          echo "branch=${{ matrix.branch }}"
-          echo "project_id=${{ matrix.project_id }}"
-          echo "hash=${{ matrix.hash }}"
-          echo "reference_source_identity=${{ matrix.reference_source_identity }}"
-          echo "publish_pdf=${{ matrix.publish_pdf }}"
-      - name: Write deploy project manifest
-        env:
-          BP_PROJECT_ID: ${{ matrix.project_id }}
-          BP_DEPLOY_PROJECT_MANIFEST: ${{ toJSON(matrix.project_manifest) }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path("_out/deploy-projects") / (os.environ["BP_PROJECT_ID"] + ".json")
-          path.parent.mkdir(parents=True, exist_ok=True)
-          manifest = json.loads(os.environ["BP_DEPLOY_PROJECT_MANIFEST"])
-          path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-          PY
-      - name: Create exact reference artifact identity
-        id: artifact-identity
-        run: |
-          python3 scripts/reference_artifact_identity.py create \
-            --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
-            --release-id ${{ matrix.release_id }} \
-            --project-id ${{ matrix.project_id }} \
-            --generator-revision "$(git rev-parse HEAD)" \
-            --output _out/deploy-projects/${{ matrix.project_id }}.identity.json \
-            --github-output >> "$GITHUB_OUTPUT"
-      - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore"
-      - name: Restore exact generated reference site
-        id: generated-site-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ matrix.artifact_path }}
-          key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
-      - name: Match reference target toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
-      - name: Install elan
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Install PDF toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.publish_pdf }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            python3-pygments \
-            texlive-fonts-extra \
-            texlive-fonts-recommended \
-            texlive-latex-extra \
-            texlive-luatex \
-            texlive-plain-generic
-      - name: Restore Lake package cache
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            .lake/packages/mathlib
-            .lake/packages/verso
-          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}-${{ matrix.release_id }}
-          restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.toolchain }}-
-            ${{ runner.os }}-reference-deploy-lake-packages-v2-
-      - name: Restore Lake dependency build cache
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            .lake/packages/mathlib/.lake/build
-            .lake/packages/verso/.lake/build
-          key: ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}-${{ matrix.release_id }}
-          restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-
-            ${{ runner.os }}-reference-deploy-lake-deps-
-      - name: Report disk usage after Lake cache restore
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore"
-      - name: Restore external reference dependency cache
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_source_identity != '' }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            ${{ matrix.reference_dependency_packages_path }}
-            ${{ matrix.reference_dependency_path_builds_path }}
-          key: ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.reference_source_identity }}
-          restore-keys: |
-            ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.project_id }}-
-      - name: Report disk usage after reference cache restore
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore"
-      - name: Show tool versions
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: |
-          lean --version
-          lake --version
-          if [ "${{ matrix.publish_pdf }}" = "true" ]; then
-            lualatex --version | head -n 1
-          fi
-          python3 --version
-      - name: Generate release reference blueprints
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: |
-          python3 -m scripts.blueprint_reference_harness generate \
-            --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
-            --release ${{ matrix.release_id }} \
-            --project ${{ matrix.project_id }} \
-            --allow-unsafe-root-release \
-            --allow-local-build \
-            --serial \
-            --record-build-metrics \
-            _out/reference-blueprints/${{ matrix.release_id }}
-      - name: Report disk usage after reference generation
-        if: ${{ always() }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference generation"
-      - name: Install exact reference artifact identity
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: |
-          python3 scripts/reference_artifact_identity.py install \
-            --identity _out/deploy-projects/${{ matrix.project_id }}.identity.json \
-            --artifact-root ${{ matrix.artifact_path }}
-      - name: Validate exact reference artifact identity
-        run: |
-          python3 scripts/reference_artifact_identity.py validate \
-            --identity _out/deploy-projects/${{ matrix.project_id }}.identity.json \
-            --artifact-root ${{ matrix.artifact_path }}
-      - name: Save exact generated reference site
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ matrix.artifact_path }}
-          key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
-      - name: Upload release reference artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_path }}
-
-  build-test-blueprints:
-    name: Build Test Blueprints
-    runs-on: ubuntu-latest
-    needs: resolve-deploy-releases
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
-      - name: Install elan
-        run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Restore Lake package cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            .lake/packages/mathlib
-            .lake/packages/verso
-          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-test
-          restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
-      - name: Restore Lake dependency build cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            .lake/packages/mathlib/.lake/build
-            .lake/packages/verso/.lake/build
-          key: ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-test
-          restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
-      - name: Show tool versions
-        run: |
-          lean --version
-          lake --version
-          python3 --version
-      - name: Generate test blueprints
-        run: ./scripts/generate-test-blueprints.sh
-      - name: Upload test blueprints artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-blueprints
-          path: _out/test-blueprints
-
-  upload-pages-artifact:
-    name: Upload Pages Artifact
-    runs-on: ubuntu-latest
-    needs:
-      - resolve-deploy-releases
-      - build-reference-blueprints
-      - build-test-blueprints
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
-          fetch-depth: 0
-      - name: Show deploy release summary
-        run: |
-          echo "manifest_path=${{ needs.resolve-deploy-releases.outputs.manifest_path }}"
-          echo "deployable_release_count=${{ needs.resolve-deploy-releases.outputs.deployable_release_count }}"
-          echo "deployable_project_count=${{ needs.resolve-deploy-releases.outputs.deployable_project_count }}"
-      # The deploy workflow runs on an isolated runner and assembles the public
-      # Pages artifact, so it rebuilds the published /js-api/ docs itself.
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - name: Install JavaScript dependencies
-        run: npm ci
-      - name: Generate and check JavaScript API docs
-        run: ./scripts/generate-js-api-docs.sh
-      - name: Download release reference artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: reference-blueprints-release-*
-          path: _out/reference-artifact-downloads
-      - name: Resolve expected reference artifact identities
-        env:
-          BP_DEPLOY_PROJECT_MATRIX: ${{ needs.resolve-deploy-releases.outputs.deployable_project_matrix }}
-        run: |
-          python3 scripts/reference_artifact_identity.py expected-matrix \
-            --matrix-json "$BP_DEPLOY_PROJECT_MATRIX" \
-            --repo-root . \
-            --output _out/expected-reference-artifacts.json
-      - name: Stage release reference artifacts
-        run: |
-          python3 ./scripts/stage_reference_deploy_artifacts.py \
-            --expected-identities _out/expected-reference-artifacts.json
-      - name: Download test blueprints artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: test-blueprints
-          path: _out/test-blueprints
-      - name: Prepare combined Pages artifact
-        run: python3 ./scripts/prepare_reference_blueprints_pages.py --js-api-docs-root _out/jsdoc-api
-      - name: Report reference build metrics
-        run: |
-          python3 ./scripts/reference_build_metrics.py report \
-            --input-root _out/reference-blueprints \
-            --output _site/build-data/reference-blueprints.json \
-            --summary-output "$GITHUB_STEP_SUMMARY"
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: _site
-
-  deploy:
-    name: Deploy Pages
-    environment:
-      name: github-pages
-    runs-on: ubuntu-latest
-    # Publishing to Pages needs these two permissions.
+    if: fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_count || '0') > 0
     permissions:
+      contents: read
       pages: write
       id-token: write
-    needs:
-      - resolve-deploy-releases
-      - upload-pages-artifact
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+    uses: ./.github/workflows/publish-reference-blueprints.yml
+    with:
+      controller_revision: ${{ needs.resolve-deploy-releases.outputs.controller_revision }}
+      project_matrix: ${{ needs.resolve-deploy-releases.outputs.deployable_project_matrix }}

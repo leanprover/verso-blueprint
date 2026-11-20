@@ -153,7 +153,7 @@ jobs:
       - name: Lint GitHub workflows
         uses: docker://rhysd/actionlint:latest
         with:
-          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-pages.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml project_template/.github/workflows/blueprint-pages.yml project_template/.github/workflows/pages.yml
+          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-pages.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml .github/workflows/publish-reference-blueprints.yml project_template/.github/workflows/blueprint-pages.yml project_template/.github/workflows/pages.yml
       - name: Check reusable workflow copy stays in sync
         run: cmp .github/workflows/blueprint-pages.yml project_template/.github/workflows/blueprint-pages.yml
       - name: Install elan

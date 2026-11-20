@@ -128,18 +128,16 @@ def validate_artifact_identity(identity_path: Path, artifact_root: Path) -> None
 
 
 def resolve_branch_revision(repo_root: Path, branch: str) -> str:
-    candidates = (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}", branch)
-    for candidate in candidates:
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", candidate],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        revision = result.stdout.strip()
-        if result.returncode == 0 and REVISION_RE.fullmatch(revision) is not None:
-            return revision
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/remotes/origin/{branch}"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    revision = result.stdout.strip()
+    if result.returncode == 0 and REVISION_RE.fullmatch(revision):
+        return revision
     raise ValueError(f"could not resolve generator revision for release branch `{branch}`")
 
 
@@ -170,6 +168,8 @@ def expected_identities_from_matrix(matrix: dict[str, object], repo_root: Path) 
         if branch not in revisions:
             revisions[branch] = resolve_branch_revision(repo_root, branch)
         revision = revisions[branch]
+        if entry.get("generator_revision") != revision:
+            raise ValueError(f"release branch `{branch}` no longer matches the deploy matrix revision")
         identity = artifact_identity(
             project_manifest,
             release_id=release_id,

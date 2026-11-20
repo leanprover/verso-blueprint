@@ -9,13 +9,14 @@ import sys
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_branches import load_branch_policy
+from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
     deploy_matrix_from_controller_catalog,
     load_project_catalog,
     resolve_manifest_path,
 )
+from scripts.reference_artifact_identity import resolve_branch_revision
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +51,12 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
         deployable_targets,
         pdf_release_id=policy.default_dev_branch,
     )
+    revisions = {
+        target.branch: resolve_branch_revision(layout.package_root, target.branch)
+        for target in deployable_targets
+    }
+    for entry in matrix["include"]:
+        entry["generator_revision"] = revisions[entry["branch"]]
     deployable_release_count = len({entry["release_id"] for entry in matrix["include"]})
     return {
         "manifest_path": str(manifest_path),

@@ -670,7 +670,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
-        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints-deploy.yml").read_text(
+        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "publish-reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
 
@@ -723,6 +723,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             deploy_workflow_text,
         )
         self.assertIn("publish_pdf=${{ matrix.publish_pdf }}", deploy_workflow_text)
+        self.assertIn("ref: ${{ matrix.generator_revision }}", deploy_workflow_text)
         self.assertIn("Generate release reference blueprints", deploy_workflow_text)
         self.assertIn("--record-build-metrics", deploy_workflow_text)
         self.assertIn("reference_build_metrics.py report", deploy_workflow_text)
