@@ -91,12 +91,12 @@ def renderManualDocHtmlStringAndState
     (doc : Doc.VersoDoc Genre.Manual)
     (model : Informal.RenderModel := by exact blueprint_render_model%) : IO (String × TraverseState) := do
   let (html, st) ← renderManualDocHtmlAndState impls doc (model := model)
-  pure (html.asString, st)
+  pure (html.render, st)
 
 def renderManualDocHtmlString (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre.Manual)
     (model : Informal.RenderModel := by exact blueprint_render_model%) : IO String := do
   let html ← renderManualDocHtml impls doc (model := model)
-  pure html.asString
+  pure html.render
 
 def buildManualPreviewDataFiles
     (impls : ExtensionImpls)

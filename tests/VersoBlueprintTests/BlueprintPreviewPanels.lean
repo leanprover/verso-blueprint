@@ -27,10 +27,10 @@ private def hasSharedPanelScaffolding (html rootClass headerClass titleClass clo
 /-- info: true -/
 #guard_msgs in
 #eval
-  let graphHtml := graphPreviewPanel.asString
-  let groupHtml := graphGroupPreviewPanel.asString
-  let summaryHtml := summaryPreviewPanel.asString
-  let codeSummaryHtml := codeSummaryPreviewPanel.asString
+  let graphHtml := graphPreviewPanel.render
+  let groupHtml := graphGroupPreviewPanel.render
+  let summaryHtml := summaryPreviewPanel.render
+  let codeSummaryHtml := codeSummaryPreviewPanel.render
   hasSharedPanelScaffolding
       graphHtml
       "bp_graph_preview bp_preview_panel"
@@ -67,7 +67,7 @@ private def hasSharedPanelScaffolding (html rootClass headerClass titleClass clo
 /-- info: true -/
 #guard_msgs in
 #eval
-  let anchoredHoverHtml := (graphGroupPreviewPanel .hover .anchored).asString
+  let anchoredHoverHtml := (graphGroupPreviewPanel .hover .anchored).render
   hasSubstr anchoredHoverHtml "data-bp-preview-mode=\"hover\"" &&
     hasSubstr anchoredHoverHtml "data-bp-preview-placement=\"anchored\"" &&
     hasSubstr anchoredHoverHtml "hidden"

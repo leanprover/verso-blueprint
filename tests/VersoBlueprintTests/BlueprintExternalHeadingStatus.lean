@@ -109,12 +109,12 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     label := `status.inline.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some (BlockCodeData.ofInlineBlocks #[codeData]) } (fun _ => none)).codeEntry.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some (BlockCodeData.ofInlineBlocks #[codeData]) } (fun _ => none)).codeEntry.render
   let parts := CodeSummary.renderPanelIndicator
     `status.inline.panel
     { source := some (BlockCodeData.ofInlineBlocks #[codeData]) }
     (fun _ => none)
-  let html := parts.indicator.asString
+  let html := parts.indicator.render
   hasSubstr parts.summaryTitle "status.inline.panel" &&
   hasSubstr parts.summaryTitle "inlineThm [sorry in proof]" &&
   hasSubstr headingHtml "L∃∀N" &&
@@ -144,8 +144,8 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     label := `status.external.panel
     count := 1
   }
-  let headingHtml := (CodeSummary.renderParts headingData { source := some { externalDecls := decls } } (fun _ => none)).codeEntry.asString
-  let html := parts.indicator.asString
+  let headingHtml := (CodeSummary.renderParts headingData { source := some { externalDecls := decls } } (fun _ => none)).codeEntry.render
+  let html := parts.indicator.render
   hasSubstr parts.summaryTitle "Lean declarations (1/2 present)" &&
   hasSubstr headingHtml "L∃∀N" &&
   hasSubstr headingHtml "class=\"bp_code_decl_item\"" &&
@@ -174,13 +174,13 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
   match rendered.statusMark with
   | some mark =>
     mark.status == ProvedStatus.proved &&
-    hasSubstr rendered.codeEntry.asString "bp_code_link_status_proved" &&
-    hasSubstr rendered.codeEntry.asString "bp_code_render_warning_badge" &&
-    appearsBefore rendered.codeEntry.asString "bp_code_render_warning_badge" "bp_code_status_symbol" &&
-    hasSubstr rendered.codeEntry.asString "render failed for 1 declaration" &&
-    hasSubstr rendered.codeEntry.asString "Render diagnostics" &&
-    hasSubstr rendered.codeEntry.asString "synthetic render failure" &&
-    !hasSubstr panelParts.indicator.asString "bp_code_render_warning_badge" &&
+    hasSubstr rendered.codeEntry.render "bp_code_link_status_proved" &&
+    hasSubstr rendered.codeEntry.render "bp_code_render_warning_badge" &&
+    appearsBefore rendered.codeEntry.render "bp_code_render_warning_badge" "bp_code_status_symbol" &&
+    hasSubstr rendered.codeEntry.render "render failed for 1 declaration" &&
+    hasSubstr rendered.codeEntry.render "Render diagnostics" &&
+    hasSubstr rendered.codeEntry.render "synthetic render failure" &&
+    !hasSubstr panelParts.indicator.render "bp_code_render_warning_badge" &&
     hasSubstr panelParts.summaryTitle "render failed for 1 declaration"
   | none => false
 

@@ -466,7 +466,7 @@ def citationPreviewBody (entryHtml : Verso.Output.Html)
         | some loc =>
           {{<div class="bp_bibliography_hover_meta">
               <span class="bp_bibliography_hover_meta_label">"Locator"</span>
-              <span class="bp_bibliography_hover_meta_value">{{.text true loc}}</span>
+              <span class="bp_bibliography_hover_meta_value">{{.text loc}}</span>
             </div>}}
         | Option.none => .empty}}
     </div>
@@ -577,8 +577,8 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
         let txt := pieceText cfg.style item.citation
         let linkNode : Output.Html :=
           match href? with
-          | some href => {{<a href={{href}}>{{.text true txt}}</a>}}
-          | Option.none => {{<span>{{.text true txt}}</span>}}
+          | some href => {{<a href={{href}}>{{.text txt}}</a>}}
+          | Option.none => {{<span>{{.text txt}}</span>}}
         if inPreviewRender then
           pure linkNode
         else
@@ -588,7 +588,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
           pure <| Informal.HoverRender.inlinePreviewTargetNode linkNode previewTarget
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links
-      let locatorHtml? := (locatorText cfg.kind cfg.index).map (fun loc => {{<span>{{.text true loc}}</span>}})
+      let locatorHtml? := (locatorText cfg.kind cfg.index).map (fun loc => {{<span>{{.text loc}}</span>}})
       let htmlNote? : Option Output.Html ←
         if content.isEmpty then
           pure Option.none
@@ -646,7 +646,7 @@ private def mkItems (config : Cite.CiteConfig) : DocElabM (Array (TSyntax `term)
     `(Informal.Cite.CiteItem.mk $(quote label) $(mkIdent decl))
 
 private def citeRoleImpl (style : Cite.CitationStyle) (config : Cite.CiteConfig)
-    (extra : Array (TSyntax `inline)) : DocElabM Term := do
+    (extra : Array (Lean.Doc.VersoInline)) : DocElabM Term := do
   let items ← mkItems config
   let inlines ← extra.mapM elabInline
   ``(Verso.Doc.Inline.other

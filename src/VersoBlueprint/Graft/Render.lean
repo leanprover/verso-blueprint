@@ -67,7 +67,7 @@ public def renderNotice (baseClass kind title detail : String) : Html :=
   }}
 
 private def defaultRenderMissingNode (node : BlueprintNode) (title detail : String) : Html :=
-  .tag "div" node.renderedAttrs <|
+  .element "div" node.renderedAttrs <|
     renderNotice "bp_graft_node_notice" "error" title detail
 
 public structure ManifestRenderConfig where
@@ -90,7 +90,7 @@ public def renderNodeWithContent
     (entry : Informal.PreviewManifest.Entry)
     (content : Informal.PreviewManifest.BlockRender.RenderedContent)
     (group? : Option Informal.PreviewManifest.GroupRelation := none) : Html :=
-  .tag "div" (cfg.nodeAttrs node) <|
+  .element "div" (cfg.nodeAttrs node) <|
     Informal.PreviewManifest.BlockRender.renderWithRenderedContent
       cfg.blockRenderConfig
       entry

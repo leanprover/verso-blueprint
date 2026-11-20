@@ -148,48 +148,36 @@ private def mkSpan? (start? length? : Option Nat) : Option Span := do
   pure { start, length }
 
 /--
-Map a decoded span back onto the raw inline-code contents parsed by Verso.
+Map a span of the math source back to positions in the Lean source file.
 
-We cannot recover the raw source slice with `offsetBy` alone because KaTeX reports positions in the
-decoded string, while the original inline-code text may contain width-changing escapes. In Verso
-inline code, only `\``, `\\`, and `\n` collapse to a single decoded character; ordinary TeX
-backslashes like `\alpha` still occupy source text one-for-one.
+Verso inline code has one token per source line, and each token's text is the source text of
+that line, so a column in a line maps one-for-one to the source. The docstring indentation of the
+next line is trailing whitespace on the token, not part of the text, so the lines cannot be read
+as one contiguous source slice. `lines` holds each line's text and the source position where it
+starts. A span that ends at the end of a line stops there, and one that starts at the end of a
+line starts on the next line.
 -/
-def inlineCodeRawRangeOfDecodedSpan? (rawSource : String) (span : Span) :
+def codeLinesRawRangeOfDecodedSpan? (lines : Array (String × String.Pos.Raw)) (span : Span) :
     Option (String.Pos.Raw × String.Pos.Raw) := Id.run do
   let stop := span.start + span.length
-  let mut pos : String.Pos.Raw := 0
-  let mut decodedIndex := 0
-  let mut startPos? : Option String.Pos.Raw := if span.start == 0 then some pos else none
-  let mut stopPos? : Option String.Pos.Raw := if stop == 0 then some pos else none
-  while !pos.atEnd rawSource do
-    if startPos?.isNone && decodedIndex == span.start then
-      startPos? := some pos
-    if stopPos?.isNone && decodedIndex == stop then
-      stopPos? := some pos
-    let c := pos.get rawSource
-    let nextPos := pos.next rawSource
-    if c == '\\' then
-      if nextPos.atEnd rawSource then
-        pos := nextPos
-        decodedIndex := decodedIndex + 1
-      else
-        let escaped := nextPos.get rawSource
-        if escaped == '`' || escaped == '\\' || escaped == 'n' then
-          pos := nextPos.next rawSource
-          decodedIndex := decodedIndex + 1
-        else
-          pos := nextPos
-          decodedIndex := decodedIndex + 1
-    else
-      pos := nextPos
-      decodedIndex := decodedIndex + 1
-  if startPos?.isNone && decodedIndex == span.start then
-    startPos? := some pos
-  if stopPos?.isNone && decodedIndex == stop then
-    stopPos? := some pos
+  let mut lineStart := 0
+  let mut startPos? : Option String.Pos.Raw := none
+  let mut stopPos? : Option String.Pos.Raw := none
+  for (text, sourceStart) in lines do
+    let len := text.length
+    let column (index : Nat) : String.Pos.Raw :=
+      sourceStart.offsetBy ⟨(text.toList.take (index - lineStart)).foldl (· + ·.utf8Size) 0⟩
+    if startPos?.isNone && span.start < lineStart + len then
+      startPos? := some (column span.start)
+    if stopPos?.isNone && stop ≤ lineStart + len then
+      stopPos? := some (column stop)
+    lineStart := lineStart + len
+  if let some (text, sourceStart) := lines.back? then
+    let lineEnd := sourceStart.offsetBy ⟨text.toList.foldl (· + ·.utf8Size) 0⟩
+    if startPos?.isNone && span.start == lineStart then
+      startPos? := some lineEnd
   match startPos?, stopPos? with
-  | some startPos, some stopPos => some (startPos, stopPos)
+  | some startPos, some stopPos => some (startPos, if span.length == 0 then startPos else stopPos)
   | _, _ => none
 
 private def RawResult.toFailure : RawResult → Failure

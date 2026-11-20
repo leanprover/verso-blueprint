@@ -42,7 +42,7 @@ private def slideNodeAttrs (node : Informal.Graft.BlueprintNode) : Array (String
   renderedBlueprintNodeAttrs node
 
 private def renderMissingNode (node : Informal.Graft.BlueprintNode) (title detail : String) : Html :=
-  .tag "div" (slideNodeAttrs node) <|
+  .element "div" (slideNodeAttrs node) <|
     Informal.Graft.renderNotice "bp_slide_node_notice" "error" title detail
 
 private def slideManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=

@@ -330,7 +330,8 @@ private def substringsInOrder (text : String) : List String → Bool
       hasSubstr html "First persisted Manual list item." &&
       hasSubstr html "Second persisted Manual list item." &&
       hasSubstr html "<strong>structurally emphasized Verso docstring body</strong>" &&
-      countSubstr html "<code>Nat.succ</code>" == 2 &&
+      -- Verso v4.36 also renders the docstring into the code hovers.
+      countSubstr html "<code>Nat.succ</code>" == 4 &&
       hasSubstr html "First imported docstring list item." &&
       hasSubstr html "Second imported docstring list item." &&
       3 ≤ (html.splitOn "<ul>").length &&
@@ -362,7 +363,7 @@ private def substringsInOrder (text : String) : List String → Bool
       (({ label := "attr.hybrid.body" } :
         Informal.Graft.BlueprintNodeConfig).toNode)
     let rendered ← Informal.Graft.renderNodeFromManifestCache {} ctx node
-    let html := rendered.asString
+    let html := rendered.render
     pure <|
       hasSubstr html "Statement uses 1" &&
       hasSubstr html "attr.hybrid.verso_docstring" &&
@@ -382,13 +383,15 @@ private def substringsInOrder (text : String) : List String → Bool
     let (moduleHtml, moduleState) ←
       renderManualDocHtmlStringAndState manualImpls includedDefaultLabelModuleDoc
     let key := Informal.PreviewCache.statementKey label
+    -- Verso v4.36 also renders each docstring into the code hovers. The hover copy keeps
+    -- links, emphasis and quotations, but not Blueprint math classes or subsection titles.
     let renderedAsExpected (html : String) : Bool :=
-      countSubstr html "<strong>qualified default-label theorem</strong>" == 2 &&
+      countSubstr html "<strong>qualified default-label theorem</strong>" == 4 &&
       countSubstr html "<code class=\"bp_math inline\">3 + 4 = 7</code>" == 2 &&
       countSubstr html "<code class=\"bp_math display\">3 + 5 = 8</code>" == 2 &&
       countSubstr html
-          "href=\"https://example.com/qualified-docstring\"" == 2 &&
-      countSubstr html "<blockquote>" == 2 &&
+          "href=\"https://example.com/qualified-docstring\"" == 4 &&
+      countSubstr html "<blockquote>" == 4 &&
       2 ≤ countSubstr html "First qualified-label list item." &&
       countSubstr html "<strong>Qualified structural subsection</strong>" == 2 &&
       2 ≤ countSubstr html

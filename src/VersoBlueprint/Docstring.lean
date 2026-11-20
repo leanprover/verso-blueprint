@@ -54,9 +54,9 @@ private def rewriteMathHtml
     (texPrelude : String) (html : Verso.Output.Html) : Verso.Output.Html :=
   html.visitM (m := Id) (tag := fun name attrs contents =>
     if name == "code" && attrs.contains ("class", "math inline") then
-      some (.tag name (mathAttrs .inline texPrelude) contents)
+      some (.element name (mathAttrs .inline texPrelude) contents)
     else if name == "code" && attrs.contains ("class", "math display") then
-      some (.tag name (mathAttrs .display texPrelude) contents)
+      some (.element name (mathAttrs .display texPrelude) contents)
     else
       none)
 
@@ -82,8 +82,8 @@ where
       if part.title.isEmpty then
         .empty
       else
-        .tag "p" #[] <|
-          .tag "strong" #[] (.seq <| part.title.map inlineToHtml)
+        .element "p" #[] <|
+          .element "strong" #[] (.seq <| part.title.map inlineToHtml)
     let content := .seq <| part.content.map blockToHtml
     let children := .seq <| part.subParts.map partToHtml
     .seq #[title, content, children]

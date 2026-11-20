@@ -18,33 +18,33 @@ open Verso.VersoBlueprintTests.Blueprint.Support
     | throw <| IO.userError "Invalid choice A key"
   let some keyB := PreviewKey.ofString? (PreviewCache.statementKey `choice_b)
     | throw <| IO.userError "Invalid choice B key"
-  let a := PreviewResources.deferred keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
-  let b := PreviewResources.deferred keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
+  let a := PreviewResources.deferred keyA (fun _ => .text "A+") (fun _ => .text "A-")
+  let b := PreviewResources.deferred keyB (fun _ => .text "B+") (fun _ => .text "B-")
   let nested := PreviewResources.deferred keyA (fun _ => .seq #[a, b]) (fun _ => b)
   let combined : Output.Html := .seq #[a, b, nested, a]
   let .ok resolved := PreviewResources.finish (· == keyA) combined
     | throw <| IO.userError "Independent choices failed to compose"
-  unless resolved.asString == "A+B-A+B-A+" do
-    throw <| IO.userError s!"Choice resolved another producer's content: {resolved.asString}"
+  unless resolved.render == "A+B-A+B-A+" do
+    throw <| IO.userError s!"Choice resolved another producer's content: {resolved.render}"
   let .ok repeated := PreviewResources.finish (fun _ => false) resolved
     | throw <| IO.userError "Resolved HTML could not be finalized again"
-  unless repeated.asString == resolved.asString do
+  unless repeated.render == resolved.render do
     throw <| IO.userError "Finalization changed already resolved HTML"
   let raw := "<verso-blueprint-preview-choice key=\"opaque\">external HTML</verso-blueprint-preview-choice>"
-  let .ok rawResult := PreviewResources.finish (fun _ => false) (.text false raw)
+  let .ok rawResult := PreviewResources.finish (fun _ => false) (.raw raw)
     | throw <| IO.userError "Opaque HTML was interpreted as a choice"
-  unless rawResult.asString == raw do
+  unless rawResult.render == raw do
     throw <| IO.userError "Finalization rewrote opaque HTML"
-  let malformed : Output.Html := .tag "verso-blueprint-preview-choice" #[] .empty
-  let emptyKey : Output.Html := .tag "verso-blueprint-preview-choice" #[("key", "")]
-    (.seq #[.text true "present", .text true "absent"])
-  let presence := PreviewResources.deferred keyA (fun _ => .text true "body") (fun _ => .empty)
+  let malformed : Output.Html := .element "verso-blueprint-preview-choice" #[] .empty
+  let emptyKey : Output.Html := .element "verso-blueprint-preview-choice" #[("key", "")]
+    (.seq #[.text "present", .text "absent"])
+  let presence := PreviewResources.deferred keyA (fun _ => .text "body") (fun _ => .empty)
   unless !PreviewResources.htmlIsBlank malformed && !PreviewResources.htmlIsBlank presence do
     throw <| IO.userError "Blank-body filtering concealed an invalid choice"
-  let discarded := PreviewResources.deferred keyA (fun _ => .text true "selected") (fun _ => malformed)
+  let discarded := PreviewResources.deferred keyA (fun _ => .text "selected") (fun _ => malformed)
   let .ok selected := PreviewResources.finish (fun _ => true) discarded
     | throw <| IO.userError "Finalization inspected a discarded alternative"
-  unless selected.asString == "selected" &&
+  unless selected.render == "selected" &&
       !(PreviewResources.finish (fun _ => false) discarded).isOk do
     throw <| IO.userError "Finalization did not validate the selected alternative"
   for (fragment, diagnostic) in #[(malformed, "Malformed"), (emptyKey, "Empty"),
@@ -62,7 +62,7 @@ open Verso.VersoBlueprintTests.Blueprint.Support
     label := `header_policy, key := "header_policy", targetKind := .block
     facet := .statement, kind := some .theorem, title := "Theorem 1" }
   let render := fun entry => PreviewManifest.BlockRender.renderWithRenderedContent {} entry
-    { body := .text true "body" } |>.asString
+    { body := .text "body" } |>.render
   let statementHtml := render statement
   let proofConfig : PreviewManifest.BlockRender.RenderConfig := {
     relationPanels := { wrapClass := fun kind =>
@@ -70,7 +70,7 @@ open Verso.VersoBlueprintTests.Blueprint.Support
       else panic! "Proof rendering constructed a statement-only relation panel" }
   }
   let proofHtml := PreviewManifest.BlockRender.renderWithRenderedContent proofConfig
-    { statement with facet := .proof } { body := .text true "body" } |>.asString
+    { statement with facet := .proof } { body := .text "body" } |>.render
   unless hasSubstr statementHtml "No reverse dependencies" &&
       hasSubstr statementHtml "No associated Lean declarations" &&
       !(hasSubstr proofHtml "No reverse dependencies") &&
@@ -158,7 +158,7 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
     traverse := fun _ _ _ => pure none
     toHtml := some fun _ _ _ _ _ => do
       renders.modify (· + 1)
-      pure (.text false "resource-probe")
+      pure (.raw "resource-probe")
     toTeX := none }
   let impls := impls.insertBlock `blankResource {
     traverse := fun _ _ _ => pure none
@@ -249,7 +249,7 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
         unless live.dependencies == relation.dependencies && live.badgeCodes == expected do
           throw <| IO.userError "Live and manifest relation facts disagree"
         let shell := PreviewManifest.BlockRender.renderWithRenderedContent {} { entry with usedBy := #[] }
-          { body := .text true "body" } |>.asString
+          { body := .text "body" } |>.render
         let mut found := false
         for part in (shell.splitOn "class=\"bp-relation-entries\">").drop 1 do
           let .ok rows := Json.parse (part.splitOn "</script>").head! >>=

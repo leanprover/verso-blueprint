@@ -140,14 +140,14 @@ def sourceBackedAttrs (markup : Informal.Data.ExternalMarkup) : Array (String ×
 def noticeHtml (markup : Informal.Data.ExternalMarkup) : Verso.Output.Html :=
   let text :=
     s!"Rendered from {Informal.ExternalMarkupView.sourceSummary markup}; no native Verso body is available."
-  Verso.Output.Html.tag "p"
+  Lean.Html.element "p"
     #[("class", "bp_external_markup_notice"), ("role", "note")]
     (VersoBlueprint.Html.text text)
 
 private def renderMarkdownBody? (raw : String) : Option Verso.Output.Html := do
   let html ← MD4Lean.renderHtml raw
-  some <| Verso.Output.Html.tag "div" #[("class", "bp_external_markdown_body")]
-    (Verso.Output.Html.text false html)
+  some <| Lean.Html.element "div" #[("class", "bp_external_markdown_body")]
+    (Lean.Html.raw html)
 
 def body?
     (cfg : Config)
@@ -181,6 +181,6 @@ def selectedContent?
 def previewBody? (cfg : Config) (markup : Array Informal.Data.ExternalMarkup) :
     Option Verso.Output.Html := do
   let (selected, content) ← selectedContent? cfg markup
-  return .tag "div" (sourceBackedAttrs selected) (.seq content)
+  return .element "div" (sourceBackedAttrs selected) (.seq content)
 
 end Informal.ExternalMarkupRender

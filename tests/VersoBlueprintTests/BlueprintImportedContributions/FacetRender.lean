@@ -29,7 +29,7 @@ def facetBlueprint : BlueprintDocument := .capture
       | throw <| IO.userError "Could not restore selected facet state"
     for state in #[state, restored] do
       let page ← renderManualBlocksHtmlWithState blocks extension_impls% state
-      let ids := (page.asString.splitOn " id=\"").drop 1 |>.map fun rest =>
+      let ids := (page.render.splitOn " id=\"").drop 1 |>.map fun rest =>
         (rest.splitOn "\"").head!
       unless ids.length == ids.eraseDups.length do
         throw <| IO.userError s!"Repeated occurrences emitted duplicate HTML IDs in order {order}"
@@ -41,7 +41,7 @@ def facetBlueprint : BlueprintDocument := .capture
         | throw <| IO.userError "Missing selected external row ID"
       let some href := Resolve.resolveInformalDeclHref? state `filled_facet `facetExternal
         | throw <| IO.userError "Missing canonical external declaration link"
-      unless href.endsWith ("#" ++ rowId) && countSubstr page.asString s!"id=\"{rowId}\"" == 1 do
+      unless href.endsWith ("#" ++ rowId) && countSubstr page.render s!"id=\"{rowId}\"" == 1 do
         throw <| IO.userError "Canonical external declaration did not target the selected occurrence's unique row"
       let .ok canonical := RenderingResolution.canonical state `filled_facet
         | throw <| IO.userError "Could not resolve canonical facet metadata"
@@ -99,7 +99,7 @@ def facetBlueprint : BlueprintDocument := .capture
           throw <| IO.userError "Facet resolution changed selected content, presentation, or semantic metadata"
         let some id := selected.target | throw <| IO.userError "Missing selected target"
         let some target := state.externalTags[id]? | throw <| IO.userError "Missing selected page anchor"
-        unless hasSubstr page.asString body && hasSubstr html body &&
+        unless hasSubstr page.render body && hasSubstr html body &&
             entry.href == some target.relativeLink &&
             entry.sourceLocation == selected.sourceLocation && entry.sourceLocation.ok &&
             entry.sources.flatMap (·.spans.map (·.page)) == #[some sourcePage] do
@@ -169,7 +169,7 @@ def facetBlueprint : BlueprintDocument := .capture
     let html ← renderManualBlocksHtmlWithState references extension_impls% state
     let .ok reference := RenderingResolution.reference state `filled_facet
       | throw <| IO.userError "Could not resolve reference"
-    unless hasSubstr html.asString reference.title do
+    unless hasSubstr html.render reference.title do
       throw <| IO.userError "Inline rendering did not use the shared reference title"
     let .ok canonical := RenderingResolution.canonical state `filled_facet
       | throw <| IO.userError "Could not resolve canonical reference data"
@@ -200,7 +200,7 @@ def facetBlueprint : BlueprintDocument := .capture
     -- Compare the actual live panel's serialized row with the exported relation.
     let rowPrefix := (toJson #[toJson relation.title, toJson relation.previewKey,
       toJson relation.label.toString, toJson relation.href]).compress.dropEnd 1 |>.toString
-    unless hasSubstr panel.asString rowPrefix do
+    unless hasSubstr panel.render rowPrefix do
       throw <| IO.userError "Live relation panel disagreed with the manifest's canonical reference"
     for facet in #[PreviewCache.Facet.statement, .proof] do
       let .ok requested := RenderingResolution.reference state `filled_facet (some facet)
@@ -217,8 +217,8 @@ def facetBlueprint : BlueprintDocument := .capture
         unless requested.title == title do
           throw <| IO.userError "Explicit facet reference borrowed another facet's title"
     if order == #[2] then
-      unless hasSubstr html.asString "Proof for Theorem 1" &&
-          !hasSubstr html.asString ">Proof 1<" do
+      unless hasSubstr html.render "Proof for Theorem 1" &&
+          !hasSubstr html.render ">Proof 1<" do
         throw <| IO.userError "Proof-only references lost the theorem kind"
     let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
       (fun error => errors.modify (·.push error)) (PreviewManifest.PreparedPreviewState.prepare state)
@@ -232,11 +232,11 @@ def facetBlueprint : BlueprintDocument := .capture
         throw <| IO.userError "A code-backed placeholder acquired an omitted prose body"
     match expected with
     | none =>
-      unless !hasSubstr html.asString "bp_inline_preview_ref" do
+      unless !hasSubstr html.render "bp_inline_preview_ref" do
         throw <| IO.userError "Omitted facets offered a nonexistent preview"
     | some facet =>
       let key := PreviewCache.key `filled_facet facet
-      unless countSubstr html.asString s!"data-bp-preview-key=\"{key}\"" == 2 &&
+      unless countSubstr html.render s!"data-bp-preview-key=\"{key}\"" == 2 &&
           (files.htmlCache.findHtml? key).isSome do
         throw <| IO.userError s!"Inline references missed {key} in chapter order {order}"
     unless (← errors.get).isEmpty do

@@ -22,7 +22,7 @@ def escapeText (text : String) : String :=
 
 /-- Plain HTML text content escaped with `escapeText`. -/
 def text (text : String) : Html :=
-  Verso.Output.Html.text false <| escapeText text
+  Lean.Html.raw <| escapeText text
 
 /--
 Append an HTML node unless an existing node renders to the same string.
@@ -31,8 +31,8 @@ Use this for structured head snippets where `Html` does not provide a semantic
 equality instance but repeated asset installation should remain idempotent.
 -/
 def pushIfRenderedMissing (values : Array Html) (value : Html) : Array Html :=
-  let valueString := Html.asString value
-  if values.any (fun item => Html.asString item == valueString) then
+  let valueString := Lean.Html.render value
+  if values.any (fun item => Lean.Html.render item == valueString) then
     values
   else
     values.push value

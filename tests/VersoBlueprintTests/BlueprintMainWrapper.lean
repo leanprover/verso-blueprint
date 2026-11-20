@@ -51,7 +51,7 @@ This tiny document exercises highlighted-code startup asset normalization.
   let cfg : RenderConfig := {}
   let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
   cfg.toHtmlConfig.extraHead.any fun html =>
-    let source := html.asString
+    let source := html.render
     hasSubstr source "type=\"module\"" &&
       hasSubstr source "-verso-data/blueprint-page-runtime.mjs"
 
@@ -62,7 +62,7 @@ This tiny document exercises highlighted-code startup asset normalization.
   let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
   let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
   (cfg.toHtmlConfig.extraHead.filter fun html =>
-    hasSubstr html.asString "-verso-data/blueprint-page-runtime.mjs").size == 1
+    hasSubstr html.render "-verso-data/blueprint-page-runtime.mjs").size == 1
 
 /-- info: true -/
 #guard_msgs in
@@ -326,7 +326,7 @@ private def runHtmlCheck (action : EmitM (Option Informal.HtmlDocument))
   for (mode, changed) in #[(Mode.single, cfg), (.multi, { cfg with htmlDepth := 1 }),
       (.multi, { cfg with draft := true }), (.multi, { cfg with features := {.KaTeX} }),
       (.multi, { cfg with extraJs := ["console.log('changed asset');"] }),
-      (.multi, { cfg with extraHead := #[.text false "changed head"] })] do
+      (.multi, { cfg with extraHead := #[.raw "changed head"] })] do
     let (result, errors) ← runHtmlCheck (Informal.HtmlDocument.load mode changed path)
     unless result.isNone && errors.any (hasSubstr · "layout/configuration") do
       throw <| IO.userError "Resume accepted an incompatible layout/configuration"

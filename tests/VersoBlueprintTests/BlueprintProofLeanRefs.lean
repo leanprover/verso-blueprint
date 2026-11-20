@@ -87,7 +87,7 @@ theorem admittedAttachedResult : True := by sorry
       throw <| IO.userError "Panel display precedence discarded external status evidence"
     let data : BlockData := { label := `overlap, kind := .theorem, count := 1, codeData := some source }
     let rendered := CodeSummary.renderParts data { source := some source } (fun _ => none)
-    unless !hasSubstr rendered.codeEntry.asString "bp_code_decl_status_ok" do
+    unless !hasSubstr rendered.codeEntry.render "bp_code_decl_status_ok" do
       throw <| IO.userError "Summary preview presented the selected inline declaration as complete"
   let code : Data.Code := { stx := .missing, definedTheorems := #[{
     name := good.canonical, provedStatus := .proved }] }
@@ -269,12 +269,12 @@ run_meta do
   let some proofBody := files.htmlCache.findHtml? (PreviewCache.proofKey label)
     | throw <| IO.userError "Missing cached proof HTML"
   let rendered := PreviewManifest.BlockRender.renderWithRenderedContent {} proof {
-    body := .text false proofBody
-    codeBodies := #[.text false "Supporting declaration preview"]
+    body := .raw proofBody
+    codeBodies := #[.raw "Supporting declaration preview"]
     codeData := proof.codeData.getD {}
   }
-  unless hasSubstr rendered.asString "Lean declarations attached to this proof" &&
-      hasSubstr rendered.asString "Supporting declaration preview" do
+  unless hasSubstr rendered.render "Lean declarations attached to this proof" &&
+      hasSubstr rendered.render "Supporting declaration preview" do
     throw <| IO.userError "Cached proof rendering dropped its supporting declarations"
   let .ok (some query) := VersoBlueprint.Vbp.parseQueryPlan ["node", "proof.references"]
     | throw <| IO.userError "Node query failed to parse"
