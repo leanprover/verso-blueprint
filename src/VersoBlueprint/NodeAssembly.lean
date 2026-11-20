@@ -89,6 +89,51 @@ private def mergeContribution (label : Label) (node : Node)
     literateCodes
     tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
 
+private theorem externalRefs_bind {α : Type} (action : MergeM α) (next : α → MergeM Node)
+    (node : Node)
+    (h : ∀ value errors, ((next value).run errors).1.externalRefs = node.externalRefs ∧
+      ((next value).run errors).1.proofExternalRefs = node.proofExternalRefs)
+    (errors : Array String) :
+    ((action >>= next).run errors).1.externalRefs = node.externalRefs ∧
+      ((action >>= next).run errors).1.proofExternalRefs = node.proofExternalRefs := by
+  cases he : action errors with
+  | mk value state =>
+    simpa only [StateT.run, bind, StateT.bind, he] using h value state
+
+-- The proof stays beside the private reducer: non-module imports cannot name
+-- its implementation. No other payload frame property is asserted here.
+private theorem mergeContribution_externalRefs (label : Label) (node : Node)
+    (incoming : NodeContribution) (errors : Array String) :
+    ((mergeContribution label node incoming).run errors).1.externalRefs = node.externalRefs ∧
+      ((mergeContribution label node incoming).run errors).1.proofExternalRefs = node.proofExternalRefs := by
+  unfold mergeContribution
+  dsimp only
+  repeat' first
+    | exact ⟨rfl, rfl⟩
+    | (apply externalRefs_bind; intro value state; try dsimp only)
+    | (split <;> try dsimp only)
+
+private theorem foldPayloads_externalRefs (label : Label) (contributions : Array NodeContribution)
+    (node : Node) (errors : Array String) :
+    ((contributions.foldlM (mergeContribution label) node).run errors).1.externalRefs = node.externalRefs ∧
+      ((contributions.foldlM (mergeContribution label) node).run errors).1.proofExternalRefs = node.proofExternalRefs := by
+  rw [← Array.foldlM_toList]
+  have h (inputs : List NodeContribution) (node : Node) (errors : Array String) :
+      ((inputs.foldlM (mergeContribution label) node).run errors).1.externalRefs = node.externalRefs ∧
+        ((inputs.foldlM (mergeContribution label) node).run errors).1.proofExternalRefs = node.proofExternalRefs := by
+    induction inputs generalizing node errors with
+    | nil => exact ⟨rfl, rfl⟩
+    | cons input inputs ih =>
+      cases he : (mergeContribution label node input).run errors with
+      | mk next state =>
+        have hs := mergeContribution_externalRefs label node input errors
+        simp only [he] at hs
+        have ht := ih next state
+        rw [hs.1, hs.2] at ht
+        change mergeContribution label node input errors = (next, state) at he
+        simpa only [List.foldlM_cons, StateT.run, bind, StateT.bind, he] using ht
+  exact h contributions.toList node errors
+
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
 private def applyPayloads (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
@@ -105,6 +150,23 @@ records. This reducer preserves those fields on an already assembled node. -/
 def Node.applyContributions (label : Label) (node : Node)
     (contributions : Array NodeContribution) : Except (Array String) Node :=
   Informal.NodeAssembly.applyPayloads label node contributions
+
+/-- Successful payload reduction preserves exactly the two external snapshot fields.
+The proof is local to this private reducer boundary; broader payload frame laws
+belong in the separate verification workstream. -/
+theorem Node.applyContributions_externalRefs {label : Label} {node result : Node}
+    {contributions : Array NodeContribution}
+    (h : node.applyContributions label contributions = .ok result) :
+    result.externalRefs = node.externalRefs ∧ result.proofExternalRefs = node.proofExternalRefs := by
+  have hf := Informal.NodeAssembly.foldPayloads_externalRefs label contributions node #[]
+  unfold Node.applyContributions Informal.NodeAssembly.applyPayloads at h
+  cases hr : (contributions.foldlM (Informal.NodeAssembly.mergeContribution label) node).run #[] with
+  | mk reduced errors =>
+    simp only [hr] at h hf
+    split at h
+    · cases h
+      exact hf
+    · contradiction
 
 end Informal.Data
 
@@ -239,12 +301,22 @@ private def project (node : Node) (view : View) : Assembly :=
     priority := view.priority
     kind := kind }, view }
 
+/-- Check selected names without rewriting the complete retained evidence.
+A second erasure must not move a key after a snapshot fold has normalized it once. -/
+def referenceNameErrors (label : Label) (records : List Record) : Array String :=
+  ((recordsFor label records).flatMap fun record =>
+    record.allReferences.toList.filterMap fun ref =>
+      if ref.canonical.eraseMacroScopes.eraseMacroScopes == ref.canonical.eraseMacroScopes then none
+      else some s!"Label {label} has external Lean reference '{ref.written}' with unstable canonical name '{ref.canonical}': erasing macro scopes again changes the declaration key").toArray
+
 def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
     Except (Array String) Assembly :=
   match Node.applyContributions label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
-    | .ok view => .ok (project node view)
+    | .ok view =>
+      let errors := referenceNameErrors label records
+      if errors.isEmpty then .ok (project node view) else .error errors
 
 end Informal.NodeAssembly

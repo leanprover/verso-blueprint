@@ -289,8 +289,13 @@ The same flow can be read as four contracts:
 
    `NodeAssembly.assemble` is a pure checked reducer shared by local
    registration and import replay. It combines the proved selected-fact resolver
-   with the body/kind/markup reducer, and returns either the accepted node or its
-   conflict reasons. `State.data` stores `RegisteredNode` values, each containing the checked node,
+   with the body/kind/markup reducer and a selected-reference naming check, and
+   returns either the accepted node or its conflict reasons. The naming check
+   requires each once-erased canonical key to be stable under another erasure,
+   including missing references on both facets. It runs after complete evidence
+   resolution, so collision and priority diagnostics retain precedence. It
+   rejects unstable keys without rewriting or dropping their raw evidence.
+   `State.data` stores `RegisteredNode` values, each containing the checked node,
    its introducing module, and its contributing modules. Pending provenance is
    intentionally retained even when assembly rejects an input, so provenance is
    not itself accepted node data. The registered node, local exports, and
@@ -354,14 +359,17 @@ The same flow can be read as four contracts:
    retention of complete records and replay of equal evidence; resolver laws
    cover exact declaration membership across both facets, accepted supports, and
    priority agreement; and assembly laws cover the accepted node's resolved
-   priority, exact supports, separate statement/proof snapshot folds, and the
+   priority, exact supports, raw and present membership in each snapshot facet,
+   node declaration union with accepted payload declarations, and the
    `blueprintAttributeAttachments` capability projected from every accepted
-   support. These guarantees are conditional on successful assembly. They do
-   not prove confluence for body/kind/markup policies, choose among
-   conflicting provenance or render snapshots, prove the conservative status
-   projection, or make rejected
-   evidence accepted data. The payload reducer accepts body, dependency, metadata,
-   and literate-code inputs; identified association and priority records enter
+   support. Successful assembly proves the executable naming check discharged
+   the fold's erasure-stability premise; no validity axiom about Lean's name
+   producers is assumed. These guarantees are conditional on successful
+   assembly. They do not prove confluence for body/kind/markup policies, choose
+   among conflicting provenance or render snapshots, prove the conservative
+   status projection, or make rejected evidence accepted data. The payload
+   reducer accepts body, dependency, metadata, and literate-code inputs;
+   identified association and priority records enter
    through `contributeRecord`.
 
    Lean's `doc.verso` elaborator produces `Lean.VersoDocString`, independently of

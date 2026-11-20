@@ -53,6 +53,13 @@ def Association (rs : List Record) (label : Label) (decl : Name) : Prop :=
   ∃ r ∈ rs, r.label = label ∧ ∃ ref ∈ r.allReferences.toList,
     ref.present = true ∧ ref.canonical.eraseMacroScopes = decl
 
+/-- Every selected external observation has a stable one-pass erased declaration key.
+Both facets and missing references are checked; this is not an assumption about
+Lean's name-resolution APIs or arbitrary `Name` values. -/
+def StableReferences (rs : List Record) (label : Label) : Prop :=
+  ∀ record ∈ rs, record.label = label → ∀ ref ∈ record.allReferences,
+    ref.canonical.eraseMacroScopes.eraseMacroScopes = ref.canonical.eraseMacroScopes
+
 def Priority (rs : List Record) (label : Label) (value : String) : Prop :=
   ∃ r ∈ rs, r.label = label ∧ r.priority = some value
 

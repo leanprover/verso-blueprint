@@ -78,12 +78,14 @@ jobs:
             ${{ runner.os }}-lake-deps-
       - name: Install integration test dependencies
         run: python3 -m pip install -r tests/integration/requirements.txt
-      - name: Verify contribution and assembly laws
+      - name: Verify production data laws
         run: >
           ./scripts/lean-low-priority lake build
           +VersoBlueprint.Contributions.Laws:olean
           +VersoBlueprint.NodeAssembly.Laws:olean
-      - name: Print contribution and assembly proof dependencies
+          +VersoBlueprint.ExternalRef.Laws:olean
+          +VersoBlueprint.NodeAssembly.MembershipLaws:olean
+      - name: Print production proof dependencies
         run: ./scripts/lean-low-priority lake lean tests/verification/AssemblyAxiomAudit.lean
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh

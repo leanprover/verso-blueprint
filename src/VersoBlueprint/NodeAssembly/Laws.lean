@@ -13,6 +13,29 @@ namespace Informal.NodeAssembly
 
 open Lean Informal.Data Informal.Contributions
 
+/-- The executable admission check is exact for both facets, including missing references. -/
+theorem referenceNameErrors_isEmpty_iff (label : Label) (records : List Record) :
+    (referenceNameErrors label records).isEmpty = true ↔ StableReferences records label := by
+  simp [referenceNameErrors, List.flatMap_eq_nil_iff, StableReferences, recordsFor]
+
+/-- Every accepted assembly has checked stable one-pass declaration keys.
+This guarantee applies equally to local registrations and imported reassembly. -/
+theorem assemble_ok_stableReferences {label : Label} {payloads : Array NodeContribution}
+    {records : List Record} {assembled : Assembly}
+    (h : assemble label payloads records = .ok assembled) : StableReferences records label := by
+  unfold assemble at h
+  cases hn : Node.applyContributions label {} payloads with
+  | error _ => simp [hn] at h
+  | ok node =>
+    cases hr : resolve label records with
+    | error _ => simp [hn, hr] at h
+    | ok view =>
+      simp only [hn, hr] at h
+      split at h
+      · rename_i hstable
+        exact (referenceNameErrors_isEmpty_iff label records).mp hstable
+      · contradiction
+
 /-- Successful assembly returns the actual resolver result as its accepted view. -/
 theorem assemble_ok_resolve {label : Label} {payloads : Array NodeContribution}
     {records : List Record} {assembled : Assembly}
@@ -25,29 +48,34 @@ theorem assemble_ok_resolve {label : Label} {payloads : Array NodeContribution}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      simp only [hn, hr] at h
+      split at h
+      · cases h
+        rfl
+      · contradiction
 
-/-- Assembly accepts exactly when the payload reducer and complete evidence permit it.
-Authored-origin validity belongs to the environment's admission boundary. -/
+/-- Assembly accepts exactly when payload reduction, complete evidence resolution,
+and the selected-reference name check all succeed. Authored-origin validity
+belongs to the environment's admission boundary. -/
 theorem assemble_success_iff (label : Label) (payloads : Array NodeContribution)
     (records : List Record) :
     (∃ assembled, assemble label payloads records = .ok assembled) ↔
       (∃ node, Node.applyContributions label {} payloads = .ok node) ∧
-        NoCollision records label ∧ ¬ PriorityDisagreement records label := by
+        NoCollision records label ∧ ¬ PriorityDisagreement records label ∧
+        StableReferences records label := by
   constructor
   · rintro ⟨assembled, h⟩
     have accepted := (resolverLaws.success_iff label records).mp
       ⟨assembled.view, assemble_ok_resolve h⟩
-    refine ⟨?_, accepted⟩
+    refine ⟨?_, accepted.1, accepted.2, assemble_ok_stableReferences h⟩
     unfold assemble at h
     cases hn : Node.applyContributions label {} payloads with
     | error _ => simp [hn] at h
     | ok node => exact ⟨node, rfl⟩
-  · rintro ⟨⟨node, hn⟩, accepted⟩
-    obtain ⟨view, hr⟩ := (resolverLaws.success_iff label records).mpr accepted
-    simp only [assemble, hn, hr]
+  · rintro ⟨⟨node, hn⟩, hc, hp, hs⟩
+    obtain ⟨view, hr⟩ := (resolverLaws.success_iff label records).mpr ⟨hc, hp⟩
+    have he := (referenceNameErrors_isEmpty_iff label records).mpr hs
+    simp only [assemble, hn, hr, he, ↓reduceIte]
     exact ⟨_, rfl⟩
 
 /-- A successful production assembly exposes the resolver's accepted priority. -/
@@ -62,9 +90,11 @@ theorem assemble_ok_priority {label : Label} {payloads : Array NodeContribution}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      simp only [hn, hr] at h
+      split at h
+      · cases h
+        rfl
+      · contradiction
 
 /-- The returned node has no priority exactly when no input record claims one. -/
 theorem assemble_ok_priority_none_iff {label : Label} {payloads : Array NodeContribution}
@@ -103,9 +133,11 @@ theorem assemble_ok_blueprintAttributeAttachments {label : Label}
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      simp only [hn, hr] at h
+      split at h
+      · cases h
+        rfl
+      · contradiction
 
 /-- The assembled attribute capability is true exactly for accepted input evidence. -/
 theorem assemble_ok_blueprintAttributeAttachments_iff {label : Label}
@@ -136,9 +168,11 @@ theorem assemble_ok_externalRefs {label : Label} {payloads : Array NodeContribut
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      simp only [hn, hr] at h
+      split at h
+      · cases h
+        rfl
+      · contradiction
 
 /-- Proof snapshots are projected only from the proof side of supports. -/
 theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array NodeContribution}
@@ -153,8 +187,10 @@ theorem assemble_ok_proofExternalRefs {label : Label} {payloads : Array NodeCont
     cases hr : resolve label records with
     | error _ => simp [hn, hr] at h
     | ok view =>
-      simp [hn, hr] at h
-      cases h
-      rfl
+      simp only [hn, hr] at h
+      split at h
+      · cases h
+        rfl
+      · contradiction
 
 end Informal.NodeAssembly
