@@ -6,7 +6,7 @@
     {
       "id": "v4.35.0",
       "toolchain": "v4.35.0",
-      "verso_ref": "v4.35.0",
+      "verso_ref": "v4.35.0-patch1",
       "branch": "v4.35.0",
       "deploy_pages": true
     }
