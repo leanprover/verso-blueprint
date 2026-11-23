@@ -97,6 +97,12 @@ The merge rules are:
 | Rust code | At most one attachment |
 | External markup | At most one attachment per language and slot |
 
+External association records must have a stable declaration key after macro-scope
+erasure. Local registration and import replay reject a record if a second
+erasure changes the once-erased key, including missing references on either
+facet. The diagnostic identifies the label and reference; admission does
+not rewrite the record to a different declaration identity.
+
 A rejected directive leaves Blueprint registrations, inferred dependencies, code
 attachments, numbering, and provenance unchanged, including registrations made
 while elaborating its body. Errors also close the directive scope, so a valid
