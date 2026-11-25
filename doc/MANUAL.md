@@ -550,6 +550,12 @@ blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
 registered, but there is no imported informal statement body.
 
+For authored realization endpoints, use the `markdown` base name with role
+`statement` for a default Markdown docstring. A `doc.verso` docstring uses the
+`verso` base name with role `statement`, and a `:::proof` body uses `verso` with
+role `proof`. Update any Markdown docstring endpoint that used the old `verso`
+base name to `markdown`.
+
 Importing `VersoBlueprint` registers Lean docstring handlers for the same
 `Informal.uses` and `Informal.bpref` names used in Manual prose. Enable
 `doc.verso` in the module containing the declaration and open `Informal` (or use
