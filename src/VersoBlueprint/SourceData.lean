@@ -41,76 +41,114 @@ inductive ProviderPayload where
   | markup (value : Data.ExternalMarkup)
   deriving Repr, Inhabited
 
+/-- Original fence bytes with a body range relative to the fence. The fence
+establishes ownership; its body becomes the canonical document. -/
+structure FencedSelection where
+  private mk ::
+  original : String
+  body : Syntax.Range
+  deriving Repr
+
 structure SourceSelection where
   destination : SourceDestination
   context : Context
   document : DocumentKey
   source : Data.SourceLocationResult
   payload : ProviderPayload
+  fence : Option (Except String FencedSelection) := none
   deriving Repr, Inhabited
 
-/-- A prose selection as stored at registration: the whole original source buffer
-its syntax points into, its byte range there, and the selected bytes. The
-compiled environment retains that buffer, so no file is read. -/
-private def proseSelection (body : Data.InformalBody) : Except String (String × Syntax.Range × String) := do
-  let .original leading _ _ _ := body.stx.getHeadInfo
-    | throw "Prose selection has no original syntax start"
-  let .original _ _ trailing _ := body.stx.getTailInfo
-    | throw "Prose selection has no original syntax end"
+/-- The original buffer and byte range a syntax selection points into. -/
+private def syntaxRange (stx : Syntax) : Except String (String × Syntax.Range) := do
+  let .original leading _ _ _ := stx.getHeadInfo
+    | throw "Selection has no original syntax start"
+  let .original _ _ trailing _ := stx.getTailInfo
+    | throw "Selection has no original syntax end"
   unless leading.str == trailing.str do
-    throw "Prose syntax start and end belong to different source buffers"
-  let some range := body.stx.getRange?
-    | throw "Prose selection has no original byte range"
-  unless range.start.byteIdx <= range.stop.byteIdx && range.stop.byteIdx <= leading.str.utf8ByteSize do
-    throw "Prose selection range is outside its source buffer"
-  return (leading.str, range, String.Pos.Raw.extract leading.str ⟨range.start.byteIdx⟩ ⟨range.stop.byteIdx⟩)
+    throw "Selection start and end belong to different source buffers"
+  let some range := stx.getRange?
+    | throw "Selection has no original byte range"
+  unless range.start.byteIdx <= range.stop.byteIdx &&
+      String.Pos.Raw.isValid leading.str range.start && String.Pos.Raw.isValid leading.str range.stop do
+    throw "Selection range has invalid UTF-8 boundaries in its source buffer"
+  return (leading.str, range)
+
+private def extract (buffer : String) (range : Syntax.Range) : String :=
+  String.Pos.Raw.extract buffer range.start range.stop
+
+def FencedSelection.ofSyntax (buffer : String) (fence contents : Syntax) : Except String FencedSelection := do
+  let (fenceBuffer, outer) ← syntaxRange fence
+  let (bodyBuffer, inner) ← syntaxRange contents
+  unless fenceBuffer == buffer && bodyBuffer == buffer &&
+      outer.start.byteIdx <= inner.start.byteIdx && inner.stop.byteIdx <= outer.stop.byteIdx do
+    throw "Code block body is outside its original fence"
+  return {
+    original := extract buffer outer
+    body := ⟨⟨inner.start.byteIdx - outer.start.byteIdx⟩, ⟨inner.stop.byteIdx - outer.start.byteIdx⟩⟩ }
+
+private def FencedSelection.text (fence : FencedSelection) : String := extract fence.original fence.body
 
 /-- Stable identity for the exact authored source selection: the hash of the
-selected bytes. Coordinates are deliberately absent so moving unchanged prose
+selected bytes. Coordinates are deliberately absent so moving an unchanged body
 does not change its identity. -/
-private def SourceSelection.selectionIdentity (source : SourceSelection) : String :=
-  match source.payload with
-  | .prose body => match proseSelection body with
-    | .ok (_, _, bytes) => SHA256.text bytes
-    | .error _ => "unavailable"
-  | _ => "whole-document"
+private def SourceSelection.selectionIdentity (source : SourceSelection) : Option String := do
+  let text ← match source.payload with
+    | .prose body => some ((syntaxRange body.stx).map fun (buffer, range) => extract buffer range)
+    | _ => source.fence.map (·.map FencedSelection.text)
+  return (text.map SHA256.text).toOption.getD "unavailable"
 
 def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey :=
-  match source.payload with
-  | .prose _ => { source.document with
+  match source.selectionIdentity with
+  | some identity => { source.document with
       path := source.document.path ++ "#selection:" ++ (toJson (
         Vir.nameKey source.destination.realization.node,
         Vir.nameKey source.destination.realization.name,
         Vir.nameKey (source.destination.role.getD .anonymous),
-        source.selectionIdentity)).compress }
-  | _ => source.document
+        identity)).compress }
+  | none => source.document
 
 /-- The whole original source buffer a prose selection's stored syntax points into. -/
 def SourceSelection.proseBuffer? (source : SourceSelection) : Option String :=
   match source.payload with
-  | .prose body => (proseSelection body).toOption.map (·.1)
+  | .prose body => (syntaxRange body.stx).toOption.map (·.1)
   | _ => none
+
+private def SourceSelection.selectionIssue (source : SourceSelection) (message : String) : Diagnostic := {
+  code := "source-selection-unavailable", subject := (toJson source.destination.subject).compress, message }
+
+private def SourceSelection.locationForSelection (source : SourceSelection) : Except Diagnostic Data.SourceLocation := do
+  let some location := source.source.location
+    | throw (source.selectionIssue (source.source.error.getD "Source selection has no original location"))
+  unless source.source.ok && location.path == source.document.path do
+    throw (source.selectionIssue "Source selection is unavailable at its canonical owning path")
+  return location
 
 /-- Extract an original prose selection from the source buffer its stored syntax
 points into, as compiled. No file is read, so a source edited or removed after
 its module was built does not change the result. Cached preview/AST renderings
 and nearby text are never substituted. -/
 def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic String := do
-  let subject := source.destination.subject
-  let fail (message : String) : Except Diagnostic String := .error {
-    code := "source-selection-unavailable", subject := (toJson subject).compress, message }
   let .prose body := source.payload
-    | return ← fail "Only prose sources select text from their stored syntax"
-  let some location := source.source.location
-    | return ← fail (source.source.error.getD "Source selection has no original location")
-  unless source.source.ok && location.path == source.document.path do
-    return ← fail "Source selection is unavailable at its canonical owning path"
-  let (buffer, range, bytes) ← match proseSelection body with
-    | .ok selection => pure selection
-    | .error message => return ← fail message
+    | throw (source.selectionIssue "Only prose sources select text from their stored syntax")
+  let location ← source.locationForSelection
+  let (buffer, range) ← (syntaxRange body.stx).mapError source.selectionIssue
   unless (FileMap.ofString buffer).utf8RangeToLspRange range == location.range do
-    return ← fail "Stored UTF-16 source range disagrees with the owning FileMap"
-  return bytes
+    throw (source.selectionIssue "Stored UTF-16 source range disagrees with the owning FileMap")
+  return extract buffer range
+
+/-- Check the exact owning fence at its recorded UTF-16 location. An unrelated
+edit can preserve that location; moving or changing the fence requires a rebuild. -/
+def SourceSelection.selectedFenceText (source : SourceSelection) (document : Document) : Except Diagnostic String := do
+  let some selection := source.fence
+    | throw (source.selectionIssue "Source has no recorded code block selection")
+  let fence ← selection.mapError source.selectionIssue
+  let location ← source.locationForSelection
+  let map := FileMap.ofString document.text
+  let range := map.lspRangeToUtf8Range location.range
+  unless source.document == document.key && range.start.byteIdx <= range.stop.byteIdx &&
+      map.utf8RangeToLspRange range == location.range && extract document.text range == fence.original do
+    throw (source.selectionIssue "Current source disagrees with the original code block at its owning location")
+  return fence.text
 
 /-- Absent realization means an authored concept-level constraint. Automatic or
 manual origin is metadata, not a substitute for this explicit scope. -/
@@ -258,6 +296,11 @@ def SourceSelection.rawIssues (source : SourceSelection) (node : Name) : Array D
     if source.context.language != Name.mkSimple value.language.key then
       issues := issues.push (issue "source-payload-context" subject "Markup language must agree with its source context")
   | .text _ => pure ()
+  if source.fence.isSome then
+    match source.payload with
+    | .text _ | .markup _ => pure ()
+    | _ =>
+      issues := issues.push (issue "unexpected-source-selection" subject "Only text and markup payloads can select a code block body")
   match source.source.ok, source.source.location, source.source.error with
   | true, some location, none =>
     if blank location.path || location.path != source.document.path then

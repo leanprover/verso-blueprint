@@ -37,4 +37,8 @@ fn example() -> &'static str { "𝒫::bad»name" }
 ```md "storage.source" (slot := "body.with.dot")
 **𝒫** and `foreign::name.with.dot»tail`
 ```
+
+  ```tex "storage.source" (slot := "indented")
+  A second TeX source in the same file.
+  ```
 :::::::

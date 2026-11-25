@@ -409,7 +409,7 @@ private def externalMarkupImpl
     | some label =>
       let source ← liftM <| Environment.sourceAt label
         (Name.str (Name.mkSimple language.key) cfg.slot) (some `statement) (Name.mkSimple language.key)
-        (.markup markup) (← getRef)
+        (.markup markup) (← getRef) (fenceContents := some contents.raw)
       let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)

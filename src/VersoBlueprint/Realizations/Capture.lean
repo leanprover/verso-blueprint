@@ -543,6 +543,13 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         let source := sourceStep.source
         if let some handle := sourceStep.document then
           let (document, readIssues) ← providers.document p.documents[handle]!
+          let (document, readIssues) := if source.fence.isSome then
+              let key := source.selectedDocumentKey
+              if !readIssues.isEmpty then ({ key, text := "" }, readIssues) else
+                match source.selectedFenceText document with
+                | .ok text => ({ key, text }, #[])
+                | .error issue => ({ key, text := "" }, #[issue])
+            else (document, readIssues)
           collected := { collected with
             input.documents := collected.input.documents.push
               (contribution `document (BindingEncoding.documentKey document.key) document)

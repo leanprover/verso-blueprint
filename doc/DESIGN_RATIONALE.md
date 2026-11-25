@@ -291,6 +291,11 @@ The same flow can be read as four contracts:
    `Node.proseView`, `usesOn`, and `nativeRefsOn` are derived presentation
    helpers, not alternate semantic storage or completion authority.
 
+   Fenced Rust and markup realizations bind the original body bytes. Capture
+   verifies that the enclosing fence matches the current file at its recorded
+   UTF-16 range. An edit that moves or changes the fence requires rebuilding
+   the owning module before capture can use it again.
+
    Pure `Validation` and `Translations` functions check contract shape, subject,
    content binding and observation suitability. They do not authenticate who
    supplied an observation or run a checker. The native capture path runs Lean's

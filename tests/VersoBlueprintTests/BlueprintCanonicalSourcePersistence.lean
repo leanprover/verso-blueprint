@@ -21,7 +21,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let registrations := (state.nodeRegistrations.getD label {}).registrations
   let sources := registrations.flatMap (·.sources)
   let uses := registrations.flatMap (·.uses)
-  unless sources.size == 7 && state.importedConflicts.isEmpty &&
+  unless sources.size == 8 && state.importedConflicts.isEmpty &&
       state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) do
     throwError "Diamond import duplicated a source or re-exported imported registrations"
   unless sources.all (fun source => source.context.project == `blueprintFixtures &&
@@ -60,9 +60,10 @@ run_cmd Lean.Elab.Command.liftCoreM do
   unless rust == #["fn example() -> &'static str { \"𝒫::bad»name\" }\n"] do
     throwError "Original Rust text changed: {repr rust}"
   let markup := sources.filterMap fun source => match source.payload with | .markup value => some value | _ => none
-  unless markup.size == 2 && markup[0]!.raw == "\\forall x,\\;𝒫(x)\n" &&
+  unless markup.size == 3 && markup[0]!.raw == "\\forall x,\\;𝒫(x)\n" &&
       markup[1]!.raw == "**𝒫** and `foreign::name.with.dot»tail`\n" &&
-      markup.all (·.slot == "body.with.dot") &&
+      markup[0]!.slot == "body.with.dot" && markup[1]!.slot == "body.with.dot" &&
+      markup[2]!.slot == "indented" && markup[2]!.raw == "A second TeX source in the same file.\n" &&
       markup[0]!.location == some { path := "paper.tex", range := {
         start := ⟨2, 3⟩, «end» := ⟨2, 12⟩ } } && markup[1]!.location.isNone do
     throwError "Raw markup or authored external location changed: {repr markup}"

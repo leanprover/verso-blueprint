@@ -334,21 +334,24 @@ run_cmd liftTermElabM do
   for document in registry.documents do
     if document.key.path.contains "#selection:" then
       let some sourceStep := allSourceSteps.find? (·.source.selectedDocumentKey == document.key)
-        | throwError "Selected prose document lost its source owner"
-      let expectedText ← match sourceStep.documented with
-        | some (.ok handle) =>
+        | throwError "Selected document lost its source owner"
+      let expectedText ← match sourceStep.source.fence, sourceStep.documented with
+        | some _, _ =>
+          let key := sourceStep.source.document
+          obtain (sourceStep.source.selectedFenceText { key, text := ← IO.FS.readFile key.path })
+        | none, some (.ok handle) =>
           let some provider := observations.documented.find? (·.request == plan.documented[handle]!)
             | throwError "Selected native docstring lost its provider observation"
           match provider.result with
           | .ok documented => pure documented.rawDocstring
           | .error issue => throwError "Selected native docstring provider failed: {repr issue}"
-        | some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
-        | none =>
+        | none, some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
+        | none, none =>
           -- The compiled buffer is the unchanged source file in this control.
           ensure (sourceStep.source.proseBuffer? == some (← IO.FS.readFile sourceStep.source.document.path))
             "Selected prose syntax does not point into its original source bytes"
           obtain sourceStep.source.selectedText
-      ensure (document.text == expectedText) "Selected prose document differs from exact original source bytes"
+      ensure (document.text == expectedText) "Selected document differs from exact original source bytes"
     else
       ensure (document.text == (← IO.FS.readFile document.key.path)) "Canonical document is not original source bytes"
   for evidence in registry.evidence do
@@ -357,6 +360,74 @@ run_cmd liftTermElabM do
     "Capture invented independent expected propositions"
   let after := Environment.informalExt.getState (← getEnv)
   ensure (reprStr before == reprStr after) "Capture mutated persistent Blueprint state"
+
+run_cmd liftTermElabM do
+  let label := Name.mkSimple "storage.source"
+  let state := Environment.informalExt.getState (← getEnv)
+  let some registered := state.inventory.get? label | throwError "Missing fenced source fixture"
+  let sources := registered.sources.filter (·.fence.isSome)
+  let texSources := sources.filter (·.context.language == `tex)
+  let some firstTex := texSources[0]? | throwError "Missing first TeX fence"
+  let some secondTex := texSources[1]? | throwError "Missing second TeX fence"
+  let some rust := sources.find? (·.context.language == `rust) | throwError "Missing Rust fence"
+  ensure (firstTex.document == secondTex.document && firstTex.selectedDocumentKey != secondTex.selectedDocumentKey)
+    "Two TeX fences in a shared source file must own distinct documents"
+  let review (source : SourceData.SourceSelection) : RequirementKey := ⟨source.destination.subject, `review⟩
+  let raw : Capture.Raw := {
+    nodes := #[(label, { registered with sources, uses := #[], nativeAssociations := #[] })]
+    registered := ({} : NameSet).insert label, facts := [], initialIssues := #[]
+    authored := #[{
+      origin := { id := `fenceReview, moduleName := ← getMainModule, source := ← getFileName }
+      project := `blueprintFixtures
+      authored := { requirements := sources.map fun source =>
+        { key := review source, expected := .review `statementCorrespondence `MockReviewer } } }] }
+  let captureWith (raw : Capture.Raw) (reader : System.FilePath → IO String) : TermElabM Capture.Snapshot := do
+    let plan := Capture.plan raw
+    let observations ← obtain (← Capture.observe plan reader)
+    obtain (Capture.evaluate plan observations)
+  let selectedText (snapshot : Capture.Snapshot) (source : SourceData.SourceSelection) : Option String :=
+    (snapshot.registry.documents.find? (·.key == source.selectedDocumentKey)).map (·.text)
+  let real ← captureWith raw IO.FS.readFile
+  ensure (real.diagnostics.isEmpty && real.registry.documents.size == sources.size &&
+    selectedText real firstTex == some "\\forall x,\\;𝒫(x)\n" &&
+    selectedText real secondTex == some "  A second TeX source in the same file.\n" &&
+    selectedText real rust == some "fn example() -> &'static str { \"𝒫::bad»name\" }\n")
+    s!"Fenced selections did not retain their exact authored bytes: {repr real.registry.documents}"
+  let unrelated ← captureWith raw fun path => do
+    return (← IO.FS.readFile path).replace "A source with Unicode 𝒫 and several realizations." "Different surrounding prose."
+  ensure (unrelated.diagnostics.isEmpty && unrelated.registry.documents == real.registry.documents && sources.all (fun source =>
+      (real.registry.bindingFor (review source)).isSome &&
+      unrelated.registry.bindingFor (review source) == real.registry.bindingFor (review source)))
+    "Changing surrounding prose invalidated an unchanged fenced source"
+  let changed ← captureWith raw fun path => do
+    return (← IO.FS.readFile path).replace "\\forall x," "\\exists x,"
+  ensure (selectedText changed firstTex == some "" &&
+    changed.registry.bindingFor (review firstTex) != real.registry.bindingFor (review firstTex) &&
+    changed.sourceDiagnostics.documents.size == 1 &&
+    changed.sourceDiagnostics.documents.any (fun (key, issue) =>
+      key == firstTex.selectedDocumentKey && issue.code == "source-selection-unavailable") &&
+    (sources.filter (·.selectedDocumentKey != firstTex.selectedDocumentKey)).all (fun source =>
+      changed.registry.bindingFor (review source) == real.registry.bindingFor (review source)))
+    "A stale TeX fence affected another selection or retained its original binding"
+  let moved ← captureWith raw fun path => do
+    return "\n" ++ (← IO.FS.readFile path)
+  ensure (sources.all (fun source => selectedText moved source == some "" &&
+      moved.sourceDiagnostics.documents.any fun (key, issue) =>
+        key == source.selectedDocumentKey && issue.code == "source-selection-unavailable"))
+    "Fences moved away from their compiled locations remained available"
+  let unreadable ← captureWith raw fun _ => throw (IO.userError "injected unreadable fence owner")
+  ensure (unreadable.registry.documents.size == sources.size && sources.all (fun source =>
+      selectedText unreadable source == some "" &&
+      unreadable.sourceDiagnostics.documents.any fun (key, issue) =>
+        key == source.selectedDocumentKey && issue.code == "source-unavailable"))
+    "An unreadable fence owner did not retain per-selection unavailability"
+  let invalid := { firstTex with fence := some (SourceData.FencedSelection.ofSyntax "" .missing .missing) }
+  let unsupported ← captureWith { raw with
+    nodes := #[(label, { registered with sources := #[invalid], uses := #[], nativeAssociations := #[] })]
+    authored := #[] } IO.FS.readFile
+  ensure (unsupported.registry.documents.size == 1 && selectedText unsupported invalid == some "" &&
+    unsupported.diagnostics.any (·.code == "source-selection-unavailable"))
+    "A synthetic fence silently fell back to the whole owning file"
 
 -- Source-association diagnostics retain typed ownership and readable subjects. They appear
 -- on the owning non-Lean node's assessment and do not leak to another node.

@@ -385,17 +385,21 @@ def sourceProject : CoreM Name := do
 
 /-- Capture the owning source identity at production time. Missing ranges stay
 explicit; no reader/provider runs before the owning module has finished building.
-Pass `role := none` only for compiled Lean payloads, whose roles are checked. -/
+Pass `role := none` only for compiled Lean payloads, whose roles are checked.
+For fenced text and markup, pass the original syntax of the body inside `ref`. -/
 def sourceAt (node realization : Name) (role : Option Name) (language : Name)
-    (payload : SourceData.ProviderPayload) (ref : Syntax) : CoreM SourceData.SourceSelection := do
+    (payload : SourceData.ProviderPayload) (ref : Syntax)
+    (fenceContents : Option Syntax := none) : CoreM SourceData.SourceSelection := do
   let context : Realizations.Context := ⟨language, ← sourceProject⟩
   let location ← SourceLocation.ofSyntax? ref
+  let fileMap ← getFileMap
   return {
     destination := ⟨⟨node, realization⟩, role⟩
     context, document := ⟨context, ← getFileName⟩
     source := match location with
       | some location => .found location
       | none => .unavailable "Original source range unavailable at registration"
+    fence := fenceContents.map fun contents => SourceData.FencedSelection.ofSyntax fileMap.source ref contents
     payload }
 
 private def State.planAuthoring (state : State) (record : AuthoringRecord) :
