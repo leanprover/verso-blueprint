@@ -832,6 +832,45 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "semantic-conflict")) s!"Wrong specification rejection: {repr issues}"
   finally setEnv env
 
+-- The authored goal can stay in a complete capture when its checked
+-- definition is known but the specification document is unavailable.
+run_cmd liftTermElabM do
+  let target := Name.mkSimple "capture.complete"
+  let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
+  let some goal := plan.expected.find? (·.node == target)
+    | throwError "Missing authored expectation"
+  let spec := plan.documents[plan.specifications[goal.specification]!.document]!
+  let sourcePath ← IO.FS.realPath spec.path
+  let observe (readSpec : IO String) := Capture.observe plan fun path =>
+    if path == sourcePath then readSpec else IO.FS.readFile path
+  for (readSpec, reason) in #[
+      ((throw (IO.userError "specification source is unreadable") : IO String), "Cannot read canonical source"),
+      (pure " \n", "Canonical source is empty")] do
+    let observations ← obtain (← observe readSpec)
+    let snapshot ← obtain (Capture.evaluate plan observations)
+    let requirement := key "capture.complete" ``complete `expectedProof
+    let result := snapshot.registry.resultForRequirement requirement
+    let some evidence := snapshot.registry.evidence.find? (·.requirement == requirement)
+      | throwError "Missing unavailable authored specification observation"
+    let .proof observation := evidence.observation
+      | throwError "Authored specification observation was not an expected-goal proof"
+    ensure (result.status == .blocked && result.diagnostics.any (·.code == "validation-unavailable") &&
+      observation.outcome == .unavailable && observation.coverage == .subject &&
+      observation.explanation.contains reason)
+      "Unavailable specification did not preserve the reason its authored contract is blocked"
+    ensure (snapshot.sourceDiagnostics.nodes.any fun (label, diagnostic) =>
+      label == target && diagnostic.code == "source-unavailable" && diagnostic.subject == spec.path &&
+      diagnostic.message == reason)
+      "Unavailable specification lost its owning node, source path, or reason"
+    let assessment := snapshot.assessmentFor target
+    ensure (assessment.nativeLocallyComplete && assessment.requiredComplete)
+      "Unavailable independent specification blocked a current checked native declaration"
+  match ← observe (pure "def differentSpec : Prop := True\n") with
+  | .error issues =>
+    ensure (issues.any (·.code == "source-association-unavailable"))
+      "Readable mismatched specification must reject the declared source association"
+  | .ok _ => throwError "Readable mismatched specification bypassed exact source association"
+
 run_cmd liftTermElabM do
   let env ← getEnv
   try

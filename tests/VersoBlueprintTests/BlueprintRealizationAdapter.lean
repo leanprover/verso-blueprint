@@ -666,10 +666,12 @@ private unsafe def hiddenChecks : CoreM Bool := do
       ownComplete.body.coverage == .subject && ownHidden.body.coverage == .subject &&
       ownComplete.status.hasUnverifiedCoverage && ownHidden.status.hasUnverifiedCoverage)
       "Own-declaration checking cannot certify hidden bodies or a cached-empty footprint"
-    ensure (complete.observation.outcome == .unavailable && complete.status.any (·.isUnverified))
-      "Hidden complete body is unverified, not a certificate"
+    ensure (complete.observation.outcome == .unavailable && complete.observation.coverage == .subject &&
+      complete.status.any (·.isUnverified))
+      "Hidden complete body is unverified and cannot claim dependency-closure coverage"
     ensure ((← collectAxioms `sorryImportHiddenHelper).isEmpty &&
-      hidden.observation.outcome == .unavailable && hidden.status.any (·.hasUnverifiedCoverage))
+      hidden.observation.outcome == .unavailable && hidden.observation.coverage == .subject &&
+      hidden.status.any (·.hasUnverifiedCoverage))
       "Cached-empty hidden helper cannot authorize completion"
     ensure (admitted.observation.outcome != .passed && admitted.status.any (·.hasKnownSorry))
       "Hidden admitted body retains positive hole evidence"

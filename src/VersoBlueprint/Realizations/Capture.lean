@@ -700,6 +700,9 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
     reject "wrong-expectation-owner" name.toString "Specification belongs to another module" #[origin]
   let some ranges ← findDeclarationRanges? name
     | reject "source-association-unavailable" name.toString "Specification has no native declaration ranges" #[origin]
+  -- The checked, owned definition still identifies the goal if its source
+  -- cannot be read. Capture then records the authored validation as unavailable.
+  if blank source.text then return
   let commands ← one (← NativeSource.parseSource name source.key.path source.text)
   discard <| one (NativeSource.declarationAtRanges name source.text ranges.range ranges.selectionRange commands)
 
@@ -721,12 +724,16 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let goalRequest := p.expected[step.goals[index]!]!
       let specification := p.specifications[goalRequest.specification]!
       let (specDoc, issues) ← providers.document p.documents[specification.document]!
-      unless issues.isEmpty do full (.error issues)
       full (← providers.specification {
         expected := specification.expected, origin := specification.origin, document := specDoc })
       let documents := canonical ((collected.input.objects.filter (·.value.key == witness)).filterMap (·.value.document) |>.push specDoc.key)
       let checked ← one (← providers.expected {
         project := goalRequest.project, expected := goalRequest.expected, witness, documents })
+      let unavailable := (issues[0]?.map (·.message)).getD "Canonical source is empty"
+      let observation := if issues.isEmpty && !blank specDoc.text then checked.observation else
+        { checked.observation with
+          outcome := .unavailable, coverage := .subject
+          explanation := s!"{unavailable} for expected proposition '{goalRequest.expected}'" }
       let input := { collected.input with
         documents := collected.input.documents.push (authoredContribution record.origin `specification index specDoc)
         realizations := collected.input.realizations.map fun contribution =>
@@ -742,9 +749,9 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
             subject := expectedKey.subject, name := NativeLean.expectedStatementContextFor expectedKey, content }) }
       collected := { collected with
         input := input
-        sourceDiagnostics := collected.sourceDiagnostics.addNode node checked.semanticDiagnostics
+        sourceDiagnostics := collected.sourceDiagnostics.addNode node (issues ++ checked.semanticDiagnostics)
         observations := collected.observations.push ((authoredContribution record.origin `expectedObservation index ()).origin,
-          expectedKey, .proof checked.observation) }
+          expectedKey, .proof observation) }
     let batch := record.authored
     for index in [:batch.sources.size] do
       let (document, issues) ← providers.document p.documents[step.documents[index]!]!

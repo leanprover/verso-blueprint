@@ -214,7 +214,7 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
         -- Normalize to the expected descriptor ONLY after actual Lean defeq.
         actualType := some goal
         outcome := if status.isProved then .passed else if status.isUnverified then .unavailable else .failed
-        coverage := .dependencyClosure
+        coverage := if status.hasUnverifiedCoverage then .subject else .dependencyClosure
         assumptions := assumptions.map Name.toString
         explanation := status.reportJson.compress } }
   catch ex =>
