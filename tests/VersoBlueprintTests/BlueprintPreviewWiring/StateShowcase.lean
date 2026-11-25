@@ -121,8 +121,10 @@ def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShow
         assessment.nativeProofComplete && assessment.requiredComplete
     let incompleteTheorem := (assessmentFor? "thm:showcase.incomplete").any fun assessment =>
       assessment.hasNativeDeclarations && !assessment.nativeProofComplete
-    let proseOnly := (assessmentFor? "thm:showcase.proof_ready").any fun assessment =>
-      !assessment.hasNativeDeclarations
+    let proseOnly := (graphNode? "thm:showcase.proof_ready").any fun node =>
+      node.assessment.any (!·.hasNativeDeclarations) && node.statementStatus == .unassessed &&
+      node.proofStatus == .unassessed && node.actionableStage?.isNone &&
+      (node.visual.tooltip?.getD "").contains "Native Lean requirements: unassessed"
     let unresolvedUse := (graphNode? "lem:showcase.unknown_ref").any fun node =>
       node.statementUses.any (·.label == Lean.Name.mkSimple "def:showcase.ghost")
     let ghostIsUnresolved := (graphNode? "def:showcase.ghost").any fun node =>
@@ -130,8 +132,7 @@ def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShow
     let checks : Array (String × Bool) := #[
       ("proof status legend", hasSubstr out "Proof Status"),
       ("unassessed status legend", hasSubstr out proofStatusUnassessedText),
-      ("not ready status legend", hasSubstr out proofStatusNoneText),
-      ("ready status legend", hasSubstr out proofStatusReadyText),
+      ("neutral proof status legend", hasSubstr out proofStatusNoneText),
       ("incomplete status legend", hasSubstr out proofStatusIncompleteText),
       ("formalized status legend", hasSubstr out proofStatusFormalizedText),
       ("formalized with dependencies legend", hasSubstr out proofStatusFormalizedAncestorsText),

@@ -552,10 +552,10 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
              | some mark => mark.title.contains "Native statement: passed" == nativeStatementComplete
              | none => false),
             (match heading.statusMark with
-             | some mark => mark.title.contains "native proof: passed" == nativeProofComplete
+             | some mark => mark.title.contains "Native body: passed" == nativeProofComplete
              | none => false),
             (match heading.statusMark with
-             | some mark => mark.title.contains "required Blueprint validation: complete" == requiredComplete
+             | some mark => mark.title.contains "Native Lean requirements: complete" == requiredComplete
              | none => false),
             jsonArrayHasStringField rows "facet" "statement",
             jsonArrayHasStringField rows "facet" "proof"]

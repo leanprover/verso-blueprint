@@ -44,6 +44,12 @@ def NodeAssessment.nativeLocallyComplete (assessment : NodeAssessment) : Bool :=
   assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
     (!assessment.hasNativeBodyRequirement || assessment.nativeProofComplete)
 
+/-- User-facing status of the ordinary native checks and their selected prerequisites. -/
+def NodeAssessment.leanRequirementMessage (assessment : NodeAssessment) : String :=
+  let status := if !assessment.hasNativeDeclarations then "unassessed"
+    else if assessment.requiredComplete then "complete" else "unfinished"
+  s!"Native Lean requirements: {status}"
+
 /-- Shared wording for consumers of the typed selection/completion projection. -/
 def NodeAssessment.leanDependencyMessage (assessment : NodeAssessment) : String :=
   if assessment.selectedLeanUseCount == 0 then "No Lean prerequisites selected"

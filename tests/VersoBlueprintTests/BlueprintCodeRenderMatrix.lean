@@ -142,8 +142,8 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   }
   let heading := codeEntryHtmlWithAssessment `matrix.siblings .theorem (some source) assessment
   let panel := panelIndicatorHtml `matrix.siblings source
-  hasSubstr heading "native proof: unfinished" &&
-    hasSubstr heading "required Blueprint validation: unfinished" &&
+  hasSubstr heading "Native body: unfinished" &&
+    hasSubstr heading "Native Lean requirements: unfinished" &&
     hasSubstr panel "Associated Lean declarations (source snapshots; display only; validation shown in heading)" &&
     hasSubstr panel "complete source snapshot; realization validation is shown in the heading" &&
     hasSubstr panel "not realization validation"

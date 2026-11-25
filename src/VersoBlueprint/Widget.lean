@@ -290,15 +290,14 @@ structure BuildResult where
   snapshot? : Option Informal.Realizations.Capture.Snapshot := none
 
 private def assessmentMessage (assessment : Informal.Realizations.NodeAssessment) : String :=
-  let native := if !assessment.hasNativeDeclarations then "native Lean checks unassessed" else
-    let statement := s!"native statement {if assessment.nativeStatementComplete then "complete" else "unfinished"}"
-    if assessment.hasNativeBodyRequirement then
-      statement ++ s!", native proof {if assessment.nativeProofComplete then "complete" else "unfinished"}"
-    else statement
-  let dependencies := assessment.leanDependencyMessage
-  let classification := if assessment.hasAxiomLike then "; axiom-like declarations present" else ""
-  s!"{native}{classification}; required Blueprint validation " ++
-    s!"{if assessment.requiredComplete then "complete" else "unfinished"}; {dependencies}"
+  if !assessment.hasNativeDeclarations then assessment.leanRequirementMessage else
+  let statement := s!"Native statement: {if assessment.nativeStatementComplete then "complete" else "unfinished"}"
+  let body := if assessment.hasNativeBodyRequirement then
+    if assessment.nativeProofComplete then "complete" else "unfinished"
+    else "not required"
+  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
+  s!"{classification}{statement}. Native body: {body}. " ++
+    s!"{assessment.leanRequirementMessage}. {assessment.leanDependencyMessage}."
 
 def buildFor (label : Name) : Lean.Elab.Term.TermElabM BuildResult := do
   let env ← getEnv

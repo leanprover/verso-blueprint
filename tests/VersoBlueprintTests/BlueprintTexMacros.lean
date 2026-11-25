@@ -60,6 +60,7 @@ def widgetPreviewDocBlueprint : Informal.BlueprintDocument := .capture widgetPre
     let encoded := Json.compress previewHtml
     pure (
       selection.facet == .statement &&
+      out.validationMessage? == some "Native Lean requirements: unassessed" &&
       selection.key == PreviewCache.statementKey (Name.mkSimple "widget_preview") &&
       !selection.preview.blocks.isEmpty &&
       selection.preview.stxs.isEmpty &&

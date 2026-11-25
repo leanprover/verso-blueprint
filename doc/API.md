@@ -415,9 +415,10 @@ assessment](#lean-completeness-evidence) for the public query contract.
 
 `Commands.CoverageSplit` uses `nativeCompleteRequirementsPending` and
 `requirementsComplete`, replacing `formalizedWithoutAncestors` and `fullyClosed`.
-A passing native proof can have an unfinished independent expected proposition or
-review even when all selected dependencies pass. These counts concern the default
-Lean realization, not optional prose assessment or overall project readiness.
+`requirementsComplete` counts entries whose generated native checks and selected
+Blueprint prerequisites pass. `nativeCompleteRequirementsPending` counts entries
+whose local native checks pass while a selected prerequisite is unfinished.
+Independent expected propositions and reviews have their own detailed results.
 
 `NodeAssessment.selectedLeanUseCount` counts the uses selected for that ordinary
 Lean realization in its exact context, including unresolved target selections.
@@ -930,9 +931,11 @@ Graph schema version 5 retains the private-constructor topology contract and add
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
 assessment. Version 5 requires `hasNativeBodyRequirement` on each captured
 assessment to distinguish a pending native body check from a statement-only
-declaration. A captured node exposes local native statement/body checks, all-required
-completion, prerequisite completion and exact safe report details. Prose without
-an explicit check is unassessed; it is not an implicit proof obligation.
+declaration. A captured node exposes local native statement and body checks, the
+combined result of generated native checks and selected prerequisites, and the
+exact assessment details. A node with no ordinary native declarations is
+unassessed on the native tracks. An associated theorem with an unfinished proof
+is `incomplete` even when `actionableStage` is `"proof"`.
 Regenerate generated Blueprint output when adopting this revision; there is no
 older-schema compatibility path.
 
@@ -1960,11 +1963,11 @@ correspondence are separate contracts. `hasNativeBodyRequirement` records whethe
 proof or computational implementation check applies to any selected native
 declaration. A proposition definition can pass its statement check with both
 `hasNativeBodyRequirement` and `nativeProofComplete` false.
-`nativeProofComplete` can be true while
-`requiredComplete` is false because a selected native prerequisite is unfinished.
-Independent expected propositions and correspondence reviews have their own
-labeled assessments in `details.assessment`; the native summary does not stand
-for their completion. `details` exposes actual subjects,
+`requiredComplete` summarizes the generated native checks for the ordinary Lean
+realizations and their selected Blueprint prerequisites. `nativeProofComplete`
+can be true while `requiredComplete` is false because a selected prerequisite is
+unfinished. Independent expected propositions and correspondence reviews have
+their own labeled results in `details.assessment`. `details` exposes actual subjects,
 requirements, observations and per-edge diagnostics without raw source or content
 bindings. Graph colors summarize the native track; use the explicit assessment
 for claims about other contracts. Source-only producer previews are uncaptured

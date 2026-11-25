@@ -22,8 +22,8 @@ private def obtain [Repr ε] (value : Except ε α) : TermElabM α :=
 
 run_cmd liftTermElabM do
   let counts : Commands.EntryStatusCounts := { completedDepsNo := 1 }
-  ensure ((Commands.statusCountsText counts).contains "native checks complete, requirements incomplete: 1")
-    "Summary text must not call every unfinished realization requirement a dependency gap"
+  ensure ((Commands.statusCountsText counts).contains "native checks complete, prerequisites unfinished: 1")
+    "Summary text must identify the selected Blueprint prerequisites tracked by this count"
   let snapshot ← obtain (← Capture.capture)
   let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
   ensure (summary.totalEntries == snapshot.registry.nodes.size)
@@ -59,10 +59,16 @@ run_cmd liftTermElabM do
   ensure ((snapshot.registry.requirement? expectedKey).isSome &&
     !(snapshot.registry.resultForRequirement expectedKey).complete)
     "The exact independent expectation must remain present and unfinished"
+  ensure (!summary.incompleteDetails.any (·.label == Name.mkSimple "capture.wrongExpected"))
+    "A separate expected proposition mismatch must not enter the native code debt list"
+  let completeRequirements := snapshot.registry.nodes.countP fun node =>
+    (snapshot.assessmentFor node.label).requiredComplete
+  ensure (summary.coverageSplit.requirementsComplete == completeRequirements &&
+    summary.totalStatus.completed == completeRequirements)
+    "The native requirements counters must include the locally complete wrongExpected node"
   let localCompletePendingRequirements := snapshot.registry.nodes.foldl (init := 0) fun total node =>
     let assessment := snapshot.assessmentFor node.label
-    if assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-        assessment.nativeProofComplete && !assessment.requiredComplete then total + 1 else total
+    if assessment.nativeLocallyComplete && !assessment.requiredComplete then total + 1 else total
   ensure (summary.coverageSplit.nativeCompleteRequirementsPending == localCompletePendingRequirements)
     "The summary bucket must count unfinished ordinary native requirements"
 

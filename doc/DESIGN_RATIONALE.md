@@ -1531,17 +1531,19 @@ The graph pipeline computes two orthogonal tracks per node:
 This keeps "can I state it?" separate from "can I finish the proof?" instead of
 collapsing all progress into one overloaded color.
 
-The current proof fill progression is:
+The generated graph uses these proof fill states:
 
-- `not ready`
-- `ready to formalize`
+- `unassessed`
+- `no proof status`
 - `Lean code incomplete`
 - `locally formalized`
 - `locally formalized + dependencies complete`
 
-That third state is intentionally a fill state rather than a warning: it marks
-nodes where associated Lean code exists but is still incomplete, while keeping
-missing-reference and missing-declaration problems in the warning channel.
+An associated theorem with an unfinished body check uses the `Lean code incomplete`
+fill even when its prerequisites pass. `actionableStage` independently records
+whether there is a next formalization step. Warning markers identify unresolved
+Blueprint references. Missing declarations and unavailable sources appear in
+assessment diagnostics.
 
 ### Completion Policy
 

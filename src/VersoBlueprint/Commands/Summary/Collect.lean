@@ -282,6 +282,7 @@ private structure SummaryBuildContext where
   state : Environment.State
   snapshot : Realizations.Capture.Snapshot
   entries : Array (Name × Realizations.Node)
+  assessments : Std.HashMap Name Realizations.NodeAssessment
   parentChildren : NameMap (Array Name)
   groupHeaders : NameMap String
   usageMap : NameMap UsageCounts
@@ -289,6 +290,8 @@ private structure SummaryBuildContext where
 
 private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realizations.Capture.Snapshot) : SummaryBuildContext :=
   let entries := snapshot.registry.nodes.map fun node => (node.label, node)
+  let assessments := entries.foldl (init := ({} : Std.HashMap Name Realizations.NodeAssessment)) fun acc (label, _) =>
+    acc.insert label (snapshot.assessmentFor label)
   let parentChildren := entries.foldl (init := ({} : NameMap (Array Name))) fun acc (child, node) =>
     match node.parent with
     | none => acc
@@ -298,6 +301,7 @@ private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realiz
     state
     snapshot
     entries
+    assessments
     parentChildren
     groupHeaders := state.groups
     usageMap
@@ -307,9 +311,14 @@ private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realiz
 private def SummaryBuildContext.downstreamUses (ctx : SummaryBuildContext) (label : Name) : Nat :=
   downstreamUseCount ctx.reverseMap (ctx.reverseMap.getD label #[]).toList
 
+/-- Every entry and group child comes from the admitted entries used to fill the map. -/
+private def SummaryBuildContext.assessmentFor (ctx : SummaryBuildContext) (label : Name) :
+    Realizations.NodeAssessment :=
+  ctx.assessments[label]!
+
 private def SummaryBuildContext.actionableItem? (ctx : SummaryBuildContext)
     (label : Name) (node : Realizations.Node) : Option PriorityItem :=
-  mkActionableItem? ctx.state ctx.snapshot (ctx.snapshot.assessmentFor label)
+  mkActionableItem? ctx.state ctx.snapshot (ctx.assessmentFor label)
     ctx.usageMap ctx.reverseMap label node
 
 private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (children : Array Name) :
@@ -405,7 +414,7 @@ private def Summary.bumpAxiomStatus (summary : Summary) (flags : EntryStatusFlag
 
 private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
   ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
-    let assessment := ctx.snapshot.assessmentFor label
+    let assessment := ctx.assessmentFor label
     let proseRealizations := ctx.snapshot.registry.realizations.filter fun realization =>
       realization.key.node == label &&
         (realization.context.language == `verso || realization.context.language == `markdown)
@@ -515,7 +524,7 @@ private structure GroupHealthCounts where
 
 private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
     (ctx : SummaryBuildContext) (child : Name) (node : Realizations.Node) : GroupHealthCounts :=
-  let assessment := ctx.snapshot.assessmentFor child
+  let assessment := ctx.assessmentFor child
   let statusFlags := entryStatusFlags assessment node
   let readyNow := (Informal.Graph.actionableStageForAssessment? assessment).isSome
   let blockedNow := assessment.hasNativeDeclarations && !statusFlags.completed &&
@@ -566,7 +575,7 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
 
 private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
   ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, _) =>
-    let assessment := ctx.snapshot.assessmentFor label
+    let assessment := ctx.assessmentFor label
     if !assessment.hasNativeDeclarations then
       acc
     else if assessment.requiredComplete then

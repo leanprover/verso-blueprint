@@ -131,9 +131,9 @@ theorem omittedMixedSorry : True := by sorry
       if declaration == `omittedLiterateSorry then
         unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
             !assessment.nativeProofComplete && !assessment.requiredComplete &&
-            graphNode.proofStatus == .ready &&
+            graphNode.proofStatus == .incomplete && graphNode.actionableStage? == some "proof" &&
             headingMark.title.contains "Native statement: passed" &&
-            headingMark.title.contains "native proof: unfinished" &&
+            headingMark.title.contains "Native body: unfinished" &&
             details.contains declaration.toString &&
             model.summary.incompleteDetails.any (·.decl == declaration) &&
             hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&
@@ -147,9 +147,9 @@ theorem omittedMixedSorry : True := by sorry
       else
         unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
             !assessment.nativeProofComplete && !assessment.requiredComplete &&
-            graphNode.proofStatus == .ready &&
+            graphNode.proofStatus == .incomplete && graphNode.actionableStage? == some "proof" &&
             headingMark.title.contains "Native statement: passed" &&
-            headingMark.title.contains "native proof: unfinished" &&
+            headingMark.title.contains "Native body: unfinished" &&
             details.contains "omittedExternalComplete" && details.contains declaration.toString &&
             model.summary.incompleteDetails.any (·.decl == declaration) &&
             hasSubstr heading.codeEntry.asString "bp_code_link_status_warning" &&

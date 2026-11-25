@@ -26,6 +26,9 @@ private def nativeProofCheck (node declaration : Name) : RequirementKey :=
   ⟨.declaration ((⟨node, `lean⟩ : RealizationKey).forRole `proof)
     ⟨⟨`lean, `blueprintFixtures⟩, declaration.toString⟩, `proof⟩
 
+@[blueprint "capture.statementOnly"]
+def statementOnly : Prop := True
+
 run_cmd liftTermElabM do
   let snapshot ← obtain (← Capture.capture)
   let registry := snapshot.registry
@@ -45,15 +48,49 @@ run_cmd liftTermElabM do
   let admittedGraph := Graph.buildModel snapshot #[label "capture.admitted"] |>.finish "admitted" {}
   let some admittedNode := admittedGraph.nodes.find? (·.label == label "capture.admitted")
     | throwError "Missing admitted node"
-  ensure (admittedNode.actionableStage? == some "proof")
-    "A local proof gap is actionable once its selected prerequisites pass"
+  ensure (admittedNode.statementStatus == .formalized && admittedNode.proofStatus == .incomplete &&
+    admittedNode.visual.fillcolor == proofBackgroundIncompleteColor &&
+    admittedNode.actionableStage? == some "proof")
+    "An admitted native proof remains visually incomplete even while completing it is actionable"
   let dependentGraph := Graph.buildModel snapshot #[label "capture.dependent"] |>.finish "dependent" {}
   let some dependentNode := dependentGraph.nodes.find? (·.label == label "capture.dependent")
     | throwError "Missing dependent node"
   ensure dependentNode.actionableStage?.isNone
     "A locally complete proof is not presented as actionable while its prerequisite is unfinished"
-  ensure ((dependentNode.visual.tooltip?.getD "").contains "Selected Lean requirements: incomplete")
-    "The graph tooltip must distinguish local proof validity from unfinished realization requirements"
+  let dependentTooltip := dependentNode.visual.tooltip?.getD ""
+  ensure (dependentTooltip.contains "Proof: locally formalized" &&
+    dependentTooltip.contains "Native Lean requirements: unfinished" &&
+    dependentTooltip.contains "Selected Lean prerequisites unfinished")
+    "The graph tooltip must distinguish local proof validity from unfinished Blueprint prerequisites"
+
+  let wrongExpected := label "capture.wrongExpected"
+  let statementOnly := label "capture.statementOnly"
+  let graph := Graph.buildModel snapshot #[wrongExpected, statementOnly] |>.finish "native-contracts" {}
+  let some wrongNode := graph.nodes.find? (·.label == wrongExpected)
+    | throwError "Missing theorem with a separate expected proposition"
+  let some assessment := wrongNode.assessment | throwError "Missing captured theorem assessment"
+  ensure (assessment.requiredComplete && wrongNode.proofStatus == .formalizedWithAncestors &&
+    wrongNode.actionableStage?.isNone &&
+    (wrongNode.visual.tooltip?.getD "").contains "Native Lean requirements: complete")
+    "An independent expected proposition must not change native proof status or actionability"
+  let expectedKey := { (nativeProofCheck wrongExpected `RealizationCaptureFixture.wrongExpected) with
+    name := `expectedProof }
+  let some requirement := registry.requirement? expectedKey
+    | throwError "Missing independently authored expected proposition requirement"
+  let report ← obtain do
+    let contracts ← assessment.details.getObjVal? "assessment"
+    contracts.getObjValAs? (Array Json) "requirements"
+  ensure (report.any fun row =>
+    (row.getObjVal? "value").toOption == some (toJson requirement) &&
+      ((row.getObjVal? "result").toOption.any fun result => result.compress.contains "wrong-proposition"))
+    "The same graph node must expose the wrong-proposition result on its own expected proof contract"
+  let some statementNode := graph.nodes.find? (·.label == statementOnly)
+    | throwError "Missing statement-only native proposition"
+  ensure (statementNode.assessment.any (fun view => view.requiredComplete && !view.hasNativeBodyRequirement &&
+      !view.nativeProofComplete) && statementNode.statementStatus == .formalized &&
+      statementNode.proofStatus == .none && statementNode.actionableStage?.isNone &&
+      (statementNode.visual.tooltip?.getD "").contains "no native body check")
+    "A checked statement-only proposition must not acquire a pending proof or proof-writing task"
 
   let cycleA := label "capture.cycleA"
   let cycleB := label "capture.cycleB"

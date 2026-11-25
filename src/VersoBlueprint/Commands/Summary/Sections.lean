@@ -30,6 +30,9 @@ open Verso.Multi (AllRemotes)
 private def actionableEntryDescription : String :=
   "Entries with an actionable next formalization step."
 
+private def leanRequirementsCompleteDescription : String :=
+  "The ordinary Lean declarations pass their native checks and selected Blueprint prerequisites."
+
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showBlockers := !rows.blockerRows.isEmpty
   let showPendingInformal := !rows.pendingInformalRows.isEmpty
@@ -44,7 +47,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
         {{summaryCard
             "Lean requirements complete"
             (toString data.coverageSplit.requirementsComplete)
-            (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
+            (some leanRequirementsCompleteDescription)}}
         {{summaryCard
             "Actionable priorities"
             (toString data.actionablePriorities.length)
@@ -325,7 +328,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (data.informalOnlyEntries > 0)
               "Informal-only"
               (toString data.informalOnlyEntries)
-              (Option.some "Statements with no associated Lean code yet.")}}
+              (Option.some "Entries with an informal statement and unassessed native Lean checks.")}}
           {{summaryOptionalCard
               (data.coverageSplit.readyToFormalize > 0)
               "Ready to formalize"
@@ -333,19 +336,19 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (Option.some actionableEntryDescription)}}
           {{summaryOptionalCard
               (data.coverageSplit.nativeCompleteRequirementsPending > 0)
-              "Native checks complete, requirements pending"
+              "Native checks complete, prerequisites unfinished"
               (toString data.coverageSplit.nativeCompleteRequirementsPending)
-              (Option.some "Local native checks pass, but one or more declared requirements remain unfinished. This can include an expected proposition, a review, or selected prerequisites.")}}
+              (Option.some "Local native checks pass while one or more selected Blueprint prerequisites remain unfinished.")}}
           {{summaryOptionalCard
               (data.coverageSplit.requirementsComplete > 0)
               "Lean requirements complete"
               (toString data.coverageSplit.requirementsComplete)
-              (Option.some "The default Lean realization’s native checks, declared requirements, and selected prerequisite closure are complete. Prose assessment is optional and not implied.")}}
+              (some leanRequirementsCompleteDescription)}}
           {{summaryOptionalWarnCard
               (data.coverageSplit.blockedOrIncomplete > 0)
               "Blocked or incomplete"
               (toString data.coverageSplit.blockedOrIncomplete)
-              (Option.some "Entries not covered by the highlighted readiness buckets above.")}}
+              (Option.some "Entries with unfinished native Lean checks and no actionable next step.")}}
         </div>
         {{summaryOptionalCappedDetailsList
             showHeaviestPrerequisites

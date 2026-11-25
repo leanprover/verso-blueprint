@@ -467,13 +467,13 @@ whole capture; it does not publish a partial project.
 `hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
 For a statement-only proposition definition, both body flags are false.
 
-`requiredComplete` summarizes those native checks together with their Blueprint
-prerequisites. Independent expected propositions and correspondence have their
-own assessments in `details`, alongside their subjects, requirements, observations
-and unresolved selected edges. A clean proof
-can therefore coexist with unfinished prerequisites. Prose without an explicit
+`requiredComplete` summarizes the generated native checks for the ordinary Lean
+declarations together with their selected Blueprint prerequisites. A clean proof
+can have unfinished prerequisites. Independent expected propositions and
+correspondence reviews have their own results in `details.assessment`, alongside
+their subjects, requirements, and observations. Prose without an explicit
 assessment requirement remains unassessed. Source-only previews say validation is
-unavailable until captured; declaration-panel snapshots cannot supply completion.
+unavailable until captured. Declaration-panel snapshots are display inventory.
 
 This changes the graph payload to schema version 5. Consumers should use the
 exported `assessment` and `actionableStage`, rather than reconstructing readiness
@@ -1527,29 +1527,32 @@ contract and examples.
 The graph uses two orthogonal status tracks:
 
 - statement border:
-  `Blocked`, `Ready to formalize`, `Formalized`, `In Mathlib`
+  `Unassessed`, `Blocked`, `Ready to formalize`, `Formalized`, `In Mathlib`
 - proof fill:
-  `Not ready`, `Ready to formalize`, `Lean code incomplete`,
+  `Unassessed`, `No proof status`, `Lean code incomplete`,
   `Locally formalized`, `Locally formalized + dependencies complete`
 
-This split is intentional. For theorem-like nodes, the statement can already be
-formalized while the proof still remains unstarted, in progress, or complete.
-These labels summarize the node's selected native Lean checks and dependency
-axes. They do not summarize every realization, correspondence relation, or
-human review in the assessment snapshot; inspect those results separately in
-the captured assessment details.
+For theorem-like nodes, the statement can be formalized while the proof remains
+unfinished. These labels summarize the node's selected native Lean checks and
+dependency axes. The captured assessment details include the results of other
+realizations, correspondence relations, and reviews.
 
 Read the proof fill states as:
 
-- `Not ready`: the proof still depends on unfinished prerequisites
-- `Ready to formalize`: prerequisites are done, but there is no associated Lean
-  proof code yet
-- `Lean code incomplete`: associated Lean code exists, but still has gaps such
-  as `sorry`
-- `Locally formalized`: the node's own Lean code is complete, but some
-  dependency upstream is still not complete
-- `Locally formalized + dependencies complete`: both the node and its full
-  dependency closure are complete
+- `Unassessed`: the node has no ordinary Lean declaration
+- `No proof status`: the fill is neutral, for example for a statement-only
+  proposition definition
+- `Lean code incomplete`: an associated native theorem proof has a gap such as
+  `sorry` or has unfinished verification
+- `Locally formalized`: the local native proof or implementation passes while a
+  selected Blueprint prerequisite remains unfinished
+- `Locally formalized + dependencies complete`: the local native proof or
+  implementation and its selected Blueprint prerequisite closure pass
+
+`actionableStage` reports the next available native formalization step. A theorem
+with `sorry` keeps its `Lean code incomplete` fill when its prerequisites pass
+and the next step becomes `proof`. A prose-only node stays unassessed and has no
+automatic native work item.
 
 Each dependency on a label with Lean declarations requires Lean checks of that
 target. All ordinary Lean declarations associated with the target label form one
@@ -1651,7 +1654,8 @@ and no statement or unlocalized hole. A proof-only verification gap can leave
 that statement track complete; the proof track remains blocked. Definitions
 require both axes for statement completion. Whole-declaration `isProved` and
 captured `nativeProofComplete` require native closure. `requiredComplete` also
-requires the selected Blueprint prerequisites and independently authored contracts.
+requires the selected Blueprint prerequisites. Independently authored contracts
+have their own assessment results.
 
 `ProvedStatus.incomplete` carries `IncompletenessInfo` with `knownSorry` and
 `unverified` arrays. Empty incomplete payloads and default declaration statuses
@@ -1678,7 +1682,7 @@ checked-environment API form the trusted boundary of that theorem.
 For agents, use `lake exe vbp query status <label>` after building the current
 sources; see [API](API.md#lean-completeness-evidence).
 
-Graph warning markers identify unresolved Blueprint references. Missing native
+Red graph warning markers identify unresolved Blueprint references. Missing native
 declarations and unavailable sources remain detailed assessment diagnostics.
 Missing informal coverage is informational; it does not create a prose
 proofreading requirement.
@@ -1712,13 +1716,16 @@ For routine project work, read the summary from top to bottom:
 
 Some summary sections use deliberately practical project-management terms:
 
-- **Actionable** entries are not locally formalized yet, and their statement or
-  proof status says there is work that can start now.
+- **Actionable** entries have an unfinished native statement or body check whose
+  selected prerequisites allow work to start now.
 - **Actionable priorities** are the actionable entries that also unlock
   downstream work. The broader **Ready now** count, quick wins, and owner/tag
   rollups still include actionable leaf entries with no dependents.
 - **Quick wins** are actionable entries marked with high priority and small
   effort metadata.
+- **Lean requirements complete** counts entries whose generated native checks and
+  selected Blueprint prerequisites pass. Local native checks can pass while
+  selected prerequisites remain unfinished.
 - **Direct uses** count immediate statement or proof dependency edges into an
   entry. **Downstream unlocks** count entries that depend on it transitively,
   with cycles ignored.

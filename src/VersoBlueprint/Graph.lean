@@ -423,7 +423,7 @@ def statementStatusReadyText : String := "ready to formalize"
 def statementStatusFormalizedText : String := "formalized"
 def statementStatusMathlibText : String := "in Mathlib"
 
-def proofStatusNoneText : String := "not ready"
+def proofStatusNoneText : String := "no proof status"
 def proofStatusUnassessedText : String := "unassessed"
 def proofStatusReadyText : String := "ready to formalize"
 def proofStatusIncompleteText : String := "Lean code incomplete"
@@ -471,11 +471,10 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "proof"
       title := "Proof Status"
-      summary? := some "Fill color tracks proof readiness independently from statement progress."
+      summary? := some "Fill color tracks native proof checks and selected prerequisites."
       items := #[
         legendItem proofStatusUnassessedText (some { background := proofBackgroundNeutralColor }),
         legendItem proofStatusNoneText (some { background := proofBackgroundNeutralColor }),
-        legendItem proofStatusReadyText (some { background := proofBackgroundReadyColor }),
         legendItem proofStatusIncompleteText (some { background := proofBackgroundIncompleteColor }),
         legendItem proofStatusFormalizedText (some { background := proofBackgroundFormalizedColor }),
         legendItem proofStatusFormalizedAncestorsText
@@ -485,7 +484,7 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "warning"
       title := "Warning Markers"
-      summary? := some "Border treatments flag missing references, missing declarations, or Lean-only nodes without an informal statement."
+      summary? := some "An unresolved Blueprint reference has a red border and fill."
       items := #[
         legendItem "Unknown reference"
           (some { background := unresolvedFillColor, borderColor := unresolvedBorderColor })
@@ -534,10 +533,8 @@ def groupGraphLegendGroups : Array LegendGroup :=
 def eraseDups (xs : Array Name) : Array Name :=
   xs.foldl (init := #[]) fun acc x => if acc.contains x then acc else acc.push x
 
-/-- Project the captured realization assessment onto the compact graph statuses.
-The local native proof and selected Blueprint dependencies stay separate: a
-locally checked theorem remains visible as locally formalized when authored
-correspondence or another non-dependency requirement is still pending. -/
+/-- Project native checks and their selected prerequisites onto the compact graph
+statuses. Actionability is exported independently of proof status. -/
 def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.NodeAssessment) :
     StatementStatus × ProofStatus := Id.run do
   if !assessment.hasNativeDeclarations then
@@ -553,8 +550,7 @@ def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.Node
       else
         .formalized
     else if assessment.hasNativeBodyRequirement && kind.isTheoremLike then
-      if assessment.nativeStatementComplete && assessment.statementDependenciesComplete &&
-          assessment.proofDependenciesComplete then .ready else .incomplete
+      .incomplete
     else
       .none
   return (statement, proof)
@@ -617,7 +613,7 @@ private def styleTokensForWarnings (_warnings : WarningFlags) : Array String :=
 def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array Name)
     (parent? : Option Name)
     (statement : StatementStatus) (proof : ProofStatus) (warnings : WarningFlags)
-    (ref? : Option Ref) (requirementsComplete? : Option Bool := none) : GraphNode Ref :=
+    (ref? : Option Ref) (assessment? : Option Realizations.NodeAssessment := none) : GraphNode Ref :=
   if warnings.unknownRef then
     {
       label
@@ -640,12 +636,15 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
     let baseFill := proofStatusFillColor kind proof
     let styleTokens := styleTokensForWarnings warnings
     let style := String.intercalate "," styleTokens.toList
-    let requirementTooltip := match requirementsComplete? with
-      | some true => ["Selected Lean requirements: complete"]
-      | some false => ["Selected Lean requirements: incomplete"]
+    let requirementTooltip := match assessment? with
+      | some assessment => if assessment.hasNativeDeclarations then
+          [assessment.leanRequirementMessage, assessment.leanDependencyMessage]
+        else [assessment.leanRequirementMessage]
       | none => []
+    let proofText := if proof == .none && assessment?.any (!·.hasNativeBodyRequirement) then
+      "no native body check" else proof.toText
     let tooltipParts :=
-      [s!"Statement: {statement.toText}", s!"Proof: {proof.toText}"] ++
+      [s!"Statement: {statement.toText}", s!"Proof: {proofText}"] ++
         requirementTooltip ++ warningTooltipParts warnings
     let tooltip? :=
       if tooltipParts.isEmpty then none else some (String.intercalate " | " tooltipParts)
@@ -702,7 +701,7 @@ def mkNode (snapshot : Realizations.Capture.Snapshot)
     let warnings : WarningFlags := {}
     let ref? := resolveRef? label
     mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
-      (some assessment.requiredComplete)
+      (some assessment)
   | none =>
     let unresolvedWarnings : WarningFlags := { unknownRef := true }
     mkStyledNode Data.NodeKind.definition label #[] #[] none .unassessed .unassessed unresolvedWarnings none

@@ -58,6 +58,20 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   }
   unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
 
+/-- info: true -/
+#guard_msgs in
+#eval!
+  let data : BlockData := {
+    kind := .theorem
+    codeData := some { externalDecls := #[proofGapExternalRef `Ext.thm.unassessed] }
+    label := `status.theorem.unassessed
+    count := 1
+    assessment := some {}
+  }
+  let rendered := CodeSummary.renderParts data { source := data.codeData } (fun _ => none)
+  rendered.statusMark.any fun mark =>
+    mark.title == "Native Lean requirements: unassessed" && mark.symbolOverride? == some "?"
+
 -- Empty source data stays distinct from a source-backed but unassessed heading.
 /-- info: true -/
 #guard_msgs in

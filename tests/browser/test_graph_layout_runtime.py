@@ -219,6 +219,8 @@ class TestGraphLayoutRuntime:
                         hasNativeBodyRequirement: assessment.hasNativeBodyRequirement,
                         nativeProofComplete: assessment.nativeProofComplete,
                         requiredComplete: assessment.requiredComplete,
+                        proofStatus: node.proofStatus,
+                        actionableStage: node.actionableStage,
                         sourceParseFailed: diagnostics.some((diagnostic) => diagnostic.code === "source-parse-failed")
                     } : null;
                 };
@@ -323,6 +325,8 @@ class TestGraphLayoutRuntime:
         assert admitted["hasNativeBodyRequirement"] is True
         assert admitted["nativeProofComplete"] is False
         assert admitted["requiredComplete"] is False
+        assert admitted["proofStatus"] == "incomplete"
+        assert admitted["actionableStage"] == "proof"
         assert admitted["sourceParseFailed"] is False
 
     def test_public_graph_api_rejects_obsolete_or_malformed_records(

@@ -36,8 +36,21 @@ run_cmd liftTermElabM do
       !summary.actionablePriorities.any (·.label == (Lean.Name.mkSimple "thm:triage.main")) &&
       !summary.actionablePriorities.any (·.label == (Lean.Name.mkSimple "def:triage.02")) do
     throwError "Actionable priority summaries must follow captured native prerequisites"
-  unless summary.quickWins.any (·.label == (Lean.Name.mkSimple "def:triage.leaf")) do
+  let leafLabel := Lean.Name.mkSimple "def:triage.leaf"
+  let some leaf := node leafLabel | throwError "Missing actionable native leaf"
+  unless summary.quickWins.any (·.label == leafLabel) do
     throwError "An actionable native leaf remains a quick win without downstream dependents"
+  let readyCount := model.graph.nodes.countP (·.actionableStage?.isSome)
+  unless summary.coverageSplit.readyToFormalize == readyCount do
+    throwError "Summary ready count must agree with the captured graph work queue"
+  let some group := summary.groupHealth.find? (fun group => some group.parent == foundation.parent)
+    | throwError "Missing actionable foundation group health"
+  let readyGroupCount := model.graph.nodes.countP fun node =>
+    node.parent == some group.parent && node.actionableStage?.isSome
+  unless group.readyEntries == readyGroupCount &&
+      (group.nextPriority?.map (fun item => (item.label, item.stage))) ==
+        (leaf.actionableStage?.map (fun stage => (leaf.label, stage))) do
+    throwError "Grouped progress must use the same captured actions as the work queue"
 
 /-- info: #[] -/
 #guard_msgs in

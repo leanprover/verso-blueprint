@@ -33,15 +33,14 @@ def groupLegend : Array LegendGroup := groupGraphLegendGroups
     defaultLegend.any fun group => (group.items.any (·.label == proofStatusUnassessedText))
   let hasUpdatedProofLabel : Bool :=
     defaultLegend.any fun group => (group.items.any (·.label == proofStatusFormalizedAncestorsText))
-  let warningHasNoIncompleteCodeItem : Bool :=
-    !(defaultLegend.any fun group => (group.items.any (·.label == proofStatusIncompleteText) && group.title == "Warning Markers"))
-  let hasWarningMarkerTitle : Bool :=
-    defaultLegend.any (·.title == "Warning Markers")
+  let warningHasOnlyUnknownReference : Bool :=
+    defaultLegend.any fun group => group.title == "Warning Markers" &&
+      group.items.map (·.label) == #["Unknown reference"]
   let hasUpdatedDashedText : Bool :=
     defaultLegend.any fun group => (group.items.any (·.label == "Dashed: statement deps from box-shaped sources"))
   !hasMathlibLabel && hasIncompleteProofLabel && hasUnassessedStatementLabel &&
     hasUnassessedProofLabel && hasUpdatedProofLabel &&
-    warningHasNoIncompleteCodeItem && hasWarningMarkerTitle && hasUpdatedDashedText
+    warningHasOnlyUnknownReference && hasUpdatedDashedText
 
 /-- info: true -/
 #guard_msgs in
@@ -62,7 +61,7 @@ def groupLegend : Array LegendGroup := groupGraphLegendGroups
       | some swatch =>
         swatch.background == proofBackgroundIncompleteColor &&
         proofStatusIncompleteText == "Lean code incomplete" &&
-        graphLegendGroupViewNote.length > 0
+        !(proofGroup.items.any (·.label == proofStatusReadyText))
 
 /-- info: true -/
 #guard_msgs in

@@ -353,20 +353,22 @@ private def statusMarkFromAssessment (assessment? : Option Realizations.NodeAsse
         status := .incomplete {}
         title := "Validation unavailable: this occurrence has no captured realization assessment"
         symbolOverride? := some "?" }
+  if !assessment.hasNativeDeclarations then
+    return {
+      status := .incomplete {}
+      title := assessment.leanRequirementMessage
+      symbolOverride? := some "?" }
   let complete := assessment.nativeLocallyComplete && assessment.requiredComplete && !assessment.hasAxiomLike
   let status := if assessment.hasAxiomLike then .axiomLike else if complete then .proved else .incomplete {}
-  let nativeStatement := if assessment.hasNativeDeclarations then
-    if assessment.nativeStatementComplete then "passed" else "unfinished"
-    else "unassessed"
-  let nativeProof := if assessment.hasNativeBodyRequirement then
+  let nativeStatement := if assessment.nativeStatementComplete then "passed" else "unfinished"
+  let nativeBody := if assessment.hasNativeBodyRequirement then
     if assessment.nativeProofComplete then "passed" else "unfinished"
-    else if assessment.hasNativeDeclarations then "not required" else "unassessed"
-  let dependencies := assessment.leanDependencyMessage
-  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present; " else ""
+    else "not required"
+  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
   return {
     status
-    title := classification ++ s!"Native statement: {nativeStatement}; native proof: {nativeProof}; " ++
-      s!"required Blueprint validation: {if assessment.requiredComplete then "complete" else "unfinished"}; {dependencies}"
+    title := s!"{classification}Native statement: {nativeStatement}. Native body: {nativeBody}. " ++
+      s!"{assessment.leanRequirementMessage}. {assessment.leanDependencyMessage}."
     symbolOverride? := if complete || assessment.hasAxiomLike then none else some "⚠" }
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
