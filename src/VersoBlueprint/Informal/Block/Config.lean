@@ -253,18 +253,13 @@ def Config.resolveForDirective {m}
   let tags ← resolveTags cfg isProof
   let prUrl ← resolveHttpUrlOption? cfg isProof "pr_url" cfg.prUrl
   let issueUrl ← resolveHttpUrlOption? cfg isProof "issue_url" cfg.issueUrl
-  let inferredDeps ←
+  let inferredUses ←
     if hasExternalRaw && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-      liftM <| DependencyAnalysis.inferExternalRefs resolvedExternalCode
-    else
-      pure {}
-  let inferredUseRefs := inferredDeps.toUseRefs #[] (some cfg.label)
-  let manualLabels := cfg.metadataUses.map (·.label)
-  let statementAxis := if isProof then `proof else `statement
-  let uses := SourceData.usesFor cfg.label (some `lean) statementAxis inferredUseRefs.statement ++
-    SourceData.usesFor cfg.label none statementAxis cfg.metadataUses ++
-    SourceData.usesFor cfg.label (some `lean) `proof (inferredUseRefs.proof.filter fun reference =>
-      !manualLabels.contains reference.label)
+      let names := (resolvedExternalCode.filter (·.present)).map (·.canonical)
+      liftM <| DependencyAnalysis.inferDeclUses cfg.label names
+    else pure #[]
+  let authoredAxis := if isProof then `proof else `statement
+  let uses := inferredUses ++ SourceData.usesFor cfg.label none authoredAxis cfg.metadataUses
   pure {
     label := cfg.label
     labelSyntax := cfg.labelSyntax

@@ -61,9 +61,10 @@ private def expectedUsesMatrix : Array ExpectedUses :=
     },
     {
       labelText := "auto.duplicate_axis.target",
-      statement := #[useRef "auto.def.source" .automatic]
+      statement := #[useRef "auto.def.source" .automatic],
+      proof := #[useRef "auto.def.source" .automatic]
     },
-    -- Manual entries, exclusions, duplicate-axis suppression, and manual precedence.
+    -- Manual entries, exclusions, cross-axis overlap, and manual precedence.
     {
       labelText := "auto.manual.target",
       statement := #[useRef "auto.manual.extra"]

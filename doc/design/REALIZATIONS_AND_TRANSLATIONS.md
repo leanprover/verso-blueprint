@@ -150,6 +150,14 @@ failures; a declaration owned by several ordinary realizations of the selected
 role is `ambiguous-native-contract`. Naming a target realization explicitly is
 not supported.
 
+An inferred use belongs to the native realization supplying the checked type or
+value. When a theorem refers to one target in both, its statement and proof
+select their respective target contracts. The value of a proposition definition
+supplies its statement. An exact owner and a shorthand covering that owner must
+agree on intent for the same axis, target and origin. Authored uses can be
+shared across realizations and gain
+a proof owner later during collection. An ownerless use retains an edge diagnostic.
+
 Prerequisite identities are part of the authored requirement; their content and
 outcomes are not implicitly selected. The record of which target each declared use
 selected binds only the dependency-selection check that produced it. A dependency

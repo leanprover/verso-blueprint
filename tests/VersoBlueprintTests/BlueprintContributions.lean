@@ -225,6 +225,22 @@ private def highA : Record := { a with priority := some "high" }
       assembled.view.priority == some "high"
   | .error _ => false
 
+-- An implementation and a theorem at the same node independently own their
+-- statement-axis references. A producer shorthand covers both exact owners.
+#eval show IO Unit from do
+  let roleUse (role : Name) (intent : UseIntent) : Informal.SourceData.UseDeclaration :=
+    { node := `shared, realization := some ((⟨`shared, `lean⟩ : Informal.Realizations.RealizationKey).forRole role).name,
+      role := `statement, reference := { label := `dep, origin := .automatic, intent } }
+  let statement := roleUse `statement .regular
+  let implementation := roleUse `implementation .auxiliary
+  let shorthand := { statement with realization := some `lean, reference := { statement.reference with intent := .technical } }
+  let accepts := fun uses => (({} : NodeInventory).applyRegistrations `shared #[{ uses }]).isOk
+  unless accepts #[statement, implementation] do
+    throw <| IO.userError "Separate source owners lost their independent dependency intents"
+  for exact in #[statement, implementation] do
+    unless !(accepts #[shorthand, exact]) && !(accepts #[exact, shorthand]) do
+      throw <| IO.userError "Shorthand and exact owner bypassed intent validation"
+
 -- Payload reduction retains authored bodies, dependencies, and literate code.
 #guard match ({} : NodeInventory).applyRegistrations `shared #[{
     sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { stx := .missing, elabStx := #[.missing] }),

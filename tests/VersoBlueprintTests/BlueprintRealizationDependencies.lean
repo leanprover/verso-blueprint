@@ -94,6 +94,66 @@ theorem unresolved : True := True.intro
 @[blueprint "dependencies.unresolvedConsumer" (uses := ["dependencies.unresolved"])]
 theorem unresolvedConsumer : True := unresolved
 
+@[blueprint "dependencies.unfinishedTarget" (proofUses := ["dependencies.missing"])]
+theorem unfinishedTarget : True := True.intro
+
+@[blueprint "dependencies.autoBoth" (autoDeps := true)]
+theorem autoBoth : True ∧ unfinishedTarget = unfinishedTarget := ⟨unfinishedTarget, rfl⟩
+
+@[blueprint "dependencies.explicitBoth" (uses := ["dependencies.unfinishedTarget"])
+    (proofUses := ["dependencies.unfinishedTarget"])]
+theorem explicitBoth : True ∧ unfinishedTarget = unfinishedTarget := ⟨unfinishedTarget, rfl⟩
+
+@[blueprint "dependencies.derived" (autoDeps := true)]
+def derived : Prop := propositionTarget ∧ True
+
+-- Exercise the checked role of a proof written with the def command.
+set_option linter.defProp false in
+@[blueprint "dependencies.witness" (autoDeps := true)]
+def witness : propositionTarget := unfinishedTarget
+
+@[blueprint "dependencies.orphan" (proofUses := ["dependencies.clean"])]
+def orphan : Prop := True
+
+@[blueprint "dependencies.lateOwner" (proofUses := ["dependencies.clean"])]
+def lateOwner : Prop := True
+
+theorem externalBoth : True ∧ unfinishedTarget = unfinishedTarget := ⟨unfinishedTarget, rfl⟩
+
+open Verso Verso.Genre.Manual in
+#docs (Genre.Manual) dependencyOwnersDoc "Dependency owners" :=
+:::::::
+:::definition "dependencies.lateOwner"
+A proposition with an informal proof.
+:::
+:::proof "dependencies.lateOwner"
+Use the clean theorem.
+:::
+:::lemma_ "dependencies.externalBoth"
+The external theorem mentions its prerequisite twice.
+:::
+:::proof "dependencies.externalBoth" (lean := "externalBoth") (autoDeps := true)
+The proof placement supplies the whole Lean declaration.
+:::
+:::lemma_ "dependencies.inlineBoth"
+The inline theorem mentions its prerequisite twice.
+:::
+```lean "dependencies.inlineBoth" (autoDeps := true)
+theorem inlineBoth :
+    True ∧ unfinishedTarget = unfinishedTarget :=
+  ⟨unfinishedTarget, rfl⟩
+```
+
+:::definition "dependencies.inlineGroup"
+A proposition, a proof, and a number share a label.
+:::
+```lean "dependencies.inlineGroup" (autoDeps := true)
+def inlineProp : Prop := propositionTarget ∧ True
+theorem inlineProof : True := unfinishedTarget
+def inlineNumber : Nat := definitionTarget
+```
+:::::::
+
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
   unless condition do throwError message
 
@@ -141,6 +201,55 @@ run_cmd liftTermElabM do
   let definition := contract "definition" ``definitionTarget `implementation
   let proposition := contract "proposition" ``propositionTarget `statement
   let mixedImplementation := contract "mixed" ``mixedValue `implementation
+
+  let assessment (label : String) := snapshot.assessmentFor (Name.mkSimple ("dependencies." ++ label))
+  let unfinishedStatement := contract "unfinishedTarget" ``unfinishedTarget `statement
+  let unfinishedProof := contract "unfinishedTarget" ``unfinishedTarget `proof
+  for label in #["autoBoth", "explicitBoth", "inlineBoth", "externalBoth"] do
+    selects snapshot label `statement "unfinishedTarget" #[unfinishedStatement]
+    selects snapshot label `proof "unfinishedTarget" #[unfinishedProof]
+    let result := assessment label
+    ensure (result.selectedLeanUseCount == 2 && result.nativeLocallyComplete &&
+      result.nativeProofComplete && result.statementDependenciesComplete &&
+      !result.proofDependenciesComplete && !result.requiredComplete)
+      s!"{label} lost a dependency or conflated a local proof with Blueprint completion"
+
+  selects snapshot "derived" `statement "proposition" #[proposition]
+  selects snapshot "witness" `statement "proposition" #[proposition]
+  selects snapshot "witness" `proof "unfinishedTarget" #[unfinishedProof]
+  selects snapshot "inlineGroup" `statement "proposition" #[proposition]
+  selects snapshot "inlineGroup" `proof "unfinishedTarget" #[unfinishedProof]
+  selects snapshot "inlineGroup" `proof "definition" #[definition]
+  -- Even with several possible owners on one label, each inferred edge belongs
+  -- to the declaration role whose checked content supplied the reference.
+  let group := Name.mkSimple "dependencies.inlineGroup"
+  let edges := snapshot.uses.filter (·.source == group)
+  ensure (edges.size == 3) "Unexpected inferred dependency in the mixed inline block"
+  for (target, owner) in #[("proposition", `statement), ("unfinishedTarget", `proof), ("definition", `implementation)] do
+    let key := (⟨group, `lean⟩ : RealizationKey).forRole owner
+    ensure (edges.any fun edge => edge.reference.label == Name.mkSimple ("dependencies." ++ target) &&
+      edge.realization == some key.name) s!"Wrong source realization for {target}"
+
+  -- Authored proofUses may acquire an informal owner later. A genuinely
+  -- ownerless edge stays visible without opening a native proof work item.
+  selects snapshot "lateOwner" `proof "clean" #[cleanProof]
+  let orphanEdges := snapshot.uses.filter (·.source == Name.mkSimple "dependencies.orphan")
+  let #[edge] := orphanEdges | throwError "Expected one ownerless proof dependency"
+  let .error diagnostic := edge.selected | throwError "An ownerless use acquired a target contract"
+  ensure (edge.context.isNone && edge.role == `proof && diagnostic.code == "missing-use-owner" &&
+    diagnostic.message.contains "dependencies.orphan" && diagnostic.message.contains "dependencies.clean" &&
+    diagnostic.message.contains "proof") "Missing author-facing proof owner diagnostic"
+  for label in #["derived", "proposition", "orphan", "lateOwner"] do
+    let result := assessment label
+    ensure (result.nativeStatementComplete && result.requiredComplete && result.nativeLocallyComplete &&
+      !result.hasNativeBodyRequirement && !result.nativeProofComplete &&
+      (Graph.actionableStageForAssessment? result).isNone)
+      s!"Statement-only {label} acquired native proof work"
+  ensure ((assessment "lateOwner").selectedLeanUseCount == 0 &&
+      (assessment "orphan").selectedLeanUseCount == 0)
+    "A shared proof dependency was attributed to a native proposition definition"
+  ensure (Graph.actionableStageForAssessment? (assessment "admitted") == some "proof")
+    "An actual unfinished proof disappeared from the work queue"
 
   -- A proof-axis use requires each target declaration to be done.
   selects snapshot "source" `proof "clean" #[cleanProof]

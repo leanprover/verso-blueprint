@@ -463,15 +463,19 @@ summary, headings and query manifest. A structural/import conflict rejects the
 whole capture; it does not publish a partial project.
 
 `lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
-`nativeProofComplete` describe the selected declarations' own native checks;
-`requiredComplete` also requires their explicit contracts, including independent
-expected propositions and Blueprint dependencies. `details` lists the assessed
-subjects, requirements, observations and unresolved selected edges. A clean proof
+`nativeProofComplete` describe the selected declarations' own native checks.
+`hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
+For a statement-only proposition definition, both body flags are false.
+
+`requiredComplete` summarizes those native checks together with their Blueprint
+prerequisites. Independent expected propositions and correspondence have their
+own assessments in `details`, alongside their subjects, requirements, observations
+and unresolved selected edges. A clean proof
 can therefore coexist with unfinished prerequisites. Prose without an explicit
 assessment requirement remains unassessed. Source-only previews say validation is
 unavailable until captured; declaration-panel snapshots cannot supply completion.
 
-This changes the graph payload to schema version 4. Consumers should use the
+This changes the graph payload to schema version 5. Consumers should use the
 exported `assessment` and `actionableStage`, rather than reconstructing readiness
 from graph colors. The status query's `complete` and `declarations` are
 replaced by `validation` and `sourceDeclarationSnapshots`; the latter
@@ -807,8 +811,13 @@ theorem prop96Inline : True := prop95
 ````
 
 When inference is enabled, Blueprint starts separate walks from the constants in
-the declaration's type and compiled body. The type walk produces statement
-dependencies; the body walk produces proof dependencies. At an unassociated
+the declaration's type and compiled body. A theorem's type contributes statement
+dependencies and its proof contributes proof dependencies. The value of a
+proposition definition such as `def Derived : Prop := S ∧ True` supplies its
+statement, so a reference to `S` contributes a statement dependency. A data
+definition owns both kinds of dependency through its implementation. Blueprint
+assigns these roles per checked declaration, including in blocks that contain
+several declarations. At an unassociated
 definition, theorem, or opaque declaration, when helper expansion is enabled,
 each walk follows both its type and body, keeping the axis of the walk that
 reached it. For example, a helper's type can introduce a proof dependency when
@@ -839,15 +848,13 @@ Adding an association later does not retroactively fill earlier inferred edges.
 Lean associations are many-to-many. One Blueprint label may be associated with
 several Lean code items, and one Lean declaration may be associated with several
 Blueprint labels. Automatic dependency inference emits all associated labels and
-then deduplicates edges by label.
+deduplicates repeated references within each source realization and dependency axis.
 
-Inferred edges are stored with origin `"automatic"` so relationship panels can
-distinguish them from author-written edges. Self-edges are suppressed. If the
-same label is both inferred and explicitly listed on the same axis, the edge is
-emitted once with manual origin. If the same label is inferred on both axes, the
-statement edge wins and the automatic proof edge is suppressed; an explicit `proofUses`
-entry can still put the label on the proof axis when that is what the Blueprint
-should say.
+Inferred edges carry origin `"automatic"`. When a theorem mentions the same
+target theorem in its type and proof, both edges survive. Its statement requires the
+target's statement and its proof requires the target's proof. Self-edges are
+suppressed. When the relationship panel combines references to the same label
+on one axis, an explicit reference takes precedence over an inferred one.
 
 ##### Dependencies through helpers
 
@@ -1561,7 +1568,11 @@ statement, while a proof dependency on it blocks the proof. A statement whose
 Lean type really contains the admitted proof is still caught by its own
 dependency-closure check. A definition's body is part of its meaning, so it
 gates both axes. For a data definition, both `uses` and `proofUses` gate its
-single implementation; each entry still selects by its own axis. A target with
+single implementation, and each entry selects by its own axis. An authored
+`proofUses` can belong to a Verso proof added later. If collection finds no
+proof or implementation to own it, the edge reports `missing-use-owner` in
+`validation.details.uses`. A proposition definition on its own has no native
+proof work item. A target with
 no ordinary Lean declaration, or an unresolved label, leaves the dependency
 selection unfinished, which blocks the dependent. Selecting an alternative
 realization of the target explicitly is not supported.

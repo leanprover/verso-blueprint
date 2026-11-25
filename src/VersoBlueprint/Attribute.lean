@@ -160,11 +160,6 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     }, deps, if internalDoc?.any (fun doc => match doc with | .inl _ => true | .inr _ => false)
       then `markdown else `verso)
 
-private structure ResolvedAutoDeps where
-  statement : Array SourceData.UseDeclaration := #[]
-  proof : Array SourceData.UseDeclaration := #[]
-deriving Inhabited, Repr
-
 private def labelsForManualTarget
     (currentDecl currentLabel : Name) (target : AutoDepTarget) : CoreM (Array Data.Label) := do
   match target with
@@ -186,20 +181,13 @@ private def resolveManualTargets
     return labels.foldl Data.Label.pushUnique acc
 
 private def collectAxisDeps
-    (currentDecl currentLabel role : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
+    (currentDecl currentLabel role : Name) (inferred : Array SourceData.UseDeclaration) (manual : AutoDepEntries)
     (docstringDeps : Array Data.UseRef := #[]) :
     CoreM (Array SourceData.UseDeclaration) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
   let excluded := Data.Label.pushUnique excluded currentLabel
-  let mut out := #[]
-  for label in DependencyAnalysis.sortLabels inferred do
-    if !excluded.contains label then
-      out := out.push {
-        node := currentLabel
-        realization := some `lean
-        role := role
-        reference := DependencyAnalysis.automaticUseRef label }
+  let mut out := inferred.filter fun use => use.role == role && !excluded.contains use.reference.label
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then
       out := out.push { node := currentLabel, role, reference := dependency }
@@ -209,19 +197,17 @@ private def collectAxisDeps
   return out
 
 private def resolveAutoDeps
-    (decl : Name) (label : Data.Label) (info : ConstantInfo) (cfg : BlueprintAttrConfig)
+    (decl : Name) (label : Data.Label) (cfg : BlueprintAttrConfig)
     (docstringDeps : Array Data.UseRef) :
-    CoreM ResolvedAutoDeps := do
+    CoreM (Array SourceData.UseDeclaration) := do
   let inferred ←
     if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-      DependencyAnalysis.infer decl info
+      DependencyAnalysis.inferDeclUses label #[decl]
     else
-      pure {}
-  let statement ← collectAxisDeps decl label `statement inferred.statement cfg.uses docstringDeps
-  let statementLabels := statement.map (·.reference.label)
-  let proofInferred := inferred.proof.filter fun label => !statementLabels.contains label
-  let proof ← collectAxisDeps decl label `proof proofInferred cfg.proofUses
-  return { statement, proof }
+      pure #[]
+  let statement ← collectAxisDeps decl label `statement inferred cfg.uses docstringDeps
+  let proof ← collectAxisDeps decl label `proof inferred cfg.proofUses
+  return statement ++ proof
 
 private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
@@ -233,7 +219,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   -- Attachments never compete with or fill an existing node's informal prose.
   let current? ← Environment.getNodeInventory? label
   let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
-  let deps ← resolveAutoDeps decl label info cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
+  let deps ← resolveAutoDeps decl label cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
@@ -259,7 +245,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     Environment.sourceAt label `verso (some `statement) format (.prose body) ref
   discard <| Environment.contributeAttribute fact {
     sources
-    uses := deps.statement ++ deps.proof }
+    uses := deps }
 
 open Lean in
 initialize

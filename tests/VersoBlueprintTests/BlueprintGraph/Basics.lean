@@ -83,6 +83,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     let completeStatus ← analyzeDeclaration complete.name
     let assessment : Realizations.NodeAssessment := {
       hasNativeDeclarations := true
+      hasNativeBodyRequirement := true
       nativeStatementComplete := false
       nativeProofComplete := false
       statementDependenciesComplete := false
@@ -306,6 +307,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   let unassessed : NodeAssessment := {}
   let blockedProof : NodeAssessment := {
     hasNativeDeclarations := true
+    hasNativeBodyRequirement := true
     nativeStatementComplete := true
     nativeProofComplete := false
     statementDependenciesComplete := true

@@ -155,6 +155,8 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     hasNativeDeclarations
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
     nativeStatementComplete := statementComplete
+    hasNativeBodyRequirement := nativeRequirementKeys.any fun key =>
+      (registry.requirement? key).any (·.expected == .check NativeLean.bodyValidator)
     nativeProofComplete := bodyComplete
     requiredComplete := nativeLocalComplete
     selectedLeanUseCount := selected.size
@@ -830,8 +832,10 @@ private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
         selected := selected.push {
           source, realization, role, reference, context := none
           selected := .error {
-            code := "missing-source-context", subject := source.toString
-            message := "Dependency has no stored source project context" } }
+            code := "missing-use-owner", subject := Data.Label.publicString source
+            message := if role == `proof then
+              s!"'{Data.Label.publicString source}' has no proof or implementation to own the proof dependency on '{Data.Label.publicString reference.label}'. Attach a proof or use the statement axis for a dependency of the statement."
+            else s!"'{Data.Label.publicString source}' has no {role} or implementation to own the dependency on '{Data.Label.publicString reference.label}'." } }
       else
         for context in contexts do
           selected := selected.push {

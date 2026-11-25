@@ -926,16 +926,18 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 4 retains the private-constructor topology contract and adds
+Graph schema version 5 retains the private-constructor topology contract and adds
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
-assessment. A captured node exposes local native statement/body checks, all-required
+assessment. Version 5 requires `hasNativeBodyRequirement` on each captured
+assessment to distinguish a pending native body check from a statement-only
+declaration. A captured node exposes local native statement/body checks, all-required
 completion, prerequisite completion and exact safe report details. Prose without
 an explicit check is unassessed; it is not an implicit proof obligation.
 Regenerate generated Blueprint output when adopting this revision; there is no
 older-schema compatibility path.
 
 Generated `edges` and group `children` are guaranteed projections of the
-authoritative node fields. The browser API recognizes version-4 records with valid node assessments/actionable stages,
+authoritative node fields. The browser API recognizes version-5 records with valid node assessments/actionable stages,
 all top-level collections and a valid render-variant contract: `full` is first,
 variant keys are unique, and select/hover mappings target variants in the same
 record. It deliberately does not repeat Lean's graph finalization work. Lean's
@@ -1954,7 +1956,11 @@ summary, headings and manifest queries. `CodeHealth` is only declaration-panel
 inventory; its former completion helpers are removed.
 
 Native validity, independently authored expected propositions and prose
-correspondence are separate contracts. `nativeProofComplete` can be true while
+correspondence are separate contracts. `hasNativeBodyRequirement` records whether a
+proof or computational implementation check applies to any selected native
+declaration. A proposition definition can pass its statement check with both
+`hasNativeBodyRequirement` and `nativeProofComplete` false.
+`nativeProofComplete` can be true while
 `requiredComplete` is false because a selected native prerequisite is unfinished.
 Independent expected propositions and correspondence reviews have their own
 labeled assessments in `details.assessment`; the native summary does not stand
@@ -1978,7 +1984,8 @@ counts stay in the known-sorry evidence.
 `lake exe vbp query status <label>` returns `validation` separately from
 `sourceDeclarationSnapshots`. `validation.captured` distinguishes a captured
 assessment from unavailable validation. Captured data includes
-`hasNativeDeclarations`, `nativeStatementComplete`, `nativeProofComplete`,
+`hasNativeDeclarations`, `nativeStatementComplete`, `hasNativeBodyRequirement`,
+`nativeProofComplete`,
 `requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
 and `details`. It replaces the former aggregate `verdict`, `complete`,
 `statementComplete`, `proofComplete` and `declarations` fields.

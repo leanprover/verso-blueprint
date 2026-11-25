@@ -310,9 +310,9 @@ private def nestedGroupModel : GraphModel := {
 #guard_msgs in
 #eval
   let finalized := nestedGroupModel.finish "strict-schema" {}
-  let obsoleteSchema := (toJson finalized).setObjVal! "schemaVersion" (toJson 3)
+  let obsoleteSchema := (toJson finalized).setObjVal! "schemaVersion" (toJson 4)
   let noVariants := (toJson finalized).setObjVal! "variants" (toJson (#[] : Array GraphRenderVariant))
-  finalized.schemaVersion == 4 &&
+  finalized.schemaVersion == 5 &&
   (match fromJson? (α := GraphData) obsoleteSchema with
     | .error _ => true
     | .ok _ => false) &&

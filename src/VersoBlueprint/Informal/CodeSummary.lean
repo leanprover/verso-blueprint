@@ -347,24 +347,20 @@ private def renderCodeEntryWrap (href : Option String) (title previewTitle : Str
 /-- Heading completion is read only from the admitted realization assessment.
 Declaration snapshots remain useful for the code panel, but are not a fallback
 source of proof or dependency completion. -/
-private def statusMarkFromAssessment (kind : Data.NodeKind)
-    (assessment? : Option Realizations.NodeAssessment) : BlockStatusMark := Id.run do
+private def statusMarkFromAssessment (assessment? : Option Realizations.NodeAssessment) : BlockStatusMark := Id.run do
   let some assessment := assessment?
     | return {
         status := .incomplete {}
         title := "Validation unavailable: this occurrence has no captured realization assessment"
         symbolOverride? := some "?" }
-  let nativeLocalComplete := if kind.isTheoremLike then
-    assessment.nativeProofComplete else assessment.nativeStatementComplete
-  let complete := assessment.hasNativeDeclarations && nativeLocalComplete &&
-    assessment.requiredComplete && !assessment.hasAxiomLike
+  let complete := assessment.nativeLocallyComplete && assessment.requiredComplete && !assessment.hasAxiomLike
   let status := if assessment.hasAxiomLike then .axiomLike else if complete then .proved else .incomplete {}
   let nativeStatement := if assessment.hasNativeDeclarations then
     if assessment.nativeStatementComplete then "passed" else "unfinished"
     else "unassessed"
-  let nativeProof := if assessment.hasNativeDeclarations then
+  let nativeProof := if assessment.hasNativeBodyRequirement then
     if assessment.nativeProofComplete then "passed" else "unfinished"
-    else "unassessed"
+    else if assessment.hasNativeDeclarations then "not required" else "unassessed"
   let dependencies := assessment.leanDependencyMessage
   let classification := if assessment.hasAxiomLike then "Axiom-like declarations present; " else ""
   return {
@@ -589,7 +585,7 @@ def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Opt
   if data.isProof then {} else
   let source := cdata.source.getD {}
   let renderHealth := externalRenderHealth source.externalDecls
-  let statusMark := statusMarkFromAssessment data.kind data.assessment
+  let statusMark := statusMarkFromAssessment data.assessment
   let title := if source.isEmpty then "No associated Lean declarations" else
     appendRenderHealthSummary (statusMark.title) renderHealth
   { statusMark := if source.isEmpty then none else some statusMark

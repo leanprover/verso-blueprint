@@ -326,18 +326,16 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
     let definedTheorems ← res.definedTheorems.mapM fun decl => do
       let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
       pure <| CodeDeclData.ofLiterateThm decl sourceLocation
-    let inferredUseRefs ←
+    let inferredUses ←
       if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
         let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
-        let deps ← liftM <| DependencyAnalysis.inferDecls decls
-        pure <| deps.toUseRefs (currentLabel? := some cfg.label)
-      else pure ({} : DependencyAnalysis.InferredUseRefs)
+        liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
+      else pure #[]
     let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean
       (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
     let some _ ← Environment.contribute cfg.label {
       sources := #[source]
-      uses := SourceData.usesFor cfg.label (some `lean) `statement inferredUseRefs.statement ++
-        SourceData.usesFor cfg.label (some `lean) `proof inferredUseRefs.proof }
+      uses := inferredUses }
       | ``(Block.concat #[])
     let data : InlineCodeData := {
       blockId

@@ -291,8 +291,10 @@ structure BuildResult where
 
 private def assessmentMessage (assessment : Informal.Realizations.NodeAssessment) : String :=
   let native := if !assessment.hasNativeDeclarations then "native Lean checks unassessed" else
-    s!"native statement {if assessment.nativeStatementComplete then "complete" else "unfinished"}, " ++
-    s!"native proof {if assessment.nativeProofComplete then "complete" else "unfinished"}"
+    let statement := s!"native statement {if assessment.nativeStatementComplete then "complete" else "unfinished"}"
+    if assessment.hasNativeBodyRequirement then
+      statement ++ s!", native proof {if assessment.nativeProofComplete then "complete" else "unfinished"}"
+    else statement
   let dependencies := assessment.leanDependencyMessage
   let classification := if assessment.hasAxiomLike then "; axiom-like declarations present" else ""
   s!"{native}{classification}; required Blueprint validation " ++

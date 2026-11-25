@@ -19,6 +19,8 @@ structure NodeAssessment where
   hasAxiomLike : Bool := false
   /-- Local own-declaration statement checks, before Blueprint prerequisites. -/
   nativeStatementComplete : Bool := false
+  /-- The selected native declarations have a required proof or implementation check. -/
+  hasNativeBodyRequirement : Bool := false
   /-- Local own-declaration body checks, not proof of an independent expected goal. -/
   nativeProofComplete : Bool := false
   /-- Generated native requirements with their selected prerequisites. This
@@ -36,6 +38,11 @@ structure NodeAssessment where
 
 instance : Repr NodeAssessment where
   reprPrec value _ := Std.Format.text (Lean.toJson value).compress
+
+/-- All applicable local checks have passed, before Blueprint prerequisites. -/
+def NodeAssessment.nativeLocallyComplete (assessment : NodeAssessment) : Bool :=
+  assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
+    (!assessment.hasNativeBodyRequirement || assessment.nativeProofComplete)
 
 /-- Shared wording for consumers of the typed selection/completion projection. -/
 def NodeAssessment.leanDependencyMessage (assessment : NodeAssessment) : String :=

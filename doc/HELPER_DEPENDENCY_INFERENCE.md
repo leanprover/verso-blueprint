@@ -38,16 +38,16 @@ a filter on the result, not an instruction to expand that tagged declaration.
 | Boundary | Stop at any Lean-to-Blueprint association, whether created by an attribute, external-Lean statement, or inline code. |
 | Identity | Map each frontier declaration to every associated label; deduplicate and sort labels. |
 | Timing | Infer at authoring elaboration using current associations; persist edges across imports. |
-| Axes | Walk root type and body separately. A helper's type and body remain on the incoming axis. |
-| Precedence | Keep the existing label-level axis suppression, manual additions/exclusions, and strict contribution validation. |
+| Axes | Walk each declaration's type and body separately. The body of a proposition definition supplies its statement. A theorem's body supplies its proof. A data implementation owns both axes. |
+| Precedence | Preserve references on both axes when both apply. Apply additions and exclusions on their own axis. The merged relationship display prefers authored metadata on that axis. |
 | Status | Do not collect axioms as graph nodes or replace existing status analysis. |
 | Recursion | Iterative worklist, per-walk visited names, reserved root, and regular Lean interruption checks. |
 | Caching | No persisted frontier cache: later association changes must be observed by later inference. |
 
-The two walks deliberately retain independent visited sets. This preserves the
-existing raw per-axis evidence until the authoring adapter applies its
-label-level policy, including exclusions and explicit proof-axis declarations.
-A shared visited set must not accidentally erase that evidence.
+Each walk keeps its own visited set. When the same theorem occurs in both the
+type and proof of a declaration, both walks reach it and the two uses select
+different target contracts. Grouped declarations keep their inferred source
+roles when their uses are collected under one label.
 
 No helper code is evaluated or unfolded using a reducibility policy. Inspection
 uses the available compiled expressions, including theorem and opaque bodies.

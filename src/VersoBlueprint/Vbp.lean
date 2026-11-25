@@ -181,6 +181,7 @@ private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := 
         ("hasNativeDeclarations", toJson assessment.hasNativeDeclarations),
         ("hasAxiomLike", toJson assessment.hasAxiomLike),
         ("nativeStatementComplete", toJson assessment.nativeStatementComplete),
+        ("hasNativeBodyRequirement", toJson assessment.hasNativeBodyRequirement),
         ("nativeProofComplete", toJson assessment.nativeProofComplete),
         ("requiredComplete", toJson assessment.requiredComplete),
         ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),

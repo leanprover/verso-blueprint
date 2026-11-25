@@ -131,6 +131,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let source : BlockCodeData := .ofInlineBlocks blocks
   let assessment : Realizations.NodeAssessment := {
     hasNativeDeclarations := true
+    hasNativeBodyRequirement := true
     hasAxiomLike := false
     nativeStatementComplete := true
     nativeProofComplete := false

@@ -498,6 +498,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
     let source := statementSource.append proofSource
     let assessment : Informal.Realizations.NodeAssessment := {
       hasNativeDeclarations := true
+      hasNativeBodyRequirement := true
       nativeStatementComplete
       nativeProofComplete
       requiredComplete

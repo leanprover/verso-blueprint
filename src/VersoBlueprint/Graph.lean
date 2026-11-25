@@ -294,7 +294,7 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 4
+private def graphDataSchemaVersion : Nat := 5
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -552,7 +552,7 @@ def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.Node
         .formalizedWithAncestors
       else
         .formalized
-    else if kind.isTheoremLike then
+    else if assessment.hasNativeBodyRequirement && kind.isTheoremLike then
       if assessment.nativeStatementComplete && assessment.statementDependenciesComplete &&
           assessment.proofDependenciesComplete then .ready else .incomplete
     else
@@ -566,7 +566,7 @@ def actionableStageForAssessment? (assessment : Realizations.NodeAssessment) : O
   if !assessment.hasNativeDeclarations then none
   else if !assessment.nativeStatementComplete then
     if assessment.statementDependenciesComplete then some "statement" else none
-  else if !assessment.nativeProofComplete then
+  else if assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete then
     if assessment.proofDependenciesComplete then some "proof" else none
   else
     none

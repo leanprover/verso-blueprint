@@ -54,9 +54,8 @@ private def mergeContribution (label : Label) (node : NodeInventory)
   let mut uses := node.uses
   for use in incoming.uses do
     for previous in uses do
-      if previous.realization == use.realization && previous.role == use.role &&
-          previous.reference.label == use.reference.label && previous.reference.origin == use.reference.origin &&
-          previous.reference.intent != use.reference.intent then
+      if previous.reference.label == use.reference.label && previous.reference.origin == use.reference.origin &&
+          previous.reference.intent != use.reference.intent && previous.scopesOverlap use then
         conflict s!"Label {label} declares conflicting {use.role} dependency intents for '{use.reference.label}' ({use.reference.origin}): existing '{previous.reference.intent}', new '{use.reference.intent}'"
     uses := uses.push use
   let parent ← mergeMetadata label "parents" node.parent incoming.parent

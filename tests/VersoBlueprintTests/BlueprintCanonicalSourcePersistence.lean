@@ -45,7 +45,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   unless uses.any (fun use => use.reference.label == Name.mkSimple "storage.forward" &&
       use.role == `statement && use.realization.isNone && use.reference.origin == .manual) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
-      use.role == `proof && use.realization == some `lean && use.reference.origin == .automatic) &&
+      use.role == `proof && use.realization == some ((Realizations.RealizationKey.mk label `lean).forRole `implementation).name && use.reference.origin == .automatic) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
       use.role == `proof && use.realization.isNone && use.reference.intent == .technical) &&
       uses.any (fun use => use.reference.label == Name.mkSimple "storage.tagged" &&

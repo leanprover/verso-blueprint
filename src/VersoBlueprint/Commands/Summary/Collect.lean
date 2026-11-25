@@ -90,10 +90,9 @@ private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags)
 
 private def entryStatusFlags (assessment : Realizations.NodeAssessment)
     (node : Realizations.Node) : EntryStatusFlags :=
-  let localFormalized := assessment.hasNativeDeclarations &&
-    assessment.nativeStatementComplete && assessment.nativeProofComplete
+  let localFormalized := assessment.nativeLocallyComplete
   let withIncompleteCode := assessment.hasNativeDeclarations && !assessment.nativeStatementComplete
-  let noProof := node.kind.isTheoremLike && assessment.hasNativeDeclarations && !assessment.nativeProofComplete
+  let noProof := node.kind.isTheoremLike && assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete
   {
     completed := assessment.requiredComplete
     completedDepsNo := localFormalized && !assessment.requiredComplete
@@ -522,7 +521,7 @@ private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
   let blockedNow := assessment.hasNativeDeclarations && !statusFlags.completed &&
     !statusFlags.completedDepsNo && !readyNow
   let incompleteLeanNow := assessment.hasNativeDeclarations &&
-    (!assessment.nativeStatementComplete || !assessment.nativeProofComplete)
+    !assessment.nativeLocallyComplete
   {
     totalEntries := counts.totalEntries + 1
     closedEntries := counts.closedEntries + (if statusFlags.completed then 1 else 0)
@@ -572,7 +571,7 @@ private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
       acc
     else if assessment.requiredComplete then
       { acc with requirementsComplete := acc.requirementsComplete + 1 }
-    else if assessment.nativeStatementComplete && assessment.nativeProofComplete then
+    else if assessment.nativeLocallyComplete then
       { acc with nativeCompleteRequirementsPending := acc.nativeCompleteRequirementsPending + 1 }
     else if (Informal.Graph.actionableStageForAssessment? assessment).isSome then
       { acc with readyToFormalize := acc.readyToFormalize + 1 }

@@ -122,15 +122,31 @@ structure UseDeclaration where
   reference : Data.UseRef
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
+private def useRoleAccepts (axis ownerRole : Name) : Bool :=
+  axis == ownerRole || (ownerRole == `implementation && (axis == `statement || axis == `proof))
+
+private def useNameSelects (name : Name) (owner : RealizationKey) (ownerRole : Name) : Bool :=
+  name == owner.name || (RealizationKey.forRole ⟨owner.node, name⟩ ownerRole) == owner
+
 /-- Source dependency axes retain their authored meaning. For a computational
 definition, both ordinary axes constrain its single implementation realization.
 Exact current keys and ordinary producer base-name shorthand use the same rule. -/
 def useSelectsRealization (node : Name) (realization : Option Name) (role : Name)
     (model : Realization) : Bool :=
-  let compatible := model.role == role ||
-    (model.role == `implementation && (role == `statement || role == `proof))
-  model.key.node == node && compatible && realization.all fun name =>
-    model.key == ⟨node, name⟩ || model.key == (RealizationKey.forRole ⟨node, name⟩ model.role)
+  model.key.node == node && useRoleAccepts role model.role &&
+    realization.all fun name => useNameSelects name model.key model.role
+
+/-- Registration precedes capture. A scoped use and its producer shorthand must
+agree wherever their selectors overlap, including when one arrives on import.
+Concept-wide declarations retain their own authority. -/
+def UseDeclaration.scopesOverlap (left right : UseDeclaration) : Bool :=
+  left.node == right.node && left.role == right.role && (
+    left.realization == right.realization || match left.realization, right.realization with
+      | some a, some b =>
+        let overlapsAt (role : Name) := useNameSelects a ⟨left.node, b⟩ role ||
+          useNameSelects b ⟨left.node, a⟩ role
+        overlapsAt left.role || (useRoleAccepts left.role `implementation && overlapsAt `implementation)
+      | _, _ => false)
 
 /-- One registration in the existing Blueprint entry/transaction. Metadata is
 language independent; sources and dependencies retain their exact destinations.

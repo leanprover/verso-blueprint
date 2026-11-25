@@ -100,7 +100,9 @@ read-only and does not recheck changed sources. `check` audits artifact
 consistency and cannot establish freshness.
 
 `validation.nativeStatementComplete` and `nativeProofComplete` describe local
-native checks. `requiredComplete` summarizes generated native requirements with
+native checks. Check `hasNativeBodyRequirement` before reporting an unfinished
+proof or implementation. A proposition definition can have only a statement
+check. `requiredComplete` summarizes generated native requirements with
 their selected prerequisites; it is not universal node completion. Read
 `validation.details.assessment` for each realization/relation's own contract,
 requirement local/final results, current-review selection and evidence suitability.
